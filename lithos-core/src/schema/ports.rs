@@ -5,7 +5,7 @@
 
 use uuid::Uuid;
 
-use super::{Schema, SchemaError};
+use super::{aggregate::Schema, error::SchemaError};
 
 /// Command port for Schema write operations.
 pub trait Command: Send + Sync {

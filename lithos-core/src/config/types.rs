@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use super::ConfigError;
+use super::error::ConfigError;
 
 /// Configuration value types supporting multiple data types and encryption.
 ///
@@ -18,7 +18,7 @@ use super::ConfigError;
 /// # Examples
 ///
 /// ```rust
-/// # use lithos_core::config::Value as ConfigValue;
+/// # use lithos_core::config::types::SettingValue as ConfigValue;
 /// # use std::collections::HashMap;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create from primitives
@@ -173,7 +173,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::config::Frontmatter;
+    /// # use lithos_core::config::types::Frontmatter;
     /// let frontmatter = Frontmatter::default();
     /// frontmatter.validate().unwrap();
     /// ```
@@ -227,7 +227,7 @@ impl Logging {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::config::Logging;
+    /// # use lithos_core::config::types::Logging;
     /// let logging = Logging::default();
     /// logging.validate().unwrap();
     /// ```
@@ -277,7 +277,7 @@ impl Schema {
     /// # Examples
     ///
     /// ```rust
-    /// # use lithos_core::config::Schema;
+    /// # use lithos_core::config::types::Schema;
     /// let schema = Schema::default();
     ///
     /// assert_eq!(schema.property_bank_path(), "schemas/property_bank.json");

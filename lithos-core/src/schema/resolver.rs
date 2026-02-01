@@ -20,7 +20,9 @@ use super::{
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::schema::{RawSchema, SchemaName, PropertyBank, Resolver};
+/// # use lithos_core::schema::raw::RawSchema;
+/// # use lithos_core::schema::aggregate::{SchemaName, PropertyBank};
+/// # use lithos_core::schema::resolver::Resolver;
 /// # use std::collections::HashSet;
 /// # use uuid::Uuid;
 /// let bank = PropertyBank::new();
@@ -144,7 +146,10 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::schema::{BoolSpec, PropertySpec, SchemaName};
+    use crate::schema::{
+        aggregate::SchemaName,
+        property_spec::{BoolSpec, PropertySpec},
+    };
 
     #[test]
     fn resolve_includes_parent_properties() {

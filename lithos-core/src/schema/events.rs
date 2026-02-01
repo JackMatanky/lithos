@@ -10,7 +10,7 @@ use uuid::Uuid;
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::SchemaCreated;
+/// use lithos_core::schema::events::SchemaCreated;
 /// use uuid::Uuid;
 ///
 /// let id = Uuid::now_v7();
@@ -36,7 +36,7 @@ pub struct SchemaCreated {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::PropertyBankUpdated;
+/// use lithos_core::schema::events::PropertyBankUpdated;
 ///
 /// let event = PropertyBankUpdated::new(12, 1234567890);
 /// assert_eq!(event.property_count, 12);

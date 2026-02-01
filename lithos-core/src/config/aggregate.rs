@@ -15,7 +15,7 @@
 //!   build phase.
 
 use super::{
-    ConfigError,
+    error::ConfigError,
     events::{ConfigUpdated, Events},
     global::{Global, Paths as GlobalPaths},
     types::{Frontmatter, Logging, Schema, Template},
@@ -65,7 +65,7 @@ impl Config {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::config::{Config, Global, Vault};
+    /// # use lithos_core::config::{aggregate::Config, global::Global, vault::Vault};
     /// let global = Global::default();
     /// let vault = Vault::default();
     /// let config = Config::build(Some(&global), "/vault", vault).unwrap();
@@ -257,7 +257,7 @@ impl Config {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::config::{Config, Global, Vault};
+    /// # use lithos_core::config::{aggregate::Config, global::Global, vault::Vault};
     /// let global = Global::default();
     /// let vault = Vault::default();
     /// let config = Config::build(Some(&global), "/vault", vault).unwrap();

@@ -6,15 +6,10 @@ use super::{aggregate::Template, error::TemplateError};
 ///
 /// # Examples
 /// ```ignore
-/// # use lithos_core::template::{
-///     InsertionPosition,
-///     Template,
-///     Metadata,
-///     Section,
-///     Composition
-/// };
+/// # use lithos_core::template::aggregate::{Template, Metadata};
+/// # use lithos_core::template::composition::{Composition, Section, InsertionPosition};
 /// # use std::collections::HashMap;
-/// # fn run() -> Result<(), lithos_core::template::TemplateError> {
+/// # fn run() -> Result<(), lithos_core::template::error::TemplateError> {
 /// let base = Template::new(
 ///     "base".to_string(),
 ///     "Hello {{name}}".to_string(),
@@ -230,7 +225,7 @@ pub enum InsertionPosition {
 )]
 mod tests {
     use super::*;
-    use crate::template::{VariableDefinition, aggregate::Metadata};
+    use crate::template::{aggregate::Metadata, variable::VariableDefinition};
 
     /// 3.4-UNIT-028: `should_detect_circular_composition`.
     /// Priority: P0.

@@ -41,7 +41,7 @@ use crate::fs::validate_vault_path;
 ///
 /// # Examples
 /// ```
-/// # use lithos_core::note::Note;
+/// # use lithos_core::note::aggregate::Note;
 /// # use uuid::Uuid;
 /// // For new files (first-time indexing)
 /// let new_id = Uuid::now_v7();
@@ -138,7 +138,8 @@ impl Note {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::note::{Note, Link, Target, EmbedType};
+    /// # use lithos_core::note::aggregate::Note;
+    /// # use lithos_core::note::link::{Link, Target, EmbedType};
     /// # use uuid::Uuid;
     /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
     /// let embed = Link::new_embed(
@@ -169,7 +170,8 @@ impl Note {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::note::{Note, Link, Target};
+    /// # use lithos_core::note::aggregate::Note;
+    /// # use lithos_core::note::link::{Link, Target};
     /// # use uuid::Uuid;
     /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
     /// let link = Link::new_markdown_link(
@@ -199,7 +201,7 @@ impl Note {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::note::Note;
+    /// # use lithos_core::note::aggregate::Note;
     /// # use uuid::Uuid;
     /// let note = Note::new(Uuid::now_v7(), "notes/intro.md".to_string()).unwrap();
     /// assert_eq!(note.path.as_str(), "notes/intro.md");
@@ -258,7 +260,7 @@ impl Note {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::note::Note;
+    /// # use lithos_core::note::aggregate::Note;
     /// # use uuid::Uuid;
     /// let note_id = Uuid::now_v7();
     /// let note = Note::new(note_id, "test.md".to_string()).unwrap();
@@ -279,7 +281,8 @@ impl Note {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::note::{Note, Link, Target};
+    /// # use lithos_core::note::aggregate::Note;
+    /// # use lithos_core::note::link::{Link, Target};
     /// # use uuid::Uuid;
     /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
     /// let link = Link::new_wikilink(
@@ -355,7 +358,11 @@ mod tests {
     use lithos_test_utils::assert_err_kind;
 
     use super::*;
-    use crate::note::{EmbedType, FieldValue, Target, TaskStatus};
+    use crate::note::{
+        frontmatter::FieldValue,
+        link::{EmbedType, Target},
+        task::TaskStatus,
+    };
 
     mod new {
         use rstest::rstest;
@@ -623,13 +630,12 @@ mod tests {
 }
 
 #[cfg(test)]
-#[expect(dead_code, reason = "Test fixtures may be used by other crates")]
 /// Test fixtures for Note model testing.
 pub mod fixtures {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::note::FieldValue;
+    use crate::note::frontmatter::FieldValue;
 
     /// Fixed UUID for deterministic tests (valid UUID v7 format).
     pub const TEST_NOTE_ID: Uuid =

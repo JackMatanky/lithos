@@ -36,7 +36,7 @@ use crate::patterns;
 /// # Examples
 ///
 /// ```
-/// use lithos_core::schema::SchemaName;
+/// use lithos_core::schema::aggregate::SchemaName;
 ///
 /// let name = SchemaName::new("project-note".to_string()).unwrap();
 /// assert_eq!(&name.0, "project-note");
@@ -158,7 +158,7 @@ impl AsRef<str> for SchemaName {
 /// # Examples
 ///
 /// ```
-/// use lithos_core::schema::{Schema, SchemaName};
+/// use lithos_core::schema::aggregate::{Schema, SchemaName};
 /// use uuid::Uuid;
 ///
 /// let name = SchemaName::new("project-note".into()).unwrap();
@@ -191,7 +191,7 @@ impl Schema {
     /// # Examples
     ///
     /// ```
-    /// use lithos_core::schema::{Schema, SchemaName};
+    /// use lithos_core::schema::aggregate::{Schema, SchemaName};
     /// use uuid::Uuid;
     ///
     /// let name = SchemaName::new("test".into()).unwrap();
@@ -230,7 +230,7 @@ impl Schema {
     /// # Examples
     ///
     /// ```
-    /// use lithos_core::schema::{Schema, SchemaName};
+    /// use lithos_core::schema::aggregate::{Schema, SchemaName};
     /// use uuid::Uuid;
     ///
     /// let name = SchemaName::new("project-note".to_string()).unwrap();
@@ -292,9 +292,9 @@ impl Schema {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::schema::PropertyBank;
-/// # use lithos_core::schema::{Property, PropertyName};
-/// # use lithos_core::schema::{PropertySpec, BoolSpec};
+/// # use lithos_core::schema::aggregate::PropertyBank;
+/// # use lithos_core::schema::property::{Property, PropertyName};
+/// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
 /// # use uuid::Uuid;
 /// let mut bank = PropertyBank::new();
 /// let name = PropertyName::new("is_active".to_string()).unwrap();
@@ -353,9 +353,10 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_core::schema::PropertyBank;
+    /// use lithos_core::schema::aggregate::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
+    ///
     /// let result = bank.decode("missing");
     /// assert!(result.is_err());
     /// ```
@@ -377,9 +378,10 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_core::schema::PropertyBank;
+    /// use lithos_core::schema::aggregate::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
+    ///
     /// assert!(bank.get("any").is_none());
     /// ```
     #[inline]
@@ -445,11 +447,14 @@ impl PropertyBank {
     ///
     /// ```
     /// use lithos_core::schema::{
-    ///     BoolSpec, Property, PropertyBank, PropertyName, PropertySpec,
+    ///     aggregate::PropertyBank,
+    ///     property::{Property, PropertyName},
+    ///     property_spec::{BoolSpec, PropertySpec},
     /// };
     /// use uuid::Uuid;
     ///
     /// let mut bank = PropertyBank::new();
+    ///
     /// let name = PropertyName::new("is_active".to_string()).unwrap();
     /// let spec = PropertySpec::Bool(BoolSpec::default());
     /// let id = Uuid::now_v7();
@@ -505,13 +510,6 @@ impl PropertyBank {
 }
 
 #[cfg(test)]
-#[expect(
-    dead_code,
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for deterministic setup of \
-              fixtures. Unreachable code paths are acceptable in shared test \
-              utilities."
-)]
 /// Test fixtures for deterministic schema data.
 pub mod fixtures {
     use uuid::Uuid;
@@ -526,6 +524,10 @@ pub mod fixtures {
     ///
     /// # Panics
     /// Panics if the default schema name is invalid.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test fixture - unwrap/expect acceptable in test code"
+    )]
     #[inline]
     #[must_use]
     pub fn example_schema_name() -> SchemaName {

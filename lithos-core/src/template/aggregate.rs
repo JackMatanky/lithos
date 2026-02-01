@@ -89,15 +89,10 @@ impl Template {
     ///
     /// # Examples
     /// ```ignore
-    /// # use lithos_core::template::{
-    ///     Template,
-    ///     Composition,
-    ///     Metadata,
-    ///     Section,
-    ///     InsertionPosition
-    /// };
+    /// # use lithos_core::template::aggregate::{Template, Metadata};
+    /// # use lithos_core::template::composition::{Composition, Section, InsertionPosition};
     /// # use std::collections::HashMap;
-    /// # fn run() -> Result<(), lithos_core::template::TemplateError> {
+    /// # fn run() -> Result<(), lithos_core::template::error::TemplateError> {
     /// let base = Template::new(
     ///     "base".to_string(),
     ///     "Hello {{name}}".to_string(),
@@ -210,18 +205,16 @@ impl Template {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::template::{Template, VariableDefinition, Metadata};
+    /// # use lithos_core::template::aggregate::{Template, Metadata};
+    /// # use lithos_core::template::variable::VariableDefinition;
     /// # use std::collections::HashMap;
     /// let mut variables = HashMap::new();
-    /// variables.insert(
-    ///     "title".to_string(),
-    ///     VariableDefinition::String {
-    ///         default: Some("Daily".to_string()),
-    ///         max_length: None,
-    ///         min_length: None,
-    ///         pattern: None,
-    ///     },
-    /// );
+    /// variables.insert("title".to_string(), VariableDefinition::String {
+    ///     default: Some("Daily".to_string()),
+    ///     max_length: None,
+    ///     min_length: None,
+    ///     pattern: None,
+    /// });
     /// let template = Template::new(
     ///     "daily".to_string(),
     ///     "# {{title}}".to_string(),
@@ -368,7 +361,7 @@ impl Template {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::template::{Template, Metadata};
+    /// # use lithos_core::template::aggregate::{Template, Metadata};
     /// # use std::collections::HashMap;
     /// let template = Template::new(
     ///     "basic".to_string(),
@@ -492,7 +485,7 @@ impl Template {
 ///
 /// # Examples
 /// ```
-/// # use lithos_core::template::Metadata;
+/// # use lithos_core::template::aggregate::Metadata;
 /// let metadata = Metadata::default();
 /// assert!(metadata.tags.is_empty());
 /// ```

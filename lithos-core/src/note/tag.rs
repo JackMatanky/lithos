@@ -30,7 +30,7 @@ impl Tag {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::Tag;
+    /// use lithos_core::note::tag::Tag;
     ///
     /// let tag = Tag::new("#work/project/urgent").unwrap();
     /// assert_eq!(tag.full_path.as_str(), "work/project/urgent");
@@ -71,6 +71,7 @@ impl FullPath {
     /// # Errors
     /// Returns [`NoteError::Tag`] if the input doesn't start with `#` or is
     /// empty.
+    #[inline]
     pub fn validate(input: &str) -> Result<(), NoteError> {
         if !input.starts_with('#') {
             return Err(NoteError::Tag("Tag must start with #".to_owned()));
@@ -127,6 +128,7 @@ impl Segments {
     /// # Errors
     /// Returns [`NoteError::Tag`] if any segment is empty or contains invalid
     /// characters.
+    #[inline]
     pub fn validate(tag_path: &str) -> Result<(), NoteError> {
         let segments: Vec<&str> = tag_path.split('/').collect();
 

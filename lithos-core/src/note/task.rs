@@ -8,7 +8,7 @@ use super::error::NoteError;
 ///
 /// # Examples
 /// ```
-/// # use lithos_core::note::TaskStatus;
+/// # use lithos_core::note::task::TaskStatus;
 /// assert_eq!(TaskStatus::Complete as u8, TaskStatus::Complete as u8);
 /// ```
 #[derive(
@@ -48,7 +48,7 @@ impl Task {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::{Task, TaskStatus};
+    /// use lithos_core::note::task::{Task, TaskStatus};
     ///
     /// let task =
     ///     Task::new("Buy milk".to_string(), TaskStatus::Incomplete, 50).unwrap();

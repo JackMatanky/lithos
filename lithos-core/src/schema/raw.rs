@@ -18,7 +18,9 @@ use super::{
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::{RawSchema, RawProperty, RawPropertyInline, SchemaName, PropertySpec, BoolSpec};
+/// use lithos_core::schema::raw::{RawSchema, RawProperty, RawPropertyInline};
+/// use lithos_core::schema::aggregate::SchemaName;
+/// use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
 /// use std::collections::HashSet;
 /// use uuid::Uuid;
 ///
@@ -120,7 +122,7 @@ pub struct RawPropertyInline {
 )]
 mod tests {
     use super::*;
-    use crate::schema::BoolSpec;
+    use crate::schema::property_spec::BoolSpec;
 
     #[test]
     fn raw_schema_initializes_fields() {

@@ -4,12 +4,13 @@
 //! configuration, including filesystem settings, metadata, and vault overrides.
 
 use super::{
-    ConfigError,
+    error::ConfigError,
     types::{Frontmatter, Logging, Schema, Template},
 };
 
 /// Schema version for the vault.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
 pub struct SchemaVersion(pub String);
 
 impl SchemaVersion {
@@ -68,7 +69,7 @@ impl Metadata {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::config::Metadata;
+    /// # use lithos_core::config::vault::Metadata;
     /// let metadata =
     ///     Metadata::new("/vaults/work".to_string(), None, None).unwrap();
     /// assert_eq!(metadata.path, "/vaults/work");

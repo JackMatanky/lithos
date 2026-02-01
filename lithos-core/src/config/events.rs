@@ -17,7 +17,7 @@ pub enum Events {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::config::ConfigUpdated;
+/// use lithos_core::config::events::ConfigUpdated;
 ///
 /// let event = ConfigUpdated::new("vault".to_string(), 1234567890);
 /// assert_eq!(event.timestamp, 1234567890);

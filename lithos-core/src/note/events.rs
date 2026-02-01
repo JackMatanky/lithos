@@ -10,7 +10,7 @@ use uuid::Uuid;
 ///
 /// # Examples
 /// ```
-/// use lithos_core::note::NoteCreated;
+/// use lithos_core::note::events::NoteCreated;
 /// use uuid::Uuid;
 ///
 /// let id = Uuid::now_v7();
@@ -42,7 +42,7 @@ pub struct NoteCreated {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::note::FrontmatterValidated;
+/// use lithos_core::note::events::FrontmatterValidated;
 /// use uuid::Uuid;
 ///
 /// let id = Uuid::now_v7();

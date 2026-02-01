@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use super::{
-    ConfigError,
+    error::ConfigError,
     types::{Frontmatter, Logging, Schema, Template},
 };
 
