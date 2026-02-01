@@ -469,5 +469,5 @@ flowchart TD
 - ADR 0003: Template Engine (MiniJinja)
 - ADR 0005: Configuration Management (Figment)
 - ADR 0006: Error Handling (thiserror + miette)
-- ADR 0007: Event Orchestration
-- ADR 0013: Domain Serialization Strategy
+- ADR 0007: Event Orchestration (Minimal Foundation)
+- ADR 0009: Domain Serialization Strategy (Feature-Gated)
