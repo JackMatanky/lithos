@@ -254,12 +254,13 @@ pub enum LithosError {
   - Remove centralized `domain/src/errors.rs`, `domain/src/events.rs`
 
 - Epic 5 (Cache):
-  - Move from `crates/adapters/src/spi/cache/` -> `lithos-core/src/cache/`
-  - Add `cache/error.rs` (co-located CacheError enum)
+  - Replace `crates/adapters/src/spi/cache/` with `lithos-core/src/db.rs`
+  - NO cache/ folder (see Proposals 4 & 5)
+  - Database layer provides zero-copy primitives
 
 - Epic 9 (Storage):
-  - Integrate into `lithos-core/src/cache/storage.rs` (extends cache module)
-  - Reuse `cache::CacheError` (no separate StorageError)
+  - Integrate into domain contexts as static methods
+  - Use `Database` type from `db.rs` (no separate storage module)
 
 - ALL Epics:
   - Update imports from `use domain::config::...` to `use lithos_core::config::...`
@@ -275,7 +276,7 @@ crates/domain/src/errors.rs
 NEW (Co-located - correct)
 lithos-core/src/note/error.rs
 lithos-core/src/schema/error.rs
-lithos-core/src/cache/error.rs
+lithos-core/src/db/error.rs
 
 OPTIONAL (Top-level composition)
 lithos-core/src/lib.rs (LithosError via #[from])
@@ -301,7 +302,7 @@ lithos-core/src/lib.rs (LithosError via #[from])
 **Change**:
 
 - Replace `DomainError` with context-specific error enums
-- Co-locate error types with their context (`note/error.rs`, `schema/error.rs`, `config/error.rs`, `cache/error.rs`)
+- Co-locate error types with their context (`note/error.rs`, `schema/error.rs`, `config/error.rs`, `db/error.rs`)
 - Use `thiserror` with `#[from]` conversions
 - Optional top-level error type only for orchestration
 
@@ -325,7 +326,7 @@ pub enum DomainError {
 note/error.rs
 schema/error.rs
 config/error.rs
-cache/error.rs
+db/error.rs
 ```
 
 ```rust
@@ -366,6 +367,8 @@ pub enum LithosError {
 ### 3. Module Organization Strategy
 
 **Target**: `project-structure-boundaries.md`
+**Epic Affected**: Epic 3 (Domain), all epics with domain contexts
+**Priority**: P1 - High (Foundation for file organization)
 **Principle**: File First, Folder Second.
 **Constraint**: `mod.rs` is strictly banned.
 
@@ -432,7 +435,7 @@ crates/
 │               └── mod.rs            # DELETE (empty)
 │
 ├── app/                              # DELETE (merge into lithos-core)
-├── adapters/                         # MOVE to lithos-core/cache/
+├── adapters/                         # DELETE (replaced by db.rs)
 └── cli/                              # RENAME to lithos-cli/
 ```
 
@@ -484,17 +487,18 @@ crates/
         │   ├── composition.rs        # KEEP
         │   ├── syntax.rs             # KEEP
         │   ├── validation.rs         # KEEP
-        │   ├── events.rs             # KEEP (co-located)
-        │   ├── ports.rs              # NEW (moved from ports/template.rs)
-        │   └── error.rs              # NEW (extracted from errors.rs)
-        │
-        └── cache/                    # MOVED (from adapters/src/spi/cache/)
-            ├── mod.rs
-            ├── moka.rs
-            ├── redb.rs
-            ├── coordinator.rs
-            ├── error.rs              # CacheError (co-located)
-            └── storage.rs
+│   ├── events.rs             # KEEP (co-located)
+│   ├── ports.rs              # NEW (moved from ports/template.rs)
+│   └── error.rs              # NEW (extracted from errors.rs)
+│
+├── db.rs                     # NEW (zero-copy database layer, see Proposals 4 & 5)
+└── fs/                       # NEW (file system utilities)
+    ├── parsers/
+    │   ├── config.rs         # TOML/JSON/YAML parsing
+    │   └── markdown.rs       # Markdown parsing (deferred)
+    ├── validator.rs
+    ├── vault.rs
+    └── walker.rs
 ```
 
 #### File Structure Rules
@@ -535,11 +539,11 @@ Each bounded context follows this structure:
 ```
 Dependencies flow INWARD (toward domain contexts):
 
-fs/ and cache/ are generic infrastructure with no domain knowledge
-<context>/storage.rs depends on domain types and uses fs/ + cache/
-lithos-cli depends on context storage and/or domain traits
+fs/ and db.rs are generic infrastructure with no domain knowledge
+<context>/ contains domain types with static methods that use Database
+lithos-cli depends on context types and Database
 
-Domain contexts (note/, schema/, config/, template/) depend on NOTHING internal
+Domain contexts (note/, schema/, config/, template/) depend on NOTHING internal except db.rs
 ```
 
 #### Migration Operations
