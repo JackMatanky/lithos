@@ -24,7 +24,7 @@ For linting/testing/tooling workflow guidance (Clippy discipline, doc tests, ben
 The Rust style guide’s core thesis is: formatting is mostly mechanical, so let tools do it.
 
 - **Indentation**: spaces only; indent in multiples of 4.
-- **Line width**: 100 columns for code is the default target.
+- **Line width**: follow `rustfmt` (this repo uses 80 columns).
 - **Block indent over visual indent**: prefer
   - `foo(\n    a,\n    b,\n)`
   - over aligning arguments under the opening paren.
@@ -91,15 +91,15 @@ Lithos already has a curated stack; follow the same spirit:
 - `nextest` doesn’t execute doc tests.
 - If you use `nextest`, make sure doc tests are still run (e.g., `cargo test --doc` in CI).
 
-### Avoid `#[should_panic]`
+### Use `#[should_panic]` sparingly
 
-- Prefer explicit checks (`assert!(result.is_err())`, match the error, etc.).
-- The goal is “no panics even on invalid input”, not “panics in the right way”.
+- Prefer explicit checks (`assert!(result.is_err())`, match the error, etc.) when the API is intended to be fallible.
+- Use `#[should_panic]` when a panic is the intended, documented behavior (e.g., asserting an invariant in debug-only code, or verifying a safety contract violation).
 
-### Avoid `#[ignore]`
+### Use `#[ignore]` intentionally
 
-- Don’t hide broken tests.
-- If behavior is currently wrong, assert the wrong behavior and add a focused explanation of why it is wrong and what should change.
+- It’s acceptable to use `#[ignore = "..."]` for incomplete tests or tests that require environment setup.
+- Don’t hide regressions: if a test is ignored, include a reason and ideally reference an issue/plan so it gets re-enabled.
 
 ## 4) Preconditions and control flow: push decisions outward
 
@@ -264,6 +264,31 @@ Lithos note: Balance this with “don’t optimize before profiling” — avoid
 - Inline comments should read like sentences (capitalized, ending with a period).
 - For Markdown files, prefer one sentence per line (diff-friendly).
 
+Rustdoc guidance:
+
+- Use `///` for public items; use `//!` for module/crate docs at the top of `mod.rs`/`lib.rs`.
+- Prefer examples in docs; rustdoc can execute them as tests.
+  - Hide setup noise in examples using `#` lines so docs stay readable.
+- For fallible APIs, include a `# Errors` section describing *when* errors occur.
+- If a public API can panic, include `# Panics`.
+- If unsafe is exposed publicly, include `# Safety` describing invariants required from callers.
+
+Doc-hygiene note: consider enabling `broken_intra_doc_links` and related rustdoc lints if you find doc links drifting during refactors.
+
+High-signal doc lints (worth knowing about):
+
+- rustdoc: `missing_docs`, `broken_intra_doc_links`
+- clippy: `empty_docs`, `missing_panics_doc`, `missing_errors_doc`, `missing_safety_doc`
+
+Lithos note: the workspace denies missing docs via `[workspace.lints.rust]` in the root Cargo manifest.
+
+Checklist (high leverage):
+
+- Crate/module docs (`//!`): what this module/crate is for, key invariants, and a short usage sketch.
+- Public traits: document the purpose, the contract, and each method’s expectations.
+- Public structs/enums: document invariants and non-obvious fields; consider `#[non_exhaustive]` for evolving public types.
+- Run `mise run doc` occasionally to eyeball rendered docs.
+
 ## 17) Cargo.toml style (when you touch manifests)
 
 - Use the same indentation and line width spirit as Rust code.
@@ -273,6 +298,54 @@ Lithos note: Balance this with “don’t optimize before profiling” — avoid
 - Prefer stable ordering: keep `[package]` first; keep `name` and `version` at the top of `[package]`.
 - For arrays that don’t fit on one line, use a block form with one item per line and trailing commas.
 - Prefer inline tables when short; otherwise split into a dedicated `[dependencies.crate_name]` section.
+
+## 18) Dispatch and polymorphism
+
+Prefer static dispatch unless you have a concrete need for runtime polymorphism.
+
+- Default: generics / `impl Trait` (monomorphized, inlined, fast).
+- Use `&dyn Trait` when the caller owns the concrete type and you only need dynamic behavior.
+- Use `Box<dyn Trait>` (or `Arc<dyn Trait + Send + Sync>`) when you need ownership / storage / crossing threads.
+- Avoid “boxing too early” inside internal structs; box at module boundaries when the abstraction is required.
+
+Trait object constraints (object safety reminders):
+
+- `dyn Trait` requires an object-safe trait (no generic methods; avoid methods that return `Self`).
+- If you’re not sure, start with generics and only introduce `Box<dyn Trait>` / `Arc<dyn Trait>` at the boundary that truly needs runtime polymorphism.
+
+## 19) Type-state for invariants (use sparingly)
+
+The type-state pattern is useful when runtime flags/enums would allow illegal states.
+
+- Good fits: protocol state machines, builders with required fields, “validated vs unvalidated” state transitions.
+- Avoid when it creates hard-to-read generic signatures or when runtime flexibility is needed.
+
+Tradeoffs to keep in mind:
+
+- Type-state can be verbose and can complicate error messages and type signatures.
+- Use it when it prevents real bugs (illegal states) rather than for “cleverness”.
+
+## 20) Pointers and shared state
+
+Prefer the simplest pointer that expresses ownership and thread-safety:
+
+- Single-thread sharing: `Rc<T>` (avoid in threaded code paths).
+- Multi-thread sharing: `Arc<T>`.
+- Interior mutability:
+  - Single-thread: `RefCell<T>` (can panic on borrow violations).
+  - Multi-thread: `Mutex<T>` / `RwLock<T>`.
+
+Thread-safety reminders:
+
+- Whether `Arc<T>` is safe to share depends on `T`: sharing is safe when `T: Sync` (and moving across threads needs `T: Send`).
+- Prefer `std::sync::OnceLock` / `LazyLock` for one-time, process-wide initialization rather than ad-hoc `static mut` patterns.
+
+Lithos async note: avoid holding a blocking lock guard across an `.await`.
+
+## 21) TODO hygiene
+
+- Avoid unowned `TODO` comments.
+- If something must be tracked in code, reference an issue (e.g., `// TODO(issue #123): ...`).
 
 ## RA-specific guidance (do not copy blindly)
 
