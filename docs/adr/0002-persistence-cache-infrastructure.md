@@ -1,13 +1,14 @@
 ---
-name: high-performance-metadata-storage-with-redb-and-rkyv
+name: persistence-and-cache-infrastructure-with-redb-and-rkyv
 status: accepted
 stakeholders: [Jack (Developer), Architects]
 date_proposed: 2026-01-08
 date_decided: 2026-01-11
 date_implemented: 2026-01-11
+date_updated: 2026-02-01
 ---
 
-# ADR 0002: High-Performance Metadata Storage with Redb and rkyv
+# ADR 0002: Persistence and Cache Infrastructure with Redb and rkyv
 
 ## Context
 
