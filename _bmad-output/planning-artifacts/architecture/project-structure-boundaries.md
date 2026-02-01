@@ -28,129 +28,53 @@ lithos/
 ├── rustfmt.toml                  # Formatting (import sorting)
 ├── clippy.toml                   # Complexity limits (cognitive < 15)
 ├── README.md                     # Project overview
-├── _bmad-output/
-│   ├── planning-artifacts/
-│   │   ├── discovery/            # Project brief and corresponding elicitation summary
-│   │   ├── epics/                # Epic definitions and user stories
-│   │   ├── architecture/         # Sharded architecture documentation
-│   │   │   ├── index.md          # Main navigation and table of contents
-│   │   │   └── [9 section files]  # Focused architectural documentation
-│   │   ├── prd.md                # Product requirements (PRD)
-│   │   └── ux-design-specification.md  # UX Design Specification
-│   └── implementation-artifacts/
-│       ├── course_corrections/   # Course corrections and implementation notes
-│       ├── retros/               # Retrospectives and lessons learned
-│       ├── stories/              # User stories and acceptance criteria
-│       └── sprint-status.yaml    # Sprint status report
+├── _bmad-output/                 # AI Agent Context
 ├── docs/                         # Documentation
 │   ├── adr/                      # Architectural Decision Records
-│   └── refs/
-│       └── obsidian/             # Sample Obsidian vault for reference
+│   └── guides/                   # Guides and references
 ├── crates/
-│   ├── domain/                   # THE INVIOLATE CORE (Logic only, No I/O)
+│   ├── lithos-core/              # SINGLE CORE CRATE (Logic + Infra)
+│   │   ├── Cargo.toml
 │   │   ├── src/
-│   │   │   ├── lib.rs            # Prelude & Common Types
-│   │   │   ├── config/           # Config bounded context
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── aggregate.rs  # Config aggregate + validation
-│   │   │   │   ├── global.rs     # Global filesystem + trusted vaults
-│   │   │   │   ├── vault.rs      # Vault filesystem + metadata
-│   │   │   │   ├── types.rs      # Shared config value types
-│   │   │   │   └── events.rs     # Config events
-│   │   │   ├── note/             # Note bounded context
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── aggregate.rs  # Note aggregate + subentities
+│   │   │   ├── lib.rs            # Prelude & Public API
+│   │   │   ├── db.rs             # Zero-copy Redb Database Layer
+│   │   │   ├── config.rs         # Config aggregate entry point
+│   │   │   ├── config/           # Config implementation details
+│   │   │   │   ├── global.rs
+│   │   │   │   ├── vault.rs
+│   │   │   │   ├── types.rs
+│   │   │   │   ├── events.rs     # Co-located events
+│   │   │   │   └── error.rs      # Co-located errors
+│   │   │   ├── note.rs           # Note aggregate entry point
+│   │   │   ├── note/             # Note implementation details
 │   │   │   │   ├── frontmatter.rs
 │   │   │   │   ├── link.rs
 │   │   │   │   ├── structure.rs
 │   │   │   │   ├── tag.rs
 │   │   │   │   ├── task.rs
-│   │   │   │   └── events.rs
-│   │   │   ├── schema/           # Schema bounded context
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── aggregate.rs  # Schema aggregate + value objects
-│   │   │   │   ├── graph.rs
-│   │   │   │   ├── resolver.rs
+│   │   │   │   ├── events.rs
+│   │   │   │   └── error.rs
+│   │   │   ├── schema.rs         # Schema aggregate entry point
+│   │   │   ├── schema/           # Schema implementation details
 │   │   │   │   ├── property.rs
-│   │   │   │   ├── property_bank.rs
-│   │   │   │   ├── property_spec.rs
-│   │   │   │   ├── raw.rs
-│   │   │   │   ├── patterns.rs
-│   │   │   │   └── events.rs
-│   │   │   ├── template/         # Template bounded context
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── aggregate.rs  # Template aggregate + validation
-│   │   │   │   ├── composition.rs
+│   │   │   │   ├── resolver.rs
+│   │   │   │   ├── events.rs
+│   │   │   │   └── error.rs
+│   │   │   ├── template.rs       # Template aggregate entry point
+│   │   │   ├── template/         # Template implementation details
 │   │   │   │   ├── variable.rs
-│   │   │   │   ├── validation.rs
-│   │   │   │   ├── syntax.rs
-│   │   │   │   └── events.rs
-│   │   │   ├── errors.rs         # Domain errors
-│   │   │   ├── patterns.rs       # Shared regex patterns
-│   │   │   └── validation.rs     # Shared validation utilities
-│   │   │   ├── ports/            # HEXAGONAL INTERFACES (API/SPI)
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── api/          # DRIVING PORTS
-│   │   │   │   │   ├── mod.rs
-│   │   │   │   │   ├── command.rs # Command entry Port
-│   │   │   │   │   └── ui.rs      # Interactive Prompt/UI Port
-│   │   │   │   └── spi/          # DRIVEN PORTS
-│   │   │   │       ├── mod.rs
-│   │   │   │       ├── repository.rs # Storage/Graph persistence
-│   │   │   │       ├── template.rs   # Rendering engine Port
-│   │   │   │       ├── markdown.rs   # Content parsing & extraction Port
-│   │   │   │       ├── bus.rs        # Event bus Port
-│   │   │   │       ├── config.rs     # Config loading Port
-│   │   │   │       ├── audit.rs      # Audit logging Port (FR40)
-│   │   │   │       └── crypto.rs     # Secret management Port (FR39)
-│   │   │   ├── events/           # ADR 0007: Tiered Event Planes
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── data.rs       # Reliable (Indexing)
-│   │   │   │   ├── control.rs    # Signals (Shutdown)
-│   │   │   │   └── state.rs      # Snapshots (LSP)
-│   │   │   └── errors.rs         # miette + thiserror definitions
-│   ├── app/                      # THE BRAIN (Orchestration & Use Cases)
-│   │   ├── src/
-│   │   │   ├── lib.rs
-│   │   │   ├── commands/         # WRITE USE-CASES (CQRS)
-│   │   │   ├── queries/          # READ USE-CASES (CQRS)
-│   │   │   ├── compliance/       # Note-Schema Semantic Bridge (Referee)
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── engine.rs     # Compliance logic (Is note valid for schema?)
-│   │   │   ├── template/         # Template Design & Composition (FR9)
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── composer.rs   # Multi-section orchestration
-│   │   │   │   └── designer.rs   # Schema-driven UI design logic
-│   │   │   ├── metrics/          # Vault Analysis & Statistics
-│   │   │   │   ├── mod.rs
-│   │   │   │   └── calculator.rs # Aggregation logic (Backlinks, Tags)
-│   │   │   └── indexer/          # Indexer Actor (MPSC Mailbox)
-│   ├── adapters/                 # INFRASTRUCTURE (API/SPI Split)
-│   │   ├── src/
-│   │   │   ├── lib.rs
-│   │   │   ├── api/              # DRIVER ADAPTERS (External -> App)
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── cli/          # Clap + miette Visual Reports
-│   │   │   │   └── lsp/          # State synchronization for IDEs
-│   │   │   ├── spi/              # DRIVEN ADAPTERS (App -> External)
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── storage/      # Redb Implementation (Reader/Writer split)
-│   │   │   │   ├── schema/       # Schema SPI (Loader, Resolver, Validator)
-│   │   │   │   │   ├── mod.rs
-│   │   │   │   │   ├── loader.rs   # Discovery & FS access
-│   │   │   │   │   ├── resolver.rs # $ref & extends logic
-│   │   │   │   │   └── validator.rs # Syntactic/Structural check
-│   │   │   │   ├── markdown/     # Metadata Extraction (extractor.rs)
-│   │   │   │   ├── template/     # MiniJinja Env & functions
-│   │   │   │   ├── config/       # Figment hierarchical loader & Encryption
-│   │   │   │   ├── events/       # Hybrid EventBus & Auditor impl
-│   │   │   │   └── fs/           # Local Filesystem & Atomic Ops
-│   │   │   └── dto/              # Transport Objects (Serialization boundaries)
-│   └── lithos/                   # BINARY ENTRY POINT
-│       └── src/
-│           └── main.rs           # DI Root, Runtime Setup, and Logging
+│   │   │   │   ├── composition.rs
+│   │   │   │   ├── events.rs
+│   │   │   │   └── error.rs
+│   │   │   └── fs/               # Generic filesystem utilities
+│   ├── lithos-cli/               # BINARY CRATE (CLI Driver)
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── main.rs           # Entry point
+│   │       ├── commands/         # CLI Command definitions
+│   │       └── terminal.rs       # Miette/Clap integration
 ├── tests/                        # Automated Tests
-│   ├── integration/              # Cross-crate (SPI Mocking)
+│   ├── integration/              # Cross-module flows
 │   ├── e2e/                      # CLI-driven workflow tests
 │   └── arch/                     # Dependency & Boundary enforcement
 └── benches/                      # Performance Benchmarks (Criterion)
@@ -160,41 +84,52 @@ lithos/
 
 **API Boundaries:**
 
-- **CLI (`adapters/api/cli`):** The primary driver. It maps terminal intent to `app/commands` and is the **exclusive owner** of terminal rendering via `miette`.
-- **LSP (`adapters/api/lsp`):** A reactive driver. It pulls Redb snapshots via the `watch` state plane to provide sub-50ms IDE features (completion, refactoring).
+- **CLI (`crates/lithos-cli`):** The primary driver. Orchestrates `lithos-core` logic and owns terminal rendering via `miette`.
+- **Core (`crates/lithos-core`):** Contains all business logic, storage implementation, and file processing.
+
+**Logical Boundaries (Module Visibility):**
+
+- **Public API:** Only types reachable from `lithos-core/lib.rs` are public.
+- **Context Isolation:** Modules (`note/`, `schema/`) rely on `pub(crate)` to enforce internal isolation. They depend on `db.rs` but not on each other (unless via public API).
+- **Dependency Flow:** Infrastructure (`db.rs`, `fs/`) -> Domain (`note/`, `schema/`) -> CLI.
 
 **Component Boundaries:**
 
-- **Indexer Actor (`app/indexer`):** The single authority for Redb Write Transactions. It ensures the Knowledge Graph remains consistent across concurrent file updates via an MPSC mailbox.
-- **Compliance Engine (`app/compliance`):** Acts as the "Referee." It checks if Note metadata satisfies Schema rules. This orchestration logic is separated from pure Model logic to keep the Domain layer lean.
+- **Indexer:** Not a separate actor anymore, but a logical phase in `lithos-cli`. Writes are atomic and coordinated via `db.batch_write()` for bulk operations.
+- **Compliance Engine:** Located in `lithos-core/schema/compliance.rs` (or similar). Checks if Note metadata satisfies Schema rules.
 
 **Service Boundaries:**
 
-- **Template Designer (FR9):** Located in `app/template/designer.rs`. This service implements the **Schema-Driven Design** philosophy. It inspects the linked schema in a template to dynamically drive the **UI Port** prompts, ensuring templates provide a high-quality "guided" experience during creation.
-- **Metrics Calculator (`app/metrics`):** Aggregates vault-wide data (backlinks, tag frequency, schema coverage) for system observability.
+- **Template Designer (FR9):** Located in `lithos-core/template/designer.rs` (if interactive logic moves there) or `lithos-cli/src/commands/template.rs` for interaction. The core logic remains in `lithos-core/template/`.
+- **Metrics Calculator:** Aggregates vault-wide data. Likely a submodule `lithos-core/metrics/` or helper in `lithos-core/note/stats.rs`.
 
 **Data Boundaries:**
 
 - **Identity (UUID v7):** We use UUID v7 (Time-ordered) instead of paths or numeric IDs.
-  - **Performance:** Ensures new notes are appended to Redb B-Tree leaves sequentially, achieving O(1) insertion and zero B-Tree fragmentation.
+  - **Performance:** Ensures new notes are appended to Redb B-Tree leaves sequentially, achieving O(1) insertion.
   - **Persistence:** Allows notes to be moved or renamed while preserving their logical relationships in the Knowledge Graph.
-- **Zero-Copy Serialization:** **rkyv** buffers are generated in SPI adapters and passed as `Arc<[u8]>`, allowing the `app` and `api` layers to cast them to domain models without memory duplication.
+- **Zero-Copy Serialization:** **rkyv** buffers are generated in `db.rs` and returned as `ArchivedGuard`, allowing the CLI to read data without memory duplication.
+
+**File Organization Patterns:**
+
+- **File First, Folder Second:** Use `<module>.rs` as the entry point, with `<module>/` folder for implementation details. NO `mod.rs`.
+- **Co-location:** Errors (`error.rs`), Events (`events.rs`), and Ports (`ports.rs` if needed) are co-located within the module folder.
 
 ## Requirements to Structure Mapping
 
 **Feature/Epic Mapping:**
 
-- **Knowledge Graph (FR20-FR25):** `app/queries/`, `adapters/spi/storage/`, `domain/note/aggregate.rs` (Links/Embeds/Tags).
-- **Schema & Compliance (FR8-FR14):** `domain/schema/aggregate.rs`, `app/compliance/`, `adapters/spi/schema/`.
-- **Template Design (FR1-FR7, FR9):** `domain/template/aggregate.rs`, `app/template/`.
-- **Interactive CLI (FR41-FR47):** `adapters/api/cli/`, `domain/ports/api/ui.rs`.
+- **Knowledge Graph (FR20-FR25):** `lithos-core/note/` + `lithos-core/db.rs` (Links/Embeds/Tags).
+- **Schema & Compliance (FR8-FR14):** `lithos-core/schema/`.
+- **Template Design (FR1-FR7, FR9):** `lithos-core/template/`.
+- **Interactive CLI (FR41-FR47):** `lithos-cli/src/commands/` + `lithos-core/api/ui.rs` (if abstracting UI).
 
 **Cross-Cutting Concerns:**
 
-- **Metadata Extraction:** Handled strictly in `adapters/spi/markdown/extractor.rs` (Adapter layer).
+- **Metadata Extraction:** Handled in `lithos-core/fs/parsers/markdown.rs`.
 - **Validation Hierarchy:**
-  - **Syntactic (Adapter):** Structural validity of YAML/TOML/Schema JSON.
-  - **Semantic/Compliance (App):** Contract check between a Note and its Schema.
+  - **Syntactic:** Structural validity of YAML/TOML/Schema JSON (in `lithos-core/fs/validator.rs`).
+  - **Semantic:** Contract check between a Note and its Schema (in `lithos-core/schema/`).
 - **Performance:** Monitored via `benches/`, optimized via `rkyv` byte-layouts.
 - **Task Management:** Centralized in `.mise/tasks/` and orchestrated via `mise.toml`.
 
@@ -202,52 +137,35 @@ lithos/
 
 **Internal Communication:**
 
-- **Hybrid Bus (ADR 0007):** Tiered channels (`mpsc`, `broadcast`, `watch`) prevent UI lag from blocking the indexing pipeline.
-- **DI Container:** The `lithos` crate wires concrete SPI implementations (e.g., `RedbWriter`) to Application services via Constructor Injection.
+- **Hybrid Bus (ADR 0007):** Minimized for Phase 1. `db.rs` handles data persistence. Events are emitted via simple callbacks or staged in `UnitOfWork` for later dispatch if needed.
+- **Database:** `lithos-core/db.rs` exposes a concrete `Database` struct with zero-copy methods (`get_archived`, `put_reserve`).
 
 **External Integrations:**
 
-- **Obsidian Vault:** Interfaced via `adapters/spi/fs` and extracted via `adapters/spi/markdown`.
-- **Hierarchical Config:** Managed by `figment` in `adapters/spi/config` (Global -> User -> Project -> Vault -> Env -> Flag).
+- **Obsidian Vault:** Interfaced via `lithos-core/fs` and extracted via `lithos-core/fs/parsers`.
+- **Hierarchical Config:** Managed by `figment` in `lithos-core/config` (Global -> User -> Project -> Vault -> Env -> Flag).
 
 **Data Flow:**
 
-- **Write Path:** CLI -> App Command -> Indexer Actor -> Redb SPI -> EventBus Publish.
-- **Read Path:** CLI -> App Query -> Redb SPI (Zero-copy via rkyv) -> CLI Render.
-
-## File Organization Patterns
-
-**Configuration Files:**
-
-- **Centralized Root:** `Cargo.toml`, `clippy.toml`, `rustfmt.toml` ensure project-wide consistency for AI agents and CI/CD.
-
-**Source Organization:**
-
-- **Consolidated Models:** `note.rs` and `schema.rs` act as cohesive aggregates. They contain all sub-entities (Links, Properties, Specs) to maintain high cohesion and simplify imports.
-- **API/SPI Distinction:** `adapters/api` for drivers (Clap/LSP), `adapters/spi` for driven infra (Redb/FS/Schema-Logic).
-
-**Test Organization:**
-
-- **Unit:** Inline `#[cfg(test)]` modules for logic.
-- **Integration:** `tests/integration/` for crate boundary testing.
-- **Architecture:** `tests/arch/` for dependency enforcement (e.g., ensuring `app` never imports `adapters`).
-- **E2E:** `tests/e2e/` for CLI behavior validation.
-
-**Asset Organization:**
-
-- **Docs:** Centralized in `docs/` using `mdBook` layout.
-- **Scripts:** All shell logic encapsulated in `.mise/tasks/`.
+- **Write Path:** CLI -> Note::save(&db) -> Database::put_reserve -> Redb.
+- **Read Path:** CLI -> Note::find_by_id(&db) -> Database::get_archived -> Zero-copy view.
 
 ## Development Workflow Integration
 
 **Development Server Structure:**
 
-- Managed via `mise run dev` which wraps `cargo-watch` for automatic rebuilding and vault re-indexing.
+- Managed via `mise run dev` which wraps `cargo-watch` for automatic rebuilding.
 
 **Build Process Structure:**
 
 - **Mise-first:** `mise run build` handles static linking and binary stripping to produce a zero-dependency artifact.
+- **Tasks:**
+  - `mise run verify`: Full quality gate (fmt, lint, test, adr).
+  - `mise run test:arch`: Enforce boundary rules.
 
-**Deployment Structure:**
+## Test Organization
 
-- Statically linked, single-binary distribution. Identity (UUID v7) ensures that notes remain logically consistent even when synced across different filesystems.
+- **Unit:** Inline `#[cfg(test)]` within `lithos-core` modules.
+- **Integration:** `tests/integration/` for full flows (CLI -> Core -> DB).
+- **Architecture:** `tests/arch/` for boundary enforcement.
+- **Benchmarks:** `benches/` for zero-copy validation.

@@ -13,19 +13,21 @@ section: "Architecture Decisions"
 
 **Critical Decisions (Block Implementation):**
 
-- **Storage Engine:** Redb + rkyv (Zero-copy structured KV). [ADR 0002](docs/adr/0002-storage-redb-rkyv.md)
-- **Serialization Strategy:** Controlled serde allowance in domain. [ADR 0013](docs/adr/0013-domain-serialization-strategy.md)
+- **Single-Crate Architecture:** Pivot from multi-crate workspace to `lithos-core` + `lithos-cli` to enable zero-copy optimizations and reduce compilation overhead. (Proposal: `2026-01-30-rust-idiomatic-refactor`)
+- **Storage Engine:** Redb + rkyv (Zero-copy structured KV) with a concrete `Database` type (no traits). [ADR 0002](docs/adr/0002-persistence-cache-infrastructure.md)
+- **Serialization Strategy:** Controlled serde allowance in domain (feature-gated). [ADR 0009](docs/adr/0009-domain-serialization-strategy.md)
 - **Templating:** MiniJinja (Dynamic Jinja2). [ADR 0003](docs/adr/0003-template-engine.md)
 - **Markdown Parser:** pulldown-cmark (Event-streaming). [ADR 0004](docs/adr/0004-markdown-parsing.md)
 - **Configuration:** Figment (Provider-based hierarchy). [ADR 0005](docs/adr/0005-configuration-management.md)
-- **Error Handling:** miette + thiserror (Structured diagnostics). [ADR 0006](docs/adr/0006-error-handling-diagnostics.md)
-- **Event Orchestration:** Hybrid MPSC/Broadcast/Watch. [ADR 0007](docs/adr/0007-event-orchestration.md)
+- **Error Handling:** miette + thiserror (Structured diagnostics with co-located errors). [ADR 0006](docs/adr/0006-error-handling-diagnostics.md)
+- **Event Orchestration:** Minimal Foundation (Phase 1). [ADR 0007](docs/adr/0007-event-orchestration.md)
 
 **Important Decisions (Shape Architecture):**
 
-- **Workspace:** Cargo Workspaces for Hexagonal boundaries.
+- **Workspace:** Single Core Crate (`lithos-core`) to maximize compiler optimizations.
 - **Identity:** UUID v7 (Standardized sortable identifiers).
-- **Concurrency:** Tokio-based async runtime.
+- **Execution Model:** Sync-First Core, Async only at CLI/LSP edges.
+- **Module Structure:** File-First Modules (`<module>.rs` + `<module>/`), NO `mod.rs`.
 
 **Deferred Decisions (Post-MVP):**
 
@@ -34,16 +36,17 @@ section: "Architecture Decisions"
 
 ## Data Architecture
 
-- **Engine:** Redb (Pure-Rust, ACID KV) with **rkyv** zero-copy serialization for high-frequency LSP lookups.
+- **Engine:** Redb (Pure-Rust, ACID KV) with **rkyv** zero-copy serialization.
+- **Access Pattern:** Concrete `Database` struct in `lithos-core/db.rs` exposing zero-copy primitives (`get_archived`, `put_reserve`). No repository traits for MVP.
 - **Identity:** UUID v7. Decouples identity from physical path to avoid the "directory trap."
-- **ADR Reference:** [ADR 0002: Storage - Redb + rkyv](docs/adr/0002-storage-redb-rkyv.md)
+- **ADR Reference:** [ADR 0002: Persistence & Cache Infrastructure](docs/adr/0002-persistence-cache-infrastructure.md)
 
 ## Internal Communication
 
-- **Strategy:** **Hybrid Event Orchestration**. Uses a Tiered model:
-  - **Data Plane (MPSC):** Reliable indexing via Actor pattern.
-  - **Control Plane (Broadcast):** Global status and notifications.
-  - **State Plane (Watch):** Zero-latency LSP state synchronization.
+- **Strategy:** **Minimal Event Foundation**.
+  - **Data Plane:** Direct `db` writes for Phase 1. `db.batch_write()` handles atomicity.
+  - **Control Plane:** Simple callbacks or deferred dispatch via `UnitOfWork` if needed.
+  - **State Plane:** Deferred to LSP phase.
 - **ADR Reference:** [ADR 0007: Event Orchestration](docs/adr/0007-event-orchestration.md)
 
 ## Schema System Architecture
