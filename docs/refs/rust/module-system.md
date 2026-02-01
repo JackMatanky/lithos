@@ -2,7 +2,7 @@
 
 **Status**: Reference Guide
 **Date**: 2026-01-30
-**Purpose**: Document modern Rust module organization patterns for Lithos project
+**Purpose**: Document modern Rust module organization patterns for Rust 2018+ projects
 
 ---
 

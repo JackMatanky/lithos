@@ -4,6 +4,10 @@ This directory contains reference materials and external data used for Lithos de
 
 ## Contents
 
+### Rust References
+
+See [docs/refs/rust/README.md](rust/README.md).
+
 ### Production Test Data
 
 **`obsidian-vault-guide.md`** - Guide to Jack's real Obsidian vault data

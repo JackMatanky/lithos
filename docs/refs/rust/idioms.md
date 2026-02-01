@@ -1,10 +1,12 @@
-# Rust Idioms (Rust Design Patterns Book) — Lithos Reference
+# Rust Idioms (Rust Design Patterns Book)
 
 **Source:** https://rust-unofficial.github.io/patterns/idioms/index.html
 **Book repo:** https://github.com/rust-unofficial/patterns
-**Purpose:** A Lithos-focused, paraphrased reference of the _15 idioms_ listed in the Rust Design Patterns book’s Idioms chapter (treating the FFI subsection as one idiom group).
+**Purpose:** A paraphrased reference of the _15 idioms_ listed in the Rust Design Patterns book’s Idioms chapter (treating the FFI subsection as one idiom group).
 
-This document is intentionally written in our own words and focuses on “what to do” and “what to avoid” when writing Rust in this workspace.
+For code organization and style guidance (separate from “idioms”), see [docs/refs/rust/style.md](style.md).
+
+This document is intentionally written in our own words and focuses on “what to do” and “what to avoid” when writing Rust.
 
 ## Quick Index (15)
 
@@ -67,7 +69,7 @@ fn render_title(title: &str, out_dir: &Path) {
 }
 ```
 
-Lithos note: The project-wide “Path protocol” already enforces this (use `&Path`/`PathBuf`, never `String` paths).
+Note: Prefer `&Path`/`PathBuf` rather than `String` paths.
 
 ---
 
@@ -114,7 +116,7 @@ fn join_with_commas(items: &[&str]) -> String {
 - `format!` is **usually** the best readability/performance compromise.
 - Repeated `format!` in a loop can allocate each iteration; the “push/write into a buffer” approach avoids that.
 
-Lithos note: Prefer readability by default; only optimize after profiling.
+Note: Prefer readability by default; only optimize after profiling.
 
 ---
 
@@ -181,7 +183,7 @@ fn config_for_cli() -> Config {
 
 - Domain entities where “default” would violate invariants or be ambiguous.
 
-Lithos note: Prefer `Default` for configs (app/cli/adapters), but keep domain invariants explicit.
+Note: Prefer `Default` for config-like types, but keep invariants explicit.
 
 ---
 
@@ -252,7 +254,7 @@ fn do_work() {
 - `Drop` is very reliable but not absolute (e.g., aborts, double panics).
 - Never put “must-run” external side effects exclusively in `Drop`.
 
-Lithos note: This aligns with our “no panic in production” rule—`drop` implementations must not panic.
+Note: `drop` implementations should not panic.
 
 ---
 
@@ -330,7 +332,7 @@ fn read_from_arg(arg: &str) -> io::Result<Vec<u8>> {
 
 **Core idea:** FFI is primarily about *defining and defending invariants* at a boundary where Rust’s type system cannot help you.
 
-Lithos note: The workspace has a no-unsafe policy for production code. This section is still worth understanding for external integration work and for recognizing good boundary design.
+Note: This section is still worth understanding for external integration work and for recognizing good boundary design.
 
 ### 9.1) Idiomatic errors across FFI boundaries
 
@@ -463,7 +465,7 @@ fn make_handler(shared: Arc<String>, prefix: String) -> impl Fn() + Send + Sync 
 - Use deliberately: it reduces ergonomics.
 - Prefer a semver-major bump when adding variants/fields is a meaningful behavior change.
 
-Lithos note: For domain types, we generally prefer compile-time breakage when variants change, so the code must be updated intentionally.
+Note: Use `#[non_exhaustive]` deliberately: it improves forward compatibility but reduces ergonomics.
 
 ---
 
@@ -559,3 +561,27 @@ pub fn send(value: String) -> Result<(), SendError> {
 
 - Use when the input is expensive to clone or naturally owned.
 - Keep error types small and focused: the whole point is “here is your value back”.
+
+---
+
+## Appendix: Adjacent practices (Apollo handbook)
+
+The Apollo `rust-best-practices` handbook includes several “idiom-like” practices that are useful in Lithos, but they are **not** part of the Rust Design Patterns book’s canonical 15-idiom list. They’re captured here to keep this file a good one-stop reference.
+
+### A1) Prefer lazy fallbacks to avoid early allocation
+
+Many `Option`/`Result` helpers have an eager form and a lazy form. Prefer the lazy form when the fallback does work (allocation, formatting, I/O, etc.).
+
+- Prefer `unwrap_or_else(...)` over `unwrap_or(...)` when the fallback allocates.
+- Prefer `ok_or_else(...)` over `ok_or(...)` when the error construction allocates.
+- Prefer `map_or_else(...)` over `map_or(...)` for the same reason.
+
+### A2) Use `let ... else` for early exits when the else-branch is simple
+
+If the “unhappy path” is a simple early return / continue / break, `let PATTERN = expr else { ... };` tends to flatten control flow and make the happy path stand out.
+
+If the else-branch needs heavier computation, prefer `if let ... { ... } else { ... }` or `match`.
+
+### A3) Pass small `Copy` types by value
+
+For small `Copy` types (e.g. integers, bools, small plain-old-data structs), passing by value is often clearer and just as efficient as passing by reference. Reserve `&T` for larger values, non-`Copy` data, or when borrowing is semantically important.

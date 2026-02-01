@@ -660,7 +660,7 @@ AFTER: CQRS with Redb for embedded persistence
 
 ### Documentation Created
 
-11. **Rust Module System Guide** (`docs/refs/rust-module-system-guide.md`)
+11. **Rust Module System Guide** (`docs/refs/rust/module-system.md`)
     - Created during this session
     - Documents modern (2018+) patterns
     - file.rs + folder/ vs folder/mod.rs
