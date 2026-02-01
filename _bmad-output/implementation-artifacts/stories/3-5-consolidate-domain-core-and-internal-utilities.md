@@ -106,10 +106,10 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 - [x] **Total consolidation:** 1 new module only (validation.rs)
 
 ### Task 3: Refactor Error Handling
-- [x] ✅ **REVIEW COMPLETE:** Error handling already well-separated between `ConfigError` and `DomainError`
+- [x] ✅ **REVIEW COMPLETE:** Error handling transitioned to context-specific errors
 - [x] ✅ No consolidation needed - errors are domain-specific with rich context
 - [x] ✅ `thiserror` is used correctly for all error types
-- [x] **DECISION:** Keep separate error enums (ConfigError, DomainError) - they serve different bounded contexts
+- [x] **DECISION:** Split `DomainError` into context-specific enums (`NoteError`, `SchemaError`, `TemplateError`) - they serve different bounded contexts
 
 ### Task 3.5: Restructure Domain into True Bounded Contexts (COMPLETE)
 **Objective:** Remove `models/` folder and organize domain by bounded contexts with each owning their events and errors.
@@ -141,7 +141,7 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 - ✅ **Standardized Event Sourcing**: Consistent `pending_events` and `take_events()` pattern across the entire domain.
 
 **Considerations:**
-- All errors stay in root errors.rs (ConfigError, DomainError) - no splitting
+- Split errors into context-specific enums (NoteError, SchemaError, etc.) - co-located in context modules
 - Cross-context utilities (validation.rs) stay at root
 - Each context gets its own events.rs for context-specific events
 - Ports are now `pub` to allow adapter implementations in other crates
@@ -327,7 +327,7 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 3. **LazyLock Standard:** Established LazyLock as the standard pattern for static regexes
 4. **Dynamic Caches Preserved:** Kept Mutex and thread_local caches for their specific use cases
 5. **True Bounded Contexts:** Each context (config, note, schema, template) owns all its code (models, events)
-6. **Errors At Root:** All errors (ConfigError, DomainError) stay in root errors.rs (no splitting)
+6. **Errors Per Context:** Each context gets its own error.rs file
 7. **Events Per Context:** Each bounded context has its own events.rs file
 8. **Explicit Re-exports**: All public types explicitly re-exported at `lib.rs` root, hiding implementation details.
 9. **SRP over Brevity**: Decomposed complex logic into small, private functions for clarity and testability.
@@ -360,6 +360,8 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 - `crates/domain/src/template/aggregate.rs` - Renamed to `TemplateEvents`, standardized patterns and semantic errors
 - `crates/domain/src/template/composition.rs` - Updates for context restructuring
 - `benches/schema_benchmarks.rs` - Path updates for context restructuring
+- `crates/domain/src/note/error.rs` - Created NoteError
+- `crates/domain/src/schema/error.rs` - Created SchemaError
 
 ## Change Log
 - **2026-01-19 17:00:** Created `crates/domain/src/validation.rs` with comprehensive shared utilities

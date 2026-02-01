@@ -83,7 +83,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - [x] **TDD REQUIREMENT:** Make all previously failing tests pass (GREEN phase complete when all tests pass)
 
 ### Task 3: Implement Domain Error Types (GREEN Phase - AC: All)
-- [x] Implement comprehensive DomainError enum with thiserror::Error derives
+- [x] Implement comprehensive NoteError enum with thiserror::Error derives (co-located in `note/error.rs`)
 - [x] Add error variants for path validation (InvalidPath, EmptyPath, non-relative paths, missing .md extension)
 - [x] Add error variants for entity validation (InvalidTag, InvalidHeadingLevel, EmptyLinkTarget, etc.)
 - [x] Add error variants for business rules (ValidationFailed, semantic consistency errors)
@@ -371,14 +371,14 @@ pub struct Note {
 // Use #[non_exhaustive] on domain enums
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum DomainError {
+pub enum NoteError {
     // variants
 }
 
 // PROHIBIT catch-all patterns in domain logic:
 match error {
-    DomainError::Variant1 => { /* handle */ },
-    DomainError::Variant2 => { /* handle */ },
+    NoteError::Variant1 => { /* handle */ },
+    NoteError::Variant2 => { /* handle */ },
     // NO: _ => {} catch-alls!
 }
 ```
@@ -395,7 +395,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum DomainError {
+pub enum NoteError {
     #[error("Invalid note path: {0}")]
     InvalidPath(String),
 
@@ -969,7 +969,7 @@ crates/domain/src/
 
 **Files from ATDD (pre-existing):**
 - `crates/domain/src/note/aggregate.rs` - RED phase tests (20 tests)
-- `crates/domain/src/errors.rs` - DomainError variants already existed
+- `crates/domain/src/note/error.rs` - NoteError variants defined here
 
 ---
 
