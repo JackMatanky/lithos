@@ -46,30 +46,83 @@ use crate::fs::validate_vault_path;
 /// // For new files (first-time indexing)
 /// let new_id = Uuid::now_v7();
 /// let note = Note::new(new_id, "projects/example.md".to_string()).unwrap();
-/// assert_eq!(note.path(), "projects/example.md");
+/// assert_eq!(note.path.as_str(), "projects/example.md");
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "Aggregate root requires mixed visibility for domain events"
+)]
 #[non_exhaustive]
 pub struct Note {
     /// UUID v7 identity (time-ordered).
-    id: Uuid,
+    pub id: Uuid,
     /// Vault-relative path.
-    path: Box<str>,
+    pub path: NotePath,
     /// YAML metadata.
-    frontmatter: Option<Frontmatter>,
+    pub frontmatter: Option<Frontmatter>,
     /// All links (wiki-links, markdown links, and embeds).
-    links: Vec<Link>,
+    pub links: Vec<Link>,
     /// Hierarchical tags.
-    tags: Vec<Tag>,
+    pub tags: Vec<Tag>,
     /// Markdown headings.
-    headings: Vec<Heading>,
+    pub headings: Vec<Heading>,
     /// Task items.
-    tasks: Vec<Task>,
+    pub tasks: Vec<Task>,
     /// Document sections.
-    sections: Vec<Section>,
+    pub sections: Vec<Section>,
     /// Domain events pending emission (not serialized).
     #[serde(skip)]
     pending_events: Vec<NoteEvents>,
+}
+
+/// Validated vault-relative path for a note.
+///
+/// Enforces invariants:
+/// - Must be relative to vault root
+/// - Must end with `.md` extension
+/// - Must not contain path traversal segments (`..`)
+/// - Must not be empty
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub struct NotePath(Box<str>);
+
+impl NotePath {
+    /// Returns the path as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Validates a vault-relative path.
+    ///
+    /// # Errors
+    /// Returns `NoteError::InvalidPath` if validation fails.
+    #[inline]
+    pub fn validate(path: &str) -> Result<(), NoteError> {
+        validate_vault_path(path, Some("md")).map_err(NoteError::InvalidPath)
+    }
+
+    /// Creates a new `NotePath` with validation.
+    ///
+    /// # Errors
+    /// Returns `NoteError::InvalidPath` if validation fails.
+    #[inline]
+    pub fn new(path: String) -> Result<Self, NoteError> {
+        Self::validate(&path)?;
+        Ok(Self(path.into()))
+    }
+}
+
+impl std::ops::Deref for NotePath {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl Note {
@@ -77,95 +130,6 @@ impl Note {
     #[inline]
     pub fn add_event(&mut self, event: NoteEvents) {
         self.pending_events.push(event);
-    }
-
-    /// Adds a heading to the note.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::note::{Note, Heading};
-    /// # use uuid::Uuid;
-    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
-    /// note.add_heading(Heading::new(1, "Title".to_string(), 0).unwrap());
-    /// assert_eq!(note.headings().len(), 1);
-    /// ```
-    #[inline]
-    pub fn add_heading(&mut self, heading: Heading) {
-        self.headings.push(heading);
-    }
-
-    /// Adds a link to the note.
-    ///
-    /// This method accepts any link type (wiki-link, markdown link, or embed).
-    /// The link becomes owned by this note aggregate.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::note::{Note, Link, Target};
-    /// # use uuid::Uuid;
-    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
-    /// let link = Link::new_wikilink(
-    ///     Target::Unresolved {
-    ///         raw: "target.md".into(),
-    ///     },
-    ///     None,
-    ///     None,
-    ///     0,
-    /// )
-    /// .unwrap();
-    /// note.add_link(link);
-    /// assert_eq!(note.links().len(), 1);
-    /// ```
-    #[inline]
-    pub fn add_link(&mut self, link: Link) {
-        self.links.push(link);
-    }
-
-    /// Adds a section to the note.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::note::{Note, Section};
-    /// # use uuid::Uuid;
-    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
-    /// note.add_section(Section::new(None, "content".to_string(), 0..7));
-    /// assert_eq!(note.sections().len(), 1);
-    /// ```
-    #[inline]
-    pub fn add_section(&mut self, section: Section) {
-        self.sections.push(section);
-    }
-
-    /// Adds a tag to the note.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::note::{Note, Tag};
-    /// # use uuid::Uuid;
-    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
-    /// note.add_tag(Tag::new("#work").unwrap());
-    /// assert_eq!(note.tags().len(), 1);
-    /// ```
-    #[inline]
-    pub fn add_tag(&mut self, tag: Tag) {
-        self.tags.push(tag);
-    }
-
-    /// Adds a task to the note.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::note::{Note, Task, TaskStatus};
-    /// # use uuid::Uuid;
-    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
-    /// let task =
-    ///     Task::new("todo".to_string(), TaskStatus::Incomplete, 0).unwrap();
-    /// note.add_task(task);
-    /// assert_eq!(note.tasks().len(), 1);
-    /// ```
-    #[inline]
-    pub fn add_task(&mut self, task: Task) {
-        self.tasks.push(task);
     }
 
     /// Returns all embeds in this note.
@@ -186,7 +150,7 @@ impl Note {
     ///     0,
     /// )
     /// .unwrap();
-    /// note.add_link(embed);
+    /// note.links.push(embed);
     /// assert_eq!(note.embeds().count(), 1);
     /// ```
     #[inline]
@@ -199,27 +163,6 @@ impl Note {
     #[must_use]
     pub const fn frontmatter(&self) -> Option<&Frontmatter> {
         self.frontmatter.as_ref()
-    }
-
-    /// Returns the markdown headings in this note.
-    #[inline]
-    #[must_use]
-    pub fn headings(&self) -> &[Heading] {
-        &self.headings
-    }
-
-    /// Returns the note's unique identifier.
-    #[inline]
-    #[must_use]
-    pub const fn id(&self) -> Uuid {
-        self.id
-    }
-
-    /// Returns all links in this note (wiki-links, markdown links, and embeds).
-    #[inline]
-    #[must_use]
-    pub fn links(&self) -> &[Link] {
-        &self.links
     }
 
     /// Returns all markdown-style links in this note (excluding embeds).
@@ -238,7 +181,7 @@ impl Note {
     ///     20,
     /// )
     /// .unwrap();
-    /// note.add_link(link);
+    /// note.links.push(link);
     /// assert_eq!(note.markdown_links().count(), 1);
     /// ```
     #[inline]
@@ -259,18 +202,16 @@ impl Note {
     /// # use lithos_core::note::Note;
     /// # use uuid::Uuid;
     /// let note = Note::new(Uuid::now_v7(), "notes/intro.md".to_string()).unwrap();
-    /// assert_eq!(note.path(), "notes/intro.md");
+    /// assert_eq!(note.path.as_str(), "notes/intro.md");
     /// ```
     #[inline]
     pub fn new(id: Uuid, path: String) -> Result<Self, NoteError> {
-        Self::validate_path(&path)?;
-
         let path_for_event = path.clone();
-        let path_box: Box<str> = path.into();
+        let note_path = NotePath::new(path)?;
 
         let mut note = Self {
             id,
-            path: path_box,
+            path: note_path,
             frontmatter: None,
             links: vec![],
             tags: vec![],
@@ -289,25 +230,11 @@ impl Note {
         Ok(note)
     }
 
-    /// Returns the note's vault-relative path.
-    #[inline]
-    #[must_use]
-    pub fn path(&self) -> &str {
-        &self.path
-    }
-
     /// Returns a reference to pending domain events without clearing them.
     #[inline]
     #[must_use]
     pub fn pending_events(&self) -> &[NoteEvents] {
         &self.pending_events
-    }
-
-    /// Returns the document sections in this note.
-    #[inline]
-    #[must_use]
-    pub fn sections(&self) -> &[Section] {
-        &self.sections
     }
 
     /// Sets the note's frontmatter.
@@ -316,25 +243,11 @@ impl Note {
         self.frontmatter = frontmatter;
     }
 
-    /// Returns the hierarchical tags associated with this note.
-    #[inline]
-    #[must_use]
-    pub fn tags(&self) -> &[Tag] {
-        &self.tags
-    }
-
     /// Returns all pending domain events and clears the collection.
     #[inline]
     #[must_use]
     pub fn take_events(&mut self) -> Vec<NoteEvents> {
         std::mem::take(&mut self.pending_events)
-    }
-
-    /// Returns the task items in this note.
-    #[inline]
-    #[must_use]
-    pub fn tasks(&self) -> &[Task] {
-        &self.tasks
     }
 
     /// Validates the note's internal consistency.
@@ -362,16 +275,6 @@ impl Note {
         Ok(())
     }
 
-    /// Validates a vault-relative path for a note.
-    ///
-    /// # Errors
-    /// Returns `NoteError::InvalidPath` if path is empty, absolute, missing
-    /// `.md` extension, or contains `..`.
-    #[inline]
-    pub fn validate_path(path: &str) -> Result<(), NoteError> {
-        validate_vault_path(path, Some("md")).map_err(NoteError::InvalidPath)
-    }
-
     /// Returns all wiki-style links in this note (excluding embeds).
     ///
     /// # Examples
@@ -388,7 +291,7 @@ impl Note {
     ///     0,
     /// )
     /// .unwrap();
-    /// note.add_link(link);
+    /// note.links.push(link);
     /// assert_eq!(note.wikilinks().count(), 1);
     /// ```
     #[inline]
@@ -399,11 +302,52 @@ impl Note {
     }
 }
 
+impl TryFrom<String> for NotePath {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl TryFrom<&str> for NotePath {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value.to_owned())
+    }
+}
+
+impl From<NotePath> for String {
+    #[inline]
+    fn from(path: NotePath) -> Self {
+        path.0.into()
+    }
+}
+
+impl std::fmt::Display for NotePath {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for NotePath {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
     clippy::panic,
-    reason = "Test module organization and behavior verification patterns"
+    clippy::disallowed_methods,
+    reason = "Test module organization and behavior verification patterns; \
+              unwrap/expect acceptable in tests."
 )]
 mod tests {
     // # LINT_DISABLE_REASON: Standard test utilities and behavioral
@@ -470,7 +414,7 @@ mod tests {
             let note2 = Note::new(Uuid::now_v7(), "two.md".into()).unwrap();
 
             // THEN: later UUIDs sort after earlier ones
-            assert!(note2.id() > note1.id());
+            assert!(note2.id > note1.id);
         }
     }
 
@@ -491,7 +435,7 @@ mod tests {
             let note_id = Uuid::now_v7();
             let note = NoteBuilder::new()
                 .id(note_id)
-                .path("valid.md".into())
+                .path(NotePath::new("valid.md".to_owned()).expect("Valid path"))
                 .tags(vec![Tag::new("#work").expect("Valid tag")])
                 .headings(vec![
                     Heading::new(1, "Title".into(), 0).expect("Valid heading"),
@@ -539,15 +483,15 @@ mod tests {
             let mut note = Note::new(note_id, "note.md".to_owned()).unwrap();
 
             // WHEN: adding various sub-entities
-            note.add_tag(Tag::new("#test").unwrap());
-            note.add_heading(Heading::new(1, "H1".into(), 0).unwrap());
-            note.add_task(
+            note.tags.push(Tag::new("#test").unwrap());
+            note.headings.push(Heading::new(1, "H1".into(), 0).unwrap());
+            note.tasks.push(
                 Task::new("Task".into(), TaskStatus::Incomplete, 0).unwrap(),
             );
-            note.add_section(Section::new(None, "Body".into(), 0..4));
+            note.sections.push(Section::new(None, "Body".into(), 0..4));
 
             // Add a wikilink
-            note.add_link(
+            note.links.push(
                 Link::new_wikilink(
                     Target::Unresolved {
                         raw: "link.md".into(),
@@ -560,7 +504,7 @@ mod tests {
             );
 
             // Add an embed
-            note.add_link(
+            note.links.push(
                 Link::new_embed(
                     Target::Unresolved {
                         raw: "img.png".into(),
@@ -579,11 +523,11 @@ mod tests {
             note.set_frontmatter(Some(Frontmatter::new(fm_fields).unwrap()));
 
             // THEN: the aggregate state is updated correctly
-            assert_eq!(note.tags().len(), 1);
-            assert_eq!(note.headings().len(), 1);
-            assert_eq!(note.tasks().len(), 1);
-            assert_eq!(note.sections().len(), 1);
-            assert_eq!(note.links().len(), 2); // unified links
+            assert_eq!(note.tags.len(), 1);
+            assert_eq!(note.headings.len(), 1);
+            assert_eq!(note.tasks.len(), 1);
+            assert_eq!(note.sections.len(), 1);
+            assert_eq!(note.links.len(), 2); // unified links
             assert_eq!(note.wikilinks().count(), 1);
             assert_eq!(note.embeds().count(), 1);
             assert!(note.frontmatter().is_some());
@@ -604,7 +548,7 @@ mod tests {
             let mut note =
                 Note::new(Uuid::now_v7(), "note.md".to_owned()).unwrap();
 
-            note.add_link(
+            note.links.push(
                 Link::new_wikilink(
                     Target::Unresolved {
                         raw: "wiki1.md".into(),
@@ -615,7 +559,7 @@ mod tests {
                 )
                 .unwrap(),
             );
-            note.add_link(
+            note.links.push(
                 Link::new_wikilink(
                     Target::Unresolved {
                         raw: "wiki2.md".into(),
@@ -626,7 +570,7 @@ mod tests {
                 )
                 .unwrap(),
             );
-            note.add_link(
+            note.links.push(
                 Link::new_markdown_link(
                     Target::External {
                         url: "https://example.com".into(),
@@ -637,7 +581,7 @@ mod tests {
                 )
                 .unwrap(),
             );
-            note.add_link(
+            note.links.push(
                 Link::new_embed(
                     Target::Unresolved {
                         raw: "img.png".into(),
@@ -650,7 +594,7 @@ mod tests {
             );
 
             // WHEN: using filtered iterators to query specific link types
-            let all_count = note.links().len();
+            let all_count = note.links.len();
             let wiki_count = note.wikilinks().count();
             let md_count = note.markdown_links().count();
             let embed_count = note.embeds().count();
@@ -667,7 +611,7 @@ mod tests {
 
     test_builder!(NoteBuilder, Note, {
         id: Uuid = Uuid::now_v7(),
-        path: Box<str> = "default.md".into(),
+        path: NotePath = NotePath::new("default.md".to_owned()).expect("Valid default path"),
         frontmatter: Option<Frontmatter> = None,
         links: Vec<Link> = vec![],
         tags: Vec<Tag> = vec![],
@@ -734,12 +678,20 @@ pub mod fixtures {
     }
 
     /// Test fixture: Create complete example Note aggregate for testing.
+    ///
+    /// # Panics
+    /// Panics if the hardcoded path is invalid.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test fixture - unwrap/expect acceptable in test code"
+    )]
     #[inline]
     #[must_use]
     pub fn example_note() -> Note {
         Note {
             id: TEST_NOTE_ID,
-            path: "test/example.md".into(),
+            path: NotePath::new("test/example.md".to_owned())
+                .expect("Valid path"),
             frontmatter: Some(example_frontmatter()),
             links: vec![],
             tags: vec![example_tag()],

@@ -30,19 +30,6 @@ pub struct NoteCreated {
     pub timestamp: i64,
 }
 
-impl NoteCreated {
-    /// Creates a new note created event.
-    #[inline]
-    #[must_use]
-    pub fn new(id: Uuid, path: String, timestamp: i64) -> Self {
-        Self {
-            id,
-            path,
-            timestamp,
-        }
-    }
-}
-
 /// Frontmatter validated domain event.
 ///
 /// Published when frontmatter has been validated against schema in the
@@ -74,6 +61,29 @@ pub struct FrontmatterValidated {
     pub timestamp: i64,
 }
 
+/// Domain events that can be emitted by the Note aggregate.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum NoteEvents {
+    /// Frontmatter was validated.
+    FrontmatterValidated(FrontmatterValidated),
+    /// Note was created.
+    NoteCreated(NoteCreated),
+}
+
+impl NoteCreated {
+    /// Creates a new note created event.
+    #[inline]
+    #[must_use]
+    pub fn new(id: Uuid, path: String, timestamp: i64) -> Self {
+        Self {
+            id,
+            path,
+            timestamp,
+        }
+    }
+}
+
 impl FrontmatterValidated {
     /// Creates a new frontmatter validated event.
     #[inline]
@@ -85,14 +95,4 @@ impl FrontmatterValidated {
             timestamp,
         }
     }
-}
-
-/// Domain events that can be emitted by the Note aggregate.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum NoteEvents {
-    /// Frontmatter was validated.
-    FrontmatterValidated(FrontmatterValidated),
-    /// Note was created.
-    NoteCreated(NoteCreated),
 }

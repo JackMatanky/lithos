@@ -8,14 +8,110 @@ use super::{
     types::{Frontmatter, Logging, Schema, Template},
 };
 
-impl Default for Paths {
+/// Schema version for the vault.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SchemaVersion(pub String);
+
+impl SchemaVersion {
+    /// Create new schema version, defaulting to binary version if not provided.
+    #[inline]
+    #[must_use]
+    pub fn new(version: Option<String>) -> Self {
+        Self(version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned()))
+    }
+}
+
+impl Default for SchemaVersion {
+    #[inline]
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
+impl std::ops::Deref for SchemaVersion {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Vault metadata with versioning and naming.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Metadata {
+    /// Human-readable name for the vault.
+    pub name: String,
+    /// Root path to the vault (absolute path required).
+    pub path: String,
+    /// Schema version for the vault.
+    pub version: SchemaVersion,
+}
+
+impl Default for Metadata {
     #[inline]
     fn default() -> Self {
         Self {
-            cache_dir: ".cache".to_owned(),
-            schema: Schema::default(),
-            template: Template::default(),
+            name: String::new(),
+            path: String::new(),
+            version: SchemaVersion::default(),
         }
+    }
+}
+
+impl Metadata {
+    /// Create new vault metadata, deriving name from path if not provided.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if path is empty.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_core::config::Metadata;
+    /// let metadata =
+    ///     Metadata::new("/vaults/work".to_string(), None, None).unwrap();
+    /// assert_eq!(metadata.path, "/vaults/work");
+    /// ```
+    #[inline]
+    pub fn new(
+        path: String,
+        name: Option<String>,
+        version: Option<String>,
+    ) -> Result<Self, ConfigError> {
+        let derived_name = name
+            .or_else(|| {
+                std::path::Path::new(&path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(std::borrow::ToOwned::to_owned)
+            })
+            .unwrap_or_default();
+
+        let metadata = Self {
+            path,
+            name: derived_name,
+            version: SchemaVersion::new(version),
+        };
+        metadata.validate()?;
+        Ok(metadata)
+    }
+
+    /// Validate vault metadata.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if path is empty.
+    #[inline]
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.path.is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: "vault_path".to_owned().into(),
+                message: "vault path cannot be empty (required field)"
+                    .to_owned()
+                    .into(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -29,118 +125,6 @@ pub struct Paths {
     pub schema: Schema,
     /// Template configuration for vault.
     pub template: Template,
-}
-
-impl Paths {
-    /// Validate vault filesystem configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConfigConfigError::ValidationFailed` if `cache_dir` is empty or
-    /// if schema/template validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        self.schema.validate()?;
-        self.template.validate()?;
-        if self.cache_dir.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "cache_dir".to_owned().into(),
-                message: "cache directory cannot be empty".to_owned().into(),
-            });
-        }
-        Ok(())
-    }
-}
-
-impl Default for Metadata {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            schema_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
-            name: None,
-            vault_path: String::new(),
-        }
-    }
-}
-
-/// Vault metadata with schema versioning and naming.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Metadata {
-    /// Human-readable name for the vault (defaults to directory basename).
-    pub name: Option<String>,
-    /// Schema version for the vault (defaults to binary version).
-    pub schema_version: Option<String>,
-    /// Root path to the vault (absolute path required).
-    pub vault_path: String,
-}
-
-impl Metadata {
-    /// Derive vault name from vault path (defaults to directory basename).
-    fn derive_vault_name(vault_path: &str) -> Option<String> {
-        std::path::Path::new(vault_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(std::borrow::ToOwned::to_owned)
-    }
-
-    /// Create vault metadata with defaults derived from vault path.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::config::Metadata;
-    /// let metadata = Metadata::new("/vaults/work".to_string());
-    /// assert_eq!(metadata.vault_path, "/vaults/work");
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn new(vault_path: String) -> Self {
-        Self {
-            schema_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
-            name: Self::derive_vault_name(&vault_path),
-            vault_path,
-        }
-    }
-
-    /// Validate vault metadata.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConfigConfigError::ValidationFailed` if `vault_path` is empty.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.vault_path.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "vault_path".to_owned().into(),
-                message: "vault path cannot be empty".to_owned().into(),
-            });
-        }
-        Ok(())
-    }
-
-    /// Validate vault path value before creating vault metadata.
-    ///
-    /// # Errors
-    /// Returns `ConfigConfigError::ValidationFailed` if `vault_path` is empty.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::config::Metadata;
-    /// Metadata::validate_vault_path("/vault").unwrap();
-    /// ```
-    #[inline]
-    pub fn validate_vault_path(vault_path: &str) -> Result<(), ConfigError> {
-        if vault_path.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "vault_path".to_owned().into(),
-                message: "vault path cannot be empty (required field)"
-                    .to_owned()
-                    .into(),
-            });
-        }
-
-        Ok(())
-    }
 }
 
 /// Vault-specific configuration (highest precedence).
@@ -162,7 +146,72 @@ pub struct Vault {
     pub logging: Option<Logging>,
 }
 
+impl Vault {
+    /// Create new vault configuration.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        filesystem: Paths,
+        frontmatter: Option<Frontmatter>,
+        logging: Option<Logging>,
+    ) -> Self {
+        Self {
+            filesystem,
+            frontmatter,
+            logging,
+        }
+    }
+}
+
+impl Default for Paths {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            cache_dir: ".cache".to_owned(),
+            schema: Schema::default(),
+            template: Template::default(),
+        }
+    }
+}
+
+impl Paths {
+    /// Create new vault filesystem configuration.
+    #[inline]
+    #[must_use]
+    pub fn new(cache_dir: String, schema: Schema, template: Template) -> Self {
+        Self {
+            cache_dir,
+            schema,
+            template,
+        }
+    }
+
+    /// Validate vault filesystem configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigConfigError::ValidationFailed` if `cache_dir` is empty or
+    /// if schema/template validation fails.
+    #[inline]
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.schema.validate()?;
+        self.template.validate()?;
+        if self.cache_dir.is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: "cache_dir".to_owned().into(),
+                message: "cache directory cannot be empty".to_owned().into(),
+            });
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test module uses Result::unwrap() for ergonomic arrangement and \
+              assertions. Acceptable in test-only code paths."
+)]
 mod tests {
     use super::{Metadata, Paths};
 
@@ -172,22 +221,19 @@ mod tests {
         let vault_path = "/vaults/work".to_owned();
 
         // WHEN: building metadata from the path
-        let metadata = Metadata::new(vault_path.clone());
+        let metadata = Metadata::new(vault_path.clone(), None, None).unwrap();
 
-        // THEN: schema_version and name defaults are applied
-        assert!(
-            metadata.schema_version.is_some(),
-            "Expected schema_version default to be set"
+        // THEN: version and name defaults are applied
+        assert_eq!(
+            &*metadata.version,
+            env!("CARGO_PKG_VERSION"),
+            "Expected version default to be set"
         );
         assert_eq!(
-            metadata.name.as_deref(),
-            Some("work"),
+            metadata.name, "work",
             "Expected vault name to default to directory basename"
         );
-        assert_eq!(
-            metadata.vault_path, vault_path,
-            "Expected vault_path to match input"
-        );
+        assert_eq!(metadata.path, vault_path, "Expected path to match input");
     }
 
     #[test]
@@ -243,8 +289,8 @@ mod tests {
         // GIVEN: an empty vault path
         let vault_path = "";
 
-        // WHEN: validating the vault path
-        let result = Metadata::validate_vault_path(vault_path);
+        // WHEN: building metadata from the empty path
+        let result = Metadata::new(vault_path.to_owned(), None, None);
 
         // THEN: validation fails with a required field error
         assert!(

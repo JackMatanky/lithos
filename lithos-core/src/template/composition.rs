@@ -28,7 +28,7 @@ use super::{aggregate::Template, error::TemplateError};
 ///         content: "--".to_string(),
 ///         position: InsertionPosition::End,
 ///     }],
-///     base_template: base.name().to_string(),
+///     base_template: base.name.to_string(),
 ///     includes: Vec::new(),
 ///     variable_overrides: HashMap::new(),
 /// };
@@ -57,11 +57,6 @@ struct DfsContext<'context> {
     stack: &'context mut HashSet<String>,
 }
 
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Function ordering optimized for logical flow over strict \
-              alphabetical order"
-)]
 impl Composition {
     fn check_template_dependencies(
         &self,
@@ -178,7 +173,7 @@ impl Composition {
     pub fn validate(&self, base: &Template) -> Result<(), TemplateError> {
         for (name, value) in &self.variable_overrides {
             let def = base
-                .variables()
+                .variables
                 .get(name)
                 .ok_or_else(|| TemplateError::VariableNotFound(name.clone()))?;
             def.validate_value(value).map_err(|e| {

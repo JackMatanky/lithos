@@ -22,21 +22,6 @@ pub struct Paths {
     pub template: Template,
 }
 
-impl Paths {
-    /// Validate global filesystem configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConfigConfigError::ValidationFailed` if schema or template
-    /// validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        self.schema.validate()?;
-        self.template.validate()?;
-        Ok(())
-    }
-}
-
 /// Global default configuration (lowest precedence).
 ///
 /// # Business Rules
@@ -56,6 +41,31 @@ pub struct Global {
     pub trusted_vaults: Option<TrustedVaults>,
 }
 
+/// Trusted vaults configuration supporting list or map format.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct TrustedVaults {
+    /// List format for trusted vault paths.
+    pub list: Option<Vec<String>>,
+    /// Map format for trusted vault paths with aliases.
+    pub map: Option<HashMap<String, String>>,
+}
+
+impl Paths {
+    /// Validate global filesystem configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigConfigError::ValidationFailed` if schema or template
+    /// validation fails.
+    #[inline]
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.schema.validate()?;
+        self.template.validate()?;
+        Ok(())
+    }
+}
+
 impl Default for Global {
     #[inline]
     fn default() -> Self {
@@ -66,16 +76,6 @@ impl Default for Global {
             trusted_vaults: None,
         }
     }
-}
-
-/// Trusted vaults configuration supporting list or map format.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct TrustedVaults {
-    /// List format for trusted vault paths.
-    pub list: Option<Vec<String>>,
-    /// Map format for trusted vault paths with aliases.
-    pub map: Option<HashMap<String, String>>,
 }
 
 impl TrustedVaults {

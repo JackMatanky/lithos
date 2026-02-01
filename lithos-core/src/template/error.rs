@@ -4,10 +4,6 @@
 //! structured error handling.
 
 /// Template-related errors.
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Error variants grouped by category"
-)]
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum TemplateError {

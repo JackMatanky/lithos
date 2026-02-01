@@ -3,7 +3,6 @@
 //! This module contains all entities, value objects, and logic related to the
 //! Note aggregate and its subentities in the domain layer.
 
-#![allow(clippy::pub_use, reason = "Re-exports provide clean public API")]
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
 /// Core Note aggregate root and main entities.
@@ -25,12 +24,29 @@ pub(crate) mod tag;
 /// Task subentity for Note aggregate.
 pub(crate) mod task;
 // --- Public API & Re-exports ---
-pub use aggregate::Note;
-pub use error::NoteError;
-pub use events::{FrontmatterValidated, NoteCreated, NoteEvents};
-pub use frontmatter::{FieldValue, FromFieldValue, Frontmatter};
-pub use link::{Anchor, EmbedType, Link, Style, Target};
-pub use ports::{Command, Query};
-pub use structure::{Heading, Section};
-pub use tag::Tag;
-pub use task::{Task, TaskStatus};
+pub type Note = aggregate::Note;
+pub type NoteError = error::NoteError;
+pub type FrontmatterValidated = events::FrontmatterValidated;
+pub type NoteCreated = events::NoteCreated;
+pub type NoteEvents = events::NoteEvents;
+pub type FieldValue = frontmatter::FieldValue;
+pub trait FromFieldValue: frontmatter::FromFieldValue {}
+impl<T> FromFieldValue for T where T: frontmatter::FromFieldValue + ?Sized {}
+pub type Frontmatter = frontmatter::Frontmatter;
+pub type Anchor = link::Anchor;
+pub type EmbedType = link::EmbedType;
+pub type Link = link::Link;
+pub type Style = link::Style;
+pub type Target = link::Target;
+
+pub trait Command: ports::Command {}
+impl<T> Command for T where T: ports::Command + ?Sized {}
+
+pub trait Query: ports::Query {}
+impl<T> Query for T where T: ports::Query + ?Sized {}
+
+pub type Heading = structure::Heading;
+pub type Section = structure::Section;
+pub type Tag = tag::Tag;
+pub type Task = task::Task;
+pub type TaskStatus = task::TaskStatus;

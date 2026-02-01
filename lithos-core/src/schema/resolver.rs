@@ -33,7 +33,7 @@ use super::{
 /// );
 ///
 /// let schema = Resolver::resolve(raw, None, &bank).unwrap();
-/// assert_eq!(schema.name().as_str(), "test");
+/// assert_eq!(&schema.name().0, "test");
 /// ```
 #[non_exhaustive]
 pub struct Resolver;
@@ -88,7 +88,7 @@ impl Resolver {
         let mut final_props: Vec<Property> =
             resolved_props.into_values().collect();
         // Sort for determinism
-        final_props.sort_by(|a, b| a.name().as_str().cmp(b.name().as_str()));
+        final_props.sort_by(|a, b| a.name().0.cmp(&b.name().0));
 
         // Create the Schema entity using the identity of its raw definition
         Schema::new(raw.id, raw.name, final_props)
@@ -207,7 +207,7 @@ mod tests {
             Resolver::resolve_single_property(raw, &bank).expect("resolve ref");
 
         // THEN: it finds the property by name
-        assert_eq!(resolved.name().as_str(), "status");
+        assert_eq!(&resolved.name().0, "status");
     }
 
     #[test]
