@@ -28,16 +28,16 @@ section: "Completion & Handoff"
 
 **🏗️ Implementation Ready Foundation**
 
-- 7 major architectural decisions (ADRs) made
+- 8 major architectural decisions (ADRs) made
 - Comprehensive naming, async, and error patterns defined
-- 4 primary architectural crates specified (domain, app, adapters, lithos)
+- **Single-Crate Architecture** (`lithos-core`) specified for zero-copy performance
 - 50 functional requirements fully supported
 
 **📚 AI Agent Implementation Guide**
 
 - Technology stack with verified versions (Rust 1.92, Redb 3.1, rkyv 0.8)
 - Consistency rules that prevent implementation conflicts
-- Project structure with clear API/SPI boundaries
+- Project structure with clear **Logical** boundaries (Modules)
 - **Mise-First mandate** for all task execution
 
 ## Implementation Handoff
@@ -46,15 +46,15 @@ section: "Completion & Handoff"
 This architecture document is your complete guide for implementing Lithos Rust. Follow all decisions, patterns, and structures exactly as documented.
 
 **First Implementation Priority:**
-Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to establish the Data Plane.
+Initialize the Workspace with `lithos-core` and `lithos-cli`. Implement `db.rs` to establish the Data Plane.
 
 **Development Sequence:**
 
-1. Initialize project using Cargo Workspaces
+1. Initialize project (Single-Crate Core + CLI)
 2. Set up development environment per architecture (`mise run setup`)
-3. Implement core architectural foundations (Indexer Actor & Redb SPI)
-4. Build features following established patterns (Note Aggregate, Schema SPI)
-5. Maintain consistency with documented rules
+3. Implement `db.rs` (Zero-Copy Redb Infrastructure)
+4. Migrate Domain Contexts (`note/`, `schema/`) to `lithos-core`
+5. Implement CLI commands using `lithos-core` static methods
 
 ## Quality Assurance Checklist
 

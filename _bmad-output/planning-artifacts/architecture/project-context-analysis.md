@@ -93,17 +93,17 @@ These requirements drive a hexagonal architecture with sophisticated template en
 
 **CLI Complexity:** Rich interactive experiences with fuzzy finding, suggesters, multi-selection, progressive help, and single-word commands requiring sophisticated terminal interaction patterns. The CLI-first approach is viable with intelligent interfaces where schemas drive UX - enums become select lists, dates get formatters, with progressive complexity for different user expertise levels.
 
-**Storage & Persistence:** CQRS pattern with **Redb + rkyv** for embedded persistence, separating write concerns (vault indexing, template execution, schema validation) from read concerns (queries, searches, metadata lookups) to avoid confusion between directory-like vault structures and query-optimized representations. This enables zero-copy deserialization essential for LSP performance.
+**Storage & Persistence:** **Redb + rkyv** for embedded persistence within `lithos-core`, enabling zero-copy deserialization essential for performance.
 
-**Async Runtime:** Embrace Rust's async capabilities throughout the architecture using tokio to support interactive CLI responsiveness and concurrent vault operations.
+**Async Runtime:** Embrace Rust's async capabilities for CLI responsiveness, but use a **Sync-First** core domain to maximize compiler optimizations and simplicity, bridging to async only at the edges.
 
 ## Cross-Cutting Concerns Identified
 
-**Performance:** Sub-millisecond response times for interactive operations, efficient vault scanning, memory-bounded operations - affects all components with 50 functional requirements. Design with <500ms targets using pre-computed read models and event-driven cache invalidation, with progress indicators for operations exceeding 500ms.
+**Performance:** Sub-millisecond response times for interactive operations via zero-copy data paths. Design with <500ms targets using direct database access.
 
-**Error Handling:** Clear, actionable error messages in CLI environment, recovery flows for failed operations, validation feedback across extensive feature set. Error messages need to be conversational and actionable, with rollback capabilities for failed template executions.
+**Error Handling:** Clear, actionable error messages using `miette` in the CLI, with typed `thiserror` definitions in the core.
 
-**Vault Consistency:** Alias resolution, link validation, schema compliance across entire vault with complex inheritance - requires sophisticated indexing and validation using event-driven patterns from the architectural foundation to enable decoupled services.
+**Architecture:** **Single-Crate Core** (`lithos-core`) to minimize zero-copy friction, with a thin CLI driver (`lithos-cli`). This replaces the traditional multi-crate workspace to prioritize performance and simplicity while maintaining logical modularity.
 
 **Interactive UX:** Fuzzy finding, schema-driven prompts, suggesters, multi-selection, progressive help - demands advanced CLI interaction patterns for 50+ features, with contextual help and guidance during input operations.
 

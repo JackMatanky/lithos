@@ -25,30 +25,32 @@ Based on project requirements analysis: Rust 1.70+, async runtime, hexagonal por
 
 **Resources Reviewed**: Rust-Trends/example_project_structure provides basic layout. Djamware guide offers organizational principles but lacks the architectural depth of your implementation. Your Go source tree demonstrates the gold standard for hexagonal organization.
 
-## Selected Starter: Workspace-Based Hexagonal Architecture
+## Selected Starter: Single-Crate Architecture (Performance Pivot)
 
-**Rationale for Selection:**
-Cargo workspaces provide the Rust-native foundation for hexagonal architecture in complex applications. This approach enables compile-time enforcement of architectural boundaries, supports parallel development through independent crate compilation, and provides natural evolution toward microservices while maintaining clean separation between domain, application, and infrastructure concerns.
+**Rationale for Pivot:**
+Initially, a 4-crate Hexagonal Workspace (`domain`, `app`, `adapters`, `cli`) was selected. However, implementation analysis revealed that physical crate boundaries prevent **zero-copy optimizations** (specifically `rkyv` inlining) and introduce significant boilerplate for `redb` transactions.
 
-**Workspace Organization Benefits:**
+We have pivoted to a **Single-Crate Core Architecture** to prioritize:
+1.  **Performance:** 5-10x faster zero-copy reads via compiler inlining.
+2.  **Simplicity:** Reduced boilerplate, simpler ownership, and faster compilation.
+3.  **Idiomatic Rust:** Aligns with ecosystem standards (tokio, clap) where "library + binary" is the preferred pattern.
 
-- **Hexagonal Enforcement**: Crate boundaries enforce ports/adapters patterns at compile time
-- **Parallel Development**: Independent crate compilation matches your Go development velocity
-- **CQRS Support**: Natural separation of commands/queries following your Go patterns
-- **Async Native**: Tokio leverages Rust's strengths for concurrent vault operations
-- **Testability**: Domain purity enables comprehensive testing like your Go implementation
-- **Scalability**: Semi-microservices structure for team growth and ecosystem expansion
-- **Architecture Preservation**: Maintains your established hexagonal patterns in Rust
+**Revised Structure:**
+
+- **`lithos-core`:** Single library crate containing Domain, App, and Infrastructure logic.
+  - Boundaries enforced via `pub(crate)` visibility.
+  - Dependencies flow INWARD (`db.rs` -> `domain/`).
+- **`lithos-cli`:** Thin binary driver for terminal UI.
 
 **Initialization Commands:**
 
 ```bash
 # Create workspace root
 mkdir lithos && cd lithos
-cargo new crates/domain --lib
-cargo new crates/app --lib
-cargo new crates/adapters --lib
-cargo new crates/cli --bin
+# Core logic (Domain + Infra)
+cargo new crates/lithos-core --lib
+# CLI driver
+cargo new crates/lithos-cli --bin
 ```
 
 **Workspace Cargo.toml:**
@@ -59,73 +61,17 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.dependencies]
-clap = { version = "4.5", features = ["derive"] }
-tokio = { version = "1.49", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-redb = "3.1"
-rkyv = "0.8"
-anyhow = "1.0"
-thiserror = "2.0"
-miette = { version = "7.6", features = ["fancy"] }
-tracing = "0.1"
-minijinja = "2.14"
-pulldown-cmark = "0.13"
-figment = { version = "0.10", features = ["toml", "env"] }
-uuid = { version = "1.19", features = ["v7", "serde"] }
+# ... dependencies ...
 ```
 
-**Crate Structure (Following Rust Hexagonal Best Practices):**
+**Architectural Decisions (Revised):**
 
-```
-lithos/
-├── crates/
-│   ├── domain/           # Core business models & logic
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── config/    # Config bounded context
-│   │       ├── note/      # Note bounded context
-│   │       ├── schema/    # Schema bounded context
-│   │       ├── template/  # Template bounded context
-│   │       ├── ports/     # Traits/interfaces for external dependencies
-│   │       ├── errors.rs  # Domain errors
-│   │       └── validation.rs # Shared validation utilities
-│   ├── app/              # Application services & orchestrators
-│   │   ├── Cargo.toml    # Depends on domain
-│   │   └── src/
-│   │       ├── commands/ # CQRS command handlers
-│   │       ├── queries/  # CQRS query handlers
-│   │       ├── vault/    # VaultIndexer orchestrator
-│   │       ├── schema/   # SchemaEngine orchestrator
-│   │       └── template/ # TemplateEngine orchestrator
-│   ├── adapters/         # Infrastructure implementations
-│   │   ├── Cargo.toml    # Depends on domain + external crates
-│   │   └── src/
-│   │       ├── api/      # Driver adapters (CLI, future LSP)
-│   │       ├── spi/      # Driven adapters (storage, filesystem, config)
-│   │       └── dto/      # Data transfer objects
-│   └── cli/              # Binary entry point
-│       ├── Cargo.toml    # Depends on app + adapters
-│       └── src/main.rs
-└── Cargo.lock
-```
-
-**Architectural Decisions (Following Rust Ecosystem Patterns):**
-
-- **Workspace Enforcement**: Crate boundaries enforce hexagonal dependency inversion using Rust's module system
-- **Domain Purity**: Domain crate contains only business logic, no external dependencies (standard Rust practice)
-- **CQRS Implementation**: App crate separates commands (writes) from queries (reads) using async patterns
-- **Adapter Pattern**: Adapters crate implements domain traits with external systems using Rust's trait system
-- **Semi-Microservices**: Workspace enables parallel development and future service extraction
-- **Async Native**: Tokio integration across crates for concurrent vault operations leveraging Rust's async strengths
-- **Testing Architecture**: Domain tests require no setup, integration tests span crates using Rust's testing framework
-- **Development Velocity**: Independent crate compilation optimizes Rust's incremental compilation
+- **Module-based Hexagonal:** Logical separation via modules (`note/`, `schema/`, `db.rs`) instead of physical crates.
+- **Sync-First:** Core logic is synchronous; async is restricted to CLI/LSP edges.
+- **Zero-Copy Native:** `db.rs` exposes `rkyv` types directly to the domain.
 
 **Development Benefits:**
 
-- **Clean Boundaries**: Compile-time enforcement of hexagonal architectural rules using Rust's ownership system
-- **Parallel Iteration**: Domain, application, and infrastructure developed independently with cargo's workspace features
-- **Testability**: Pure domain logic tested without infrastructure complexity using Rust's unit testing
-- **Scalability**: Natural evolution path for team growth and microservices using Rust's ecosystem patterns
-- **Performance**: Leverages Rust's zero-cost abstractions and async runtime for high-performance CLI operations
-
-**Note:** Project initialization using this workspace structure should be the first implementation story, establishing the hexagonal foundation following Rust ecosystem best practices for complex applications.
+- **Performance:** Zero-copy read paths are compile-time optimized.
+- **Velocity:** Faster builds (less monomorphization overhead) and easier refactoring.
+- **Focus:** Less time fighting the borrow checker across crate boundaries.
