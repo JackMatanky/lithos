@@ -82,7 +82,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 
 ### References
 
-- [ADR 0008: Event-Driven Testing Patterns](docs/adr/0008-event-driven-testing-patterns.md) - Comprehensive analysis and decisions for optimal testing patterns
+- [Testing Guide: Event-Driven Testing Patterns](docs/testing/event.md) - Comprehensive analysis and decisions for optimal testing patterns
 - [Source: epics/epic-2-test-architecture-patterns-utilities-mvp-core.md#Story 2.2]
 - [ADR 0007: Hybrid Event Orchestration](docs/adr/0007-event-orchestration.md) - Event bus architecture requiring specific testing patterns
 - [Research: CQRS Event Sourcing Testing - https://doc.rust-cqrs.org/add_first_test.html]

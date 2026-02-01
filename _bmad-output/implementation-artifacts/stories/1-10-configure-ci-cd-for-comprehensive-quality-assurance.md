@@ -164,7 +164,7 @@ So that code quality is guaranteed and regressions are caught early in the devel
 ### References
 
 - [Mise Task Orchestration Guide](docs/mise-task-orchestration.md) - Task execution patterns for CI integration
-- [ADR 0010: Centralized Test Utilities](docs/adr/0010-centralized-test-utilities.md) - Test utilities leveraged in CI
+- [Testing Guide: Centralized Test Utilities](docs/testing/README.md) - Test utilities leveraged in CI
 - [GitHub Actions for Rust](https://docs.github.com/actions/tutorials/build-and-test-code/building-and-testing-rust) - Official GitHub Actions Rust guide
 - [Rust CI Optimization](https://www.shuttle.dev/blog/2025/01/23/setup-rust-ci-cd) - Rust CI/CD best practices
 

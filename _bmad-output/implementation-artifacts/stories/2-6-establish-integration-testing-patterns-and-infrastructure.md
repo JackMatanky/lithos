@@ -100,7 +100,7 @@ So that integration issues are caught early with proper isolation and mocking.
 - [Source: _bmad-output/planning-artifacts/architecture.md] - for bounded context interactions
 - [Source: _bmad-output/implementation-artifacts/stories/2-1-establish-async-testing-patterns-and-infrastructure.md] - base async patterns
 - [Source: _bmad-output/implementation-artifacts/stories/2-4-create-centralized-test-utilities-and-infrastructure.md] - test utilities to extend
-- [ADR: docs/adr/0011-integration-testing-patterns.md] - research and decision framework
+- [ADR: docs/testing/README.md] - research and decision framework
 
 ## Dev Agent Record
 
@@ -180,7 +180,7 @@ dev agent (recommended for implementation)
   * validates_integration_performance_meets_baseline - Enforces <50ms performance baseline for batch operations (10 events)
 - mise.toml - Added test:unit and test:integration tasks with nextest, --test-threads=4 parallelism, JUnit output configuration. Added clean task variants (clean:cargo, clean:test, clean:reports)
 - .mise/tasks/clean - Simplified file-based clean task with usage spec choice argument (default="all", choices: all/cargo/test/reports). Clean and intuitive API: `mise run clean [target]`
-- docs/adr/0011-integration-testing-patterns.md - Updated status from Proposed to Accepted with implementation date
+- docs/testing/README.md - Updated status from Proposed to Accepted with implementation date
 
 ### Test Coverage Summary
 

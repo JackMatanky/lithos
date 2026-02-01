@@ -136,11 +136,11 @@ So that command side and query side code are tested in isolation with proper ver
 
 ### References
 
-- [ADR 0008: Event-Driven Testing Patterns](docs/adr/0008-event-driven-testing-patterns.md) - CQRS testing patterns and validation
+- [Testing Guide: Event-Driven Testing Patterns](docs/testing/event.md) - CQRS testing patterns and validation
 - [Source: epics/epic-2-test-architecture-patterns-utilities-mvp-core.md#Story 2.3]
 - [ADR 0002: Storage - Redb + rkyv](docs/adr/0002-storage-redb-rkyv.md) - CQRS foundation
-- [ADR 0009: CQRS Testing Patterns](docs/adr/0009-cqrs-testing-patterns.md) - Comprehensive CQRS testing framework and detailed implementation patterns
-- [ADR 0008: Event-Driven Testing Patterns](docs/adr/0008-event-driven-testing-patterns.md) - Event testing foundation for CQRS validation
+- [Testing Guide: CQRS Testing Patterns](docs/testing/cqrs.md) - Comprehensive CQRS testing framework and detailed implementation patterns
+- [Testing Guide: Event-Driven Testing Patterns](docs/testing/event.md) - Event testing foundation for CQRS validation
 - [ADR 0007: Hybrid Event Orchestration](docs/adr/0007-event-orchestration.md) - Event bus architecture for CQRS operations
 - [Research: CQRS Testing Best Practices - https://reintech.io/blog/testing-strategies-cqrs-applications]
 - [Research: Mocks for Commands, Stubs for Queries - https://blog.ploeh.dk/2013/10/23/mocks-for-commands-stubs-for-queries/]

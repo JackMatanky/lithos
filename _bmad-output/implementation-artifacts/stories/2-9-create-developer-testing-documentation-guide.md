@@ -111,10 +111,10 @@ so that I can apply the approved patterns consistently and avoid ambiguity.
 - [Source: _bmad-output/planning-artifacts/epics/epic-2-test-architecture-patterns-utilities-mvp-core.md#Story-2.9]
 - [Source: docs/testing/async.md]
 - [Source: docs/testing/event.md]
-- [Source: docs/adr/0008-event-driven-testing-patterns.md]
-- [Source: docs/adr/0009-cqrs-testing-patterns.md]
-- [Source: docs/adr/0010-centralized-test-utilities.md]
-- [Source: docs/adr/0011-integration-testing-patterns.md]
+- [Source: docs/testing/event.md]
+- [Source: docs/testing/cqrs.md]
+- [Source: docs/testing/README.md]
+- [Source: docs/testing/README.md]
 - [Source: _bmad-output/project-context.md]
 
 ## Dev Agent Record
@@ -140,7 +140,7 @@ dev agent (recommended for implementation)
 - docs/testing/async.md
 - docs/testing/event.md
 - docs/testing/cqrs.md
-- docs/adr/0011-integration-testing-patterns.md
+- docs/testing/README.md
 - docs/adr/0012-benchmarking-infrastructure.md
 - docs/testing/developer-guide.md
 - docs/index.md

@@ -434,7 +434,7 @@ pub enum DomainError {
 }
 ```
 
-**Serialization Strategy (ADR 0013):**
+**Serialization Strategy (ADR 0009 (Domain Serialization)):**
 ```rust
 // Domain entities MUST derive serde traits for JSON/YAML APIs
 // Required for API responses, debugging, and external integrations
