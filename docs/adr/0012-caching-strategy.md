@@ -1,13 +1,40 @@
 ---
 name: caching-strategy-and-implementation-patterns
-status: proposed
+status: superseded
 stakeholders: [Architecture Team, Core Developers]
 date_proposed: 2026-01-25
-date_decided: TBD
-date_implemented: TBD
+date_decided: 2026-01-25
+date_implemented: n/a
+date_superseded: 2026-02-01
+superseded_by: Course Correction Proposal 4 (Database Layer Design)
 ---
 
-# ADR 0016: Caching Strategy & Implementation Patterns
+# ADR 0012: Caching Strategy & Implementation Patterns
+
+## Status: SUPERSEDED
+
+**This ADR has been superseded by the 2026-02-01 course correction decision.**
+
+**See**: `_bmad-output/implementation-artifacts/course_corrections/2026-01-30-rust-idiomatic-refactor/proposal.md` - Proposal 4 (Database Layer Design)
+
+**Key Changes**:
+- ❌ NO separate `cache/` folder with `CacheReader`/`CacheWriter` traits
+- ✅ YES concrete `Database` type in `db.rs` with zero-copy methods
+- ❌ NO L1/L2 caching coordinator abstraction
+- ✅ YES use moka for application-level caching when profiling shows need
+- ❌ NO premature caching infrastructure before domain is stable
+
+**Rationale**: Multi-layer caching abstraction prevented zero-copy optimization and added unnecessary complexity before performance requirements were validated.
+
+**Migration Path**: When caching is needed:
+1. Profile first to identify actual bottlenecks
+2. Use moka directly in application layer (not abstracted)
+3. Use redb's built-in metrics (`Database::stats()`) for monitoring
+4. Cache at use-case level, not infrastructure level
+
+---
+
+## Original ADR (For Historical Reference)
 
 ## Context
 
