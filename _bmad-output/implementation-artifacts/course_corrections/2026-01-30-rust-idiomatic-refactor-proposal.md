@@ -1319,23 +1319,489 @@ pub struct Note {
 
 **Scope Classification**: **MAJOR (Fundamental Replan)**
 
-### Execution Plan
+This section provides a concrete execution roadmap aligned with the 10 detailed change proposals. Each phase maps directly to specific proposals and includes acceptance criteria.
 
-1.  **Phase 1: Documentation (Architect)**
-    - Execute ADR Audit (Move files).
-    - Update Architecture Docs with "Sync First" & "File First" rules.
-2.  **Phase 2: Demolition (Dev)**
-    - Delete root workspace. Create `lithos-core`.
-    - Move files to new `file.rs` + `file/` structure.
-3.  **Phase 3: Reconstruction (Dev)**
-    - De-async core logic.
-    - Fix imports.
-4.  **Phase 4: Verification (Tea)** - Repair tests. Verify zero-copy benchmarks.
+---
+
+### Phase 1: Foundation & Documentation (Architect)
+
+**Duration**: 1-2 days
+**Blocking**: Must complete before Phase 2
+**Proposals**: 1, 2, 3, 7, 10
+
+#### Tasks
+
+**1.1 Workspace Restructuring (Proposal 1)**
+- [ ] Update `Cargo.toml` workspace definition
+  - Remove: `crates/domain`, `crates/app`, `crates/adapters`
+  - Add: `crates/lithos-core`, `crates/lithos-cli`
+- [ ] Create `crates/lithos-core/Cargo.toml` with dependencies:
+  - `redb` (persistence)
+  - `rkyv` (zero-copy serialization)
+  - `thiserror` (structured errors)
+  - `serde` (optional, feature-gated per Proposal 10)
+  - NO `async-trait`, NO `moka`, NO `tokio` (defer to Phase 2)
+- [ ] Update `mise.toml` task definitions:
+  - Replace `test:unit:domain` → `test:unit:core`
+  - Remove separate crate test tasks
+  - Keep `test:arch` for boundary enforcement
+
+**1.2 ADR Audit (Proposal 7)**
+- [ ] Move non-decision ADRs to `docs/guides/`
+  - ADR 0013 (Hexagonal Architecture) → `docs/guides/architecture-evolution.md`
+- [ ] Archive outdated ADRs:
+  - ADR 0016 (Caching Strategy) - superseded by Proposals 4 & 5
+- [ ] Create new ADR:
+  - **ADR 0017**: Single-Crate Architecture & Database Layer
+  - Document: db.rs pattern, zero-copy primitives, NO cache/ folder
+  - Rationale: Proposals 4 & 5 decisions
+- [ ] Renumber remaining ADRs sequentially
+- [ ] Update all ADR references in epics/docs
+
+**1.3 Architecture Documentation Updates (Proposals 1, 2, 3)**
+- [ ] Update `_bmad-output/project-context.md`:
+  - Replace "Hexagonal Architecture" with "Dependency Flow Architecture"
+  - Update structure diagrams (single-crate, db.rs)
+  - Add "File First, Folder Second" rule (Proposal 3)
+  - Add "Zero-Copy Primitives" section (Proposal 4)
+- [ ] Update `project-structure-boundaries.md`:
+  - Document `<context>.rs` + `<context>/` pattern (NO mod.rs)
+  - Document co-located errors/events/ports (Proposal 2)
+  - Document dependency flow rules (domain → db.rs → cli)
+- [ ] Update `implementation-patterns-consistency-rules.md`:
+  - Add "Database Access Rules" from Proposal 4
+  - Add "CQRS Naming Conventions" from Proposal 5
+  - Add "Sync-First Rules" from Proposal 6
+  - Remove cache/ trait references
+
+**1.4 Error Strategy Documentation (Proposal 2)**
+- [ ] Document co-located error pattern:
+  - `note/error.rs`, `schema/error.rs`, etc.
+  - NO centralized `errors.rs`
+  - Optional top-level `LithosError` composition
+- [ ] Update epic stories to reference context-specific errors
+
+**1.5 Serde Feature Flag Strategy (Proposal 10)**
+- [ ] Document feature flag pattern in architecture docs
+- [ ] Add to domain type guidelines:
+  - `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]`
+  - Feature-gated, not required
+
+#### Acceptance Criteria
+- [ ] All ADRs renumbered and validated (`mise run adr:validate` passes)
+- [ ] New ADR 0017 approved and merged
+- [ ] Architecture docs reflect single-crate structure
+- [ ] No references to old multi-crate structure remain in docs
+
+---
+
+### Phase 2: Database Layer Implementation (Dev)
+
+**Duration**: 2-3 days
+**Blocking**: Must complete before domain migration
+**Proposals**: 4
+
+#### Tasks
+
+**2.1 Create db.rs Infrastructure**
+- [ ] Create `crates/lithos-core/src/db.rs`
+- [ ] Implement `Database` struct:
+  - Wraps `redb::Database`
+  - Constructor: `Database::open(path: &Path) -> Result<Self>`
+  - Configuration: `set_cache_size()`, `set_page_size()` per ADR 0002
+- [ ] Implement `ArchivedGuard<'txn, V>` wrapper:
+  - `Deref<Target = rkyv::Archived<V>>`
+  - Lifetime tied to transaction
+  - Validation in constructor
+
+**2.2 Implement Zero-Copy Read Primitives**
+- [ ] `get_archived<K, V>() -> Result<ArchivedGuard<'_, V>>`
+  - Validates alignment (ADR 0002 requirement)
+  - Validates bytes with `rkyv::check_archived_root`
+  - Returns guard with transaction lifetime
+- [ ] `get<K, V>() -> Result<Option<V>>`
+  - Full deserialization
+  - Delegates to `get_archived()` + `deserialize()`
+
+**2.3 Implement Zero-Copy Write Primitives**
+- [ ] `put_reserve<K, V, F>()` using `insert_reserve`
+  - Accepts closure to write directly to DB page
+  - Zero intermediate allocation
+- [ ] `put<K, V>()` convenience wrapper
+  - Uses `put_reserve()` internally
+  - Acceptable for non-hot paths
+
+**2.4 Implement MultiMap for Indexes**
+- [ ] `multimap_insert<K, V>()`
+  - For 1:N relations (tags → notes, backlinks)
+  - Uses `MultimapTable` per ADR 0002
+- [ ] `multimap_get<K, V>() -> Iterator<ArchivedGuard>`
+  - Zero-copy iteration over values
+- [ ] `multimap_remove<K, V>()`
+
+**2.5 Implement Batch Operations**
+- [ ] `batch_write<F>()`
+  - Sets `Durability::None` for batch
+  - Calls closure with `&mut WriteTransaction`
+  - Final commit with `Durability::Immediate`
+  - Critical for vault indexing (500 notes/batch per ADR 0002)
+
+**2.6 Error Handling**
+- [ ] Create `db/error.rs`:
+  ```rust
+  #[derive(thiserror::Error, Debug)]
+  pub enum DbError {
+      #[error("database error: {0}")]
+      Backend(#[from] redb::Error),
+      #[error("serialization error: {0}")]
+      Serialization(String),
+      #[error("not found")]
+      NotFound,
+      #[error("misaligned data")]
+      Misaligned,
+  }
+  ```
+
+**2.7 Testing**
+- [ ] Unit tests for each primitive:
+  - `get_archived()` returns valid guard
+  - `put_reserve()` writes without allocation
+  - `multimap_*()` handles 1:N correctly
+  - `batch_write()` groups commits
+- [ ] Zero-copy benchmarks:
+  - Compare `get_archived()` vs `get()` (should be 10x faster)
+  - Validate alignment overhead is <1ns
+  - Measure batch_write throughput
+
+#### Acceptance Criteria
+- [ ] All db.rs primitives implemented and tested
+- [ ] Zero-copy benchmarks pass (10x improvement over deserialize)
+- [ ] `mise run test:unit:core` passes
+- [ ] No async in db.rs (sync-only per Proposal 6)
+
+---
+
+### Phase 3: Domain Migration & CQRS (Dev)
+
+**Duration**: 3-4 days
+**Blocking**: Must complete before CLI refactor
+**Proposals**: 2, 3, 5, 8, 9
+
+#### Tasks
+
+**3.1 Workspace Demolition**
+- [ ] Create `crates/lithos-core/src/` directory structure:
+  ```
+  lithos-core/src/
+  ├── lib.rs
+  ├── db.rs (from Phase 2)
+  ├── fs/ (utilities)
+  ├── config.rs
+  ├── config/
+  ├── note.rs
+  ├── note/
+  ├── schema.rs
+  ├── schema/
+  ├── template.rs
+  └── template/
+  ```
+
+**3.2 Module Migration (Proposal 3)**
+
+For each context (config, note, schema, template):
+
+- [ ] Create `<context>.rs` entry file:
+  - Merge `mod.rs` + `aggregate.rs` content
+  - Module-level documentation
+  - `mod` declarations for submodules
+  - Public re-exports (`pub use`)
+  - Aggregate root implementation
+
+- [ ] Move supporting files to `<context>/` folder:
+  - Keep: types, value objects, logic files
+  - Create: `error.rs` (from `errors.rs`, Proposal 2)
+  - Create: `events.rs` (keep co-located, Proposal 2)
+  - Optional: `ports.rs` (only if traits needed, Proposal 5)
+
+- [ ] Delete obsolete files:
+  - ❌ `mod.rs` (merged into `<context>.rs`)
+  - ❌ `aggregate.rs` (merged into `<context>.rs`)
+  - ❌ `domain/src/errors.rs` (split into context errors)
+  - ❌ `domain/src/ports/` (moved to context/ports.rs)
+
+**3.3 Error Migration (Proposal 2)**
+
+For each context:
+
+- [ ] Create `<context>/error.rs`:
+  - Extract relevant variants from `DomainError`
+  - Use `thiserror::Error` derivation
+  - Context-specific error types
+
+- [ ] Example for Note:
+  ```rust
+  // note/error.rs
+  #[derive(thiserror::Error, Debug)]
+  pub enum NoteError {
+      #[error("invalid path: {0}")]
+      InvalidPath(String),
+      #[error("database error: {0}")]
+      Database(#[from] crate::db::DbError),
+      #[error("parse error: {0}")]
+      Parse(String),
+  }
+  ```
+
+- [ ] Update all `Result<T, DomainError>` → `Result<T, NoteError>`
+
+**3.4 CQRS Implementation (Proposal 5)**
+
+For each context:
+
+- [ ] Add static methods to aggregate (in `<context>.rs`):
+  ```rust
+  // Queries (read-only)
+  impl Note {
+      pub fn find_by_id(db: &Database, id: Uuid) -> Result<Option<Self>, NoteError>;
+      pub fn find_by_path(db: &Database, path: &str) -> Result<Option<Self>, NoteError>;
+      pub fn list_all(db: &Database) -> Result<Vec<Self>, NoteError>;
+  }
+
+  // Commands (write)
+  impl Note {
+      pub fn save(&self, db: &Database) -> Result<(), NoteError>;
+      pub fn delete(db: &Database, id: Uuid) -> Result<(), NoteError>;
+  }
+  ```
+
+- [ ] Implement index updates in save/delete:
+  - Use `db.multimap_insert()` for tags
+  - Use `db.multimap_insert()` for backlinks
+  - Create `note/indexing.rs` for helper functions
+
+- [ ] Optional: Create traits ONLY if testing requires mocking:
+  - Create `<context>/ports.rs`
+  - Define traits matching static method signatures
+  - Implement trait for Database (delegates to static methods)
+
+**3.5 Naming Cleanup (Proposal 9)**
+
+- [ ] Remove suffixes:
+  - `VaultWriterPort` → `VaultWriter`
+  - `VaultFileDto` → `VaultFile`
+  - `ConfigPort` → Config (use module scoping instead)
+
+**3.6 Import Rewrites**
+
+- [ ] Update all imports:
+  - `use domain::note::Note` → `use lithos_core::note::Note`
+  - `use adapters::spi::cache::*` → `use lithos_core::db::Database`
+  - Remove all `async_trait` imports
+  - Remove all cache trait imports
+
+#### Acceptance Criteria
+- [ ] All domain contexts migrated to `lithos-core/src/`
+- [ ] NO `mod.rs` files remain
+- [ ] All contexts have `error.rs` co-located
+- [ ] Static methods implemented (find_*, save, delete)
+- [ ] `mise run test:unit:core` passes
+- [ ] `mise run lint` passes (all clippy warnings resolved)
+
+---
+
+### Phase 4: CLI & Sync Refactor (Dev)
+
+**Duration**: 2-3 days
+**Blocking**: Must complete before verification
+**Proposals**: 6, 8
+
+#### Tasks
+
+**4.1 CLI Restructure**
+- [ ] Rename `crates/cli` → `crates/lithos-cli`
+- [ ] Update CLI `Cargo.toml`:
+  - Depend on `lithos-core`
+  - Add `miette` for error reporting (Proposal 8)
+  - Remove `async-trait`, `tokio` (unless needed for concurrency)
+
+**4.2 De-Async Core Logic (Proposal 6)**
+
+- [ ] Remove `async` from database layer:
+  - Already done in Phase 2 (db.rs is sync)
+
+- [ ] Remove `#[async_trait]` from domain:
+  - Traits are optional per Proposal 5
+  - If used, make them sync
+
+- [ ] CLI orchestration:
+  - Use sync calls directly: `Note::find_by_id(&db, id)?`
+  - IF async needed (e.g., parallel indexing):
+    - Use `tokio::task::spawn_blocking(move || Note::find_by_id(&db, id))`
+    - Keep async at edges only
+
+**4.3 Error Reporting (Proposal 8)**
+
+- [ ] CLI uses `miette` for user-facing errors:
+  ```rust
+  // lithos-cli/src/main.rs
+  use miette::{IntoDiagnostic, Result};
+
+  fn main() -> Result<()> {
+      let db = Database::open(path).into_diagnostic()?;
+      let note = Note::find_by_id(&db, id)
+          .into_diagnostic()
+          .wrap_err("Failed to load note")?;
+      Ok(())
+  }
+  ```
+
+- [ ] Core uses `thiserror` (already done in Phase 3)
+
+**4.4 Remove Cache Infrastructure**
+
+- [ ] Delete obsolete files:
+  - ❌ `crates/adapters/src/spi/cache/` (entire folder)
+  - ❌ `crates/app/` (entire crate)
+  - ❌ All async trait implementations
+  - ❌ Coordinator/Moka/Backfiller (defer to LSP Phase 2)
+
+**4.5 Architecture Tests**
+
+- [ ] Create `tests/arch/boundary_tests.rs`:
+  - Ensure `note/aggregate.rs` does NOT import `db`
+  - Ensure domain modules are pure (no IO)
+  - Ensure dependency flow is enforced
+
+#### Acceptance Criteria
+- [ ] CLI compiles and runs
+- [ ] NO async in core domain logic
+- [ ] Error reporting uses miette (CLI) and thiserror (core)
+- [ ] All obsolete cache/ code deleted
+- [ ] `mise run test:arch` passes
+
+---
+
+### Phase 5: Verification & Validation (Tea)
+
+**Duration**: 1-2 days
+**Blocking**: Final gate before merge
+**Proposals**: All
+
+#### Tasks
+
+**5.1 Test Suite Repair**
+- [ ] Fix all broken unit tests:
+  - Update imports
+  - Remove async from test functions (unless testing async edges)
+  - Update error types (DomainError → NoteError, etc.)
+  - Replace mock cache with in-memory Database
+
+- [ ] Integration tests:
+  - Test full flows: CLI → Database → Domain
+  - Test index updates (tags, backlinks)
+  - Test batch operations (vault indexing)
+
+**5.2 Performance Validation**
+
+- [ ] Run zero-copy benchmarks:
+  - `get_archived()` vs `get()` (expect 10x improvement)
+  - Batch write throughput (expect 500 notes/batch)
+  - Vault indexing time (expect <2s for 1000 notes, NFR requirement)
+
+- [ ] Compare against baseline:
+  - Old multi-crate performance
+  - Document improvement (target: 5-10x per Issue Summary)
+
+**5.3 Quality Gates**
+
+- [ ] `mise run verify` passes (full suite):
+  - `mise run fmt` (formatting)
+  - `mise run lint` (clippy)
+  - `mise run test` (all tests)
+  - `mise run adr:validate` (ADR compliance)
+
+- [ ] `mise run test:arch` passes:
+  - Domain purity enforced
+  - Dependency flow enforced
+  - NO circular dependencies
+
+- [ ] Coverage check:
+  - Critical paths tested (find_*, save, delete)
+  - Zero-copy primitives tested
+  - Error paths tested
+
+**5.4 Documentation Validation**
+
+- [ ] Architecture docs match implementation
+- [ ] ADRs reference correct code locations
+- [ ] Epic stories updated with new structure
+- [ ] Project context updated
+
+**5.5 Final Checklist**
+
+- [ ] NO `mod.rs` files in codebase
+- [ ] NO `cache/` folder exists
+- [ ] NO `async_trait` in core
+- [ ] All errors co-located (`note/error.rs`, etc.)
+- [ ] All static methods use `&Database` parameter
+- [ ] Zero-copy benchmarks pass
+- [ ] Full test suite passes
+- [ ] Documentation complete
+
+#### Acceptance Criteria
+- [ ] `mise run verify` returns 100% green
+- [ ] Zero-copy benchmarks show 5-10x improvement
+- [ ] All 10 proposals fully implemented
+- [ ] No regressions in existing functionality
+
+---
 
 ### Required Agents
 
-- **Architect**: To supervise the transition and update docs.
-- **Dev**: To execute the file moves and refactoring.
-- **Tea**: To repair the test suite.
+| Phase   | Agent      | Responsibilities                                      |
+| ------- | ---------- | ----------------------------------------------------- |
+| Phase 1 | Architect  | ADRs, docs, structure planning                        |
+| Phase 2 | Dev        | Database layer implementation                         |
+| Phase 3 | Dev        | Domain migration, CQRS, module restructure            |
+| Phase 4 | Dev        | CLI refactor, de-async, error reporting               |
+| Phase 5 | Tea        | Test repair, benchmarks, quality gates, final sign-off |
 
-**Approval Required**: Explicit user approval to proceed with this destructive change.
+---
+
+### Rollback Strategy
+
+If critical issues arise:
+
+1. **Phase 1-2**: Revert commits (documentation and db.rs only)
+2. **Phase 3+**: Create rollback branch from pre-migration commit
+   - Multi-crate structure still exists
+   - Can continue development while investigating issues
+3. **Post-Phase 5**: If regressions found:
+   - Fix forward (don't rollback after merge)
+   - Create hotfix branch
+   - Cherry-pick fixes to main
+
+---
+
+### Success Metrics
+
+| Metric                    | Target                              | Validation                          |
+| ------------------------- | ----------------------------------- | ----------------------------------- |
+| **Zero-copy speedup**         | 5-10x faster reads                  | Benchmark comparison                |
+| **Build time**                | 1.5-2x faster compilation           | `cargo build --timings`               |
+| **Test coverage**             | Critical paths 100% covered         | Manual review (not % target)        |
+| **Code reduction**            | -1000+ lines (removed abstractions) | `git diff --stat`                     |
+| **Vault indexing**            | <2s for 1000 notes                  | Integration test                    |
+| **CLI operations**            | <500ms per command                  | End-to-end test                     |
+| **Quality gates**             | `mise run verify` 100% green          | CI pass                             |
+| **Documentation compliance**  | All ADRs validated                  | `mise run adr:validate` pass          |
+
+---
+
+**⚠️ APPROVAL REQUIRED**: Explicit user approval to proceed with this destructive change.
+
+**Estimated Total Duration**: 9-14 days (assuming sequential execution)
+
+**Risk Level**: HIGH (total structural reset, 100% code displacement)
+
+**Mitigation**: Phased approach, comprehensive testing, rollback strategy documented
