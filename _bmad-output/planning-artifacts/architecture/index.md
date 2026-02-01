@@ -22,7 +22,7 @@ This documentation has been sharded into focused sections for better maintainabi
   - [Technical Preferences Confirmed](./starter-template-evaluation.md#technical-preferences-confirmed)
   - [Starter Options Evaluated](./starter-template-evaluation.md#starter-options-evaluated)
   - [Selected Starter: Workspace-Based Hexagonal Architecture](./starter-template-evaluation.md#selected-starter-workspace-based-hexagonal-architecture)
-  - [Core Architectural Decisions](./core-architectural-decisions.md)
+- [Core Architectural Decisions](./core-architectural-decisions.md)
   - [Decision Priority Analysis](./core-architectural-decisions.md#decision-priority-analysis)
   - [Data Architecture](./core-architectural-decisions.md#data-architecture)
   - [Internal Communication](./core-architectural-decisions.md#internal-communication)

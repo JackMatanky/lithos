@@ -37,91 +37,89 @@ section: "Implementation Standards"
 
 **Workspace Organization:**
 
-- **Crate Separation:** Strict hexagonal boundaries - domain depends on nothing, app depends only on domain, adapters depend on domain + external crates, cli depends on app + adapters
-- **Module Organization:** Within crates, use `mod.rs` for submodules, keep related functionality together; avoid deep nesting (max 3 levels)
-- **Test Placement:** Unit tests in same file as implementation (`#[cfg(test)]`), integration tests in `tests/` directory at crate root, performance tests in `benches/`
-- **Binary Organization:** CLI crate should be minimal, delegating to library crates
+- **Crate Separation:** `lithos-core` (Logic + Infra) vs `lithos-cli` (Driver).
+- **Module Organization:** Within crates, use `<module>.rs` + `<module>/` folder. NO `mod.rs`.
+- **Test Placement:** Unit tests in same file (`#[cfg(test)]`), integration tests in `tests/`.
+- **Binary Organization:** CLI crate delegating to `lithos-core`.
 
 **File Structure Standards:**
 
-- **Domain Crate:** `src/`, `src/ports/`, `src/services/` (for pure domain services)
-- **App Crate:** `src/commands/`, `src/queries/`, `src/vault/`, `src/schema/`, `src/template/`
-- **Adapters Crate:** `src/api/`, `src/spi/`, `src/dto/`
-- **CLI Crate:** `src/main.rs` only, all logic in other crates
-- **Common Patterns:** Group related items, use `prelude.rs` for common imports, keep files focused
+- **Lithos Core:** `src/lib.rs`, `src/db.rs`, `src/fs/`, `src/<context>.rs`, `src/<context>/` (errors/events co-located).
+- **Lithos CLI:** `src/main.rs`, `src/commands/`.
+- **Common Patterns:** Group related items, keep files focused.
 
 ## Format Patterns
 
 **Error Handling Standards:**
 
-- **Domain Errors:** `thiserror::Error` for typed error enums with descriptive messages and `#[from]` for conversions
-- **Context Addition:** `anyhow::Result` for ergonomic error chaining in application code with `context!` macro
-- **CLI Output:** User-friendly error messages with actionable guidance using `color-eyre` for pretty printing
-- **Logging:** `tracing` with structured spans, consistent log levels, and subscriber setup in CLI crate
-- **Panic Avoidance:** Never use `unwrap()`, `expect()`, `panic!()` in library code; prefer `Result`
+- **Core Errors:** `thiserror::Error` for typed, co-located error enums (e.g. `note::Error`).
+- **Context Addition:** `anyhow::Result` only in `main.rs` if prototyping; otherwise `miette`.
+- **CLI Output:** `miette` for user-facing errors with help/labels.
+- **Logging:** `tracing` with structured spans.
+- **Panic Avoidance:** Never use `unwrap()`, `expect()` in library code.
 
 **Async Patterns:**
 
-- **Runtime:** Tokio as the async runtime throughout all crates with `#[tokio::main]` in CLI
-- **Trait Methods:** Use `async_trait` for async trait methods with `Send + Sync` bounds
-- **Error Propagation:** `?` operator for clean error bubbling, `map_err` for context addition
-- **Cancellation:** Accept `CancellationToken` in long-running operations with `select!` for graceful shutdown
-- **Channels:** Use `tokio::sync::mpsc` for event buses, bounded channels to prevent memory issues
-- **Futures:** Prefer `async fn` over manual `Future` implementations, use `async move` for owned data
+- **Sync-First:** Core domain logic and file I/O must be synchronous.
+- **Async at Edge:** `lithos-cli` uses `tokio::main`.
+- **Bridging:** Use `tokio::task::spawn_blocking` for concurrent core operations.
+- **No Async Traits:** Do NOT use `#[async_trait]` in `lithos-core`.
 
 **Documentation Standards:**
 
-- **Item Documentation:** Use `///` for functions, structs, traits, and other items
-- **Module Documentation:** Use `//!` for module-level documentation
-- **Examples:** Include code examples in documentation where helpful
-- **Error Documentation:** Document error conditions and panic scenarios
-- **Formatting:** Use markdown formatting in doc comments
-- **Links:** Reference related items and external documentation
+- **Item Documentation:** Use `///` for public items.
+- **Module Documentation:** Use `//!` at top of `<context>.rs`.
+- **Examples:** Include code examples for public APIs.
+
+**Serialization Patterns:**
+
+- **Feature Flag:** Use `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]`.
+- **Optional:** Serde is optional for domain types, required for DTOs/Config.
+- **Zero-Copy:** Use `rkyv` for performance-critical storage types.
 
 ## Communication Patterns
 
 **Event System Standards:**
 
-- **Event Naming:** `PascalCase` with past tense (e.g., `NoteIndexed`, `VaultIndexingCompleted`)
-- **Event Payloads:** Immutable structs with clear field names and derive macros for serialization
-- **Event Bus:** Async channels with bounded capacity and weak subscriber references to prevent leaks
-- **Subscriber Patterns:** Handler functions with proper error isolation and logging
+- **Event Naming:** `PascalCase` with past tense (e.g., `NoteIndexed`).
+- **Co-location:** Events defined in `<context>/events.rs`.
+- **Dispatch:** Deferred dispatch via `UnitOfWork` or simple callbacks (Phase 1).
 
-**Inter-Crate Communication:**
+**Inter-Module Communication:**
 
-- **Dependency Injection:** Constructor injection of port implementations with `Arc<dyn Trait>` for shared ownership
-- **Trait Objects:** Use `Box<dyn Trait>` for runtime polymorphism with `Send + Sync` bounds
-- **Type Safety:** Leverage Rust's compile-time guarantees over runtime checks
-- **Configuration Passing:** Use `Arc<Config>` for shared immutable configuration across crates
+- **Direct Calls:** `lithos-cli` calls `lithos-core` static methods directly.
+- **Database:** Passed as `&Database` reference to domain methods.
+- **No Traits:** Unless required for testing/mocking.
+
+**Database Access Rules:**
+
+- **Concrete Type:** Use `lithos_core::db::Database` directly.
+- **Zero-Copy First:** Prefer `db.get_archived()` for hot paths.
+- **Batch Operations:** Use `db.batch_write()` for bulk updates.
+
+**CQRS Naming Conventions:**
+
+- **Queries:** `find_*`, `get_*`, `list_*`, `count_*`.
+- **Commands:** `save`, `delete`, `update`.
 
 ## Process Patterns
 
 **Testing Standards:**
 
-- **Unit Tests:** Pure domain logic with no external dependencies using `#[cfg(test)]`; test both success and error cases
-- **Integration Tests:** Cross-crate testing with test adapters using `tokio::test`; test real implementations
-- **Performance Tests:** Criterion benchmarks for 500ms targets with statistical analysis
-- **Async Testing:** `tokio::test` for concurrent operation testing with proper setup/teardown
-- **Mocking:** Test doubles for ports using `mockall` crate or manual implementations
-- **Property-Based Testing:** `proptest` for edge case discovery in domain logic
-- **Test Organization:** Group tests by functionality, use descriptive names, avoid flaky tests; include doc tests
+- **Unit Tests:** `#[cfg(test)]` in same file.
+- **Integration Tests:** `tests/integration/` (CLI -> Core -> DB).
+- **Architecture Tests:** `tests/arch/` (boundary enforcement).
+- **Benchmarks:** `benches/` (zero-copy validation).
 
 **Configuration Management:**
 
-- **Hierarchy:** CLI flags > Environment variables > Config file > Defaults with precedence documentation
-- **Validation:** Compile-time validation using Serde derive with custom validators
-- **Singleton Pattern:** `OnceCell` for lazy initialization with thread-safe access
-- **Hot Reload:** File watching with `notify` crate for development (optional)
-- **Environment-Specific:** Different config files for dev/staging/prod
+- **Hierarchy:** CLI args > Config file > Defaults.
+- **Validation:** Serde validation.
 
 **Build & Development:**
 
-- **Cargo Profiles:** Separate debug/release profiles with appropriate optimizations
-- **Linting:** Clippy with all pedantic and nursery lints enabled; deny complexity violations
-- **Formatting:** Rustfmt with standard configuration and import sorting
-- **CI/CD:** GitHub Actions with cross-platform testing, coverage reporting, and security auditing
-- **Development Tools:** `cargo-watch` for auto-rebuild, `cargo-expand` for macro debugging, **mise 2026.1.0** for tool version management and task execution via `.mise/tasks/`
-- **Pre-commit Hooks:** Use pre-commit framework to run clippy, rustfmt, and tests before commits for maximum visibility and clean git history
+- **Mise:** Task runner (`mise run verify`, `mise run build`).
+- **Hooks:** Pre-commit enforcement.
 
 **Clippy Complexity Limits:**
 
