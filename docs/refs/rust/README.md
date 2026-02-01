@@ -8,6 +8,7 @@ This folder groups Rust-focused reference docs.
 - [Style (Rust style guide + rust-analyzer)](style.md)
 - [Quality & tooling (Clippy/testing/perf)](quality-tooling.md)
 - [Module system guide](module-system.md)
+- [Canonical best practices alignment](canonical-best-practices.md)
 
 ## Crate References
 

@@ -42,9 +42,7 @@ CI = "${GITHUB_ACTIONS:-false}"
 
 # Project paths (available for tasks)
 PROJECT_ROOT = "{{config_root}}"
-DOMAIN_CRATE = "{{vars.domain_crate}}"
-APP_CRATE = "{{vars.app_crate}}"
-ADAPTERS_CRATE = "{{vars.adapters_crate}}"
+CORE_CRATE = "{{vars.core_crate}}"
 CLI_CRATE = "{{vars.cli_crate}}"
 
 # ------------------------------------------------------------- #
@@ -52,10 +50,8 @@ CLI_CRATE = "{{vars.cli_crate}}"
 # ------------------------------------------------------------- #
 [vars]
 # Specific crate paths
-domain_crate = "crates/domain"
-app_crate = "crates/app"
-adapters_crate = "crates/adapters"
-cli_crate = "crates/cli"
+core_crate = "lithos-core"
+cli_crate = "lithos-cli"
 
 # Test paths
 tests_dir = "tests"
@@ -97,53 +93,29 @@ alias = "t"
 depends = ["test:unit", "test:integration", "test:e2e", "test:arch"]
 
 # Specific crate unit tests for developer convenience
-[tasks."test:unit:domain"]
-description = "Run domain crate unit tests"
-alias = "tud"
-run = "mise run test:unit -- -p domain"
-quiet = false
-
-[tasks."test:unit:app"]
-description = "Run app crate unit tests"
-alias = "tuap"
-run = "mise run test:unit -- -p app"
-quiet = false
-
-[tasks."test:unit:adapters"]
-description = "Run adapters crate unit tests"
-alias = "tuad"
-run = "mise run test:unit -- -p adapters"
+[tasks."test:unit:core"]
+description = "Run core crate unit tests"
+alias = "tucore"
+run = "mise run test:unit -- -p lithos-core"
 quiet = false
 
 [tasks."test:unit:cli"]
 description = "Run CLI crate unit tests"
-alias = "tuc"
-run = "mise run test:unit -- -p cli"
+alias = "tucli"
+run = "mise run test:unit -- -p lithos"
 quiet = false
 
 # Specific crate benchmarks for developer convenience
-[tasks."test:bench:domain"]
-description = "Run domain crate benchmarks"
-alias = "tbd"
-run = "mise run test:bench -- -p domain"
-quiet = false
-
-[tasks."test:bench:app"]
-description = "Run app crate benchmarks"
-alias = "tbap"
-run = "mise run test:bench -- -p app"
-quiet = false
-
-[tasks."test:bench:adapters"]
-description = "Run adapters crate benchmarks"
-alias = "tbad"
-run = "mise run test:bench -- -p adapters"
+[tasks."test:bench:core"]
+description = "Run core crate benchmarks"
+alias = "tbcore"
+run = "mise run test:bench -- -p lithos-core"
 quiet = false
 
 [tasks."test:bench:cli"]
 description = "Run CLI crate benchmarks"
-alias = "tbc"
-run = "mise run test:bench -- -p cli"
+alias = "tbcli"
+run = "mise run test:bench -- -p lithos"
 quiet = false
 
 # --------------------- CI/CD Simulation ---------------------- #

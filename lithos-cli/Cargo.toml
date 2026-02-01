@@ -13,8 +13,7 @@ path = "src/main.rs"
 bench = false
 
 [dependencies]
-lithos-app.workspace = true
-lithos-adapters.workspace = true
+lithos-core.workspace = true
 tokio.workspace = true
 clap.workspace = true
 miette.workspace = true

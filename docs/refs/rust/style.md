@@ -13,6 +13,8 @@ This is intentionally separate from [docs/refs/rust/idioms.md](idioms.md), which
 
 For linting/testing/tooling workflow guidance (Clippy discipline, doc tests, benchmarking), see [docs/refs/rust/quality-tooling.md](quality-tooling.md).
 
+For an additional checklist aligned to Canonical’s Rust best practices (paraphrased into Lithos rules), see [docs/refs/rust/canonical-best-practices.md](canonical-best-practices.md).
+
 ## Scope and how to use this
 
 - Treat this as **style + code-organization guidance** (how to structure code and changes).

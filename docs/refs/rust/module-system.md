@@ -4,6 +4,8 @@
 **Date**: 2026-01-30
 **Purpose**: Document modern Rust module organization patterns for Rust 2018+ projects
 
+Note: Canonical’s Rust best practices guide has different preferences around using `mod.rs` as a module root. Lithos generally follows the 2018+ “file + folder” pattern described here for editor ergonomics and consistency, and avoids introducing new `mod.rs` in new code.
+
 ---
 
 ## Table of Contents
