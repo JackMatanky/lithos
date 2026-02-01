@@ -50,6 +50,7 @@ This composes with Rust’s *deref coercions* and with APIs that naturally yield
 ### Guidance
 
 - If you only need to read: accept a borrowed view.
+- For small `Copy` types (e.g., `u32`, `bool`), prefer passing by value rather than `&T`.
 - If you need ownership: accept `String`/`Vec<T>`/`PathBuf>`.
 - If you want “owned or borrowed”: prefer `Cow<'a, str>` / `Cow<'a, [T]>`.
 - If you just need “something that can be referenced as”: consider `impl AsRef<Path>` or `impl AsRef<str>` for APIs that are called a lot from many contexts.
@@ -403,6 +404,10 @@ for s in items.iter().chain(maybe.iter()) {
 - Prefer `if let Some(x) = opt { ... }` for standalone control flow.
 - Prefer iterator adapters when it makes surrounding iterator code *simpler*.
 
+When you have a straightforward early-exit, `let Some(x) = opt else { ... }` often reads best (especially for `return`, `break`, and `continue`).
+
+If the “missing case” requires allocation or a function call, prefer the lazy combinators (`ok_or_else`, `map_or_else`, `unwrap_or_else`) to avoid eager work.
+
 ### Pitfalls
 
 - Be explicit about ownership:
@@ -585,3 +590,15 @@ If the else-branch needs heavier computation, prefer `if let ... { ... } else { 
 ### A3) Pass small `Copy` types by value
 
 For small `Copy` types (e.g. integers, bools, small plain-old-data structs), passing by value is often clearer and just as efficient as passing by reference. Reserve `&T` for larger values, non-`Copy` data, or when borrowing is semantically important.
+
+### A4) Avoid “clone traps” in iterator chains
+
+If you need owned values from an iterator over references, prefer using iterator adapters like `.cloned()` / `.copied()` at the end of the chain instead of cloning inside the closure.
+
+This tends to be both clearer and less error-prone than sprinkling `x.clone()` throughout a `.map(...)` pipeline.
+
+### A5) Iterator chains vs `for` loops: pick the clearer tool
+
+Iterator chains shine when you’re transforming data (filter/map/flat_map) without early exits. `for` loops shine when you need early `break`/`continue`/`return`, or when the loop is primarily side effects.
+
+If you want to keep an iterator chain but still add logging, consider `inspect` / `inspect_err` rather than rewriting the whole thing into a loop just for debug output.

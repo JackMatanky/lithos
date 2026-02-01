@@ -14,3 +14,4 @@ This folder groups Rust-focused reference docs.
 - [rkyv](rkyv.md)
 - [redb](redb.md)
 - [moka](moka.md)
+- [pulldown-cmark](pulldown-cmark.md)
