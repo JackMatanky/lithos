@@ -1356,43 +1356,45 @@ This section provides a concrete execution roadmap aligned with the 10 detailed 
 - [x] Renumber remaining ADRs sequentially
 - [x] Update all ADR references in epics/docs
 
-**1.2 Architecture Documentation Updates (Proposals 1, 2, 3)**
+**1.2 Architecture Documentation Updates (Proposals 1, 2, 3) - ✅ DONE**
 
-- [ ] Update `_bmad-output/project-context.md`:
+- [x] Update `_bmad-output/project-context.md`:
   - Replace "Hexagonal Architecture" with "Dependency Flow Architecture"
   - Update structure diagrams (single-crate, db.rs)
   - Add "File First, Folder Second" rule (Proposal 3)
   - Add "Zero-Copy Primitives" section (Proposal 4)
-- [ ] Update `project-structure-boundaries.md`:
+- [x] Update `project-structure-boundaries.md`:
   - Document `<context>.rs` + `<context>/` pattern (NO mod.rs)
   - Document co-located errors/events/ports (Proposal 2)
   - Document dependency flow rules (domain → db.rs → cli)
-- [ ] Update `implementation-patterns-consistency-rules.md`:
+- [x] Update `implementation-patterns-consistency-rules.md`:
   - Add "Database Access Rules" from Proposal 4
   - Add "CQRS Naming Conventions" from Proposal 5
   - Add "Sync-First Rules" from Proposal 6
   - Remove cache/ trait references
 
-**1.3 Error Strategy Documentation (Proposal 2)**
+**1.3 Error Strategy Documentation (Proposal 2) - ✅ DONE**
 
-- [ ] Document co-located error pattern:
+- [x] Document co-located error pattern:
   - `note/error.rs`, `schema/error.rs`, etc.
   - NO centralized `errors.rs`
   - Optional top-level `LithosError` composition
-- [ ] Update epic stories to reference context-specific errors
+- [x] Update epic stories to reference context-specific errors
 
-**1.4 Serde Feature Flag Strategy (Proposal 10)**
+**1.4 Serde Feature Flag Strategy (Proposal 10) - ✅ DONE**
 
-- [ ] Document feature flag pattern in architecture docs
-- [ ] Add to domain type guidelines:
+- [x] Document feature flag pattern in architecture docs
+- [x] Add to domain type guidelines:
   - `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]`
   - Feature-gated, not required
 
 #### Acceptance Criteria
 
-- [ ] Architecture docs reflect single-crate structure
-- [ ] No references to old multi-crate structure remain in docs
-- [ ] All new architectural patterns (Zero-copy, sync-first) documented
+- [x] All ADRs renumbered and validated (`mise run adr:validate` passes)
+- [x] New ADR 0017 approved and merged
+- [x] Architecture docs reflect single-crate structure
+- [x] No references to old multi-crate structure remain in docs
+- [x] All new architectural patterns (Zero-copy, sync-first) documented
 
 ---
 

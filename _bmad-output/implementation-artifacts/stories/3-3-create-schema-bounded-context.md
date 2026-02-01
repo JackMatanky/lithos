@@ -245,7 +245,7 @@ So that schemas can define reusable property definitions with rich validation co
 impl PropertyBank {
     /// Decodes $ref path to Property
     /// Used by schema loading (Story 7.5) for $ref resolution
-    pub fn decode(&self, ref_path: &str) -> Result<&Property, DomainError> {
+    pub fn decode(&self, ref_path: &str) -> Result<&Property, SchemaError> {
         // Parse "#/properties/title" → "title"
         // Lookup by property name (not ID)
         // Return &Property for schema composition
@@ -334,12 +334,12 @@ impl Schema {
     /// * `properties` - Fully resolved property list
     ///
     /// # Errors
-    /// Returns `DomainError` if validation fails
+    /// Returns `SchemaError` if validation fails
     pub fn new(
         id: Uuid,
         name: String,
         properties: Vec<Property>,
-    ) -> Result<(Self, DomainEvent), DomainError> {
+    ) -> Result<(Self, DomainEvent), SchemaError> {
         // Validation logic
     }
 }
@@ -385,8 +385,8 @@ impl PropertyBank {
     /// If property with same ID exists, returns existing property
     ///
     /// # Errors
-    /// Returns `DomainError` if property validation fails
-    pub fn register(&mut self, property: Property) -> Result<DomainEvent, DomainError> {
+    /// Returns `SchemaError` if property validation fails
+    pub fn register(&mut self, property: Property) -> Result<DomainEvent, SchemaError> {
         // Registration logic with duplicate check and indexing
         Ok(self.create_updated_event())
     }
@@ -444,13 +444,13 @@ impl Property {
     /// Create a new property with validation
     ///
     /// # Errors
-    /// Returns `DomainError` if property structure is invalid
+    /// Returns `SchemaError` if property structure is invalid
     pub fn new(
         name: String,
         required: bool,
         array: bool,
         spec: Box<dyn PropertySpec<Value = serde_json::Value>>,
-    ) -> Result<Self, DomainError> {
+    ) -> Result<Self, SchemaError> {
         let property = Self {
             id: generate_property_id(&name, &*spec),
             name: name.clone(),
@@ -466,16 +466,16 @@ impl Property {
     /// Validate property structure and constraints
     ///
     /// # Errors
-    /// Returns `DomainError` if validation fails
-    pub fn validate(&self) -> Result<(), DomainError> {
+    /// Returns `SchemaError` if validation fails
+    pub fn validate(&self) -> Result<(), SchemaError> {
         // Validate name
         if self.name.is_empty() {
-            return Err(DomainError::EmptyPropertyName);
+            return Err(SchemaError::EmptyPropertyName);
         }
 
         // Validate name format (identifier rules)
         if !is_valid_property_name(&self.name) {
-            return Err(DomainError::InvalidPropertyName {
+            return Err(SchemaError::InvalidPropertyName {
                 name: self.name.clone(),
             });
         }
@@ -492,7 +492,7 @@ impl Property {
     }
 
     /// Generic validation function that works with any PropertySpec
-    pub fn validate_value(&self, value: &serde_json::Value) -> Result<(), DomainError> {
+    pub fn validate_value(&self, value: &serde_json::Value) -> Result<(), SchemaError> {
         self.spec.validate(value)
     }
 }
@@ -553,10 +553,10 @@ pub trait PropertySpec: Send + Sync + Debug + Clone {
     fn spec_type(&self) -> PropertySpecType;
 
     /// Validate a value against this spec's constraints
-    fn validate(&self, value: &Self::Value) -> Result<(), DomainError>;
+    fn validate(&self, value: &Self::Value) -> Result<(), SchemaError>;
 
     /// Validate the spec's own structural constraints
-    fn validate_spec(&self) -> Result<(), DomainError>;
+    fn validate_spec(&self) -> Result<(), SchemaError>;
 }
 
 /// Enhanced StringSpec with const generics for compile-time length validation
@@ -577,10 +577,10 @@ impl<const MAX_LEN: usize> PropertySpec for StringSpec<MAX_LEN> {
 
     fn spec_type(&self) -> PropertySpecType { PropertySpecType::String }
 
-    fn validate(&self, value: &String) -> Result<(), DomainError> {
+    fn validate(&self, value: &String) -> Result<(), SchemaError> {
         // Compile-time guarantee: value cannot exceed MAX_LEN
         if value.len() > MAX_LEN {
-            return Err(DomainError::StringTooLong {
+            return Err(SchemaError::StringTooLong {
                 max: MAX_LEN,
                 actual: value.len()
             });
@@ -589,7 +589,7 @@ impl<const MAX_LEN: usize> PropertySpec for StringSpec<MAX_LEN> {
         // Check min length
         if let Some(min) = self.min_length {
             if value.len() < min {
-                return Err(DomainError::StringTooShort {
+                return Err(SchemaError::StringTooShort {
                     min,
                     actual: value.len()
                 });
@@ -599,7 +599,7 @@ impl<const MAX_LEN: usize> PropertySpec for StringSpec<MAX_LEN> {
         // Check enum values
         if let Some(ref enums) = self.enum_values {
             if !enums.contains(value) {
-                return Err(DomainError::InvalidEnumValue {
+                return Err(SchemaError::InvalidEnumValue {
                     value: value.clone(),
                     allowed: enums.clone(),
                 });
@@ -615,7 +615,7 @@ impl<const MAX_LEN: usize> PropertySpec for StringSpec<MAX_LEN> {
         Ok(())
     }
 
-    fn validate_spec(&self) -> Result<(), DomainError> {
+    fn validate_spec(&self) -> Result<(), SchemaError> {
         // Validate regex pattern compiles
         if let Some(ref pattern) = self.pattern {
             // Attempt to compile regex
@@ -625,7 +625,7 @@ impl<const MAX_LEN: usize> PropertySpec for StringSpec<MAX_LEN> {
         // Validate enum is not empty if present
         if let Some(ref enums) = self.enum_values {
             if enums.is_empty() {
-                return Err(DomainError::EmptyEnumNotAllowed);
+                return Err(SchemaError::EmptyEnumNotAllowed);
             }
         }
 
@@ -657,10 +657,10 @@ impl<const MIN: f64, const MAX: f64> PropertySpec for NumberSpec<MIN, MAX> {
 
     fn spec_type(&self) -> PropertySpecType { PropertySpecType::Number }
 
-    fn validate(&self, value: &f64) -> Result<(), DomainError> {
+    fn validate(&self, value: &f64) -> Result<(), SchemaError> {
         // Compile-time bounds checking
         if *value < MIN || *value > MAX {
-            return Err(DomainError::NumberOutOfRange {
+            return Err(SchemaError::NumberOutOfRange {
                 value: *value,
                 min: MIN,
                 max: MAX,
@@ -670,17 +670,17 @@ impl<const MIN: f64, const MAX: f64> PropertySpec for NumberSpec<MIN, MAX> {
         // Step validation (integer semantics)
         if let Some(step) = self.step {
             if step == 1.0 && value.fract() != 0.0 {
-                return Err(DomainError::IntegerRequired { value: *value });
+                return Err(SchemaError::IntegerRequired { value: *value });
             }
         }
 
         Ok(())
     }
 
-    fn validate_spec(&self) -> Result<(), DomainError> {
+    fn validate_spec(&self) -> Result<(), SchemaError> {
         if let Some(step) = self.step {
             if step <= 0.0 {
-                return Err(DomainError::InvalidStep { step });
+                return Err(SchemaError::InvalidStep { step });
             }
         }
         Ok(())
@@ -706,8 +706,8 @@ impl NumberSpec {
     /// Validate a number value against this spec
     ///
     /// # Errors
-    /// Returns `DomainError` if validation fails
-    pub fn validate(&self, value: f64) -> Result<(), DomainError> {
+    /// Returns `SchemaError` if validation fails
+    pub fn validate(&self, value: f64) -> Result<(), SchemaError> {
         // Min/max/step validation logic
         Ok(())
     }
@@ -719,7 +719,7 @@ pub struct BoolSpec;
 
 impl BoolSpec {
     /// Validate a boolean value (always succeeds)
-    pub fn validate(&self, _value: bool) -> Result<(), DomainError> {
+    pub fn validate(&self, _value: bool) -> Result<(), SchemaError> {
         Ok(())
     }
 }
@@ -735,8 +735,8 @@ impl DateSpec {
     /// Validate a date string against this spec
     ///
     /// # Errors
-    /// Returns `DomainError` if date doesn't match format
-    pub fn validate(&self, value: &str) -> Result<(), DomainError> {
+    /// Returns `SchemaError` if date doesn't match format
+    pub fn validate(&self, value: &str) -> Result<(), SchemaError> {
         // Format string validation logic
         // Note: Actual chrono parsing happens in adapter layer
         // Domain only validates string format
@@ -758,8 +758,8 @@ impl FileSpec {
     /// Validate a file path against this spec
     ///
     /// # Errors
-    /// Returns `DomainError` if file doesn't meet constraints
-    pub fn validate(&self, path: &str) -> Result<(), DomainError> {
+    /// Returns `SchemaError` if file doesn't meet constraints
+    pub fn validate(&self, path: &str) -> Result<(), SchemaError> {
         // File class and directory validation logic
         Ok(())
     }
@@ -933,7 +933,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum DomainError {
+pub enum SchemaError {
     // Schema errors
     #[error("Invalid schema name: {0}")]
     InvalidSchemaName(String),
@@ -1214,21 +1214,21 @@ This modular structure enables independent development and testing of each servi
 /// )?;
 /// ```
 ///
-/// # Errors
-/// Returns `DomainError::InvalidSchemaName` if name is invalid.
-pub fn new(...) -> Result<Self, DomainError> { }
-````
+    /// # Errors
+    /// Returns `SchemaError::InvalidSchemaName` if name is invalid.
+    pub fn new(...) -> Result<Self, SchemaError> { }
+    ````
 
-## Dev Notes
+    ## Dev Notes
 
-### Project Context Integration
+    ### Project Context Integration
 
-**Current Codebase State:**
+    **Current Codebase State:**
 
-- Workspace structure exists with domain/app/adapters/cli crates
-- **Story 3.1 completed**: Note bounded context implemented with all subentities
-- Domain crate has `DomainError` enum (needs extension for schema errors)
-- `note/` subfolder pattern established in Story 3.1
+    - Workspace structure exists with domain/app/adapters/cli crates
+    - **Story 3.1 completed**: Note bounded context implemented with all subentities
+    - Domain crate has `SchemaError` enum (co-located in `schema/error.rs`)
+    - `note/` subfolder pattern established in Story 3.1
 - Epic 2 (test patterns) ready for domain testing
 - Epic 3 in progress: Note done, Schema next, then Config and Template
 
@@ -1317,8 +1317,8 @@ pub trait PropertySpec: Send + Sync + Debug + Clone {
     type Value: Send + Sync + Debug;
 
     fn spec_type(&self) -> PropertySpecType;
-    fn validate(&self, value: &Self::Value) -> Result<(), DomainError>;
-    fn validate_spec(&self) -> Result<(), DomainError>;
+    fn validate(&self, value: &Self::Value) -> Result<(), SchemaError>;
+    fn validate_spec(&self) -> Result<(), SchemaError>;
 }
 
 // Usage with trait objects for runtime polymorphism
@@ -1329,7 +1329,7 @@ pub struct Property {
 
 impl Property {
     // Generic validation through trait polymorphism
-    pub fn validate_value(&self, value: &serde_json::Value) -> Result<(), DomainError> {
+    pub fn validate_value(&self, value: &serde_json::Value) -> Result<(), SchemaError> {
         self.spec.validate(value)
     }
 }
@@ -1362,9 +1362,9 @@ fn detect_circular_inheritance(
     schema_name: &str,
     parent_name: &str,
     visited: &mut HashSet<String>,
-) -> Result<(), DomainError> {
+) -> Result<(), SchemaError> {
     if visited.contains(parent_name) {
-        return Err(DomainError::CircularInheritance(
+        return Err(SchemaError::CircularInheritance(
             format!("{} → {}", schema_name, parent_name)
         ));
     }
