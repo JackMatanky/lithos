@@ -1453,62 +1453,96 @@ This section provides a concrete execution roadmap aligned with the 10 detailed 
 **Blocking**: Must complete before CQRS
 **Proposals**: 2, 3, 9
 
+**⚠️ CRITICAL: One Context at a Time**
+
+Migrate contexts **individually**, starting with `config`, then `note`, `schema`, `template`. After **each** context migration:
+1. Stage the files (`git add`)
+2. Run pre-commit hooks (`git commit` or `mise run verify`)
+3. **All hooks must pass before proceeding to next context**
+
+This incremental approach prevents accumulation of errors and makes debugging easier.
+
 #### Tasks
 
-**3.1 Module Migration (Proposal 3)**
+**3.1 Module Migration (Proposal 3) - Per Context**
 
-For each context (config, note, schema, template):
+For **each** context (config → note → schema → template), in order:
 
-- [ ] Create `<context>.rs` entry file:
-  - Merge `mod.rs` + `aggregate.rs` content
-  - Module-level documentation
-  - `mod` declarations for submodules
-  - Public re-exports (`pub use`)
-  - Aggregate root implementation
+1. **Create `<context>.rs` entry file**:
+   - Merge `_legacy/crates/domain/src/<context>/mod.rs` + `aggregate.rs` content
+   - Module-level documentation
+   - `mod` declarations for submodules
+   - Public re-exports (`pub use`)
+   - Aggregate root implementation
+   - Add `#[expect(clippy::module_name_repetitions)]` on error enums
+   - Add `#[non_exhaustive]` on public structs/enums
 
-- [ ] Move supporting files to `<context>/` folder:
-  - Keep: types, value objects, logic files
-  - Create: `error.rs` (from `errors.rs`, Proposal 2)
-  - Create: `events.rs` (keep co-located, Proposal 2)
-  - Optional: `ports.rs` (only if traits needed, Proposal 5)
+2. **Create supporting files in `<context>/` folder**:
+   - Move: `types.rs`, `vault.rs`, `global.rs` (config), etc.
+   - Move: `events.rs` (keep co-located, Proposal 2)
+   - Create: `error.rs` (extract from `_legacy/crates/domain/src/errors.rs`)
+   - Optional: `ports.rs` (only if traits needed, Proposal 5)
 
-- [ ] Delete obsolete files:
-  - ❌ `mod.rs` (merged into `<context>.rs`)
-  - ❌ `aggregate.rs` (merged into `<context>.rs`)
-  - ❌ `domain/src/errors.rs` (split into context errors)
-  - ❌ `domain/src/ports/` (moved to context/ports.rs)
+3. **Verify and Commit**:
+   - Run `cargo check -p lithos-core` - must pass
+   - Run `cargo clippy -p lithos-core` - must pass (no errors)
+   - Stage: `git add lithos-core/src/<context>.rs lithos-core/src/<context>/`
+   - Commit: `git commit -m "feat(config): migrate config context to lithos-core"`
+   - **All pre-commit hooks must pass**
 
-**3.2 Error Migration (Proposal 2)**
+4. **Proceed to next context only after clean commit**
 
-For each context:
+**Delete obsolete files after ALL contexts migrated**:
+- ❌ `_legacy/crates/domain/src/config/mod.rs` (merged into `config.rs`)
+- ❌ `_legacy/crates/domain/src/config/aggregate.rs` (merged into `config.rs`)
+- ❌ `_legacy/crates/domain/src/errors.rs` (split into context errors)
+- ❌ `_legacy/crates/domain/src/ports/` (moved to context/ports.rs)
+
+**3.2 Error Migration (Proposal 2) - Per Context**
+
+For **each** context during its migration:
 
 - [ ] Create `<context>/error.rs`:
-  - Extract relevant variants from `DomainError`
+  - Extract relevant variants from `_legacy/crates/domain/src/errors.rs`
   - Use `thiserror::Error` derivation
+  - Add `#[expect(clippy::module_name_repetitions, reason = "Context-specific error")]`
   - Context-specific error types
 
-- [ ] Update all `Result<T, DomainError>` → `Result<T, ContextError>`
+- [ ] Update all `Result<T, DomainError>` → `Result<T, <Context>Error>` within the context
 
-**3.3 Naming Cleanup (Proposal 9)**
+**3.3 Naming Cleanup (Proposal 9) - Per Context**
 
-- [ ] Remove suffixes:
+During each context migration:
+
+- [ ] Remove suffixes in that context:
   - `VaultWriterPort` → `VaultWriter`
   - `VaultFileDto` → `VaultFile`
   - `ConfigPort` → Config (use module scoping instead)
 
-**3.4 Import Rewrites**
+**3.4 Import Rewrites - Per Context**
 
-- [ ] Update all imports:
-  - `use domain::note::Note` → `use lithos_core::note::Note`
-  - Remove all `async_trait` imports
-  - Remove all cache trait imports
+During each context migration:
+
+- [ ] Update imports within the migrated context:
+  - `use crate::...` (internal) instead of `use domain::...`
+  - Remove all `async_trait` imports (sync-first)
+  - Remove all cache trait imports (replaced by `db.rs`)
+
+#### Migration Order
+
+1. **Config** (simplest context, ~6 files) → Commit
+2. **Note** (core entity, ~8 files) → Commit
+3. **Schema** (~7 files) → Commit
+4. **Template** (~6 files) → Commit
 
 #### Acceptance Criteria
 
 - [ ] All domain contexts migrated to `lithos-core/src/`
-- [ ] NO `mod.rs` files remain
+- [ ] NO `mod.rs` files remain in `lithos-core/src/`
 - [ ] All contexts have `error.rs` co-located
-- [ ] `mise run lint` passes (all clippy warnings resolved)
+- [ ] Each context has its own commit with passing pre-commit hooks
+- [ ] `cargo check -p lithos-core` passes after each context
+- [ ] `cargo clippy -p lithos-core` passes (no errors) after each context
 
 ---
 

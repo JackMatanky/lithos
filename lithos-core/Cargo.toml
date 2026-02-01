@@ -1,0 +1,48 @@
+[package]
+name = "lithos-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core domain and infrastructure for Lithos"
+
+[dependencies]
+# Persistence (zero-copy serialization)
+redb.workspace = true
+rkyv.workspace = true
+
+# Utilities
+uuid.workspace = true
+chrono.workspace = true
+blake3.workspace = true
+rand.workspace = true
+regex.workspace = true
+
+# Error Handling (sync-first, no async)
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+
+# Serialization (optional, feature-gated per Proposal 10)
+serde = { workspace = true, features = ["derive"], optional = true }
+serde_json = { workspace = true, optional = true }
+
+# Template & Parsing (domain logic, sync)
+minijinja.workspace = true
+pulldown-cmark.workspace = true
+figment.workspace = true
+
+[dev-dependencies]
+# NO tokio - deferred to Phase 2 (LSP)
+rstest = { workspace = true }
+proptest = { workspace = true }
+lithos-test-utils = { workspace = true }
+
+[features]
+default = []
+# Optional serde support for domain types (Proposal 10)
+serde = ["dep:serde", "dep:serde_json"]
+
+[lints]
+workspace = true
