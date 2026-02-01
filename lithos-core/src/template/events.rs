@@ -10,7 +10,7 @@ use uuid::Uuid;
 ///
 /// # Examples
 /// ```
-/// use lithos_core::template::TemplateCreated;
+/// use lithos_core::template::events::TemplateCreated;
 /// use uuid::Uuid;
 ///
 /// let id = Uuid::now_v7();

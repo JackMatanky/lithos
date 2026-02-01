@@ -9,7 +9,7 @@
 
 use uuid::Uuid;
 
-use super::{Note, NoteError};
+use super::{aggregate::Note, error::NoteError};
 
 /// Command port for Note write operations.
 ///

@@ -54,7 +54,7 @@ pub enum Style {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::note::Target;
+/// use lithos_core::note::link::Target;
 /// use uuid::Uuid;
 ///
 /// // A resolved link to an existing note
@@ -153,7 +153,7 @@ impl Target {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::note::Anchor;
+/// use lithos_core::note::link::Anchor;
 ///
 /// let heading = Anchor::Heading("introduction".into());
 /// let block = Anchor::BlockRef("abc123".into());
@@ -221,7 +221,7 @@ impl Anchor {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::note::{Anchor, EmbedType, Link, Style, Target};
+/// use lithos_core::note::link::{Anchor, EmbedType, Link, Style, Target};
 /// use uuid::Uuid;
 ///
 /// // Wiki-link to an unresolved note with heading anchor
@@ -271,7 +271,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::{Link, Target};
+    /// use lithos_core::note::link::{Link, Target};
     ///
     /// let link = Link::new_wikilink(
     ///     Target::Unresolved {
@@ -322,7 +322,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::{EmbedType, Link, Target};
+    /// use lithos_core::note::link::{EmbedType, Link, Target};
     ///
     /// let embed = Link::new_embed(
     ///     Target::Unresolved {
@@ -354,7 +354,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::{EmbedType, Link, Style, Target};
+    /// use lithos_core::note::link::{EmbedType, Link, Style, Target};
     ///
     /// let embed = Link::new_embed(
     ///     Target::Unresolved {
@@ -400,7 +400,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::{Anchor, Link, Style, Target};
+    /// use lithos_core::note::link::{Anchor, Link, Style, Target};
     ///
     /// let link = Link::new_markdown_link(
     ///     Target::External {
@@ -447,7 +447,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::{Anchor, Link, Style, Target};
+    /// use lithos_core::note::link::{Anchor, Link, Style, Target};
     /// use uuid::Uuid;
     ///
     /// let link = Link::new_wikilink(
@@ -513,7 +513,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::{EmbedType, Link, Target};
+    /// use lithos_core::note::link::{EmbedType, Link, Target};
     ///
     /// let embed = Link::new_embed(
     ///     Target::Unresolved {

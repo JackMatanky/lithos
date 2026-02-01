@@ -16,7 +16,8 @@ use super::{aggregate::SchemaName, error::SchemaError};
 /// # Examples
 ///
 /// ```
-/// use lithos_core::schema::{Graph, SchemaName};
+/// # use lithos_core::schema::graph::Graph;
+/// # use lithos_core::schema::aggregate::SchemaName;
 ///
 /// let mut graph = Graph::new();
 /// graph.add_node(

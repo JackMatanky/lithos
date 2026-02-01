@@ -59,11 +59,12 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-/// Public alias for validation mode configuration.
-pub type ValidationMode = Mode;
 use tracing::{debug, warn};
 
 use super::error::PathValidationError;
+
+/// Public alias for validation mode configuration.
+pub type ValidationMode = Mode;
 
 /// Path validator with configurable security modes.
 ///

@@ -99,7 +99,7 @@ impl PropertySpec {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::schema::{PropertySpec, BoolSpec};
+    /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
     /// let spec = PropertySpec::Bool(BoolSpec::default());
     /// spec.validate(&serde_json::json!(true)).unwrap();
     /// ```
@@ -166,7 +166,7 @@ impl PropertySpec {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::schema::{PropertySpec, StringSpec};
+    /// # use lithos_core::schema::property_spec::{PropertySpec, StringSpec};
     /// let spec = PropertySpec::String(StringSpec::default());
     /// spec.validate_spec().unwrap();
     /// ```

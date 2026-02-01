@@ -39,7 +39,7 @@ pub struct Frontmatter {
 ///
 /// **Pattern 1: Unknown Type (Runtime Inspection).**
 /// ```
-/// use lithos_core::note::FieldValue;
+/// use lithos_core::note::frontmatter::FieldValue;
 ///
 /// # let value = FieldValue::String("test".to_string());
 /// if value.is_string() {
@@ -51,7 +51,7 @@ pub struct Frontmatter {
 ///
 /// **Pattern 2: Known Type (Schema-Driven).**
 /// ```
-/// use lithos_core::note::{FieldValue, FromFieldValue};
+/// use lithos_core::note::frontmatter::{FieldValue, FromFieldValue};
 ///
 /// let value = FieldValue::String("test".to_string());
 /// let extracted: Option<String> = FromFieldValue::from_value(&value);
@@ -79,7 +79,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::FieldValue;
+    /// use lithos_core::note::frontmatter::FieldValue;
     ///
     /// let arr = FieldValue::Array(vec![FieldValue::String("item".to_string())]);
     /// assert!(arr.as_array().is_some());
@@ -110,7 +110,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::FieldValue;
+    /// use lithos_core::note::frontmatter::FieldValue;
     ///
     /// let val = FieldValue::Boolean(true);
     /// assert_eq!(val.as_bool(), Some(true));
@@ -141,7 +141,7 @@ impl FieldValue {
     /// # Examples
     /// ```
     /// use chrono::{DateTime, TimeZone, Utc};
-    /// use lithos_core::note::FieldValue;
+    /// use lithos_core::note::frontmatter::FieldValue;
     ///
     /// let date = Utc.with_ymd_and_hms(2024, 1, 15, 0, 0, 0).unwrap();
     /// let val = FieldValue::Date(date);
@@ -169,7 +169,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::FieldValue;
+    /// use lithos_core::note::frontmatter::FieldValue;
     ///
     /// let val = FieldValue::Number(42.0);
     /// assert_eq!(val.as_number(), Some(42.0));
@@ -198,7 +198,7 @@ impl FieldValue {
     /// ```
     /// use std::collections::HashMap;
     ///
-    /// use lithos_core::note::FieldValue;
+    /// use lithos_core::note::frontmatter::FieldValue;
     ///
     /// let mut obj = HashMap::new();
     /// obj.insert("key".to_string(), FieldValue::String("value".to_string()));
@@ -227,7 +227,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::FieldValue;
+    /// use lithos_core::note::frontmatter::FieldValue;
     ///
     /// let val = FieldValue::String("hello".to_string());
     /// assert_eq!(val.as_str(), Some("hello"));
@@ -254,7 +254,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::FieldValue;
+    /// use lithos_core::note::frontmatter::FieldValue;
     ///
     /// let val = FieldValue::Array(vec![]);
     /// assert!(val.is_array());
@@ -319,7 +319,9 @@ impl FieldValue {
 /// ```
 /// use std::collections::HashMap;
 ///
-/// use lithos_core::note::{FieldValue, Frontmatter};
+/// use lithos_core::note::frontmatter::{
+///     FieldValue, FromFieldValue, Frontmatter,
+/// };
 ///
 /// let mut fields = HashMap::new();
 /// fields.insert("title".to_string(), FieldValue::String("Hello".to_string()));
@@ -334,7 +336,7 @@ impl FieldValue {
 /// ```
 /// use std::collections::HashMap;
 ///
-/// use lithos_core::note::{FieldValue, Frontmatter};
+/// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
 ///
 /// let mut fields = HashMap::new();
 /// fields.insert("mystery".to_string(), FieldValue::Number(42.0));
@@ -406,12 +408,17 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::note::{Frontmatter, FieldValue};
-    /// # use lithos_core::config::{Config, Global, Vault};
+    /// # use lithos_core::note::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_core::config::aggregate::Config;
+    /// # use lithos_core::config::global::Global;
+    /// # use lithos_core::config::vault::Vault;
     /// # use std::collections::HashMap;
+    ///
     /// # let mut fields = HashMap::new();
     /// # fields.insert("aliases".to_string(), FieldValue::String("My Alias".to_string()));
+    ///
     /// # let frontmatter = Frontmatter::new(fields).unwrap();
+    ///
     /// # let global = Global::default();
     /// # let vault = Vault::default();
     /// # let config = Config::build(Some(&global), "/vault", vault).unwrap();
@@ -420,7 +427,10 @@ impl Frontmatter {
     /// ```
     #[inline]
     #[must_use]
-    pub fn aliases(&self, config: &crate::config::Config) -> Vec<String> {
+    pub fn aliases(
+        &self,
+        config: &crate::config::aggregate::Config,
+    ) -> Vec<String> {
         self.get_string_array(&config.frontmatter.alias_key).unwrap_or_default()
     }
 
@@ -429,12 +439,17 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::note::{Frontmatter, FieldValue};
-    /// # use lithos_core::config::{Config, Global, Vault};
+    /// # use lithos_core::note::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_core::config::aggregate::Config;
+    /// # use lithos_core::config::global::Global;
+    /// # use lithos_core::config::vault::Vault;
     /// # use std::collections::HashMap;
+    ///
     /// # let mut fields = HashMap::new();
     /// # fields.insert("file_class".to_string(), FieldValue::String("note".to_string()));
+    ///
     /// # let frontmatter = Frontmatter::new(fields).unwrap();
+    ///
     /// # let global = Global::default();
     /// # let vault = Vault::default();
     /// # let config = Config::build(Some(&global), "/vault", vault).unwrap();
@@ -443,7 +458,10 @@ impl Frontmatter {
     /// ```
     #[inline]
     #[must_use]
-    pub fn file_class(&self, config: &crate::config::Config) -> String {
+    pub fn file_class(
+        &self,
+        config: &crate::config::aggregate::Config,
+    ) -> String {
         self.get_str(&config.frontmatter.file_class_key)
             .map(ToOwned::to_owned)
             .unwrap_or_default()
@@ -457,7 +475,7 @@ impl Frontmatter {
     /// ```
     /// use std::collections::HashMap;
     ///
-    /// use lithos_core::note::{FieldValue, Frontmatter};
+    /// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields
@@ -482,7 +500,7 @@ impl Frontmatter {
     /// ```
     /// use std::collections::HashMap;
     ///
-    /// use lithos_core::note::{FieldValue, Frontmatter};
+    /// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields.insert("priority".to_string(), FieldValue::Number(5.0));
@@ -503,7 +521,7 @@ impl Frontmatter {
     /// ```
     /// use std::collections::HashMap;
     ///
-    /// use lithos_core::note::{FieldValue, Frontmatter};
+    /// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields.insert("published".to_string(), FieldValue::Boolean(true));
@@ -525,7 +543,7 @@ impl Frontmatter {
     /// use std::collections::HashMap;
     ///
     /// use chrono::{DateTime, TimeZone, Utc};
-    /// use lithos_core::note::{FieldValue, Frontmatter};
+    /// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
     ///
     /// let date = Utc.with_ymd_and_hms(2024, 1, 15, 0, 0, 0).unwrap();
     /// let mut fields = HashMap::new();
@@ -546,7 +564,7 @@ impl Frontmatter {
     /// ```
     /// use std::collections::HashMap;
     ///
-    /// use lithos_core::note::{FieldValue, Frontmatter};
+    /// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields.insert("rating".to_string(), FieldValue::Number(4.5));
@@ -569,7 +587,7 @@ impl Frontmatter {
     /// ```
     /// use std::collections::HashMap;
     ///
-    /// use lithos_core::note::{FieldValue, Frontmatter};
+    /// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields.insert("title".to_string(), FieldValue::String("Hello".to_string()));
@@ -593,7 +611,7 @@ impl Frontmatter {
     /// ```
     /// use std::collections::HashMap;
     ///
-    /// use lithos_core::note::{FieldValue, Frontmatter};
+    /// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
     ///
     /// // Array case
     /// let mut fields = HashMap::new();
@@ -637,7 +655,7 @@ impl Frontmatter {
     /// ```
     /// use std::collections::HashMap;
     ///
-    /// use lithos_core::note::{FieldValue, Frontmatter};
+    /// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields.insert("title".to_string(), FieldValue::String("Hello".to_string()));
@@ -661,7 +679,7 @@ impl Frontmatter {
     /// ```
     /// use std::collections::HashMap;
     ///
-    /// use lithos_core::note::{FieldValue, Frontmatter};
+    /// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields
@@ -680,12 +698,17 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::note::{Frontmatter, FieldValue};
-    /// # use lithos_core::config::{Config, Global, Vault};
+    /// # use lithos_core::note::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_core::config::aggregate::Config;
+    /// # use lithos_core::config::global::Global;
+    /// # use lithos_core::config::vault::Vault;
     /// # use std::collections::HashMap;
+    ///
     /// # let mut fields = HashMap::new();
     /// # fields.insert("title".to_string(), FieldValue::String("My Note".to_string()));
+    ///
     /// # let frontmatter = Frontmatter::new(fields).unwrap();
+    ///
     /// # let global = Global::default();
     /// # let vault = Vault::default();
     /// # let config = Config::build(Some(&global), "/vault", vault).unwrap();
@@ -694,7 +717,7 @@ impl Frontmatter {
     /// ```
     #[inline]
     #[must_use]
-    pub fn title(&self, config: &crate::config::Config) -> String {
+    pub fn title(&self, config: &crate::config::aggregate::Config) -> String {
         self.get_str(&config.frontmatter.title_key)
             .map(ToOwned::to_owned)
             .unwrap_or_default()
@@ -779,14 +802,14 @@ mod tests {
     )]
     fn accessors_handle_configured_keys() {
         // GIVEN: a custom config
-        let mut global = crate::config::Global::default();
+        let mut global = crate::config::global::Global::default();
         global.frontmatter.title_key = "subject".to_owned();
         global.frontmatter.file_class_key = "kind".to_owned();
         global.frontmatter.alias_key = "names".to_owned();
-        let config = crate::config::Config::build(
+        let config = crate::config::aggregate::Config::build(
             Some(&global),
             "/v",
-            crate::config::Vault::default(),
+            crate::config::vault::Vault::default(),
         )
         .unwrap();
 

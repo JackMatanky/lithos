@@ -1,14 +1,14 @@
 use super::error::TemplateError;
 use crate::{
     fs,
-    schema::{NumberSpec, StringSpec},
+    schema::property_spec::{NumberSpec, StringSpec},
 };
 
 /// Type-safe variable definition with validation constraints.
 ///
 /// # Examples
 /// ```
-/// # use lithos_core::template::VariableDefinition;
+/// # use lithos_core::template::variable::VariableDefinition;
 /// let definition = VariableDefinition::Number {
 ///     default: Some(3.0),
 ///     min: Some(1.0),
@@ -214,7 +214,7 @@ impl VariableDefinition {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::template::VariableDefinition;
+    /// # use lithos_core::template::variable::VariableDefinition;
     /// let definition = VariableDefinition::String {
     ///     default: None,
     ///     min_length: Some(1),

@@ -26,7 +26,7 @@ use crate::patterns;
 ///
 /// # Examples
 /// ```
-/// # use lithos_core::schema::PropertyName;
+/// # use lithos_core::schema::property::PropertyName;
 /// let name = PropertyName::new("status".to_string()).unwrap();
 /// assert_eq!(&name.0, "status");
 /// assert!(PropertyName::new("".to_string()).is_err());
@@ -170,8 +170,8 @@ impl Property {
     /// # Examples
     ///
     /// ```
-    /// # use lithos_core::schema::{Property, PropertyName};
-    /// # use lithos_core::schema::{PropertySpec, BoolSpec};
+    /// # use lithos_core::schema::property::{Property, PropertyName};
+    /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
     /// # use uuid::Uuid;
     /// let name = PropertyName::new("is_active".to_string()).unwrap();
     /// let spec = PropertySpec::Bool(BoolSpec::default());
@@ -239,11 +239,13 @@ impl Property {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::schema::{Property, PropertyName, PropertySpec, BoolSpec};
+    /// # use lithos_core::schema::property::{Property, PropertyName};
+    /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
     /// # use uuid::Uuid;
     /// let name = PropertyName::new("enabled".to_string()).unwrap();
     /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property = Property::new(Uuid::now_v7(), name, true, false, spec).unwrap();
+    /// let property =
+    ///     Property::new(Uuid::now_v7(), name, true, false, spec).unwrap();
     /// property.validate_value(&serde_json::json!(true)).unwrap();
     /// ```
     #[inline]
@@ -268,7 +270,6 @@ impl Property {
 }
 
 #[cfg(test)]
-#[expect(dead_code, reason = "Test fixtures may be used by other crates")]
 /// Test fixtures and builders for `Property`.
 pub mod fixtures {
     use uuid::Uuid;

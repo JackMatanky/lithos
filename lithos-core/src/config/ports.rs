@@ -3,7 +3,9 @@
 //! This module defines command and query trait interfaces for configuration
 //! management. Note: Per proposal, async is removed - sync-first approach.
 
-use super::{Config, ConfigError, Global, Vault};
+use super::{
+    aggregate::Config, error::ConfigError, global::Global, vault::Vault,
+};
 
 /// Command port for configuration write operations.
 ///

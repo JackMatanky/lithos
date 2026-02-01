@@ -2,7 +2,7 @@
 ///
 /// # Examples
 /// ```
-/// # use lithos_core::template::PlaceholderSyntax;
+/// # use lithos_core::template::syntax::PlaceholderSyntax;
 /// let syntax = PlaceholderSyntax::new("{{", "}}");
 /// assert_eq!(syntax.wrap("title"), "{{title}}");
 /// ```

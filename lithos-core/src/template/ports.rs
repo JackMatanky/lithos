@@ -2,7 +2,9 @@
 
 use uuid::Uuid;
 
-use super::{Composition, Template, TemplateError};
+use super::{
+    aggregate::Template, composition::Composition, error::TemplateError,
+};
 
 /// Command port for template-related write operations.
 pub trait Command: Send + Sync {
