@@ -128,11 +128,11 @@ So that we maintain architectural integrity and document important decisions.
 - docs/adr/0005-configuration-management.md
 - docs/adr/0006-error-handling-diagnostics.md
 - docs/adr/0007-event-orchestration.md
-- docs/adr/0008-event-driven-testing-patterns.md
-- docs/adr/0009-cqrs-testing-patterns.md
-- docs/adr/0010-centralized-test-utilities.md
+- docs/testing/event.md
+- docs/testing/cqrs.md
+- docs/testing/README.md
 - docs/adr/0007-event-orchestration.md
-- docs/adr/0008-event-driven-testing-patterns.md
+- docs/testing/event.md
 - .mise/tasks/adr/validate.sh
 - .mise/tasks/adr/metrics.sh
 - mise.toml

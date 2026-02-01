@@ -154,7 +154,7 @@ This story implements the foundational file loading infrastructure for the entir
 
 **Security Requirements:**
 - Path validation: Reject absolute paths, path traversal attempts via .. components
-- Symlink handling: Allow symlinks for dotfile flexibility (ADR 0015 - security via content validation)
+- Symlink handling: Allow symlinks for dotfile flexibility (ADR 0011 (File Loading Port) - security via content validation)
 - Content validation: Reject binary files, enforce reasonable size limits
 - Error sanitization: No sensitive information in error messages
 

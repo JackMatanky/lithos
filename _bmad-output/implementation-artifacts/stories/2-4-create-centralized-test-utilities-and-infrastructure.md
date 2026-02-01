@@ -232,9 +232,9 @@ fn test_with_artifact_output() {
 
 ### References
 
-- [ADR 0010: Centralized Test Utilities](docs/adr/0010-centralized-test-utilities.md) - Comprehensive test utilities framework and implementation patterns
-- [ADR 0009: CQRS Testing Patterns](docs/adr/0009-cqrs-testing-patterns.md) - CQRS-specific testing patterns integration
-- [ADR 0008: Event-Driven Testing Patterns](docs/adr/0008-event-driven-testing-patterns.md) - Event testing foundation
+- [Testing Guide: Centralized Test Utilities](docs/testing/README.md) - Comprehensive test utilities framework and implementation patterns
+- [Testing Guide: CQRS Testing Patterns](docs/testing/cqrs.md) - CQRS-specific testing patterns integration
+- [Testing Guide: Event-Driven Testing Patterns](docs/testing/event.md) - Event testing foundation
 - [Research: Rust Testing Best Practices - https://www.shuttle.dev/blog/2024/03/21/testing-in-rust]
 - [Research: Test Fixtures in Rust - https://dawchihliou.github.io/articles/testing-with-fixtures-in-rust]
 

@@ -220,7 +220,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 - [Source: project-context.md#Async-Resource-Safety]
 - [Source: project-context.md#Error--Diagnostic-Standards]
 - [Source: Epic 5 Implementation Notes]
-- [Source: ADR 0016: Caching Strategy]
+- [Source: ADR 0012 (Caching - Superseded): Caching Strategy]
 - [Source: Story 5.1: Define Cache Trait and Error Hierarchy]
 
 ## Dev Agent Record

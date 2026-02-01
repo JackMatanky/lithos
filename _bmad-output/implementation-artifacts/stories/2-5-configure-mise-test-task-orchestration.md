@@ -330,8 +330,8 @@ hide = true
 ### References
 
 - [Mise Task Orchestration Guide](docs/mise-task-orchestration.md) - Best practices for mise task orchestration in Lithos
-- [ADR 0010: Centralized Test Utilities](docs/adr/0010-centralized-test-utilities.md) - Test utilities framework integration
-- [ADR 0009: CQRS Testing Patterns](docs/adr/0009-cqrs-testing-patterns.md) - CQRS testing patterns
+- [Testing Guide: Centralized Test Utilities](docs/testing/README.md) - Test utilities framework integration
+- [Testing Guide: CQRS Testing Patterns](docs/testing/cqrs.md) - CQRS testing patterns
 - [Mise Documentation - https://mise.jdx.dev/tasks/](https://mise.jdx.dev/tasks/) - Official mise task documentation
 
 ### Latest Tech Information

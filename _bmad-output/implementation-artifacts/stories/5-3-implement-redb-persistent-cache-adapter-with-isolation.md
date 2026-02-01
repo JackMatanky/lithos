@@ -229,7 +229,7 @@ So that data persists across application restarts and multiple cache consumers c
 - [Source: project-context.md#Hexagonal-Boundary-Enforcement]
 - [Source: project-context.md#Async-Resource-Safety]
 - [Source: ADR 0002: Storage - Redb + rkyv]
-- [Source: ADR 0016: Caching Strategy]
+- [Source: ADR 0012 (Caching - Superseded): Caching Strategy]
 - [Source: Story 5.1: Define Cache Trait and Error Hierarchy]
 
 ## Dev Agent Record

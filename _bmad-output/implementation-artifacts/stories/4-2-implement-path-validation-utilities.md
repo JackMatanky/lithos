@@ -120,7 +120,7 @@ This story implements the security foundation for all file-based adapters. Inste
 ### References
 - Epic 4: `_bmad-output/planning-artifacts/epics/epic-4-file-loading-strategy-foundation-mvp-core.md`
 - Project Context: `_bmad-output/project-context.md`
-- ADR 0015: `docs/adr/0015-file-loading-port-boundary.md`
+- ADR 0011 (File Loading Port): `docs/adr/0015-file-loading-port-boundary.md`
 
 ## Dev Agent Record
 
