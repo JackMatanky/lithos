@@ -27,7 +27,7 @@ To activate specialized agents, use: `"As [agent-name], ..."` (e.g., `"As dev, i
 ### Technology Stack
 - **Language**: Rust (latest stable)
 - **Architecture**: Hexagonal (Ports & Adapters) - domain isolated from infrastructure
-- **Key Libraries**: redb (zero-copy DB), moka (concurrent cache), rkyv (serialization)
+- **Key Libraries**: redb (zero-copy DB), moka (concurrent cache), rkyv (serialization), pulldown-cmark (markdown parsing)
 - **Testing**: nextest, criterion benchmarks, tarpaulin coverage
 - **Build**: cargo workspace with mise task orchestration
 
@@ -67,6 +67,24 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 **Benchmarks?** → `benches/`
 
 ## Critical Rust Patterns & Anti-Patterns
+
+For deeper guidance on Rust style/module organization/tooling and crate-specific usage, start at [docs/refs/rust/README.md](docs/refs/rust/README.md).
+
+### Repo-Specific Rust Notes (High Signal)
+
+- **Clippy suppressions**: Prefer local `#[expect(clippy::lint_name, reason = "...")]` over `#[allow(...)]`; avoid crate/module-wide suppressions unless it’s a deliberate policy.
+- **Doc tests**: `nextest` does not run doctests; when changing public docs/examples, also run `cargo test --doc`.
+- **Module layout**: Prefer Rust 2018+ `file.rs` + `file/` layout for larger modules; avoid adding new `mod.rs` in new code.
+- **Rustdoc hygiene**: For fallible/unsafe/panicking public APIs, document `# Errors`, `# Safety`, and/or `# Panics` (see [docs/refs/rust/style.md](docs/refs/rust/style.md)).
+
+### Zero-Copy Library Footguns (Read Before Editing Hot Paths)
+
+- **rkyv format control**: Treat endianness/alignment/pointer-width feature choices as a persisted-format contract; changing them is a breaking change for on-disk bytes (see [docs/refs/crates/rkyv.md](docs/refs/crates/rkyv.md)).
+- **rkyv validation**: Use `rkyv::access` at trust boundaries (files/network/user input); reserve `access_unchecked` for trusted, internally produced bytes.
+- **redb guards**: `AccessGuard` values borrow the transaction/table; do not return or store them beyond the transaction scope.
+- **redb custom Value**: Due to orphan rules, implement `redb::Value` via local newtypes/wrappers when you need custom encoding.
+- **moka determinism**: Cache stats are eventually consistent; in tests that assert stats/entry counts, call `run_pending_tasks()`.
+- **moka callbacks**: Eviction listeners must not panic and should be fast (they run on user threads).
 
 ## Rust Idioms (Rules)
 
@@ -150,6 +168,7 @@ Before marking any task complete:
 - [ ] No `unwrap()`/`panic!` in production code
 - [ ] Hexagonal boundaries respected (domain has zero external deps)
 - [ ] Documentation updated (doc comments for public APIs)
+- [ ] Doc tests run when docs/examples changed (`cargo test --doc`)
 - [ ] ADR created if architectural decision made
 
 ## Before Submitting Work
