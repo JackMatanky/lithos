@@ -1,0 +1,234 @@
+//! Tag subentity for Note aggregate.
+//!
+//! Represents hierarchical tags used for note organization.
+
+use super::error::NoteError;
+
+/// Represents a hierarchical tag with segments.
+///
+/// Tags follow the format `#segment1/segment2/segment3` and are used
+/// for organizing and categorizing notes.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Tag {
+    /// Full tag path (without leading `#`).
+    full_path: FullPath,
+    /// Individual path segments.
+    segments: Segments,
+}
+
+impl Tag {
+    /// Returns the full tag path without the leading `#`.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.full_path.as_str()
+    }
+
+    /// Creates a new `Tag` from a raw tag string.
+    ///
+    /// # Tag Format
+    /// - Must start with `#`
+    /// - Segments separated by `/`
+    /// - Segments must match alphanumeric, underscore, or hyphen
+    /// - No empty segments allowed
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::note::Tag;
+    ///
+    /// let tag = Tag::new("#work/project/urgent").unwrap();
+    /// assert_eq!(tag.as_str(), "work/project/urgent");
+    /// assert_eq!(tag.segments(), &[
+    ///     "work".into(),
+    ///     "project".into(),
+    ///     "urgent".into()
+    /// ]);
+    ///
+    /// let simple_tag = Tag::new("#personal").unwrap();
+    /// assert_eq!(simple_tag.as_str(), "personal");
+    /// assert_eq!(simple_tag.segments(), &["personal".into()]);
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`NoteError::Tag`] if the input doesn't start with `#`, the tag
+    /// is empty, contains empty segments, or contains invalid characters.
+    #[inline]
+    pub fn new(input: &str) -> Result<Self, NoteError> {
+        let full_path = FullPath::new(input)?;
+        let segments = Segments::new(full_path.as_str())?;
+
+        Ok(Self {
+            full_path,
+            segments,
+        })
+    }
+
+    /// Returns the individual path segments.
+    #[inline]
+    #[must_use]
+    pub fn segments(&self) -> &[Box<str>] {
+        self.segments.as_slice()
+    }
+}
+
+/// Internal wrapper for the full tag path string.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct FullPath(Box<str>);
+
+impl FullPath {
+    /// Returns string reference.
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Creates a new `FullPath` from a raw tag string.
+    fn new(input: &str) -> Result<Self, NoteError> {
+        if !input.starts_with('#') {
+            return Err(NoteError::Tag("Tag must start with #".to_owned()));
+        }
+
+        #[expect(
+            clippy::string_slice,
+            reason = "Safe because we check input.starts_with('#') above"
+        )]
+        let tag_path = &input[1..];
+
+        if tag_path.is_empty() {
+            return Err(NoteError::Tag("Tag cannot be empty".to_owned()));
+        }
+
+        Ok(Self(tag_path.into()))
+    }
+}
+
+/// Internal wrapper for tag segments.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Segments(Vec<Box<str>>);
+
+impl Segments {
+    /// Returns segments as slice.
+    fn as_slice(&self) -> &[Box<str>] {
+        &self.0
+    }
+
+    /// Creates new `Segments` from a tag path.
+    fn new(tag_path: &str) -> Result<Self, NoteError> {
+        let segments: Vec<&str> = tag_path.split('/').collect();
+
+        if segments.iter().any(|s| s.is_empty()) {
+            return Err(NoteError::Tag("Empty tag segment".to_owned()));
+        }
+
+        for segment in &segments {
+            if !segment
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
+                return Err(NoteError::Tag(format!(
+                    "Invalid tag segment '{segment}': only alphanumeric, \
+                     underscore, and hyphen allowed"
+                )));
+            }
+        }
+
+        Ok(Self(segments.into_iter().map(Into::into).collect()))
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test module uses Result::unwrap() for ergonomic arrangement and \
+              assertions. Acceptable in test-only code paths."
+)]
+mod tests {
+    use super::*;
+
+    mod new {
+        use rstest::rstest;
+
+        use super::*;
+
+        #[test]
+        fn accessors_return_expected_values() {
+            let tag = Tag::new("#work/project").unwrap();
+            assert_eq!(tag.as_str(), "work/project");
+            assert_eq!(tag.segments(), &["work".into(), "project".into()]);
+        }
+
+        #[rstest]
+        #[case::simple("#personal", Ok(vec!["personal"]))]
+        #[case::hierarchical(
+            "#work/project/urgent",
+            Ok(vec!["work", "project", "urgent"])
+        )]
+        #[case::missing_hash(
+            "invalid",
+            Err(NoteError::Tag("Tag must start with #".to_owned()))
+        )]
+        #[case::only_hash(
+            "#",
+            Err(NoteError::Tag("Tag cannot be empty".to_owned()))
+        )]
+        #[case::empty_segments(
+            "#work//urgent",
+            Err(NoteError::Tag("Empty tag segment".to_owned()))
+        )]
+        #[case::invalid_chars(
+            "#work project",
+            Err(NoteError::Tag(
+                "Invalid tag segment 'work project': only alphanumeric, \
+                 underscore, and hyphen allowed"
+                    .to_owned(),
+            ))
+        )]
+        fn tag_parsing_matrix(
+            #[case] input: &str,
+            #[case] expected: Result<Vec<&str>, NoteError>,
+        ) {
+            let result = Tag::new(input);
+
+            match expected {
+                Ok(segments) => {
+                    assert!(
+                        result.is_ok(),
+                        "Failed for {input}: {:?}",
+                        result.err()
+                    );
+                    let tag = result.unwrap();
+                    let actual_segments: Vec<&str> =
+                        tag.segments().iter().map(AsRef::as_ref).collect();
+                    assert_eq!(actual_segments, segments);
+                }
+                Err(e) => {
+                    assert_eq!(result.unwrap_err(), e);
+                }
+            }
+        }
+    }
+
+    mod proptests {
+        use proptest::prelude::*;
+
+        use super::*;
+
+        proptest! {
+            #[test]
+            fn rejects_invalid_characters_in_segments(
+                s in "#[a-zA-Z0-9_-]*/[ !@#$%^&*()]+/[a-zA-Z0-9_-]*"
+            ) {
+                let result = Tag::new(&s);
+                prop_assert!(result.is_err());
+            }
+
+            #[test]
+            fn accepts_valid_alphanumeric_tags(
+                s in "#[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*"
+            ) {
+                let result = Tag::new(&s);
+                prop_assert!(result.is_ok());
+            }
+        }
+    }
+}

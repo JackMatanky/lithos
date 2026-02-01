@@ -17,21 +17,130 @@ section: "Implementation Standards"
 
 **Rust Naming Conventions:**
 
+- **Crate/Package Names:** Cargo *package* names are `kebab-case` (e.g., `lithos-core`, `lithos-cli`). In Rust code, the crate import path is `snake_case` (e.g., `lithos_core`).
 - **Modules & Files:** `snake_case` (e.g., `vault_indexer.rs`, `frontmatter_service.rs`)
 - **Functions & Variables:** `snake_case` (e.g., `execute_template`, `vault_path`)
 - **Structs & Enums:** `PascalCase` (e.g., `Note`, `DomainError`, `TemplateEngine`)
 - **Traits:** `PascalCase` ending with trait name (e.g., `CacheWriter`, `VaultReader`) or `Port` (e.g., `StoragePort`)
 - **Constants:** `SCREAMING_SNAKE_CASE` (e.g., `MAX_VAULT_SIZE`, `DEFAULT_TIMEOUT`)
-- **Crate Names:** `snake_case` matching directory (e.g., `lithos-domain`, `lithos-app`)
-- **Test Functions:** `snake_case` with `test_` prefix (e.g., `test_execute_template`)
+- **Test Functions:** `snake_case` with descriptive names that read like a sentence (e.g., `returns_blob_when_larger_than_b`). Avoid generic `test_*` prefixes; use `mod <unit_under_test>` to group related tests when helpful.
 - **Macros:** `snake_case` (e.g., `my_macro!`)
+
+**Naming Discipline (Semantic Consistency):**
+
+- **Say what it means:** Prefer names that make roles and direction obvious (e.g., `needle`/`haystack`, `source`/`destination`, `before`/`after`).
+- **Consistent word order:** Pick a project-wide pattern and stick to it. If most functions read as `verb_noun`, new APIs should follow `verb_noun` unless there is a strong reason not to.
+- **Be concise (but not cryptic):** Avoid nonstandard abbreviations and “inside jokes”; shorten only when meaning remains obvious.
+- **Use simple, correct words:** Prefer the smallest set of small words that preserve meaning; avoid terms that can be read two ways.
+- **Unify concept names:** One term per concept. If we choose “vault” (not “repo”/“workspace”) for the user’s note collection, use “vault” consistently in APIs, docs, and modules.
+- **Avoid type-noise in names:** Don’t encode types (e.g., `*_str`, `*_vec`) unless it disambiguates two values with the same conceptual meaning.
+
+**Pattern-Match Variable Naming:**
+
+- When destructuring, keep field names whenever possible, and avoid renaming to single letters.
+- Use struct field shorthand to preserve the domain vocabulary.
+
+✅ Prefer:
+
+```rust
+if let Some(response) = response { /* ... */ }
+let Self { name, path } = self;
+match state {
+    State::Reading(file) => { /* ... */ }
+    State::Evaluating { workload, .. } => { /* ... */ }
+}
+```
+
+⚠️ Avoid:
+
+```rust
+if let Some(r) = response { /* ... */ }
+let Self { name: some_name, path: name } = self;
+match state {
+    State::Reading(data_source) => { /* ... */ }
+    State::Evaluating { workload: to_eval, .. } => { /* ... */ }
+}
+```
+
+**Pattern Matching Discipline:**
+
+- **Match exhaustively to draw attention:** Prefer destructuring structs/enums to make it obvious which fields are considered. This helps the compiler alert us when structures evolve.
+- **Don’t pattern-match references:** Prefer explicit dereferencing (`|x| *x`) over `|&x| x`.
+- **Avoid numeric tuple indexing:** Prefer destructuring into named values (`let (x, y) = point`) over `.0`/`.1`.
+- **Avoid pattern-matching in `fn` parameters:** Unpack on the first line inside the function; keep signatures clean.
+
+✅ Prefer:
+
+```rust
+// Exhaustive destructuring (future-proofing)
+let Self { name, path, .. } = self;
+
+// Explicit deref, not matching references
+let values: Vec<_> = refs.iter().map(|x| *x).collect();
+
+// Name tuple elements
+let (x1, y1) = point1;
+let (x2, y2) = point2;
+
+// Keep function signature clean
+fn new(config: ServerConfig) {
+    let ServerConfig { db_path, working_path } = config;
+    // ...
+}
+```
+
+⚠️ Avoid:
+
+```rust
+// Implicit access hides evolution of the type
+let (name, path) = (&self.name, &self.path);
+
+// Reference pattern matching obscures deref
+let values: Vec<_> = refs.iter().map(|&x| x).collect();
+
+// Tuple indexing loses semantics
+let gradient = (point2.1 - point1.1) / (point2.0 - point1.0);
+
+// Pattern matching in parameters adds noise to signatures
+fn new(ServerConfig { db_path, working_path }: ServerConfig) {
+    // ...
+}
+```
+
+**Generic Type Parameter Naming:**
+
+- Generic type parameters should be single-letter to avoid looking like concrete types (common: `T`, `E`, `K`, `V`).
+
+**Lifetime Parameter Naming:**
+
+- Use lifetimes as “documentation”: pick names derived from what is being borrowed (e.g., `'db`, `'tx`, `'bytes`, `'src`).
+- Avoid `'a`/`'b` unless there is a compelling reason; avoid numbers in lifetime names.
+
+✅ Prefer:
+
+```rust
+pub struct ArchivedGuard<'db, T> { /* ... */ }
+pub struct SchemaView<'bytes> { /* ... */ }
+```
+
+⚠️ Avoid:
+
+```rust
+pub struct ArchivedGuard<'a, T> { /* ... */ }
+pub struct SchemaView<'a> { /* ... */ }
+```
 
 **API Contract Naming:**
 
 - **Trait Methods:** `snake_case` with clear action verbs (e.g., `persist_note`, `find_templates`)
 - **Port Traits:** Descriptive names ending with `Port` (e.g., `CacheWriterPort`, `VaultReaderPort`)
-- **DTO Structs:** `PascalCase` ending with `Dto` (e.g., `VaultFileDto`, `FileDatesDto`)
+- **DTO Structs:** Prefer role-based names over type-suffixes (e.g., `VaultFile`, `VaultFileRecord`, `CreateNoteRequest`). If `Dto` is used, reserve it for strict boundary/wire types (CLI/adapters/serde), not domain/core.
 - **Event Names:** `PascalCase` with past tense (e.g., `NoteIndexed`, `TemplateExecuted`)
+
+**Builder Naming:**
+
+- If a builder for `MyType` is provided, expose `MyType::builder() -> MyTypeBuilder` and `MyTypeBuilder::build() -> Result<MyType, _>`.
+- Builder setters should read naturally and match field names where possible.
 
 ## Structure Patterns
 
@@ -242,7 +351,7 @@ pub enum DomainEvent {
 }
 
 #[tokio::test]
-async fn test_vault_indexing_success() {
+async fn vault_indexing_succeeds() {
     let mock_writer = Arc::new(MockVaultWriter::new());
     let mock_bus = Arc::new(MockEventBus::new());
     let service = VaultIndexerService::new(mock_writer, mock_bus);
