@@ -86,13 +86,13 @@ pub use aggregate::Note;
 
 ### Public Visibility Levels
 
-| Keyword | Visibility | Use Case |
-|---------|-----------|----------|
-| `pub` | Public to all | External API |
-| `pub(crate)` | Public within crate | Internal API |
-| `pub(super)` | Public to parent module | Helper functions |
-| `pub(in crate::path)` | Public to specific path | Rare, specific needs |
-| (none) | Private to module | Implementation details |
+| Keyword               | Visibility              | Use Case               |
+|-----------------------|-------------------------|------------------------|
+| `pub`                 | Public to all           | External API           |
+| `pub(crate)`          | Public within crate     | Internal API           |
+| `pub(super)`          | Public to parent module | Helper functions       |
+| `pub(in crate::path)` | Public to specific path | Rare, specific needs   |
+| (none)                | Private to module       | Implementation details |
 
 ### Hexagonal Architecture via Visibility
 
@@ -351,14 +351,14 @@ When converting from old to new style:
 
 ## Quick Reference
 
-| Question | Answer |
-|----------|--------|
-| **File or folder?** | File if <200 lines, folder if larger |
-| **mod.rs or file.rs?** | Use `file.rs` (modern style) |
-| **Where is public API?** | In the module declaration file (`note.rs`) |
-| **Where is implementation?** | In the folder (`note/aggregate.rs`) |
-| **How to enforce boundaries?** | Use `pub(crate)`, not separate crates |
-| **How to organize?** | By feature/context, not by layer |
+| Question                       | Answer                                     |
+|--------------------------------|--------------------------------------------|
+| **File or folder?**            | File if <200 lines, folder if larger       |
+| **mod.rs or file.rs?**         | Use `file.rs` (modern style)               |
+| **Where is public API?**       | In the module declaration file (`note.rs`) |
+| **Where is implementation?**   | In the folder (`note/aggregate.rs`)        |
+| **How to enforce boundaries?** | Use `pub(crate)`, not separate crates      |
+| **How to organize?**           | By feature/context, not by layer           |
 
 ---
 
