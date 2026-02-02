@@ -11,6 +11,11 @@
 //!   Semantic.
 //! - Links are value objects owned by the Note aggregate; the parent
 //!   relationship is implicit through containment.
+#![expect(
+    clippy::exhaustive_structs,
+    reason = "rkyv generates exhaustive ArchivedNote/ArchivedNotePath despite \
+              #[non_exhaustive]"
+)]
 
 use uuid::Uuid;
 
@@ -48,19 +53,23 @@ use crate::fs::validate_vault_path;
 /// let note = Note::new(new_id, "projects/example.md".to_string()).unwrap();
 /// assert_eq!(note.path.as_str(), "projects/example.md");
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[expect(
-    clippy::partial_pub_fields,
-    reason = "Aggregate root requires mixed visibility for domain events"
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Note {
     /// UUID v7 identity (time-ordered).
     pub id: Uuid,
     /// Vault-relative path.
     pub path: NotePath,
-    /// YAML metadata.
-    pub frontmatter: Option<Frontmatter>,
     /// All links (wiki-links, markdown links, and embeds).
     pub links: Vec<Link>,
     /// Hierarchical tags.
@@ -71,9 +80,17 @@ pub struct Note {
     pub tasks: Vec<Task>,
     /// Document sections.
     pub sections: Vec<Section>,
-    /// Domain events pending emission (not serialized).
+    /// YAML metadata.
+    /// NOTE: Frontmatter is NOT serialized via rkyv due to recursive
+    /// `FieldValue`. Store it separately or use serde for full Note
+    /// serialization.
+    #[rkyv(with = rkyv::with::Skip)]
     #[serde(skip)]
-    pending_events: Vec<NoteEvents>,
+    pub frontmatter: Option<Frontmatter>,
+    /// Domain events pending emission (not serialized).
+    #[rkyv(with = rkyv::with::Skip)]
+    #[serde(skip)]
+    pub pending_events: Vec<NoteEvents>,
 }
 
 /// Validated vault-relative path for a note.
@@ -388,7 +405,7 @@ pub mod fixtures {
             FieldValue::Date(
                 chrono::DateTime::parse_from_rfc3339("2024-01-15T14:30:00Z")
                     .unwrap()
-                    .into(),
+                    .timestamp(),
             ),
         );
         Frontmatter::new(fields).expect("Valid frontmatter")

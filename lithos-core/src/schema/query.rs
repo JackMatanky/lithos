@@ -30,42 +30,29 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `SchemaError` if query fails.
     ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Use ``db.get_archived()`` for zero-copy read
-    /// 2. Deserialize if needed
-    /// 3. Return Option<Schema>
+    /// # Note
+    /// Schema is stored by name, not ID. For now, returns `None`.
+    /// A name→ID index would be needed for full implementation.
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement schema lookup by ID"
-    )]
     pub fn find_by_id(&self, _id: Uuid) -> Result<Option<Schema>, SchemaError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Find schema by ID using `db.get()`")
+        // Schema is stored by name, not ID
+        // For now, return None - would need name→id index for full
+        // implementation
+        Ok(None)
     }
 
     /// Find a schema by its unique name.
     ///
     /// # Errors
     /// Returns `SchemaError` if query fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Use name→ID index to resolve name to ID
-    /// 2. Look up schema by resolved ID
-    /// 3. Return Option<Schema>
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement schema lookup by name"
-    )]
     pub fn find_by_name(
         &self,
-        _name: &str,
+        name: &str,
     ) -> Result<Option<Schema>, SchemaError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Find schema by name using index")
+        self.db
+            .get_owned("schemas", name)
+            .map_err(|e| SchemaError::Storage(e.to_string()))
     }
 
     /// List all available schemas.
@@ -73,18 +60,13 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `SchemaError` if query fails.
     ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Iterate over all schemas in table
-    /// 2. Use ``db.scan()`` or similar range query
-    /// 3. Return Vec<Schema>
+    /// # Note
+    /// MVP implementation returns an empty vec.
+    /// Full implementation would need a range scan or index.
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement list all schemas"
-    )]
     pub fn list(&self) -> Result<Vec<Schema>, SchemaError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: List all schemas using table scan")
+        // Would need range scan or index
+        // For MVP, return empty vec
+        Ok(Vec::new())
     }
 }

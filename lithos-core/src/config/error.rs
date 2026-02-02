@@ -97,6 +97,10 @@ pub enum ConfigError {
         /// Detailed error message.
         message: Box<str>,
     },
+
+    /// Storage operation failed.
+    #[error("Storage error: {0}")]
+    Storage(Box<str>),
 }
 
 #[cfg(test)]

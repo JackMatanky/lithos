@@ -1696,6 +1696,246 @@ For each context:
 
 ---
 
+### Phase 6.5: Frontmatter Serialization Solution (Dev)
+
+**Status**: CRITICAL - BLOCKING MVP
+**Duration**: 1-2 days
+**Blocking**: Must complete before verification
+**Proposals**: 4 (Database Layer)
+**Problem**: Recursive `FieldValue` enum causes trait solver overflow in rkyv derives
+
+#### Background
+
+During Phase 6 implementation, we discovered that `Frontmatter` contains a recursive `FieldValue` enum:
+
+```rust
+pub enum FieldValue {
+    Array(Vec<FieldValue>),      // Recursion
+    Object(HashMap<String, FieldValue>),  // Recursion
+    Boolean(bool),
+    String(String),
+    Number(f64),
+    Date(i64),
+}
+```
+
+This causes rustc trait solver to overflow when deriving rkyv traits, preventing Note serialization.
+
+**Current Workaround**: Note aggregate skips frontmatter field using `#[rkyv(with = rkyv::with::Skip)]`, resulting in data loss (frontmatter always `None` after deserialization).
+
+**Impact**:
+- ❌ **BLOCKING**: Frontmatter is critical metadata for MVP (titles, aliases, file classes, custom fields)
+- ❌ Note serialization is incomplete without frontmatter
+- ❌ Users lose all YAML frontmatter data on round-trip
+
+#### Solution Options
+
+**Option A: Separate Frontmatter Storage (RECOMMENDED)**
+
+Store frontmatter separately from Note aggregate using JSON/TOML serialization:
+
+```rust
+// db.rs additions
+impl Database {
+    /// Store frontmatter as JSON (serde-based, not rkyv)
+    pub fn put_json<K, V>(&self, table: &str, key: &K, value: &V) -> Result<(), DbError>
+    where
+        K: rkyv::Serialize,
+        V: serde::Serialize,
+    {
+        let json = serde_json::to_vec(value)?;
+        let key_bytes = rkyv::to_bytes(key)?;
+
+        let mut txn = self.inner.begin_write()?;
+        let mut table = txn.open_table(TableDefinition::new(table))?;
+        table.insert(key_bytes.as_ref(), json.as_slice())?;
+        txn.commit()?;
+        Ok(())
+    }
+
+    pub fn get_json<K, V>(&self, table: &str, key: &K) -> Result<Option<V>, DbError>
+    where
+        K: rkyv::Serialize,
+        V: serde::de::DeserializeOwned,
+    {
+        let txn = self.inner.begin_read()?;
+        let table = txn.open_table(TableDefinition::new(table))?;
+        let key_bytes = rkyv::to_bytes(key)?;
+
+        match table.get(key_bytes.as_ref())? {
+            Some(guard) => Ok(Some(serde_json::from_slice(guard.value())?)),
+            None => Ok(None),
+        }
+    }
+}
+
+// note/command.rs - save frontmatter separately
+impl Command for NoteCommand<'_> {
+    fn create(&self, path: String) -> Result<Note, NoteError> {
+        let note = Note::new(Uuid::now_v7(), path)?;
+
+        // Save note (rkyv, zero-copy, frontmatter skipped)
+        self.db.put("notes", &note.id.to_string(), &note)?;
+
+        // Save frontmatter separately (serde JSON)
+        if let Some(ref fm) = note.frontmatter {
+            self.db.put_json("frontmatter", &note.id.to_string(), fm)?;
+        }
+
+        Ok(note)
+    }
+}
+
+// note/query.rs - load and merge
+impl Query for NoteQuery<'_> {
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
+        let id_str = id.to_string();
+
+        // Load note (zero-copy rkyv)
+        let mut note: Option<Note> = self.db.get_owned("notes", &id_str)?;
+
+        // Load frontmatter separately (serde)
+        if let Some(ref mut n) = note {
+            n.frontmatter = self.db.get_json("frontmatter", &id_str)?;
+        }
+
+        Ok(note)
+    }
+}
+```
+
+**Pros**:
+- ✅ Preserves all frontmatter data
+- ✅ No trait solver issues (serde handles recursion)
+- ✅ Note aggregate remains zero-copy for hot paths
+- ✅ Frontmatter can evolve independently
+- ✅ Simpler than custom rkyv implementation
+
+**Cons**:
+- ❌ Two database operations per note (one for note, one for frontmatter)
+- ❌ Frontmatter not zero-copy (but rarely accessed in LSP hot paths)
+- ❌ Slightly more complex query logic
+
+**Option B: Manual rkyv Implementation**
+
+Implement `Archive`, `Serialize`, `Deserialize` manually for `FieldValue`:
+
+```rust
+// frontmatter.rs - manual impl (100+ lines)
+impl rkyv::Archive for FieldValue { /* ... */ }
+impl rkyv::Serialize for FieldValue { /* ... */ }
+impl rkyv::Deserialize for FieldValue { /* ... */ }
+```
+
+**Pros**:
+- ✅ Single storage location
+- ✅ Fully zero-copy
+
+**Cons**:
+- ❌ Complex manual implementation (error-prone)
+- ❌ Breaks with rkyv API changes
+- ❌ High maintenance burden
+- ❌ Attempted during Phase 6 - resulted in 50+ compilation errors
+
+**Option C: Flatten FieldValue (Breaking Change)**
+
+Redesign frontmatter to avoid recursion:
+
+```rust
+pub enum FieldValue {
+    Boolean(bool),
+    String(String),
+    Number(f64),
+    Date(i64),
+    // No Array or Object - store as JSON string instead
+}
+```
+
+**Pros**:
+- ✅ rkyv derives work
+
+**Cons**:
+- ❌ Loses structured data (arrays, nested objects)
+- ❌ Breaking change to domain model
+- ❌ Less useful for complex frontmatter
+
+#### Decision
+
+**CHOOSE Option A: Separate Frontmatter Storage**
+
+**Rationale**:
+1. **Proven Solution**: serde handles recursive types reliably
+2. **Low Risk**: Small, isolated change to command/query implementations
+3. **Performance**: Frontmatter is cold data (not accessed in LSP hover/completion hot paths)
+4. **Maintainability**: No manual rkyv implementations to maintain
+5. **Completeness**: Preserves all frontmatter data for MVP
+
+#### Tasks
+
+**6.5.1 Extend Database Layer**
+
+- [ ] Add `put_json<K, V>()` method to `db.rs`
+- [ ] Add `get_json<K, V>()` method to `db.rs`
+- [ ] Add `DbError` variants for JSON serialization errors
+- [ ] Add `serde_json` dependency to lithos-core
+
+**6.5.2 Update Note CQRS Implementations**
+
+- [ ] Update `NoteCommand::create()`:
+  - Save note with rkyv
+  - Save frontmatter with `put_json()` if present
+- [ ] Update `NoteCommand::update()`:
+  - Update note with rkyv
+  - Update frontmatter with `put_json()` or delete if None
+- [ ] Update `NoteCommand::delete()`:
+  - Delete note
+  - Delete frontmatter entry
+- [ ] Update `NoteQuery::find_by_id()`:
+  - Load note with rkyv
+  - Load frontmatter with `get_json()` and merge
+- [ ] Update `NoteQuery::find_by_path()`:
+  - Same merge logic
+- [ ] Update `NoteQuery::list()`:
+  - Load all notes, merge frontmatter for each
+
+**6.5.3 Update Note Aggregate**
+
+- [ ] Remove `#[rkyv(with = rkyv::with::Skip)]` from frontmatter field
+- [ ] Change to: `#[rkyv(skip)] #[serde(skip)]` with documentation:
+  ```rust
+  /// Frontmatter is stored separately using JSON serialization.
+  /// This field is populated during query operations.
+  #[rkyv(skip)]
+  #[serde(skip)]
+  pub frontmatter: Option<Frontmatter>,
+  ```
+
+**6.5.4 Testing**
+
+- [ ] Unit test: `put_json` / `get_json` roundtrip
+- [ ] Unit test: Frontmatter with nested objects and arrays
+- [ ] Integration test: Note CRUD with frontmatter preservation
+- [ ] Integration test: Frontmatter survives multiple updates
+
+#### Acceptance Criteria
+
+- [ ] Frontmatter roundtrips correctly (no data loss)
+- [ ] All FieldValue variants (Array, Object, etc.) work
+- [ ] Note CRUD operations preserve frontmatter
+- [ ] `mise run test:unit:core` passes
+- [ ] No rkyv trait solver errors
+- [ ] Documentation updated explaining separate storage
+
+#### Migration Note
+
+This is a **temporary solution** for CLI MVP. In Phase 2 (LSP), we can revisit:
+- Option: Implement manual rkyv for FieldValue if zero-copy frontmatter becomes critical
+- Option: Keep separate storage (current solution is simple and works)
+
+For now, **separate storage is the pragmatic path to MVP completion**.
+
+---
+
 ### Phase 7: Verification & Validation (Tea)
 
 **Duration**: 1-2 days

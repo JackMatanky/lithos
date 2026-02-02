@@ -356,15 +356,18 @@ impl Database {
     /// # }
     /// ```
     #[inline]
-    #[expect(clippy::todo, reason = "Phase 6 - requires implementation")]
-    pub fn delete(&self, _table: &str, _key: &str) -> Result<bool, DbError> {
-        // Phase 6 implementation:
-        // 1. Begin write transaction
-        // 2. Open table
-        // 3. Remove key
-        // 4. Commit transaction
-        // 5. Return whether value existed
-        todo!("Implement delete")
+    pub fn delete(&self, table: &str, key: &str) -> Result<bool, DbError> {
+        const TABLE: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("data");
+        let namespaced_key = format!("{table}:{key}");
+
+        let tx = self.inner.begin_write()?;
+        let existed = {
+            let mut table_ref = tx.open_table(TABLE)?;
+            table_ref.remove(namespaced_key.as_str())?.is_some()
+        };
+        tx.commit()?;
+        Ok(existed)
     }
 
     /// Execute multiple writes in a batch with single fsync.
@@ -397,16 +400,16 @@ impl Database {
     /// # }
     /// ```
     #[inline]
-    #[expect(clippy::todo, reason = "Phase 6 - requires implementation")]
-    pub fn batch_write<F>(&self, _f: F) -> Result<(), DbError>
+    pub fn batch_write<F>(&self, f: F) -> Result<(), DbError>
     where
         F: FnOnce(&Self) -> Result<(), DbError>,
     {
-        // Phase 6 implementation:
-        // Note: redb 3.1 API doesn't expose set_durability on WriteTransaction
-        // We'll need to implement this differently or use a different approach
-        // For now, this is equivalent to individual writes
-        todo!("Implement batch write with deferred fsync")
+        // Execute batch operations
+        // Note: In redb 3.1, durability settings are per-database, not
+        // per-transaction For now, we just execute the closure with
+        // normal write semantics Future optimization: investigate
+        // redb's Durability settings
+        f(self)
     }
 
     /// Insert a value into a multimap (1:N relationship).
@@ -431,19 +434,25 @@ impl Database {
     /// # }
     /// ```
     #[inline]
-    #[expect(clippy::todo, reason = "Phase 6 - requires implementation")]
     pub fn multimap_insert(
         &self,
-        _table: &str,
-        _key: &str,
-        _value: &str,
+        table: &str,
+        key: &str,
+        value: &str,
     ) -> Result<(), DbError> {
-        // Phase 6 implementation:
-        // 1. Begin write transaction
-        // 2. Open multimap table
-        // 3. Insert key-value pair
-        // 4. Commit transaction
-        todo!("Implement multimap_insert")
+        use redb::MultimapTableDefinition;
+
+        let table_def: MultimapTableDefinition<&str, &str> =
+            MultimapTableDefinition::new(table);
+        let namespaced_key = format!("multimap:{key}");
+
+        let tx = self.inner.begin_write()?;
+        {
+            let mut tbl = tx.open_multimap_table(table_def)?;
+            tbl.insert(namespaced_key.as_str(), value)?;
+        };
+        tx.commit()?;
+        Ok(())
     }
 
     /// Remove a value from a multimap.
@@ -466,20 +475,25 @@ impl Database {
     /// # }
     /// ```
     #[inline]
-    #[expect(clippy::todo, reason = "Phase 6 - requires implementation")]
     pub fn multimap_remove(
         &self,
-        _table: &str,
-        _key: &str,
-        _value: &str,
+        table: &str,
+        key: &str,
+        value: &str,
     ) -> Result<bool, DbError> {
-        // Phase 6 implementation:
-        // 1. Begin write transaction
-        // 2. Open multimap table
-        // 3. Remove key-value pair
-        // 4. Commit transaction
-        // 5. Return whether value existed
-        todo!("Implement multimap_remove")
+        use redb::MultimapTableDefinition;
+
+        let table_def: MultimapTableDefinition<&str, &str> =
+            MultimapTableDefinition::new(table);
+        let namespaced_key = format!("multimap:{key}");
+
+        let tx = self.inner.begin_write()?;
+        let removed = {
+            let mut tbl = tx.open_multimap_table(table_def)?;
+            tbl.remove(namespaced_key.as_str(), value)?
+        };
+        tx.commit()?;
+        Ok(removed)
     }
 
     /// Get all values for a key from a multimap.
@@ -503,19 +517,29 @@ impl Database {
     /// # }
     /// ```
     #[inline]
-    #[expect(clippy::todo, reason = "Phase 6 - requires implementation")]
     pub fn multimap_get(
         &self,
-        _table: &str,
-        _key: &str,
+        table: &str,
+        key: &str,
     ) -> Result<Vec<String>, DbError> {
-        // Phase 6 implementation:
-        // 1. Begin read transaction
-        // 2. Open multimap table
-        // 3. Get all values for key
-        // 4. Collect into Vec<String>
-        // 5. Return values
-        todo!("Implement multimap_get")
+        use redb::MultimapTableDefinition;
+
+        let table_def: MultimapTableDefinition<&str, &str> =
+            MultimapTableDefinition::new(table);
+        let namespaced_key = format!("multimap:{key}");
+
+        let tx = self.inner.begin_read()?;
+        let tbl = tx.open_multimap_table(table_def)?;
+
+        let mut values = Vec::new();
+        let range = tbl.get(namespaced_key.as_str())?;
+        for result in range {
+            let guard = result?;
+            let value: &str = guard.value();
+            values.push(value.to_owned());
+        }
+
+        Ok(values)
     }
 }
 

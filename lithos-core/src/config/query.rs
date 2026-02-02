@@ -58,37 +58,21 @@ impl<'db> Query<'db> {
     ///
     /// # Errors
     /// Returns `ConfigError` if load operation fails or config is invalid.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Use `db.get("global_config", ...)` for retrieval
-    /// 2. Return Global or default if not found
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement load global config"
-    )]
-    pub fn load_global(&self) -> Result<Global, ConfigError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Load global config from database")
+    pub fn load_global(&self) -> Result<Option<Global>, ConfigError> {
+        self.db
+            .get_owned("config", "global")
+            .map_err(|e| ConfigError::Storage(e.to_string().into()))
     }
 
     /// Load vault-specific configuration.
     ///
     /// # Errors
     /// Returns `ConfigError` if load operation fails or config is invalid.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Use `db.get("vault_config", ...)` for retrieval
-    /// 2. Return Vault or default if not found
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement load vault config"
-    )]
-    pub fn load_vault(&self) -> Result<Vault, ConfigError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Load vault config from database")
+    pub fn load_vault(&self) -> Result<Option<Vault>, ConfigError> {
+        self.db
+            .get_owned("config", "vault")
+            .map_err(|e| ConfigError::Storage(e.to_string().into()))
     }
 }

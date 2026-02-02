@@ -1,8 +1,11 @@
 //! Link subentity for Note aggregate.
-//!
-//! Represents wiki-links, markdown links, and embeds within notes.
-//! Links can reference resolved notes (existing in vault), unresolved notes
-//! (not yet created), or external URLs.
+#![allow(
+    missing_docs,
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums,
+    reason = "rkyv generates Archived types with public fields/variants; \
+              missing_docs for rkyv-generated items"
+)]
 
 use super::error::NoteError;
 
@@ -22,7 +25,17 @@ use super::error::NoteError;
 /// assert!(heading.is_heading());
 /// assert!(block.is_block_ref());
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum Anchor {
     /// Block reference: `^block-id`.
@@ -36,8 +49,18 @@ pub enum Anchor {
 /// Used within [`Link`] to specify the media type being embedded when
 /// `embed_type` is present.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum EmbedType {
     /// Embedded audio: `![[audio.mp3]]`.
@@ -100,7 +123,17 @@ pub enum EmbedType {
 /// .unwrap();
 /// assert!(embed.is_embed());
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Link {
     /// Target of the link.
@@ -124,8 +157,18 @@ pub struct Link {
 /// on the presence of an exclamation mark prefix (handled by
 /// [`Link::is_embed`]).
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum Style {
     /// Markdown-style link: `[text](url)` or `![text](url)`.
@@ -163,7 +206,17 @@ pub enum Style {
 ///     url: "https://rust-lang.org".into(),
 /// };
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum Target {
     /// External URL (http/https).

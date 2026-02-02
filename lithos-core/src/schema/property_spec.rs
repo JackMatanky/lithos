@@ -2,8 +2,11 @@
 
 #![allow(
     clippy::module_name_repetitions,
-    reason = "Core domain logic and naming convention where Spec suffix is \
-              descriptive"
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums,
+    reason = "Core domain logic with naming convention. rkyv generates \
+              exhaustive Archived types despite #[non_exhaustive] on source \
+              types. Spec suffix is descriptive"
 )]
 
 use std::{
@@ -19,13 +22,32 @@ static REGEX_CACHE: OnceLock<Mutex<HashMap<String, regex::Regex>>> =
 
 /// Boolean property (marker type).
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct BoolSpec;
 
 /// Date property validation constraints.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct DateSpec {
     /// Date format string (using chrono format tokens).
@@ -34,8 +56,17 @@ pub struct DateSpec {
 
 /// File property validation constraints.
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct FileSpec {
     /// Optional directory restriction (vault-relative path).
@@ -46,8 +77,17 @@ pub struct FileSpec {
 
 /// Number property validation constraints.
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct NumberSpec {
     /// Optional maximum value.
@@ -59,7 +99,17 @@ pub struct NumberSpec {
 }
 
 /// Sum type for all supported property specifications.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[serde(tag = "type", rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum PropertySpec {
@@ -117,8 +167,17 @@ pub enum PropertySpecType {
 
 /// String property validation constraints.
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct StringSpec {
     /// Optional enum of allowed values.

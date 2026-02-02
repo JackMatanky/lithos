@@ -2,8 +2,9 @@
 
 #![allow(
     clippy::module_name_repetitions,
-    reason = "Core domain logic and naming convention where Property prefix \
-              is descriptive"
+    clippy::exhaustive_structs,
+    reason = "Core domain logic. rkyv generates exhaustive Archived types \
+              despite #[non_exhaustive]. Property prefix is descriptive"
 )]
 
 use std::{
@@ -20,7 +21,17 @@ use crate::patterns;
 /// Reusable property definition with type-specific validation.
 ///
 /// This is the resolved entity used in the Domain layer.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Property {
     /// Unique identity (UUID v7).
@@ -50,8 +61,18 @@ pub struct Property {
 /// assert!(PropertyName::new("".to_string()).is_err());
 /// ```
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct PropertyName(pub String);

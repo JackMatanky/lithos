@@ -9,6 +9,11 @@
     reason = "Core domain logic and naming convention where \
               Schema/PropertyBank prefixes are descriptive"
 )]
+#![expect(
+    clippy::exhaustive_structs,
+    reason = "rkyv generates exhaustive ArchivedSchema/ArchivedSchemaName \
+              despite #[non_exhaustive]"
+)]
 
 use std::{
     collections::HashMap,
@@ -47,8 +52,17 @@ use crate::patterns;
 /// assert!(bank.has_name("is_active"));
 /// ```
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct PropertyBank {
     /// Index mapping ID -> index in properties vector.
@@ -81,7 +95,17 @@ pub struct PropertyBank {
 /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
 /// assert!(schema.properties().is_empty());
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Schema {
     /// UUID v7 identity for schema.
@@ -120,8 +144,18 @@ pub struct Schema {
 /// assert!(invalid.is_err());
 /// ```
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct SchemaName(pub String);
