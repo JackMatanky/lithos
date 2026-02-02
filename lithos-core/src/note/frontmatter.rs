@@ -15,6 +15,235 @@ use super::error::NoteError;
 
 pub type FrontmatterError = super::error::FrontmatterError;
 
+/// Represents YAML metadata extracted from a note header.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct Frontmatter {
+    /// Key-value pairs of metadata fields.
+    fields: HashMap<String, FieldValue>,
+}
+
+impl Frontmatter {
+    #[inline]
+    fn with_key_context(
+        key: &str,
+        mut err: FrontmatterError,
+    ) -> FrontmatterError {
+        let key_str: Box<str> = key.into();
+        match &mut err {
+            &mut (FrontmatterError::Missing {
+                key: ref mut existing,
+            }
+            | FrontmatterError::TypeMismatch {
+                key: ref mut existing,
+                ..
+            }
+            | FrontmatterError::ArrayElementTypeMismatch {
+                key: ref mut existing,
+                ..
+            }
+            | FrontmatterError::InvalidDateTimestamp {
+                key: ref mut existing,
+                ..
+            }) => {
+                if existing.is_empty() {
+                    *existing = key_str;
+                }
+            }
+        }
+        err
+    }
+
+    /// Creates a new Frontmatter from field map.
+    ///
+    /// # Errors
+    ///
+    /// Currently infallible, but returns Result for future validation.
+    #[inline]
+    pub fn new(fields: HashMap<String, FieldValue>) -> Result<Self, NoteError> {
+        Ok(Self {
+            fields,
+        })
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&FieldValue> {
+        self.fields.get(key)
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn has(&self, key: &str) -> bool {
+        self.fields.contains_key(key)
+    }
+
+    /// Strictly extracts a typed value from frontmatter.
+    ///
+    /// Returns:
+    /// - `Ok(None)` if the key is missing.
+    /// - `Ok(Some(T))` if present and valid.
+    /// - `Err(FrontmatterError)` if present but invalid.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key exists but cannot be converted to `T`.
+    #[inline]
+    pub fn try_get<T: TryFromFieldValue>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>, FrontmatterError> {
+        let Some(value) = self.get(key) else {
+            return Ok(None);
+        };
+        T::try_from_value(value)
+            .map(Some)
+            .map_err(|err| Self::with_key_context(key, err))
+    }
+
+    /// Strictly extracts a required typed value from frontmatter.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FrontmatterError::Missing` if the key is absent.
+    #[inline]
+    pub fn try_get_required<T: TryFromFieldValue>(
+        &self,
+        key: &str,
+    ) -> Result<T, FrontmatterError> {
+        self.try_get(key)?.ok_or_else(|| FrontmatterError::Missing {
+            key: key.into(),
+        })
+    }
+
+    /// Strict string-array extraction.
+    ///
+    /// Unlike [`Self::get_string_array`], this fails if an array contains any
+    /// non-string elements.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is missing, if the value is not a string or
+    /// array of strings, or if any array element is not a string.
+    #[inline]
+    pub fn try_get_string_vec_strict(
+        &self,
+        key: &str,
+    ) -> Result<Vec<String>, FrontmatterError> {
+        self.try_get_required::<Vec<String>>(key)
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get_array(&self, key: &str) -> Option<&[FieldValue]> {
+        self.get(key)?.as_array()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get_bool(&self, key: &str) -> Option<bool> {
+        self.get(key)?.as_bool()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get_date(&self, key: &str) -> Option<DateTime<Utc>> {
+        self.get(key)?.as_datetime()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get_number(&self, key: &str) -> Option<f64> {
+        self.get(key)?.as_number()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get_object(
+        &self,
+        key: &str,
+    ) -> Option<&HashMap<String, FieldValue>> {
+        self.get(key)?.as_object()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get_str(&self, key: &str) -> Option<&str> {
+        self.get(key)?.as_str()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get_string_array(&self, key: &str) -> Option<Vec<String>> {
+        let v = self.get(key)?;
+        if let Some(arr) = v.as_array() {
+            Some(
+                arr.iter()
+                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+                    .collect(),
+            )
+        } else {
+            v.as_str().map(|s| vec![s.to_owned()])
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn title(&self, config: &crate::config::aggregate::Config) -> String {
+        self.get_str(&config.frontmatter.title_key)
+            .map(ToOwned::to_owned)
+            .unwrap_or_default()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn title_str(
+        &self,
+        config: &crate::config::aggregate::Config,
+    ) -> Option<&str> {
+        self.get_str(&config.frontmatter.title_key)
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn file_class(
+        &self,
+        config: &crate::config::aggregate::Config,
+    ) -> String {
+        self.get_str(&config.frontmatter.file_class_key)
+            .map(ToOwned::to_owned)
+            .unwrap_or_default()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn file_class_str(
+        &self,
+        config: &crate::config::aggregate::Config,
+    ) -> Option<&str> {
+        self.get_str(&config.frontmatter.file_class_key)
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn aliases(
+        &self,
+        config: &crate::config::aggregate::Config,
+    ) -> Vec<String> {
+        self.get_string_array(&config.frontmatter.alias_key).unwrap_or_default()
+    }
+}
+
 /// A high-level type descriptor for [`FieldValue`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldValueType {
@@ -97,31 +326,6 @@ pub enum FieldValue {
     Object(#[rkyv(omit_bounds)] HashMap<String, FieldValue>),
     /// String value.
     String(String),
-}
-
-/// Represents YAML metadata extracted from a note header.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct Frontmatter {
-    /// Key-value pairs of metadata fields.
-    fields: HashMap<String, FieldValue>,
-}
-
-pub trait FromFieldValue: Sized {
-    /// Attempts to extract a value of type `Self` from a `FieldValue`.
-    ///
-    /// Returns `None` if the value cannot be converted to the target type.
-    fn from_value(value: &FieldValue) -> Option<Self>;
 }
 
 impl TryFromFieldValue for bool {
@@ -207,52 +411,6 @@ impl TryFromFieldValue for Vec<String> {
     }
 }
 
-impl FromFieldValue for bool {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Option<Self> {
-        value.as_bool()
-    }
-}
-
-impl FromFieldValue for DateTime<Utc> {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Option<Self> {
-        use chrono::TimeZone as _;
-        let ts = value.as_date()?;
-        Utc.timestamp_opt(ts, 0).single()
-    }
-}
-
-impl FromFieldValue for f64 {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Option<Self> {
-        value.as_number()
-    }
-}
-
-impl FromFieldValue for String {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Option<Self> {
-        value.as_str().map(ToOwned::to_owned)
-    }
-}
-
-impl FromFieldValue for Vec<String> {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Option<Self> {
-        // Support both arrays and single strings (Obsidian compatibility)
-        if let Some(arr) = value.as_array() {
-            Some(
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(ToOwned::to_owned))
-                    .collect(),
-            )
-        } else {
-            value.as_str().map(|s| vec![s.to_owned()])
-        }
-    }
-}
-
 #[expect(
     clippy::pattern_type_mismatch,
     clippy::wildcard_enum_match_arm,
@@ -334,259 +492,6 @@ impl FieldValue {
             _ => None,
         }
     }
-
-    #[inline]
-    #[must_use]
-    pub const fn is_array(&self) -> bool {
-        matches!(self, Self::Array(_))
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn is_bool(&self) -> bool {
-        matches!(self, Self::Boolean(_))
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn is_date(&self) -> bool {
-        matches!(self, Self::Date(_))
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn is_number(&self) -> bool {
-        matches!(self, Self::Number(_))
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn is_object(&self) -> bool {
-        matches!(self, Self::Object(_))
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn is_string(&self) -> bool {
-        matches!(self, Self::String(_))
-    }
-}
-
-impl Frontmatter {
-    #[inline]
-    fn with_key_context(
-        key: &str,
-        mut err: FrontmatterError,
-    ) -> FrontmatterError {
-        let key_str: Box<str> = key.into();
-        match &mut err {
-            &mut (FrontmatterError::Missing {
-                key: ref mut existing,
-            }
-            | FrontmatterError::TypeMismatch {
-                key: ref mut existing,
-                ..
-            }
-            | FrontmatterError::ArrayElementTypeMismatch {
-                key: ref mut existing,
-                ..
-            }
-            | FrontmatterError::InvalidDateTimestamp {
-                key: ref mut existing,
-                ..
-            }) => {
-                if existing.is_empty() {
-                    *existing = key_str;
-                }
-            }
-        }
-        err
-    }
-
-    /// Strictly extracts a typed value from frontmatter.
-    ///
-    /// Returns:
-    /// - `Ok(None)` if the key is missing.
-    /// - `Ok(Some(T))` if present and valid.
-    /// - `Err(FrontmatterError)` if present but invalid.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the key exists but cannot be converted to `T`.
-    #[inline]
-    pub fn try_get<T: TryFromFieldValue>(
-        &self,
-        key: &str,
-    ) -> Result<Option<T>, FrontmatterError> {
-        let Some(value) = self.get(key) else {
-            return Ok(None);
-        };
-        T::try_from_value(value)
-            .map(Some)
-            .map_err(|err| Self::with_key_context(key, err))
-    }
-
-    /// Strictly extracts a required typed value from frontmatter.
-    ///
-    /// # Errors
-    ///
-    /// Returns `FrontmatterError::Missing` if the key is absent.
-    #[inline]
-    pub fn try_get_required<T: TryFromFieldValue>(
-        &self,
-        key: &str,
-    ) -> Result<T, FrontmatterError> {
-        self.try_get(key)?.ok_or_else(|| FrontmatterError::Missing {
-            key: key.into(),
-        })
-    }
-
-    /// Strict string-array extraction.
-    ///
-    /// Unlike [`Self::get_string_array`], this fails if an array contains any
-    /// non-string elements.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the key is missing, if the value is not a string or
-    /// array of strings, or if any array element is not a string.
-    #[inline]
-    pub fn try_get_string_vec_strict(
-        &self,
-        key: &str,
-    ) -> Result<Vec<String>, FrontmatterError> {
-        self.try_get_required::<Vec<String>>(key)
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn aliases(
-        &self,
-        config: &crate::config::aggregate::Config,
-    ) -> Vec<String> {
-        self.get_string_array(&config.frontmatter.alias_key).unwrap_or_default()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn file_class(
-        &self,
-        config: &crate::config::aggregate::Config,
-    ) -> String {
-        self.get_str(&config.frontmatter.file_class_key)
-            .map(ToOwned::to_owned)
-            .unwrap_or_default()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn file_class_str(
-        &self,
-        config: &crate::config::aggregate::Config,
-    ) -> Option<&str> {
-        self.get_str(&config.frontmatter.file_class_key)
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get(&self, key: &str) -> Option<&FieldValue> {
-        self.fields.get(key)
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_array(&self, key: &str) -> Option<&[FieldValue]> {
-        self.get(key)?.as_array()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_as<T: FromFieldValue>(&self, key: &str) -> Option<T> {
-        self.fields.get(key).and_then(T::from_value)
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_bool(&self, key: &str) -> Option<bool> {
-        self.get(key)?.as_bool()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_date(&self, key: &str) -> Option<DateTime<Utc>> {
-        self.get(key)?.as_datetime()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_number(&self, key: &str) -> Option<f64> {
-        self.get(key)?.as_number()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_object(
-        &self,
-        key: &str,
-    ) -> Option<&HashMap<String, FieldValue>> {
-        self.get(key)?.as_object()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_str(&self, key: &str) -> Option<&str> {
-        self.get(key)?.as_str()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_string_array(&self, key: &str) -> Option<Vec<String>> {
-        let v = self.get(key)?;
-        if let Some(arr) = v.as_array() {
-            Some(
-                arr.iter()
-                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
-                    .collect(),
-            )
-        } else {
-            v.as_str().map(|s| vec![s.to_owned()])
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn has(&self, key: &str) -> bool {
-        self.fields.contains_key(key)
-    }
-
-    /// Creates a new Frontmatter from field map.
-    ///
-    /// # Errors
-    ///
-    /// Currently infallible, but returns Result for future validation.
-    #[inline]
-    pub fn new(fields: HashMap<String, FieldValue>) -> Result<Self, NoteError> {
-        Ok(Self {
-            fields,
-        })
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn title(&self, config: &crate::config::aggregate::Config) -> String {
-        self.get_str(&config.frontmatter.title_key)
-            .map(ToOwned::to_owned)
-            .unwrap_or_default()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn title_str(
-        &self,
-        config: &crate::config::aggregate::Config,
-    ) -> Option<&str> {
-        self.get_str(&config.frontmatter.title_key)
-    }
 }
 
 #[cfg(test)]
@@ -657,17 +562,24 @@ mod tests {
     }
 
     #[test]
-    fn get_as_performs_type_conversion() {
+    fn try_get_performs_type_conversion() {
         let mut fields = HashMap::new();
         fields.insert("s".to_owned(), FieldValue::String("text".into()));
         fields.insert("b".to_owned(), FieldValue::Boolean(true));
         fields.insert("n".to_owned(), FieldValue::Number(1.5f64));
         let fm = Frontmatter::new(fields).unwrap();
 
-        assert_eq!(fm.get_as::<String>("s"), Some("text".to_owned()));
-        assert_eq!(fm.get_as::<bool>("b"), Some(true));
-        assert_eq!(fm.get_as::<f64>("n"), Some(1.5f64));
-        assert_eq!(fm.get_as::<bool>("s"), None);
+        assert_eq!(fm.try_get::<String>("s").unwrap(), Some("text".to_owned()));
+        assert_eq!(fm.try_get::<bool>("b").unwrap(), Some(true));
+        assert_eq!(fm.try_get::<f64>("n").unwrap(), Some(1.5f64));
+
+        let err =
+            fm.try_get::<bool>("s").expect_err("type mismatch should error");
+        assert!(matches!(
+            err,
+            FrontmatterError::TypeMismatch { key, expected, actual: FieldValueType::String }
+                if key.as_ref() == "s" && expected.as_ref() == "boolean"
+        ));
     }
 
     #[test]
