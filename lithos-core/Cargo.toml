@@ -44,6 +44,11 @@ lithos-test-utils = { workspace = true }
 tempfile.workspace = true
 criterion = { workspace = true, features = ["html_reports"] }
 
+[[bench]]
+name = "db_perf"
+harness = false
+path = "../benches/db_perf.rs"
+
 [features]
 default = []
 # Serde support for domain types (Proposal 10)
