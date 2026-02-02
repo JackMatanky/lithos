@@ -6,7 +6,6 @@
 #![allow(
     clippy::missing_inline_in_public_items,
     clippy::elidable_lifetime_names,
-    clippy::same_name_method,
     reason = "CQRS pattern: trait impls don't need inline"
 )]
 
@@ -31,13 +30,15 @@ impl<'db> Command<'db> {
             db,
         }
     }
+}
 
+impl super::ports::Command for Command<'_> {
     /// Creates a new template.
     ///
     /// # Errors
     /// Returns `TemplateError` if creation fails.
     #[inline]
-    pub fn create(&self, template: &Template) -> Result<(), TemplateError> {
+    fn create(&self, template: &Template) -> Result<(), TemplateError> {
         let id_str = template.id().to_string();
         let name = template.name().to_owned();
 
@@ -57,7 +58,7 @@ impl<'db> Command<'db> {
     /// # Errors
     /// Returns `TemplateError` if deletion fails.
     #[inline]
-    pub fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
+    fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
         let id_str = id.to_string();
 
         // 1. Get template first to clean up indexes
@@ -86,7 +87,7 @@ impl<'db> Command<'db> {
     /// # Errors
     /// Returns `TemplateError` if update fails.
     #[inline]
-    pub fn update(&self, template: &Template) -> Result<(), TemplateError> {
+    fn update(&self, template: &Template) -> Result<(), TemplateError> {
         let id_str = template.id().to_string();
         let name = template.name().to_owned();
 
@@ -114,22 +115,5 @@ impl<'db> Command<'db> {
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         Ok(())
-    }
-}
-
-impl super::ports::Command for Command<'_> {
-    #[inline]
-    fn create(&self, template: &Template) -> Result<(), TemplateError> {
-        self.create(template)
-    }
-
-    #[inline]
-    fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
-        self.delete(id)
-    }
-
-    #[inline]
-    fn update(&self, template: &Template) -> Result<(), TemplateError> {
-        self.update(template)
     }
 }

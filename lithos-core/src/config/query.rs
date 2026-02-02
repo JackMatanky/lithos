@@ -24,7 +24,9 @@ impl<'db> Query<'db> {
             db,
         }
     }
+}
 
+impl super::ports::Query for Query<'_> {
     /// Load configuration (Global + Vault merged).
     ///
     /// # Business Rules
@@ -38,7 +40,7 @@ impl<'db> Query<'db> {
     /// - Merge operation fails
     /// - Validation fails
     #[inline]
-    pub fn load(&self) -> Result<Config, ConfigError> {
+    fn load(&self) -> Result<Config, ConfigError> {
         let global = self.load_global()?;
         let vault = self.load_vault()?.unwrap_or_default();
 
@@ -50,7 +52,7 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `ConfigError` if load operation fails or config is invalid.
     #[inline]
-    pub fn load_global(&self) -> Result<Option<Global>, ConfigError> {
+    fn load_global(&self) -> Result<Option<Global>, ConfigError> {
         self.db.get_owned("config", "global").map_err(
             |e: crate::db::DbError| ConfigError::Storage(e.to_string().into()),
         )
@@ -61,7 +63,7 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `ConfigError` if load operation fails or config is invalid.
     #[inline]
-    pub fn load_vault(&self) -> Result<Option<Vault>, ConfigError> {
+    fn load_vault(&self) -> Result<Option<Vault>, ConfigError> {
         self.db.get_owned("config", "vault").map_err(|e: crate::db::DbError| {
             ConfigError::Storage(e.to_string().into())
         })
