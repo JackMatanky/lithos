@@ -11,7 +11,8 @@ use std::collections::HashSet;
 use uuid::Uuid;
 
 use super::{
-    aggregate::SchemaName, property::PropertyName, property_spec::PropertySpec,
+    aggregate::SchemaName, property::PropertyName,
+    property_spec::PropertySpecDef,
 };
 
 /// Raw property input definition (Inline or Ref).
@@ -40,7 +41,7 @@ pub struct RawPropertyInline {
     #[serde(default)]
     pub array: bool,
     /// Type-specific validation constraints.
-    pub spec: PropertySpec,
+    pub spec: PropertySpecDef,
 }
 
 /// Reference variant of a raw property.
@@ -58,7 +59,7 @@ pub struct RawPropertyRef {
 /// ```ignore
 /// use lithos_core::schema::raw::{RawSchema, RawProperty, RawPropertyInline};
 /// use lithos_core::schema::aggregate::SchemaName;
-/// use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
+/// use lithos_core::schema::property_spec::{PropertySpecDef, BoolSpecDef};
 /// use std::collections::HashSet;
 /// use uuid::Uuid;
 ///
@@ -72,7 +73,7 @@ pub struct RawPropertyRef {
 ///         name: "archived".to_string(),
 ///         required: false,
 ///         array: false,
-///         spec: PropertySpec::Bool(BoolSpec::default()),
+///         spec: PropertySpecDef::Bool(BoolSpecDef::default()),
 ///     })],
 /// );
 /// assert_eq!(schema.properties.len(), 1);
@@ -122,7 +123,7 @@ impl RawSchema {
 )]
 mod tests {
     use super::*;
-    use crate::schema::property_spec::BoolSpec;
+    use crate::schema::property_spec::BoolSpecDef;
 
     #[test]
     fn raw_schema_initializes_fields() {
@@ -148,7 +149,7 @@ mod tests {
             name: "archived".to_owned(),
             required: false,
             array: false,
-            spec: PropertySpec::Bool(BoolSpec::default()),
+            spec: PropertySpecDef::Bool(BoolSpecDef::default()),
         };
         let reference = RawPropertyRef {
             ref_path: "status".to_owned(),

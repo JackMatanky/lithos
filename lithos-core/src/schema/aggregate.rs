@@ -62,18 +62,17 @@ use crate::patterns;
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct PropertyBank {
     /// Index mapping ID -> index in properties vector.
     id_index: HashMap<Uuid, usize>,
     /// Index mapping Name -> index in properties vector.
     name_index: HashMap<String, usize>,
+    /// Dense storage of properties.
+    properties: Vec<Property>,
     /// Domain events pending emission.
     #[serde(skip)]
     pending_events: Vec<Events>,
-    /// Dense storage of properties.
-    properties: Vec<Property>,
 }
 
 /// Schema aggregate defining metadata validation rules (Output).
@@ -105,7 +104,6 @@ pub struct PropertyBank {
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Schema {
     /// UUID v7 identity for schema.

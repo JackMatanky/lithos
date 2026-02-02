@@ -31,7 +31,6 @@ use crate::patterns;
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Property {
     /// Unique identity (UUID v7).
@@ -203,8 +202,6 @@ impl Property {
     #[inline]
     pub fn validate(&self) -> Result<(), SchemaError> {
         // Name validation is handled by PropertyName type.
-        // We only validate the spec constraints here.
-        self.spec.validate_spec()?;
         Ok(())
     }
 
