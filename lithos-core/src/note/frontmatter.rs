@@ -555,222 +555,256 @@ impl core::fmt::Display for FieldValueType {
     reason = "Test code uses unwrap/expect for simplicity"
 )]
 mod tests {
-    use chrono::{Datelike as _, TimeZone as _};
+    mod field_value {
+        use chrono::{Datelike as _, TimeZone as _};
 
-    use super::*;
+        use super::super::*;
 
-    #[test]
-    fn parses_iso8601_date_successfully() {
-        let date = Utc.with_ymd_and_hms(2024, 1, 15, 14, 30, 0).unwrap();
-        let timestamp = date.timestamp();
-        let val = FieldValue::Date(timestamp);
-        assert_eq!(val.as_date(), Some(timestamp));
-        assert_eq!(val.as_datetime().unwrap().year(), 2_024i32);
+        #[test]
+        fn field_value_coercion_covers_all_variants() {
+            let arr_val = FieldValue::Array(vec![FieldValue::Boolean(true)]);
+            let bool_val = FieldValue::Boolean(true);
+            let date_val = FieldValue::Date(Utc::now().timestamp());
+            let num_val = FieldValue::Number(1.0f64);
+            let mut obj_map = HashMap::new();
+            obj_map.insert("k".to_owned(), FieldValue::Boolean(false));
+            let obj_val = FieldValue::Object(obj_map);
+            let str_val = FieldValue::String("s".into());
+
+            assert!(arr_val.as_array().is_some());
+            assert!(bool_val.as_bool().is_some());
+            assert!(date_val.as_date().is_some());
+            assert!(date_val.as_datetime().is_some());
+            assert!(num_val.as_number().is_some());
+            assert!(obj_val.as_object().is_some());
+            assert!(str_val.as_str().is_some());
+
+            assert!(arr_val.as_bool().is_none());
+            assert!(bool_val.as_array().is_none());
+            assert!(date_val.as_number().is_none());
+            assert!(num_val.as_date().is_none());
+            assert!(obj_val.as_str().is_none());
+            assert!(str_val.as_object().is_none());
+        }
+
+        #[test]
+        fn parses_iso8601_date_successfully() {
+            let date = Utc.with_ymd_and_hms(2024, 1, 15, 14, 30, 0).unwrap();
+            let timestamp = date.timestamp();
+            let val = FieldValue::Date(timestamp);
+            assert_eq!(val.as_date(), Some(timestamp));
+            assert_eq!(val.as_datetime().unwrap().year(), 2_024i32);
+        }
+
+        #[test]
+        fn converts_numeric_values_correctly() {
+            let val = FieldValue::Number(42.0f64);
+            let observed = val.as_number();
+            assert_eq!(observed, Some(42.0f64));
+        }
+
+        #[test]
+        fn converts_boolean_values_correctly() {
+            let val = FieldValue::Boolean(true);
+            let observed = val.as_bool();
+            assert_eq!(observed, Some(true));
+        }
     }
 
-    #[test]
-    fn converts_numeric_values_correctly() {
-        let val = FieldValue::Number(42.0f64);
-        let observed = val.as_number();
-        assert_eq!(observed, Some(42.0f64));
+    mod accessors {
+        use super::super::*;
+
+        #[test]
+        fn accessors_handle_configured_keys() {
+            let mut global = crate::config::global::Global::default();
+            global.frontmatter.title_key = "subject".to_owned();
+            global.frontmatter.file_class_key = "kind".to_owned();
+            global.frontmatter.alias_key = "names".to_owned();
+            let config = crate::config::aggregate::Config::build(
+                Some(&global),
+                "/v",
+                crate::config::vault::Vault::default(),
+            )
+            .unwrap();
+
+            let mut fields = HashMap::new();
+            fields.insert(
+                "subject".to_owned(),
+                FieldValue::String("Subj".into()),
+            );
+            fields.insert("kind".to_owned(), FieldValue::String("Note".into()));
+            fields
+                .insert("names".to_owned(), FieldValue::String("Alias".into()));
+            let fm = Frontmatter::new(fields).unwrap();
+
+            assert_eq!(fm.title(&config), "Subj");
+            assert_eq!(fm.file_class(&config), "Note");
+            assert_eq!(fm.aliases(&config), vec!["Alias".to_owned()]);
+        }
+
+        #[test]
+        fn has_method_detects_field_presence() {
+            let mut fields = HashMap::new();
+            fields.insert(
+                "title".to_owned(),
+                FieldValue::String("Test".to_owned()),
+            );
+            let fm = Frontmatter::new(fields).unwrap();
+            assert!(fm.has("title"));
+            assert!(!fm.has("missing"));
+        }
+
+        #[test]
+        fn get_string_array_handles_single_and_multiple() {
+            let mut fields = HashMap::new();
+            fields.insert("single".to_owned(), FieldValue::String("a".into()));
+            fields.insert(
+                "multi".to_owned(),
+                FieldValue::Array(vec![FieldValue::String("b".into())]),
+            );
+            let fm = Frontmatter::new(fields).unwrap();
+
+            assert_eq!(
+                fm.get("single").and_then(FieldValue::as_string_array_lossy),
+                Some(vec!["a".to_owned()])
+            );
+            assert_eq!(
+                fm.get("multi").and_then(FieldValue::as_string_array_lossy),
+                Some(vec!["b".to_owned()])
+            );
+        }
+
+        #[test]
+        fn get_retrieve_and_coerce_values() {
+            let mut fields = HashMap::new();
+            fields.insert("b".to_owned(), FieldValue::Boolean(true));
+            fields.insert("n".to_owned(), FieldValue::Number(1.0f64));
+            fields.insert("s".to_owned(), FieldValue::String("s".into()));
+            fields.insert(
+                "d".to_owned(),
+                FieldValue::Date(Utc::now().timestamp()),
+            );
+            let fm = Frontmatter::new(fields).unwrap();
+
+            assert_eq!(fm.get("b").and_then(FieldValue::as_bool), Some(true));
+            assert_eq!(
+                fm.get("n").and_then(FieldValue::as_number),
+                Some(1.0f64)
+            );
+            assert_eq!(fm.get("s").and_then(FieldValue::as_str), Some("s"));
+            assert!(fm.get("d").and_then(FieldValue::as_datetime).is_some());
+
+            assert!(fm.get("missing").is_none());
+            assert!(fm.get("n").and_then(FieldValue::as_bool).is_none());
+        }
     }
 
-    #[test]
-    fn converts_boolean_values_correctly() {
-        let val = FieldValue::Boolean(true);
-        let observed = val.as_bool();
-        assert_eq!(observed, Some(true));
-    }
+    mod conversions {
+        use super::super::*;
 
-    #[test]
-    fn has_method_detects_field_presence() {
-        let mut fields = HashMap::new();
-        fields
-            .insert("title".to_owned(), FieldValue::String("Test".to_owned()));
-        let fm = Frontmatter::new(fields).unwrap();
-        assert!(fm.has("title"));
-        assert!(!fm.has("missing"));
-    }
+        #[test]
+        fn try_get_performs_type_conversion() {
+            let mut fields = HashMap::new();
+            fields.insert("s".to_owned(), FieldValue::String("text".into()));
+            fields.insert("b".to_owned(), FieldValue::Boolean(true));
+            fields.insert("n".to_owned(), FieldValue::Number(1.5f64));
+            let fm = Frontmatter::new(fields).unwrap();
 
-    #[test]
-    fn accessors_handle_configured_keys() {
-        let mut global = crate::config::global::Global::default();
-        global.frontmatter.title_key = "subject".to_owned();
-        global.frontmatter.file_class_key = "kind".to_owned();
-        global.frontmatter.alias_key = "names".to_owned();
-        let config = crate::config::aggregate::Config::build(
-            Some(&global),
-            "/v",
-            crate::config::vault::Vault::default(),
-        )
-        .unwrap();
+            assert_eq!(
+                fm.try_get::<String>("s").unwrap(),
+                Some("text".to_owned())
+            );
+            assert_eq!(fm.try_get::<bool>("b").unwrap(), Some(true));
+            assert_eq!(fm.try_get::<f64>("n").unwrap(), Some(1.5f64));
 
-        let mut fields = HashMap::new();
-        fields.insert("subject".to_owned(), FieldValue::String("Subj".into()));
-        fields.insert("kind".to_owned(), FieldValue::String("Note".into()));
-        fields.insert("names".to_owned(), FieldValue::String("Alias".into()));
-        let fm = Frontmatter::new(fields).unwrap();
+            let err = fm
+                .try_get::<bool>("s")
+                .expect_err("type mismatch should error");
+            assert!(matches!(
+                err,
+                FrontmatterError::TypeMismatch {
+                    key,
+                    expected,
+                    actual: FieldValueType::String
+                } if key.as_ref() == "s" && expected.as_ref() == "boolean"
+            ));
+        }
 
-        assert_eq!(fm.title(&config), "Subj");
-        assert_eq!(fm.file_class(&config), "Note");
-        assert_eq!(fm.aliases(&config), vec!["Alias".to_owned()]);
-    }
+        #[test]
+        fn strict_string_vec_errors_on_non_string_array_elements() {
+            let mut fields = HashMap::new();
+            fields.insert(
+                "aliases".to_owned(),
+                FieldValue::Array(vec![
+                    FieldValue::String("ok".into()),
+                    FieldValue::Number(123.0),
+                ]),
+            );
+            let fm = Frontmatter::new(fields).unwrap();
 
-    #[test]
-    fn try_get_performs_type_conversion() {
-        let mut fields = HashMap::new();
-        fields.insert("s".to_owned(), FieldValue::String("text".into()));
-        fields.insert("b".to_owned(), FieldValue::Boolean(true));
-        fields.insert("n".to_owned(), FieldValue::Number(1.5f64));
-        let fm = Frontmatter::new(fields).unwrap();
+            let err = fm
+                .try_get_string_vec_strict("aliases")
+                .expect_err("strict extraction should fail");
+            assert!(matches!(
+                err,
+                FrontmatterError::ArrayElementTypeMismatch {
+                    key,
+                    index: 1,
+                    expected: FieldValueType::String,
+                    actual: FieldValueType::Number,
+                } if key.as_ref() == "aliases"
+            ));
 
-        assert_eq!(fm.try_get::<String>("s").unwrap(), Some("text".to_owned()));
-        assert_eq!(fm.try_get::<bool>("b").unwrap(), Some(true));
-        assert_eq!(fm.try_get::<f64>("n").unwrap(), Some(1.5f64));
+            // Lenient extraction keeps today's behavior (drops non-strings).
+            assert_eq!(
+                fm.get("aliases").and_then(FieldValue::as_string_array_lossy),
+                Some(vec!["ok".to_owned()])
+            );
+        }
 
-        let err =
-            fm.try_get::<bool>("s").expect_err("type mismatch should error");
-        assert!(matches!(
-            err,
-            FrontmatterError::TypeMismatch { key, expected, actual: FieldValueType::String }
-                if key.as_ref() == "s" && expected.as_ref() == "boolean"
-        ));
-    }
+        #[test]
+        fn strict_get_required_distinguishes_missing_from_mismatch() {
+            let mut fields = HashMap::new();
+            fields.insert("n".to_owned(), FieldValue::Number(1.0f64));
+            let fm = Frontmatter::new(fields).unwrap();
 
-    #[test]
-    fn get_string_array_handles_single_and_multiple() {
-        let mut fields = HashMap::new();
-        fields.insert("single".to_owned(), FieldValue::String("a".into()));
-        fields.insert(
-            "multi".to_owned(),
-            FieldValue::Array(vec![FieldValue::String("b".into())]),
-        );
-        let fm = Frontmatter::new(fields).unwrap();
+            let missing = fm
+                .try_get_required::<String>("missing")
+                .expect_err("missing key should error");
+            assert!(matches!(
+                missing,
+                FrontmatterError::Missing { key } if key.as_ref() == "missing"
+            ));
 
-        assert_eq!(
-            fm.get("single").and_then(FieldValue::as_string_array_lossy),
-            Some(vec!["a".to_owned()])
-        );
-        assert_eq!(
-            fm.get("multi").and_then(FieldValue::as_string_array_lossy),
-            Some(vec!["b".to_owned()])
-        );
-    }
+            let mismatch = fm
+                .try_get_required::<String>("n")
+                .expect_err("type mismatch should error");
+            assert!(matches!(
+                mismatch,
+                FrontmatterError::TypeMismatch {
+                    key,
+                    expected,
+                    actual: FieldValueType::Number
+                } if key.as_ref() == "n" && expected.as_ref() == "string"
+            ));
+        }
 
-    #[test]
-    fn strict_string_vec_errors_on_non_string_array_elements() {
-        let mut fields = HashMap::new();
-        fields.insert(
-            "aliases".to_owned(),
-            FieldValue::Array(vec![
-                FieldValue::String("ok".into()),
-                FieldValue::Number(123.0),
-            ]),
-        );
-        let fm = Frontmatter::new(fields).unwrap();
+        #[test]
+        fn strict_date_reports_invalid_timestamp() {
+            let mut fields = HashMap::new();
+            fields.insert("d".to_owned(), FieldValue::Date(i64::MAX));
+            let fm = Frontmatter::new(fields).unwrap();
 
-        let err = fm
-            .try_get_string_vec_strict("aliases")
-            .expect_err("strict extraction should fail");
-        assert!(matches!(
-            err,
-            FrontmatterError::ArrayElementTypeMismatch {
-                key,
-                index: 1,
-                expected: FieldValueType::String,
-                actual: FieldValueType::Number,
-            } if key.as_ref() == "aliases"
-        ));
-
-        // Lenient extraction keeps today's behavior (drops non-strings).
-        assert_eq!(
-            fm.get("aliases").and_then(FieldValue::as_string_array_lossy),
-            Some(vec!["ok".to_owned()])
-        );
-    }
-
-    #[test]
-    fn strict_get_required_distinguishes_missing_from_mismatch() {
-        let mut fields = HashMap::new();
-        fields.insert("n".to_owned(), FieldValue::Number(1.0f64));
-        let fm = Frontmatter::new(fields).unwrap();
-
-        let missing = fm
-            .try_get_required::<String>("missing")
-            .expect_err("missing key should error");
-        assert!(matches!(
-            missing,
-            FrontmatterError::Missing { key } if key.as_ref() == "missing"
-        ));
-
-        let mismatch = fm
-            .try_get_required::<String>("n")
-            .expect_err("type mismatch should error");
-        assert!(matches!(
-            mismatch,
-            FrontmatterError::TypeMismatch { key, expected, actual: FieldValueType::Number }
-                if key.as_ref() == "n" && expected.as_ref() == "string"
-        ));
-    }
-
-    #[test]
-    fn strict_date_reports_invalid_timestamp() {
-        let mut fields = HashMap::new();
-        fields.insert("d".to_owned(), FieldValue::Date(i64::MAX));
-        let fm = Frontmatter::new(fields).unwrap();
-
-        let err = fm
-            .try_get_required::<DateTime<Utc>>("d")
-            .expect_err("invalid timestamp should error");
-        assert!(matches!(
-            err,
-            FrontmatterError::InvalidDateTimestamp { key, timestamp: i64::MAX }
-                if key.as_ref() == "d"
-        ));
-    }
-
-    #[test]
-    fn field_value_coercion_covers_all_variants() {
-        let arr_val = FieldValue::Array(vec![FieldValue::Boolean(true)]);
-        let bool_val = FieldValue::Boolean(true);
-        let date_val = FieldValue::Date(Utc::now().timestamp());
-        let num_val = FieldValue::Number(1.0f64);
-        let mut obj_map = HashMap::new();
-        obj_map.insert("k".to_owned(), FieldValue::Boolean(false));
-        let obj_val = FieldValue::Object(obj_map);
-        let str_val = FieldValue::String("s".into());
-
-        assert!(arr_val.as_array().is_some());
-        assert!(bool_val.as_bool().is_some());
-        assert!(date_val.as_date().is_some());
-        assert!(date_val.as_datetime().is_some());
-        assert!(num_val.as_number().is_some());
-        assert!(obj_val.as_object().is_some());
-        assert!(str_val.as_str().is_some());
-
-        assert!(arr_val.as_bool().is_none());
-        assert!(bool_val.as_array().is_none());
-        assert!(date_val.as_number().is_none());
-        assert!(num_val.as_date().is_none());
-        assert!(obj_val.as_str().is_none());
-        assert!(str_val.as_object().is_none());
-    }
-
-    #[test]
-    fn get_retrieve_and_coerce_values() {
-        let mut fields = HashMap::new();
-        fields.insert("b".to_owned(), FieldValue::Boolean(true));
-        fields.insert("n".to_owned(), FieldValue::Number(1.0f64));
-        fields.insert("s".to_owned(), FieldValue::String("s".into()));
-        fields.insert("d".to_owned(), FieldValue::Date(Utc::now().timestamp()));
-        let fm = Frontmatter::new(fields).unwrap();
-
-        assert_eq!(fm.get("b").and_then(FieldValue::as_bool), Some(true));
-        assert_eq!(fm.get("n").and_then(FieldValue::as_number), Some(1.0f64));
-        assert_eq!(fm.get("s").and_then(FieldValue::as_str), Some("s"));
-        assert!(fm.get("d").and_then(FieldValue::as_datetime).is_some());
-
-        assert!(fm.get("missing").is_none());
-        assert!(fm.get("n").and_then(FieldValue::as_bool).is_none());
+            let err = fm
+                .try_get_required::<DateTime<Utc>>("d")
+                .expect_err("invalid timestamp should error");
+            assert!(matches!(
+                err,
+                FrontmatterError::InvalidDateTimestamp {
+                    key,
+                    timestamp: i64::MAX
+                } if key.as_ref() == "d"
+            ));
+        }
     }
 }
