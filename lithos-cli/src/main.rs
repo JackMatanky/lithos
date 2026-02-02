@@ -8,8 +8,8 @@
 //!
 //! - **Rich Diagnostics**: Uses `miette` for high-fidelity error reporting with
 //!   source snippets and help messages.
-//! - **Async Resilience**: Implements a top-level `catch_unwind` or result
-//!   handler to prevent single template failures from crashing the process.
+//! - **Sync-First Design**: Core logic is synchronous per the architecture
+//!   proposal. Async is only used at edges if needed for concurrency.
 //! - **Configuration Hierarchy**: Loads settings from global config, vault
 //!   config, and command-line overrides in precedence order.
 //!
@@ -29,15 +29,6 @@
 //! encounters issues, or template processing errors occur. Errors are reported
 //! via `miette` with contextual information.
 
-// # LINT_DISABLE_REASON: Main entry point requires disallowed methods for
-// initialization | Options tried: None
-// | Justification: Initial setup and signal handling often require methods
-// disallowed in business logic.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Main entry point requires disallowed methods for initialization"
-)]
-#[tokio::main]
 /// The main entry point for the Lithos application.
 ///
 /// Initializes the CLI, parses arguments, and runs the application logic.
@@ -46,7 +37,17 @@
 /// # Errors
 ///
 /// Returns an error if initialization fails or unhandled exceptions occur.
-async fn main() -> miette::Result<()> {
+///
+/// # Phase 5 Note
+///
+/// This is a sync-first implementation per Proposal 6. Core logic is
+/// synchronous. If async is needed later (e.g., for parallel indexing),
+/// use `tokio::task::spawn_blocking` to keep async at the edges.
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Result type reserved for future error handling"
+)]
+fn main() -> miette::Result<()> {
     #[expect(
         clippy::let_underscore_untyped,
         reason = "Command line matches are ignored for now as we only use \

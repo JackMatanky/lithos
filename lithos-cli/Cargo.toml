@@ -14,11 +14,14 @@ bench = false
 
 [dependencies]
 lithos-core.workspace = true
-tokio.workspace = true
 clap.workspace = true
 miette.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
+
+# Note: tokio removed per Phase 5 - sync-first design
+# If async is needed later for parallel operations, add it back and use
+# tokio::task::spawn_blocking to keep async at edges only
 
 [lints]
 workspace = true
