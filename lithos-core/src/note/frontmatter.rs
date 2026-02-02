@@ -99,14 +99,14 @@ impl Frontmatter {
     ///
     /// Returns an error if the key exists but cannot be converted to `T`.
     #[inline]
-    pub fn try_get<T: TryFromFieldValue>(
+    pub fn try_get<T: FromFieldValue>(
         &self,
         key: &str,
     ) -> Result<Option<T>, FrontmatterError> {
         let Some(value) = self.get(key) else {
             return Ok(None);
         };
-        T::try_from_value(value)
+        T::from_value(value)
             .map(Some)
             .map_err(|err| Self::with_key_context(key, err))
     }
@@ -117,7 +117,7 @@ impl Frontmatter {
     ///
     /// Returns `FrontmatterError::Missing` if the key is absent.
     #[inline]
-    pub fn try_get_required<T: TryFromFieldValue>(
+    pub fn try_get_required<T: FromFieldValue>(
         &self,
         key: &str,
     ) -> Result<T, FrontmatterError> {
@@ -145,73 +145,11 @@ impl Frontmatter {
 
     #[inline]
     #[must_use]
-    pub fn get_array(&self, key: &str) -> Option<&[FieldValue]> {
-        self.get(key)?.as_array()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_bool(&self, key: &str) -> Option<bool> {
-        self.get(key)?.as_bool()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_date(&self, key: &str) -> Option<DateTime<Utc>> {
-        self.get(key)?.as_datetime()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_number(&self, key: &str) -> Option<f64> {
-        self.get(key)?.as_number()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_object(
-        &self,
-        key: &str,
-    ) -> Option<&HashMap<String, FieldValue>> {
-        self.get(key)?.as_object()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_str(&self, key: &str) -> Option<&str> {
-        self.get(key)?.as_str()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get_string_array(&self, key: &str) -> Option<Vec<String>> {
-        let v = self.get(key)?;
-        if let Some(arr) = v.as_array() {
-            Some(
-                arr.iter()
-                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
-                    .collect(),
-            )
-        } else {
-            v.as_str().map(|s| vec![s.to_owned()])
-        }
-    }
-
-    #[inline]
-    #[must_use]
     pub fn title(&self, config: &crate::config::aggregate::Config) -> String {
-        self.get_str(&config.frontmatter.title_key)
-            .map(ToOwned::to_owned)
+        self.get(&config.frontmatter.title_key)
+            .and_then(FieldValue::as_str)
             .unwrap_or_default()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn title_str(
-        &self,
-        config: &crate::config::aggregate::Config,
-    ) -> Option<&str> {
-        self.get_str(&config.frontmatter.title_key)
+            .to_owned()
     }
 
     #[inline]
@@ -220,18 +158,10 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> String {
-        self.get_str(&config.frontmatter.file_class_key)
-            .map(ToOwned::to_owned)
+        self.get(&config.frontmatter.file_class_key)
+            .and_then(FieldValue::as_str)
             .unwrap_or_default()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn file_class_str(
-        &self,
-        config: &crate::config::aggregate::Config,
-    ) -> Option<&str> {
-        self.get_str(&config.frontmatter.file_class_key)
+            .to_owned()
     }
 
     #[inline]
@@ -240,7 +170,9 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Vec<String> {
-        self.get_string_array(&config.frontmatter.alias_key).unwrap_or_default()
+        self.get(&config.frontmatter.alias_key)
+            .and_then(FieldValue::as_string_array_lossy)
+            .unwrap_or_default()
     }
 }
 
@@ -275,7 +207,7 @@ impl core::fmt::Display for FieldValueType {
 /// This is intentionally a *local* trait (instead of `TryFrom<&FieldValue>`) to
 /// avoid Rust's orphan rules (we can't implement foreign traits for foreign
 /// types like `bool`, `f64`, `String`, etc.).
-pub trait TryFromFieldValue: Sized {
+pub trait FromFieldValue: Sized {
     /// Attempts to extract a value of type `Self` from a [`FieldValue`].
     ///
     /// Returns a structured error when the value is present but incompatible.
@@ -283,7 +215,7 @@ pub trait TryFromFieldValue: Sized {
     /// # Errors
     ///
     /// Returns a [`FrontmatterError`] describing why the conversion failed.
-    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
+    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
 }
 
 /// Possible values in a frontmatter field.
@@ -328,9 +260,9 @@ pub enum FieldValue {
     String(String),
 }
 
-impl TryFromFieldValue for bool {
+impl FromFieldValue for bool {
     #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
         value.as_bool().ok_or_else(|| FrontmatterError::TypeMismatch {
             key: "".into(),
             expected: "boolean".into(),
@@ -339,9 +271,9 @@ impl TryFromFieldValue for bool {
     }
 }
 
-impl TryFromFieldValue for f64 {
+impl FromFieldValue for f64 {
     #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
         value.as_number().ok_or_else(|| FrontmatterError::TypeMismatch {
             key: "".into(),
             expected: "number".into(),
@@ -350,9 +282,9 @@ impl TryFromFieldValue for f64 {
     }
 }
 
-impl TryFromFieldValue for String {
+impl FromFieldValue for String {
     #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
         value.as_str().map(ToOwned::to_owned).ok_or_else(|| {
             FrontmatterError::TypeMismatch {
                 key: "".into(),
@@ -363,9 +295,9 @@ impl TryFromFieldValue for String {
     }
 }
 
-impl TryFromFieldValue for DateTime<Utc> {
+impl FromFieldValue for DateTime<Utc> {
     #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
         use chrono::TimeZone as _;
         let ts =
             value.as_date().ok_or_else(|| FrontmatterError::TypeMismatch {
@@ -382,9 +314,9 @@ impl TryFromFieldValue for DateTime<Utc> {
     }
 }
 
-impl TryFromFieldValue for Vec<String> {
+impl FromFieldValue for Vec<String> {
     #[inline]
-    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
         if let Some(arr) = value.as_array() {
             let mut out = Vec::with_capacity(arr.len());
             for (index, item) in arr.iter().enumerate() {
@@ -492,6 +424,20 @@ impl FieldValue {
             _ => None,
         }
     }
+
+    #[inline]
+    #[must_use]
+    pub fn as_string_array_lossy(&self) -> Option<Vec<String>> {
+        if let Some(arr) = self.as_array() {
+            return Some(
+                arr.iter()
+                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+                    .collect(),
+            );
+        }
+
+        self.as_str().map(|s| vec![s.to_owned()])
+    }
 }
 
 #[cfg(test)]
@@ -592,8 +538,14 @@ mod tests {
         );
         let fm = Frontmatter::new(fields).unwrap();
 
-        assert_eq!(fm.get_string_array("single"), Some(vec!["a".to_owned()]));
-        assert_eq!(fm.get_string_array("multi"), Some(vec!["b".to_owned()]));
+        assert_eq!(
+            fm.get("single").and_then(FieldValue::as_string_array_lossy),
+            Some(vec!["a".to_owned()])
+        );
+        assert_eq!(
+            fm.get("multi").and_then(FieldValue::as_string_array_lossy),
+            Some(vec!["b".to_owned()])
+        );
     }
 
     #[test]
@@ -622,7 +574,10 @@ mod tests {
         ));
 
         // Lenient extraction keeps today's behavior (drops non-strings).
-        assert_eq!(fm.get_string_array("aliases"), Some(vec!["ok".to_owned()]));
+        assert_eq!(
+            fm.get("aliases").and_then(FieldValue::as_string_array_lossy),
+            Some(vec!["ok".to_owned()])
+        );
     }
 
     #[test]
@@ -693,7 +648,7 @@ mod tests {
     }
 
     #[test]
-    fn get_typed_helpers_retrieve_values() {
+    fn get_retrieve_and_coerce_values() {
         let mut fields = HashMap::new();
         fields.insert("b".to_owned(), FieldValue::Boolean(true));
         fields.insert("n".to_owned(), FieldValue::Number(1.0f64));
@@ -701,12 +656,12 @@ mod tests {
         fields.insert("d".to_owned(), FieldValue::Date(Utc::now().timestamp()));
         let fm = Frontmatter::new(fields).unwrap();
 
-        assert_eq!(fm.get_bool("b"), Some(true));
-        assert_eq!(fm.get_number("n"), Some(1.0f64));
-        assert_eq!(fm.get_str("s"), Some("s"));
-        assert!(fm.get_date("d").is_some());
+        assert_eq!(fm.get("b").and_then(FieldValue::as_bool), Some(true));
+        assert_eq!(fm.get("n").and_then(FieldValue::as_number), Some(1.0f64));
+        assert_eq!(fm.get("s").and_then(FieldValue::as_str), Some("s"));
+        assert!(fm.get("d").and_then(FieldValue::as_datetime).is_some());
 
-        assert!(fm.get_bool("missing").is_none());
-        assert!(fm.get_bool("n").is_none());
+        assert!(fm.get("missing").is_none());
+        assert!(fm.get("n").and_then(FieldValue::as_bool).is_none());
     }
 }
