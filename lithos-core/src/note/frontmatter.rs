@@ -20,8 +20,6 @@ use super::error::NoteError;
 /// typing scenarios.
 ///
 /// Note: `DateTime` stored as i64 timestamp for rkyv compatibility.
-/// TODO: Recursive rkyv causes trait solver overflow - will implement custom
-/// serialization later.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum FieldValue {
@@ -40,10 +38,6 @@ pub enum FieldValue {
 }
 
 /// Represents YAML metadata extracted from a note header.
-///
-/// TODO: Frontmatter rkyv support deferred - recursive `FieldValue` causes
-/// trait solver overflow. For Phase 6, we'll serialize Note without frontmatter
-/// or use serde fallback.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 #[expect(
@@ -237,8 +231,23 @@ impl Frontmatter {
 
     #[inline]
     #[must_use]
+    pub fn file_class_str(
+        &self,
+        config: &crate::config::aggregate::Config,
+    ) -> Option<&str> {
+        self.get_str(&config.frontmatter.file_class_key)
+    }
+
+    #[inline]
+    #[must_use]
     pub fn get(&self, key: &str) -> Option<&FieldValue> {
         self.fields.get(key)
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get_array(&self, key: &str) -> Option<&[FieldValue]> {
+        self.get(key)?.as_array()
     }
 
     #[inline]
@@ -263,6 +272,15 @@ impl Frontmatter {
     #[must_use]
     pub fn get_number(&self, key: &str) -> Option<f64> {
         self.get(key)?.as_number()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn get_object(
+        &self,
+        key: &str,
+    ) -> Option<&HashMap<String, FieldValue>> {
+        self.get(key)?.as_object()
     }
 
     #[inline]
@@ -310,6 +328,15 @@ impl Frontmatter {
         self.get_str(&config.frontmatter.title_key)
             .map(ToOwned::to_owned)
             .unwrap_or_default()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn title_str(
+        &self,
+        config: &crate::config::aggregate::Config,
+    ) -> Option<&str> {
+        self.get_str(&config.frontmatter.title_key)
     }
 }
 

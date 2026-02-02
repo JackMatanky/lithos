@@ -81,9 +81,13 @@ pub struct Note {
     /// Document sections.
     pub sections: Vec<Section>,
     /// YAML metadata.
-    /// NOTE: Frontmatter is NOT serialized via rkyv due to recursive
-    /// `FieldValue`. Store it separately or use serde for full Note
-    /// serialization.
+    ///
+    /// Phase 7: stored separately from the Note aggregate.
+    ///
+    /// `Frontmatter` is persisted using serde JSON (recursive `FieldValue`),
+    /// because deriving rkyv for recursive types can trigger trait-solver
+    /// overflow. Queries populate this field by loading the separate
+    /// frontmatter entry.
     #[rkyv(with = rkyv::with::Skip)]
     #[serde(skip)]
     pub frontmatter: Option<Frontmatter>,
