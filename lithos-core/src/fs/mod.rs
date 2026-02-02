@@ -24,24 +24,17 @@ pub mod parsers;
 pub mod validator;
 
 // Ergonomic aliases with domain-clarifying names (avoid `pub use` re-exports).
+
+/// Format dispatcher type alias.
+pub type FormatDispatcher = parsers::Dispatcher;
 /// Filesystem error type alias.
 pub type FsError = error::FsError;
 /// Parse error type alias.
 pub type ParseError = error::ParseError;
-/// Path validation error type alias.
-pub type PathValidationError = error::PathValidationError;
-/// Format dispatcher type alias.
-pub type FormatDispatcher = parsers::Dispatcher;
 /// Path validator type alias.
 pub type PathValidator = validator::Validator;
-
-/// Checks if a path is a Windows-style absolute path (e.g., C:/, D:/).
-#[inline]
-#[must_use]
-pub fn is_windows_absolute_path(path: &str) -> bool {
-    let bytes = path.as_bytes();
-    check_windows_path_bytes(bytes)
-}
+/// Path validation error type alias.
+pub type PathValidationError = error::PathValidationError;
 
 #[inline]
 #[must_use]
@@ -55,6 +48,14 @@ fn check_windows_path_bytes(bytes: &[u8]) -> bool {
 #[must_use]
 fn check_windows_separator(byte: u8) -> bool {
     byte == b'/' || byte == b'\\'
+}
+
+/// Checks if a path is a Windows-style absolute path (e.g., C:/, D:/).
+#[inline]
+#[must_use]
+pub fn is_windows_absolute_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    check_windows_path_bytes(bytes)
 }
 
 /// Validates a vault-relative path.

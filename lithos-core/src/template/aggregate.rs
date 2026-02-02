@@ -41,6 +41,29 @@ const RESERVED_WORDS: &[&str] = &[
     "with",
 ];
 
+/// Metadata for template management.
+///
+/// # Examples
+/// ```
+/// # use lithos_core::template::aggregate::Metadata;
+/// let metadata = Metadata::default();
+/// assert!(metadata.tags.is_empty());
+/// ```
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Metadata {
+    /// Template description.
+    pub description: Option<String>,
+    /// Template version.
+    pub version: Option<String>,
+    /// Tags for categorization.
+    pub tags: Vec<String>,
+    /// Creation timestamp.
+    pub created_at: DateTime<Utc>,
+    /// Last modification timestamp.
+    pub updated_at: DateTime<Utc>,
+}
+
 /// Aggregate root representing a reusable template.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[expect(
@@ -67,6 +90,19 @@ pub struct Template {
     /// Domain events pending emission.
     #[serde(skip)]
     pending_events: Vec<Events>,
+}
+
+impl Default for Metadata {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            description: None,
+            version: None,
+            tags: Vec::new(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
 }
 
 #[expect(
@@ -478,42 +514,6 @@ impl Template {
             )));
         }
         Ok(())
-    }
-}
-
-/// Metadata for template management.
-///
-/// # Examples
-/// ```
-/// # use lithos_core::template::aggregate::Metadata;
-/// let metadata = Metadata::default();
-/// assert!(metadata.tags.is_empty());
-/// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Metadata {
-    /// Template description.
-    pub description: Option<String>,
-    /// Template version.
-    pub version: Option<String>,
-    /// Tags for categorization.
-    pub tags: Vec<String>,
-    /// Creation timestamp.
-    pub created_at: DateTime<Utc>,
-    /// Last modification timestamp.
-    pub updated_at: DateTime<Utc>,
-}
-
-impl Default for Metadata {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            description: None,
-            version: None,
-            tags: Vec::new(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        }
     }
 }
 

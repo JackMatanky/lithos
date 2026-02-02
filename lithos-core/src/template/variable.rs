@@ -107,10 +107,7 @@ impl VariableDefinition {
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Mixed Copy (Boolean, Number) and non-Copy (String, Date, \
-                  File) enum fields. Cannot use `match *self` without moving \
-                  String/Date/File. Current pattern with `match self` is \
-                  idiomatic for enums with mixed field types."
+        reason = "Mixed Copy and non-Copy enum fields."
     )]
     pub fn get_default_value(&self) -> Option<serde_json::Value> {
         match self {
@@ -142,12 +139,7 @@ impl VariableDefinition {
     #[expect(
         clippy::pattern_type_mismatch,
         clippy::match_same_arms,
-        reason = "Enum has mixed Copy (Boolean/Number: \
-                  Option<bool>/Option<f64>) and non-Copy (String/Date/File: \
-                  Option<String>) fields, requiring pattern matching on \
-                  &self. All arms return is_some() but cannot be \
-                  consolidated—each operates on different Option<T> types and \
-                  dereferencing would move non-Copy String fields."
+        reason = "Enum has mixed Copy and non-Copy fields."
     )]
     pub fn has_default(&self) -> bool {
         match self {
@@ -226,10 +218,7 @@ impl VariableDefinition {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Enum variants have mixed Copy fields (min/max: Option<f64>) \
-                  and non-Copy fields (format/pattern: Option<String>). \
-                  Cannot dereference `self` without moving non-Copy String \
-                  fields. Matching on `&self` with field binding is idiomatic."
+        reason = "Enum variants have mixed Copy and non-Copy fields."
     )]
     pub fn validate_value(
         &self,
@@ -343,9 +332,7 @@ impl VariableDefinition {
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for deterministic setup and \
-              validation of variable definitions. Unreachable paths are \
-              acceptable in domain unit tests."
+    reason = "Test module uses Result::expect()."
 )]
 mod tests {
     use super::*;

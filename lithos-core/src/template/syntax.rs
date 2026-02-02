@@ -15,6 +15,13 @@ pub struct PlaceholderSyntax {
     pub suffix: String,
 }
 
+impl Default for PlaceholderSyntax {
+    #[inline]
+    fn default() -> Self {
+        Self::new("{{", "}}")
+    }
+}
+
 impl PlaceholderSyntax {
     /// Creates a new placeholder syntax.
     #[inline]
@@ -31,9 +38,7 @@ impl PlaceholderSyntax {
     #[must_use]
     #[expect(
         clippy::arithmetic_side_effects,
-        reason = "String capacity arithmetic: sum of lengths of variable \
-                  name, prefix, and suffix cannot realistically overflow. All \
-                  components are within memory bounds."
+        reason = "String capacity arithmetic cannot realistically overflow."
     )]
     pub fn wrap(&self, var_name: &str) -> String {
         let mut placeholder = String::with_capacity(
@@ -43,13 +48,6 @@ impl PlaceholderSyntax {
         placeholder.push_str(var_name);
         placeholder.push_str(&self.suffix);
         placeholder
-    }
-}
-
-impl Default for PlaceholderSyntax {
-    #[inline]
-    fn default() -> Self {
-        Self::new("{{", "}}")
     }
 }
 

@@ -52,6 +52,32 @@ struct DfsContext<'context> {
     stack: &'context mut HashSet<String>,
 }
 
+/// Insertion point for template sections.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub enum InsertionPosition {
+    /// Insert after named variable.
+    AfterVariable(String),
+    /// Insert before named variable.
+    BeforeVariable(String),
+    /// Insert at template start.
+    Beginning,
+    /// Insert at template end.
+    End,
+}
+
+/// Template section for composition.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Section {
+    /// Section name.
+    pub name: String,
+    /// Section content.
+    pub content: String,
+    /// Insertion point.
+    pub position: InsertionPosition,
+}
+
 impl Composition {
     fn check_template_dependencies(
         &self,
@@ -161,9 +187,7 @@ impl Composition {
     #[inline]
     #[expect(
         clippy::iter_over_hash_type,
-        reason = "Validation checks all variable overrides against base \
-                  template definitions. HashMap iteration order is \
-                  irrelevant—all entries must be validated."
+        reason = "HashMap iteration order is irrelevant."
     )]
     pub fn validate(&self, base: &Template) -> Result<(), TemplateError> {
         for (name, value) in &self.variable_overrides {
@@ -189,32 +213,6 @@ impl Composition {
         }
         Ok(())
     }
-}
-
-/// Template section for composition.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Section {
-    /// Section name.
-    pub name: String,
-    /// Section content.
-    pub content: String,
-    /// Insertion point.
-    pub position: InsertionPosition,
-}
-
-/// Insertion point for template sections.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub enum InsertionPosition {
-    /// Insert after named variable.
-    AfterVariable(String),
-    /// Insert before named variable.
-    BeforeVariable(String),
-    /// Insert at template start.
-    Beginning,
-    /// Insert at template end.
-    End,
 }
 
 #[cfg(test)]

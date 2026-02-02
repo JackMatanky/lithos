@@ -4,6 +4,25 @@
 
 use super::error::NoteError;
 
+/// Represents a task item within a note.
+///
+/// Tasks provide todo list functionality within notes and can be
+/// tracked for completion status.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal builders and tests"
+)]
+pub struct Task {
+    /// Task description text.
+    pub(crate) text: Box<str>,
+    /// Current completion status.
+    pub(crate) status: TaskStatus,
+    /// Character position in the source document.
+    pub(crate) position: usize,
+}
+
 /// Represents the status of a task item.
 ///
 /// # Examples
@@ -22,25 +41,6 @@ pub enum TaskStatus {
     Complete,
     /// Task is incomplete: `- [ ] Task description`.
     Incomplete,
-}
-
-/// Represents a task item within a note.
-///
-/// Tasks provide todo list functionality within notes and can be
-/// tracked for completion status.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal builders and tests"
-)]
-pub struct Task {
-    /// Task description text.
-    pub(crate) text: Box<str>,
-    /// Current completion status.
-    pub(crate) status: TaskStatus,
-    /// Character position in the source document.
-    pub(crate) position: usize,
 }
 
 impl Task {

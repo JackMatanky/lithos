@@ -3,33 +3,6 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Note created domain event.
-///
-/// Published when a new note is created, allowing other bounded contexts
-/// to react to note creation (e.g., indexing, linking).
-///
-/// # Examples
-/// ```
-/// use lithos_core::note::events::NoteCreated;
-/// use uuid::Uuid;
-///
-/// let id = Uuid::now_v7();
-/// let event =
-///     NoteCreated::new(id, "projects/lithos.md".to_string(), 1234567890);
-/// assert_eq!(event.id, id);
-/// assert_eq!(event.path, "projects/lithos.md");
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct NoteCreated {
-    /// UUID v7 of the note.
-    pub id: Uuid,
-    /// Vault-relative path of the note.
-    pub path: String,
-    /// Unix timestamp when the note was created.
-    pub timestamp: i64,
-}
-
 /// Frontmatter validated domain event.
 ///
 /// Published when frontmatter has been validated against schema in the
@@ -61,6 +34,33 @@ pub struct FrontmatterValidated {
     pub timestamp: i64,
 }
 
+/// Note created domain event.
+///
+/// Published when a new note is created, allowing other bounded contexts
+/// to react to note creation (e.g., indexing, linking).
+///
+/// # Examples
+/// ```
+/// use lithos_core::note::events::NoteCreated;
+/// use uuid::Uuid;
+///
+/// let id = Uuid::now_v7();
+/// let event =
+///     NoteCreated::new(id, "projects/lithos.md".to_string(), 1234567890);
+/// assert_eq!(event.id, id);
+/// assert_eq!(event.path, "projects/lithos.md");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NoteCreated {
+    /// UUID v7 of the note.
+    pub id: Uuid,
+    /// Vault-relative path of the note.
+    pub path: String,
+    /// Unix timestamp when the note was created.
+    pub timestamp: i64,
+}
+
 /// Domain events that can be emitted by the Note aggregate.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -71,19 +71,6 @@ pub enum NoteEvents {
     NoteCreated(NoteCreated),
 }
 
-impl NoteCreated {
-    /// Creates a new note created event.
-    #[inline]
-    #[must_use]
-    pub fn new(id: Uuid, path: String, timestamp: i64) -> Self {
-        Self {
-            id,
-            path,
-            timestamp,
-        }
-    }
-}
-
 impl FrontmatterValidated {
     /// Creates a new frontmatter validated event.
     #[inline]
@@ -92,6 +79,19 @@ impl FrontmatterValidated {
         Self {
             field_count,
             note_id,
+            timestamp,
+        }
+    }
+}
+
+impl NoteCreated {
+    /// Creates a new note created event.
+    #[inline]
+    #[must_use]
+    pub fn new(id: Uuid, path: String, timestamp: i64) -> Self {
+        Self {
+            id,
+            path,
             timestamp,
         }
     }

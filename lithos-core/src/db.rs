@@ -6,6 +6,13 @@
 
 use std::path::Path;
 
+/// Concrete database type wrapping redb.
+///
+/// Provides zero-copy read/write primitives using rkyv serialization.
+/// This is a stub implementation for Phase 2.
+#[non_exhaustive]
+pub struct Database;
+
 /// Database error types.
 #[expect(
     clippy::module_name_repetitions,
@@ -18,13 +25,6 @@ pub enum DbError {
     #[error("database error: {0}")]
     Database(String),
 }
-
-/// Concrete database type wrapping redb.
-///
-/// Provides zero-copy read/write primitives using rkyv serialization.
-/// This is a stub implementation for Phase 2.
-#[non_exhaustive]
-pub struct Database;
 
 impl Database {
     /// Open or create a database at the given path.

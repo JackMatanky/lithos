@@ -1,5 +1,18 @@
 //! Error types for filesystem and parsing operations.
 
+/// File system error types.
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Context-specific error name is intentional"
+)]
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum FsError {
+    /// IO operation failed.
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
 /// Errors that can occur during config file parsing.
 ///
 /// These errors provide rich context including file paths, line numbers,
@@ -101,17 +114,4 @@ pub enum PathValidationError {
     /// Symlink target escapes the configured root directory.
     #[error("Symlink escape detected: target is outside root boundary")]
     SymlinkEscapeError,
-}
-
-/// File system error types.
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Context-specific error name is intentional"
-)]
-#[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
-pub enum FsError {
-    /// IO operation failed.
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
 }
