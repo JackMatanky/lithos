@@ -53,11 +53,11 @@ add_execution_args() {
 add_filter_args() {
     local -n _filter_ref_args=$1
 
-    # Target the integration tests package
-    _filter_ref_args+=("--package" "lithos-integration-tests")
+    # Target the CLI crate, which contains the smoke test.
+    _filter_ref_args+=("--package" "lithos")
 
-    # Filter for E2E tests based on binary name
-    _filter_ref_args+=("--filter-expr" "binary(cli_smoke)")
+    # Filter for E2E/smoke tests based on binary name.
+    _filter_ref_args+=("--filter-expr" "binary(lithos)")
 
     if [[ -n "${usage_filter:-}" ]]; then
         _filter_ref_args+=("${usage_filter}")
