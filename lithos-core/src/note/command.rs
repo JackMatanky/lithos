@@ -35,62 +35,136 @@ impl<'db> Command<'db> {
     ///
     /// # Errors
     /// Returns `NoteError` if note creation fails validation or persistence.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Validate path
-    /// 2. Create Note aggregate
-    /// 3. Persist to database using `db.put()`
-    /// 4. Update indexes (tags, backlinks)
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement note creation"
-    )]
-    pub fn create(&self, _path: String) -> Result<Note, NoteError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Create note and persist to database")
+    pub fn create(&self, path: String) -> Result<Note, NoteError> {
+        let note = Note::new(Uuid::now_v7(), path)?;
+        let id_str = note.id.to_string();
+
+        self.db.put("notes", &id_str, &note).map_err(
+            |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+        )?;
+
+        self.db
+            .multimap_insert("path_to_id", note.path.as_str(), &id_str)
+            .map_err(|e: crate::db::DbError| {
+                NoteError::Storage(e.to_string())
+            })?;
+
+        Ok(note)
     }
 
     /// Deletes a note by ID.
     ///
     /// # Errors
     /// Returns `NoteError` if note deletion fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Delete from main table using `db.delete()`
-    /// 2. Clean up indexes (tags, backlinks)
-    /// 3. Emit `NoteDeleted` event
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement note deletion"
-    )]
-    pub fn delete(&self, _id: Uuid) -> Result<(), NoteError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Delete note and clean up indexes")
+    pub fn delete(&self, id: Uuid) -> Result<(), NoteError> {
+        let id_str = id.to_string();
+
+        // 1. Get note first to clean up indexes
+        let note = self.db.get_owned::<Note>("notes", &id_str).map_err(
+            |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+        )?;
+
+        if let Some(n) = note {
+            // 2. Remove from path index
+            self.db
+                .multimap_remove("path_to_id", n.path.as_str(), &id_str)
+                .map_err(|e: crate::db::DbError| {
+                    NoteError::Storage(e.to_string())
+                })?;
+
+            // 3. Remove from tag indexes
+            for tag in &n.tags {
+                self.db
+                    .multimap_remove(
+                        "tags_to_notes",
+                        tag.full_path.as_str(),
+                        &id_str,
+                    )
+                    .map_err(|e: crate::db::DbError| {
+                        NoteError::Storage(e.to_string())
+                    })?;
+            }
+
+            // 4. Delete note
+            self.db.delete("notes", &id_str).map_err(
+                |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+            )?;
+        }
+
+        Ok(())
     }
 
     /// Updates an existing note.
     ///
     /// # Errors
     /// Returns `NoteError` if note update fails validation or persistence.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Validate note
-    /// 2. Persist to database using `db.put()`
-    /// 3. Update indexes (tags, backlinks) - delta calculation
-    /// 4. Emit `NoteUpdated` event
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement note update"
-    )]
-    pub fn update(&self, _note: Note) -> Result<Note, NoteError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Update note and refresh indexes")
+    pub fn update(&self, note: Note) -> Result<Note, NoteError> {
+        let id_str = note.id.to_string();
+
+        // 1. Get old note to find what changed
+        let old_note = self.db.get_owned::<Note>("notes", &id_str).map_err(
+            |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+        )?;
+
+        if let Some(old) = old_note {
+            // 2. Update path index if changed
+            if old.path != note.path {
+                self.db
+                    .multimap_remove("path_to_id", old.path.as_str(), &id_str)
+                    .map_err(|e: crate::db::DbError| {
+                        NoteError::Storage(e.to_string())
+                    })?;
+                self.db
+                    .multimap_insert("path_to_id", note.path.as_str(), &id_str)
+                    .map_err(|e: crate::db::DbError| {
+                        NoteError::Storage(e.to_string())
+                    })?;
+            }
+
+            // 3. Update tag index
+            // Remove old tags
+            for tag in &old.tags {
+                self.db
+                    .multimap_remove(
+                        "tags_to_notes",
+                        tag.full_path.as_str(),
+                        &id_str,
+                    )
+                    .map_err(|e: crate::db::DbError| {
+                        NoteError::Storage(e.to_string())
+                    })?;
+            }
+        } else {
+            // New note (even though it's update call), add path index
+            self.db
+                .multimap_insert("path_to_id", note.path.as_str(), &id_str)
+                .map_err(|e: crate::db::DbError| {
+                    NoteError::Storage(e.to_string())
+                })?;
+        }
+
+        // Add new tags
+        for tag in &note.tags {
+            self.db
+                .multimap_insert(
+                    "tags_to_notes",
+                    tag.full_path.as_str(),
+                    &id_str,
+                )
+                .map_err(|e: crate::db::DbError| {
+                    NoteError::Storage(e.to_string())
+                })?;
+        }
+
+        // 4. Save new note
+        self.db.put("notes", &id_str, &note).map_err(
+            |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+        )?;
+
+        Ok(note)
     }
 }
 

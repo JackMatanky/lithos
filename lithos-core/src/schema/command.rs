@@ -51,8 +51,8 @@ impl<'db> Command<'db> {
         let name = schema.name().as_ref();
 
         // Save to database
-        self.db
-            .put("schemas", name, schema)
-            .map_err(|e| SchemaError::Storage(e.to_string()))
+        self.db.put("schemas", name, schema).map_err(|e: crate::db::DbError| {
+            SchemaError::Storage(e.to_string())
+        })
     }
 }

@@ -1,3 +1,15 @@
+//! Template aggregate root and related types.
+//!
+//! This module defines the Template aggregate root with rkyv serialization
+//! support. The rkyv derive macros generate non-exhaustive archived types which
+//! trigger clippy warnings. These are suppressed below.
+#![allow(
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums,
+    clippy::partial_pub_fields,
+    reason = "rkyv Archive derive generates non-exhaustive archived types"
+)]
+
 use std::{collections::HashMap, sync::LazyLock};
 
 use chrono::{DateTime, Utc};
@@ -49,7 +61,17 @@ const RESERVED_WORDS: &[&str] = &[
 /// let metadata = Metadata::default();
 /// assert!(metadata.tags.is_empty());
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Metadata {
     /// Template description.
@@ -59,18 +81,25 @@ pub struct Metadata {
     /// Tags for categorization.
     pub tags: Vec<String>,
     /// Creation timestamp.
+    #[rkyv(with = crate::ser::DateTimeAsI64)]
     pub created_at: DateTime<Utc>,
     /// Last modification timestamp.
+    #[rkyv(with = crate::ser::DateTimeAsI64)]
     pub updated_at: DateTime<Utc>,
 }
 
 /// Aggregate root representing a reusable template.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[expect(
-    clippy::partial_pub_fields,
-    reason = "Aggregate root requires mixed visibility for domain events and \
-              composition"
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Template {
     /// UUID v7 identity.
@@ -84,12 +113,13 @@ pub struct Template {
     /// Variable definitions with types and constraints.
     pub variables: HashMap<String, VariableDefinition>,
     /// Optional parent template for composition.
-    extends: Option<String>,
+    pub extends: Option<String>,
     /// Metadata for template management.
     pub metadata: Metadata,
     /// Domain events pending emission.
+    #[rkyv(with = rkyv::with::Skip)]
     #[serde(skip)]
-    pending_events: Vec<Events>,
+    pub pending_events: Vec<Events>,
 }
 
 impl Default for Metadata {

@@ -12,7 +12,7 @@ pub trait Command: Send + Sync {
     ///
     /// # Errors
     /// Returns `TemplateError` if creation fails.
-    fn create(&self, template: Template) -> Result<(), TemplateError>;
+    fn create(&self, template: &Template) -> Result<(), TemplateError>;
 
     /// Deletes a template by ID.
     ///
@@ -24,7 +24,7 @@ pub trait Command: Send + Sync {
     ///
     /// # Errors
     /// Returns `TemplateError` if update fails.
-    fn update(&self, template: Template) -> Result<(), TemplateError>;
+    fn update(&self, template: &Template) -> Result<(), TemplateError>;
 }
 
 /// Query port for template-related read operations.
@@ -56,7 +56,7 @@ pub trait Query: Send + Sync {
     /// Returns `TemplateError` if resolution fails.
     fn resolve(
         &self,
-        composition: Composition,
+        composition: &Composition,
     ) -> Result<Template, TemplateError>;
 }
 

@@ -541,6 +541,49 @@ impl Database {
 
         Ok(values)
     }
+
+    /// List all values in a table (owned).
+    ///
+    /// # Errors
+    /// Returns `DbError` if transaction or deserialization fails.
+    #[inline]
+    pub fn list_owned<V>(&self, table: &str) -> Result<Vec<V>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        const TABLE: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("data");
+        let prefix = format!("{table}:");
+
+        let tx = self.inner.begin_read()?;
+        let table_ref = tx.open_table(TABLE)?;
+
+        let mut results = Vec::new();
+        for result in table_ref.range(prefix.as_str()..)? {
+            let (key, value) = result?;
+            if !key.value().starts_with(&prefix) {
+                break;
+            }
+
+            let bytes: &[u8] = value.value();
+            let archived =
+                rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(bytes)
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
+            let deserialized =
+                rkyv::deserialize::<V, rkyv::rancor::Error>(archived)
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
+            results.push(deserialized);
+        }
+
+        Ok(results)
+    }
 }
 
 #[cfg(test)]

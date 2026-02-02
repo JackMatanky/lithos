@@ -1,3 +1,10 @@
+//! Type-safe variable definitions.
+#![allow(
+    missing_docs,
+    clippy::exhaustive_enums,
+    reason = "rkyv generates Archived types with public fields; docs TODO"
+)]
+
 use super::error::TemplateError;
 use crate::{
     fs,
@@ -16,7 +23,17 @@ use crate::{
 /// };
 /// assert!(definition.has_default());
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 #[expect(
     clippy::unsafe_derive_deserialize,

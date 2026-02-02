@@ -35,60 +35,42 @@ impl<'db> Query<'db> {
     ///
     /// # Errors
     /// Returns `NoteError` if query execution fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Use `db.get_archived()` for zero-copy read (hot path)
-    /// 2. Deserialize if needed for mutation
-    /// 3. Return Option<Note>
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement note lookup by ID"
-    )]
-    pub fn find_by_id(&self, _id: Uuid) -> Result<Option<Note>, NoteError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Find note by ID using `db.get()`")
+    pub fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
+        let id_str = id.to_string();
+        self.db
+            .get_owned::<Note>("notes", &id_str)
+            .map_err(|e: crate::db::DbError| NoteError::Storage(e.to_string()))
     }
 
     /// Finds a note by its vault-relative path.
     ///
     /// # Errors
     /// Returns `NoteError` if query execution fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Use path→ID index (multimap or secondary index)
-    /// 2. Look up note by resolved ID
-    /// 3. Return Option<Note>
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement note lookup by path"
-    )]
-    pub fn find_by_path(&self, _path: &str) -> Result<Option<Note>, NoteError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Find note by path using index")
+    pub fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteError> {
+        let ids = self.db.multimap_get("path_to_id", path).map_err(
+            |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+        )?;
+
+        if let Some(id_str) = ids.first() {
+            self.db.get_owned::<Note>("notes", id_str).map_err(
+                |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+            )
+        } else {
+            Ok(None)
+        }
     }
 
     /// Lists all notes in the vault.
     ///
     /// # Errors
     /// Returns `NoteError` if query execution fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Iterate over all notes in table
-    /// 2. Use `db.scan()` or similar range query
-    /// 3. Return Vec<Note>
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement list all notes"
-    )]
     pub fn list(&self) -> Result<Vec<Note>, NoteError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: List all notes using table scan")
+        self.db
+            .list_owned::<Note>("notes")
+            .map_err(|e: crate::db::DbError| NoteError::Storage(e.to_string()))
     }
 }
 

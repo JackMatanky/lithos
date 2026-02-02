@@ -1421,6 +1421,7 @@ This section provides a concrete execution roadmap aligned with the 10 detailed 
 **⚠️ CRITICAL: One Context at a Time**
 
 Migrate contexts **individually**, starting with `config`, then `note`, `schema`, `template`. After **each** context migration:
+
 1. Stage the files (`git add`)
 2. Run pre-commit hooks (`git commit` or `mise run verify`)
 3. **All hooks must pass before proceeding to next context**
@@ -1458,6 +1459,7 @@ For **each** context (config → note → schema → template), in order:
 4. **Proceed to next context only after clean commit**
 
 **Delete obsolete files after ALL contexts migrated**:
+
 - ❌ `_legacy/crates/domain/src/config/mod.rs` (merged into `config.rs`)
 - ❌ `_legacy/crates/domain/src/config/aggregate.rs` (merged into `config.rs`)
 - ❌ `_legacy/crates/domain/src/errors.rs` (split into context errors)
@@ -1696,7 +1698,7 @@ For each context:
 
 ---
 
-### Phase 6.5: Frontmatter Serialization Solution (Dev)
+### Phase 7: Frontmatter Serialization Solution (Dev)
 
 **Status**: CRITICAL - BLOCKING MVP
 **Duration**: 1-2 days
@@ -1724,6 +1726,7 @@ This causes rustc trait solver to overflow when deriving rkyv traits, preventing
 **Current Workaround**: Note aggregate skips frontmatter field using `#[rkyv(with = rkyv::with::Skip)]`, resulting in data loss (frontmatter always `None` after deserialization).
 
 **Impact**:
+
 - ❌ **BLOCKING**: Frontmatter is critical metadata for MVP (titles, aliases, file classes, custom fields)
 - ❌ Note serialization is incomplete without frontmatter
 - ❌ Users lose all YAML frontmatter data on round-trip
@@ -1805,6 +1808,7 @@ impl Query for NoteQuery<'_> {
 ```
 
 **Pros**:
+
 - ✅ Preserves all frontmatter data
 - ✅ No trait solver issues (serde handles recursion)
 - ✅ Note aggregate remains zero-copy for hot paths
@@ -1812,6 +1816,7 @@ impl Query for NoteQuery<'_> {
 - ✅ Simpler than custom rkyv implementation
 
 **Cons**:
+
 - ❌ Two database operations per note (one for note, one for frontmatter)
 - ❌ Frontmatter not zero-copy (but rarely accessed in LSP hot paths)
 - ❌ Slightly more complex query logic
@@ -1828,10 +1833,12 @@ impl rkyv::Deserialize for FieldValue { /* ... */ }
 ```
 
 **Pros**:
+
 - ✅ Single storage location
 - ✅ Fully zero-copy
 
 **Cons**:
+
 - ❌ Complex manual implementation (error-prone)
 - ❌ Breaks with rkyv API changes
 - ❌ High maintenance burden
@@ -1852,9 +1859,11 @@ pub enum FieldValue {
 ```
 
 **Pros**:
+
 - ✅ rkyv derives work
 
 **Cons**:
+
 - ❌ Loses structured data (arrays, nested objects)
 - ❌ Breaking change to domain model
 - ❌ Less useful for complex frontmatter
@@ -1864,6 +1873,7 @@ pub enum FieldValue {
 **CHOOSE Option A: Separate Frontmatter Storage**
 
 **Rationale**:
+
 1. **Proven Solution**: serde handles recursive types reliably
 2. **Low Risk**: Small, isolated change to command/query implementations
 3. **Performance**: Frontmatter is cold data (not accessed in LSP hover/completion hot paths)
@@ -1872,14 +1882,14 @@ pub enum FieldValue {
 
 #### Tasks
 
-**6.5.1 Extend Database Layer**
+**7.1 Extend Database Layer**
 
 - [ ] Add `put_json<K, V>()` method to `db.rs`
 - [ ] Add `get_json<K, V>()` method to `db.rs`
 - [ ] Add `DbError` variants for JSON serialization errors
 - [ ] Add `serde_json` dependency to lithos-core
 
-**6.5.2 Update Note CQRS Implementations**
+**7.2 Update Note CQRS Implementations**
 
 - [ ] Update `NoteCommand::create()`:
   - Save note with rkyv
@@ -1898,7 +1908,7 @@ pub enum FieldValue {
 - [ ] Update `NoteQuery::list()`:
   - Load all notes, merge frontmatter for each
 
-**6.5.3 Update Note Aggregate**
+**7.3 Update Note Aggregate**
 
 - [ ] Remove `#[rkyv(with = rkyv::with::Skip)]` from frontmatter field
 - [ ] Change to: `#[rkyv(skip)] #[serde(skip)]` with documentation:
@@ -1910,7 +1920,7 @@ pub enum FieldValue {
   pub frontmatter: Option<Frontmatter>,
   ```
 
-**6.5.4 Testing**
+**7.4 Testing**
 
 - [ ] Unit test: `put_json` / `get_json` roundtrip
 - [ ] Unit test: Frontmatter with nested objects and arrays
@@ -1929,6 +1939,7 @@ pub enum FieldValue {
 #### Migration Note
 
 This is a **temporary solution** for CLI MVP. In Phase 2 (LSP), we can revisit:
+
 - Option: Implement manual rkyv for FieldValue if zero-copy frontmatter becomes critical
 - Option: Keep separate storage (current solution is simple and works)
 
@@ -1936,7 +1947,7 @@ For now, **separate storage is the pragmatic path to MVP completion**.
 
 ---
 
-### Phase 7: Verification & Validation (Tea)
+### Phase 8: Verification & Validation (Tea)
 
 **Duration**: 1-2 days
 **Blocking**: Final gate before merge
@@ -1944,7 +1955,7 @@ For now, **separate storage is the pragmatic path to MVP completion**.
 
 #### Tasks
 
-**7.1 Test Suite Repair**
+**8.1 Test Suite Repair**
 
 - [ ] Fix all broken unit tests:
   - Update imports
@@ -1957,18 +1968,18 @@ For now, **separate storage is the pragmatic path to MVP completion**.
   - Test index updates (tags, backlinks)
   - Test batch operations (vault indexing)
 
-**7.2 Performance Validation**
+**8.2 Performance Validation**
 
 - [ ] Run zero-copy benchmarks
 - [ ] Compare against baseline
 
-**7.3 Quality Gates**
+**8.3 Quality Gates**
 
 - [ ] `mise run verify` passes (full suite)
 - [ ] `mise run test:arch` passes
 - [ ] Coverage check
 
-**7.4 Final Checklist**
+**8.4 Final Checklist**
 
 - [ ] NO `mod.rs` files in codebase
 - [ ] NO `cache/` folder exists
@@ -1987,15 +1998,16 @@ For now, **separate storage is the pragmatic path to MVP completion**.
 
 ### Required Agents
 
-| Phase   | Agent     | Responsibilities                                         |
-| ------- | --------- | -------------------------------------------------------- |
-| Phase 1 | Architect | ADRs, docs, structure planning                           |
-| Phase 2 | Dev       | Workspace restructuring                                  |
-| Phase 3 | Dev       | Domain migration, module restructure                     |
-| Phase 4 | Dev       | CQRS stubs, module entry points                          |
-| Phase 5 | Dev       | CLI refactor, de-async                                   |
-| Phase 6 | Dev       | Database layer implementation (complex)                  |
-| Phase 7 | Tea       | Test repair, benchmarks, quality gates, final sign-off   |
+| Phase   | Agent     | Responsibilities                                       |
+| ------- | --------- | ------------------------------------------------------ |
+| Phase 1 | Architect | ADRs, docs, structure planning                         |
+| Phase 2 | Dev       | Workspace restructuring                                |
+| Phase 3 | Dev       | Domain migration, module restructure                   |
+| Phase 4 | Dev       | CQRS stubs, module entry points                        |
+| Phase 5 | Dev       | CLI refactor, de-async                                 |
+| Phase 6 | Dev       | Database layer implementation (complex)                |
+| Phase 7 | Dev       | Frontmatter Serialization Solution                     |
+| Phase 8 | Tea       | Test repair, benchmarks, quality gates, final sign-off |
 
 ---
 

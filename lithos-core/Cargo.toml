@@ -42,6 +42,7 @@ rstest = { workspace = true }
 proptest = { workspace = true }
 lithos-test-utils = { workspace = true }
 tempfile.workspace = true
+criterion = { workspace = true, features = ["html_reports"] }
 
 [features]
 default = []

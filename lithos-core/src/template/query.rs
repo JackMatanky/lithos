@@ -3,6 +3,13 @@
 //! This module implements the Query port trait for Template read operations,
 //! using the Database layer for zero-copy reads.
 
+#![allow(
+    clippy::same_name_method,
+    reason = "CQRS pattern: trait impls don't need inline"
+)]
+
+use std::collections::HashMap;
+
 use uuid::Uuid;
 
 use super::{
@@ -31,89 +38,98 @@ impl<'db> Query<'db> {
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Use ``db.get_archived()`` for zero-copy read
-    /// 2. Deserialize if needed
-    /// 3. Return Option<Template>
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement template lookup by ID"
-    )]
     pub fn find_by_id(
         &self,
-        _id: Uuid,
+        id: Uuid,
     ) -> Result<Option<Template>, TemplateError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Find template by ID using `db.get()`")
+        let id_str = id.to_string();
+        self.db.get_owned::<Template>("templates", &id_str).map_err(
+            |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
+        )
     }
 
     /// Find a template by name.
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Use name→ID index to resolve name to ID
-    /// 2. Look up template by resolved ID
-    /// 3. Return Option<Template>
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement template lookup by name"
-    )]
     pub fn find_by_name(
         &self,
-        _name: &str,
+        name: &str,
     ) -> Result<Option<Template>, TemplateError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Find template by name using index")
+        let ids = self.db.multimap_get("template_name_to_id", name).map_err(
+            |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
+        )?;
+
+        if let Some(id_str) = ids.first() {
+            self.db.get_owned::<Template>("templates", id_str).map_err(
+                |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
+            )
+        } else {
+            Ok(None)
+        }
     }
 
     /// Lists all templates.
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Iterate over all templates in table
-    /// 2. Use ``db.scan()`` or similar range query
-    /// 3. Return Vec<Template>
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement list all templates"
-    )]
     pub fn list(&self) -> Result<Vec<Template>, TemplateError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: List all templates using table scan")
+        self.db.list_owned::<Template>("templates").map_err(
+            |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
+        )
     }
 
     /// Resolves a template composition.
     ///
     /// # Errors
     /// Returns `TemplateError` if resolution fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Parse composition instructions
-    /// 2. Resolve all included templates
-    /// 3. Merge and validate
-    /// 4. Return composed Template
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement template composition"
-    )]
     pub fn resolve(
         &self,
-        _composition: Composition,
+        composition: &Composition,
     ) -> Result<Template, TemplateError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Resolve template composition")
+        let base = self.find_by_name(&composition.base_template)?.ok_or_else(
+            || TemplateError::NotFound(composition.base_template.clone()),
+        )?;
+
+        // We need all templates for cycle detection and include resolution
+        let all_templates_list = self.list()?;
+        let all_templates: HashMap<String, Template> = all_templates_list
+            .into_iter()
+            .map(|t| (t.name().to_owned(), t))
+            .collect();
+
+        Template::compose(&base, composition, &all_templates)
+    }
+}
+
+impl super::ports::Query for Query<'_> {
+    #[inline]
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
+        self.find_by_id(id)
+    }
+
+    #[inline]
+    fn find_by_name(
+        &self,
+        name: &str,
+    ) -> Result<Option<Template>, TemplateError> {
+        self.find_by_name(name)
+    }
+
+    #[inline]
+    fn list(&self) -> Result<Vec<Template>, TemplateError> {
+        self.list()
+    }
+
+    #[inline]
+    fn resolve(
+        &self,
+        composition: &Composition,
+    ) -> Result<Template, TemplateError> {
+        self.resolve(composition)
     }
 }
