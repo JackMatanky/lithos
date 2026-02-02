@@ -7,6 +7,8 @@
 
 /// Schema aggregate roots and main entities.
 pub mod aggregate;
+/// Schema command implementations (CQRS write operations).
+pub mod command;
 /// Schema errors.
 pub mod error;
 /// Schema domain events.
@@ -19,6 +21,8 @@ pub mod ports;
 pub mod property;
 /// Property specification variants.
 pub mod property_spec;
+/// Schema query implementations (CQRS read operations).
+pub mod query;
 /// Raw schema input definitions.
 pub mod raw;
 /// Schema resolution service.
