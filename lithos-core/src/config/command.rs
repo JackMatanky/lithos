@@ -3,18 +3,26 @@
 //! This module implements the Command port trait for Config write operations,
 //! using the Database layer for persistence.
 
+#![allow(
+    clippy::same_name_method,
+    clippy::missing_inline_in_public_items,
+    clippy::elidable_lifetime_names,
+    reason = "CQRS pattern: public methods intentionally delegate to trait \
+              impls with same names"
+)]
+
 use super::{error::ConfigError, global::Global, vault::Vault};
 use crate::db::Database;
 
 /// Command implementation for Config write operations.
 ///
 /// Implements the Command port trait using the Database layer.
-pub struct ConfigCommand<'db> {
+pub struct Command<'db> {
     db: &'db Database,
 }
 
-impl<'db> ConfigCommand<'db> {
-    /// Create a new `ConfigCommand` with a database reference.
+impl<'db> Command<'db> {
+    /// Create a new `Command` with a database reference.
     #[inline]
     #[must_use]
     pub const fn new(db: &'db Database) -> Self {
@@ -61,5 +69,15 @@ impl<'db> ConfigCommand<'db> {
     pub fn save_vault(&self, _config: Vault) -> Result<(), ConfigError> {
         let _: &Database = self.db;
         todo!("Implement in Phase 6: Save vault config to database")
+    }
+}
+
+impl<'db> super::ports::Command for Command<'db> {
+    fn save_global(&self, config: Global) -> Result<(), ConfigError> {
+        self.save_global(config)
+    }
+
+    fn save_vault(&self, config: Vault) -> Result<(), ConfigError> {
+        self.save_vault(config)
     }
 }

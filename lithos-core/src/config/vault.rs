@@ -2,6 +2,10 @@
 //!
 //! This module contains configuration types that are specific to vault-level
 //! configuration, including filesystem settings, metadata, and vault overrides.
+#![allow(
+    clippy::exhaustive_structs,
+    reason = "rkyv generates Archived types with public fields"
+)]
 
 use super::{
     error::ConfigError,
@@ -9,7 +13,17 @@ use super::{
 };
 
 /// Vault metadata with versioning and naming.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Metadata {
     /// Human-readable name for the vault.
@@ -21,7 +35,17 @@ pub struct Metadata {
 }
 
 /// Vault filesystem configuration (vault-scoped).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Paths {
     /// Cache directory for vault.
@@ -33,7 +57,17 @@ pub struct Paths {
 }
 
 /// Schema version for the vault.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct SchemaVersion(pub String);
 

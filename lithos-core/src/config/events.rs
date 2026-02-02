@@ -1,4 +1,9 @@
 //! Configuration domain events.
+#![allow(
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums,
+    reason = "rkyv generates Archived types with public fields/variants"
+)]
 
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +20,18 @@ use serde::{Deserialize, Serialize};
 /// assert_eq!(event.timestamp, 1234567890);
 /// assert_eq!(event.source, "vault");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct ConfigUpdated {
     /// Source of the configuration change (e.g., "global", "vault").
@@ -25,7 +41,10 @@ pub struct ConfigUpdated {
 }
 
 /// Domain events that can be emitted by the Config aggregate.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum Events {
     /// Configuration was updated.

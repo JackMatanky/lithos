@@ -3,6 +3,12 @@
 //! This module implements the Command port trait for Template write operations,
 //! using the Database layer for persistence.
 
+#![allow(
+    clippy::missing_inline_in_public_items,
+    clippy::elidable_lifetime_names,
+    reason = "CQRS pattern: trait impls don't need inline"
+)]
+
 use uuid::Uuid;
 
 use super::{aggregate::Template, error::TemplateError};
@@ -11,12 +17,12 @@ use crate::db::Database;
 /// Command implementation for Template write operations.
 ///
 /// Implements the Command port trait using the Database layer.
-pub struct TemplateCommand<'db> {
+pub struct Command<'db> {
     db: &'db Database,
 }
 
-impl<'db> TemplateCommand<'db> {
-    /// Create a new `TemplateCommand` with a database reference.
+impl<'db> Command<'db> {
+    /// Create a new `Command` with a database reference.
     #[inline]
     #[must_use]
     pub const fn new(db: &'db Database) -> Self {

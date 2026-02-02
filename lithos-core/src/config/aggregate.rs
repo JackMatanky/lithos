@@ -14,6 +14,11 @@
 //! - **Validation**: All paths and enums are strictly validated during the
 //!   build phase.
 
+#![expect(
+    clippy::partial_pub_fields,
+    reason = "Aggregate root requires mixed visibility for domain events"
+)]
+
 use super::{
     error::ConfigError,
     events::{ConfigUpdated, Events},
@@ -28,11 +33,10 @@ use super::{
 /// business rules for precedence (vault overrides global). The configuration
 /// is immutable once created and represents the complete runtime configuration
 /// for a vault operation.
-#[derive(Debug, Clone, PartialEq)]
-#[expect(
-    clippy::partial_pub_fields,
-    reason = "Aggregate root requires mixed visibility for domain events"
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Config {
     /// Vault metadata with versioning and naming.
@@ -45,7 +49,7 @@ pub struct Config {
     pub vault_filesystem: VaultPaths,
     /// Merged frontmatter configuration.
     pub frontmatter: Frontmatter,
-    /// Domain events pending emission.
+    /// Domain events pending emission (not persisted).
     pending_events: Vec<Events>,
 }
 

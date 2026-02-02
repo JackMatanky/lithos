@@ -55,11 +55,17 @@ fn domain_aggregates_do_not_import_db() {
 #[test]
 fn cqrs_implementations_use_database_references() {
     use lithos_core::{
-        config::{command::ConfigCommand, query::ConfigQuery},
+        config::{
+            command::Command as ConfigCommand, query::Query as ConfigQuery,
+        },
         db::Database,
-        note::{command::NoteCommand, query::NoteQuery},
-        schema::{command::SchemaCommand, query::SchemaQuery},
-        template::{command::TemplateCommand, query::TemplateQuery},
+        note::{command::Command as NoteCommand, query::Query as NoteQuery},
+        schema::{
+            command::Command as SchemaCommand, query::Query as SchemaQuery,
+        },
+        template::{
+            command::Command as TemplateCommand, query::Query as TemplateQuery,
+        },
     };
 
     // Verify that command/query structs can be constructed with a Database
@@ -123,7 +129,7 @@ fn error_types_are_colocated() {
 fn dependency_flow_is_correct() {
     use lithos_core::{
         db::Database,
-        note::{command::NoteCommand, query::NoteQuery},
+        note::{command::Command as NoteCommand, query::Query as NoteQuery},
     };
 
     // Simulated usage pattern: CLI creates DB, then uses it with domain

@@ -4,13 +4,28 @@
 //! notes. Headings (H1-H6) mark structural points in the document, while
 //! sections group content between headings.
 
+#![expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal builders and tests"
+)]
+
 use super::error::NoteError;
 
 /// Represents a heading within a note.
 ///
 /// Headings provide document structure and are used to generate
 /// table of contents and section organization.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 #[expect(
     clippy::field_scoped_visibility_modifiers,
@@ -92,7 +107,17 @@ impl Heading {
 ///
 /// Sections organize note content between headings, providing
 /// structural organization for large documents.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 #[expect(
     clippy::field_scoped_visibility_modifiers,

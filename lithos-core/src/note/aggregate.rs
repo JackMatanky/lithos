@@ -84,8 +84,18 @@ pub struct Note {
 /// - Must not contain path traversal segments (`..`)
 /// - Must not be empty
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 pub struct NotePath(Box<str>);
 
 impl AsRef<str> for NotePath {

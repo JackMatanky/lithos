@@ -3,6 +3,10 @@
 //! This module contains configuration types that are specific to global-level
 //! configuration, including filesystem settings, trusted vaults, and global
 //! defaults.
+#![allow(
+    clippy::exhaustive_structs,
+    reason = "rkyv generates Archived types with public fields"
+)]
 
 use std::collections::HashMap;
 
@@ -17,7 +21,17 @@ use super::{
 /// - Provides system-wide defaults.
 /// - Loaded from global lithos.toml or system defaults.
 /// - All fields must have values (no optionals).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Global {
     /// Filesystem configuration for global defaults.
@@ -31,9 +45,19 @@ pub struct Global {
 }
 
 /// Global filesystem configuration (global template/schema library).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    Default,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
-#[derive(Default)]
 pub struct Paths {
     /// Schema configuration for global library.
     pub schema: Schema,
@@ -42,7 +66,17 @@ pub struct Paths {
 }
 
 /// Trusted vaults configuration supporting list or map format.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct TrustedVaults {
     /// List format for trusted vault paths.
