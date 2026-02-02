@@ -66,6 +66,10 @@ This spec proposes an idiomatic Rust alignment that preserves the ergonomic “d
 - **Backwards compatibility**: existing public APIs should remain available; new strict APIs should be additive initially.
 - **Bounded context boundaries**: frontmatter errors must remain note-context errors (no schema error leakage).
 
+Additional persisted-format constraint:
+
+- **Persisted bytes contract**: changes to `FieldValue` / `Frontmatter` structure or `rkyv` format-control features can invalidate existing on-disk data; treat these as migration events.
+
 ## 2. Guide-Level Explanation (The "What")
 
 ### 2.1 User/Dev Experience
@@ -177,7 +181,18 @@ This module remains sync, deterministic, and I/O-free.
   - `is_*()` / `as_*()` typed inspection and extraction.
 - **State/Invariants**:
   - Enum is `#[non_exhaustive]` to allow future extension.
-  - `Object` remains boxed to keep enum size reasonable.
+  - Recursion is supported (`Array(Vec<FieldValue>)`, `Object(HashMap<String, FieldValue>)`).
+
+##### Serialization (Phase 7) — Target Strategy
+
+We want `FieldValue` and `Frontmatter` to remain persistable via **rkyv** (with **bytecheck** validation) *without* redesigning away recursion.
+
+The target strategy is the documented rkyv approach for recursive types:
+
+- Derive `rkyv::{Archive, Serialize, Deserialize}` (+ `CheckBytes` / bytecheck).
+- Add `#[rkyv(omit_bounds)]` on the recursive fields so rkyv’s default “perfect derive” bounds do not cause rustc trait-solver overflow.
+
+If this strategy ever becomes insufficient (e.g., due to format evolution needs), fall back to a separate-frontmatter storage format as an explicit migration (see Alternatives).
 
 Planned improvements (idiomatic conversions):
 
@@ -248,12 +263,46 @@ sequenceDiagram
 
 - `Array(Vec<FieldValue>)`
 - `Boolean(bool)`
-- `Date(DateTime<Utc>)`
+- `Date(i64)`
 - `Number(f64)`
-- `Object(Box<HashMap<String, FieldValue>>)`
+- `Object(HashMap<String, FieldValue>)`
 - `String(String)`
 
 Note: Any changes to `FieldValue` variant set are a persisted-format concern due to `serde` + `rkyv`.
+
+Also note: recursion is persisted. The rkyv derives must continue to use the documented recursion strategy (`#[rkyv(omit_bounds)]` on recursive fields) unless/until a migration is performed.
+
+Note: for ergonomics, APIs may expose `DateTime<Utc>` (e.g., `FieldValue::as_datetime()`), but the persisted representation remains an integer timestamp to keep the stored format simple and rkyv-friendly.
+
+#### Date/time fidelity vs semantics
+
+Storing `Date(i64)` is optimized for **semantic operations** (sorting, filtering, comparisons) and rkyv friendliness, but it is not a lossless representation of YAML frontmatter date/time.
+
+- **Potential fidelity loss**:
+  - timezone offset / original zone (`-0500` vs `Z`)
+  - textual form (date-only `2026-02-02` vs datetime `2026-02-02T10:00:00Z`)
+  - sub-second precision
+- **Operational impact**:
+  - Parsing adapters must normalize input into the chosen domain representation.
+  - If we later need exact round-trip reproduction of frontmatter values (including original formatting), `Date(i64)` alone is insufficient.
+
+Design stance (best practice):
+
+- Default the domain model to **semantic** representation (`i64`) because it is cheap and predictable.
+- If/when exact round-trip fidelity is required, add an explicit lossless representation (e.g., an additional variant like `DateRaw(Box<str>)` or `DateString(Box<str>)`) and treat it as a persisted-format migration.
+
+#### Query semantics for `Date(i64)`
+
+Storing a date/time as `i64` (Unix timestamp) generally makes querying *easier* and more performant, because comparisons become numeric.
+
+- **Instant/range queries** (recommended): convert the query inputs into a UTC timestamp range and filter numerically.
+  - Example semantics: “created within [start, end)” becomes `start_ts <= created_ts && created_ts < end_ts`.
+- **Local calendar date queries**: if users specify a local date (e.g., “2026-02-02” in a specific timezone), convert that to a UTC range first (start-of-day to next-start-of-day in that timezone), then apply the numeric range query.
+
+Limitations to be aware of:
+
+- If the original YAML value included a timezone offset or used a date-only textual form, that *format* is not queryable once normalized to an `i64` unless we store additional metadata.
+- If we later decide users must be able to query “date-only values” distinctly from “datetime values”, we will need a richer representation (e.g., separate variants or a tagged wrapper).
 
 ### 3.5 Core Logic & Algorithms
 
@@ -348,6 +397,52 @@ Key nuance: `TryFrom<&FieldValue>` conversions are value-level and cannot natura
 - **Choice**: keep lenient APIs (e.g., string array fallback to single string).
 - **Alternatives Considered**:
   - _Strict-only_: would create poor UX for existing vaults.
+
+#### Decision: Serialize recursive `Frontmatter` via rkyv (Phase 7)
+
+- **Context**: naive rkyv derives for recursive enums can trigger trait-solver overflow due to recursive where-clause expansion.
+- **Choice**: keep frontmatter in the `Note` archive and use rkyv’s recommended recursion escape hatch:
+  - Derive rkyv + bytecheck for `FieldValue` and `Frontmatter`.
+  - Apply `#[rkyv(omit_bounds)]` on recursive fields to avoid recursive where-clause expansion.
+- **Why this is preferable**:
+  - One write/read per note (no separate "frontmatter" table).
+  - Preserves frontmatter in the same persisted entity (simpler query path).
+  - Keeps the option to expose zero-copy archived views for frontmatter later.
+- **Alternatives considered**:
+  - _Separate frontmatter storage (serde JSON/TOML)_: simple and flexible, but adds extra DB operations and loses zero-copy for frontmatter.
+  - _Manual rkyv impls_: maintenance-heavy and error-prone.
+  - _Flatten values (no recursion)_: breaks structured frontmatter.
+
+#### Decision: Do not box `Object` by default
+
+- **Question**: why not represent objects as `Object(Box<HashMap<String, FieldValue>>)`?
+- **Finding**: in this shape, boxing `HashMap` typically adds allocation/indirection without a corresponding size reduction.
+  - `String`, `Vec<T>`, and `HashMap<K,V>` are already pointer-heavy (multi-word) types.
+  - The enum size is driven by the largest payload variant; with `String`/`Vec` already present, boxing only `Object` rarely reduces `FieldValue`’s maximum payload size.
+- **Outcome**: prefer `Object(HashMap<...>)` unless a broader representation change demonstrates a real memory/layout win.
+
+This is a performance-first choice: avoid extra allocations and pointer-chasing unless they buy something concrete.
+
+#### Consideration: extract nested container values into dedicated structs
+
+An alternative organization is to move container payloads out of `FieldValue` into dedicated types:
+
+- Example: `Object(ObjectValue)` where `struct ObjectValue(HashMap<String, FieldValue>);`
+- Example: `Array(ArrayValue)` where `struct ArrayValue(Vec<FieldValue>);`
+
+Potential benefits:
+
+- Cleaner API surface: object-specific helpers live on `ObjectValue` (typed lookups, key iteration policies).
+- Easier to attach invariants/validation at container boundaries.
+- A single place to hang rkyv/serde attributes and bounds.
+
+Limitations:
+
+- This does **not** remove recursion; it just moves it, so the rkyv recursion strategy (`#[rkyv(omit_bounds)]` on recursive fields) is still required.
+
+Expected outcome:
+
+- Mostly improved organization and maintainability; performance is typically neutral unless we also change the underlying container types or allocation strategy.
 
 ## 5. Operational Readiness (The "Reality Check")
 
