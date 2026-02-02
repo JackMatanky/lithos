@@ -15,6 +15,10 @@ pub enum NoteError {
     #[error("frontmatter error: {0}")]
     Frontmatter(String),
 
+    /// Frontmatter access/extraction error.
+    #[error(transparent)]
+    FrontmatterAccess(#[from] super::frontmatter::FrontmatterError),
+
     /// Note path is invalid.
     #[error("invalid note path: {0}")]
     InvalidPath(String),
@@ -47,6 +51,7 @@ pub enum NoteError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::note::frontmatter::FrontmatterError;
 
     #[test]
     fn note_error_is_send_and_sync() {
@@ -62,6 +67,9 @@ mod tests {
             NoteError::AlreadyExists("test.md".into()),
             NoteError::ValidationFailed("invalid".into()),
             NoteError::Frontmatter("parse error".into()),
+            NoteError::FrontmatterAccess(FrontmatterError::Missing {
+                key: "title".into(),
+            }),
             NoteError::Link("broken link".into()),
             NoteError::Tag("invalid tag".into()),
             NoteError::Task("invalid task".into()),
