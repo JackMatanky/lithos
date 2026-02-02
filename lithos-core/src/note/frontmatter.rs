@@ -422,9 +422,9 @@ impl<'frontmatter> FromFieldValueRef<'frontmatter>
 
 #[expect(
     clippy::pattern_type_mismatch,
-    clippy::wildcard_enum_match_arm,
-    reason = "Accessor methods intentionally use catch-all patterns for \
-              forward compatibility"
+    reason = "Accessor methods intentionally use match ergonomics on `&self` \
+              (e.g., `if let Self::Array(arr) = self`) to avoid `ref` \
+              patterns and keep the code concise"
 )]
 impl FieldValue {
     #[inline]
@@ -443,27 +443,30 @@ impl FieldValue {
     #[inline]
     #[must_use]
     pub fn as_array(&self) -> Option<&[FieldValue]> {
-        match self {
-            Self::Array(arr) => Some(arr),
-            _ => None,
+        if let Self::Array(arr) = self {
+            Some(arr)
+        } else {
+            None
         }
     }
 
     #[inline]
     #[must_use]
     pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            Self::Boolean(b) => Some(*b),
-            _ => None,
+        if let &Self::Boolean(b) = self {
+            Some(b)
+        } else {
+            None
         }
     }
 
     #[inline]
     #[must_use]
     pub fn as_date(&self) -> Option<i64> {
-        match self {
-            Self::Date(timestamp) => Some(*timestamp),
-            _ => None,
+        if let &Self::Date(timestamp) = self {
+            Some(timestamp)
+        } else {
+            None
         }
     }
 
@@ -478,27 +481,30 @@ impl FieldValue {
     #[inline]
     #[must_use]
     pub fn as_number(&self) -> Option<f64> {
-        match self {
-            Self::Number(n) => Some(*n),
-            _ => None,
+        if let &Self::Number(n) = self {
+            Some(n)
+        } else {
+            None
         }
     }
 
     #[inline]
     #[must_use]
     pub fn as_object(&self) -> Option<&HashMap<String, FieldValue>> {
-        match self {
-            Self::Object(obj) => Some(obj),
-            _ => None,
+        if let Self::Object(obj) = self {
+            Some(obj)
+        } else {
+            None
         }
     }
 
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
-        match self {
-            Self::String(s) => Some(s),
-            _ => None,
+        if let Self::String(s) = self {
+            Some(s)
+        } else {
+            None
         }
     }
 
