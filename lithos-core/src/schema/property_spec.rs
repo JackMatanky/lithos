@@ -17,23 +17,62 @@ use super::error::SchemaError;
 static REGEX_CACHE: OnceLock<Mutex<HashMap<String, regex::Regex>>> =
     OnceLock::new();
 
-/// Supported property specification types.
+/// Boolean property (marker type).
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
-#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
-pub enum PropertySpecType {
-    /// Boolean type.
-    Bool,
-    /// Date type.
-    Date,
-    /// File reference type.
-    File,
-    /// Numeric type.
-    Number,
-    /// String type.
-    String,
+pub struct BoolSpec;
+
+/// Date property validation constraints.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct DateSpec {
+    /// Date format string (using chrono format tokens).
+    pub format: String,
+}
+
+/// File property validation constraints.
+#[derive(
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+)]
+#[non_exhaustive]
+pub struct FileSpec {
+    /// Optional directory restriction (vault-relative path).
+    pub directory: Option<String>,
+    /// Optional file class restriction (schema name).
+    pub file_class: Option<String>,
+}
+
+/// Number property validation constraints.
+#[derive(
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+)]
+#[non_exhaustive]
+pub struct NumberSpec {
+    /// Optional maximum value.
+    pub max: Option<f64>,
+    /// Optional minimum value.
+    pub min: Option<f64>,
+    /// Optional step increment.
+    pub step: Option<f64>,
+}
+
+/// Sum type for all supported property specifications.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum PropertySpec {
+    /// Boolean property (marker type).
+    Bool(BoolSpec),
+    /// Date property validation constraints.
+    Date(DateSpec),
+    /// File property validation constraints.
+    File(FileSpec),
+    /// Number property validation constraints.
+    Number(NumberSpec),
+    /// String property validation constraints.
+    String(StringSpec),
 }
 
 /// Core trait for property specifications.
@@ -57,21 +96,270 @@ pub trait PropertySpecTrait: Debug + Send + Sync {
     fn validate_spec(&self) -> Result<(), SchemaError>;
 }
 
-/// Sum type for all supported property specifications.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+/// Supported property specification types.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
-pub enum PropertySpec {
-    /// Boolean property (marker type).
-    Bool(BoolSpec),
-    /// Date property validation constraints.
-    Date(DateSpec),
-    /// File property validation constraints.
-    File(FileSpec),
-    /// Number property validation constraints.
-    Number(NumberSpec),
-    /// String property validation constraints.
-    String(StringSpec),
+pub enum PropertySpecType {
+    /// Boolean type.
+    Bool,
+    /// Date type.
+    Date,
+    /// File reference type.
+    File,
+    /// Numeric type.
+    Number,
+    /// String type.
+    String,
+}
+
+/// String property validation constraints.
+#[derive(
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+)]
+#[non_exhaustive]
+pub struct StringSpec {
+    /// Optional enum of allowed values.
+    pub enum_values: Option<Vec<String>>,
+    /// Optional max length.
+    pub max_length: Option<usize>,
+    /// Optional min length.
+    pub min_length: Option<usize>,
+    /// Optional regex pattern.
+    pub pattern: Option<String>,
+}
+
+fn get_cached_regex(pattern: &str) -> Result<regex::Regex, SchemaError> {
+    let cache = REGEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = cache.lock().map_err(|e| {
+        SchemaError::ValidationFailed(format!("Regex cache poison: {e}"))
+    })?;
+
+    if let Some(re) = guard.get(pattern) {
+        return Ok(re.clone());
+    }
+
+    let re = regex::Regex::new(pattern).map_err(|e| {
+        SchemaError::InvalidRegex(format!("Invalid pattern {pattern}: {e}"))
+    })?;
+
+    guard.insert(pattern.to_owned(), re.clone());
+    Ok(re)
+}
+
+impl PropertySpecTrait for BoolSpec {
+    type Value = bool;
+
+    #[inline]
+    fn spec_type(&self) -> PropertySpecType {
+        PropertySpecType::Bool
+    }
+
+    #[inline]
+    fn validate(&self, _value: &Self::Value) -> Result<(), SchemaError> {
+        Ok(())
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), SchemaError> {
+        Ok(())
+    }
+}
+
+impl PropertySpecTrait for DateSpec {
+    type Value = String;
+
+    #[inline]
+    fn spec_type(&self) -> PropertySpecType {
+        PropertySpecType::Date
+    }
+
+    #[inline]
+    fn validate(&self, value: &Self::Value) -> Result<(), SchemaError> {
+        // Use chrono format tokens directly
+        let is_valid =
+            chrono::NaiveDateTime::parse_from_str(value, &self.format).is_ok()
+                || chrono::NaiveDate::parse_from_str(value, &self.format)
+                    .is_ok();
+
+        if !is_valid {
+            return Err(SchemaError::InvalidDateFormat(format!(
+                "Value {value} does not match format {}",
+                self.format
+            )));
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), SchemaError> {
+        if self.format.is_empty() {
+            return Err(SchemaError::InvalidDateFormat(
+                "Format cannot be empty".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl PropertySpecTrait for FileSpec {
+    type Value = String;
+
+    #[inline]
+    fn spec_type(&self) -> PropertySpecType {
+        PropertySpecType::File
+    }
+
+    #[inline]
+    fn validate(&self, value: &Self::Value) -> Result<(), SchemaError> {
+        if let Some(dir) = self.directory.as_ref()
+            && !value.starts_with(dir)
+        {
+            return Err(SchemaError::InvalidDirectoryPath(format!(
+                "File {value} must be in directory {dir}"
+            )));
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), SchemaError> {
+        if let Some(fc) = self.file_class.as_ref()
+            && fc.is_empty()
+        {
+            return Err(SchemaError::InvalidFileClass(
+                "File class cannot be empty".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl PropertySpecTrait for NumberSpec {
+    type Value = f64;
+
+    #[inline]
+    fn spec_type(&self) -> PropertySpecType {
+        PropertySpecType::Number
+    }
+
+    #[inline]
+    fn validate(&self, value: &Self::Value) -> Result<(), SchemaError> {
+        self.validate_range(*value)?;
+        self.validate_step(*value)?;
+        Ok(())
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), SchemaError> {
+        self.check_range()?;
+        self.check_step()?;
+        Ok(())
+    }
+}
+
+impl PropertySpecTrait for StringSpec {
+    type Value = String;
+
+    #[inline]
+    fn spec_type(&self) -> PropertySpecType {
+        PropertySpecType::String
+    }
+
+    #[inline]
+    fn validate(&self, value: &Self::Value) -> Result<(), SchemaError> {
+        self.validate_length(value)?;
+        self.validate_enum(value)?;
+        self.validate_pattern(value)?;
+        Ok(())
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), SchemaError> {
+        self.check_length_range()?;
+        self.check_pattern()?;
+        Ok(())
+    }
+}
+
+impl NumberSpec {
+    fn check_range(&self) -> Result<(), SchemaError> {
+        if let (Some(min), Some(max)) = (self.min, self.max)
+            && min > max
+        {
+            return Err(SchemaError::ValidationFailed(
+                "min cannot be greater than max".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn check_step(&self) -> Result<(), SchemaError> {
+        if self.step.is_some_and(|step| step <= 0.0f64) {
+            return Err(SchemaError::ValidationFailed(
+                "step must be positive".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Validates that a numeric value falls within optional min/max bounds.
+    ///
+    /// # Errors
+    /// Returns `SchemaError::NumberOutOfRange` if validation fails.
+    #[inline]
+    pub fn validate_range(&self, value: f64) -> Result<(), SchemaError> {
+        if let Some(min) = self.min
+            && value < min
+        {
+            return Err(SchemaError::NumberOutOfRange {
+                value,
+                min: self.min,
+                max: self.max,
+            });
+        }
+        if let Some(max) = self.max
+            && value > max
+        {
+            return Err(SchemaError::NumberOutOfRange {
+                value,
+                min: self.min,
+                max: self.max,
+            });
+        }
+        Ok(())
+    }
+
+    /// Validates that a numeric value aligns with a step increment.
+    ///
+    /// # Errors
+    /// Returns `SchemaError::InvalidStepValue` if validation fails.
+    #[inline]
+    #[expect(
+        clippy::float_arithmetic,
+        clippy::modulo_arithmetic,
+        reason = "Core numeric validation logic with epsilon comparison"
+    )]
+    pub fn validate_step(&self, value: f64) -> Result<(), SchemaError> {
+        if let Some(step) = self.step {
+            const EPSILON: f64 = 1e-10;
+            // Note: step positivity is guaranteed by check_step() in
+            // validate_spec
+            let base = self.min.unwrap_or(0.0f64);
+            let offset = (value - base).abs();
+            let remainder = offset % step;
+
+            if remainder > EPSILON && (step - remainder) > EPSILON {
+                return Err(SchemaError::InvalidStepValue {
+                    value,
+                    step,
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 impl PropertySpec {
@@ -189,276 +477,6 @@ impl PropertySpec {
     }
 }
 
-/// Boolean property (marker type).
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct BoolSpec;
-
-impl PropertySpecTrait for BoolSpec {
-    type Value = bool;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::Bool
-    }
-
-    #[inline]
-    fn validate(&self, _value: &Self::Value) -> Result<(), SchemaError> {
-        Ok(())
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), SchemaError> {
-        Ok(())
-    }
-}
-
-/// Date property validation constraints.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct DateSpec {
-    /// Date format string (using chrono format tokens).
-    pub format: String,
-}
-
-impl PropertySpecTrait for DateSpec {
-    type Value = String;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::Date
-    }
-
-    #[inline]
-    fn validate(&self, value: &Self::Value) -> Result<(), SchemaError> {
-        // Use chrono format tokens directly
-        let is_valid =
-            chrono::NaiveDateTime::parse_from_str(value, &self.format).is_ok()
-                || chrono::NaiveDate::parse_from_str(value, &self.format)
-                    .is_ok();
-
-        if !is_valid {
-            return Err(SchemaError::InvalidDateFormat(format!(
-                "Value {value} does not match format {}",
-                self.format
-            )));
-        }
-        Ok(())
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), SchemaError> {
-        if self.format.is_empty() {
-            return Err(SchemaError::InvalidDateFormat(
-                "Format cannot be empty".to_owned(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// File property validation constraints.
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct FileSpec {
-    /// Optional directory restriction (vault-relative path).
-    pub directory: Option<String>,
-    /// Optional file class restriction (schema name).
-    pub file_class: Option<String>,
-}
-
-impl PropertySpecTrait for FileSpec {
-    type Value = String;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::File
-    }
-
-    #[inline]
-    fn validate(&self, value: &Self::Value) -> Result<(), SchemaError> {
-        if let Some(dir) = self.directory.as_ref()
-            && !value.starts_with(dir)
-        {
-            return Err(SchemaError::InvalidDirectoryPath(format!(
-                "File {value} must be in directory {dir}"
-            )));
-        }
-        Ok(())
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), SchemaError> {
-        if let Some(fc) = self.file_class.as_ref()
-            && fc.is_empty()
-        {
-            return Err(SchemaError::InvalidFileClass(
-                "File class cannot be empty".to_owned(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// Number property validation constraints.
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct NumberSpec {
-    /// Optional maximum value.
-    pub max: Option<f64>,
-    /// Optional minimum value.
-    pub min: Option<f64>,
-    /// Optional step increment.
-    pub step: Option<f64>,
-}
-
-impl PropertySpecTrait for NumberSpec {
-    type Value = f64;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::Number
-    }
-
-    #[inline]
-    fn validate(&self, value: &Self::Value) -> Result<(), SchemaError> {
-        self.validate_range(*value)?;
-        self.validate_step(*value)?;
-        Ok(())
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), SchemaError> {
-        self.check_range()?;
-        self.check_step()?;
-        Ok(())
-    }
-}
-
-impl NumberSpec {
-    fn check_range(&self) -> Result<(), SchemaError> {
-        if let (Some(min), Some(max)) = (self.min, self.max)
-            && min > max
-        {
-            return Err(SchemaError::ValidationFailed(
-                "min cannot be greater than max".to_owned(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn check_step(&self) -> Result<(), SchemaError> {
-        if self.step.is_some_and(|step| step <= 0.0f64) {
-            return Err(SchemaError::ValidationFailed(
-                "step must be positive".to_owned(),
-            ));
-        }
-        Ok(())
-    }
-
-    /// Validates that a numeric value falls within optional min/max bounds.
-    ///
-    /// # Errors
-    /// Returns `SchemaError::NumberOutOfRange` if validation fails.
-    #[inline]
-    pub fn validate_range(&self, value: f64) -> Result<(), SchemaError> {
-        if let Some(min) = self.min
-            && value < min
-        {
-            return Err(SchemaError::NumberOutOfRange {
-                value,
-                min: self.min,
-                max: self.max,
-            });
-        }
-        if let Some(max) = self.max
-            && value > max
-        {
-            return Err(SchemaError::NumberOutOfRange {
-                value,
-                min: self.min,
-                max: self.max,
-            });
-        }
-        Ok(())
-    }
-
-    /// Validates that a numeric value aligns with a step increment.
-    ///
-    /// # Errors
-    /// Returns `SchemaError::InvalidStepValue` if validation fails.
-    #[inline]
-    #[expect(
-        clippy::float_arithmetic,
-        clippy::modulo_arithmetic,
-        reason = "Core numeric validation logic with epsilon comparison"
-    )]
-    pub fn validate_step(&self, value: f64) -> Result<(), SchemaError> {
-        if let Some(step) = self.step {
-            const EPSILON: f64 = 1e-10;
-            // Note: step positivity is guaranteed by check_step() in
-            // validate_spec
-            let base = self.min.unwrap_or(0.0f64);
-            let offset = (value - base).abs();
-            let remainder = offset % step;
-
-            if remainder > EPSILON && (step - remainder) > EPSILON {
-                return Err(SchemaError::InvalidStepValue {
-                    value,
-                    step,
-                });
-            }
-        }
-        Ok(())
-    }
-}
-
-/// String property validation constraints.
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct StringSpec {
-    /// Optional enum of allowed values.
-    pub enum_values: Option<Vec<String>>,
-    /// Optional max length.
-    pub max_length: Option<usize>,
-    /// Optional min length.
-    pub min_length: Option<usize>,
-    /// Optional regex pattern.
-    pub pattern: Option<String>,
-}
-
-impl PropertySpecTrait for StringSpec {
-    type Value = String;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::String
-    }
-
-    #[inline]
-    fn validate(&self, value: &Self::Value) -> Result<(), SchemaError> {
-        self.validate_length(value)?;
-        self.validate_enum(value)?;
-        self.validate_pattern(value)?;
-        Ok(())
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), SchemaError> {
-        self.check_length_range()?;
-        self.check_pattern()?;
-        Ok(())
-    }
-}
-
 impl StringSpec {
     fn check_length_range(&self) -> Result<(), SchemaError> {
         if let (Some(min), Some(max)) = (self.min_length, self.max_length)
@@ -530,24 +548,6 @@ impl StringSpec {
         }
         Ok(())
     }
-}
-
-fn get_cached_regex(pattern: &str) -> Result<regex::Regex, SchemaError> {
-    let cache = REGEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut guard = cache.lock().map_err(|e| {
-        SchemaError::ValidationFailed(format!("Regex cache poison: {e}"))
-    })?;
-
-    if let Some(re) = guard.get(pattern) {
-        return Ok(re.clone());
-    }
-
-    let re = regex::Regex::new(pattern).map_err(|e| {
-        SchemaError::InvalidRegex(format!("Invalid pattern {pattern}: {e}"))
-    })?;
-
-    guard.insert(pattern.to_owned(), re.clone());
-    Ok(re)
 }
 
 #[cfg(test)]

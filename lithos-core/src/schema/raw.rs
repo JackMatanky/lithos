@@ -14,6 +14,44 @@ use super::{
     aggregate::SchemaName, property::PropertyName, property_spec::PropertySpec,
 };
 
+/// Raw property input definition (Inline or Ref).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[non_exhaustive]
+pub enum RawProperty {
+    /// An inline property definition.
+    Inline(RawPropertyInline),
+    /// A reference to a property in the `PropertyBank`.
+    Ref(RawPropertyRef),
+}
+
+/// Inline variant of a raw property.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawPropertyInline {
+    /// Unique identity assigned by adapter.
+    pub id: Uuid,
+    /// Property name.
+    pub name: String,
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Whether property accepts array of values.
+    #[serde(default)]
+    pub array: bool,
+    /// Type-specific validation constraints.
+    pub spec: PropertySpec,
+}
+
+/// Reference variant of a raw property.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawPropertyRef {
+    /// The reference string (e.g., "#/properties/title").
+    #[serde(rename = "$ref")]
+    pub ref_path: String,
+}
+
 /// Raw schema definition (Input).
 ///
 /// # Examples
@@ -74,44 +112,6 @@ impl RawSchema {
             properties,
         }
     }
-}
-
-/// Raw property input definition (Inline or Ref).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(untagged)]
-#[non_exhaustive]
-pub enum RawProperty {
-    /// An inline property definition.
-    Inline(RawPropertyInline),
-    /// A reference to a property in the `PropertyBank`.
-    Ref(RawPropertyRef),
-}
-
-/// Reference variant of a raw property.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawPropertyRef {
-    /// The reference string (e.g., "#/properties/title").
-    #[serde(rename = "$ref")]
-    pub ref_path: String,
-}
-
-/// Inline variant of a raw property.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawPropertyInline {
-    /// Unique identity assigned by adapter.
-    pub id: Uuid,
-    /// Property name.
-    pub name: String,
-    /// Whether property is required.
-    #[serde(default)]
-    pub required: bool,
-    /// Whether property accepts array of values.
-    #[serde(default)]
-    pub array: bool,
-    /// Type-specific validation constraints.
-    pub spec: PropertySpec,
 }
 
 #[cfg(test)]

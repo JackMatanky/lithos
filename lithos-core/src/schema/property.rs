@@ -17,6 +17,24 @@ use uuid::Uuid;
 use super::{error::SchemaError, property_spec::PropertySpec};
 use crate::patterns;
 
+/// Reusable property definition with type-specific validation.
+///
+/// This is the resolved entity used in the Domain layer.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Property {
+    /// Unique identity (UUID v7).
+    id: Uuid,
+    /// Property name.
+    name: PropertyName,
+    /// Whether property is required.
+    required: bool,
+    /// Whether property accepts array of values.
+    array: bool,
+    /// Type-specific validation specification.
+    spec: PropertySpec,
+}
+
 /// Validated property name value object.
 ///
 /// Enforces invariants:
@@ -38,44 +56,10 @@ use crate::patterns;
 #[non_exhaustive]
 pub struct PropertyName(pub String);
 
-impl PropertyName {
-    /// Create a new `PropertyName` with validation.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
+impl AsRef<str> for PropertyName {
     #[inline]
-    pub fn new(name: String) -> Result<Self, SchemaError> {
-        Self::validate(&name)?;
-        Ok(Self(name))
-    }
-
-    /// Validates a property name string.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    #[inline]
-    pub fn validate(name: &str) -> Result<(), SchemaError> {
-        static RE: LazyLock<Regex> = LazyLock::new(|| {
-            #[expect(
-                clippy::expect_used,
-                clippy::disallowed_methods,
-                reason = "Static regex literal is safe and efficient"
-            )]
-            Regex::new(patterns::ALPHANUMERIC_NAME)
-                .expect("Static regex literal")
-        });
-
-        if name.is_empty() {
-            return Err(SchemaError::EmptyPropertyName);
-        }
-        if name.len() > 64 {
-            return Err(SchemaError::PropertyNameTooLong(name.len()));
-        }
-
-        if !RE.is_match(name) {
-            return Err(SchemaError::InvalidPropertyName(name.to_owned()));
-        }
-        Ok(())
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }
 
@@ -95,15 +79,6 @@ impl Display for PropertyName {
     }
 }
 
-impl TryFrom<String> for PropertyName {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
 impl From<PropertyName> for String {
     #[inline]
     fn from(val: PropertyName) -> Self {
@@ -111,29 +86,13 @@ impl From<PropertyName> for String {
     }
 }
 
-impl AsRef<str> for PropertyName {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
+impl TryFrom<String> for PropertyName {
+    type Error = SchemaError;
 
-/// Reusable property definition with type-specific validation.
-///
-/// This is the resolved entity used in the Domain layer.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Property {
-    /// Unique identity (UUID v7).
-    id: Uuid,
-    /// Property name.
-    name: PropertyName,
-    /// Whether property is required.
-    required: bool,
-    /// Whether property accepts array of values.
-    array: bool,
-    /// Type-specific validation specification.
-    spec: PropertySpec,
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
 }
 
 impl Property {
@@ -266,6 +225,47 @@ impl Property {
         } else {
             self.spec.validate(value)
         }
+    }
+}
+
+impl PropertyName {
+    /// Create a new `PropertyName` with validation.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn new(name: String) -> Result<Self, SchemaError> {
+        Self::validate(&name)?;
+        Ok(Self(name))
+    }
+
+    /// Validates a property name string.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate(name: &str) -> Result<(), SchemaError> {
+        static RE: LazyLock<Regex> = LazyLock::new(|| {
+            #[expect(
+                clippy::expect_used,
+                clippy::disallowed_methods,
+                reason = "Static regex literal is safe and efficient"
+            )]
+            Regex::new(patterns::ALPHANUMERIC_NAME)
+                .expect("Static regex literal")
+        });
+
+        if name.is_empty() {
+            return Err(SchemaError::EmptyPropertyName);
+        }
+        if name.len() > 64 {
+            return Err(SchemaError::PropertyNameTooLong(name.len()));
+        }
+
+        if !RE.is_match(name) {
+            return Err(SchemaError::InvalidPropertyName(name.to_owned()));
+        }
+        Ok(())
     }
 }
 

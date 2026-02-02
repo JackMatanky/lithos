@@ -6,6 +6,14 @@ use std::ops::Deref;
 
 use super::error::NoteError;
 
+/// Internal wrapper for the full tag path string.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FullPath(Box<str>);
+
+/// Internal wrapper for tag segments.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Segments(Vec<Box<str>>);
+
 /// Represents a hierarchical tag with segments.
 ///
 /// Tags follow the format `#segment1/segment2/segment3` and are used
@@ -17,6 +25,112 @@ pub struct Tag {
     pub full_path: FullPath,
     /// Individual path segments.
     pub segments: Segments,
+}
+
+impl Deref for FullPath {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Deref for Segments {
+    type Target = [Box<str>];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl FullPath {
+    /// Returns string reference.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Creates a new `FullPath` from a raw tag string.
+    fn new(input: &str) -> Result<Self, NoteError> {
+        Self::validate(input)?;
+        #[expect(
+            clippy::string_slice,
+            reason = "Safe because we check input.starts_with('#') in \
+                      validate()"
+        )]
+        Ok(Self(input[1..].into()))
+    }
+
+    /// Validates a raw tag string.
+    ///
+    /// # Errors
+    /// Returns [`NoteError::Tag`] if the input doesn't start with `#` or is
+    /// empty.
+    #[inline]
+    pub fn validate(input: &str) -> Result<(), NoteError> {
+        if !input.starts_with('#') {
+            return Err(NoteError::Tag("Tag must start with #".to_owned()));
+        }
+
+        #[expect(
+            clippy::string_slice,
+            reason = "Safe because we check input.starts_with('#') above"
+        )]
+        let tag_path = &input[1..];
+
+        if tag_path.is_empty() {
+            return Err(NoteError::Tag("Tag cannot be empty".to_owned()));
+        }
+
+        Ok(())
+    }
+}
+
+impl Segments {
+    /// Returns segments as slice.
+    #[inline]
+    #[must_use]
+    pub fn as_slice(&self) -> &[Box<str>] {
+        &self.0
+    }
+
+    /// Creates new `Segments` from a tag path.
+    fn new(tag_path: &str) -> Result<Self, NoteError> {
+        Self::validate(tag_path)?;
+        let segments = tag_path.split('/').map(Into::into).collect();
+        Ok(Self(segments))
+    }
+
+    /// Validates individual path segments.
+    ///
+    /// # Errors
+    /// Returns [`NoteError::Tag`] if any segment is empty or contains invalid
+    /// characters.
+    #[inline]
+    pub fn validate(tag_path: &str) -> Result<(), NoteError> {
+        let segments: Vec<&str> = tag_path.split('/').collect();
+
+        if segments.iter().any(|s| s.is_empty()) {
+            return Err(NoteError::Tag("Empty tag segment".to_owned()));
+        }
+
+        for segment in &segments {
+            if !segment
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
+                return Err(NoteError::Tag(format!(
+                    "Invalid tag segment '{segment}': only alphanumeric, \
+                     underscore, and hyphen allowed"
+                )));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Tag {
@@ -58,120 +172,6 @@ impl Tag {
             full_path,
             segments,
         })
-    }
-}
-
-/// Internal wrapper for the full tag path string.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FullPath(Box<str>);
-
-impl FullPath {
-    /// Validates a raw tag string.
-    ///
-    /// # Errors
-    /// Returns [`NoteError::Tag`] if the input doesn't start with `#` or is
-    /// empty.
-    #[inline]
-    pub fn validate(input: &str) -> Result<(), NoteError> {
-        if !input.starts_with('#') {
-            return Err(NoteError::Tag("Tag must start with #".to_owned()));
-        }
-
-        #[expect(
-            clippy::string_slice,
-            reason = "Safe because we check input.starts_with('#') above"
-        )]
-        let tag_path = &input[1..];
-
-        if tag_path.is_empty() {
-            return Err(NoteError::Tag("Tag cannot be empty".to_owned()));
-        }
-
-        Ok(())
-    }
-
-    /// Returns string reference.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Creates a new `FullPath` from a raw tag string.
-    fn new(input: &str) -> Result<Self, NoteError> {
-        Self::validate(input)?;
-        #[expect(
-            clippy::string_slice,
-            reason = "Safe because we check input.starts_with('#') in \
-                      validate()"
-        )]
-        Ok(Self(input[1..].into()))
-    }
-}
-
-impl Deref for FullPath {
-    type Target = str;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-/// Internal wrapper for tag segments.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Segments(Vec<Box<str>>);
-
-impl Segments {
-    /// Validates individual path segments.
-    ///
-    /// # Errors
-    /// Returns [`NoteError::Tag`] if any segment is empty or contains invalid
-    /// characters.
-    #[inline]
-    pub fn validate(tag_path: &str) -> Result<(), NoteError> {
-        let segments: Vec<&str> = tag_path.split('/').collect();
-
-        if segments.iter().any(|s| s.is_empty()) {
-            return Err(NoteError::Tag("Empty tag segment".to_owned()));
-        }
-
-        for segment in &segments {
-            if !segment
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-            {
-                return Err(NoteError::Tag(format!(
-                    "Invalid tag segment '{segment}': only alphanumeric, \
-                     underscore, and hyphen allowed"
-                )));
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Returns segments as slice.
-    #[inline]
-    #[must_use]
-    pub fn as_slice(&self) -> &[Box<str>] {
-        &self.0
-    }
-
-    /// Creates new `Segments` from a tag path.
-    fn new(tag_path: &str) -> Result<Self, NoteError> {
-        Self::validate(tag_path)?;
-        let segments = tag_path.split('/').map(Into::into).collect();
-        Ok(Self(segments))
-    }
-}
-
-impl Deref for Segments {
-    type Target = [Box<str>];
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 

@@ -17,18 +17,6 @@ use chrono::{DateTime, Utc};
 
 use super::error::NoteError;
 
-/// Represents YAML metadata extracted from a note header.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal builders and tests"
-)]
-pub struct Frontmatter {
-    /// Key-value pairs of metadata fields.
-    pub(crate) fields: HashMap<String, FieldValue>,
-}
-
 /// Possible values in a frontmatter field.
 ///
 /// This enum represents the runtime type of a value parsed from YAML
@@ -72,6 +60,116 @@ pub enum FieldValue {
     Object(HashMap<String, FieldValue>),
     /// String value.
     String(String),
+}
+
+/// Represents YAML metadata extracted from a note header.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal builders and tests"
+)]
+pub struct Frontmatter {
+    /// Key-value pairs of metadata fields.
+    pub(crate) fields: HashMap<String, FieldValue>,
+}
+
+/// Trait for generic extraction of values from frontmatter fields.
+///
+/// This trait enables type-safe extraction when you know the expected type,
+/// while still allowing runtime type inspection via `FieldValue` methods.
+///
+/// # Design Rationale
+///
+/// This trait exists for **known-type scenarios** where schema validation has
+/// already determined the expected type. For **unknown-type scenarios**, use
+/// the `FieldValue` methods (`is_*()`, `as_*()`) directly.
+///
+/// # Examples
+///
+/// **Known Type (Schema-Driven):**
+/// ```
+/// use std::collections::HashMap;
+///
+/// use lithos_core::note::frontmatter::{
+///     FieldValue, FromFieldValue, Frontmatter,
+/// };
+///
+/// let mut fields = HashMap::new();
+/// fields.insert("title".to_string(), FieldValue::String("Hello".to_string()));
+/// let fm = Frontmatter::new(fields).unwrap();
+///
+/// // When schema says "title is string", use get_as:
+/// let title: Option<String> = fm.get_as("title");
+/// assert_eq!(title, Some("Hello".to_string()));
+/// ```
+///
+/// **Unknown Type (Runtime Inspection):**
+/// ```
+/// use std::collections::HashMap;
+///
+/// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
+///
+/// let mut fields = HashMap::new();
+/// fields.insert("mystery".to_string(), FieldValue::Number(42.0));
+/// let fm = Frontmatter::new(fields).unwrap();
+///
+/// // When type is unknown, inspect then extract:
+/// if let Some(value) = fm.get("mystery") {
+///     if value.is_number() {
+///         println!("It's a number: {}", value.as_number().unwrap());
+///     }
+/// }
+/// ```
+pub trait FromFieldValue: Sized {
+    /// Attempts to extract a value of type `Self` from a `FieldValue`.
+    ///
+    /// Returns `None` if the value cannot be converted to the target type.
+    fn from_value(value: &FieldValue) -> Option<Self>;
+}
+
+impl FromFieldValue for bool {
+    #[inline]
+    fn from_value(value: &FieldValue) -> Option<Self> {
+        value.as_bool()
+    }
+}
+
+impl FromFieldValue for DateTime<Utc> {
+    #[inline]
+    fn from_value(value: &FieldValue) -> Option<Self> {
+        value.as_date()
+    }
+}
+
+impl FromFieldValue for f64 {
+    #[inline]
+    fn from_value(value: &FieldValue) -> Option<Self> {
+        value.as_number()
+    }
+}
+
+impl FromFieldValue for String {
+    #[inline]
+    fn from_value(value: &FieldValue) -> Option<Self> {
+        value.as_str().map(ToOwned::to_owned)
+    }
+}
+
+impl FromFieldValue for Vec<String> {
+    #[inline]
+    fn from_value(value: &FieldValue) -> Option<Self> {
+        // Support both arrays and single strings (Obsidian compatibility)
+        if let Some(arr) = value.as_array() {
+            Some(
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToOwned::to_owned))
+                    .collect(),
+            )
+        } else {
+            value.as_str().map(|s| vec![s.to_owned()])
+        }
+    }
 }
 
 impl FieldValue {
@@ -299,104 +397,6 @@ impl FieldValue {
     #[must_use]
     pub const fn is_string(&self) -> bool {
         matches!(self, Self::String(_))
-    }
-}
-
-/// Trait for generic extraction of values from frontmatter fields.
-///
-/// This trait enables type-safe extraction when you know the expected type,
-/// while still allowing runtime type inspection via `FieldValue` methods.
-///
-/// # Design Rationale
-///
-/// This trait exists for **known-type scenarios** where schema validation has
-/// already determined the expected type. For **unknown-type scenarios**, use
-/// the `FieldValue` methods (`is_*()`, `as_*()`) directly.
-///
-/// # Examples
-///
-/// **Known Type (Schema-Driven):**
-/// ```
-/// use std::collections::HashMap;
-///
-/// use lithos_core::note::frontmatter::{
-///     FieldValue, FromFieldValue, Frontmatter,
-/// };
-///
-/// let mut fields = HashMap::new();
-/// fields.insert("title".to_string(), FieldValue::String("Hello".to_string()));
-/// let fm = Frontmatter::new(fields).unwrap();
-///
-/// // When schema says "title is string", use get_as:
-/// let title: Option<String> = fm.get_as("title");
-/// assert_eq!(title, Some("Hello".to_string()));
-/// ```
-///
-/// **Unknown Type (Runtime Inspection):**
-/// ```
-/// use std::collections::HashMap;
-///
-/// use lithos_core::note::frontmatter::{FieldValue, Frontmatter};
-///
-/// let mut fields = HashMap::new();
-/// fields.insert("mystery".to_string(), FieldValue::Number(42.0));
-/// let fm = Frontmatter::new(fields).unwrap();
-///
-/// // When type is unknown, inspect then extract:
-/// if let Some(value) = fm.get("mystery") {
-///     if value.is_number() {
-///         println!("It's a number: {}", value.as_number().unwrap());
-///     }
-/// }
-/// ```
-pub trait FromFieldValue: Sized {
-    /// Attempts to extract a value of type `Self` from a `FieldValue`.
-    ///
-    /// Returns `None` if the value cannot be converted to the target type.
-    fn from_value(value: &FieldValue) -> Option<Self>;
-}
-
-impl FromFieldValue for String {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Option<Self> {
-        value.as_str().map(ToOwned::to_owned)
-    }
-}
-
-impl FromFieldValue for bool {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Option<Self> {
-        value.as_bool()
-    }
-}
-
-impl FromFieldValue for f64 {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Option<Self> {
-        value.as_number()
-    }
-}
-
-impl FromFieldValue for DateTime<Utc> {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Option<Self> {
-        value.as_date()
-    }
-}
-
-impl FromFieldValue for Vec<String> {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Option<Self> {
-        // Support both arrays and single strings (Obsidian compatibility)
-        if let Some(arr) = value.as_array() {
-            Some(
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(ToOwned::to_owned))
-                    .collect(),
-            )
-        } else {
-            value.as_str().map(|s| vec![s.to_owned()])
-        }
     }
 }
 

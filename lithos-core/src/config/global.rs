@@ -11,17 +11,6 @@ use super::{
     types::{Frontmatter, Logging, Schema, Template},
 };
 
-/// Global filesystem configuration (global template/schema library).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-#[derive(Default)]
-pub struct Paths {
-    /// Schema configuration for global library.
-    pub schema: Schema,
-    /// Template configuration for global library.
-    pub template: Template,
-}
-
 /// Global default configuration (lowest precedence).
 ///
 /// # Business Rules
@@ -41,6 +30,17 @@ pub struct Global {
     pub trusted_vaults: Option<TrustedVaults>,
 }
 
+/// Global filesystem configuration (global template/schema library).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+#[derive(Default)]
+pub struct Paths {
+    /// Schema configuration for global library.
+    pub schema: Schema,
+    /// Template configuration for global library.
+    pub template: Template,
+}
+
 /// Trusted vaults configuration supporting list or map format.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
@@ -49,6 +49,18 @@ pub struct TrustedVaults {
     pub list: Option<Vec<String>>,
     /// Map format for trusted vault paths with aliases.
     pub map: Option<HashMap<String, String>>,
+}
+
+impl Default for Global {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            filesystem: Paths::default(),
+            frontmatter: Frontmatter::default(),
+            logging: Logging::default(),
+            trusted_vaults: None,
+        }
+    }
 }
 
 impl Paths {
@@ -63,18 +75,6 @@ impl Paths {
         self.schema.validate()?;
         self.template.validate()?;
         Ok(())
-    }
-}
-
-impl Default for Global {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            filesystem: Paths::default(),
-            frontmatter: Frontmatter::default(),
-            logging: Logging::default(),
-            trusted_vaults: None,
-        }
     }
 }
 

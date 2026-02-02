@@ -3,6 +3,27 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Property bank updated domain event.
+///
+/// Published when the property bank is updated, allowing other systems
+/// to react to property definition changes.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::events::PropertyBankUpdated;
+///
+/// let event = PropertyBankUpdated::new(12, 1234567890);
+/// assert_eq!(event.property_count, 12);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PropertyBankUpdated {
+    /// Number of properties in the bank after update.
+    pub property_count: usize,
+    /// Unix timestamp when the update occurred.
+    pub timestamp: i64,
+}
+
 /// Schema created domain event.
 ///
 /// Published when a new schema is created, allowing other bounded contexts
@@ -29,27 +50,6 @@ pub struct SchemaCreated {
     pub timestamp: i64,
 }
 
-/// Property bank updated domain event.
-///
-/// Published when the property bank is updated, allowing other systems
-/// to react to property definition changes.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::events::PropertyBankUpdated;
-///
-/// let event = PropertyBankUpdated::new(12, 1234567890);
-/// assert_eq!(event.property_count, 12);
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct PropertyBankUpdated {
-    /// Number of properties in the bank after update.
-    pub property_count: usize,
-    /// Unix timestamp when the update occurred.
-    pub timestamp: i64,
-}
-
 /// Domain events for the Schema context.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -60,6 +60,18 @@ pub enum Events {
     SchemaCreated(SchemaCreated),
 }
 
+impl PropertyBankUpdated {
+    /// Creates a new property bank updated event.
+    #[inline]
+    #[must_use]
+    pub fn new(property_count: usize, timestamp: i64) -> Self {
+        Self {
+            property_count,
+            timestamp,
+        }
+    }
+}
+
 impl SchemaCreated {
     /// Creates a new schema created event.
     #[inline]
@@ -68,18 +80,6 @@ impl SchemaCreated {
         Self {
             id,
             name,
-            timestamp,
-        }
-    }
-}
-
-impl PropertyBankUpdated {
-    /// Creates a new property bank updated event.
-    #[inline]
-    #[must_use]
-    pub fn new(property_count: usize, timestamp: i64) -> Self {
-        Self {
-            property_count,
             timestamp,
         }
     }

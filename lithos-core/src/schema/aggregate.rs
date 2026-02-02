@@ -26,124 +26,40 @@ use super::{
 };
 use crate::patterns;
 
-/// Validated schema name value object.
+/// Registry of reusable Property definitions with dual indexing.
 ///
-/// Enforces invariants:
-/// - Non-empty
-/// - Max 64 characters
-/// - Matches regex `^[a-zA-Z0-9_-]+$` (alphanumeric, underscores, dashes)
+/// Provides O(1) lookup by ID and Name.
 ///
 /// # Examples
 ///
 /// ```
-/// use lithos_core::schema::aggregate::SchemaName;
+/// # use lithos_core::schema::aggregate::PropertyBank;
+/// # use lithos_core::schema::property::{Property, PropertyName};
+/// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
+/// # use uuid::Uuid;
+/// let mut bank = PropertyBank::new();
+/// let name = PropertyName::new("is_active".to_string()).unwrap();
+/// let spec = PropertySpec::Bool(BoolSpec::default());
+/// let id = Uuid::now_v7();
+/// let property = Property::new(id, name, true, false, spec).unwrap();
 ///
-/// let name = SchemaName::new("project-note".to_string()).unwrap();
-/// assert_eq!(&name.0, "project-note");
-///
-/// let name2 = SchemaName::new("daily_note".to_string()).unwrap();
-/// assert_eq!(&name2.0, "daily_note");
-///
-/// let name3 = SchemaName::new("MySchema".to_string()).unwrap();
-/// assert_eq!(&name3.0, "MySchema");
-///
-/// let invalid = SchemaName::new("".to_string());
-/// assert!(invalid.is_err());
+/// bank.register(property).unwrap();
+/// assert!(bank.has_name("is_active"));
 /// ```
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
-pub struct SchemaName(pub String);
-
-impl SchemaName {
-    /// Create a new `SchemaName` with validation.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    #[inline]
-    pub fn new(name: String) -> Result<Self, SchemaError> {
-        Self::validate(&name)?;
-        Ok(Self(name))
-    }
-
-    /// Validates a schema name string.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    #[inline]
-    pub fn validate(name: &str) -> Result<(), SchemaError> {
-        static RE: LazyLock<Regex> = LazyLock::new(|| {
-            #[expect(
-                clippy::expect_used,
-                clippy::disallowed_methods,
-                reason = "Static regex literal is safe and efficient"
-            )]
-            Regex::new(patterns::ALPHANUMERIC_NAME)
-                .expect("Static regex literal")
-        });
-
-        if name.is_empty() {
-            return Err(SchemaError::EmptySchemaName);
-        }
-        if name.len() > 64 {
-            return Err(SchemaError::SchemaNameTooLong(name.len()));
-        }
-
-        if !RE.is_match(name) {
-            return Err(SchemaError::InvalidSchemaName(name.to_owned()));
-        }
-        Ok(())
-    }
-}
-
-impl std::ops::Deref for SchemaName {
-    type Target = str;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Display for SchemaName {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl TryFrom<String> for SchemaName {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl TryFrom<&str> for SchemaName {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new(value.to_owned())
-    }
-}
-
-impl From<SchemaName> for String {
-    #[inline]
-    fn from(val: SchemaName) -> Self {
-        val.0
-    }
-}
-
-impl AsRef<str> for SchemaName {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
+pub struct PropertyBank {
+    /// Index mapping ID -> index in properties vector.
+    id_index: HashMap<Uuid, usize>,
+    /// Index mapping Name -> index in properties vector.
+    name_index: HashMap<String, usize>,
+    /// Domain events pending emission.
+    #[serde(skip)]
+    pending_events: Vec<Events>,
+    /// Dense storage of properties.
+    properties: Vec<Property>,
 }
 
 /// Schema aggregate defining metadata validation rules (Output).
@@ -179,146 +95,83 @@ pub struct Schema {
     pending_events: Vec<Events>,
 }
 
-impl Schema {
-    /// Adds a domain event to the pending events collection.
-    #[inline]
-    fn add_event(&mut self, event: Events) {
-        self.pending_events.push(event);
-    }
-
-    /// Gets a property by name.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::schema::aggregate::{Schema, SchemaName};
-    /// use uuid::Uuid;
-    ///
-    /// let name = SchemaName::new("test".into()).unwrap();
-    /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
-    /// assert!(schema.get("missing").is_none());
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn get(&self, name: &str) -> Option<&Property> {
-        self.properties.iter().find(|p| p.name().0 == name)
-    }
-
-    /// Checks if a property exists by name.
-    #[inline]
-    #[must_use]
-    pub fn has(&self, name: &str) -> bool {
-        self.properties.iter().any(|p| p.name().0 == name)
-    }
-
-    /// Returns the schema's unique identifier.
-    #[inline]
-    #[must_use]
-    pub const fn id(&self) -> Uuid {
-        self.id
-    }
-
-    /// Returns the schema's unique name.
-    #[inline]
-    #[must_use]
-    pub const fn name(&self) -> &SchemaName {
-        &self.name
-    }
-
-    /// Create a new resolved Schema.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::schema::aggregate::{Schema, SchemaName};
-    /// use uuid::Uuid;
-    ///
-    /// let name = SchemaName::new("project-note".to_string()).unwrap();
-    /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
-    /// assert_eq!(&schema.name().0, "project-note");
-    /// ```
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    #[inline]
-    pub fn new(
-        id: Uuid,
-        name: SchemaName,
-        properties: Vec<Property>,
-    ) -> Result<Self, SchemaError> {
-        let name_str = name.to_string();
-        let mut schema = Self {
-            id,
-            name,
-            properties,
-            pending_events: vec![],
-        };
-
-        schema.add_event(Events::SchemaCreated(SchemaCreated::new(
-            id,
-            name_str,
-            chrono::Utc::now().timestamp(),
-        )));
-
-        Ok(schema)
-    }
-
-    /// Returns a reference to pending domain events.
-    #[inline]
-    #[must_use]
-    pub fn pending_events(&self) -> &[Events] {
-        &self.pending_events
-    }
-
-    /// Returns the fully resolved properties.
-    #[inline]
-    #[must_use]
-    pub fn properties(&self) -> &[Property] {
-        &self.properties
-    }
-
-    /// Returns and clears pending domain events.
-    #[inline]
-    #[must_use]
-    pub fn take_events(&mut self) -> Vec<Events> {
-        std::mem::take(&mut self.pending_events)
-    }
-}
-
-/// Registry of reusable Property definitions with dual indexing.
+/// Validated schema name value object.
 ///
-/// Provides O(1) lookup by ID and Name.
+/// Enforces invariants:
+/// - Non-empty
+/// - Max 64 characters
+/// - Matches regex `^[a-zA-Z0-9_-]+$` (alphanumeric, underscores, dashes)
 ///
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::schema::aggregate::PropertyBank;
-/// # use lithos_core::schema::property::{Property, PropertyName};
-/// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
-/// # use uuid::Uuid;
-/// let mut bank = PropertyBank::new();
-/// let name = PropertyName::new("is_active".to_string()).unwrap();
-/// let spec = PropertySpec::Bool(BoolSpec::default());
-/// let id = Uuid::now_v7();
-/// let property = Property::new(id, name, true, false, spec).unwrap();
+/// use lithos_core::schema::aggregate::SchemaName;
 ///
-/// bank.register(property).unwrap();
-/// assert!(bank.has_name("is_active"));
+/// let name = SchemaName::new("project-note".to_string()).unwrap();
+/// assert_eq!(&name.0, "project-note");
+///
+/// let name2 = SchemaName::new("daily_note".to_string()).unwrap();
+/// assert_eq!(&name2.0, "daily_note");
+///
+/// let name3 = SchemaName::new("MySchema".to_string()).unwrap();
+/// assert_eq!(&name3.0, "MySchema");
+///
+/// let invalid = SchemaName::new("".to_string());
+/// assert!(invalid.is_err());
 /// ```
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
+#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
-pub struct PropertyBank {
-    /// Index mapping ID -> index in properties vector.
-    id_index: HashMap<Uuid, usize>,
-    /// Index mapping Name -> index in properties vector.
-    name_index: HashMap<String, usize>,
-    /// Domain events pending emission.
-    #[serde(skip)]
-    pending_events: Vec<Events>,
-    /// Dense storage of properties.
-    properties: Vec<Property>,
+pub struct SchemaName(pub String);
+
+impl AsRef<str> for SchemaName {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for SchemaName {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for SchemaName {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<SchemaName> for String {
+    #[inline]
+    fn from(val: SchemaName) -> Self {
+        val.0
+    }
+}
+
+impl TryFrom<&str> for SchemaName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value.to_owned())
+    }
+}
+
+impl TryFrom<String> for SchemaName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
 }
 
 impl PropertyBank {
@@ -504,6 +357,153 @@ impl PropertyBank {
     fn validate_name_unique(&self, name: &str) -> Result<(), SchemaError> {
         if self.name_index.contains_key(name) {
             return Err(SchemaError::DuplicatePropertyName(name.to_owned()));
+        }
+        Ok(())
+    }
+}
+
+impl Schema {
+    /// Adds a domain event to the pending events collection.
+    #[inline]
+    fn add_event(&mut self, event: Events) {
+        self.pending_events.push(event);
+    }
+
+    /// Gets a property by name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::schema::aggregate::{Schema, SchemaName};
+    /// use uuid::Uuid;
+    ///
+    /// let name = SchemaName::new("test".into()).unwrap();
+    /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+    /// assert!(schema.get("missing").is_none());
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&Property> {
+        self.properties.iter().find(|p| p.name().0 == name)
+    }
+
+    /// Checks if a property exists by name.
+    #[inline]
+    #[must_use]
+    pub fn has(&self, name: &str) -> bool {
+        self.properties.iter().any(|p| p.name().0 == name)
+    }
+
+    /// Returns the schema's unique identifier.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> Uuid {
+        self.id
+    }
+
+    /// Returns the schema's unique name.
+    #[inline]
+    #[must_use]
+    pub const fn name(&self) -> &SchemaName {
+        &self.name
+    }
+
+    /// Create a new resolved Schema.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::schema::aggregate::{Schema, SchemaName};
+    /// use uuid::Uuid;
+    ///
+    /// let name = SchemaName::new("project-note".to_string()).unwrap();
+    /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+    /// assert_eq!(&schema.name().0, "project-note");
+    /// ```
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn new(
+        id: Uuid,
+        name: SchemaName,
+        properties: Vec<Property>,
+    ) -> Result<Self, SchemaError> {
+        let name_str = name.to_string();
+        let mut schema = Self {
+            id,
+            name,
+            properties,
+            pending_events: vec![],
+        };
+
+        schema.add_event(Events::SchemaCreated(SchemaCreated::new(
+            id,
+            name_str,
+            chrono::Utc::now().timestamp(),
+        )));
+
+        Ok(schema)
+    }
+
+    /// Returns a reference to pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn pending_events(&self) -> &[Events] {
+        &self.pending_events
+    }
+
+    /// Returns the fully resolved properties.
+    #[inline]
+    #[must_use]
+    pub fn properties(&self) -> &[Property] {
+        &self.properties
+    }
+
+    /// Returns and clears pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<Events> {
+        std::mem::take(&mut self.pending_events)
+    }
+}
+
+impl SchemaName {
+    /// Create a new `SchemaName` with validation.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn new(name: String) -> Result<Self, SchemaError> {
+        Self::validate(&name)?;
+        Ok(Self(name))
+    }
+
+    /// Validates a schema name string.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate(name: &str) -> Result<(), SchemaError> {
+        static RE: LazyLock<Regex> = LazyLock::new(|| {
+            #[expect(
+                clippy::expect_used,
+                clippy::disallowed_methods,
+                reason = "Static regex literal is safe and efficient"
+            )]
+            Regex::new(patterns::ALPHANUMERIC_NAME)
+                .expect("Static regex literal")
+        });
+
+        if name.is_empty() {
+            return Err(SchemaError::EmptySchemaName);
+        }
+        if name.len() > 64 {
+            return Err(SchemaError::SchemaNameTooLong(name.len()));
+        }
+
+        if !RE.is_match(name) {
+            return Err(SchemaError::InvalidSchemaName(name.to_owned()));
         }
         Ok(())
     }

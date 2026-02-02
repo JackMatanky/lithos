@@ -29,6 +29,14 @@ pub struct TemplateCreated {
     pub timestamp: i64,
 }
 
+/// Domain events that can be emitted by the Template aggregate.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum Events {
+    /// Template was created.
+    TemplateCreated(TemplateCreated),
+}
+
 impl TemplateCreated {
     /// Creates a new template created event.
     #[inline]
@@ -40,14 +48,6 @@ impl TemplateCreated {
             timestamp,
         }
     }
-}
-
-/// Domain events that can be emitted by the Template aggregate.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum Events {
-    /// Template was created.
-    TemplateCreated(TemplateCreated),
 }
 
 #[cfg(test)]

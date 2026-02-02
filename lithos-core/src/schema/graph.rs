@@ -36,6 +36,13 @@ pub struct Graph {
     pub nodes: HashMap<SchemaName, Option<SchemaName>>,
 }
 
+impl Default for Graph {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Graph {
     /// Add a schema node to the graph.
     #[inline]
@@ -136,13 +143,6 @@ impl Graph {
             }
         }
         Ok(())
-    }
-}
-
-impl Default for Graph {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
     }
 }
 

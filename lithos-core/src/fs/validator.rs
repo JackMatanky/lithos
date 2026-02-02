@@ -63,6 +63,20 @@ use tracing::{debug, warn};
 
 use super::error::PathValidationError;
 
+/// Internal validation mode representation.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum Mode {
+    /// Flexible mode: allows external symlinks (e.g., dotfiles), still checks
+    /// input traversal.
+    Flexible,
+    /// Strict mode: enforces root boundary, rejects symlinks escaping root.
+    Strict {
+        /// The canonicalized root directory.
+        root: PathBuf,
+    },
+}
+
 /// Public alias for validation mode configuration.
 pub type ValidationMode = Mode;
 
@@ -76,20 +90,6 @@ pub type ValidationMode = Mode;
 #[derive(Debug, Clone)]
 pub struct Validator {
     mode: Mode,
-}
-
-/// Internal validation mode representation.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub enum Mode {
-    /// Flexible mode: allows external symlinks (e.g., dotfiles), still checks
-    /// input traversal.
-    Flexible,
-    /// Strict mode: enforces root boundary, rejects symlinks escaping root.
-    Strict {
-        /// The canonicalized root directory.
-        root: PathBuf,
-    },
 }
 
 impl Validator {

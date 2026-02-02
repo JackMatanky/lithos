@@ -6,6 +6,31 @@
 
 use super::error::NoteError;
 
+/// Sub-note anchor (heading or block reference).
+///
+/// Anchors allow linking to specific locations within a note:
+/// - [`Anchor::Heading`]: Links to a heading (e.g., `[[note#heading]]`).
+/// - [`Anchor::BlockRef`]: Links to a block (e.g., `[[note^block-id]]`).
+///
+/// # Examples
+/// ```
+/// use lithos_core::note::link::Anchor;
+///
+/// let heading = Anchor::Heading("introduction".into());
+/// let block = Anchor::BlockRef("abc123".into());
+///
+/// assert!(heading.is_heading());
+/// assert!(block.is_block_ref());
+/// ```
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub enum Anchor {
+    /// Block reference: `^block-id`.
+    BlockRef(Box<str>),
+    /// Heading anchor: `#heading-text`.
+    Heading(Box<str>),
+}
+
 /// Represents different types of embedded content.
 ///
 /// Used within [`Link`] to specify the media type being embedded when
@@ -25,6 +50,71 @@ pub enum EmbedType {
     Pdf,
     /// Embedded video: `![[video.mp4]]`.
     Video,
+}
+
+/// Represents a link within a note.
+///
+/// Links can be wiki-links (Obsidian style) or markdown links.
+/// Both styles can be embeds (prefixed with `!`), which is indicated by
+/// the presence of `embed_type`.
+///
+/// All link types support:
+/// - [`Target`]: The target (resolved, unresolved, or external).
+/// - `alias`: Optional display alias.
+/// - `position`: Character position in the source document.
+///
+/// Wiki-links and markdown links additionally support:
+/// - [`Anchor`]: Optional heading or block reference.
+///
+/// # Invariants
+/// - Embeds cannot have anchors (enforced by [`Link::validate`]).
+/// - External links cannot have block references (only heading anchors).
+///
+/// # Examples
+/// ```
+/// use lithos_core::note::link::{Anchor, EmbedType, Link, Style, Target};
+/// use uuid::Uuid;
+///
+/// // Wiki-link to an unresolved note with heading anchor
+/// let link = Link::new_wikilink(
+///     Target::Unresolved {
+///         raw: "Future Note".into(),
+///     },
+///     Some("my alias".to_string()),
+///     Some(Anchor::Heading("section".into())),
+///     100,
+/// )
+/// .unwrap();
+/// assert_eq!(link.style(), Style::WikiLink);
+/// assert!(link.target().is_unresolved());
+///
+/// // Embed an image (Wiki-style)
+/// let embed = Link::new_embed(
+///     Target::Unresolved {
+///         raw: "diagram.png".into(),
+///     },
+///     EmbedType::Image,
+///     None,
+///     200,
+/// )
+/// .unwrap();
+/// assert!(embed.is_embed());
+/// ```
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Link {
+    /// Target of the link.
+    target: Target,
+    /// Optional anchor (heading or block reference).
+    anchor: Option<Anchor>,
+    /// Character position in the source document.
+    position: usize,
+    /// Optional display alias.
+    alias: Option<Box<str>>,
+    /// Syntactic style of the link (Wiki vs Markdown).
+    style: Style,
+    /// Type of embedded content (if any).
+    embed_type: Option<EmbedType>,
 }
 
 /// Represents the syntactic style of a link.
@@ -95,81 +185,6 @@ pub enum Target {
     },
 }
 
-impl Target {
-    /// Returns `true` if the target is an external URL.
-    #[inline]
-    #[must_use]
-    pub const fn is_external(&self) -> bool {
-        matches!(self, Self::External { .. })
-    }
-
-    /// Returns `true` if the target is resolved (exists in vault).
-    #[inline]
-    #[must_use]
-    pub const fn is_resolved(&self) -> bool {
-        matches!(self, Self::Resolved { .. })
-    }
-
-    /// Returns `true` if the target is unresolved (doesn't exist yet).
-    #[inline]
-    #[must_use]
-    pub const fn is_unresolved(&self) -> bool {
-        matches!(self, Self::Unresolved { .. })
-    }
-
-    /// Returns the path if resolved, or the raw string if unresolved.
-    ///
-    /// Returns `None` for external URLs.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Matching on &Target enum with non-Copy Box<str> fields \
-                  (path, raw, url). Cannot dereference without moving \
-                  non-Copy fields. Pattern matching on &self with field \
-                  binding is idiomatic for returning borrowed str."
-    )]
-    pub fn vault_path(&self) -> Option<&str> {
-        match self {
-            Self::External {
-                ..
-            } => None,
-            Self::Resolved {
-                path,
-                ..
-            } => Some(path),
-            Self::Unresolved {
-                raw,
-            } => Some(raw),
-        }
-    }
-}
-
-/// Sub-note anchor (heading or block reference).
-///
-/// Anchors allow linking to specific locations within a note:
-/// - [`Anchor::Heading`]: Links to a heading (e.g., `[[note#heading]]`).
-/// - [`Anchor::BlockRef`]: Links to a block (e.g., `[[note^block-id]]`).
-///
-/// # Examples
-/// ```
-/// use lithos_core::note::link::Anchor;
-///
-/// let heading = Anchor::Heading("introduction".into());
-/// let block = Anchor::BlockRef("abc123".into());
-///
-/// assert!(heading.is_heading());
-/// assert!(block.is_block_ref());
-/// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub enum Anchor {
-    /// Block reference: `^block-id`.
-    BlockRef(Box<str>),
-    /// Heading anchor: `#heading-text`.
-    Heading(Box<str>),
-}
-
 impl Anchor {
     /// Returns `true` if this is a block reference.
     #[inline]
@@ -199,71 +214,6 @@ impl Anchor {
             Self::BlockRef(s) | Self::Heading(s) => s,
         }
     }
-}
-
-/// Represents a link within a note.
-///
-/// Links can be wiki-links (Obsidian style) or markdown links.
-/// Both styles can be embeds (prefixed with `!`), which is indicated by
-/// the presence of `embed_type`.
-///
-/// All link types support:
-/// - [`Target`]: The target (resolved, unresolved, or external).
-/// - `alias`: Optional display text.
-/// - `position`: Character position in the source document.
-///
-/// Wiki-links and markdown links additionally support:
-/// - [`Anchor`]: Optional heading or block reference.
-///
-/// # Invariants
-/// - Embeds cannot have anchors (enforced by [`Link::validate`]).
-/// - External links cannot have block references (only heading anchors).
-///
-/// # Examples
-/// ```
-/// use lithos_core::note::link::{Anchor, EmbedType, Link, Style, Target};
-/// use uuid::Uuid;
-///
-/// // Wiki-link to an unresolved note with heading anchor
-/// let link = Link::new_wikilink(
-///     Target::Unresolved {
-///         raw: "Future Note".into(),
-///     },
-///     Some("my alias".to_string()),
-///     Some(Anchor::Heading("section".into())),
-///     100,
-/// )
-/// .unwrap();
-/// assert_eq!(link.style(), Style::WikiLink);
-/// assert!(link.target().is_unresolved());
-///
-/// // Embed an image (Wiki-style)
-/// let embed = Link::new_embed(
-///     Target::Unresolved {
-///         raw: "diagram.png".into(),
-///     },
-///     EmbedType::Image,
-///     None,
-///     200,
-/// )
-/// .unwrap();
-/// assert!(embed.is_embed());
-/// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Link {
-    /// Target of the link.
-    target: Target,
-    /// Optional anchor (heading or block reference).
-    anchor: Option<Anchor>,
-    /// Character position in the source document.
-    position: usize,
-    /// Optional display alias.
-    alias: Option<Box<str>>,
-    /// Syntactic style of the link (Wiki vs Markdown).
-    style: Style,
-    /// Type of embedded content (if any).
-    embed_type: Option<EmbedType>,
 }
 
 impl Link {
@@ -577,5 +527,55 @@ impl Link {
             return Err(NoteError::Link("Link target cannot be empty".into()));
         }
         Ok(())
+    }
+}
+
+impl Target {
+    /// Returns `true` if the target is an external URL.
+    #[inline]
+    #[must_use]
+    pub const fn is_external(&self) -> bool {
+        matches!(self, Self::External { .. })
+    }
+
+    /// Returns `true` if the target is resolved (exists in vault).
+    #[inline]
+    #[must_use]
+    pub const fn is_resolved(&self) -> bool {
+        matches!(self, Self::Resolved { .. })
+    }
+
+    /// Returns `true` if the target is unresolved (doesn't exist yet).
+    #[inline]
+    #[must_use]
+    pub const fn is_unresolved(&self) -> bool {
+        matches!(self, Self::Unresolved { .. })
+    }
+
+    /// Returns the path if resolved, or the raw string if unresolved.
+    ///
+    /// Returns `None` for external URLs.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on &Target enum with non-Copy Box<str> fields \
+                  (path, raw, url). Cannot dereference without moving \
+                  non-Copy fields. Pattern matching on &self with field \
+                  binding is idiomatic for returning borrowed str."
+    )]
+    pub fn vault_path(&self) -> Option<&str> {
+        match self {
+            Self::External {
+                ..
+            } => None,
+            Self::Resolved {
+                path,
+                ..
+            } => Some(path),
+            Self::Unresolved {
+                raw,
+            } => Some(raw),
+        }
     }
 }

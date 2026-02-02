@@ -8,17 +8,73 @@ use super::{
     types::{Frontmatter, Logging, Schema, Template},
 };
 
+/// Vault metadata with versioning and naming.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Metadata {
+    /// Human-readable name for the vault.
+    pub name: String,
+    /// Root path to the vault (absolute path required).
+    pub path: String,
+    /// Schema version for the vault.
+    pub version: SchemaVersion,
+}
+
+/// Vault filesystem configuration (vault-scoped).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Paths {
+    /// Cache directory for vault.
+    pub cache_dir: String,
+    /// Schema configuration for vault.
+    pub schema: Schema,
+    /// Template configuration for vault.
+    pub template: Template,
+}
+
 /// Schema version for the vault.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct SchemaVersion(pub String);
 
-impl SchemaVersion {
-    /// Create new schema version, defaulting to binary version if not provided.
+/// Vault-specific configuration (highest precedence).
+///
+/// # Business Rules
+/// - Vault configuration overrides Global configuration.
+/// - Loaded from vault-specific lithos.toml.
+/// - All fields optional (missing fields fall back to global).
+#[derive(
+    Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize,
+)]
+#[non_exhaustive]
+pub struct Vault {
+    /// Filesystem configuration for vault.
+    pub filesystem: Paths,
+    /// Frontmatter configuration for vault (optional overrides).
+    pub frontmatter: Option<Frontmatter>,
+    /// Logging configuration for vault (optional overrides).
+    pub logging: Option<Logging>,
+}
+
+impl Default for Metadata {
     #[inline]
-    #[must_use]
-    pub fn new(version: Option<String>) -> Self {
-        Self(version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned()))
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            path: String::new(),
+            version: SchemaVersion::default(),
+        }
+    }
+}
+
+impl Default for Paths {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            cache_dir: ".cache".to_owned(),
+            schema: Schema::default(),
+            template: Template::default(),
+        }
     }
 }
 
@@ -35,29 +91,6 @@ impl std::ops::Deref for SchemaVersion {
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-/// Vault metadata with versioning and naming.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Metadata {
-    /// Human-readable name for the vault.
-    pub name: String,
-    /// Root path to the vault (absolute path required).
-    pub path: String,
-    /// Schema version for the vault.
-    pub version: SchemaVersion,
-}
-
-impl Default for Metadata {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            path: String::new(),
-            version: SchemaVersion::default(),
-        }
     }
 }
 
@@ -116,65 +149,6 @@ impl Metadata {
     }
 }
 
-/// Vault filesystem configuration (vault-scoped).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Paths {
-    /// Cache directory for vault.
-    pub cache_dir: String,
-    /// Schema configuration for vault.
-    pub schema: Schema,
-    /// Template configuration for vault.
-    pub template: Template,
-}
-
-/// Vault-specific configuration (highest precedence).
-///
-/// # Business Rules
-/// - Vault configuration overrides Global configuration.
-/// - Loaded from vault-specific lithos.toml.
-/// - All fields optional (missing fields fall back to global).
-#[derive(
-    Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct Vault {
-    /// Filesystem configuration for vault.
-    pub filesystem: Paths,
-    /// Frontmatter configuration for vault (optional overrides).
-    pub frontmatter: Option<Frontmatter>,
-    /// Logging configuration for vault (optional overrides).
-    pub logging: Option<Logging>,
-}
-
-impl Vault {
-    /// Create new vault configuration.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        filesystem: Paths,
-        frontmatter: Option<Frontmatter>,
-        logging: Option<Logging>,
-    ) -> Self {
-        Self {
-            filesystem,
-            frontmatter,
-            logging,
-        }
-    }
-}
-
-impl Default for Paths {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            cache_dir: ".cache".to_owned(),
-            schema: Schema::default(),
-            template: Template::default(),
-        }
-    }
-}
-
 impl Paths {
     /// Create new vault filesystem configuration.
     #[inline]
@@ -204,6 +178,32 @@ impl Paths {
             });
         }
         Ok(())
+    }
+}
+
+impl SchemaVersion {
+    /// Create new schema version, defaulting to binary version if not provided.
+    #[inline]
+    #[must_use]
+    pub fn new(version: Option<String>) -> Self {
+        Self(version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned()))
+    }
+}
+
+impl Vault {
+    /// Create new vault configuration.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        filesystem: Paths,
+        frontmatter: Option<Frontmatter>,
+        logging: Option<Logging>,
+    ) -> Self {
+        Self {
+            filesystem,
+            frontmatter,
+            logging,
+        }
     }
 }
 

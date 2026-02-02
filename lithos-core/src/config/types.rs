@@ -7,6 +7,44 @@ use std::collections::HashMap;
 
 use super::error::ConfigError;
 
+/// Frontmatter configuration for Markdown file metadata.
+///
+/// # Invariants
+/// - All keys must be non-empty strings.
+/// - Keys should follow YAML/TOML naming conventions (lowercase, underscores).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Frontmatter {
+    /// Key for aliases in frontmatter.
+    pub alias_key: String,
+    /// Key for creation date in frontmatter.
+    pub date_created_key: String,
+    /// Key for modification date in frontmatter.
+    pub date_modified_key: String,
+    /// Key for file classification in frontmatter.
+    pub file_class_key: String,
+    /// Key for title field in frontmatter.
+    pub title_key: String,
+}
+
+/// Logging configuration with validation.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Logging {
+    /// Log level (debug, info, warn, error).
+    pub log_level: String,
+}
+
+/// Schema configuration (schemas directory).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Schema {
+    /// Directory containing schema files.
+    pub schemas_dir: String,
+    /// Property bank filename (stored in `schemas_dir`).
+    pub property_bank_filename: String,
+}
+
 /// Configuration value types supporting multiple data types and encryption.
 ///
 /// # Invariants
@@ -57,6 +95,71 @@ pub enum SettingValue {
     String(String),
 }
 
+/// Template configuration (templates directory).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Template {
+    /// Directory containing template files.
+    pub templates_dir: String,
+}
+
+impl Default for Frontmatter {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            alias_key: "aliases".to_owned(),
+            date_created_key: "date_created".to_owned(),
+            date_modified_key: "date_modified".to_owned(),
+            file_class_key: "file_class".to_owned(),
+            title_key: "title".to_owned(),
+        }
+    }
+}
+
+impl Default for Logging {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            log_level: "info".to_owned(),
+        }
+    }
+}
+
+impl Default for Schema {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            schemas_dir: "schemas".to_owned(),
+            property_bank_filename: "property_bank.json".to_owned(),
+        }
+    }
+}
+
+impl std::fmt::Debug for SettingValue {
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on &SettingValue enum with mixed Copy (Boolean, \
+                  Number) and non-Copy (Array, Map, String) fields. Pattern \
+                  binding on &self is the idiomatic way to implement Debug \
+                  without moving non-Copy variants."
+    )]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Array(arr) => f.debug_tuple("Array").field(arr).finish(),
+            Self::Boolean(b) => f.debug_tuple("Boolean").field(b).finish(),
+            Self::Date(d) => f.debug_tuple("Date").field(d).finish(),
+            Self::Encrypted(_) => {
+                f.debug_tuple("Encrypted").field(&"***").finish()
+            }
+            Self::Null => f.debug_tuple("Null").finish(),
+            Self::Number(n) => f.debug_tuple("Number").field(n).finish(),
+            Self::Object(map) => f.debug_tuple("Object").field(map).finish(),
+            Self::String(s) => f.debug_tuple("String").field(s).finish(),
+        }
+    }
+}
+
 /// Convert bool to `Value::Boolean` variant.
 impl From<bool> for SettingValue {
     #[inline]
@@ -105,60 +208,11 @@ impl From<Vec<SettingValue>> for SettingValue {
     }
 }
 
-impl std::fmt::Debug for SettingValue {
-    #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Matching on &SettingValue enum with mixed Copy (Boolean, \
-                  Number) and non-Copy (Array, Map, String) fields. Pattern \
-                  binding on &self is the idiomatic way to implement Debug \
-                  without moving non-Copy variants."
-    )]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Array(arr) => f.debug_tuple("Array").field(arr).finish(),
-            Self::Boolean(b) => f.debug_tuple("Boolean").field(b).finish(),
-            Self::Date(d) => f.debug_tuple("Date").field(d).finish(),
-            Self::Encrypted(_) => {
-                f.debug_tuple("Encrypted").field(&"***").finish()
-            }
-            Self::Null => f.debug_tuple("Null").finish(),
-            Self::Number(n) => f.debug_tuple("Number").field(n).finish(),
-            Self::Object(map) => f.debug_tuple("Object").field(map).finish(),
-            Self::String(s) => f.debug_tuple("String").field(s).finish(),
-        }
-    }
-}
-
-/// Frontmatter configuration for Markdown file metadata.
-///
-/// # Invariants
-/// - All keys must be non-empty strings.
-/// - Keys should follow YAML/TOML naming conventions (lowercase, underscores).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Frontmatter {
-    /// Key for aliases in frontmatter.
-    pub alias_key: String,
-    /// Key for creation date in frontmatter.
-    pub date_created_key: String,
-    /// Key for modification date in frontmatter.
-    pub date_modified_key: String,
-    /// Key for file classification in frontmatter.
-    pub file_class_key: String,
-    /// Key for title field in frontmatter.
-    pub title_key: String,
-}
-
-impl Default for Frontmatter {
+impl Default for Template {
     #[inline]
     fn default() -> Self {
         Self {
-            alias_key: "aliases".to_owned(),
-            date_created_key: "date_created".to_owned(),
-            date_modified_key: "date_modified".to_owned(),
-            file_class_key: "file_class".to_owned(),
-            title_key: "title".to_owned(),
+            templates_dir: "templates".to_owned(),
         }
     }
 }
@@ -200,23 +254,6 @@ impl Frontmatter {
     }
 }
 
-/// Logging configuration with validation.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Logging {
-    /// Log level (debug, info, warn, error).
-    pub log_level: String,
-}
-
-impl Default for Logging {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            log_level: "info".to_owned(),
-        }
-    }
-}
-
 impl Logging {
     /// Validate logging configuration.
     ///
@@ -245,26 +282,6 @@ impl Logging {
             });
         }
         Ok(())
-    }
-}
-
-/// Schema configuration (schemas directory).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Schema {
-    /// Directory containing schema files.
-    pub schemas_dir: String,
-    /// Property bank filename (stored in `schemas_dir`).
-    pub property_bank_filename: String,
-}
-
-impl Default for Schema {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            schemas_dir: "schemas".to_owned(),
-            property_bank_filename: "property_bank.json".to_owned(),
-        }
     }
 }
 
@@ -311,23 +328,6 @@ impl Schema {
             });
         }
         Ok(())
-    }
-}
-
-/// Template configuration (templates directory).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Template {
-    /// Directory containing template files.
-    pub templates_dir: String,
-}
-
-impl Default for Template {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            templates_dir: "templates".to_owned(),
-        }
     }
 }
 

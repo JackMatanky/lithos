@@ -49,6 +49,33 @@ pub struct Config {
     pending_events: Vec<Events>,
 }
 
+/// Choose value with precedence: vault > global > default.
+#[inline]
+#[must_use]
+fn choose_value(vault: &str, global: &str, default: &str) -> String {
+    if !vault.is_empty() {
+        vault.to_owned()
+    } else if !global.is_empty() {
+        global.to_owned()
+    } else {
+        default.to_owned()
+    }
+}
+
+impl Default for Config {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            frontmatter: Frontmatter::default(),
+            global_filesystem: GlobalPaths::default(),
+            logging: Logging::default(),
+            pending_events: vec![],
+            vault_filesystem: VaultPaths::default(),
+            vault_metadata: Metadata::default(),
+        }
+    }
+}
+
 impl Config {
     /// Adds a domain event to the pending events collection.
     #[inline]
@@ -273,33 +300,6 @@ impl Config {
         self.logging.validate()?;
 
         Ok(())
-    }
-}
-
-impl Default for Config {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            frontmatter: Frontmatter::default(),
-            global_filesystem: GlobalPaths::default(),
-            logging: Logging::default(),
-            pending_events: vec![],
-            vault_filesystem: VaultPaths::default(),
-            vault_metadata: Metadata::default(),
-        }
-    }
-}
-
-/// Choose value with precedence: vault > global > default.
-#[inline]
-#[must_use]
-fn choose_value(vault: &str, global: &str, default: &str) -> String {
-    if !vault.is_empty() {
-        vault.to_owned()
-    } else if !global.is_empty() {
-        global.to_owned()
-    } else {
-        default.to_owned()
     }
 }
 
