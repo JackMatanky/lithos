@@ -1050,90 +1050,55 @@ impl NoteRepository for Database {
 
 - ❌ Duplication between static methods and trait impls
 
-**Decision**: **Option B (Static Methods)** for CLI MVP, with Option C available if testing demands it.
+**Decision**: **Option A (Explicit CQRS Traits)** with dedicated implementation files.
 
 **Rationale**:
 
-1. **YAGNI**: CLI doesn't need polymorphism (single Database implementation)
-2. **Idiomatic**: Matches Rust stdlib patterns
-3. **Simple**: Fewer files, less cognitive load
-4. **Testable**: Can use in-memory redb for tests without traits
+1. **Architecture Compliance**: Enforces the ports & adapters pattern defined in the architecture.
+2. **Testability**: Allows mocking of data access without spinning up a full database.
+3. **Clarity**: Separates data access logic from domain logic completely.
+4. **Organization**: Co-located `command.rs` and `query.rs` files keep contexts self-contained.
 
 **Rules**:
 
-1. **Default: Static methods on domain types**
+1. **Define Traits in Ports**:
+   - `note/ports.rs` defines `Command` and `Query` traits.
 
-   ```rust
-   impl Note {
-       pub fn find_by_id(db: &Database, id: Uuid) -> Result<Option<Self>, NoteError>;
-       pub fn save(&self, db: &Database) -> Result<(), NoteError>;
-   }
-   ```
+2. **Implement in Dedicated Files**:
+   - `note/command.rs` implements `Command`.
+   - `note/query.rs` implements `Query`.
 
-2. **Naming Convention (CQRS by name)**:
-   - **Queries**: `find_*`, `get_*`, `list_*`, `count_*`
-   - **Commands**: `save`, `delete`, `update`, `create`
-
-3. **OPTIONAL: Add traits later if needed**:
-   - When testing requires mocking
-   - When LSP requires different storage backend
-   - Define in `note/ports.rs` (deferred)
-
-4. **NO separate commands.rs/queries.rs files for MVP**
-   - Keep methods in main module (`note.rs` or `note/aggregate.rs`)
-   - Split only if file exceeds 500 lines
+3. **Use Database Reference**:
+   - Implementations hold `&'db Database`.
 
 **File Structure**:
 
 ```
 note/
-├── aggregate.rs         # Note struct + all methods (find_*, save, etc.)
+├── aggregate.rs         # Pure domain logic
+├── ports.rs             # Command/Query trait definitions
+├── command.rs           # Command implementation (NoteCommand<'db>)
+├── query.rs             # Query implementation (NoteQuery<'db>)
 ├── frontmatter.rs
-├── indexing.rs          # Helper: update_tag_index(), update_backlink_index()
 ├── error.rs
 └── events.rs
-
-# NO commands.rs or queries.rs for MVP
-# NO ports.rs unless testing requires it
 ```
 
 **Migration Path (Phase 2 - LSP)**:
 
-If LSP requires trait-based polymorphism (e.g., mock storage for tests):
-
-```rust
-// note/ports.rs (added in Phase 2)
-pub trait NoteRepository {
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError>;
-    fn save(&self, note: &Note) -> Result<(), NoteError>;
-}
-
-// Static methods remain primary API
-impl Note {
-    pub fn find_by_id(db: &Database, id: Uuid) -> Result<Option<Self>, NoteError> {
-        db.get("notes", &id).map_err(Into::into)
-    }
-}
-
-// Trait impl delegates to static methods
-impl NoteRepository for Database {
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
-        Note::find_by_id(self, id)
-    }
-}
-```
+LSP can simply use the traits for dependency injection, allowing for easy mocking or alternative backends if needed.
 
 **Tradeoffs**:
 
 - **Pros**:
-  - ✅ Simpler for CLI (no trait soup)
-  - ✅ Idiomatic Rust (matches std pattern)
-  - ✅ Zero overhead (no trait objects)
-  - ✅ Future-ready (can add traits later)
+  - ✅ Compiler-enforced boundary
+  - ✅ Excellent for testing
+  - ✅ Clear separation of concerns
+  - ✅ Future-proof
 
 - **Cons**:
-  - ❌ Harder to mock (but in-memory redb works)
-  - ❌ No compiler-enforced CQRS boundary (rely on naming)
+  - ❌ Slightly more boilerplate than static methods
+  - ❌ Requires struct wrappers (`NoteCommand`, `NoteQuery`)
 
 ---
 
