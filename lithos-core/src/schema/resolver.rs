@@ -115,12 +115,13 @@ impl Resolver {
         match raw_prop {
             RawProperty::Inline(inline) => {
                 let name = PropertyName::new(inline.name)?;
+                let spec = inline.spec.try_into_validated()?;
                 Ok(Property::new(
                     inline.id,
                     name,
                     inline.required,
                     inline.array,
-                    inline.spec,
+                    spec,
                 )?)
             }
             RawProperty::Ref(RawPropertyRef {

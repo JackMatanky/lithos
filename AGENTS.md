@@ -5,7 +5,6 @@
 **MUST** review these files before starting any work:
 
 - **Project Context**: [_bmad-output/project-context.md](_bmad-output/project-context.md) - Core rules and patterns
-- **Workflow Status**: [_bmad-output/planning-artifacts/bmm-workflow-status.yaml](_bmad-output/planning-artifacts/bmm-workflow-status.yaml) - Current phase and next steps
 - **Architecture**: [_bmad-output/planning-artifacts/architecture/](_bmad-output/planning-artifacts/architecture/) - System design decisions
 - **PRD**: [_bmad-output/planning-artifacts/prd.md](_bmad-output/planning-artifacts/prd.md) - Product requirements
 

@@ -6,10 +6,7 @@
 )]
 
 use super::error::TemplateError;
-use crate::{
-    fs,
-    schema::property_spec::{NumberSpec, StringSpec},
-};
+use crate::fs;
 
 /// Type-safe variable definition with validation constraints.
 ///
@@ -314,13 +311,44 @@ impl VariableDefinition {
             value: value.to_string(),
             expected: "number".to_owned(),
         })?;
-        let spec = NumberSpec {
-            min,
-            max,
-            step: None,
-        };
-        spec.validate_range(n)
-            .map_err(|e| TemplateError::ValidationFailed(e.to_string()))
+
+        if !n.is_finite() {
+            return Err(TemplateError::ValidationFailed(format!(
+                "Value {n} is not finite"
+            )));
+        }
+        for (field, v) in [("min", min), ("max", max)] {
+            if v.is_some_and(|v| !v.is_finite()) {
+                return Err(TemplateError::ValidationFailed(format!(
+                    "{field} must be finite"
+                )));
+            }
+        }
+
+        if let (Some(min), Some(max)) = (min, max)
+            && min > max
+        {
+            return Err(TemplateError::ValidationFailed(
+                "min cannot be greater than max".to_owned(),
+            ));
+        }
+
+        if let Some(min) = min
+            && n < min
+        {
+            return Err(TemplateError::ValidationFailed(format!(
+                "Value {n} is below min {min}"
+            )));
+        }
+        if let Some(max) = max
+            && n > max
+        {
+            return Err(TemplateError::ValidationFailed(format!(
+                "Value {n} is above max {max}"
+            )));
+        }
+
+        Ok(())
     }
 
     #[inline]
@@ -334,13 +362,33 @@ impl VariableDefinition {
             value: value.to_string(),
             expected: "string".to_owned(),
         })?;
-        let spec = StringSpec {
-            max_length,
-            min_length,
-            ..Default::default()
-        };
-        spec.validate_length(s)
-            .map_err(|e| TemplateError::ValidationFailed(e.to_string()))?;
+
+        if let (Some(min), Some(max)) = (min_length, max_length)
+            && min > max
+        {
+            return Err(TemplateError::ValidationFailed(
+                "min_length cannot be greater than max_length".to_owned(),
+            ));
+        }
+
+        // NOTE: Length is in UTF-8 bytes (value.len()), matching the schema
+        // semantics.
+        let len = s.len();
+        if let Some(min) = min_length
+            && len < min
+        {
+            return Err(TemplateError::ValidationFailed(format!(
+                "String too short: min {min}, got {len}"
+            )));
+        }
+        if let Some(max) = max_length
+            && len > max
+        {
+            return Err(TemplateError::ValidationFailed(format!(
+                "String too long: max {max}, got {len}"
+            )));
+        }
+
         Self::check_string_pattern(s, pattern)?;
         Ok(())
     }
