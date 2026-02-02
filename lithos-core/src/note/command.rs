@@ -46,6 +46,12 @@ impl super::ports::Command for Command<'_> {
                 NoteError::Storage(e.to_string())
             })?;
 
+        if let Some(fm) = note.frontmatter.as_ref() {
+            self.db.put_json("frontmatter", &id_str, fm).map_err(
+                |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+            )?;
+        }
+
         Ok(note)
     }
 
@@ -87,6 +93,12 @@ impl super::ports::Command for Command<'_> {
             self.db.delete("notes", &id_str).map_err(
                 |e: crate::db::DbError| NoteError::Storage(e.to_string()),
             )?;
+
+            // 5. Delete frontmatter (stored separately)
+            let _deleted: bool =
+                self.db.delete("frontmatter", &id_str).map_err(
+                    |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+                )?;
         }
 
         Ok(())
@@ -159,6 +171,18 @@ impl super::ports::Command for Command<'_> {
         self.db.put("notes", &id_str, &note).map_err(
             |e: crate::db::DbError| NoteError::Storage(e.to_string()),
         )?;
+
+        // 5. Save frontmatter separately (recursive, serde JSON)
+        if let Some(fm) = note.frontmatter.as_ref() {
+            self.db.put_json("frontmatter", &id_str, fm).map_err(
+                |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+            )?;
+        } else {
+            let _deleted: bool =
+                self.db.delete("frontmatter", &id_str).map_err(
+                    |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+                )?;
+        }
 
         Ok(note)
     }

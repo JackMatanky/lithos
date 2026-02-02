@@ -34,9 +34,19 @@ impl super::ports::Query for Query<'_> {
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
         let id_str = id.to_string();
-        self.db
-            .get_owned::<Note>("notes", &id_str)
-            .map_err(|e: crate::db::DbError| NoteError::Storage(e.to_string()))
+
+        let mut note = self.db.get_owned::<Note>("notes", &id_str).map_err(
+            |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+        )?;
+
+        if let Some(n) = note.as_mut() {
+            let fm = self.db.get_json("frontmatter", &id_str).map_err(
+                |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+            )?;
+            n.set_frontmatter(fm);
+        }
+
+        Ok(note)
     }
 
     /// Finds a note by its vault-relative path.
@@ -50,9 +60,18 @@ impl super::ports::Query for Query<'_> {
         )?;
 
         if let Some(id_str) = ids.first() {
-            self.db.get_owned::<Note>("notes", id_str).map_err(
+            let mut note = self.db.get_owned::<Note>("notes", id_str).map_err(
                 |e: crate::db::DbError| NoteError::Storage(e.to_string()),
-            )
+            )?;
+
+            if let Some(n) = note.as_mut() {
+                let fm = self.db.get_json("frontmatter", id_str).map_err(
+                    |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+                )?;
+                n.set_frontmatter(fm);
+            }
+
+            Ok(note)
         } else {
             Ok(None)
         }
@@ -64,8 +83,73 @@ impl super::ports::Query for Query<'_> {
     /// Returns `NoteError` if query execution fails.
     #[inline]
     fn list(&self) -> Result<Vec<Note>, NoteError> {
-        self.db
-            .list_owned::<Note>("notes")
-            .map_err(|e: crate::db::DbError| NoteError::Storage(e.to_string()))
+        let mut notes = self.db.list_owned::<Note>("notes").map_err(
+            |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+        )?;
+
+        for note in &mut notes {
+            let id_str = note.id.to_string();
+            let fm = self.db.get_json("frontmatter", &id_str).map_err(
+                |e: crate::db::DbError| NoteError::Storage(e.to_string()),
+            )?;
+            note.set_frontmatter(fm);
+        }
+
+        Ok(notes)
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test code uses unwrap/expect for simplicity"
+)]
+mod tests {
+    use std::collections::HashMap;
+
+    use tempfile::tempdir;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::note::{
+        command,
+        frontmatter::{FieldValue, Frontmatter},
+        ports::{Command as _, Query as _},
+    };
+
+    #[test]
+    fn cqrs_roundtrip_preserves_frontmatter_via_separate_storage() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.redb");
+        let db = Database::open(&path).unwrap();
+
+        let cmd = command::Command::new(&db);
+        let qry = Query::new(&db);
+
+        let mut note = cmd.create("notes/a.md".to_owned()).unwrap();
+
+        let fm = Frontmatter::new(HashMap::from([(
+            "root".to_owned(),
+            FieldValue::Object(HashMap::from([(
+                "nested".to_owned(),
+                FieldValue::Array(vec![
+                    FieldValue::String("x".to_owned()),
+                    FieldValue::Boolean(true),
+                ]),
+            )])),
+        )]))
+        .unwrap();
+        note.set_frontmatter(Some(fm.clone()));
+
+        let id = note.id;
+        cmd.update(note).unwrap();
+
+        let observed = qry.find_by_id(id).unwrap().unwrap();
+        assert_eq!(observed.id, id);
+        assert_eq!(observed.frontmatter, Some(fm));
+
+        // Sanity: changing the id misses both records
+        let miss = qry.find_by_id(Uuid::now_v7()).unwrap();
+        assert!(miss.is_none());
     }
 }
