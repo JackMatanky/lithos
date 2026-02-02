@@ -1,4 +1,9 @@
 //! Note domain events.
+#![allow(
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums,
+    reason = "rkyv generates Archived types with public fields/variants"
+)]
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -23,7 +28,18 @@ use uuid::Uuid;
 /// assert_eq!(event.note_id, id);
 /// assert_eq!(event.field_count, 5);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct FrontmatterValidated {
     /// Number of frontmatter fields validated.
@@ -50,7 +66,18 @@ pub struct FrontmatterValidated {
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.path, "projects/lithos.md");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct NoteCreated {
     /// UUID v7 of the note.
@@ -62,7 +89,10 @@ pub struct NoteCreated {
 }
 
 /// Domain events that can be emitted by the Note aggregate.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum NoteEvents {
     /// Frontmatter was validated.

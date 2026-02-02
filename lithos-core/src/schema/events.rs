@@ -1,4 +1,10 @@
 //! Schema domain events.
+#![expect(
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums,
+    reason = "rkyv generates exhaustive Archived types despite \
+              #[non_exhaustive] on source types"
+)]
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -15,7 +21,18 @@ use uuid::Uuid;
 /// let event = PropertyBankUpdated::new(12, 1234567890);
 /// assert_eq!(event.property_count, 12);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct PropertyBankUpdated {
     /// Number of properties in the bank after update.
@@ -39,7 +56,18 @@ pub struct PropertyBankUpdated {
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.name, "schema");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct SchemaCreated {
     /// UUID of the schema.
@@ -51,7 +79,10 @@ pub struct SchemaCreated {
 }
 
 /// Domain events for the Schema context.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum Events {
     /// Property bank was updated.

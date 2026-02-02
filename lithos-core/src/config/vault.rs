@@ -78,8 +78,17 @@ pub struct SchemaVersion(pub String);
 /// - Loaded from vault-specific lithos.toml.
 /// - All fields optional (missing fields fall back to global).
 #[derive(
-    Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize,
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Vault {
     /// Filesystem configuration for vault.

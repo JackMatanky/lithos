@@ -33,7 +33,7 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 toml = "0.8"
 redb = "3.1"
-rkyv = { version = "0.8", features = ["bytecheck", "std"] }
+rkyv = { version = "0.8", features = ["bytecheck", "std", "uuid-1"] }
 uuid = { version = "1.19", features = ["v7", "v5", "serde"] }
 
 # Application Logic

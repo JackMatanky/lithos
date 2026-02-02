@@ -21,13 +21,13 @@ pub trait Command: Send + Sync {
     ///
     /// # Errors
     /// Returns `ConfigError` if save operation fails.
-    fn save_global(&self, config: Global) -> Result<(), ConfigError>;
+    fn save_global(&self, config: &Global) -> Result<(), ConfigError>;
 
     /// Save vault-specific configuration.
     ///
     /// # Errors
     /// Returns `ConfigError` if save operation fails.
-    fn save_vault(&self, config: Vault) -> Result<(), ConfigError>;
+    fn save_vault(&self, config: &Vault) -> Result<(), ConfigError>;
 }
 
 /// Query port for configuration read operations.
@@ -58,13 +58,13 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns `ConfigError` if load operation fails or config is invalid.
-    fn load_global(&self) -> Result<Global, ConfigError>;
+    fn load_global(&self) -> Result<Option<Global>, ConfigError>;
 
     /// Load vault-specific configuration.
     ///
     /// # Errors
     /// Returns `ConfigError` if load operation fails or config is invalid.
-    fn load_vault(&self) -> Result<Vault, ConfigError>;
+    fn load_vault(&self) -> Result<Option<Vault>, ConfigError>;
 }
 
 #[cfg(test)]
