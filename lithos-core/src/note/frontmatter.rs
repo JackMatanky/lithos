@@ -13,6 +13,8 @@ use chrono::{DateTime, Utc};
 
 use super::error::NoteError;
 
+pub type FrontmatterError = super::error::FrontmatterError;
+
 /// A high-level type descriptor for [`FieldValue`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldValueType {
@@ -37,49 +39,6 @@ impl core::fmt::Display for FieldValueType {
         };
         f.write_str(name)
     }
-}
-
-/// Errors surfaced by strict frontmatter accessors.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum FrontmatterError {
-    /// A required key was missing from the frontmatter map.
-    #[error("missing frontmatter key: {key}")]
-    Missing {
-        key: Box<str>,
-    },
-
-    /// A key exists, but the value has an unexpected runtime type.
-    #[error(
-        "frontmatter key '{key}' has wrong type (expected {expected}, got \
-         {actual})"
-    )]
-    TypeMismatch {
-        key: Box<str>,
-        expected: Box<str>,
-        actual: FieldValueType,
-    },
-
-    /// A key exists and is an array, but at least one element has the wrong
-    /// type.
-    #[error(
-        "frontmatter key '{key}' has wrong array element type at index \
-         {index} (expected {expected}, got {actual})"
-    )]
-    ArrayElementTypeMismatch {
-        key: Box<str>,
-        index: usize,
-        expected: FieldValueType,
-        actual: FieldValueType,
-    },
-
-    /// A key exists and is a date timestamp, but the timestamp is not
-    /// representable as a UTC datetime.
-    #[error("frontmatter key '{key}' has invalid date timestamp: {timestamp}")]
-    InvalidDateTimestamp {
-        key: Box<str>,
-        timestamp: i64,
-    },
 }
 
 /// Fallible, strict conversions from a [`FieldValue`].
