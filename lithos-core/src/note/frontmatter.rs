@@ -20,11 +20,29 @@ use super::error::NoteError;
 /// typing scenarios.
 ///
 /// Note: `DateTime` stored as i64 timestamp for rkyv compatibility.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(serialize_bounds(
+    __S: rkyv::ser::Writer + rkyv::ser::Allocator,
+    __S::Error: rkyv::rancor::Source,
+))]
+#[rkyv(deserialize_bounds(__D::Error: rkyv::rancor::Source))]
+#[rkyv(bytecheck(bounds(
+    __C: rkyv::validation::ArchiveContext,
+)))]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum FieldValue {
     /// Array of values.
-    Array(Vec<FieldValue>),
+    Array(#[rkyv(omit_bounds)] Vec<FieldValue>),
     /// Boolean value.
     Boolean(bool),
     /// Date/time value (stored as Unix timestamp for serialization).
@@ -32,21 +50,27 @@ pub enum FieldValue {
     /// Numeric value (float).
     Number(f64),
     /// Nested object of values.
-    Object(HashMap<String, FieldValue>),
+    Object(#[rkyv(omit_bounds)] HashMap<String, FieldValue>),
     /// String value.
     String(String),
 }
 
 /// Represents YAML metadata extracted from a note header.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal builders and tests"
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
 pub struct Frontmatter {
     /// Key-value pairs of metadata fields.
-    pub(crate) fields: HashMap<String, FieldValue>,
+    fields: HashMap<String, FieldValue>,
 }
 
 pub trait FromFieldValue: Sized {
