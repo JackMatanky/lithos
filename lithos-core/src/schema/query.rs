@@ -50,23 +50,19 @@ impl<'db> Query<'db> {
         &self,
         name: &str,
     ) -> Result<Option<Schema>, SchemaError> {
-        self.db
-            .get_owned("schemas", name)
-            .map_err(|e| SchemaError::Storage(e.to_string()))
+        self.db.get_owned("schemas", name).map_err(|e: crate::db::DbError| {
+            SchemaError::Storage(e.to_string())
+        })
     }
 
     /// List all available schemas.
     ///
     /// # Errors
     /// Returns `SchemaError` if query fails.
-    ///
-    /// # Note
-    /// MVP implementation returns an empty vec.
-    /// Full implementation would need a range scan or index.
     #[inline]
     pub fn list(&self) -> Result<Vec<Schema>, SchemaError> {
-        // Would need range scan or index
-        // For MVP, return empty vec
-        Ok(Vec::new())
+        self.db
+            .list_owned::<Schema>("schemas")
+            .map_err(|e| SchemaError::Storage(e.to_string()))
     }
 }

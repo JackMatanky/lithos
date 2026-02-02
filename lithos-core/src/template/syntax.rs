@@ -1,3 +1,8 @@
+#![allow(
+    clippy::exhaustive_structs,
+    reason = "rkyv Archive derive generates non-exhaustive archived type"
+)]
+
 /// Defines the syntax for variables placeholders within a template.
 ///
 /// # Examples
@@ -6,7 +11,18 @@
 /// let syntax = PlaceholderSyntax::new("{{", "}}");
 /// assert_eq!(syntax.wrap("title"), "{{title}}");
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct PlaceholderSyntax {
     /// The opening delimiter (e.g., "{{").

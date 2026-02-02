@@ -6,6 +6,7 @@
 #![allow(
     clippy::missing_inline_in_public_items,
     clippy::elidable_lifetime_names,
+    clippy::same_name_method,
     reason = "CQRS pattern: trait impls don't need inline"
 )]
 
@@ -35,61 +36,100 @@ impl<'db> Command<'db> {
     ///
     /// # Errors
     /// Returns `TemplateError` if creation fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Validate template
-    /// 2. Persist to database using ``db.put()``
-    /// 3. Update name→ID index
-    /// 4. Emit `TemplateCreated` event
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement template creation"
-    )]
-    pub fn create(&self, _template: Template) -> Result<(), TemplateError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Create template and update indexes")
+    pub fn create(&self, template: &Template) -> Result<(), TemplateError> {
+        let id_str = template.id().to_string();
+        let name = template.name().to_owned();
+
+        self.db
+            .put("templates", &id_str, template)
+            .map_err(|e| TemplateError::Storage(e.to_string()))?;
+
+        self.db
+            .multimap_insert("template_name_to_id", &name, &id_str)
+            .map_err(|e| TemplateError::Storage(e.to_string()))?;
+
+        Ok(())
     }
 
     /// Deletes a template by ID.
     ///
     /// # Errors
     /// Returns `TemplateError` if deletion fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Delete from main table using ``db.delete()``
-    /// 2. Clean up name→ID index
-    /// 3. Emit `TemplateDeleted` event
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement template deletion"
-    )]
-    pub fn delete(&self, _id: Uuid) -> Result<(), TemplateError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Delete template and clean up indexes")
+    pub fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
+        let id_str = id.to_string();
+
+        // 1. Get template first to clean up indexes
+        let template = self
+            .db
+            .get_owned::<Template>("templates", &id_str)
+            .map_err(|e| TemplateError::Storage(e.to_string()))?;
+
+        if let Some(t) = template {
+            // 2. Remove from name index
+            self.db
+                .multimap_remove("template_name_to_id", t.name(), &id_str)
+                .map_err(|e| TemplateError::Storage(e.to_string()))?;
+
+            // 3. Delete template
+            self.db
+                .delete("templates", &id_str)
+                .map_err(|e| TemplateError::Storage(e.to_string()))?;
+        }
+
+        Ok(())
     }
 
     /// Updates an existing template.
     ///
     /// # Errors
     /// Returns `TemplateError` if update fails.
-    ///
-    /// # Phase 4 Note
-    /// This is a stub implementation. Phase 6 will implement:
-    /// 1. Validate template
-    /// 2. Persist to database using ``db.put()``
-    /// 3. Update name→ID index if name changed
-    /// 4. Emit `TemplateUpdated` event
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement template update"
-    )]
-    pub fn update(&self, _template: Template) -> Result<(), TemplateError> {
-        let _: &Database = self.db;
-        todo!("Implement in Phase 6: Update template and refresh indexes")
+    pub fn update(&self, template: &Template) -> Result<(), TemplateError> {
+        let id_str = template.id().to_string();
+        let name = template.name().to_owned();
+
+        // 1. Get old template to find what changed
+        let old_template = self
+            .db
+            .get_owned::<Template>("templates", &id_str)
+            .map_err(|e| TemplateError::Storage(e.to_string()))?;
+
+        if let Some(old) = old_template {
+            // 2. Update name index if changed
+            if old.name() != template.name() {
+                self.db
+                    .multimap_remove("template_name_to_id", old.name(), &id_str)
+                    .map_err(|e| TemplateError::Storage(e.to_string()))?;
+                self.db
+                    .multimap_insert("template_name_to_id", &name, &id_str)
+                    .map_err(|e| TemplateError::Storage(e.to_string()))?;
+            }
+        }
+
+        // 3. Save new template
+        self.db
+            .put("templates", &id_str, template)
+            .map_err(|e| TemplateError::Storage(e.to_string()))?;
+
+        Ok(())
+    }
+}
+
+impl super::ports::Command for Command<'_> {
+    #[inline]
+    fn create(&self, template: &Template) -> Result<(), TemplateError> {
+        self.create(template)
+    }
+
+    #[inline]
+    fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
+        self.delete(id)
+    }
+
+    #[inline]
+    fn update(&self, template: &Template) -> Result<(), TemplateError> {
+        self.update(template)
     }
 }

@@ -1,3 +1,12 @@
+//! Template composition for modular template building.
+//!
+//! This module defines composition types with rkyv serialization support.
+#![allow(
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums,
+    reason = "rkyv Archive derive generates non-exhaustive archived types"
+)]
+
 use std::collections::{HashMap, HashSet};
 
 use super::{aggregate::Template, error::TemplateError};
@@ -32,7 +41,17 @@ use super::{aggregate::Template, error::TemplateError};
 /// # }
 /// # run().unwrap();
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Composition {
     /// Base template name.
@@ -42,6 +61,7 @@ pub struct Composition {
     /// Child templates to include.
     pub includes: Vec<String>,
     /// Variable overrides for base template.
+    #[rkyv(with = rkyv::with::Skip)]
     pub variable_overrides: HashMap<String, serde_json::Value>,
 }
 
@@ -53,7 +73,17 @@ struct DfsContext<'context> {
 }
 
 /// Insertion point for template sections.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum InsertionPosition {
     /// Insert after named variable.
@@ -67,7 +97,17 @@ pub enum InsertionPosition {
 }
 
 /// Template section for composition.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Section {
     /// Section name.
