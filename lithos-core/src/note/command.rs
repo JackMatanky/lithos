@@ -3,12 +3,6 @@
 //! This module implements the Command port trait for Note write operations,
 //! using the Database layer for persistence.
 
-#![allow(
-    clippy::same_name_method,
-    clippy::missing_inline_in_public_items,
-    reason = "CQRS pattern: trait impls don't need inline"
-)]
-
 use uuid::Uuid;
 
 use super::{aggregate::Note, error::NoteError};
@@ -30,13 +24,15 @@ impl<'db> Command<'db> {
             db,
         }
     }
+}
 
+impl super::ports::Command for Command<'_> {
     /// Creates a new note with the given vault-relative path.
     ///
     /// # Errors
     /// Returns `NoteError` if note creation fails validation or persistence.
     #[inline]
-    pub fn create(&self, path: String) -> Result<Note, NoteError> {
+    fn create(&self, path: String) -> Result<Note, NoteError> {
         let note = Note::new(Uuid::now_v7(), path)?;
         let id_str = note.id.to_string();
 
@@ -58,7 +54,7 @@ impl<'db> Command<'db> {
     /// # Errors
     /// Returns `NoteError` if note deletion fails.
     #[inline]
-    pub fn delete(&self, id: Uuid) -> Result<(), NoteError> {
+    fn delete(&self, id: Uuid) -> Result<(), NoteError> {
         let id_str = id.to_string();
 
         // 1. Get note first to clean up indexes
@@ -101,7 +97,7 @@ impl<'db> Command<'db> {
     /// # Errors
     /// Returns `NoteError` if note update fails validation or persistence.
     #[inline]
-    pub fn update(&self, note: Note) -> Result<Note, NoteError> {
+    fn update(&self, note: Note) -> Result<Note, NoteError> {
         let id_str = note.id.to_string();
 
         // 1. Get old note to find what changed
@@ -165,22 +161,5 @@ impl<'db> Command<'db> {
         )?;
 
         Ok(note)
-    }
-}
-
-impl super::ports::Command for Command<'_> {
-    #[inline]
-    fn create(&self, path: String) -> Result<Note, NoteError> {
-        self.create(path)
-    }
-
-    #[inline]
-    fn delete(&self, id: Uuid) -> Result<(), NoteError> {
-        self.delete(id)
-    }
-
-    #[inline]
-    fn update(&self, note: Note) -> Result<Note, NoteError> {
-        self.update(note)
     }
 }

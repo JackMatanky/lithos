@@ -3,12 +3,6 @@
 //! This module implements the Query port trait for Note read operations,
 //! using the Database layer for zero-copy reads.
 
-#![allow(
-    clippy::same_name_method,
-    reason = "CQRS pattern: public methods intentionally delegate to trait \
-              impls with same names"
-)]
-
 use uuid::Uuid;
 
 use super::{aggregate::Note, error::NoteError};
@@ -30,13 +24,15 @@ impl<'db> Query<'db> {
             db,
         }
     }
+}
 
+impl super::ports::Query for Query<'_> {
     /// Finds a note by its UUID v7 identifier.
     ///
     /// # Errors
     /// Returns `NoteError` if query execution fails.
     #[inline]
-    pub fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
         let id_str = id.to_string();
         self.db
             .get_owned::<Note>("notes", &id_str)
@@ -48,7 +44,7 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `NoteError` if query execution fails.
     #[inline]
-    pub fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteError> {
+    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteError> {
         let ids = self.db.multimap_get("path_to_id", path).map_err(
             |e: crate::db::DbError| NoteError::Storage(e.to_string()),
         )?;
@@ -67,26 +63,9 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `NoteError` if query execution fails.
     #[inline]
-    pub fn list(&self) -> Result<Vec<Note>, NoteError> {
+    fn list(&self) -> Result<Vec<Note>, NoteError> {
         self.db
             .list_owned::<Note>("notes")
             .map_err(|e: crate::db::DbError| NoteError::Storage(e.to_string()))
-    }
-}
-
-impl super::ports::Query for Query<'_> {
-    #[inline]
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
-        self.find_by_id(id)
-    }
-
-    #[inline]
-    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteError> {
-        self.find_by_path(path)
-    }
-
-    #[inline]
-    fn list(&self) -> Result<Vec<Note>, NoteError> {
-        self.list()
     }
 }

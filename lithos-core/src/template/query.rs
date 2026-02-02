@@ -3,11 +3,6 @@
 //! This module implements the Query port trait for Template read operations,
 //! using the Database layer for zero-copy reads.
 
-#![allow(
-    clippy::same_name_method,
-    reason = "CQRS pattern: trait impls don't need inline"
-)]
-
 use std::collections::HashMap;
 
 use uuid::Uuid;
@@ -33,16 +28,15 @@ impl<'db> Query<'db> {
             db,
         }
     }
+}
 
+impl super::ports::Query for Query<'_> {
     /// Find a template by ID.
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
     #[inline]
-    pub fn find_by_id(
-        &self,
-        id: Uuid,
-    ) -> Result<Option<Template>, TemplateError> {
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
         let id_str = id.to_string();
         self.db.get_owned::<Template>("templates", &id_str).map_err(
             |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
@@ -54,7 +48,7 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `TemplateError` if query fails.
     #[inline]
-    pub fn find_by_name(
+    fn find_by_name(
         &self,
         name: &str,
     ) -> Result<Option<Template>, TemplateError> {
@@ -76,7 +70,7 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `TemplateError` if query fails.
     #[inline]
-    pub fn list(&self) -> Result<Vec<Template>, TemplateError> {
+    fn list(&self) -> Result<Vec<Template>, TemplateError> {
         self.db.list_owned::<Template>("templates").map_err(
             |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
         )
@@ -87,7 +81,7 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `TemplateError` if resolution fails.
     #[inline]
-    pub fn resolve(
+    fn resolve(
         &self,
         composition: &Composition,
     ) -> Result<Template, TemplateError> {
@@ -103,33 +97,5 @@ impl<'db> Query<'db> {
             .collect();
 
         Template::compose(&base, composition, &all_templates)
-    }
-}
-
-impl super::ports::Query for Query<'_> {
-    #[inline]
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
-        self.find_by_id(id)
-    }
-
-    #[inline]
-    fn find_by_name(
-        &self,
-        name: &str,
-    ) -> Result<Option<Template>, TemplateError> {
-        self.find_by_name(name)
-    }
-
-    #[inline]
-    fn list(&self) -> Result<Vec<Template>, TemplateError> {
-        self.list()
-    }
-
-    #[inline]
-    fn resolve(
-        &self,
-        composition: &Composition,
-    ) -> Result<Template, TemplateError> {
-        self.resolve(composition)
     }
 }

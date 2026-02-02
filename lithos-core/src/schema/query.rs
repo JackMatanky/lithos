@@ -24,7 +24,9 @@ impl<'db> Query<'db> {
             db,
         }
     }
+}
 
+impl super::ports::Query for Query<'_> {
     /// Find a schema by its ID.
     ///
     /// # Errors
@@ -34,7 +36,7 @@ impl<'db> Query<'db> {
     /// Schema is stored by name, not ID. For now, returns `None`.
     /// A name→ID index would be needed for full implementation.
     #[inline]
-    pub fn find_by_id(&self, _id: Uuid) -> Result<Option<Schema>, SchemaError> {
+    fn find_by_id(&self, _id: Uuid) -> Result<Option<Schema>, SchemaError> {
         // Schema is stored by name, not ID
         // For now, return None - would need name→id index for full
         // implementation
@@ -46,10 +48,7 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `SchemaError` if query fails.
     #[inline]
-    pub fn find_by_name(
-        &self,
-        name: &str,
-    ) -> Result<Option<Schema>, SchemaError> {
+    fn find_by_name(&self, name: &str) -> Result<Option<Schema>, SchemaError> {
         self.db.get_owned("schemas", name).map_err(|e: crate::db::DbError| {
             SchemaError::Storage(e.to_string())
         })
@@ -60,7 +59,7 @@ impl<'db> Query<'db> {
     /// # Errors
     /// Returns `SchemaError` if query fails.
     #[inline]
-    pub fn list(&self) -> Result<Vec<Schema>, SchemaError> {
+    fn list(&self) -> Result<Vec<Schema>, SchemaError> {
         self.db
             .list_owned::<Schema>("schemas")
             .map_err(|e| SchemaError::Storage(e.to_string()))
