@@ -7,7 +7,7 @@
 #MISE env={RUST_BACKTRACE="1"}
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE flag "-p --package <package>" help="Run tests for a specific package" {
-#USAGE   choices "domain" "app" "adapters" "cli" "test-utils"
+#USAGE   choices "core" "lithos-core" "cli" "lithos" "config" "note" "schema" "template" "db" "fs" "core:config" "core:note" "core:schema" "core:template" "core:db" "core:fs" "test-utils" "lithos-test-utils"
 #USAGE }
 #USAGE arg "[filter]" help="Filter tests by name"
 
@@ -24,14 +24,58 @@ set -euo pipefail
 #######################################
 map_package_name() {
     case "${usage_package:-}" in
-    domain | app | adapters | test-utils | integration-tests)
-        echo "lithos-${usage_package}"
+    core | lithos-core)
+        echo "lithos-core"
         ;;
-    cli)
+    cli | lithos)
+        # Cargo package name for the CLI is "lithos".
         echo "lithos"
+        ;;
+    test-utils | lithos-test-utils)
+        echo "lithos-test-utils"
+        ;;
+    core:*)
+        # Bounded contexts live inside lithos-core.
+        echo "lithos-core"
+        ;;
+    config | note | schema | template | db | fs)
+        # Bounded contexts live inside lithos-core.
+        echo "lithos-core"
+        ;;
+    "")
+        echo ""
         ;;
     *)
         echo ""
+        ;;
+    esac
+}
+
+#######################################
+# If the user selects a bounded context and does not pass a filter, provide a
+# sensible default filter that narrows tests to that module.
+#
+# Globals:
+#   usage_package
+#   usage_filter
+# Arguments:
+#   None
+# Outputs:
+#   Updates usage_filter in-place
+#######################################
+context_filter() {
+    if [[ -n "${usage_filter:-}" ]]; then
+        return
+    fi
+
+    case "${usage_package:-}" in
+    config | note | schema | template | db | fs)
+        usage_filter="${usage_package}::"
+        ;;
+    core:*)
+        usage_filter="${usage_package#core:}::"
+        ;;
+    *)
         ;;
     esac
 }
@@ -56,9 +100,6 @@ add_nextest_args() {
         _nextest_ref_args+=("--verbose")
     fi
 
-    if [[ -n "${usage_filter:-}" ]]; then
-        _nextest_ref_args+=("${usage_filter}")
-    fi
 }
 
 #######################################
@@ -103,6 +144,11 @@ build_test_arg() {
 
     # Package selection (Common)
     add_package_args _main_ref_args "${package_name}"
+
+    # Optional name filter (Common)
+    if [[ -n "${usage_filter:-}" ]]; then
+        _main_ref_args+=("${usage_filter}")
+    fi
 }
 
 #######################################
@@ -149,6 +195,8 @@ run_tests() {
 #   None
 #######################################
 main() {
+    context_filter
+
     local resolved_package
     resolved_package=$(map_package_name)
 
