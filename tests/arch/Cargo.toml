@@ -1,0 +1,16 @@
+[package]
+name = "lithos-test-arch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[test]]
+name = "boundary_tests"
+path = "src/boundary_tests.rs"
+
+[dependencies]
+lithos-core = { path = "../../lithos-core" }
+
+[lints]
+workspace = true
