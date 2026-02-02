@@ -4,6 +4,8 @@
 
 /// Template aggregate root and main entities.
 pub mod aggregate;
+/// Template command implementations (CQRS write operations).
+pub mod command;
 /// Template composition logic.
 pub mod composition;
 /// Template errors.
@@ -12,6 +14,8 @@ pub mod error;
 pub mod events;
 /// Template ports for CQRS.
 pub mod ports;
+/// Template query implementations (CQRS read operations).
+pub mod query;
 /// Template placeholder syntax.
 pub mod syntax;
 /// Template validation logic.

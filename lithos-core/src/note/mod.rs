@@ -7,6 +7,8 @@
 
 /// Core Note aggregate root and main entities.
 pub mod aggregate;
+/// Note command implementations (CQRS write operations).
+pub mod command;
 /// Note errors.
 pub mod error;
 /// Note domain events.
@@ -17,6 +19,8 @@ pub mod frontmatter;
 pub mod link;
 /// Note ports for CQRS.
 pub mod ports;
+/// Note query implementations (CQRS read operations).
+pub mod query;
 /// Document structure subentities (Heading and Section) for Note aggregate.
 pub mod structure;
 /// Tag subentity for Note aggregate.

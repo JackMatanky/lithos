@@ -7,10 +7,12 @@
 #![allow(missing_docs, reason = "Transitional state of documentation")]
 
 pub mod aggregate;
+pub mod command;
 pub mod error;
 pub mod events;
 pub mod global;
 pub mod ports;
+pub mod query;
 pub mod types;
 pub mod vault;
 
