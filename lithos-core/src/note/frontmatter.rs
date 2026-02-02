@@ -13,6 +13,91 @@ use chrono::{DateTime, Utc};
 
 use super::error::NoteError;
 
+/// A high-level type descriptor for [`FieldValue`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldValueType {
+    Array,
+    Boolean,
+    Date,
+    Number,
+    Object,
+    String,
+}
+
+impl core::fmt::Display for FieldValueType {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let name = match *self {
+            Self::Array => "array",
+            Self::Boolean => "boolean",
+            Self::Date => "date",
+            Self::Number => "number",
+            Self::Object => "object",
+            Self::String => "string",
+        };
+        f.write_str(name)
+    }
+}
+
+/// Errors surfaced by strict frontmatter accessors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FrontmatterError {
+    /// A required key was missing from the frontmatter map.
+    #[error("missing frontmatter key: {key}")]
+    Missing {
+        key: Box<str>,
+    },
+
+    /// A key exists, but the value has an unexpected runtime type.
+    #[error(
+        "frontmatter key '{key}' has wrong type (expected {expected}, got \
+         {actual})"
+    )]
+    TypeMismatch {
+        key: Box<str>,
+        expected: Box<str>,
+        actual: FieldValueType,
+    },
+
+    /// A key exists and is an array, but at least one element has the wrong
+    /// type.
+    #[error(
+        "frontmatter key '{key}' has wrong array element type at index \
+         {index} (expected {expected}, got {actual})"
+    )]
+    ArrayElementTypeMismatch {
+        key: Box<str>,
+        index: usize,
+        expected: FieldValueType,
+        actual: FieldValueType,
+    },
+
+    /// A key exists and is a date timestamp, but the timestamp is not
+    /// representable as a UTC datetime.
+    #[error("frontmatter key '{key}' has invalid date timestamp: {timestamp}")]
+    InvalidDateTimestamp {
+        key: Box<str>,
+        timestamp: i64,
+    },
+}
+
+/// Fallible, strict conversions from a [`FieldValue`].
+///
+/// This is intentionally a *local* trait (instead of `TryFrom<&FieldValue>`) to
+/// avoid Rust's orphan rules (we can't implement foreign traits for foreign
+/// types like `bool`, `f64`, `String`, etc.).
+pub trait TryFromFieldValue: Sized {
+    /// Attempts to extract a value of type `Self` from a [`FieldValue`].
+    ///
+    /// Returns a structured error when the value is present but incompatible.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FrontmatterError`] describing why the conversion failed.
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
+}
+
 /// Possible values in a frontmatter field.
 ///
 /// This enum represents the runtime type of a value parsed from YAML
@@ -80,6 +165,89 @@ pub trait FromFieldValue: Sized {
     fn from_value(value: &FieldValue) -> Option<Self>;
 }
 
+impl TryFromFieldValue for bool {
+    #[inline]
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        value.as_bool().ok_or_else(|| FrontmatterError::TypeMismatch {
+            key: "".into(),
+            expected: "boolean".into(),
+            actual: value.value_type(),
+        })
+    }
+}
+
+impl TryFromFieldValue for f64 {
+    #[inline]
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        value.as_number().ok_or_else(|| FrontmatterError::TypeMismatch {
+            key: "".into(),
+            expected: "number".into(),
+            actual: value.value_type(),
+        })
+    }
+}
+
+impl TryFromFieldValue for String {
+    #[inline]
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        value.as_str().map(ToOwned::to_owned).ok_or_else(|| {
+            FrontmatterError::TypeMismatch {
+                key: "".into(),
+                expected: "string".into(),
+                actual: value.value_type(),
+            }
+        })
+    }
+}
+
+impl TryFromFieldValue for DateTime<Utc> {
+    #[inline]
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        use chrono::TimeZone as _;
+        let ts =
+            value.as_date().ok_or_else(|| FrontmatterError::TypeMismatch {
+                key: "".into(),
+                expected: "date".into(),
+                actual: value.value_type(),
+            })?;
+        Utc.timestamp_opt(ts, 0).single().ok_or_else(|| {
+            FrontmatterError::InvalidDateTimestamp {
+                key: "".into(),
+                timestamp: ts,
+            }
+        })
+    }
+}
+
+impl TryFromFieldValue for Vec<String> {
+    #[inline]
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        if let Some(arr) = value.as_array() {
+            let mut out = Vec::with_capacity(arr.len());
+            for (index, item) in arr.iter().enumerate() {
+                let Some(s) = item.as_str() else {
+                    return Err(FrontmatterError::ArrayElementTypeMismatch {
+                        key: "".into(),
+                        index,
+                        expected: FieldValueType::String,
+                        actual: item.value_type(),
+                    });
+                };
+                out.push(s.to_owned());
+            }
+            return Ok(out);
+        }
+
+        value.as_str().map(|s| vec![s.to_owned()]).ok_or_else(|| {
+            FrontmatterError::TypeMismatch {
+                key: "".into(),
+                expected: "array|string".into(),
+                actual: value.value_type(),
+            }
+        })
+    }
+}
+
 impl FromFieldValue for bool {
     #[inline]
     fn from_value(value: &FieldValue) -> Option<Self> {
@@ -133,6 +301,19 @@ impl FromFieldValue for Vec<String> {
               forward compatibility"
 )]
 impl FieldValue {
+    #[inline]
+    #[must_use]
+    pub const fn value_type(&self) -> FieldValueType {
+        match *self {
+            Self::Array(_) => FieldValueType::Array,
+            Self::Boolean(_) => FieldValueType::Boolean,
+            Self::Date(_) => FieldValueType::Date,
+            Self::Number(_) => FieldValueType::Number,
+            Self::Object(_) => FieldValueType::Object,
+            Self::String(_) => FieldValueType::String,
+        }
+    }
+
     #[inline]
     #[must_use]
     pub fn as_array(&self) -> Option<&[FieldValue]> {
@@ -233,6 +414,91 @@ impl FieldValue {
 }
 
 impl Frontmatter {
+    #[inline]
+    fn with_key_context(
+        key: &str,
+        mut err: FrontmatterError,
+    ) -> FrontmatterError {
+        let key_str: Box<str> = key.into();
+        match &mut err {
+            &mut (FrontmatterError::Missing {
+                key: ref mut existing,
+            }
+            | FrontmatterError::TypeMismatch {
+                key: ref mut existing,
+                ..
+            }
+            | FrontmatterError::ArrayElementTypeMismatch {
+                key: ref mut existing,
+                ..
+            }
+            | FrontmatterError::InvalidDateTimestamp {
+                key: ref mut existing,
+                ..
+            }) => {
+                if existing.is_empty() {
+                    *existing = key_str;
+                }
+            }
+        }
+        err
+    }
+
+    /// Strictly extracts a typed value from frontmatter.
+    ///
+    /// Returns:
+    /// - `Ok(None)` if the key is missing.
+    /// - `Ok(Some(T))` if present and valid.
+    /// - `Err(FrontmatterError)` if present but invalid.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key exists but cannot be converted to `T`.
+    #[inline]
+    pub fn try_get<T: TryFromFieldValue>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>, FrontmatterError> {
+        let Some(value) = self.get(key) else {
+            return Ok(None);
+        };
+        T::try_from_value(value)
+            .map(Some)
+            .map_err(|err| Self::with_key_context(key, err))
+    }
+
+    /// Strictly extracts a required typed value from frontmatter.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FrontmatterError::Missing` if the key is absent.
+    #[inline]
+    pub fn try_get_required<T: TryFromFieldValue>(
+        &self,
+        key: &str,
+    ) -> Result<T, FrontmatterError> {
+        self.try_get(key)?.ok_or_else(|| FrontmatterError::Missing {
+            key: key.into(),
+        })
+    }
+
+    /// Strict string-array extraction.
+    ///
+    /// Unlike [`Self::get_string_array`], this fails if an array contains any
+    /// non-string elements.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is missing, if the value is not a string or
+    /// array of strings, or if any array element is not a string.
+    #[inline]
+    pub fn try_get_string_vec_strict(
+        &self,
+        key: &str,
+    ) -> Result<Vec<String>, FrontmatterError> {
+        self.try_get_required::<Vec<String>>(key)
+    }
+
     #[inline]
     #[must_use]
     pub fn aliases(
@@ -457,6 +723,75 @@ mod tests {
 
         assert_eq!(fm.get_string_array("single"), Some(vec!["a".to_owned()]));
         assert_eq!(fm.get_string_array("multi"), Some(vec!["b".to_owned()]));
+    }
+
+    #[test]
+    fn strict_string_vec_errors_on_non_string_array_elements() {
+        let mut fields = HashMap::new();
+        fields.insert(
+            "aliases".to_owned(),
+            FieldValue::Array(vec![
+                FieldValue::String("ok".into()),
+                FieldValue::Number(123.0),
+            ]),
+        );
+        let fm = Frontmatter::new(fields).unwrap();
+
+        let err = fm
+            .try_get_string_vec_strict("aliases")
+            .expect_err("strict extraction should fail");
+        assert!(matches!(
+            err,
+            FrontmatterError::ArrayElementTypeMismatch {
+                key,
+                index: 1,
+                expected: FieldValueType::String,
+                actual: FieldValueType::Number,
+            } if key.as_ref() == "aliases"
+        ));
+
+        // Lenient extraction keeps today's behavior (drops non-strings).
+        assert_eq!(fm.get_string_array("aliases"), Some(vec!["ok".to_owned()]));
+    }
+
+    #[test]
+    fn strict_get_required_distinguishes_missing_from_mismatch() {
+        let mut fields = HashMap::new();
+        fields.insert("n".to_owned(), FieldValue::Number(1.0f64));
+        let fm = Frontmatter::new(fields).unwrap();
+
+        let missing = fm
+            .try_get_required::<String>("missing")
+            .expect_err("missing key should error");
+        assert!(matches!(
+            missing,
+            FrontmatterError::Missing { key } if key.as_ref() == "missing"
+        ));
+
+        let mismatch = fm
+            .try_get_required::<String>("n")
+            .expect_err("type mismatch should error");
+        assert!(matches!(
+            mismatch,
+            FrontmatterError::TypeMismatch { key, expected, actual: FieldValueType::Number }
+                if key.as_ref() == "n" && expected.as_ref() == "string"
+        ));
+    }
+
+    #[test]
+    fn strict_date_reports_invalid_timestamp() {
+        let mut fields = HashMap::new();
+        fields.insert("d".to_owned(), FieldValue::Date(i64::MAX));
+        let fm = Frontmatter::new(fields).unwrap();
+
+        let err = fm
+            .try_get_required::<DateTime<Utc>>("d")
+            .expect_err("invalid timestamp should error");
+        assert!(matches!(
+            err,
+            FrontmatterError::InvalidDateTimestamp { key, timestamp: i64::MAX }
+                if key.as_ref() == "d"
+        ));
     }
 
     #[test]
