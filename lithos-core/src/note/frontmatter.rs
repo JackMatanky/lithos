@@ -34,36 +34,6 @@ pub struct Frontmatter {
 }
 
 impl Frontmatter {
-    #[inline]
-    fn with_key_context(
-        key: &str,
-        mut err: FrontmatterError,
-    ) -> FrontmatterError {
-        let key_str: Box<str> = key.into();
-        match &mut err {
-            &mut (FrontmatterError::Missing {
-                key: ref mut existing,
-            }
-            | FrontmatterError::TypeMismatch {
-                key: ref mut existing,
-                ..
-            }
-            | FrontmatterError::ArrayElementTypeMismatch {
-                key: ref mut existing,
-                ..
-            }
-            | FrontmatterError::InvalidDateTimestamp {
-                key: ref mut existing,
-                ..
-            }) => {
-                if existing.is_empty() {
-                    *existing = key_str;
-                }
-            }
-        }
-        err
-    }
-
     /// Creates a new Frontmatter from field map.
     ///
     /// # Errors
@@ -128,8 +98,7 @@ impl Frontmatter {
 
     /// Strict string-array extraction.
     ///
-    /// Unlike [`Self::get_string_array`], this fails if an array contains any
-    /// non-string elements.
+    /// This fails if an array contains any non-string elements.
     ///
     /// # Errors
     ///
@@ -141,6 +110,48 @@ impl Frontmatter {
         key: &str,
     ) -> Result<Vec<String>, FrontmatterError> {
         self.try_get_required::<Vec<String>>(key)
+    }
+
+    /// Strictly extracts a *borrowed* typed value from frontmatter.
+    ///
+    /// This mirrors [`Self::try_get`], but allows return types that borrow from
+    /// the underlying [`FieldValue`] (e.g., `&str`, slices, or object maps).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key exists but cannot be converted to `T`.
+    #[inline]
+    pub fn try_get_ref<'frontmatter, T>(
+        &'frontmatter self,
+        key: &str,
+    ) -> Result<Option<T>, FrontmatterError>
+    where
+        T: FromFieldValueRef<'frontmatter>,
+    {
+        let Some(value) = self.get(key) else {
+            return Ok(None);
+        };
+        T::from_value_ref(value)
+            .map(Some)
+            .map_err(|err| Self::with_key_context(key, err))
+    }
+
+    /// Strictly extracts a required *borrowed* typed value from frontmatter.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FrontmatterError::Missing` if the key is absent.
+    #[inline]
+    pub fn try_get_required_ref<'frontmatter, T>(
+        &'frontmatter self,
+        key: &str,
+    ) -> Result<T, FrontmatterError>
+    where
+        T: FromFieldValueRef<'frontmatter>,
+    {
+        self.try_get_ref(key)?.ok_or_else(|| FrontmatterError::Missing {
+            key: key.into(),
+        })
     }
 
     #[inline]
@@ -174,31 +185,35 @@ impl Frontmatter {
             .and_then(FieldValue::as_string_array_lossy)
             .unwrap_or_default()
     }
-}
 
-/// A high-level type descriptor for [`FieldValue`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FieldValueType {
-    Array,
-    Boolean,
-    Date,
-    Number,
-    Object,
-    String,
-}
-
-impl core::fmt::Display for FieldValueType {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let name = match *self {
-            Self::Array => "array",
-            Self::Boolean => "boolean",
-            Self::Date => "date",
-            Self::Number => "number",
-            Self::Object => "object",
-            Self::String => "string",
-        };
-        f.write_str(name)
+    fn with_key_context(
+        key: &str,
+        mut err: FrontmatterError,
+    ) -> FrontmatterError {
+        let key_str: Box<str> = key.into();
+        match &mut err {
+            &mut (FrontmatterError::Missing {
+                key: ref mut existing,
+            }
+            | FrontmatterError::TypeMismatch {
+                key: ref mut existing,
+                ..
+            }
+            | FrontmatterError::ArrayElementTypeMismatch {
+                key: ref mut existing,
+                ..
+            }
+            | FrontmatterError::InvalidDateTimestamp {
+                key: ref mut existing,
+                ..
+            }) => {
+                if existing.is_empty() {
+                    *existing = key_str;
+                }
+            }
+        }
+        err
     }
 }
 
@@ -216,6 +231,21 @@ pub trait FromFieldValue: Sized {
     ///
     /// Returns a [`FrontmatterError`] describing why the conversion failed.
     fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
+}
+
+/// Fallible, strict conversions from a borrowed [`FieldValue`].
+///
+/// This exists to support *non-owning* access patterns like `&str` and slices.
+pub trait FromFieldValueRef<'frontmatter>: Sized {
+    /// Attempts to extract a value of type `Self` from a borrowed
+    /// [`FieldValue`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FrontmatterError`] describing why the conversion failed.
+    fn from_value_ref(
+        value: &'frontmatter FieldValue,
+    ) -> Result<Self, FrontmatterError>;
 }
 
 /// Possible values in a frontmatter field.
@@ -343,6 +373,53 @@ impl FromFieldValue for Vec<String> {
     }
 }
 
+impl<'frontmatter> FromFieldValueRef<'frontmatter> for &'frontmatter str {
+    #[inline]
+    fn from_value_ref(
+        value: &'frontmatter FieldValue,
+    ) -> Result<Self, FrontmatterError> {
+        value.as_str().ok_or_else(|| FrontmatterError::TypeMismatch {
+            key: "".into(),
+            expected: "string".into(),
+            actual: value.value_type(),
+        })
+    }
+}
+
+impl<'frontmatter> FromFieldValueRef<'frontmatter>
+    for &'frontmatter [FieldValue]
+{
+    #[inline]
+    fn from_value_ref(
+        value: &'frontmatter FieldValue,
+    ) -> Result<Self, FrontmatterError> {
+        value.as_array().ok_or_else(|| FrontmatterError::TypeMismatch {
+            key: "".into(),
+            expected: "array".into(),
+            actual: value.value_type(),
+        })
+    }
+}
+
+impl<'frontmatter> FromFieldValueRef<'frontmatter>
+    for &'frontmatter HashMap<
+        String,
+        FieldValue,
+        ::std::collections::hash_map::RandomState,
+    >
+{
+    #[inline]
+    fn from_value_ref(
+        value: &'frontmatter FieldValue,
+    ) -> Result<Self, FrontmatterError> {
+        value.as_object().ok_or_else(|| FrontmatterError::TypeMismatch {
+            key: "".into(),
+            expected: "object".into(),
+            actual: value.value_type(),
+        })
+    }
+}
+
 #[expect(
     clippy::pattern_type_mismatch,
     clippy::wildcard_enum_match_arm,
@@ -437,6 +514,32 @@ impl FieldValue {
         }
 
         self.as_str().map(|s| vec![s.to_owned()])
+    }
+}
+
+/// A high-level type descriptor for [`FieldValue`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldValueType {
+    Array,
+    Boolean,
+    Date,
+    Number,
+    Object,
+    String,
+}
+
+impl core::fmt::Display for FieldValueType {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let name = match *self {
+            Self::Array => "array",
+            Self::Boolean => "boolean",
+            Self::Date => "date",
+            Self::Number => "number",
+            Self::Object => "object",
+            Self::String => "string",
+        };
+        f.write_str(name)
     }
 }
 
