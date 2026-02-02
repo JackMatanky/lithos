@@ -14,7 +14,7 @@ tags: [schema, validation, refactor, security, performance]
 ## 0. Definition of Done
 
 - Safety/correctness fixes for validation edge cases are covered by unit tests.
-- Existing public APIs either remain compatible or changes are explicitly staged/deprecated.
+- Existing public APIs either remain compatible, or any breaking changes are explicitly called out in this design and implemented in one cohesive sweep.
 - Repo quality gates are green: `mise run fmt`, `mise run lint`, and `mise run test` (or `mise run verify`).
 
 ## 1. Problem Space (The "Why")
@@ -25,13 +25,13 @@ The schema subsystem defines properties with type-specific validation rules.
 
 The module [lithos-core/src/schema/property_spec.rs](../../lithos-core/src/schema/property_spec.rs) is the center of that validation:
 
-- It defines the persisted schema representation for per-property constraints (`PropertySpec` + spec structs).
-- It validates spec definitions (`validate_spec`) during schema construction.
+- It defines the schema representation for per-property constraints (the *persisted* `*SpecDef` types).
+- It defines the *validated* `*Spec` types that carry invariants and are used for runtime validation.
 - It validates runtime metadata values (`validate`) using `serde_json::Value` as a universal IR.
 
 Primary consumers:
 
-- [lithos-core/src/schema/property.rs](../../lithos-core/src/schema/property.rs): `Property::validate()` calls `spec.validate_spec()`. `Property::validate_value()` calls `spec.validate()` (scalar) or loops and validates array items.
+- [lithos-core/src/schema/property.rs](../../lithos-core/src/schema/property.rs): `Property::validate()` compiles persisted `PropertySpecDef` into validated `PropertySpec`. `Property::validate_value()` calls `spec.validate()` (scalar) or loops and validates array items.
 
 Current implementation is functional, but has several correctness and clarity gaps that matter in production.
 
@@ -59,6 +59,10 @@ Current implementation is functional, but has several correctness and clarity ga
 - Date/File/String validation converts `&str` into owned `String` (`to_owned`) due to `PropertySpecTrait` using `type Value = String`.
 - This introduces per-validation allocations for common paths.
 
+Related (smaller but still hot-path):
+
+- `StringSpec::validate_enum` currently allocates (`value.to_owned()`) just to call `Vec<String>::contains`.
+
 5) **String length semantics are implicit**
 
 - `StringSpec::validate_length` uses `value.len()` (UTF-8 bytes), but the schema’s intent may be “characters”.
@@ -74,6 +78,7 @@ Current implementation is functional, but has several correctness and clarity ga
   - Define and enforce a traversal policy for vault-relative paths.
 - Improve performance in common validation paths:
   - Remove avoidable allocations from `PropertySpec::validate` for string/date/file values.
+  - Remove avoidable allocations from string enum membership checks.
   - Reduce lock contention in regex compilation/caching.
 - Clarify behavior contracts:
   - Explicitly define what “min/max” means for strings (bytes vs characters).
@@ -84,13 +89,13 @@ Current implementation is functional, but has several correctness and clarity ga
 - Changing higher-level schema resolution, inheritance, or graph logic.
 - Performing filesystem I/O (no `canonicalize`, no existence checks).
 - Adding new dependencies. Changes must be achievable with current crates + `std`.
-- Introducing a breaking change to the on-disk schema representation in this iteration.
+- Avoiding all breaking changes at any cost. (This project is early-stage; if a representation change materially improves correctness/maintainability, it is acceptable with an explicit migration plan.)
 
 ### 1.3 Constraints (The Hard Limits)
 
 - **Purity**: property validation must remain deterministic and I/O-free.
 - **Thread-safety**: validation and regex caching must remain `Send + Sync`.
-- **Schema compatibility**: current Serde representation must continue to deserialize existing schemas.
+- **Schema compatibility**: compatibility is preferred, but early-stage breaking changes are acceptable when they reduce long-term complexity or bug surface area. If we break compatibility, we must document a migration strategy.
 - **Error type stability**: existing `SchemaError` variants are used in tests; new variants are allowed, but should be justified.
 
 ### 1.4 Baseline Behavior Notes (Pre-Change Inventory)
@@ -110,7 +115,7 @@ This is how schema authors define property specs and how the system validates va
 
 #### Defining specs (Serde format)
 
-`PropertySpec` is internally tagged with `type` and lowercased variants.
+`PropertySpecDef` is internally tagged with `type` and lowercased variants.
 
 Example (YAML-like):
 
@@ -133,18 +138,18 @@ Example (YAML-like):
 
 #### Validating a spec
 
-Specs are validated when building `Property` (and by extension when building schema definitions):
+Persisted specs (`*SpecDef`) are validated/compiled when building `Property` (and by extension when building schema definitions). This produces a validated `PropertySpec` that is safe to use on hot paths.
 
 ```rust
-use lithos_core::schema::property_spec::{NumberSpec, PropertySpec};
+use lithos_core::schema::property_spec::{NumberSpecDef, PropertySpecDef};
 
-let spec = PropertySpec::Number(NumberSpec {
-    min: Some(0.0),
-    max: Some(10.0),
-    step: Some(0.5),
+let def = PropertySpecDef::Number(NumberSpecDef {
+  min: Some(0.0),
+  max: Some(10.0),
+  step: Some(0.5),
 });
 
-spec.validate_spec()?;
+let spec = def.try_into_validated()?;
 ```
 
 #### Validating a runtime value
@@ -152,15 +157,16 @@ spec.validate_spec()?;
 Metadata values are validated using `serde_json::Value`.
 
 ```rust
-use lithos_core::schema::property_spec::{PropertySpec, StringSpec};
+use lithos_core::schema::property_spec::{PropertySpec, PropertySpecDef, StringSpecDef};
 
-let spec = PropertySpec::String(StringSpec {
-    min_length: Some(2),
-    max_length: Some(8),
-    pattern: Some("^[a-z]+$".to_owned()),
-    enum_values: None,
+let def = PropertySpecDef::String(StringSpecDef {
+  min_length: Some(2),
+  max_length: Some(8),
+  pattern: Some("^[a-z]+$".to_owned()),
+  enum_values: None,
 });
 
+let spec: PropertySpec = def.try_into_validated()?;
 spec.validate(&serde_json::json!("alpha"))?;
 ```
 
@@ -168,8 +174,9 @@ Array validation is handled one layer up, by `Property::validate_value`.
 
 ### 2.2 Mental Model
 
-- A `PropertySpec` is a *contract*.
-- `validate_spec()` checks that the contract is coherent.
+- A `PropertySpecDef` is the *persisted contract definition* (deserialize/serialize).
+- A `PropertySpec` is the *validated contract* (invariants guaranteed).
+- `try_into_validated()` checks that the contract is coherent and produces the validated form.
 - `validate(value)` checks that a runtime value conforms.
 
 The contract is defined at schema time; validation happens at ingestion/query time.
@@ -178,9 +185,11 @@ The contract is defined at schema time; validation happens at ingestion/query ti
 
 ### 3.1 System Architecture
 
-`PropertySpec` is a leaf validator called by the schema domain model:
+`PropertySpec` is a leaf validator called by the schema domain model.
 
-- `Property::validate()` → `PropertySpec::validate_spec()`
+`PropertySpecDef` is the persisted definition type, compiled at schema-build time into the validated `PropertySpec`.
+
+- `Property::validate()` → compile persisted `PropertySpecDef` into validated `PropertySpec`
 - `Property::validate_value()` → `PropertySpec::validate()` (or loop for arrays)
 
 `PropertySpec` itself depends on:
@@ -194,15 +203,22 @@ The contract is defined at schema time; validation happens at ingestion/query ti
 
 #### Component: PropertySpec
 
-- **Responsibility**: Defines the supported property types and validates runtime values against type-specific constraints.
+- **Responsibility**: Validated contract type that validates runtime values against type-specific constraints.
 - **Public Interface**:
   - `spec_type(&self) -> PropertySpecType`
     - _Behavior_: returns the type discriminant.
   - `validate(&self, value: &serde_json::Value) -> Result<(), SchemaError>`
     - _Behavior_: validates the provided value against this spec.
     - _Errors_: returns a structured `SchemaError`.
-  - `validate_spec(&self) -> Result<(), SchemaError>`
-    - _Behavior_: validates internal coherence of the spec.
+
+Spec coherence is guaranteed by construction (produced via compilation of `PropertySpecDef`).
+
+#### Component: PropertySpecDef
+
+- **Responsibility**: Persisted schema representation (Serde) for per-property constraints.
+- **Public Interface**:
+  - `try_into_validated(self) -> Result<PropertySpec, SchemaError>`
+    - _Behavior_: validates internal coherence and constructs the validated form.
 
 Error surface expectations (non-exhaustive; aligns with current tests and typical usage patterns):
 
@@ -239,6 +255,7 @@ Note: This format is **chrono tokens**, not RFC3339 unless the schema uses an RF
 - **Contract**:
   - If both present, `min <= max`.
   - If present, `step > 0`.
+  - If present, `min`, `max`, and `step` must be finite.
   - Runtime values must be finite.
 
 #### Component: StringSpec
@@ -257,6 +274,8 @@ Length semantics are explicitly defined in this design (see 3.5.4).
 - **Contract**:
   - If `file_class` is present, it must be non-empty.
   - If `directory` is present, it must be a valid vault-relative directory prefix (see 3.5.2).
+
+Implementation note (repo best practice): even though the persisted representation uses `String`, all internal path operations should be performed via `std::path::Path` / `PathBuf` (never ad-hoc string operations) to align with the project’s “Path Protocol”.
 
 ### 3.3 Integration & Data Flow
 
@@ -291,24 +310,42 @@ sequenceDiagram
 
 ### 3.4 Data Models
 
-#### Persisted spec representation (status quo)
+Naming convention:
 
-These types are persisted via Serde:
+- `*SpecDef` = persisted (Serde) schema definition type
+- `*Spec` = validated runtime contract type (invariants guaranteed)
 
-- `PropertySpec` (internally tagged by `type`)
+#### Persisted spec representation (source-of-truth)
+
+These types are persisted via Serde (and are the schema’s source-of-truth representation):
+
+- `PropertySpecDef` (internally tagged by `type`)
+- `BoolSpecDef`, `DateSpecDef`, `FileSpecDef`, `NumberSpecDef`, `StringSpecDef`
+
+They are intentionally “dumb data”: they may be invalid until compiled.
+
+#### Validated spec representation (hot-path runtime)
+
+These types are used for runtime validation, and carry invariants so that invalid states are unrepresentable:
+
+- `PropertySpec`
 - `BoolSpec`, `DateSpec`, `FileSpec`, `NumberSpec`, `StringSpec`
 
-This iteration preserves the existing schema representation.
+Construction happens via compilation/validation:
 
-#### Proposed internal helper types (non-persisted)
+- `PropertySpecDef::try_into_validated() -> Result<PropertySpec, SchemaError>`
 
-To improve correctness and reduce repetition, introduce internal helper types without changing Serde formats:
+The validated types may use internal helper types (e.g., `Bounds<T>`, `VaultRelPath`, `FiniteF64`, compiled regex handles) and do not need to be Serde-compatible.
 
-- `Bounds<T>`: reusable min/max validation (used by NumberSpec and StringSpec-length)
-- `VaultRelPath` (newtype): validates “vault-relative path grammar” for directory and file path strings
-- `RegexPattern` (newtype): stores pattern string; compilation handled by cache
+#### Internal helper types (used by validated specs)
 
-These types are internal implementation details, not part of the schema format.
+To improve correctness and reduce repetition, introduce internal helper types used by the validated `*Spec` types:
+
+- `Bounds<T>`: reusable min/max validation (used by `NumberSpec` and `StringSpec` length)
+- `FiniteF64`: rejects `NaN` and ±∞ at construction time
+- `Step`: guarantees “positive + finite” step increments
+- `VaultRelPath`: validates “vault-relative path grammar” for directory and file path strings
+- `RegexPattern` / cached compiled regex handle (e.g., `Arc<regex::Regex>`)
 
 ### 3.5 Core Logic & Algorithms
 
@@ -338,10 +375,13 @@ This consolidates the invariant and the error paths.
 
 2) **Make invalid states unrepresentable where possible**
 
-- `step: Option<f64>` can be replaced internally (after `validate_spec`) by `Option<PositiveF64>`.
-- `directory: Option<String>` can be replaced internally by `Option<VaultRelPath>` after spec validation.
+Use validated helper types inside the validated `*Spec` structs:
 
-Even if the persisted struct keeps `Option<String>`, the *validated representation used during runtime validation* can be strongly typed.
+- `FiniteF64` for numeric values and numeric bounds
+- `Step` for step increments (positive + finite)
+- `VaultRelPath` for vault-relative paths
+
+Persisted `*SpecDef` types can remain simple (`Option<f64>`, `Option<String>`) and are converted into validated types at schema-build time.
 
 3) **Enum values representation (list vs map)**
 
@@ -368,6 +408,7 @@ Traversal policy (I/O-free, conservative):
 
 - Reject absolute paths.
 - Reject any path containing `..` components.
+- Reject Windows-style prefixes (e.g., `C:`) by rejecting `Component::Prefix`.
 - Optionally reject `.` components (or normalize them away).
 
 Containment rule:
@@ -377,13 +418,15 @@ Containment rule:
 
 This keeps validation deterministic and avoids reliance on filesystem state.
 
+Cross-platform note: `std::path::Path` has platform-specific semantics. Vault-relative paths in Lithos should be treated as *syntactic* “vault paths” (not OS paths). The implementation should explicitly validate components (rejecting `Prefix`/`RootDir`/`ParentDir`) so behavior is consistent across OSes.
+
 #### 3.5.3 Regex caching
 
 **Current**: `OnceLock<Mutex<HashMap<String, Regex>>>`, compile under lock, return cloned `Regex`.
 
 **Proposed**:
 
-- Use `std::sync::LazyLock` + `RwLock`.
+- Use `OnceLock` (or `std::sync::LazyLock`) + `RwLock`.
 - Store `Arc<regex::Regex>` in the map.
 
 Algorithm:
@@ -393,6 +436,8 @@ Algorithm:
 3) Write lock: insert if absent; return the stored `Arc`.
 
 This avoids compiling under lock and avoids cloning regex objects.
+
+Poisoning policy: prefer recovering from poisoned locks (`PoisonError::into_inner`) over failing all future validations, since this module is hot-path and used for user-facing errors.
 
 If contention becomes a demonstrated issue, consider a follow-up using a concurrent map (e.g., `dashmap`) or a bounded/LRU cache. This is intentionally deferred in this iteration to avoid adding dependencies and to keep behavior deterministic and simple.
 
@@ -425,6 +470,12 @@ Proposed change:
 
 Then `PropertySpec::validate` extracts `&str` from JSON and passes it through without `to_owned()`.
 
+Also remove incidental allocations in `StringSpec::validate_enum` by using a borrowed membership check:
+
+- Prefer `enums.iter().any(|s| s == value)` over `enums.contains(&value.to_owned())`.
+
+If enum lists become large and lookup becomes measurable, consider an internal validated representation that precomputes a set for membership (preferably without changing the persisted schema format).
+
 ## 4. Alternatives & Decisions (The "Divergence")
 
 ### 4.1 Tactical Decisions
@@ -444,9 +495,9 @@ Then `PropertySpec::validate` extracts `&str` from JSON and passes it through wi
 - **Alternatives**:
   - `canonicalize()` + prefix check: rejected (I/O + symlink complexity).
 
-#### Decision: Preserve schema format (no enum_values map yet)
+#### Decision: Keep `enum_values` as a list (for now)
 
-- **Context**: Allowing map form is attractive but risks breaking existing schema tooling and adds ambiguity.
+- **Context**: Allowing map form is attractive but adds schema-format complexity and ambiguity.
 - **Choice**: keep `Option<Vec<String>>` for this iteration.
 - **Alternatives**:
   - `#[serde(untagged)] enum StringEnum { List(Vec<String>), Map(BTreeMap<String,String>) }`.
