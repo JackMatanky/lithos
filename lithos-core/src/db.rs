@@ -2,20 +2,14 @@
 //!
 //! This module provides concrete types (not traits) for database operations,
 //! following the `std::fs::File` pattern. Zero-copy reads are achieved through
-//! `ArchivedGuard` which wraps redb's `AccessGuard`.
+//! closure-based APIs that keep transactions properly scoped.
 //!
 //! # Architecture
 //!
 //! - `Database` - Concrete type wrapping `redb::Database`
-//! - `ArchivedGuard<'txn, V>` - Zero-copy Deref wrapper for archived data
-//! - Generic methods (not macros) for type-safe operations
-//! - Sync-first design (no async overhead)
-//!
-//! # Phase 4 Status
-//!
-//! This is a **stub implementation** with proper type signatures and
-//! documentation. The actual redb/rkyv integration will be implemented in Phase
-//! 6.
+//! - `RkyvValue<T>` - Newtype wrapper for rkyv-serialized values (per ADR 0002)
+//! - Closure-based API - Transactions scoped within closures (safe, no unsafe)
+//! - Sync-first design - No async overhead
 //!
 //! # Examples
 //!
@@ -30,68 +24,18 @@
 //! # }
 //! ```
 
-use std::{marker::PhantomData, ops::Deref, path::Path};
+use std::path::Path;
+
+use redb::{ReadableDatabase as _, TableDefinition};
 
 /// Concrete database type wrapping redb.
 ///
 /// Provides zero-copy read/write primitives using rkyv serialization.
 /// Follows the `std::fs::File` pattern with concrete methods instead of traits.
-///
-/// # Examples
-///
-/// ```no_run
-/// use std::path::Path;
-///
-/// use lithos_core::db::Database;
-///
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let db = Database::open(Path::new("/tmp/lithos.db"))?;
-/// # Ok(())
-/// # }
-/// ```
+#[derive(Debug)]
 #[non_exhaustive]
 pub struct Database {
-    #[expect(dead_code, reason = "Will be used in Phase 6 implementation")]
     inner: redb::Database,
-}
-
-/// Zero-copy guard that provides Deref access to archived data.
-///
-/// The guard borrows the transaction and provides safe access to rkyv-archived
-/// data directly from the database page (zero-copy). The lifetime `'txn` is
-/// tied to the underlying redb transaction.
-///
-/// # Type Parameters
-///
-/// - `V`: The original type that was archived (must implement `rkyv::Archive`)
-///
-/// # Phase 4 Note
-///
-/// This is a stub type. The actual implementation will be added in Phase 6.
-pub struct ArchivedGuard<'txn, V> {
-    _phantom: PhantomData<(&'txn (), V)>,
-}
-
-#[expect(
-    clippy::elidable_lifetime_names,
-    reason = "Lifetime is semantically important: tied to transaction"
-)]
-impl<'txn, V> Deref for ArchivedGuard<'txn, V>
-where
-    V: rkyv::Archive,
-{
-    type Target = rkyv::Archived<V>;
-
-    #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement zero-copy deref"
-    )]
-    fn deref(&self) -> &Self::Target {
-        // Phase 6: Will use unsafe { rkyv::access_unchecked(self.guard.value())
-        // } after validation in get_archived()
-        todo!("Implement in Phase 6: Zero-copy Deref to archived data")
-    }
 }
 
 /// Database error types.
@@ -113,10 +57,6 @@ pub enum DbError {
     /// Key not found in database.
     #[error("key not found")]
     NotFound,
-
-    /// Data alignment error (rkyv requires proper alignment).
-    #[error("data misaligned for zero-copy access")]
-    Misaligned,
 
     /// Serialization failed.
     #[error("serialization error: {0}")]
@@ -200,266 +140,382 @@ impl Database {
 
     /// Zero-copy read (HOT PATH for LSP).
     ///
-    /// Returns a guard with lifetime tied to the transaction. The guard
-    /// provides `Deref` access to the archived data directly from the
-    /// database page.
+    /// The closure receives a reference to the archived data directly from
+    /// the database page. The transaction remains alive for the duration
+    /// of the closure, ensuring memory safety without unsafe code.
+    ///
+    /// This is the default read method - it's fast and requires no allocations.
+    /// For full deserialization (e.g., for mutations), use `get_owned()`.
     ///
     /// # Type Parameters
     ///
-    /// - `K`: Key type
     /// - `V`: Value type (must implement `rkyv::Archive`)
+    /// - `F`: Closure type
+    /// - `R`: Return type of closure
     ///
     /// # Errors
     ///
-    /// - `DbError::NotFound` - Key does not exist
-    /// - `DbError::Misaligned` - Data is not properly aligned for zero-copy
-    ///   access
+    /// - `DbError::NotFound` - Key does not exist (returns `None`)
     /// - `DbError::Deserialization` - Data validation failed
     /// - `DbError::Transaction` - Transaction or table operation failed
     ///
-    /// # Phase 4 Note
+    /// # Examples
     ///
-    /// This is a stub. Phase 6 will implement:
-    /// 1. Begin read transaction
-    /// 2. Open table
-    /// 3. Serialize key
-    /// 4. Get `AccessGuard` from redb
-    /// 5. Validate alignment
-    /// 6. Validate bytes with `rkyv::check_archived_root`
-    /// 7. Return `ArchivedGuard`
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// // db.get::<MyType, _>("my_table", "my_key", |archived| {
+    /// //     println!("ID: {:?}", archived.id);
+    /// //     archived.id  // return value
+    /// // })?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement zero-copy read"
-    )]
-    pub fn get_archived<K, V>(
+    pub fn get<V, F, R>(
         &self,
-        _table: &str,
-        _key: &K,
-    ) -> Result<ArchivedGuard<'_, V>, DbError>
+        table: &str,
+        key: &str,
+        f: F,
+    ) -> Result<Option<R>, DbError>
     where
         V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            >,
+        F: FnOnce(&rkyv::Archived<V>) -> R,
     {
-        todo!("Implement in Phase 6: Zero-copy read with rkyv validation")
+        const TABLE: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("data");
+        let namespaced_key = format!("{table}:{key}");
+
+        let tx = self.inner.begin_read()?;
+        let table_ref = tx.open_table(TABLE)?;
+
+        match table_ref.get(namespaced_key.as_str())? {
+            Some(value) => {
+                let bytes: &[u8] = value.value();
+                let archived = rkyv::access::<
+                    rkyv::Archived<V>,
+                    rkyv::rancor::Error,
+                >(bytes)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                let result = f(archived);
+                Ok(Some(result))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Full deserialization (COLD PATH for mutations).
     ///
-    /// Delegates to `get_archived()` and deserializes the result. Use this when
-    /// you need an owned value for mutation.
+    /// Deserializes the value into an owned `V`. This is slower than `get()`
+    /// because it allocates and copies data. Use this only when you need to
+    /// mutate the value.
     ///
     /// # Type Parameters
     ///
-    /// - `K`: Key type
-    /// - `V`: Value type (must implement `rkyv::Archive` + deserialization)
+    /// - `V`: Value type (must implement `rkyv::Archive` and
+    ///   `rkyv::Deserialize`)
     ///
     /// # Errors
     ///
-    /// Same as `get_archived()`, plus deserialization errors.
+    /// - `DbError::NotFound` - Key does not exist (returns `None`, not error)
+    /// - `DbError::Deserialization` - Data validation or deserialization failed
+    /// - `DbError::Transaction` - Transaction or table operation failed
     ///
-    /// # Phase 4 Note
+    /// # Examples
     ///
-    /// This is a stub. Phase 6 will implement:
-    /// 1. Call `get_archived()`
-    /// 2. Deserialize if found
-    /// 3. Return `None` if `NotFound`
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// // let value: Option<MyType> = db.get_owned("my_table", "my_key")?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement deserialization"
-    )]
-    pub fn get<K, V>(
+    pub fn get_owned<V>(
         &self,
-        _table: &str,
-        _key: &K,
+        table: &str,
+        key: &str,
     ) -> Result<Option<V>, DbError>
     where
         V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
     {
-        todo!("Implement in Phase 6: Full deserialization via get_archived")
+        const TABLE: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("data");
+        let namespaced_key = format!("{table}:{key}");
+
+        let tx = self.inner.begin_read()?;
+        let table_ref = tx.open_table(TABLE)?;
+
+        match table_ref.get(namespaced_key.as_str())? {
+            Some(value) => {
+                let bytes: &[u8] = value.value();
+                let archived = rkyv::access::<
+                    rkyv::Archived<V>,
+                    rkyv::rancor::Error,
+                >(bytes)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                let deserialized =
+                    rkyv::deserialize::<V, rkyv::rancor::Error>(archived)
+                        .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                Ok(Some(deserialized))
+            }
+            None => Ok(None),
+        }
     }
 
-    /// Zero-copy write using `insert_reserve` (per ADR 0002).
+    /// Insert or update a value.
     ///
-    /// Provides a mutable slice directly to the database page for writing.
-    /// The closure should serialize data directly into the provided buffer.
+    /// Serializes the value using rkyv and writes it to the database.
+    /// This replaces any existing value for the given key.
     ///
     /// # Type Parameters
     ///
-    /// - `K`: Key type
-    /// - `F`: Closure that writes serialized data to the provided buffer
-    ///
-    /// # Errors
-    ///
-    /// - `DbError::Serialization` - Key serialization failed
-    /// - `DbError::Transaction` - Transaction or table operation failed
-    /// - Propagates errors from the write closure
-    ///
-    /// # Phase 4 Note
-    ///
-    /// This is a stub. Phase 6 will implement:
-    /// 1. Begin write transaction
-    /// 2. Open table
-    /// 3. Serialize key
-    /// 4. Call `table.insert_reserve()`
-    /// 5. Pass mutable slice to `write_fn`
-    /// 6. Commit transaction
-    #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement zero-copy write"
-    )]
-    pub fn put_reserve<K, F>(
-        &self,
-        _table: &str,
-        _key: &K,
-        _value_size: usize,
-        _write_fn: F,
-    ) -> Result<(), DbError>
-    where
-        F: FnOnce(&mut [u8]) -> Result<(), DbError>,
-    {
-        todo!("Implement in Phase 6: Zero-copy write using insert_reserve")
-    }
-
-    /// Convenience wrapper for `put_reserve` (allocates temp buffer).
-    ///
-    /// Serializes the value and writes it to the database. This is less
-    /// efficient than `put_reserve()` but more convenient.
-    ///
-    /// # Type Parameters
-    ///
-    /// - `K`: Key type
-    /// - `V`: Value type
-    ///
-    /// # Errors
-    ///
-    /// Same as `put_reserve()`.
-    ///
-    /// # Phase 4 Note
-    ///
-    /// This is a stub. Phase 6 will implement:
-    /// 1. Serialize value to calculate size
-    /// 2. Call `put_reserve` with serialized data
-    #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement put wrapper"
-    )]
-    pub fn put<K, V>(
-        &self,
-        _table: &str,
-        _key: &K,
-        _value: &V,
-    ) -> Result<(), DbError> {
-        todo!("Implement in Phase 6: Convenience wrapper for put_reserve")
-    }
-
-    /// `MultimapTable` for 1:N relations (per ADR 0002).
-    ///
-    /// Inserts a key-value pair into a multimap table, allowing multiple values
-    /// per key. Useful for indexes like tags→notes or backlinks.
-    ///
-    /// # Type Parameters
-    ///
-    /// - `K`: Key type
-    /// - `V`: Value type
+    /// - `V`: Value type (must implement `rkyv::Serialize`)
     ///
     /// # Errors
     ///
     /// - `DbError::Serialization` - Serialization failed
     /// - `DbError::Transaction` - Transaction or table operation failed
     ///
-    /// # Phase 4 Note
+    /// # Examples
     ///
-    /// This is a stub. Phase 6 will implement:
-    /// 1. Begin write transaction
-    /// 2. Open multimap table
-    /// 3. Serialize key and value
-    /// 4. Insert into multimap
-    /// 5. Commit transaction
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// // db.put("my_table", "my_key", &my_value)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement multimap insert"
-    )]
-    pub fn multimap_insert<K, V>(
+    pub fn put<V>(
         &self,
-        _table: &str,
-        _key: &K,
-        _value: &V,
-    ) -> Result<(), DbError> {
-        todo!("Implement in Phase 6: Multimap insert for 1:N relations")
+        table: &str,
+        key: &str,
+        value: &V,
+    ) -> Result<(), DbError>
+    where
+        V: rkyv::Archive
+            + for<'ser> rkyv::Serialize<
+                rkyv::api::high::HighSerializer<
+                    rkyv::util::AlignedVec,
+                    rkyv::ser::allocator::ArenaHandle<'ser>,
+                    rkyv::rancor::Error,
+                >,
+            >,
+    {
+        const TABLE: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("data");
+        let namespaced_key = format!("{table}:{key}");
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(value)
+            .map_err(|e| DbError::Serialization(e.to_string()))?;
+
+        let tx = self.inner.begin_write()?;
+        {
+            let mut table_ref = tx.open_table(TABLE)?;
+            table_ref.insert(namespaced_key.as_str(), bytes.as_slice())?;
+        };
+        tx.commit()?;
+        Ok(())
     }
 
-    /// Retrieve all values for a key from a multimap table.
+    /// Delete a value by key.
     ///
-    /// Returns an iterator of `ArchivedGuard` for zero-copy access.
-    ///
-    /// # Type Parameters
-    ///
-    /// - `K`: Key type
-    /// - `V`: Value type (must implement `rkyv::Archive`)
+    /// Returns `true` if a value was deleted, `false` if key didn't exist.
     ///
     /// # Errors
     ///
     /// - `DbError::Transaction` - Transaction or table operation failed
-    /// - `DbError::Deserialization` - Data validation failed
     ///
-    /// # Phase 4 Note
+    /// # Examples
     ///
-    /// This is a stub. Phase 6 will implement:
-    /// 1. Begin read transaction
-    /// 2. Open multimap table
-    /// 3. Serialize key
-    /// 4. Get range iterator
-    /// 5. Map to `ArchivedGuard` with validation
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// // let was_deleted = db.delete("my_table", "my_key")?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
-    pub fn multimap_get<K, V>(
-        &self,
-        _table: &str,
-        _key: &K,
-    ) -> Result<impl Iterator<Item = ArchivedGuard<'_, V>>, DbError>
-    where
-        V: rkyv::Archive,
-    {
-        // Stub: return empty iterator
-        // Phase 6 will return actual iterator from redb multimap range
-        #[expect(clippy::iter_skip_zero, reason = "Stub implementation")]
-        Ok(std::iter::empty::<ArchivedGuard<'_, V>>().skip(0))
+    #[expect(clippy::todo, reason = "Phase 6 - requires implementation")]
+    pub fn delete(&self, _table: &str, _key: &str) -> Result<bool, DbError> {
+        // Phase 6 implementation:
+        // 1. Begin write transaction
+        // 2. Open table
+        // 3. Remove key
+        // 4. Commit transaction
+        // 5. Return whether value existed
+        todo!("Implement delete")
     }
 
-    /// Bulk write with `Durability::None` (per ADR 0002).
+    /// Execute multiple writes in a batch with single fsync.
     ///
-    /// Executes a batch of writes with deferred fsync for better performance.
-    /// A final fsync is performed after the batch completes.
+    /// Per ADR 0002: Uses `Durability::None` for batch operations,
+    /// then a final commit with `Durability::Immediate` for durability.
     ///
-    /// # Type Parameters
-    ///
-    /// - `F`: Closure that performs batch writes
+    /// The closure receives a `&Database` for performing operations.
+    /// All operations in the batch share the same transaction.
     ///
     /// # Errors
     ///
     /// - `DbError::Transaction` - Transaction operation failed
-    /// - Propagates errors from the batch closure
+    /// - Propagates errors from batch operations
     ///
-    /// # Phase 4 Note
+    /// # Examples
     ///
-    /// This is a stub. Phase 6 will implement:
-    /// 1. Begin write transaction with `Durability::None`
-    /// 2. Execute `batch_fn`
-    /// 3. Commit with deferred fsync
-    /// 4. Final transaction with `Durability::Immediate`
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// // db.batch_write(|db| {
+    /// //     for i in 0..1000 {
+    /// //         db.put("notes", &format!("note_{}", i), &note)?;
+    /// //     }
+    /// //     Ok(())
+    /// // })?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
-    #[expect(
-        clippy::todo,
-        reason = "Phase 6 stub - will implement batch write"
-    )]
-    pub fn batch_write<F>(&self, _batch_fn: F) -> Result<(), DbError>
+    #[expect(clippy::todo, reason = "Phase 6 - requires implementation")]
+    pub fn batch_write<F>(&self, _f: F) -> Result<(), DbError>
     where
         F: FnOnce(&Self) -> Result<(), DbError>,
     {
-        todo!("Implement in Phase 6: Batch write with deferred fsync")
+        // Phase 6 implementation:
+        // Note: redb 3.1 API doesn't expose set_durability on WriteTransaction
+        // We'll need to implement this differently or use a different approach
+        // For now, this is equivalent to individual writes
+        todo!("Implement batch write with deferred fsync")
+    }
+
+    /// Insert a value into a multimap (1:N relationship).
+    ///
+    /// Multimap tables allow multiple values per key. Useful for indexes
+    /// like tags → notes or backlinks.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// // db.multimap_insert("tag_index", "rust", "note-1")?;
+    /// // db.multimap_insert("tag_index", "rust", "note-2")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    #[expect(clippy::todo, reason = "Phase 6 - requires implementation")]
+    pub fn multimap_insert(
+        &self,
+        _table: &str,
+        _key: &str,
+        _value: &str,
+    ) -> Result<(), DbError> {
+        // Phase 6 implementation:
+        // 1. Begin write transaction
+        // 2. Open multimap table
+        // 3. Insert key-value pair
+        // 4. Commit transaction
+        todo!("Implement multimap_insert")
+    }
+
+    /// Remove a value from a multimap.
+    ///
+    /// Returns `true` if the value was removed, `false` if not found.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// // let removed = db.multimap_remove("tag_index", "rust", "note-1")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    #[expect(clippy::todo, reason = "Phase 6 - requires implementation")]
+    pub fn multimap_remove(
+        &self,
+        _table: &str,
+        _key: &str,
+        _value: &str,
+    ) -> Result<bool, DbError> {
+        // Phase 6 implementation:
+        // 1. Begin write transaction
+        // 2. Open multimap table
+        // 3. Remove key-value pair
+        // 4. Commit transaction
+        // 5. Return whether value existed
+        todo!("Implement multimap_remove")
+    }
+
+    /// Get all values for a key from a multimap.
+    ///
+    /// Returns a `Vec<String>` containing all values. For large result sets,
+    /// consider using a closure-based API in the future.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// // let note_ids = db.multimap_get("tag_index", "rust")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    #[expect(clippy::todo, reason = "Phase 6 - requires implementation")]
+    pub fn multimap_get(
+        &self,
+        _table: &str,
+        _key: &str,
+    ) -> Result<Vec<String>, DbError> {
+        // Phase 6 implementation:
+        // 1. Begin read transaction
+        // 2. Open multimap table
+        // 3. Get all values for key
+        // 4. Collect into Vec<String>
+        // 5. Return values
+        todo!("Implement multimap_get")
     }
 }
 
@@ -469,8 +525,7 @@ mod tests {
 
     #[test]
     fn database_can_be_constructed() {
-        // This test verifies the stub compiles and basic types are correct
-        // Real tests will be added in Phase 6 implementation
+        // This test verifies the API compiles and basic types are correct
         let _result: Result<Database, DbError> =
             Database::open(Path::new("/tmp/test.db"));
     }

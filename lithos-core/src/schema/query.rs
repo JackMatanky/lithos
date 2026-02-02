@@ -11,12 +11,12 @@ use crate::db::Database;
 /// Query implementation for Schema read operations.
 ///
 /// Implements the Query port trait using the Database layer.
-pub struct SchemaQuery<'db> {
+pub struct Query<'db> {
     db: &'db Database,
 }
 
-impl<'db> SchemaQuery<'db> {
-    /// Create a new `SchemaQuery` with a database reference.
+impl<'db> Query<'db> {
+    /// Create a new `Query` with a database reference.
     #[inline]
     #[must_use]
     pub const fn new(db: &'db Database) -> Self {

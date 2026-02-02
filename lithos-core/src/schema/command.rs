@@ -3,6 +3,12 @@
 //! This module implements the Command port trait for Schema write operations,
 //! using the Database layer for persistence.
 
+#![allow(
+    clippy::missing_inline_in_public_items,
+    clippy::elidable_lifetime_names,
+    reason = "CQRS pattern: trait impls don't need inline"
+)]
+
 use uuid::Uuid;
 
 use super::{aggregate::Schema, error::SchemaError};
@@ -11,12 +17,12 @@ use crate::db::Database;
 /// Command implementation for Schema write operations.
 ///
 /// Implements the Command port trait using the Database layer.
-pub struct SchemaCommand<'db> {
+pub struct Command<'db> {
     db: &'db Database,
 }
 
-impl<'db> SchemaCommand<'db> {
-    /// Create a new `SchemaCommand` with a database reference.
+impl<'db> Command<'db> {
+    /// Create a new `Command` with a database reference.
     #[inline]
     #[must_use]
     pub const fn new(db: &'db Database) -> Self {

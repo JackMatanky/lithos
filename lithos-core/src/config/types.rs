@@ -2,6 +2,10 @@
 //!
 //! This module contains the fundamental configuration types that are used
 //! by both vault and global configuration contexts.
+#![allow(
+    clippy::exhaustive_structs,
+    reason = "rkyv generates Archived types with public fields"
+)]
 
 use std::collections::HashMap;
 
@@ -12,7 +16,17 @@ use super::error::ConfigError;
 /// # Invariants
 /// - All keys must be non-empty strings.
 /// - Keys should follow YAML/TOML naming conventions (lowercase, underscores).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Frontmatter {
     /// Key for aliases in frontmatter.
@@ -28,7 +42,17 @@ pub struct Frontmatter {
 }
 
 /// Logging configuration with validation.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Logging {
     /// Log level (debug, info, warn, error).
@@ -36,7 +60,17 @@ pub struct Logging {
 }
 
 /// Schema configuration (schemas directory).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Schema {
     /// Directory containing schema files.
@@ -96,7 +130,17 @@ pub enum SettingValue {
 }
 
 /// Template configuration (templates directory).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Template {
     /// Directory containing template files.

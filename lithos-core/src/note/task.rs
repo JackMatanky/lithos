@@ -1,6 +1,15 @@
 //! Task subentity for Note aggregate.
 //!
 //! Represents task items with completion status within notes.
+#![allow(
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums,
+    reason = "rkyv generates Archived types with public fields/variants"
+)]
+#![expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal builders and tests"
+)]
 
 use super::error::NoteError;
 
@@ -8,7 +17,17 @@ use super::error::NoteError;
 ///
 /// Tasks provide todo list functionality within notes and can be
 /// tracked for completion status.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 #[expect(
     clippy::field_scoped_visibility_modifiers,
@@ -31,8 +50,18 @@ pub struct Task {
 /// assert_eq!(TaskStatus::Complete as u8, TaskStatus::Complete as u8);
 /// ```
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum TaskStatus {
     /// Task is cancelled: `- [-] Task description`.

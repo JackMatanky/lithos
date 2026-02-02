@@ -1,24 +1,58 @@
 //! Tag subentity for Note aggregate.
 //!
 //! Represents hierarchical tags used for note organization.
+#![allow(
+    clippy::exhaustive_structs,
+    reason = "rkyv generates Archived types with public fields"
+)]
 
 use std::ops::Deref;
 
 use super::error::NoteError;
 
 /// Internal wrapper for the full tag path string.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 pub struct FullPath(Box<str>);
 
 /// Internal wrapper for tag segments.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 pub struct Segments(Vec<Box<str>>);
 
 /// Represents a hierarchical tag with segments.
 ///
 /// Tags follow the format `#segment1/segment2/segment3` and are used
 /// for organizing and categorizing notes.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Tag {
     /// Full tag path (without leading `#`).
