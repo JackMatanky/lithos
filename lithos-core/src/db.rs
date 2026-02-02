@@ -74,10 +74,6 @@ pub enum DbError {
     /// Table operation failed.
     #[error("table error: {0}")]
     Table(String),
-
-    /// JSON serialization/deserialization failed.
-    #[error("json error: {0}")]
-    Json(String),
 }
 
 impl From<redb::DatabaseError> for DbError {
@@ -351,74 +347,6 @@ impl Database {
         Ok(())
     }
 
-    /// Insert or update a value encoded as JSON (serde-based).
-    ///
-    /// This is intended for data that is either cold-path or not well-suited
-    /// to rkyv derives (e.g., recursive enums).
-    ///
-    /// # Errors
-    ///
-    /// - `DbError::Json` - JSON serialization failed
-    /// - `DbError::Transaction` / `DbError::Table` - database operation failed
-    #[inline]
-    pub fn put_json<V>(
-        &self,
-        table: &str,
-        key: &str,
-        value: &V,
-    ) -> Result<(), DbError>
-    where
-        V: serde::Serialize,
-    {
-        const TABLE: TableDefinition<&str, &[u8]> =
-            TableDefinition::new("data");
-        let namespaced_key = format!("{table}:{key}");
-
-        let json = serde_json::to_vec(value)
-            .map_err(|e| DbError::Json(e.to_string()))?;
-
-        let tx = self.inner.begin_write()?;
-        {
-            let mut table_ref = tx.open_table(TABLE)?;
-            table_ref.insert(namespaced_key.as_str(), json.as_slice())?;
-        };
-        tx.commit()?;
-        Ok(())
-    }
-
-    /// Fetch a JSON-encoded value.
-    ///
-    /// # Errors
-    ///
-    /// - `DbError::Json` - JSON deserialization failed
-    /// - `DbError::Transaction` / `DbError::Table` - database operation failed
-    #[inline]
-    pub fn get_json<V>(
-        &self,
-        table: &str,
-        key: &str,
-    ) -> Result<Option<V>, DbError>
-    where
-        V: serde::de::DeserializeOwned,
-    {
-        const TABLE: TableDefinition<&str, &[u8]> =
-            TableDefinition::new("data");
-        let namespaced_key = format!("{table}:{key}");
-
-        let tx = self.inner.begin_read()?;
-        let table_ref = tx.open_table(TABLE)?;
-
-        match table_ref.get(namespaced_key.as_str())? {
-            Some(value) => {
-                let bytes: &[u8] = value.value();
-                let v = serde_json::from_slice(bytes)
-                    .map_err(|e| DbError::Json(e.to_string()))?;
-                Ok(Some(v))
-            }
-            None => Ok(None),
-        }
-    }
-
     /// Delete a value by key.
     ///
     /// Returns `true` if a value was deleted, `false` if key didn't exist.
@@ -676,17 +604,8 @@ impl Database {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test code uses unwrap/expect for simplicity"
-)]
 mod tests {
-    use std::collections::HashMap;
-
-    use tempfile::tempdir;
-
     use super::*;
-    use crate::note::frontmatter::{FieldValue, Frontmatter};
 
     #[test]
     fn database_can_be_constructed() {
@@ -704,35 +623,5 @@ mod tests {
         ));
         let result: DbError = db_err.into();
         assert!(result.to_string().contains("database error"));
-    }
-
-    #[test]
-    fn put_json_get_json_roundtrips_frontmatter_with_recursion() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("test.redb");
-        let db = Database::open(&path).unwrap();
-
-        let mut nested = HashMap::new();
-        nested.insert(
-            "inner".to_owned(),
-            FieldValue::Array(vec![
-                FieldValue::String("a".to_owned()),
-                FieldValue::Number(1.0),
-                FieldValue::Object(HashMap::from([(
-                    "k".to_owned(),
-                    FieldValue::Boolean(true),
-                )])),
-            ]),
-        );
-        let fm = Frontmatter::new(HashMap::from([(
-            "root".to_owned(),
-            FieldValue::Object(nested),
-        )]))
-        .unwrap();
-
-        db.put_json("frontmatter", "id", &fm).unwrap();
-        let observed: Option<Frontmatter> =
-            db.get_json("frontmatter", "id").unwrap();
-        assert_eq!(observed, Some(fm));
     }
 }
