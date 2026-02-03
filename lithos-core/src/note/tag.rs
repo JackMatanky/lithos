@@ -265,18 +265,23 @@ mod tests {
 
             match expected {
                 Ok(segments) => {
-                    assert!(
-                        result.is_ok(),
-                        "Failed for {input}: {:?}",
-                        result.err()
-                    );
-                    let tag = result.unwrap();
+                    assert!(result.is_ok(), "Failed for {input}: {result:?}",);
+                    let tag =
+                        result.expect("Tag should be parsed successfully");
                     let actual_segments: Vec<&str> =
                         tag.segments.iter().map(AsRef::as_ref).collect();
-                    assert_eq!(actual_segments, segments);
+                    assert_eq!(
+                        actual_segments, segments,
+                        "Tag segments should match expected for input: {input}"
+                    );
                 }
                 Err(e) => {
-                    assert_eq!(result.unwrap_err(), e);
+                    assert_eq!(
+                        result
+                            .expect_err("Should return error for invalid tag"),
+                        e,
+                        "Error should match expected for input: {input}"
+                    );
                 }
             }
         }
