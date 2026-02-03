@@ -1066,7 +1066,11 @@ mod tests {
             let result = spec.validate_str(value);
 
             // THEN: the result matches the expectation
-            assert_eq!(result, expected);
+            assert_eq!(
+                result, expected,
+                "String validation failed for value='{value}': expected \
+                 {expected:?}, got {result:?}"
+            );
         }
     }
 
@@ -1138,19 +1142,30 @@ mod tests {
             })();
 
             // THEN: the result matches the expectation
-            assert_eq!(result, expected);
+            assert_eq!(
+                result, expected,
+                "Number validation failed for value={value}: expected \
+                 {expected:?}, got {result:?}"
+            );
         }
 
         #[test]
         fn number_spec_validates_spec_definition() {
             // GIVEN: an invalid NumberSpec (min > max)
             let result = NumberSpec::try_new(Some(10.0f64), Some(5.0f64), None);
-            assert!(matches!(result, Err(SchemaError::ValidationFailed(_))));
+            assert!(
+                matches!(result, Err(SchemaError::ValidationFailed(_))),
+                "Expected ValidationFailed for min > max, got: {result:?}"
+            );
 
             // AND: valid specs pass
             let valid =
                 NumberSpec::try_new(Some(5.0f64), Some(10.0f64), Some(1.0f64));
-            valid.unwrap();
+            assert!(
+                valid.is_ok(),
+                "Valid NumberSpec should succeed, got error: {:?}",
+                valid.err()
+            );
         }
 
         #[test]
@@ -1319,7 +1334,11 @@ mod tests {
 
             // AND: rejects invalid dates
             let result = spec.validate_str("not-a-date");
-            assert!(matches!(result, Err(SchemaError::InvalidDateFormat(_))));
+            assert!(
+                matches!(result, Err(SchemaError::InvalidDateFormat(_))),
+                "Expected InvalidDateFormat error for invalid date string, \
+                 got: {result:?}"
+            );
         }
     }
 
@@ -1331,13 +1350,13 @@ mod tests {
             // GIVEN: various spec variants
             let b = PropertySpecDef::Bool(BoolSpecDef::default())
                 .try_into_validated()
-                .unwrap();
+                .expect("Default BoolSpec should be valid");
             let s = PropertySpecDef::String(StringSpecDef::default())
                 .try_into_validated()
-                .unwrap();
+                .expect("Default StringSpec should be valid");
             let n = PropertySpecDef::Number(NumberSpecDef::default())
                 .try_into_validated()
-                .unwrap();
+                .expect("Default NumberSpec should be valid");
 
             // THEN: spec_type returns correct discriminant
             assert_eq!(b.spec_type(), PropertySpecType::Bool);
@@ -1346,7 +1365,12 @@ mod tests {
 
             // AND: validate dispatches to inner spec (tested via successful
             // bool parse)
-            b.validate(&serde_json::json!(true)).unwrap();
+            let result = b.validate(&serde_json::json!(true));
+            assert!(
+                result.is_ok(),
+                "Bool validation should succeed, got error: {:?}",
+                result.err()
+            );
         }
     }
 }
