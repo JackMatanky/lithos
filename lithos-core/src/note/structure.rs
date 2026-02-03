@@ -237,7 +237,10 @@ mod tests {
             let result = Heading::new(level, text, 0);
 
             // THEN: it returns InvalidHeadingLevel
-            assert!(matches!(result, Err(NoteError::ValidationFailed(_))));
+            assert!(
+                matches!(result, Err(NoteError::ValidationFailed(_))),
+                "Invalid heading level (7) should be rejected, got: {result:?}"
+            );
         }
 
         #[test]
@@ -250,7 +253,10 @@ mod tests {
             let result = Heading::new(level, text, 0);
 
             // THEN: it returns ValidationFailed
-            assert!(matches!(result, Err(NoteError::ValidationFailed(_))));
+            assert!(
+                matches!(result, Err(NoteError::ValidationFailed(_))),
+                "Empty heading text should be rejected, got: {result:?}"
+            );
         }
     }
 
