@@ -589,11 +589,25 @@ mod tests {
 
         #[test]
         fn parses_iso8601_date_successfully() {
-            let date = Utc.with_ymd_and_hms(2024, 1, 15, 14, 30, 0).unwrap();
+            let date = Utc
+                .with_ymd_and_hms(2024, 1, 15, 14, 30, 0)
+                .single()
+                .expect("Valid date should be created");
             let timestamp = date.timestamp();
             let val = FieldValue::Date(timestamp);
-            assert_eq!(val.as_date(), Some(timestamp));
-            assert_eq!(val.as_datetime().unwrap().year(), 2_024i32);
+            assert_eq!(
+                val.as_date(),
+                Some(timestamp),
+                "Date field should return timestamp"
+            );
+            let datetime = val
+                .as_datetime()
+                .expect("Date field should convert to DateTime");
+            assert_eq!(
+                datetime.year(),
+                2_024i32,
+                "Year should match original date"
+            );
         }
 
         #[test]
@@ -711,11 +725,23 @@ mod tests {
             let fm = Frontmatter::new(fields).unwrap();
 
             assert_eq!(
-                fm.try_get::<String>("s").unwrap(),
-                Some("text".to_owned())
+                fm.try_get::<String>("s")
+                    .expect("String conversion should succeed"),
+                Some("text".to_owned()),
+                "Should retrieve and convert String field"
             );
-            assert_eq!(fm.try_get::<bool>("b").unwrap(), Some(true));
-            assert_eq!(fm.try_get::<f64>("n").unwrap(), Some(1.5f64));
+            assert_eq!(
+                fm.try_get::<bool>("b")
+                    .expect("Boolean conversion should succeed"),
+                Some(true),
+                "Should retrieve and convert Boolean field"
+            );
+            assert_eq!(
+                fm.try_get::<f64>("n")
+                    .expect("Number conversion should succeed"),
+                Some(1.5f64),
+                "Should retrieve and convert Number field"
+            );
 
             let err = fm
                 .try_get::<bool>("s")
