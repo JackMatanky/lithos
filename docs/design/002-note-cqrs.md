@@ -128,6 +128,13 @@ let title = qry.with_archived_by_id(note_id, |archived_note| {
   - **Owned** results for mutation/CLI workflows.
   - **Archived (zero-deserialize)** access for hot paths via closure-based APIs (concrete types).
 
+Frontmatter as a query substrate:
+
+- Many “instant queries” are fundamentally **frontmatter queries** (because Obsidian conventions tend to store this data in frontmatter).
+- `aliases`, `file_class`, and often `title` are **specializations** of the general query “frontmatter field contains value”.
+  - They are also **config-driven** specializations: the field names are not hard-coded; they come from `Config.frontmatter.{alias_key,file_class_key,title_key}`.
+- To keep reads fast, we persist **read-optimized projections** (indexes) that precompute these relationships.
+
 Design rule: the API must make it obvious which tier is being used.
 
 ## 3. Detailed Design (The "How")
@@ -318,6 +325,18 @@ Unit of Work rule:
 - Read index `path_to_id` to find `id`.
 - Read note by `id`.
 
+#### Instant queries (projection-driven)
+
+The read model includes additional indexes for “instant” lookups.
+
+- Alias resolution: `alias -> id` (special case of a frontmatter query).
+- Folder listing: `folder -> id` (derived from `NotePath`).
+- File class lookup: `file_class -> id` (special case of a frontmatter query).
+- Generic frontmatter query: `(frontmatter_key, value) -> id`.
+
+These are designed so a query can answer “what notes match?” without
+deserializing full `Note` aggregates.
+
 ### 3.4 Data Models
 
 Storage schema (logical):
@@ -325,6 +344,21 @@ Storage schema (logical):
 - `notes` table: `id -> Note`
 - `path_to_id` multimap: `note_path -> id`
 - `tags_to_notes` multimap: `tag_full_path -> id`
+
+Proposed projection indexes for instant queries:
+
+- `alias_to_id` multimap: `alias -> id`
+- `folder_to_id` multimap: `folder_path -> id`
+- `file_class_to_id` multimap: `file_class -> id`
+- `frontmatter_kv_to_id` multimap: `composite(frontmatter_key, value) -> id`
+
+Notes:
+
+- The dedicated `alias_to_id` / `file_class_to_id` indexes are conceptually special cases of `frontmatter_kv_to_id`.
+  - They exist because they are expected to be very hot and should remain obvious and easy to query.
+  - `aliases` commonly store an array; indexing should treat each string element as a separate value.
+- `title` can initially be served via `frontmatter_kv_to_id` using `Config.frontmatter.title_key`.
+  A dedicated `title_to_id` can be added later if profiling warrants it.
 
 Notes:
 
