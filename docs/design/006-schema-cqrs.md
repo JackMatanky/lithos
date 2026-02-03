@@ -108,6 +108,12 @@ Notes:
   - **owned**: deserialize to runtime model (simple, cold path)
   - **archived (zero-deserialize)**: compute small results without deserializing (may still require an alignment copy depending on storage)
 
+Projection/index mindset:
+
+- CQRS is where we explicitly define which lookups are “instant” and which require loading a full schema.
+- For schema, “instant” lookups are typically achieved via **indexes over stable keys** (e.g., name → id).
+- Where property lookup becomes a hot path, we can introduce projection indexes that avoid loading a full schema value for common lookups.
+
 Design rule: API names must make the tier obvious.
 
 ## 3. Detailed Design (The "How")
@@ -238,6 +244,12 @@ Also:
 And (optional):
 
 - `property_bank: singleton -> bytes(ArchivedPropertyBank)`
+
+Optional hot-path projection (only if benchmarks show it matters):
+
+- `property_id_by_schema_and_name: composite(SchemaId, PropertyNameKey) -> PropertyId`
+  - This allows property lookups to start from `(schema_id, property_name)` without scanning or deserializing the entire schema value.
+  - Whether this is worth it depends on real workloads (e.g., frequent property resolution during indexing or template evaluation).
 
 Key encoding guidance:
 
