@@ -96,7 +96,8 @@ let property_count = qry.with_archived_by_name(schema.name(), |archived| {
 Notes:
 
 - `with_archived_*` returns computed owned data, not archived references.
-- If a trait-based port is needed for testing, keep the trait surface dyn-compatible and put closure-based APIs on concrete types.
+- This spec follows the repo’s CQRS convention of **concrete-first** command/query types, with **traits as optional ports** for polymorphism/testing.
+- If a trait-based port is needed, keep the trait surface dyn-compatible and keep closure-based zero-copy APIs on the concrete types.
 
 ### 2.2 Mental Model
 
@@ -121,6 +122,22 @@ flowchart LR
 ```
 
 ### 3.2 Component & Interface Specifications
+
+### 3.2.1 Concrete-first CQRS surface (recommended)
+
+This follows the same pattern as the Note CQRS spec: concrete types are the primary API (static dispatch, easiest to keep zero-copy), while port traits remain available for dependency inversion/testing.
+
+Recommended structure:
+
+- `schema::command::Command` (concrete) with inherent methods (`save`, `delete_by_name`, `save_property_bank`).
+- `schema::query::Query` (concrete) with inherent methods for owned reads, plus closure-based helpers for hot paths (e.g., `with_archived_by_name`).
+- `schema::ports::{Command, Query}` traits remain for tests/alternate backends.
+
+Practical guidance:
+
+- If callers require `&dyn ports::Query` / `&dyn ports::Command`, keep the trait surface to the owned tier and dyn-compatible methods.
+- If callers can accept generics (`fn f<Q: ports::Query>(q: &Q)`), richer helper APIs may be offered behind `where Self: Sized`.
+- The closure-based `with_archived_*` helpers remain on concrete query types because generic methods are not callable on `dyn Trait`.
 
 #### Component: Schema Command
 
