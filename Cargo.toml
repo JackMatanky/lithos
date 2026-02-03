@@ -7,6 +7,7 @@
 
 [workspace]
 members = ["lithos-core", "lithos-cli", "tests/*"]
+exclude = ["_legacy/*"]
 resolver = "2"
 
 [workspace.package]
