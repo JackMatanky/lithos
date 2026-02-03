@@ -368,7 +368,11 @@ mod tests {
         #[case::both("[package]\nname = \"test\"")]
         fn should_detect_valid_toml_content(#[case] content: &str) {
             let trimmed = content.trim_start();
-            assert!(Toml::detect(trimmed));
+            assert!(
+                Toml::detect(trimmed),
+                "TOML detector should recognize valid TOML content: \
+                 {content:?}"
+            );
         }
 
         #[rstest]
@@ -377,7 +381,10 @@ mod tests {
         #[case::plain_text("plain text")]
         fn should_reject_non_toml_content(#[case] content: &str) {
             let trimmed = content.trim_start();
-            assert!(!Toml::detect(trimmed));
+            assert!(
+                !Toml::detect(trimmed),
+                "TOML detector should reject non-TOML content: {content:?}"
+            );
         }
 
         #[rstest]
@@ -386,7 +393,11 @@ mod tests {
         #[case::full_object("{\"name\": \"test\"}")]
         fn should_detect_valid_json_content(#[case] content: &str) {
             let trimmed = content.trim_start();
-            assert!(Json::detect(trimmed));
+            assert!(
+                Json::detect(trimmed),
+                "JSON detector should recognize valid JSON content: \
+                 {content:?}"
+            );
         }
 
         #[rstest]
@@ -395,7 +406,10 @@ mod tests {
         #[case::plain_text("plain text")]
         fn should_reject_non_json_content(#[case] content: &str) {
             let trimmed = content.trim_start();
-            assert!(!Json::detect(trimmed));
+            assert!(
+                !Json::detect(trimmed),
+                "JSON detector should reject non-JSON content: {content:?}"
+            );
         }
 
         #[rstest]
@@ -404,7 +418,11 @@ mod tests {
         #[case::both("---\nname: test")]
         fn should_detect_valid_yaml_content(#[case] content: &str) {
             let trimmed = content.trim_start();
-            assert!(Yaml::detect(trimmed));
+            assert!(
+                Yaml::detect(trimmed),
+                "YAML detector should recognize valid YAML content: \
+                 {content:?}"
+            );
         }
 
         #[rstest]
@@ -413,7 +431,10 @@ mod tests {
         #[case::plain_text("plain text")]
         fn should_reject_non_yaml_content(#[case] content: &str) {
             let trimmed = content.trim_start();
-            assert!(!Yaml::detect(trimmed));
+            assert!(
+                !Yaml::detect(trimmed),
+                "YAML detector should reject non-YAML content: {content:?}"
+            );
         }
     }
 
@@ -649,7 +670,11 @@ mod tests {
                 Path::new("test.toml"),
                 fixtures::INVALID_TOML,
             );
-            assert!(matches!(result, Err(ParseError::Toml { .. })));
+            assert!(
+                matches!(result, Err(ParseError::Toml { .. })),
+                "Invalid TOML should return Toml error variant, got: \
+                 {result:?}"
+            );
         }
 
         #[test]
@@ -658,7 +683,11 @@ mod tests {
                 Path::new("test.json"),
                 fixtures::INVALID_JSON,
             );
-            assert!(matches!(result, Err(ParseError::Json { .. })));
+            assert!(
+                matches!(result, Err(ParseError::Json { .. })),
+                "Invalid JSON should return Json error variant, got: \
+                 {result:?}"
+            );
         }
 
         #[test]
@@ -667,7 +696,11 @@ mod tests {
                 Path::new("test.yaml"),
                 "name: test\n  invalid: indent",
             );
-            assert!(matches!(result, Err(ParseError::Yaml { .. })));
+            assert!(
+                matches!(result, Err(ParseError::Yaml { .. })),
+                "Invalid YAML should return Yaml error variant, got: \
+                 {result:?}"
+            );
         }
     }
 
@@ -681,12 +714,19 @@ mod tests {
         #[case::caps("config.TOML")]
         #[case::mixed("Config.Toml")]
         fn should_recognize_valid_toml_extensions(#[case] path: &str) {
-            assert!(Toml::is_supported(Path::new(path)));
+            assert!(
+                Toml::is_supported(Path::new(path)),
+                "TOML should support .toml extension (case-insensitive): \
+                 {path}"
+            );
         }
 
         #[test]
         fn should_reject_invalid_toml_extensions() {
-            assert!(!Toml::is_supported(Path::new("config.json")));
+            assert!(
+                !Toml::is_supported(Path::new("config.json")),
+                "TOML should reject non-.toml extensions"
+            );
         }
 
         #[rstest]
@@ -694,12 +734,19 @@ mod tests {
         #[case::caps("config.JSON")]
         #[case::mixed("Config.Json")]
         fn should_recognize_valid_json_extensions(#[case] path: &str) {
-            assert!(Json::is_supported(Path::new(path)));
+            assert!(
+                Json::is_supported(Path::new(path)),
+                "JSON should support .json extension (case-insensitive): \
+                 {path}"
+            );
         }
 
         #[test]
         fn should_reject_invalid_json_extensions() {
-            assert!(!Json::is_supported(Path::new("config.toml")));
+            assert!(
+                !Json::is_supported(Path::new("config.toml")),
+                "JSON should reject non-.json extensions"
+            );
         }
 
         #[rstest]
@@ -708,12 +755,19 @@ mod tests {
         #[case::caps("config.YAML")]
         #[case::mixed("Config.Yml")]
         fn should_recognize_valid_yaml_extensions(#[case] path: &str) {
-            assert!(Yaml::is_supported(Path::new(path)));
+            assert!(
+                Yaml::is_supported(Path::new(path)),
+                "YAML should support .yaml/.yml extensions \
+                 (case-insensitive): {path}"
+            );
         }
 
         #[test]
         fn should_reject_invalid_yaml_extensions() {
-            assert!(!Yaml::is_supported(Path::new("config.toml")));
+            assert!(
+                !Yaml::is_supported(Path::new("config.toml")),
+                "YAML should reject non-.yaml/.yml extensions"
+            );
         }
     }
 }
