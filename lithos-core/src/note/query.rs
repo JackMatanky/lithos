@@ -120,7 +120,9 @@ mod tests {
         assert_eq!(observed.frontmatter, Some(fm));
 
         // Sanity: changing the id misses the record
-        let miss = qry.find_by_id(Uuid::now_v7()).unwrap();
-        assert!(miss.is_none());
+        let miss = qry
+            .find_by_id(Uuid::now_v7())
+            .expect("Query should succeed even for non-existent ID");
+        assert!(miss.is_none(), "Non-existent ID should return None");
     }
 }
