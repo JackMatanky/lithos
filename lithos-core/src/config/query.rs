@@ -76,20 +76,28 @@ impl super::ports::Query for Query<'_> {
     reason = "Test code uses unwrap/expect for clarity"
 )]
 mod tests {
-    use tempfile::tempdir;
+    use tempfile::{TempDir, tempdir};
 
     use super::*;
     use crate::config::{command, ports::Query as _};
 
-    #[test]
-    fn load_global_returns_none_when_missing() {
+    fn test_db() -> (TempDir, Database) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("config.redb");
         let db = Database::open(&path).unwrap();
-        let qry = Query::new(&db);
+        (dir, db)
+    }
 
+    fn seed_db(db: &Database) {
         let seed = Global::default();
         db.put("seed", "init", &seed).unwrap();
+    }
+
+    #[test]
+    fn load_global_returns_none_when_missing() {
+        let (_dir, db) = test_db();
+        let qry = Query::new(&db);
+        seed_db(&db);
 
         let global = qry.load_global().unwrap();
         assert!(global.is_none(), "Missing global config should return None");
@@ -97,13 +105,9 @@ mod tests {
 
     #[test]
     fn load_vault_returns_none_when_missing() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("config.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let qry = Query::new(&db);
-
-        let seed = Global::default();
-        db.put("seed", "init", &seed).unwrap();
+        seed_db(&db);
 
         let vault = qry.load_vault().unwrap();
         assert!(vault.is_none(), "Missing vault config should return None");
@@ -111,9 +115,7 @@ mod tests {
 
     #[test]
     fn load_merges_global_and_vault_config() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("config.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
 
         let cmd = command::Command::new(&db);
         let mut global = Global::default();
