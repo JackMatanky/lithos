@@ -39,6 +39,12 @@ Design tensions motivating this spec:
 - Several model fields use "stringly" representations (paths, offsets, timestamps) where type-driven design could prevent invalid states.
 - rkyv is both a performance lever and a persisted-format contract; model evolution must be explicit about compatibility.
 
+Additional Rust best-practice constraints for this bounded context:
+
+- **Allocation transparency**: getters must not hide clones/allocations. If an API allocates/clones, its name must communicate ownership (e.g., `to_owned_*`, `clone_*`).
+- **Offset semantics must be explicit**: source coordinates must specify whether they are byte offsets, character offsets, or line/column.
+- **Public API evolution**: public enums intended to evolve should use `#[non_exhaustive]` and avoid downstream exhaustive matching.
+
 ### 1.2 Goals & Non-Goals
 
 **Goals**
@@ -76,11 +82,14 @@ Common workflows:
 use lithos_core::note::aggregate::{Note, NotePath};
 use uuid::Uuid;
 
-let id = Uuid::now_v7();
-let path = NotePath::try_from("projects/example.md").unwrap();
-let note = Note::new(id, path).unwrap();
+fn example() -> Result<(), lithos_core::note::error::NoteError> {
+  let id = Uuid::now_v7();
+  let path = NotePath::try_from("projects/example.md")?;
+  let note = Note::new(id, path)?;
 
-assert_eq!(note.path().as_str(), "projects/example.md");
+  assert_eq!(note.path().as_str(), "projects/example.md");
+  Ok(())
+}
 ```
 
 2) Add value objects in a controlled way (builder or narrow mutators)
@@ -88,16 +97,20 @@ assert_eq!(note.path().as_str(), "projects/example.md");
 ```rust
 use lithos_core::note::link::{Link, Target};
 
-let link = Link::new_wikilink(
+fn example() -> Result<(), lithos_core::note::error::NoteError> {
+  let link = Link::new_wikilink(
     Target::Unresolved { raw: "Next Note".into() },
     None,
     None,
     0,
-)
-.unwrap();
+  )?;
 
-// Intent: no direct `note.links.push(...)` in the public API.
-// Instead: `note.add_link(link)?;`
+  // Intent: no direct `note.links.push(...)` in the public API.
+  // Instead: `note.add_link(link)?;`
+  let _ = link;
+  Ok(())
+}
+
 ```
 
 3) Read model state via borrowed getters (no clones)
@@ -131,13 +144,59 @@ Frontmatter is specified separately in `docs/design/004-note-frontmatter.md` and
 
 ### 3.2 Component & Interface Specifications
 
+### 3.2.1 Type-Driven Design Improvements (Map)
+
+This section enumerates the intended type-driven design improvements for the note model. The goal is to prevent invalid states at compile time (or at construction time), reduce accidental misuse (especially mixing "same representation" primitives), and make APIs self-documenting.
+
+Guiding rules:
+
+- Prefer **validated constructors** + private fields over public structs with post-hoc `validate()`.
+- Use **newtypes** to prevent mixing conceptually distinct values with identical representations.
+- Keep "validation-heavy" types in the **domain model** when they represent true invariants.
+- Keep storage-key encodings and DB-table-specific representations at the **storage boundary**.
+
+Type map (proposed):
+
+- `NoteId(Uuid)`
+  - Prevents: mixing note IDs with other UUID uses (e.g., template IDs, vault IDs).
+  - Persisted: yes (archives as the wrapped UUID).
+
+- `NotePath(Box<str>)`
+  - Prevents: path traversal, absolute paths, wrong extension, empty paths.
+  - Persisted: yes.
+
+- `TagPath(Box<str>)`
+  - Prevents: storing tags with/without leading `#` inconsistently and mixing tag "display" vs "key" forms.
+  - Persisted: yes.
+  - Notes: `Tag::new("#a/b")` can accept the display form, while storing a canonical key form (`"a/b"`).
+
+- `HeadingLevel(u8)`
+  - Prevents: invalid heading levels outside 1..=6.
+  - Persisted: yes.
+
+- `SourceByteOffset(u32)`
+  - Prevents: accidentally mixing offsets with unrelated counts and clarifies byte-vs-char semantics.
+  - Persisted: yes.
+  - Notes: conversion from parser offsets (`usize`) must be fallible (overflow -> error).
+
+- `SourceByteRange { start: SourceByteOffset, end: SourceByteOffset }`
+  - Prevents: inverted or mixed-unit ranges.
+  - Persisted: yes.
+
+- `NonEmptyBoxStr(Box<str>)` (optional, only if it improves clarity)
+  - Prevents: empty `Task.text`, empty `Heading.text`, empty `Target` raw.
+  - Persisted: yes.
+  - Notes: if this type is too heavy ergonomically, keep `Box<str>` but enforce non-empty in constructors.
+
 #### Component: `Note`
 
 - **Responsibility**: represent a note and own its sub-entities.
 - **Persisted**: yes (rkyv archived).
 - **Public Interface (target)**:
   - `Note::new(id: Uuid, path: NotePath) -> Result<Note, NoteError>`
+  - (preferred) `Note::new(id: NoteId, path: NotePath) -> Result<Note, NoteError>`
   - `id(&self) -> Uuid`
+  - (preferred) `id(&self) -> NoteId`
   - `path(&self) -> &NotePath`
   - `frontmatter(&self) -> Option<&Frontmatter>`
   - `links(&self) -> &[Link]`, `tags(&self) -> &[Tag]`, `tasks(&self) -> &[Task]`, ...
@@ -153,6 +212,18 @@ Frontmatter is specified separately in `docs/design/004-note-frontmatter.md` and
   - `path` is vault-relative, non-empty, ends with `.md`, no traversal.
   - Cross-entity consistency rules are enforced (e.g., link invariants).
 
+Type-driven invariants:
+
+- Prefer storing `NoteId` rather than bare `Uuid` inside the aggregate.
+- Prefer storing source coordinates (`SourceByteOffset`/`SourceByteRange`) rather than bare `usize`.
+
+- **API design rules (Rust idioms)**
+  - Prefer borrowed inputs (`&str`, `&NotePath`, slices) unless ownership is required.
+  - Prefer `TryFrom`/`TryInto` for validation and conversion.
+  - Prefer `&[T]` and iterators for collection access; do not return `Vec<T>` from getters.
+  - Avoid returning `String` or `PathBuf` from getters unless that allocation is the point.
+  - If a method clones/allocates, its name must communicate that.
+
 - **Encapsulation policy**
   - Fields that participate in invariants should be private; expose borrowed getters.
   - If the parsing pipeline needs bulk construction, use a builder (`NoteBuilder`) or module-private field access (`pub(crate)`) rather than public fields.
@@ -166,8 +237,18 @@ Frontmatter is specified separately in `docs/design/004-note-frontmatter.md` and
   - `as_str(&self) -> &str`
   - `Display` for logging and error messages.
 
+- **Type-driven improvement**
+  - Consider splitting "validated vault relative path" into two layers if needed:
+    - `VaultRelativePath` (general)
+    - `NotePath` (vault-relative + `md` extension)
+  - Only do this if it reduces duplication across contexts.
+
 - **Invariants**
   - Uses `fs::validate_vault_path(path, Some("md"))`.
+
+- **Data representation rules**
+  - Internally store as `Box<str>` (or an equivalent immutable owned string) to avoid repeated allocations and to support rkyv archiving.
+  - Do not expose raw filesystem paths (`Path`/`PathBuf`) from the domain model; those belong at adapter boundaries.
 
 #### Component: `Link` and link types (`Target`, `Anchor`, `Style`, `EmbedType`)
 
@@ -186,8 +267,19 @@ Frontmatter is specified separately in `docs/design/004-note-frontmatter.md` and
 
 - **Type-driven improvement opportunities (non-breaking)**
   - Introduce semantic newtypes for source coordinates:
-    - `SourceOffset(usize)` for `position`
-    - `SourceRange { start: SourceOffset, end: SourceOffset }` for sections
+    - `SourceByteOffset(u32)` for `position` (preferred)
+    - `SourceByteRange { start: SourceByteOffset, end: SourceByteOffset }` for sections
+
+Offset semantics:
+
+- All offsets/ranges in note models MUST be **byte offsets** into the original UTF-8 source.
+- Rationale: pulldown-cmark and most parser infrastructure naturally operate in byte offsets; byte offsets are stable and unambiguous for slicing.
+- If a caller needs line/column, compute it at the edges (CLI diagnostics / LSP) where the full source is available.
+
+Additional type-driven opportunities:
+
+- Consider a `Url(Box<str>)` newtype for `Target::External` if URL validation becomes important.
+- Consider making `Target::Resolved` carry `NoteId` + `NotePath` (validated) rather than raw strings.
 
 #### Component: `Tag`
 
@@ -197,10 +289,18 @@ Frontmatter is specified separately in `docs/design/004-note-frontmatter.md` and
   - Must start with `#`.
   - Segments are non-empty and contain only allowed characters.
 
+Type-driven improvement:
+
+- Separate the user-facing display form (with `#`) from the canonical stored key form (`TagPath` without `#`).
+- Ensure that any index keys use the canonical form only.
+
 - **Public Interface (target)**
   - `Tag::new(raw: &str) -> Result<Tag, NoteError>`
   - `full_path(&self) -> &str` (without `#`)
   - `segments(&self) -> &[Box<str>]` (or `&[&str]` via iterator)
+
+- **Ergonomics and allocation**
+  - Consider providing `segments_iter(&self) -> impl Iterator<Item = &str>` to avoid committing to a concrete storage shape in the public API.
 
 #### Component: `Task` and `TaskStatus`
 
@@ -212,6 +312,11 @@ Frontmatter is specified separately in `docs/design/004-note-frontmatter.md` and
 - **Public Interface (target)**
   - `Task::new(text: &str, status: TaskStatus, position: SourceOffset) -> Result<Task, NoteError>`
 
+Type-driven improvement:
+
+- Prefer `SourceByteOffset` for positions.
+- Consider a `TaskText`/`NonEmptyBoxStr` wrapper if it clarifies invariants.
+
 #### Component: `Heading` and `Section`
 
 - **Responsibility**: represent document structure.
@@ -220,12 +325,21 @@ Frontmatter is specified separately in `docs/design/004-note-frontmatter.md` and
   - `Heading.level` is 1..=6.
   - `Heading.text` is non-empty after trim.
 
+Type-driven improvement:
+
+- Prefer `HeadingLevel` and (optionally) `NonEmptyBoxStr` for heading text.
+
 #### Component: `NoteEvents`
 
 - **Responsibility**: represent note-domain events staged for dispatch.
-- **Persisted**: typically no (events are transient); if persisted, treat as format contract.
+- **Persisted**: no (events are transient).
 - **Invariant policy**
   - Events should prefer validated domain types where practical, but do not change persisted event payload types without an explicit migration.
+
+Event staging rules:
+
+- Pending events MUST be staged in-memory and dispatched only after the successful DB transaction commit (Unit of Work).
+- Therefore, pending events MUST NOT be part of the persisted `Note` record. If needed, represent staged events outside the archived/persisted type (e.g., a wrapper used only in memory).
 
 ### 3.3 Integration & Data Flow
 
@@ -247,7 +361,8 @@ sequenceDiagram
 
 Canonical model set (persisted unless noted):
 
-- `Note { id: Uuid, path: NotePath, frontmatter: Option<Frontmatter>, links: Vec<Link>, tags: Vec<Tag>, headings: Vec<Heading>, tasks: Vec<Task>, sections: Vec<Section>, pending_events: Vec<NoteEvents> (transient) }`
+- `Note { id: Uuid, path: NotePath, frontmatter: Option<Frontmatter>, links: Vec<Link>, tags: Vec<Tag>, headings: Vec<Heading>, tasks: Vec<Task>, sections: Vec<Section> }`
+- `StagedNote { note: Note, pending_events: Vec<NoteEvents> }` (in-memory only, not persisted)
 - `NotePath(Box<str>)`
 - `Link { target: Target, anchor: Option<Anchor>, position: usize, alias: Option<Box<str>>, style: Style, embed_type: Option<EmbedType> }`
 - `Target::{Resolved { id: Uuid, path: Box<str> }, Unresolved { raw: Box<str> }, External { url: Box<str> }}`
@@ -261,6 +376,29 @@ Canonical model set (persisted unless noted):
 - Validation is split:
   - Per-entity validation in constructors.
   - Cross-entity validation via `Note::validate()`.
+
+### 3.6 rkyv & Persisted-Format Contract
+
+Rules:
+
+- Archived layouts for persisted types are a compatibility contract.
+- Prefer **additive** evolution:
+  - adding new methods/getters
+  - tightening visibility (e.g., `pub` -> private)
+  - adding new non-persisted helper types
+- Treat the following as breaking unless explicitly planned with migration/clean-slate:
+  - changing struct field order/types
+  - changing enum variants or their payload types
+  - changing rkyv format-control features (endianness/alignment/pointer width)
+
+Validation:
+
+- Any access to archived bytes at trust boundaries must validate via rkyv/bytecheck (e.g., `rkyv::access`).
+- Validation should be centralized in the DB/storage boundary rather than scattered across model code.
+
+Type evolution rule:
+
+- Newtypes are encouraged, but changing an existing persisted field from `T` to `Newtype(T)` may still be a breaking archived-layout change depending on rkyv representation and derives. Treat it as a migration decision unless verified safe.
 
 ## 4. Alternatives & Decisions (The "Divergence")
 
@@ -301,6 +439,14 @@ Canonical model set (persisted unless noted):
 
 For breaking changes, use the repo’s "clean slate" protocol (rename DB + reindex) unless an explicit migration layer is introduced.
 
+### 5.4 Testing & Benchmarking
+
+- Unit tests: constructors enforce invariants for `NotePath`, `Tag`, `Link`, `Task`, `Heading`.
+- Unit tests: conversions into newtypes fail on invalid inputs (e.g., `SourceByteOffset` overflow).
+- Round-trip persistence tests: store and retrieve representative notes (including edge cases) and assert invariants still hold.
+- Property tests (where useful): tag segment validation and link target parsing invariants.
+- Benchmarks: criterion benchmarks for query hot paths comparing `get_owned` vs zero-copy access patterns.
+
 ### 5.3 Security & Privacy
 
 - `NotePath` validation relies on the security-critical path validator (`fs::validate_vault_path`).
@@ -320,3 +466,5 @@ For breaking changes, use the repo’s "clean slate" protocol (rename DB + reind
 | :--------- | :------------------------------------------------- | :------------------------------------------------------------- |
 | 2026-02-03 | "Are events persisted or transient?"              | Draft assumes transient; verify via DB usage inventory.         |
 | 2026-02-03 | "Do we require object-safe ports for query hotpath" | Draft suggests concrete read APIs for zero-copy hot paths.      |
+
+| 2026-02-03 | "Are offsets byte or char based?"                | Specify byte offsets (`SourceByteOffset`) and compute line/col at edges. |

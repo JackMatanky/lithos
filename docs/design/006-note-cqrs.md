@@ -63,6 +63,12 @@ Additionally, error mapping currently converts DB errors into stringly note erro
 - **Object safety**: if `dyn Command`/`dyn Query` are used, trait methods must remain object-safe (no generics, no `impl Trait` args).
 - **Persisted bytes contract**: do not change archived model layouts without explicit migration.
 
+Additional CQRS conventions for this repo:
+
+- Prefer **concrete** command/query types and **static methods** on aggregates for the primary code path.
+- Use traits only when polymorphism is required (testing, alternate backends).
+- Domain events must be staged and dispatched only after transaction commit (Unit of Work).
+
 ## 2. Guide-Level Explanation (The "What")
 
 ### 2.1 User/Dev Experience
@@ -72,16 +78,21 @@ Typical usage from application code:
 ```rust
 use lithos_core::note::{command, query};
 use lithos_core::note::aggregate::NotePath;
+use lithos_core::note::error::NoteCommandError; // proposed in this spec
 use lithos_core::note::ports::{Command as _, Query as _};
 
 let cmd = command::Command::new(&db);
 let qry = query::Query::new(&db);
 
-let path = NotePath::try_from("notes/a.md").unwrap();
-let note = cmd.create(path)?;
+// `NoteCommandError` is the proposed command-side error type in this spec.
+fn example() -> Result<(), NoteCommandError> {
+  let path = NotePath::try_from("notes/a.md")?;
+  let note = cmd.create(path)?;
 
-let by_id = qry.find_by_id(note.id)?;
-let by_path = qry.find_by_path(note.path())?;
+  let _by_id = qry.find_by_id(note.id)?;
+  let _by_path = qry.find_by_path(note.path())?;
+  Ok(())
+}
 ```
 
 For high-performance read paths (e.g., LSP), the preferred API is a **concrete** query surface that can be closure-based and zero-copy:
@@ -103,6 +114,8 @@ let title = qry.with_archived_by_id(note_id, |archived_note| {
   - **Owned** results for mutation/CLI workflows.
   - **Zero-copy** access for hot paths via closure-based APIs (concrete types).
 
+Design rule: the API must make it obvious which tier is being used.
+
 ## 3. Detailed Design (The "How")
 
 ### 3.1 System Architecture
@@ -118,13 +131,43 @@ flowchart LR
 
 ### 3.2 Component & Interface Specifications
 
+### 3.2.0 Type-Driven Design Improvements (CQRS)
+
+CQRS is a natural place to apply type-driven design because it defines boundaries and contracts.
+
+Principles:
+
+- Commands should accept **validated domain types** wherever practical (e.g., `NotePath`, `TagPath`).
+- Queries should accept **borrowed validated types** (e.g., `&NotePath`) to avoid allocation.
+- Avoid "stringly typed" storage keys in domain/CQRS layers. If a DB table needs a specific encoding, wrap it in a storage-layer newtype.
+
+Proposed CQRS-specific types:
+
+- `NoteId(Uuid)` (domain type)
+  - Used everywhere outside the DB boundary.
+
+- `PathKey(Box<str>)` (storage-layer type)
+  - Canonical encoding for index keys; derived from `NotePath`.
+  - Keeps DB table encoding concerns out of domain logic.
+
+- `TagKey(Box<str>)` (storage-layer type)
+  - Canonical encoding for tag index keys; derived from `TagPath`.
+
+Typed command inputs (optional but recommended):
+
+- `CreateNote { path: NotePath }`
+- `UpdateNote { note: Note }`
+- `DeleteNote { id: NoteId }`
+
+These structs make commands extensible (future fields) without breaking call sites, and they prevent argument-order bugs.
+
 #### Component: `note::ports::Command`
 
 - **Responsibility**: mutate note state and maintain indexes.
 - **Public Interface (target)**:
-  - `create(path: NotePath) -> Result<Note, NoteCommandError>`
-  - `update(note: Note) -> Result<Note, NoteCommandError>`
-  - `delete(id: Uuid) -> Result<(), NoteCommandError>`
+  - `create(path: NotePath) -> Result<Note, NoteCommandError>` (or `create(cmd: CreateNote)`)
+  - `update(note: Note) -> Result<Note, NoteCommandError>` (or `update(cmd: UpdateNote)`)
+  - `delete(id: NoteId) -> Result<(), NoteCommandError>` (or `delete(cmd: DeleteNote)`)
 
 - **Errors**
   - Domain validation: `NoteError` (wrapped)
@@ -134,9 +177,11 @@ flowchart LR
 
 - **Responsibility**: retrieve note state.
 - **Public Interface (baseline, object-safe)**:
-  - `find_by_id(id: Uuid) -> Result<Option<Note>, NoteQueryError>`
+  - `find_by_id(id: NoteId) -> Result<Option<Note>, NoteQueryError>`
   - `find_by_path(path: &NotePath) -> Result<Option<Note>, NoteQueryError>`
   - `list() -> Result<Vec<Note>, NoteQueryError>`
+
+- **Zero-copy strategy**
 
 - **Zero-copy strategy**
 
@@ -144,9 +189,14 @@ Because trait-object methods cannot accept generic closures, the zero-copy API i
 
 Target concrete methods:
 
-- `with_archived_by_id<R>(&self, id: Uuid, f: impl FnOnce(&ArchivedNote) -> R) -> Result<Option<R>, NoteQueryError>`
+- `with_archived_by_id<R>(&self, id: NoteId, f: impl FnOnce(&ArchivedNote) -> R) -> Result<Option<R>, NoteQueryError>`
 
 This mirrors `Database::get` and allows returning small computed results without deserializing the full note.
+
+Validation rule:
+
+- The concrete zero-copy API must only expose archived values that have been bytecheck-validated at the storage boundary.
+- Prefer returning computed values (`R`) rather than exposing archived references outside the closure.
 
 #### Component: CQRS error types
 
@@ -159,6 +209,22 @@ This mirrors `Database::get` and allows returning small computed results without
   - `Storage(#[from] DbError)`
 
 Design rule: do not eagerly stringify DB errors inside CQRS paths.
+
+Error mapping rules:
+
+- Preserve structured error kinds (domain vs storage).
+- Avoid `to_string()` in core CQRS implementations; if a human-readable message is needed, format it at the CLI boundary.
+- If callers need stable branching on error cases, provide enums/variants rather than parsing error text.
+
+### 3.2.1 Concrete-first CQRS surface (recommended)
+
+To align with repo conventions, the primary API should be concrete types, with traits as optional polymorphic wrappers.
+
+Recommended structure:
+
+- `note::command::NoteCommand` (concrete) with inherent methods (`create`, `update`, `delete`)
+- `note::query::NoteQuery` (concrete) with inherent methods (`find_by_id`, `find_by_path`, `list`, `with_archived_by_id`)
+- `note::ports::{Command, Query}` traits remain for tests/alternate backends and can be implemented by the concrete types.
 
 ### 3.3 Integration & Data Flow
 
@@ -175,6 +241,11 @@ sequenceDiagram
   Cmd->>DB: put("notes", id, note)
   Cmd->>DB: multimap_insert("path_to_id", path, id)
   Cmd-->>Caller: Ok(note)
+
+Unit of Work rule:
+
+- Any domain events produced during the command MUST be staged and dispatched only after the transaction commits.
+- If command handlers return a `Note`, event dispatch belongs to the application layer (or a dedicated UoW coordinator), not inside the domain model.
 ```
 
 #### Update note
@@ -216,6 +287,18 @@ Notes:
 - Query tiering:
   - Baseline object-safe query methods return owned `Note`.
   - Hot-path methods compute from archived values and return small owned results.
+
+### 3.6 Testing & Benchmarks
+
+- Integration tests:
+  - `create` writes `notes` and updates `path_to_id`.
+  - `update` maintains path and tag index deltas.
+  - `delete` removes note and cleans indexes.
+- Corruption tests:
+  - If archived bytes fail validation, queries surface a structured storage error and the system can trigger clean-slate/reindex.
+- Benchmarks (criterion):
+  - `find_by_id(get_owned)` vs `with_archived_by_id` for typical LSP reads.
+  - Path lookup via index + note read.
 
 ## 4. Alternatives & Decisions (The "Divergence")
 
