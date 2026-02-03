@@ -63,25 +63,35 @@ impl<'db> Command<'db> {
     reason = "Test code uses unwrap/expect for clarity"
 )]
 mod tests {
-    use tempfile::tempdir;
+    use tempfile::{TempDir, tempdir};
     use uuid::Uuid;
 
     use super::*;
     use crate::schema::aggregate::SchemaName;
 
-    #[test]
-    fn save_persists_schema_by_name() {
+    const TEST_SCHEMA_ID_NOTE: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0101);
+    const TEST_SCHEMA_ID_PROJECT: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0102);
+
+    fn test_db() -> (TempDir, Database) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("schema.redb");
         let db = Database::open(&path).unwrap();
+        (dir, db)
+    }
+
+    fn schema_fixture(id: Uuid, name: &str) -> Schema {
+        Schema::new(id, SchemaName::new(name.to_owned()).unwrap(), vec![])
+            .unwrap()
+    }
+
+    #[test]
+    fn save_persists_schema_by_name() {
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
-        let schema = Schema::new(
-            Uuid::now_v7(),
-            SchemaName::new("note".to_owned()).unwrap(),
-            vec![],
-        )
-        .unwrap();
+        let schema = schema_fixture(TEST_SCHEMA_ID_NOTE, "note");
 
         cmd.save(&schema).unwrap();
 
@@ -96,17 +106,10 @@ mod tests {
 
     #[test]
     fn delete_removes_schema_by_name() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("schema.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
-        let schema = Schema::new(
-            Uuid::now_v7(),
-            SchemaName::new("project".to_owned()).unwrap(),
-            vec![],
-        )
-        .unwrap();
+        let schema = schema_fixture(TEST_SCHEMA_ID_PROJECT, "project");
         cmd.save(&schema).unwrap();
 
         cmd.delete("project").unwrap();
