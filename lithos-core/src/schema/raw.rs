@@ -137,8 +137,14 @@ mod tests {
         );
 
         // THEN: fields are preserved
-        assert!(schema.excludes.is_empty());
-        assert!(schema.extends.is_none());
+        assert!(
+            schema.excludes.is_empty(),
+            "RawSchema should have empty excludes by default"
+        );
+        assert!(
+            schema.extends.is_none(),
+            "RawSchema should have no extends by default"
+        );
     }
 
     #[test]
@@ -160,7 +166,13 @@ mod tests {
         let reference_variant = RawProperty::Ref(reference);
 
         // THEN: variants hold expected values
-        assert!(matches!(inline_variant, RawProperty::Inline(_)));
-        assert!(matches!(reference_variant, RawProperty::Ref(_)));
+        assert!(
+            matches!(inline_variant, RawProperty::Inline(_)),
+            "RawProperty should be Inline variant"
+        );
+        assert!(
+            matches!(reference_variant, RawProperty::Ref(_)),
+            "RawProperty should be Ref variant"
+        );
     }
 }

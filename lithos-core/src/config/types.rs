@@ -560,7 +560,10 @@ mod tests {
         let result = frontmatter.validate();
 
         // THEN it fails
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "Frontmatter with empty required fields should fail validation"
+        );
     }
 
     /// 3.3-UNIT-027: `logging_rejects_invalid_levels`.
@@ -576,10 +579,10 @@ mod tests {
         let result = logging.validate();
 
         // THEN it fails with invalid enum
-        assert!(matches!(
-            result,
-            Err(super::ConfigError::InvalidEnumValue { .. })
-        ));
+        assert!(
+            matches!(result, Err(super::ConfigError::InvalidEnumValue { .. })),
+            "Invalid log level 'verbose' should be rejected, got: {result:?}"
+        );
     }
 
     /// 3.3-UNIT-033: `masks_encrypted_variant_in_debug_logs`.
@@ -669,7 +672,10 @@ mod tests {
         let result = schema.validate();
 
         // THEN validation fails
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "Schema with empty directories should fail validation"
+        );
     }
 
     /// 3.3-UNIT-029: `stores_nested_arrays`.

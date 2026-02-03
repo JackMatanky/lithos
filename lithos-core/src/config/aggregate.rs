@@ -360,7 +360,10 @@ mod tests {
             // GIVEN: a configuration aggregate
             let mut config = Config::default();
             let _initial_events = config.take_events(); // clear construction events
-            assert!(config.pending_events().is_empty());
+            assert!(
+                config.pending_events().is_empty(),
+                "Config should have no pending events after take_events()"
+            );
 
             // WHEN: adding a domain event
             let event =
@@ -368,9 +371,20 @@ mod tests {
             config.add_event(event);
 
             // THEN: it is recorded and can be taken
-            assert_eq!(config.pending_events().len(), 1);
-            assert_eq!(config.take_events().len(), 1);
-            assert!(config.pending_events().is_empty());
+            assert_eq!(
+                config.pending_events().len(),
+                1,
+                "Config should have 1 pending event after adding"
+            );
+            assert_eq!(
+                config.take_events().len(),
+                1,
+                "take_events() should return 1 event"
+            );
+            assert!(
+                config.pending_events().is_empty(),
+                "Config should have no pending events after take_events()"
+            );
         }
 
         /// 3.3-UNIT-019:

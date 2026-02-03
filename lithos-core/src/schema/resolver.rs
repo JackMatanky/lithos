@@ -265,6 +265,9 @@ mod tests {
         let result = Resolver::resolve_single_property(raw, &bank);
 
         // THEN: it returns a PropertyNotFound error
-        assert!(matches!(result, Err(SchemaError::PropertyNotFound(_))));
+        assert!(
+            matches!(result, Err(SchemaError::PropertyNotFound(_))),
+            "Missing property reference should be detected, got: {result:?}"
+        );
     }
 }

@@ -157,7 +157,7 @@ impl Property {
     /// let id = Uuid::now_v7();
     ///
     /// let property = Property::new(id, name, true, false, spec).unwrap();
-    /// assert!(property.required());
+    /// assert!(property.required(), "Property should be required");
     /// ```
     ///
     /// # Errors
@@ -399,9 +399,16 @@ pub mod fixtures {
                 .spec(PropertySpec::String(StringSpec::default()))
                 .build();
 
-            assert_eq!(&property.name().0, "priority");
-            assert!(property.required());
-            assert!(property.array());
+            assert_eq!(
+                &property.name().0,
+                "priority",
+                "Builder should set property name to 'priority'"
+            );
+            assert!(
+                property.required(),
+                "Builder should set required flag to true"
+            );
+            assert!(property.array(), "Builder should set array flag to true");
         }
     }
 }
@@ -430,10 +437,23 @@ mod tests {
             .unwrap();
 
             // THEN: accessors expose fields correctly
-            assert!(property.required());
-            assert!(property.is_required_scalar());
-            assert!(!property.array());
-            assert_eq!(&property.name().0, "status");
+            assert!(
+                property.required(),
+                "Property should be required when required flag is true"
+            );
+            assert!(
+                property.is_required_scalar(),
+                "Property should be a required scalar (not array)"
+            );
+            assert!(
+                !property.array(),
+                "Property should not be an array when array flag is false"
+            );
+            assert_eq!(
+                &property.name().0,
+                "status",
+                "Property name should match"
+            );
         }
 
         /// 3.3-UNIT-006: `returns_error_when_property_name_format_is_invalid`.
@@ -497,7 +517,10 @@ mod tests {
             let res = PropertyName::new(long_name);
 
             // THEN: it should return a PropertyNameTooLong error
-            assert!(matches!(res, Err(SchemaError::PropertyNameTooLong(_))));
+            assert!(
+                matches!(res, Err(SchemaError::PropertyNameTooLong(_))),
+                "Property name >64 chars should be rejected, got: {res:?}"
+            );
         }
 
         /// 3.3-UNIT-010: `property_name_validates_non_empty`.
@@ -509,7 +532,10 @@ mod tests {
             let res = PropertyName::new(String::new());
 
             // THEN: it should return an EmptyPropertyName error
-            assert!(matches!(res, Err(SchemaError::EmptyPropertyName)));
+            assert!(
+                matches!(res, Err(SchemaError::EmptyPropertyName)),
+                "Empty property name should be rejected, got: {res:?}"
+            );
         }
     }
 

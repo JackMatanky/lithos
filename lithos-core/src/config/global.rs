@@ -228,7 +228,10 @@ mod tests {
         let result = filesystem.validate();
 
         // THEN: it fails
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "Filesystem with empty paths should fail validation"
+        );
     }
 
     #[test]
@@ -237,8 +240,14 @@ mod tests {
         let global = super::Global::default();
 
         // THEN: default structures are populated
-        assert!(global.trusted_vaults.is_none());
-        assert_eq!(global.logging.log_level, "info");
+        assert!(
+            global.trusted_vaults.is_none(),
+            "Default trusted_vaults should be None"
+        );
+        assert_eq!(
+            global.logging.log_level, "info",
+            "Default log level should be 'info'"
+        );
     }
 
     #[test]
