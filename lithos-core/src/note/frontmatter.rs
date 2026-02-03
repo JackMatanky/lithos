@@ -610,13 +610,13 @@ mod tests {
     mod field_value {
         use chrono::{Datelike as _, TimeZone as _};
 
-        use super::super::*;
+        use super::{super::*, TEST_TIMESTAMP};
 
         #[test]
         fn field_value_coercion_covers_all_variants() {
             let arr_val = FieldValue::Array(vec![FieldValue::Boolean(true)]);
             let bool_val = FieldValue::Boolean(true);
-            let date_val = FieldValue::Date(Utc::now().timestamp());
+            let date_val = FieldValue::Date(TEST_TIMESTAMP);
             let num_val = FieldValue::Number(1.0f64);
             let mut obj_map = HashMap::new();
             obj_map.insert("k".to_owned(), FieldValue::Boolean(false));
@@ -714,7 +714,7 @@ mod tests {
     }
 
     mod accessors {
-        use super::{super::*, fixtures::FrontmatterBuilder};
+        use super::{super::*, TEST_TIMESTAMP, fixtures::FrontmatterBuilder};
 
         #[test]
         fn accessors_handle_configured_keys() {
@@ -778,7 +778,7 @@ mod tests {
                 .with_boolean("b", true)
                 .with_number("n", 1.0)
                 .with_string("s", "s")
-                .with_date("d", Utc::now().timestamp())
+                .with_date("d", TEST_TIMESTAMP)
                 .build()
                 .unwrap();
 
@@ -915,4 +915,6 @@ mod tests {
             ));
         }
     }
+
+    const TEST_TIMESTAMP: i64 = 1_700_000_000;
 }
