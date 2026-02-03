@@ -288,141 +288,136 @@ impl PropertyName {
 }
 
 #[cfg(test)]
-/// Test fixtures and builders for `Property`.
-pub mod fixtures {
-    use uuid::Uuid;
-
-    use super::{super::property_spec::StringSpec, *};
-
-    const TEST_PROPERTY_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0801);
-
-    /// `PropertyBuilder` for flexible test data generation.
-    pub struct PropertyBuilder {
-        array: bool,
-        name: String,
-        required: bool,
-        spec: PropertySpec,
-    }
-
-    impl Default for PropertyBuilder {
-        #[inline]
-        fn default() -> Self {
-            Self {
-                array: false,
-                name: "test_property".to_owned(),
-                required: false,
-                spec: PropertySpec::String(StringSpec::default()),
-            }
-        }
-    }
-
-    impl PropertyBuilder {
-        /// Sets whether the property is an array.
-        #[inline]
-        #[must_use]
-        pub fn array(mut self, array: bool) -> Self {
-            self.array = array;
-            self
-        }
-
-        /// Builds the `Property` entity.
-        ///
-        /// # Panics
-        /// Panics if the property configuration is invalid.
-        #[inline]
-        #[must_use]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test builder uses Result::expect() for creating \
-                      properties from hardcoded test data. Failures here \
-                      indicate logic errors in test setup."
-        )]
-        pub fn build(self) -> Property {
-            let name = PropertyName::new(self.name).expect("Valid name");
-            Property::new(
-                TEST_PROPERTY_ID,
-                name,
-                self.required,
-                self.array,
-                self.spec,
-            )
-            .expect("Valid property")
-        }
-
-        /// Sets the name of the property.
-        #[inline]
-        #[must_use]
-        pub fn name(mut self, name: &str) -> Self {
-            self.name = name.to_owned();
-            self
-        }
-
-        /// Creates a new `PropertyBuilder` with default values.
-        #[inline]
-        #[must_use]
-        pub fn new() -> Self {
-            Self::default()
-        }
-
-        /// Sets whether the property is required.
-        #[inline]
-        #[must_use]
-        pub fn required(mut self, required: bool) -> Self {
-            self.required = required;
-            self
-        }
-
-        /// Sets the specification for the property.
-        #[inline]
-        #[must_use]
-        pub fn spec(mut self, spec: PropertySpec) -> Self {
-            self.spec = spec;
-            self
-        }
-    }
-
-    /// Helper for creating a default property.
-    #[inline]
-    #[must_use]
-    pub fn example_property() -> Property {
-        PropertyBuilder::new().build()
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn builder_sets_fields() {
-            let property = PropertyBuilder::new()
-                .name("priority")
-                .required(true)
-                .array(true)
-                .spec(PropertySpec::String(StringSpec::default()))
-                .build();
-
-            assert_eq!(
-                &property.name().0,
-                "priority",
-                "Builder should set property name to 'priority'"
-            );
-            assert!(
-                property.required(),
-                "Builder should set required flag to true"
-            );
-            assert!(property.array(), "Builder should set array flag to true");
-        }
-    }
-}
-
-#[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
     reason = "Test module uses Result::expect() for ergonomic arrangement and \
               assertions. Acceptable in test-only code paths."
 )]
 mod tests {
+    /// Test fixtures and builders for `Property`.
+    mod fixtures {
+        use uuid::Uuid;
+
+        use super::super::{super::property_spec::StringSpec, *};
+
+        const TEST_PROPERTY_ID: Uuid =
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0801);
+
+        /// `PropertyBuilder` for flexible test data generation.
+        pub struct PropertyBuilder {
+            array: bool,
+            name: String,
+            required: bool,
+            spec: PropertySpec,
+        }
+
+        impl Default for PropertyBuilder {
+            #[inline]
+            fn default() -> Self {
+                Self {
+                    array: false,
+                    name: "test_property".to_owned(),
+                    required: false,
+                    spec: PropertySpec::String(StringSpec::default()),
+                }
+            }
+        }
+
+        impl PropertyBuilder {
+            /// Sets whether the property is an array.
+            #[inline]
+            #[must_use]
+            pub fn array(mut self, array: bool) -> Self {
+                self.array = array;
+                self
+            }
+
+            /// Builds the `Property` entity.
+            ///
+            /// # Panics
+            /// Panics if the property configuration is invalid.
+            #[inline]
+            #[must_use]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test builder uses Result::expect() for creating \
+                          properties from hardcoded test data. Failures here \
+                          indicate logic errors in test setup."
+            )]
+            pub fn build(self) -> Property {
+                let name = PropertyName::new(self.name).expect("Valid name");
+                Property::new(
+                    TEST_PROPERTY_ID,
+                    name,
+                    self.required,
+                    self.array,
+                    self.spec,
+                )
+                .expect("Valid property")
+            }
+
+            /// Sets the name of the property.
+            #[inline]
+            #[must_use]
+            pub fn name(mut self, name: &str) -> Self {
+                self.name = name.to_owned();
+                self
+            }
+
+            /// Creates a new `PropertyBuilder` with default values.
+            #[inline]
+            #[must_use]
+            pub fn new() -> Self {
+                Self::default()
+            }
+
+            /// Sets whether the property is required.
+            #[inline]
+            #[must_use]
+            pub fn required(mut self, required: bool) -> Self {
+                self.required = required;
+                self
+            }
+
+            /// Sets the specification for the property.
+            #[inline]
+            #[must_use]
+            pub fn spec(mut self, spec: PropertySpec) -> Self {
+                self.spec = spec;
+                self
+            }
+        }
+
+        #[cfg(test)]
+        mod tests {
+            use super::*;
+
+            #[test]
+            fn builder_sets_fields() {
+                let property = PropertyBuilder::new()
+                    .name("priority")
+                    .required(true)
+                    .array(true)
+                    .spec(PropertySpec::String(StringSpec::default()))
+                    .build();
+
+                assert_eq!(
+                    &property.name().0,
+                    "priority",
+                    "Builder should set property name to 'priority'"
+                );
+                assert!(
+                    property.required(),
+                    "Builder should set required flag to true"
+                );
+                assert!(
+                    property.array(),
+                    "Builder should set array flag to true"
+                );
+            }
+        }
+    }
+
     mod property {
         use uuid::Uuid;
 
