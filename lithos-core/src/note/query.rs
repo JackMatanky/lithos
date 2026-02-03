@@ -78,7 +78,7 @@ impl super::ports::Query for Query<'_> {
 mod tests {
     use std::collections::HashMap;
 
-    use tempfile::tempdir;
+    use tempfile::{TempDir, tempdir};
     use uuid::Uuid;
 
     use super::*;
@@ -88,11 +88,19 @@ mod tests {
         ports::{Command as _, Query as _},
     };
 
-    #[test]
-    fn cqrs_roundtrip_preserves_frontmatter_in_note_archive() {
+    const TEST_MISSING_ID: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0901);
+
+    fn test_db() -> (TempDir, Database) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.redb");
         let db = Database::open(&path).unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn cqrs_roundtrip_preserves_frontmatter_in_note_archive() {
+        let (_dir, db) = test_db();
 
         let cmd = command::Command::new(&db);
         let qry = Query::new(&db);
@@ -121,7 +129,7 @@ mod tests {
 
         // Sanity: changing the id misses the record
         let miss = qry
-            .find_by_id(Uuid::now_v7())
+            .find_by_id(TEST_MISSING_ID)
             .expect("Query should succeed even for non-existent ID");
         assert!(miss.is_none(), "Non-existent ID should return None");
     }
