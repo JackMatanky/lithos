@@ -545,32 +545,6 @@ impl SchemaName {
 }
 
 #[cfg(test)]
-/// Test fixtures for deterministic schema data.
-pub mod fixtures {
-    use uuid::Uuid;
-
-    use super::SchemaName;
-
-    /// Fixed UUID for deterministic tests.
-    pub const TEST_SCHEMA_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0002);
-
-    /// Example schema name for testing.
-    ///
-    /// # Panics
-    /// Panics if the default schema name is invalid.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture - unwrap/expect acceptable in test code"
-    )]
-    #[inline]
-    #[must_use]
-    pub fn example_schema_name() -> SchemaName {
-        SchemaName::new("test-schema".to_owned()).expect("Valid default name")
-    }
-}
-
-#[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
     reason = "Test module uses Result::expect() for ergonomic arrangement and \
@@ -745,10 +719,14 @@ mod tests {
         assert_eq!(bank.pending_events().len(), 1);
 
         let events = bank.take_events();
+        assert_eq!(
+            events.len(),
+            1,
+            "take_events should return exactly 1 event after registration"
+        );
         assert!(
-            events.is_empty() || events.len() == 1,
-            "After take_events, should have 0 or 1 event, got: {} events",
-            events.len()
+            bank.pending_events().is_empty(),
+            "pending_events should be empty after take_events"
         );
     }
 }
