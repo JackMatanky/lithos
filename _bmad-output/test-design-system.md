@@ -103,25 +103,36 @@ Lithos uses a tiered approach to test data to ensure reproducibility and scale:
 ## Current Implementation Status
 
 - ✅ Hexagonal testing architecture (Unit/Integration/E2E split)
-- ✅ Test utilities crate with async helpers and fixtures
+- ✅ Standard Rust testing patterns with idiomatic test organization
 - ✅ CI/CD pipeline with coverage reporting and quality gates
 - ✅ Domain purity testing and architectural boundary enforcement
-- 🔄 Performance benchmarking framework (in progress)
-- 🔄 Property-based testing expansion (in progress)
+- ✅ Performance benchmarking framework with criterion
+- ✅ Property-based testing with proptest
 
 ## Implementation Details
 
-For detailed implementation guides, patterns, and examples, see [Lithos Test Guide](../docs/test_guide.md). Key implementation achievements include:
+For detailed implementation guides, patterns, and examples, see [Lithos Test Developer Guide](./test-developer-guide.md). Key implementation achievements include:
 
 ### Test Infrastructure
-- **lithos-test-utils crate**: Centralized testing utilities with async helpers, time control, and fixture management
+- **Standard Rust testing**: All tests use `#[test]` and `#[cfg(test)]` with no external test frameworks
 - **Mise orchestration**: All testing workflows managed through `mise run` commands with proper environment setup
 - **Quality gates**: Automated linting, formatting, and coverage checks in CI/CD
+- **nextest**: Fast, parallel test runner for improved CI/CD performance
+- **criterion**: Performance regression detection with statistical analysis
 
 ### Testing Patterns
-- **Hexagonal testing**: Separate test strategies for domain, application, infrastructure, and E2E layers
-- **Async testing**: Multi-threaded runtime with deterministic time control and proper error handling
-- **Fixture management**: Isolated test contexts and vault simulation for reliable testing
+- **Co-located tests**: Unit tests live in `#[cfg(test)] mod tests` within the same file as implementation
+- **Inline fixtures**: Test data and helpers defined locally within test modules
+- **Property-based testing**: `proptest` with inline strategies for edge case discovery
+- **Clear assertions**: `assert!`, `assert_eq!`, `assert_ne!`, and `matches!` for explicit verification
+- **Custom error messages**: All assertions include context for debugging failures
+
+### Testing Best Practices
+- **One behavior per test**: Each test verifies a single expected outcome
+- **Descriptive names**: Test names follow `action_expected_condition` pattern
+- **Explicit failure context**: All assertions include formatted error messages
+- **Result-based tests**: Use `Result<(), Error>` return types for complex test logic
+- **Module organization**: Group related tests into sub-modules for clarity
 
 ### Coverage Goals
 - **Unit tests**: 70% coverage focusing on business logic and edge cases

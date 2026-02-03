@@ -30,14 +30,17 @@ All testing tasks MUST be orchestrated via `mise`. This ensures the correct envi
 
 ## 2. Tools & Infrastructure
 
-Lithos leverages a modern Rust testing stack to ensure speed and reliability.
+Lithos leverages standard Rust testing tools to ensure speed and reliability.
 
 - **nextest**: Primary test runner for concurrent execution. Faster and more robust than raw `cargo test`.
 - **tarpaulin**: Used for coverage analysis (Target: 80%+).
-- **insta**: Preferred for snapshot testing of complex structures (e.g., Markdown AST).
-- **pretty_assertions**: Enhances `assert_eq!` and `assert_ne!` with colorful, readable diffs.
 - **criterion**: Mandatory for NFR-critical paths like Indexing and Rendering.
+- **proptest**: Property-based testing for edge case discovery and fuzz testing.
+- **rstest**: Parameterized tests with named test cases for better test organization.
+- **tempfile**: Temporary file/directory creation for filesystem tests (cleanup is automatic).
 - **doc tests**: Mandatory for all public domain models. Use as "living documentation."
+
+**Note:** Lithos uses **standard Rust testing patterns** only. All test utilities are inline within test modules using `#[cfg(test)]`. No external test utility crates are used.
 
 ## 3. Testing Hierarchy
 
@@ -66,37 +69,45 @@ Executable examples within the source code using `///`.
 - **Focus**: Happy paths and general public API usage.
 - **Orchestration**: Run via `mise run test:unit`.
 
-| Layer                            | Focus                                                     | Location                    | Tools                     |
-| :------------------------------- | :-------------------------------------------------------- | :-------------------------- | :------------------------ |
-| **Domain (Unit)**                | Business logic, state transitions, conversions. Zero I/O. | `crates/domain/src/**/*.rs` | `mise run test:unit`      |
-| **Application (Integration)**    | Cross-module orchestration, port contracts, event flows.  | `crates/app/tests/`         | `nextest`, `mockall`      |
-| **Infrastructure (Integration)** | Adapters, persistence, external APIs.                     | `tests/suite/integration/`  | `nextest`                 |
-| **CLI (E2E)**                    | End-to-end user flows, binary execution.                  | `tests/suite/e2e/`          | `assert_cmd`, `TestVault` |
+| Layer                            | Focus                                                     | Location                        | Tools                |
+| :------------------------------- | :-------------------------------------------------------- | :------------------------------ | :------------------- |
+| **Domain (Unit)**                | Business logic, state transitions, conversions. Zero I/O. | `lithos-core/src/**/*.rs`       | `mise run test:unit` |
+| **Application (Integration)**    | Cross-module orchestration, port contracts, event flows.  | `lithos-core/src/**/*.rs`       | `nextest`            |
+| **Infrastructure (Integration)** | Adapters, persistence, external APIs.                     | `tests/arch/src/**/*.rs`        | `nextest`            |
+| **CLI (E2E)**                    | End-to-end user flows, binary execution.                  | `lithos-cli/src/**/*.rs`        | `assert_cmd`         |
 
 ## 4. Safety Invariants
 
-### Async Testing
+### Sync-First Architecture
 
-Lithos is built on Tokio. All async tests must follow these safety invariants:
+Lithos follows a **sync-first architecture**. The core domain and business logic is entirely synchronous with no async dependencies.
 
-- **Runtime Flavor**: Use `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]` (or `async_test!`) to surface race conditions.
-- **Blocking Limit**: NEVER block an async thread for >10ms. Use `spawn_blocking_test` for `std::fs` or heavy CPU tasks.
-- **Timeouts**: Always wrap async operations with a timeout (e.g., `with_timeout(Duration::from_secs(5), ...)`).
-- **Throttling**: Use `tokio::sync::Semaphore` to limit concurrent I/O during test execution.
+- **Zero async in domain**: `lithos-core` has zero async dependencies (no `tokio`, `async-trait`, etc.)
+- **Synchronous tests**: All tests in `lithos-core` are standard synchronous Rust tests
+- **Filesystem operations**: Use `std::fs` and `std::io` directly (no async file I/O)
+- **Database operations**: `redb` and `moka` are synchronous libraries with no async overhead
 
 ### Determinism
 
-- **Virtual Clock**: Use `time_test!` macro to control `tokio::time::pause()` and `advance`.
-- **Fixed Seeds**: Use deterministic seeds for any randomness or UUID generation in fixtures.
-- **Snapshot Redactions**: Always redact UUIDs and Timestamps using global regex filters in `insta`.
+- **Fixed Seeds**: Use deterministic seeds for any randomness or UUID generation in fixtures
+- **Proptest seeds**: Use `.prop_with_config()` to set deterministic seeds for property tests
+- **Temporary directories**: Use `tempfile::TempDir` which provides automatic cleanup via RAII
 
 ## 5. Test Authoring Standards
 
-### Fixture Placement
+### Fixture Placement & Best Practices
 
-- **Unit fixtures**: Keep fixtures inside the module under `#[cfg(test)]` so they can use private APIs and remain close to the code under test.
-- **Integration fixtures**: Store shared helpers under `tests/common/mod.rs` so integration tests can reuse setup without creating extra test crates.
-- **Avoid cycles**: Do not place domain-specific fixtures in `lithos-test-utils` if that would require `lithos-domain` to depend on it (or vice versa). Prefer keeping domain fixtures in `crates/domain` or a separate fixtures crate used only by integration tests.
+- **Inline fixtures**: Define test fixtures directly within `#[cfg(test)] mod tests` blocks in the same file as the implementation
+- **Helper functions**: Create simple test helper functions (not macros) when setup is repeated across multiple tests
+- **Proptest strategies**: Define strategies inline using string patterns or `prop_compose!` within test modules
+- **No external test crates**: All test utilities are self-contained within the module being tested
+- **Avoid shared test infrastructure**: Each test module is independent and can be understood in isolation
+
+**Why inline fixtures?**
+1. **Locality**: Tests and fixtures remain close to the code they test
+2. **Simplicity**: No need to navigate multiple files to understand test setup
+3. **Independence**: No coupling between test modules through shared utilities
+4. **Maintainability**: When code changes, related tests and fixtures are in the same file
 
 Tests are the first place people look to understand how your code works. They must be clear, targeted, and serve as **Living Documentation**.
 
@@ -167,17 +178,20 @@ mod tests {
 - **Error Assertions**: Use the `assert_err_kind!` macro for standardized error matching.
 - **Domain Purity**: Programmatic enforcement ensures `lithos-domain` remains free of I/O dependencies.
 
-### Snapshot Testing (insta)
+### Snapshot Testing
 
-Snapshots are for visual or structural correctness (CLI output, ASTs, complex JSON/YAML).
+**Note:** Lithos currently does NOT use snapshot testing. We prefer explicit assertions for all test verification.
 
-- **YAML Snapshots**: Use the `yaml` feature for human-readable diffs in git.
-- **Named Snapshots**: Always provide a name: `assert_yaml_snapshot!("note_v1", metadata);`.
-- **Redactions**: Always redact unstable fields (UUIDs, timestamps) to ensure snapshots remain deterministic.
-- **What NOT to snapshot**:
-  - Simple types or primitives (use `assert_eq!`).
-  - Critical path logic (use precise unit tests).
-  - External resources (use mocks).
+**Why no snapshots?**
+1. **Explicit assertions**: Tests using `assert!`, `assert_eq!`, and `matches!` are clearer and more maintainable
+2. **Debugging**: Explicit assertions show exactly what failed and why
+3. **Review friction**: Snapshot diffs in PRs require careful review to catch regressions
+4. **Determinism**: Snapshot tests can hide timing issues and non-deterministic output
+
+**If snapshot testing is added in the future:**
+- Use for structural correctness only (CLI output, complex JSON/YAML)
+- Always redact unstable fields (UUIDs, timestamps)
+- Prefer explicit assertions for critical path logic
 
 ## 6. Doc-Tests (Executable Examples)
 
@@ -191,47 +205,94 @@ Doc-tests turn your `/// # Examples` into compiler-verified tests.
   - `compile_fail`: Verifies that the code _cannot_ compile (ideal for demonstrating incorrect API usage).
   - `should_panic`: Tells the compiler that this example block will panic.
 
-## 7. Streamlining with `lithos-test-utils`
+## 7. Standard Rust Testing Patterns
 
-The `lithos-test-utils` crate is the "Core OS" for testing in Lithos.
+Lithos uses **idiomatic Rust testing patterns** without external test utility crates. All test infrastructure is inline and self-contained.
 
-> [!IMPORTANT]
-> **Executable Source of Truth**: The examples below are simplified for quick reference. For the full, compiler-verified API documentation and advanced usage, run `mise run test:unit -p test-utils` or view the rustdoc for the relevant component in `tests/utils/src/`.
+### Simple Test Fixtures
 
-### Filesystem & Vaults
-
-Quickly spin up realistic environments for file-based operations.
+Create helper functions within test modules for common setup:
 
 ```rust
-let vault = TestVault::new()
-    .with_note("Work/Project.md", "# Project\nStatus: Active")
-    .with_config("lithos.toml", "[vault]\nstrict = true")
-    .build();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-let context = IsolatedTestContext::new("my_test");
-// context.temp_dir() is ready for use
+    /// Helper: Create a test note with custom fields
+    fn note_fixture(id: Uuid, path: &str, tags: Vec<Tag>) -> Note {
+        Note {
+            id,
+            path: NotePath::new(path.to_owned()).expect("Valid test path"),
+            frontmatter: None,
+            links: vec![],
+            tags,
+            headings: vec![],
+            tasks: vec![],
+            sections: vec![],
+            pending_events: vec![],
+        }
+    }
+
+    #[test]
+    fn validates_note_structure() {
+        let note = note_fixture(
+            Uuid::now_v7(),
+            "test.md",
+            vec![Tag::new("#work").expect("Valid tag")]
+        );
+        assert!(note.validate().is_ok());
+    }
+}
 ```
 
-### Async & Time Control
+### Filesystem Testing
 
-Streamline async setup and eliminate flakiness in time-sensitive code.
+Use `tempfile` for automatic cleanup of test directories:
 
 ```rust
-time_test!(async fn validates_cache_expiry() {
-    cache.set("key", "val", Duration::from_secs(60)).await;
-    advance(Duration::from_secs(61)).await;
-    assert!(cache.get("key").await.is_none());
-});
+use tempfile::TempDir;
+
+#[test]
+fn writes_file_successfully() -> std::io::Result<()> {
+    let temp_dir = TempDir::new()?;
+    let file_path = temp_dir.path().join("test.txt");
+
+    std::fs::write(&file_path, "test content")?;
+    let content = std::fs::read_to_string(&file_path)?;
+
+    assert_eq!(content, "test content");
+    Ok(())
+    // temp_dir is automatically cleaned up when dropped
+}
 ```
 
-### CQRS & Event Verification
+### Property-Based Testing
 
-Declarative verification of complex business flows and eventual consistency.
+Define strategies inline using regex patterns or `prop_compose!`:
 
 ```rust
-tester.given(initial_events)
-    .when(command)
-    .then_expect_events(expected_events);
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn validates_identifier_format(
+        name in "[a-zA-Z0-9_-]{1,64}"
+    ) {
+        let result = PropertyName::new(name);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_characters(
+        name in ".*[^a-zA-Z0-9_-].*".prop_filter(
+            "valid length",
+            |s: &String| !s.is_empty() && s.len() <= 64
+        )
+    ) {
+        let result = PropertyName::new(name);
+        assert!(result.is_err());
+    }
+}
 ```
 
 ## 8. Linting & Code Quality in Tests
@@ -618,16 +679,29 @@ fn processes_valid_note() {
 
 ## 9. Common Pitfalls
 
-- **Thread Starvation**: Blocking the Tokio executor with `std::fs` or `sleep`. Use `spawn_blocking_test` and `tokio::time::sleep`.
-- **Race Conditions**: Using single-threaded test flavor for concurrent code. Always use `multi_thread` for integration tests.
-- **Flakiness**: Relying on wall-clock time. Use `tokio::time::pause()` and the `advance()` helper for deterministic time-based tests.
-- **Shared State**: Using static variables or shared files between tests. Always use fresh fixtures (e.g., `IsolatedTestContext`).
+- **Overly complex tests**: Tests with high cognitive complexity should be split into smaller, focused tests
+- **Hidden assertions**: Avoid test helpers that hide assertions - keep assertions visible in the test body
+- **Shared mutable state**: Using static variables or shared files between tests. Always use fresh fixtures per test
+- **Non-deterministic tests**: Avoid relying on system time, random values without seeds, or undefined ordering
+- **Unwrap in assertions**: Use explicit `assert!(result.is_ok(), "...")` instead of `result.unwrap()` for better error messages
+- **Testing implementation details**: Focus on behavior and contracts, not internal implementation
+- **Builder pattern overuse**: Simple helper functions are often clearer than complex test builders
 
-## 10. Resources & Deep-Dives
+## 10. Resources & Reference
 
-For tactical implementation details, refer to the following specs:
+### Official Rust Documentation
+- [The Rust Book - Chapter 11: Writing Automated Tests](https://doc.rust-lang.org/book/ch11-00-testing.html)
+- [Rust By Example - Testing](https://doc.rust-lang.org/rust-by-example/testing.html)
+- [The rustc Book - Tests](https://doc.rust-lang.org/rustc/tests/index.html)
 
-- [**Async Testing Pattern Spec**](./testing/async.md)
-- [**CQRS Testing Pattern Spec**](./testing/cqrs.md)
-- [**Event-Driven Testing Pattern Spec**](./testing/event.md)
-- [**ADR 0010: Test Utilities**](./adr/0010-centralized-test-utilities.md)
+### Testing Tools Documentation
+- [nextest Documentation](https://nexte.st/) - Fast, parallel test runner
+- [cargo-tarpaulin](https://github.com/xd009642/tarpaulin) - Code coverage
+- [proptest Book](https://proptest-rs.github.io/proptest/intro.html) - Property-based testing
+- [rstest Documentation](https://docs.rs/rstest/) - Parameterized tests
+- [criterion.rs](https://bheisler.github.io/criterion.rs/book/) - Benchmarking
+
+### Lithos-Specific Documentation
+- [System-Level Test Design](./test-design-system.md) - Overall testing strategy
+- [Architecture Tests](../tests/arch/) - Hexagonal boundary enforcement
+- [AGENTS.md](../AGENTS.md) - AI agent testing guidelines
