@@ -378,6 +378,16 @@ pub mod fixtures {
     pub const TEST_NOTE_ID: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0001);
 
+    /// Earlier UUID for time-ordering tests (UUID v7 format with earlier
+    /// timestamp).
+    pub const TEST_NOTE_ID_EARLIER: Uuid =
+        Uuid::from_u128(0x0188_0000_0000_0000_8000_0000_0000_0001);
+
+    /// Later UUID for time-ordering tests (UUID v7 format with later
+    /// timestamp).
+    pub const TEST_NOTE_ID_LATER: Uuid =
+        Uuid::from_u128(0x0188_0000_0000_0001_8000_0000_0000_0002);
+
     /// Test fixture: Create example frontmatter with realistic field values.
     ///
     /// # Panics
@@ -655,22 +665,20 @@ mod tests {
         #[expect(clippy::disallowed_methods, reason = "Test fixture creation")]
         fn generates_sequential_uuids() {
             // GIVEN: two UUIDs with different timestamps (v7 format embeds
-            // timestamp) Use fixed UUIDs that represent sequential
-            // time order
-            let earlier_uuid =
-                Uuid::from_u128(0x0188_0000_0000_0000_8000_0000_0000_0001);
-            let later_uuid =
-                Uuid::from_u128(0x0188_0000_0000_0001_8000_0000_0000_0002);
+            // timestamp) Use fixed test constants that represent
+            // sequential time order
+            use super::fixtures::{TEST_NOTE_ID_EARLIER, TEST_NOTE_ID_LATER};
 
             // WHEN: creating notes with time-ordered UUIDs
-            let note1 = Note::new(earlier_uuid, "one.md".into()).unwrap();
-            let note2 = Note::new(later_uuid, "two.md".into()).unwrap();
+            let note1 =
+                Note::new(TEST_NOTE_ID_EARLIER, "one.md".into()).unwrap();
+            let note2 = Note::new(TEST_NOTE_ID_LATER, "two.md".into()).unwrap();
 
             // THEN: later UUIDs sort after earlier ones
             assert!(
                 note2.id > note1.id,
-                "UUIDv7 should maintain time-based ordering: {earlier_uuid} < \
-                 {later_uuid}"
+                "UUIDv7 should maintain time-based ordering: \
+                 {TEST_NOTE_ID_EARLIER} < {TEST_NOTE_ID_LATER}"
             );
         }
     }

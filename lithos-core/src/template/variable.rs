@@ -469,8 +469,15 @@ mod tests {
         let default_val = def.get_default_value();
 
         // THEN: the default value is correctly exposed
-        assert!(has_default);
-        assert_eq!(default_val, Some(serde_json::json!("Title")));
+        assert!(
+            has_default,
+            "Variable definition should indicate that a default value is set"
+        );
+        assert_eq!(
+            default_val,
+            Some(serde_json::json!("Title")),
+            "Default value should match the configured value"
+        );
     }
 
     #[test]
