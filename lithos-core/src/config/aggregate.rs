@@ -663,7 +663,6 @@ mod tests {
     }
 
     mod validate {
-        use lithos_test_utils::assert_err_kind;
         use rstest::rstest;
 
         use super::*;
@@ -717,16 +716,16 @@ mod tests {
                     // for Config validation.
                     match field_name {
                         "vault_path" => {
-                            assert_err_kind!(
+                            assert!(matches!(
                                 result.as_ref(),
-                                ConfigError::ValidationFailed { .. }
-                            );
+                                Err(ConfigError::ValidationFailed { .. })
+                            ));
                         }
                         "log_level" => {
-                            assert_err_kind!(
+                            assert!(matches!(
                                 result.as_ref(),
-                                ConfigError::InvalidEnumValue { .. }
-                            );
+                                Err(ConfigError::InvalidEnumValue { .. })
+                            ));
                         }
                         _ => panic!(
                             "Unsupported field in test matrix: {field_name}"
@@ -734,6 +733,8 @@ mod tests {
                     }
 
                     let err = result.unwrap_err();
+                    // Verify error variant and extract field name in single
+                    // match
                     #[expect(
                         clippy::wildcard_enum_match_arm,
                         reason = "Test safety boundary: wildcards in \
@@ -742,25 +743,36 @@ mod tests {
                                   handled, but acceptable here to fail tests \
                                   on unexpected variants."
                     )]
-                    match err {
+                    let field = match err {
                         ConfigError::ValidationFailed {
-                            field,
-                            ..
-                        }
-                        | ConfigError::InvalidEnumValue {
                             field,
                             ..
                         } => {
                             assert_eq!(
-                                field.as_ref(),
-                                field_name,
-                                "Error reported for wrong field"
+                                field_name, "vault_path",
+                                "ValidationFailed should only occur for \
+                                 vault_path in this test"
                             );
+                            field
                         }
-                        _ => panic!(
-                            "Should have been caught by assert_err_kind!"
-                        ),
-                    }
+                        ConfigError::InvalidEnumValue {
+                            field,
+                            ..
+                        } => {
+                            assert_eq!(
+                                field_name, "log_level",
+                                "InvalidEnumValue should only occur for \
+                                 log_level in this test"
+                            );
+                            field
+                        }
+                        _ => panic!("Unexpected error variant: {err:?}"),
+                    };
+                    assert_eq!(
+                        field.as_ref(),
+                        field_name,
+                        "Error reported for wrong field"
+                    );
                 }
             }
         }

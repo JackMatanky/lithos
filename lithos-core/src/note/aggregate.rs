@@ -450,15 +450,10 @@ pub mod fixtures {
 #[expect(
     clippy::arbitrary_source_item_ordering,
     clippy::panic,
-    clippy::disallowed_methods,
     reason = "Test module organization and behavior verification patterns; \
               unwrap/expect acceptable in tests."
 )]
 mod tests {
-    // # LINT_DISABLE_REASON: Standard test utilities and behavioral
-    // verification patterns.
-    use lithos_test_utils::assert_err_kind;
-
     use super::*;
     use crate::note::{
         frontmatter::FieldValue,
@@ -648,7 +643,7 @@ mod tests {
                     "Expected path '{path}' to be valid"
                 ),
                 Err(NoteError::InvalidPath(_)) => {
-                    assert_err_kind!(result, NoteError::InvalidPath(_));
+                    assert!(matches!(result, Err(NoteError::InvalidPath(_))));
                 }
                 Err(e) => panic!("Unexpected error kind in matrix: {e:?}"),
             }
@@ -684,14 +679,14 @@ mod tests {
         fn succeeds_when_all_entities_are_valid() {
             // GIVEN: a note aggregate with consistent sub-entities
             let note_id = Uuid::now_v7();
-            let note = NoteBuilder::new()
-                .id(note_id)
-                .path(NotePath::new("valid.md".to_owned()).expect("Valid path"))
-                .tags(vec![Tag::new("#work").expect("Valid tag")])
-                .headings(vec![
+            let note = note_fixture(
+                note_id,
+                "valid.md",
+                vec![Tag::new("#work").expect("Valid tag")],
+                vec![
                     Heading::new(1, "Title".into(), 0).expect("Valid heading"),
-                ])
-                .links(vec![
+                ],
+                vec![
                     Link::new_wikilink(
                         Target::Unresolved {
                             raw: "target.md".into(),
@@ -701,8 +696,8 @@ mod tests {
                         0,
                     )
                     .expect("Valid link"),
-                ])
-                .build();
+                ],
+            );
 
             // WHEN: validating the aggregate
             let result = note.validate();
@@ -716,17 +711,30 @@ mod tests {
         }
     }
 
-    use lithos_test_utils::test_builder;
-
-    test_builder!(NoteBuilder, Note, {
-        id: Uuid = Uuid::now_v7(),
-        path: NotePath = NotePath::new("default.md".to_owned()).expect("Valid default path"),
-        frontmatter: Option<Frontmatter> = None,
-        links: Vec<Link> = vec![],
-        tags: Vec<Tag> = vec![],
-        headings: Vec<Heading> = vec![],
-        tasks: Vec<Task> = vec![],
-        sections: Vec<Section> = vec![],
-        pending_events: Vec<NoteEvents> = vec![],
-    });
+    /// Test fixture: Create a Note with custom fields for validation tests.
+    /// Direct struct construction bypasses `Note::new()` validation.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test fixture uses expect() for initialization; panics here \
+                  indicate broken test data setup."
+    )]
+    fn note_fixture(
+        id: Uuid,
+        path: &str,
+        tags: Vec<Tag>,
+        headings: Vec<Heading>,
+        links: Vec<Link>,
+    ) -> Note {
+        Note {
+            id,
+            path: NotePath::new(path.to_owned()).expect("Valid test path"),
+            frontmatter: None,
+            links,
+            tags,
+            headings,
+            tasks: vec![],
+            sections: vec![],
+            pending_events: vec![],
+        }
+    }
 }
