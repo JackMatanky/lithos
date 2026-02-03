@@ -646,28 +646,34 @@ mod tests {
 
     // 3.4-UNIT-025: `should_validate_template_name_format_across_edge_cases`.
     // Priority: P2.
-    proptest! {
-        #[test]
-        fn should_validate_template_name_format_across_edge_cases(
-            name in "[a-zA-Z0-9_-]{1,64}"
-        ) {
-            // GIVEN: a generated valid identifier
-            // WHEN: constructing a template with the identifier
-            let result = Template::new(
-                name.clone(),
-                "content".to_owned(),
-                HashMap::new(),
-                None,
-                Metadata::default(),
-            );
+    #[test]
+    fn should_validate_template_name_format_across_edge_cases() {
+        use proptest::{prelude::*, test_runner::TestRunner};
 
-            // THEN: construction succeeds
-            prop_assert!(
-                result.is_ok(),
-                "Template with valid name '{}' should be created",
-                name
-            );
-        }
+        let mut runner = TestRunner::deterministic();
+        let strategy = "[a-zA-Z0-9_-]{1,64}";
+
+        runner
+            .run(&strategy, |name| {
+                // GIVEN: a generated valid identifier
+                // WHEN: constructing a template with the identifier
+                let result = Template::new(
+                    name.clone(),
+                    "content".to_owned(),
+                    HashMap::new(),
+                    None,
+                    Metadata::default(),
+                );
+
+                // THEN: construction succeeds
+                prop_assert!(
+                    result.is_ok(),
+                    "Template with valid name '{}' should be created",
+                    name
+                );
+                Ok(())
+            })
+            .unwrap();
     }
 
     /// 3.4-UNIT-026: `should_compose_templates_with_sections`.
