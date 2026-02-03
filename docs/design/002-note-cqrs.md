@@ -183,8 +183,6 @@ These structs make commands extensible (future fields) without breaking call sit
 
 - **Zero-copy strategy**
 
-- **Zero-copy strategy**
-
 Because trait-object methods cannot accept generic closures, the zero-copy API is provided on a **concrete** query type (or a separate non-trait component) used directly by high-performance callers.
 
 Target concrete methods:

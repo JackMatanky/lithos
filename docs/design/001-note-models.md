@@ -25,7 +25,7 @@ Current implementation lives in:
 - `lithos-core/src/note/task.rs` (`Task`, `TaskStatus`)
 - `lithos-core/src/note/structure.rs` (`Heading`, `Section`)
 - `lithos-core/src/note/events.rs` (`NoteCreated`, `FrontmatterValidated`, `NoteEvents`)
-- `lithos-core/src/note/frontmatter.rs` (covered by `docs/design/004-note-frontmatter.md`)
+- `lithos-core/src/note/frontmatter.rs` (covered by `docs/design/003-note-frontmatter.md`)
 
 System constraints:
 
@@ -140,7 +140,7 @@ The note model is a domain component:
 - Persisted in the DB.
 - Queried by CQRS read operations.
 
-Frontmatter is specified separately in `docs/design/004-note-frontmatter.md` and treated as a child value object.
+Frontmatter is specified separately in `docs/design/003-note-frontmatter.md` and treated as a child value object.
 
 ### 3.2 Component & Interface Specifications
 
