@@ -288,32 +288,43 @@ mod tests {
     }
 
     mod proptests {
-        use proptest::prelude::*;
+        use proptest::{prelude::*, test_runner::TestRunner};
 
         use super::*;
 
-        proptest! {
-            #[test]
-            fn rejects_invalid_characters_in_segments(
-                s in "#[a-zA-Z0-9_-]*/[ !@#$%^&*()]+/[a-zA-Z0-9_-]*"
-            ) {
-                let result = Tag::new(&s);
-                prop_assert!(
-                    result.is_err(),
-                    "Tag with invalid characters '{s}' should be rejected"
-                );
-            }
+        #[test]
+        fn rejects_invalid_characters_in_segments() {
+            let mut runner = TestRunner::deterministic();
+            let strategy =
+                "#[a-zA-Z0-9_-]*/[ !@#$%^&*()]+/[a-zA-Z0-9_-]*".prop_map(|s| s);
 
-            #[test]
-            fn accepts_valid_alphanumeric_tags(
-                s in "#[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*"
-            ) {
-                let result = Tag::new(&s);
-                prop_assert!(
-                    result.is_ok(),
-                    "Valid tag '{s}' should be accepted"
-                );
-            }
+            runner
+                .run(&strategy, |s| {
+                    let result = Tag::new(&s);
+                    prop_assert!(
+                        result.is_err(),
+                        "Tag with invalid characters '{s}' should be rejected"
+                    );
+                    Ok(())
+                })
+                .expect("Deterministic proptest should not fail");
+        }
+
+        #[test]
+        fn accepts_valid_alphanumeric_tags() {
+            let mut runner = TestRunner::deterministic();
+            let strategy = "#[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*".prop_map(|s| s);
+
+            runner
+                .run(&strategy, |s| {
+                    let result = Tag::new(&s);
+                    prop_assert!(
+                        result.is_ok(),
+                        "Valid tag '{s}' should be accepted"
+                    );
+                    Ok(())
+                })
+                .expect("Deterministic proptest should not fail");
         }
     }
 }
