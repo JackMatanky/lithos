@@ -486,54 +486,90 @@ mod tests {
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test unwrap")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Setup phase - test fixture extraction"
+        )]
         fn should_dispatch_json_by_content() {
             let dispatcher = Dispatcher::new();
             let result: Result<serde_json::Value, _> =
                 dispatcher.parse(Path::new("config"), fixtures::VALID_JSON);
-            assert!(result.is_ok());
+            assert!(
+                result.is_ok(),
+                "JSON should be dispatched by content when extension is \
+                 missing: {result:?}"
+            );
+            let value = result.expect("JSON should be parsed");
             assert_eq!(
-                result.unwrap().get("name").and_then(|v| v.as_str()),
-                Some("test")
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test"),
+                "Parsed JSON should contain 'name' field"
             );
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test unwrap")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Setup phase - test fixture extraction"
+        )]
         fn should_dispatch_yaml_by_content() {
             let dispatcher = Dispatcher::new();
             let result: Result<serde_yaml::Value, _> =
                 dispatcher.parse(Path::new("config"), fixtures::VALID_YAML);
-            assert!(result.is_ok());
+            assert!(
+                result.is_ok(),
+                "YAML should be dispatched by content when extension is \
+                 missing: {result:?}"
+            );
+            let value = result.expect("YAML should be parsed");
             assert_eq!(
-                result.unwrap().get("name").and_then(|v| v.as_str()),
-                Some("test")
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test"),
+                "Parsed YAML should contain 'name' field"
             );
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test unwrap")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Setup phase - test fixture extraction"
+        )]
         fn should_dispatch_toml_by_content() {
             let dispatcher = Dispatcher::new();
             let result: Result<toml::Value, _> =
                 dispatcher.parse(Path::new("config"), fixtures::VALID_TOML);
-            assert!(result.is_ok());
+            assert!(
+                result.is_ok(),
+                "TOML should be dispatched by content when extension is \
+                 missing: {result:?}"
+            );
+            let value = result.expect("TOML should be parsed");
             assert_eq!(
-                result.unwrap().get("name").and_then(|v| v.as_str()),
-                Some("test")
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test"),
+                "Parsed TOML should contain 'name' field"
             );
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test unwrap")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Setup phase - test fixture extraction"
+        )]
         fn should_prioritize_extension_over_content() {
             let dispatcher = Dispatcher::new();
             let result: Result<serde_json::Value, _> = dispatcher
                 .parse(Path::new("config.toml"), fixtures::VALID_JSON);
-            assert!(result.is_ok());
+            assert!(
+                result.is_ok(),
+                "Extension should take priority over content detection: \
+                 {result:?}"
+            );
+            let value = result.expect("JSON should be parsed via TOML parser");
             assert_eq!(
-                result.unwrap().get("name").and_then(|v| v.as_str()),
-                Some("test")
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test"),
+                "Parsed value should contain 'name' field"
             );
         }
     }
@@ -552,13 +588,15 @@ mod tests {
             let result = Dispatcher::new()
                 .parse::<serde_json::Value>(Path::new(&path_str), "");
             if format == "json" {
-                assert!(result.is_err());
+                assert!(
+                    result.is_err(),
+                    "JSON should reject empty content, got: {result:?}"
+                );
             } else {
-                #[expect(
-                    clippy::disallowed_methods,
-                    reason = "Test uses unwrap() for clear failure messages."
-                )]
-                result.unwrap();
+                assert!(
+                    result.is_ok(),
+                    "TOML/YAML should accept empty content, got: {result:?}"
+                );
             }
         }
 
@@ -571,21 +609,33 @@ mod tests {
             #[case] ext: &str,
         ) {
             let path_str = format!("test.{ext}");
-            Dispatcher::new()
-                .parse::<serde_json::Value>(Path::new(&path_str), content)
-                .unwrap_err();
+            let result = Dispatcher::new()
+                .parse::<serde_json::Value>(Path::new(&path_str), content);
+            assert!(
+                result.is_err(),
+                "Malformed {ext} content should be rejected, got: {result:?}"
+            );
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test unwrap")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Setup phase - test fixture extraction"
+        )]
         fn should_handle_mixed_line_endings() {
             let mixed = "name = \"test\"\r\nversion = 1\nenabled = true";
             let result: Result<toml::Value, _> =
                 Dispatcher::new().parse(Path::new("test.toml"), mixed);
-            assert!(result.is_ok());
+            assert!(
+                result.is_ok(),
+                "TOML should handle mixed line endings, got: {result:?}"
+            );
+            let value =
+                result.expect("TOML with mixed line endings should parse");
             assert_eq!(
-                result.unwrap().get("name").and_then(|v| v.as_str()),
-                Some("test")
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test"),
+                "Parsed TOML should contain 'name' field"
             );
         }
     }
