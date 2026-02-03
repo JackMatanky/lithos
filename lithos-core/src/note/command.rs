@@ -170,7 +170,7 @@ impl super::ports::Command for Command<'_> {
     reason = "Test code uses unwrap/expect for clarity"
 )]
 mod tests {
-    use tempfile::tempdir;
+    use tempfile::{TempDir, tempdir};
     use uuid::Uuid;
 
     use super::*;
@@ -180,11 +180,19 @@ mod tests {
         tag::Tag,
     };
 
-    #[test]
-    fn create_persists_note_and_path_index() {
+    const TEST_MISSING_ID: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0301);
+
+    fn test_db() -> (TempDir, Database) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("notes.redb");
         let db = Database::open(&path).unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn create_persists_note_and_path_index() {
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
         let note = cmd.create("notes/a.md".to_owned()).unwrap();
@@ -207,9 +215,7 @@ mod tests {
 
     #[test]
     fn update_updates_path_and_tags_indexes() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("notes.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
         let mut note = cmd.create("notes/a.md".to_owned()).unwrap();
@@ -263,9 +269,7 @@ mod tests {
 
     #[test]
     fn delete_removes_note_and_indexes() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("notes.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
         let mut note = cmd.create("notes/a.md".to_owned()).unwrap();
@@ -303,14 +307,11 @@ mod tests {
 
     #[test]
     fn delete_missing_note_is_noop() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("notes.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
         let _existing = cmd.create("notes/existing.md".to_owned()).unwrap();
-        let missing_id = Uuid::now_v7();
-        let result = cmd.delete(missing_id);
+        let result = cmd.delete(TEST_MISSING_ID);
 
         assert!(
             result.is_ok(),
