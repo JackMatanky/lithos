@@ -367,96 +367,6 @@ impl NotePath {
 }
 
 #[cfg(test)]
-/// Test fixtures for Note model testing.
-pub mod fixtures {
-    use std::collections::HashMap;
-
-    use super::*;
-    use crate::note::frontmatter::FieldValue;
-
-    /// Fixed UUID for deterministic tests (valid UUID v7 format).
-    pub const TEST_NOTE_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0001);
-
-    /// Earlier UUID for time-ordering tests (UUID v7 format with earlier
-    /// timestamp).
-    pub const TEST_NOTE_ID_EARLIER: Uuid =
-        Uuid::from_u128(0x0188_0000_0000_0000_8000_0000_0000_0001);
-
-    /// Later UUID for time-ordering tests (UUID v7 format with later
-    /// timestamp).
-    pub const TEST_NOTE_ID_LATER: Uuid =
-        Uuid::from_u128(0x0188_0000_0000_0001_8000_0000_0000_0002);
-
-    /// Test fixture: Create example frontmatter with realistic field values.
-    ///
-    /// # Panics
-    /// Panics if the hardcoded date string is invalid or frontmatter
-    /// construction fails.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture - unwrap/expect acceptable in test code"
-    )]
-    #[inline]
-    #[must_use]
-    pub fn example_frontmatter() -> Frontmatter {
-        let mut fields = HashMap::new();
-        fields.insert(
-            "title".to_owned(),
-            FieldValue::String("Test Note".to_owned()),
-        );
-        fields.insert(
-            "created".to_owned(),
-            FieldValue::Date(
-                chrono::DateTime::parse_from_rfc3339("2024-01-15T14:30:00Z")
-                    .unwrap()
-                    .timestamp(),
-            ),
-        );
-        Frontmatter::new(fields).expect("Valid frontmatter")
-    }
-
-    /// Test fixture: Create example hierarchical tag for testing.
-    ///
-    /// # Panics
-    /// Panics if the hardcoded tag string is invalid.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture - unwrap/expect acceptable in test code"
-    )]
-    #[inline]
-    #[must_use]
-    pub fn example_tag() -> Tag {
-        Tag::new("#work/project").expect("Valid tag")
-    }
-
-    /// Test fixture: Create complete example Note aggregate for testing.
-    ///
-    /// # Panics
-    /// Panics if the hardcoded path is invalid.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture - unwrap/expect acceptable in test code"
-    )]
-    #[inline]
-    #[must_use]
-    pub fn example_note() -> Note {
-        Note {
-            id: TEST_NOTE_ID,
-            path: NotePath::new("test/example.md".to_owned())
-                .expect("Valid path"),
-            frontmatter: Some(example_frontmatter()),
-            links: vec![],
-            tags: vec![example_tag()],
-            headings: vec![],
-            tasks: vec![],
-            sections: vec![],
-            pending_events: vec![],
-        }
-    }
-}
-
-#[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
     clippy::panic,
@@ -464,12 +374,35 @@ pub mod fixtures {
               unwrap/expect acceptable in tests."
 )]
 mod tests {
-    use super::{fixtures::TEST_NOTE_ID, *};
+    use fixtures::TEST_NOTE_ID;
+
+    use super::*;
     use crate::note::{
         frontmatter::FieldValue,
         link::{EmbedType, Target},
         task::TaskStatus,
     };
+
+    /// Test fixtures for Note model testing.
+    mod fixtures {
+        use super::*;
+
+        /// Fixed UUID for deterministic tests (valid UUID v7 format).
+        pub const TEST_NOTE_ID: Uuid =
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0001);
+
+        /// Earlier UUID for time-ordering tests (UUID v7 format with earlier
+        /// timestamp).
+        pub const TEST_NOTE_ID_EARLIER: Uuid =
+            Uuid::from_u128(0x0188_0000_0000_0000_8000_0000_0000_0001);
+
+        /// Later UUID for time-ordering tests (UUID v7 format with later
+        /// timestamp).
+        pub const TEST_NOTE_ID_LATER: Uuid =
+            Uuid::from_u128(0x0188_0000_0000_0001_8000_0000_0000_0002);
+
+        // Additional fixtures can be added here as tests expand.
+    }
 
     mod accessors {
         use super::*;
