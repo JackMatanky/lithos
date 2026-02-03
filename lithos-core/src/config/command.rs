@@ -70,15 +70,20 @@ impl<'db> super::ports::Command for Command<'db> {
     reason = "Test code uses unwrap/expect for clarity"
 )]
 mod tests {
-    use tempfile::tempdir;
+    use tempfile::{TempDir, tempdir};
 
     use super::*;
 
-    #[test]
-    fn save_global_persists_configuration() {
+    fn test_db() -> (TempDir, Database) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("config.redb");
         let db = Database::open(&path).unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn save_global_persists_configuration() {
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
         let global = Global::default();
@@ -94,9 +99,7 @@ mod tests {
 
     #[test]
     fn save_vault_persists_configuration() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("config.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
         let vault = Vault::default();
