@@ -7,7 +7,6 @@
 //! # Architecture
 //!
 //! - `Database` - Concrete type wrapping `redb::Database`
-//! - `RkyvValue<T>` - Newtype wrapper for rkyv-serialized values (per ADR 0002)
 //! - Closure-based API - Transactions scoped within closures (safe, no unsafe)
 //! - Sync-first design - No async overhead
 //!
@@ -29,6 +28,8 @@ use std::path::Path;
 use redb::{ReadableDatabase as _, TableDefinition};
 use rkyv::util::AlignedVec;
 
+const DATA_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("data");
+
 /// Concrete database type wrapping redb.
 ///
 /// Provides zero-copy read/write primitives using rkyv serialization.
@@ -37,14 +38,6 @@ use rkyv::util::AlignedVec;
 #[non_exhaustive]
 pub struct Database {
     inner: redb::Database,
-}
-
-/// A single write transaction for batching many operations.
-///
-/// This is intentionally scoped to a closure (see [`Database::batch_write`])
-/// so callers cannot accidentally hold a transaction across unrelated work.
-pub struct WriteBatch {
-    tx: redb::WriteTransaction,
 }
 
 /// Database error types.
@@ -117,6 +110,14 @@ impl From<redb::CommitError> for DbError {
     fn from(e: redb::CommitError) -> Self {
         Self::Transaction(e.to_string())
     }
+}
+
+/// A single write transaction for batching many operations.
+///
+/// This is intentionally scoped to a closure (see [`Database::batch_write`])
+/// so callers cannot accidentally hold a transaction across unrelated work.
+pub struct WriteBatch {
+    tx: redb::WriteTransaction,
 }
 
 impl Database {
@@ -197,12 +198,10 @@ impl Database {
             >,
         F: FnOnce(&rkyv::Archived<V>) -> R,
     {
-        const TABLE: TableDefinition<&str, &[u8]> =
-            TableDefinition::new("data");
         let namespaced_key = format!("{table}:{key}");
 
         let tx = self.inner.begin_read()?;
-        let table_ref = tx.open_table(TABLE)?;
+        let table_ref = tx.open_table(DATA_TABLE)?;
 
         match table_ref.get(namespaced_key.as_str())? {
             Some(value) => {
@@ -269,12 +268,10 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        const TABLE: TableDefinition<&str, &[u8]> =
-            TableDefinition::new("data");
         let namespaced_key = format!("{table}:{key}");
 
         let tx = self.inner.begin_read()?;
-        let table_ref = tx.open_table(TABLE)?;
+        let table_ref = tx.open_table(DATA_TABLE)?;
 
         match table_ref.get(namespaced_key.as_str())? {
             Some(value) => {
@@ -339,8 +336,6 @@ impl Database {
                 >,
             >,
     {
-        const TABLE: TableDefinition<&str, &[u8]> =
-            TableDefinition::new("data");
         let namespaced_key = format!("{table}:{key}");
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(value)
@@ -348,7 +343,7 @@ impl Database {
 
         let tx = self.inner.begin_write()?;
         {
-            let mut table_ref = tx.open_table(TABLE)?;
+            let mut table_ref = tx.open_table(DATA_TABLE)?;
             table_ref.insert(namespaced_key.as_str(), bytes.as_slice())?;
         };
         tx.commit()?;
@@ -376,13 +371,11 @@ impl Database {
     /// ```
     #[inline]
     pub fn delete(&self, table: &str, key: &str) -> Result<bool, DbError> {
-        const TABLE: TableDefinition<&str, &[u8]> =
-            TableDefinition::new("data");
         let namespaced_key = format!("{table}:{key}");
 
         let tx = self.inner.begin_write()?;
         let existed = {
-            let mut table_ref = tx.open_table(TABLE)?;
+            let mut table_ref = tx.open_table(DATA_TABLE)?;
             table_ref.remove(namespaced_key.as_str())?.is_some()
         };
         tx.commit()?;
@@ -579,12 +572,10 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        const TABLE: TableDefinition<&str, &[u8]> =
-            TableDefinition::new("data");
         let prefix = format!("{table}:");
 
         let tx = self.inner.begin_read()?;
-        let table_ref = tx.open_table(TABLE)?;
+        let table_ref = tx.open_table(DATA_TABLE)?;
 
         let mut results = Vec::new();
         for result in table_ref.range(prefix.as_str()..)? {
@@ -637,14 +628,12 @@ impl WriteBatch {
                 >,
             >,
     {
-        const TABLE: TableDefinition<&str, &[u8]> =
-            TableDefinition::new("data");
         let namespaced_key = format!("{table}:{key}");
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(value)
             .map_err(|e| DbError::Serialization(e.to_string()))?;
         {
-            let mut table_ref = self.tx.open_table(TABLE)?;
+            let mut table_ref = self.tx.open_table(DATA_TABLE)?;
             table_ref.insert(namespaced_key.as_str(), bytes.as_slice())?;
         };
         Ok(())
@@ -657,12 +646,10 @@ impl WriteBatch {
     /// Returns `DbError` if the underlying redb table operation fails.
     #[inline]
     pub fn delete(&mut self, table: &str, key: &str) -> Result<bool, DbError> {
-        const TABLE: TableDefinition<&str, &[u8]> =
-            TableDefinition::new("data");
         let namespaced_key = format!("{table}:{key}");
 
         let existed = {
-            let mut table_ref = self.tx.open_table(TABLE)?;
+            let mut table_ref = self.tx.open_table(DATA_TABLE)?;
             table_ref.remove(namespaced_key.as_str())?.is_some()
         };
         Ok(existed)
