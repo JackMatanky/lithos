@@ -56,3 +56,62 @@ impl<'db> Command<'db> {
         })
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test code uses unwrap/expect for clarity"
+)]
+mod tests {
+    use tempfile::tempdir;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::schema::aggregate::SchemaName;
+
+    #[test]
+    fn save_persists_schema_by_name() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("schema.redb");
+        let db = Database::open(&path).unwrap();
+        let cmd = Command::new(&db);
+
+        let schema = Schema::new(
+            Uuid::now_v7(),
+            SchemaName::new("note".to_owned()).unwrap(),
+            vec![],
+        )
+        .unwrap();
+
+        cmd.save(&schema).unwrap();
+
+        let stored = db.get_owned::<Schema>("schemas", "note").unwrap();
+        let stored_schema = stored.expect("Stored schema should exist");
+        assert_eq!(
+            stored_schema.name().as_ref(),
+            "note",
+            "Stored schema name should match"
+        );
+    }
+
+    #[test]
+    fn delete_removes_schema_by_name() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("schema.redb");
+        let db = Database::open(&path).unwrap();
+        let cmd = Command::new(&db);
+
+        let schema = Schema::new(
+            Uuid::now_v7(),
+            SchemaName::new("project".to_owned()).unwrap(),
+            vec![],
+        )
+        .unwrap();
+        cmd.save(&schema).unwrap();
+
+        cmd.delete("project").unwrap();
+
+        let stored = db.get_owned::<Schema>("schemas", "project").unwrap();
+        assert!(stored.is_none(), "Deleted schema should not exist");
+    }
+}
