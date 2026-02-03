@@ -152,12 +152,23 @@ mod tests {
         property_spec::{BoolSpec, PropertySpec},
     };
 
+    const TEST_SCHEMA_ID_PARENT: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0501);
+    const TEST_SCHEMA_ID_CHILD: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0502);
+    const TEST_PROPERTY_ID_PARENT: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0503);
+    const TEST_PROPERTY_ID_STATUS: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0504);
+    const TEST_PROPERTY_ID_EXCLUDE: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0505);
+
     #[test]
     fn resolve_includes_parent_properties() {
         // GIVEN: a parent schema with a property
         let bank = PropertyBank::new();
         let parent_prop = Property::new(
-            Uuid::now_v7(),
+            TEST_PROPERTY_ID_PARENT,
             PropertyName::new("parent".to_owned()).expect("valid name"),
             true,
             false,
@@ -169,7 +180,7 @@ mod tests {
             .register(parent_prop.clone())
             .expect("register property");
         let parent_schema = Schema::new(
-            Uuid::now_v7(),
+            TEST_SCHEMA_ID_PARENT,
             SchemaName::new("parent".to_owned()).expect("valid name"),
             vec![parent_prop],
         )
@@ -177,7 +188,7 @@ mod tests {
 
         // WHEN: resolving a child raw schema
         let raw = RawSchema::new(
-            Uuid::now_v7(),
+            TEST_SCHEMA_ID_CHILD,
             SchemaName::new("child".to_owned()).expect("valid name"),
             None,
             HashSet::new(),
@@ -195,7 +206,7 @@ mod tests {
         // GIVEN: a property bank with a property
         let mut bank = PropertyBank::new();
         let property = Property::new(
-            Uuid::now_v7(),
+            TEST_PROPERTY_ID_STATUS,
             PropertyName::new("status".to_owned()).expect("valid name"),
             true,
             false,
@@ -221,7 +232,7 @@ mod tests {
         // GIVEN: a parent schema with a property
         let bank = PropertyBank::new();
         let prop = Property::new(
-            Uuid::now_v7(),
+            TEST_PROPERTY_ID_EXCLUDE,
             PropertyName::new("p".to_owned()).unwrap(),
             true,
             false,
@@ -229,7 +240,7 @@ mod tests {
         )
         .unwrap();
         let parent = Schema::new(
-            Uuid::now_v7(),
+            TEST_SCHEMA_ID_PARENT,
             SchemaName::new("parent".into()).unwrap(),
             vec![prop],
         )
@@ -239,7 +250,7 @@ mod tests {
         let mut excludes = HashSet::new();
         excludes.insert(PropertyName::new("p".to_owned()).unwrap());
         let raw = RawSchema::new(
-            Uuid::now_v7(),
+            TEST_SCHEMA_ID_CHILD,
             SchemaName::new("child".into()).unwrap(),
             None,
             excludes,
