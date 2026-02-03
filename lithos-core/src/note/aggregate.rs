@@ -654,13 +654,24 @@ mod tests {
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test fixture creation")]
         fn generates_sequential_uuids() {
-            // WHEN: creating notes sequentially
-            let note1 = Note::new(Uuid::now_v7(), "one.md".into()).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(10));
-            let note2 = Note::new(Uuid::now_v7(), "two.md".into()).unwrap();
+            // GIVEN: two UUIDs with different timestamps (v7 format embeds
+            // timestamp) Use fixed UUIDs that represent sequential
+            // time order
+            let earlier_uuid =
+                Uuid::from_u128(0x0188_0000_0000_0000_8000_0000_0000_0001);
+            let later_uuid =
+                Uuid::from_u128(0x0188_0000_0000_0001_8000_0000_0000_0002);
+
+            // WHEN: creating notes with time-ordered UUIDs
+            let note1 = Note::new(earlier_uuid, "one.md".into()).unwrap();
+            let note2 = Note::new(later_uuid, "two.md".into()).unwrap();
 
             // THEN: later UUIDs sort after earlier ones
-            assert!(note2.id > note1.id);
+            assert!(
+                note2.id > note1.id,
+                "UUIDv7 should maintain time-based ordering: {earlier_uuid} < \
+                 {later_uuid}"
+            );
         }
     }
 
