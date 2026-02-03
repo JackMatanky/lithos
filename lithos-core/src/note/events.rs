@@ -131,12 +131,14 @@ impl NoteCreated {
 mod tests {
     use super::*;
 
+    const TEST_NOTE_ID: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0401);
+
     #[test]
     fn frontmatter_validated_event_populates_fields() {
-        let id = Uuid::now_v7();
-        let event = FrontmatterValidated::new(id, 3, 1_234_567_890);
+        let event = FrontmatterValidated::new(TEST_NOTE_ID, 3, 1_234_567_890);
 
-        assert_eq!(event.note_id, id, "Note ID should match input");
+        assert_eq!(event.note_id, TEST_NOTE_ID, "Note ID should match input");
         assert_eq!(event.field_count, 3, "Field count should match input");
         assert_eq!(
             event.timestamp, 1_234_567_890,
@@ -146,19 +148,19 @@ mod tests {
 
     #[test]
     fn note_created_event_populates_fields() {
-        let id = Uuid::now_v7();
-        let event = NoteCreated::new(id, "notes/test.md".to_owned(), 42);
+        let event =
+            NoteCreated::new(TEST_NOTE_ID, "notes/test.md".to_owned(), 42);
 
-        assert_eq!(event.id, id, "Note ID should match input");
+        assert_eq!(event.id, TEST_NOTE_ID, "Note ID should match input");
         assert_eq!(event.path, "notes/test.md", "Path should match input");
         assert_eq!(event.timestamp, 42, "Timestamp should match input");
     }
 
     #[test]
     fn note_events_enum_wraps_variants() {
-        let id = Uuid::now_v7();
-        let validated = FrontmatterValidated::new(id, 1, 10);
-        let created = NoteCreated::new(id, "notes/test.md".to_owned(), 20);
+        let validated = FrontmatterValidated::new(TEST_NOTE_ID, 1, 10);
+        let created =
+            NoteCreated::new(TEST_NOTE_ID, "notes/test.md".to_owned(), 20);
 
         let wrapped_validated =
             NoteEvents::FrontmatterValidated(validated.clone());
