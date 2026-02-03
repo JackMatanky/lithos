@@ -182,7 +182,11 @@ mod tests {
             let result = Task::new(text, TaskStatus::Complete, 0);
 
             // THEN: it returns ValidationFailed
-            assert!(matches!(result, Err(NoteError::Task(_))));
+            assert!(
+                matches!(result, Err(NoteError::Task(_))),
+                "Empty task text should be rejected with Task error, got: \
+                 {result:?}"
+            );
         }
     }
 }
