@@ -631,14 +631,12 @@ mod tests {
         }
     }
 
-    use lithos_test_utils::data::properties::valid_identifier;
-
     // 3.4-UNIT-025: `should_validate_template_name_format_across_edge_cases`.
     // Priority: P2.
     proptest! {
         #[test]
         fn should_validate_template_name_format_across_edge_cases(
-            name in valid_identifier()
+            name in "[a-zA-Z0-9_-]{1,64}"
         ) {
             // GIVEN: a generated valid identifier
             let input = name;
