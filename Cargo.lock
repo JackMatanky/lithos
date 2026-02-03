@@ -959,7 +959,6 @@ dependencies = [
  "chrono",
  "criterion",
  "figment",
- "lithos-test-utils",
  "miette",
  "minijinja",
  "proptest",
