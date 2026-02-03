@@ -69,3 +69,76 @@ impl super::ports::Query for Query<'_> {
         })
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test code uses unwrap/expect for clarity"
+)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+    use crate::config::{command, ports::Query as _};
+
+    #[test]
+    fn load_global_returns_none_when_missing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.redb");
+        let db = Database::open(&path).unwrap();
+        let qry = Query::new(&db);
+
+        let seed = Global::default();
+        db.put("seed", "init", &seed).unwrap();
+
+        let global = qry.load_global().unwrap();
+        assert!(global.is_none(), "Missing global config should return None");
+    }
+
+    #[test]
+    fn load_vault_returns_none_when_missing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.redb");
+        let db = Database::open(&path).unwrap();
+        let qry = Query::new(&db);
+
+        let seed = Global::default();
+        db.put("seed", "init", &seed).unwrap();
+
+        let vault = qry.load_vault().unwrap();
+        assert!(vault.is_none(), "Missing vault config should return None");
+    }
+
+    #[test]
+    fn load_merges_global_and_vault_config() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.redb");
+        let db = Database::open(&path).unwrap();
+
+        let cmd = command::Command::new(&db);
+        let mut global = Global::default();
+        global.filesystem.template.templates_dir =
+            "global_templates".to_owned();
+        cmd.save_global(&global).unwrap();
+
+        let mut vault = Vault::default();
+        vault.filesystem.template.templates_dir = "vault_templates".to_owned();
+        cmd.save_vault(&vault).unwrap();
+
+        let qry = Query::new(&db);
+        let config = qry.load().unwrap();
+
+        assert_eq!(
+            config.vault_metadata.path, "vault",
+            "Query load should use fixed vault path"
+        );
+        assert_eq!(
+            config.vault_filesystem.template.templates_dir, "vault_templates",
+            "Vault templates_dir should take precedence"
+        );
+        assert_eq!(
+            config.global_filesystem.template.templates_dir, "global_templates",
+            "Global templates_dir should be preserved"
+        );
+    }
+}
