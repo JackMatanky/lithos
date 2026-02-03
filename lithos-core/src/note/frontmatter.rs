@@ -555,6 +555,58 @@ impl core::fmt::Display for FieldValueType {
     reason = "Test code uses unwrap/expect for simplicity"
 )]
 mod tests {
+    /// Test fixtures and builders for Frontmatter tests.
+    mod fixtures {
+        use super::super::*;
+
+        /// Builder for creating test Frontmatter instances.
+        pub struct FrontmatterBuilder {
+            fields: HashMap<String, FieldValue>,
+        }
+
+        impl FrontmatterBuilder {
+            pub fn new() -> Self {
+                Self {
+                    fields: HashMap::new(),
+                }
+            }
+
+            pub fn with_string(mut self, key: &str, value: &str) -> Self {
+                self.fields
+                    .insert(key.to_owned(), FieldValue::String(value.into()));
+                self
+            }
+
+            pub fn with_boolean(mut self, key: &str, value: bool) -> Self {
+                self.fields.insert(key.to_owned(), FieldValue::Boolean(value));
+                self
+            }
+
+            pub fn with_number(mut self, key: &str, value: f64) -> Self {
+                self.fields.insert(key.to_owned(), FieldValue::Number(value));
+                self
+            }
+
+            pub fn with_date(mut self, key: &str, timestamp: i64) -> Self {
+                self.fields.insert(key.to_owned(), FieldValue::Date(timestamp));
+                self
+            }
+
+            pub fn with_array(
+                mut self,
+                key: &str,
+                values: Vec<FieldValue>,
+            ) -> Self {
+                self.fields.insert(key.to_owned(), FieldValue::Array(values));
+                self
+            }
+
+            pub fn build(self) -> Result<Frontmatter, NoteError> {
+                Frontmatter::new(self.fields)
+            }
+        }
+    }
+
     mod field_value {
         use chrono::{Datelike as _, TimeZone as _};
 
@@ -662,7 +714,7 @@ mod tests {
     }
 
     mod accessors {
-        use super::super::*;
+        use super::{super::*, fixtures::FrontmatterBuilder};
 
         #[test]
         fn accessors_handle_configured_keys() {
@@ -677,15 +729,12 @@ mod tests {
             )
             .unwrap();
 
-            let mut fields = HashMap::new();
-            fields.insert(
-                "subject".to_owned(),
-                FieldValue::String("Subj".into()),
-            );
-            fields.insert("kind".to_owned(), FieldValue::String("Note".into()));
-            fields
-                .insert("names".to_owned(), FieldValue::String("Alias".into()));
-            let fm = Frontmatter::new(fields).unwrap();
+            let fm = FrontmatterBuilder::new()
+                .with_string("subject", "Subj")
+                .with_string("kind", "Note")
+                .with_string("names", "Alias")
+                .build()
+                .unwrap();
 
             assert_eq!(fm.title(&config), "Subj");
             assert_eq!(fm.file_class(&config), "Note");
@@ -694,47 +743,44 @@ mod tests {
 
         #[test]
         fn has_method_detects_field_presence() {
-            let mut fields = HashMap::new();
-            fields.insert(
-                "title".to_owned(),
-                FieldValue::String("Test".to_owned()),
-            );
-            let fm = Frontmatter::new(fields).unwrap();
-            assert!(fm.has("title"));
-            assert!(!fm.has("missing"));
+            let fm = FrontmatterBuilder::new()
+                .with_string("title", "Test")
+                .build()
+                .unwrap();
+
+            assert!(fm.has("title"), "Should find existing field 'title'");
+            assert!(!fm.has("missing"), "Should not find non-existent field");
         }
 
         #[test]
         fn get_string_array_handles_single_and_multiple() {
-            let mut fields = HashMap::new();
-            fields.insert("single".to_owned(), FieldValue::String("a".into()));
-            fields.insert(
-                "multi".to_owned(),
-                FieldValue::Array(vec![FieldValue::String("b".into())]),
-            );
-            let fm = Frontmatter::new(fields).unwrap();
+            let fm = FrontmatterBuilder::new()
+                .with_string("single", "a")
+                .with_array("multi", vec![FieldValue::String("b".into())])
+                .build()
+                .unwrap();
 
             assert_eq!(
                 fm.get("single").and_then(FieldValue::as_string_array_lossy),
-                Some(vec!["a".to_owned()])
+                Some(vec!["a".to_owned()]),
+                "Single string should convert to array"
             );
             assert_eq!(
                 fm.get("multi").and_then(FieldValue::as_string_array_lossy),
-                Some(vec!["b".to_owned()])
+                Some(vec!["b".to_owned()]),
+                "Array should be returned as-is"
             );
         }
 
         #[test]
         fn get_retrieve_and_coerce_values() {
-            let mut fields = HashMap::new();
-            fields.insert("b".to_owned(), FieldValue::Boolean(true));
-            fields.insert("n".to_owned(), FieldValue::Number(1.0f64));
-            fields.insert("s".to_owned(), FieldValue::String("s".into()));
-            fields.insert(
-                "d".to_owned(),
-                FieldValue::Date(Utc::now().timestamp()),
-            );
-            let fm = Frontmatter::new(fields).unwrap();
+            let fm = FrontmatterBuilder::new()
+                .with_boolean("b", true)
+                .with_number("n", 1.0)
+                .with_string("s", "s")
+                .with_date("d", Utc::now().timestamp())
+                .build()
+                .unwrap();
 
             assert_eq!(fm.get("b").and_then(FieldValue::as_bool), Some(true));
             assert_eq!(
