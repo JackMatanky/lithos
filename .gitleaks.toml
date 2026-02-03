@@ -106,12 +106,11 @@ regexes = [
 
 # Allow specific known false positives
 paths = [
-   '''^docs/refs/''',
    '''^testdata/''',
-   '''^_bmad/bmm/testarch/''',
-   '''^_bmad/bmm/workflows/testarch/''',
-   '''^_bmad/_config/files-manifest\.csv''',
+   '''README\.md''',
+   '''^docs/refs/''',
    '''\.gitleaks\.toml''',
    '''\.pre-commit-config\.yaml''',
-   '''README\.md''',
+   '''^_bmad/tea/workflows/testarch/''',
+   '''^_bmad/_config/files-manifest\.csv''',
 ]
