@@ -619,8 +619,14 @@ mod tests {
         bank.register(prop).unwrap();
 
         // THEN: it should be accessible by both ID and name
-        assert!(bank.get_by_id(id).is_some());
-        assert!(bank.get_by_name("test").is_some());
+        assert!(
+            bank.get_by_id(id).is_some(),
+            "Registered property should be retrievable by ID: {id}"
+        );
+        assert!(
+            bank.get_by_name("test").is_some(),
+            "Registered property should be retrievable by name: 'test'"
+        );
     }
 
     /// 3.3-UNIT-024: `rejects_duplicate_names_with_different_definitions`.
@@ -643,7 +649,10 @@ mod tests {
         let res = bank.register(prop2);
 
         // THEN: it must return a DuplicatePropertyName error
-        assert!(matches!(res, Err(SchemaError::DuplicatePropertyName(_))));
+        assert!(
+            matches!(res, Err(SchemaError::DuplicatePropertyName(_))),
+            "Duplicate property name should be rejected, got: {res:?}"
+        );
     }
 
     /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
@@ -690,11 +699,23 @@ mod tests {
         bank.register(property).unwrap();
 
         // THEN: accessors for id/name work
-        assert!(bank.has_id(id));
-        assert!(bank.has_name("flag"));
-        assert!(bank.get_by_id(id).is_some());
-        assert!(bank.get_by_name("flag").is_some());
-        assert!(bank.get(id.to_string().as_str()).is_some());
+        assert!(bank.has_id(id), "PropertyBank should contain property by ID");
+        assert!(
+            bank.has_name("flag"),
+            "PropertyBank should contain property by name 'flag'"
+        );
+        assert!(
+            bank.get_by_id(id).is_some(),
+            "Should retrieve property by ID: {id}"
+        );
+        assert!(
+            bank.get_by_name("flag").is_some(),
+            "Should retrieve property by name: 'flag'"
+        );
+        assert!(
+            bank.get(id.to_string().as_str()).is_some(),
+            "Should retrieve property by ID string: {id}"
+        );
         #[expect(
             clippy::disallowed_methods,
             reason = "Test uses Result::unwrap() on PropertyBank::decode() \
@@ -705,6 +726,10 @@ mod tests {
         assert_eq!(bank.pending_events().len(), 1);
 
         let events = bank.take_events();
-        assert!(events.is_empty() || events.len() == 1);
+        assert!(
+            events.is_empty() || events.len() == 1,
+            "After take_events, should have 0 or 1 event, got: {} events",
+            events.len()
+        );
     }
 }
