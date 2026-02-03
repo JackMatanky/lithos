@@ -398,6 +398,8 @@ impl Template {
 
 #[cfg(test)]
 mod tests {
+    use chrono::TimeZone as _;
+
     use super::{Frontmatter, Logging, Schema, SettingValue, Template};
 
     /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
@@ -461,7 +463,10 @@ mod tests {
     #[test]
     fn converts_from_datetime() {
         // GIVEN a datetime value
-        let input = chrono::Utc::now();
+        let input = chrono::Utc
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .single()
+            .expect("Valid test datetime");
 
         // WHEN converting into a SettingValue
         let value = SettingValue::from(input);
