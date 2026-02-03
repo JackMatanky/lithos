@@ -111,10 +111,10 @@ For each query, measure the tiers you will actually ship:
 
 ### 6.3 Suggested Criterion structure
 
-- `benches/db_perf.rs`: keep as the storage micro-benchmark suite.
+- `lithos-core/benches/db_perf.rs`: keep as the storage micro-benchmark suite.
 - Add a new suite for end-to-end query shapes (example names):
-  - `benches/instant_queries.rs`
-  - `benches/schema_queries.rs`
+  - `lithos-core/benches/instant_queries.rs`
+  - `lithos-core/benches/schema_queries.rs`
 
 Each suite should:
 
