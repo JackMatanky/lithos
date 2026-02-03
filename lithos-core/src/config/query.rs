@@ -85,19 +85,19 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("config.redb");
         let db = Database::open(&path).unwrap();
-        (dir, db)
-    }
 
-    fn seed_db(db: &Database) {
-        let seed = Global::default();
-        db.put("seed", "init", &seed).unwrap();
+        // Initialize config table (without writing unrelated data)
+        let dummy = Global::default();
+        db.put("config", "_init", &dummy).unwrap();
+        db.delete("config", "_init").unwrap();
+
+        (dir, db)
     }
 
     #[test]
     fn load_global_returns_none_when_missing() {
         let (_dir, db) = test_db();
         let qry = Query::new(&db);
-        seed_db(&db);
 
         let global = qry.load_global().unwrap();
         assert!(global.is_none(), "Missing global config should return None");
@@ -107,7 +107,6 @@ mod tests {
     fn load_vault_returns_none_when_missing() {
         let (_dir, db) = test_db();
         let qry = Query::new(&db);
-        seed_db(&db);
 
         let vault = qry.load_vault().unwrap();
         assert!(vault.is_none(), "Missing vault config should return None");
