@@ -67,6 +67,7 @@ From a performance and correctness perspective, CQRS is the boundary where we mu
 - **rkyv safety**: persisted bytes are untrusted; use safe validation (`rkyv::access` / bytecheck) at trust boundaries.
 - **dyn-compatibility**: if trait objects are used (`&dyn Query`), avoid generic methods on the trait surface.
 - **Lean**: avoid allocations on hot read paths.
+- **Errors**: library surfaces use structured `Result` errors (no `unwrap`/`expect`); reserve `anyhow` for binaries/CLI (see https://github.com/apollographql/rust-best-practices/tree/1c78fa64bb0d5df4a4d18d5923a7ced615f947d1).
 
 ## 2. Guide-Level Explanation (The "What")
 
@@ -178,6 +179,7 @@ Design rules (Rust API Guidelines + Lithos rules):
 - Preserve error structure; avoid `.to_string()` conversions in core.
 - Wrap underlying errors as `source` where applicable.
 - Error messages should be concise and stable.
+- For API and object-safety guidance when exposing trait objects, see the Rust API Guidelines checklist: https://rust-lang.github.io/api-guidelines/checklist.html
 
 ### 3.3 Integration & Data Flow
 

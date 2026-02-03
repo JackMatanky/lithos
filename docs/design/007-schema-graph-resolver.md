@@ -65,6 +65,7 @@ The main risks in this area are:
 - Pure logic: Graph/Resolver remain deterministic and I/O-free.
 - Lean + performant: avoid unnecessary allocations; pre-allocate when possible.
 - `$ref` must not become a "mini parser" inside the domain; format-specific parsing belongs in adapters.
+- Type-driven preconditions: represent invariants and required normalization in types (e.g., typed `PropertyRef`), rather than relying on string conventions (see https://rust-analyzer.github.io/book/contributing/style.html).
 
 ## 2. Guide-Level Explanation (The "What")
 
@@ -228,6 +229,10 @@ Resolver output:
 - Standard DFS topological sort with temporary marks for cycle detection.
 - Deterministic iteration order by sorting node keys (or using `BTreeMap`).
 
+Design note:
+
+- Avoid relying on `HashMap` iteration order; if using `HashMap`, explicitly sort collected keys before traversal to keep output stable (see https://rust-lang.github.io/api-guidelines/checklist.html).
+
 Trade-off:
 
 - `HashMap + sort(keys)` is generally faster than `BTreeMap` for large maps.
@@ -244,6 +249,8 @@ Performance note:
 
 - Current approach clones parent properties.
 - This is acceptable initially (schemas are small), but the design keeps the door open to a future representation where schemas store `PropertyId` references.
+
+Avoid the “clone to satisfy the borrow checker” anti-pattern; if cloning becomes hot-path expensive, prefer restructuring the working set or switching to id-based resolution rather than adding incidental clones (see https://rust-unofficial.github.io/patterns/).
 
 ## 4. Alternatives & Decisions (The "Divergence")
 
