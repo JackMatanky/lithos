@@ -16,7 +16,7 @@ tags: [schema, cqrs, persistence, redb, rkyv, performance]
 - CQRS contracts for schema are documented as stable interfaces (inputs/outputs/errors/invariants).
 - The design explicitly supports both:
   - cold-path owned reads (CLI workflows), and
-  - hot-path zero-copy reads (closure-based).
+  - hot-path archived reads (closure-based; zero-deserialize; may require an alignment copy depending on storage).
 - Proposed DB tables / indexes are specified and compatible with redb constraints.
 - Error contracts avoid stringification in core paths and preserve structured errors.
 - The design respects rkyv validation requirements at trust boundaries.
@@ -66,7 +66,8 @@ From a performance and correctness perspective, CQRS is the boundary where we mu
 - **redb access is transaction-scoped**: values returned by `get()` are guard-based and must not outlive the transaction.
 - **rkyv safety**: persisted bytes are untrusted; use safe validation (`rkyv::access` / bytecheck) at trust boundaries.
 - **dyn-compatibility**: if trait objects are used (`&dyn Query`), avoid generic methods on the trait surface.
-- **Lean**: avoid allocations on hot read paths.
+- **Lean**: avoid full deserialization and keep allocations minimal on hot read paths.
+- **Alignment is a real constraint**: if redb cannot guarantee alignment for returned byte slices, safe archived access may require copying into an aligned buffer before calling a closure.
 - **Errors**: library surfaces use structured `Result` errors (no `unwrap`/`expect`); reserve `anyhow` for binaries/CLI (see https://github.com/apollographql/rust-best-practices/tree/1c78fa64bb0d5df4a4d18d5923a7ced615f947d1).
 
 ## 2. Guide-Level Explanation (The "What")
@@ -87,7 +88,7 @@ cmd.save(&schema)?;
 // Owned read (cold path)
 let maybe_schema = qry.find_owned_by_name(schema.name())?;
 
-// Zero-copy read (hot path): compute a value inside the closure
+// Archived read (hot path): compute a value inside the closure
 let property_count = qry.with_archived_by_name(schema.name(), |archived| {
     archived.properties.len()
 })?;
@@ -96,6 +97,7 @@ let property_count = qry.with_archived_by_name(schema.name(), |archived| {
 Notes:
 
 - `with_archived_*` returns computed owned data, not archived references.
+- The intended performance property is “zero-deserialize”; depending on storage alignment guarantees, the implementation may still do an internal alignment copy before validating/accessing archived bytes.
 - This spec follows the repo’s CQRS convention of **concrete-first** command/query types, with **traits as optional ports** for polymorphism/testing.
 - If a trait-based port is needed, keep the trait surface dyn-compatible and keep closure-based zero-copy APIs on the concrete types.
 
@@ -104,7 +106,7 @@ Notes:
 - Commands are the *only* writers and are responsible for maintaining all indexes.
 - Queries can offer multiple tiers:
   - **owned**: deserialize to runtime model (simple, cold path)
-  - **archived/zero-copy**: compute small results without deserializing
+  - **archived (zero-deserialize)**: compute small results without deserializing (may still require an alignment copy depending on storage)
 
 Design rule: API names must make the tier obvious.
 
@@ -180,6 +182,7 @@ Rules for `with_archived_*`:
 - It validates archived bytes at the trust boundary.
 - It does not allow archived references to escape (closure returns owned `R`).
 - It must not leak redb guards or transaction-scoped borrows.
+- If archived access requires properly aligned bytes, it may copy into an aligned buffer internally before validation/access.
 
 #### Component: CQRS Error Types
 

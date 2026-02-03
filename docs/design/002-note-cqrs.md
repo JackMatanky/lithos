@@ -30,10 +30,11 @@ Current implementation lives in:
 Persistence design:
 
 - `Database::put` stores rkyv-serialized values (owned bytes).
-- `Database::get` provides a closure-based **zero-copy** read API.
+- `Database::get` provides a closure-based archived read API (validated at the storage boundary).
+  - Note: with redb, the returned byte slice is not guaranteed to be suitably aligned for rkyv’s archived references, so the current implementation may copy bytes into an aligned buffer before calling the closure.
 - `Database::get_owned` fully deserializes into an owned Rust value (cold-path).
 
-The CQRS note query implementation currently uses `get_owned`, which is correct functionally but does not align with the intent of "zero-copy reads" for hot paths.
+The CQRS note query implementation currently uses `get_owned`, which is correct functionally but does not align with the intent of archived/closure-based reads for hot paths.
 
 Additionally, error mapping currently converts DB errors into stringly note errors in several places, which is allocation-heavy and loses structure.
 
@@ -59,7 +60,8 @@ Additionally, error mapping currently converts DB errors into stringly note erro
 ### 1.3 Constraints (The Hard Limits)
 
 - **Sync-first core**: CQRS in core remains synchronous.
-- **rkyv is key**: prefer `Database::get` for read hot paths.
+- **rkyv is key**: prefer `Database::get` for read hot paths (archived access).
+- **Alignment is a real constraint**: archived references may require properly aligned buffers; if the storage engine cannot guarantee alignment for returned byte slices, the safe hot-path implementation may still need an allocation + memcpy into an aligned buffer.
 - **Dyn compatibility (trait objects)**: if `dyn Command`/`dyn Query` are used, trait methods must remain *dyn-compatible*.
   - No generic methods on the `dyn`-dispatched surface (type parameters require monomorphization and cannot be stored in a vtable).
   - No `async fn` on the `dyn`-dispatched surface (opaque `Future` return type).
@@ -107,7 +109,7 @@ Notes on trait usage (Rust best practices):
   - If you use **generics** (`fn f<Q: Query>(q: &Q)`), you can keep richer APIs (including methods that are `where Self: Sized`).
   - If you require **trait objects** (`&dyn Query`), the trait's callable surface is limited by dyn-compatibility rules.
 
-For high-performance read paths (e.g., LSP), the preferred API is a **concrete** query surface that can be closure-based and zero-copy:
+For high-performance read paths (e.g., LSP), the preferred API is a **concrete** query surface that can be closure-based and “zero-deserialize” (archived access; may still require an alignment copy depending on the storage layer):
 
 ```rust
 // Sketch: object-safe traits cannot take generic closures.
@@ -124,7 +126,7 @@ let title = qry.with_archived_by_id(note_id, |archived_note| {
 - Queries are responsible for retrieving state efficiently.
 - There are two query tiers:
   - **Owned** results for mutation/CLI workflows.
-  - **Zero-copy** access for hot paths via closure-based APIs (concrete types).
+  - **Archived (zero-deserialize)** access for hot paths via closure-based APIs (concrete types).
 
 Design rule: the API must make it obvious which tier is being used.
 
@@ -199,7 +201,7 @@ These structs make commands extensible (future fields) without breaking call sit
   - `find_by_path(path: &NotePath) -> Result<Option<Note>, NoteQueryError>`
   - `list() -> Result<Vec<Note>, NoteQueryError>`
 
-**Zero-copy strategy**
+**Archived access strategy ("zero-deserialize")**
 
 Rust best-practice constraint: a method like `with_archived_by_id<R>(..., f: impl FnOnce(..) -> R)` is *not* callable on `dyn Query` because it is generic.
 
@@ -210,6 +212,12 @@ Target concrete methods:
 - `with_archived_by_id<R>(&self, id: NoteId, f: impl FnOnce(&ArchivedNote) -> R) -> Result<Option<R>, NoteQueryError>`
 
 This mirrors `Database::get` and allows returning small computed results without deserializing the full note.
+
+Practical reality note:
+
+- If the underlying storage returns an unaligned `&[u8]`, safe rkyv access may require copying into an aligned buffer first.
+- This still avoids full deserialization, but it is not “zero-copy” in the strictest sense.
+- If strict zero-copy is required for LSP hot paths, the persisted format and/or access strategy must be chosen to tolerate unaligned input (or the storage layer must be proven to return suitably aligned slices).
 
 Design rules for this method (derived from Rust API guidelines and dyn-compatibility constraints):
 
