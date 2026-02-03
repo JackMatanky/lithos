@@ -261,6 +261,25 @@ mod tests {
         assert!(matches!(res, Err(SchemaError::CircularInheritance(_))));
     }
 
+    /// 3.3-UNIT-020: `resolves_empty_graph`.
+    /// Priority: P2.
+    #[test]
+    fn resolves_empty_graph() {
+        // GIVEN: an empty graph with no schemas
+        let graph = Graph::new();
+
+        // WHEN: resolving the order
+        let order = graph
+            .resolve_order()
+            .expect("Empty graph should resolve successfully");
+
+        // THEN: it should return an empty order
+        assert!(
+            order.is_empty(),
+            "Empty graph should return empty resolution order"
+        );
+    }
+
     /// 3.3-UNIT-022: `determines_topological_resolution_order`.
     /// Priority: P1.
     #[test]
@@ -274,12 +293,15 @@ mod tests {
         graph.add_node("parent".try_into().unwrap(), None);
 
         // WHEN: resolving the order
-        let order = graph.resolve_order().unwrap();
+        let order = graph
+            .resolve_order()
+            .expect("Valid linear graph should resolve successfully");
 
         // THEN: it should return parent before child
-        assert_eq!(order, vec![
-            "parent".try_into().unwrap(),
-            "child".try_into().unwrap()
-        ]);
+        assert_eq!(
+            order,
+            vec!["parent".try_into().unwrap(), "child".try_into().unwrap()],
+            "Parent schema should be ordered before child schema"
+        );
     }
 }
