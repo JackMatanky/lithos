@@ -199,7 +199,6 @@ fn bench_single_write(c: &mut Criterion) {
 /// Per Phase 6 plan: Should complete < 2s for 1000 notes.
 fn bench_batch_write(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
-    let db_path = temp_dir.path().join("bench_batch.db");
 
     let mut group = c.benchmark_group("write_batch");
     group.sample_size(10); // Fewer samples for expensive operation
@@ -208,11 +207,20 @@ fn bench_batch_write(c: &mut Criterion) {
     for batch_size in [100, 500, 1000] {
         group.throughput(Throughput::Elements(batch_size));
 
+        // Avoid reusing the same DB path inside the timed loop; otherwise the
+        // database grows across iterations and skews results.
+        let mut file_index: u64 = 0;
+
         group.bench_with_input(
             BenchmarkId::from_parameter(batch_size),
             &batch_size,
             |b, &size| {
                 b.iter(|| {
+                    let db_path = temp_dir.path().join(format!(
+                        "bench_batch_{batch_size}_{file_index}.db"
+                    ));
+                    file_index = file_index.wrapping_add(1);
+
                     let db = Database::open(&db_path).expect("open database");
 
                     db.batch_write(|batch_db| {
@@ -300,15 +308,22 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
 /// transaction.
 fn bench_transaction_overhead(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
-    let db_path = temp_dir.path().join("bench_txn.db");
 
     let mut group = c.benchmark_group("transaction_overhead");
     let batch_size = 100;
     group.throughput(Throughput::Elements(batch_size));
 
+    // Avoid reusing the same DB path inside the timed loop.
+    let mut file_index: u64 = 0;
+
     // Multiple individual transactions
     group.bench_function("individual_txns", |b| {
         b.iter(|| {
+            let db_path = temp_dir
+                .path()
+                .join(format!("bench_txn_individual_{file_index}.db"));
+            file_index = file_index.wrapping_add(1);
+
             let db = Database::open(&db_path).expect("open database");
 
             for i in 0..batch_size {
@@ -322,6 +337,11 @@ fn bench_transaction_overhead(c: &mut Criterion) {
     // Single batch transaction
     group.bench_function("batch_txn", |b| {
         b.iter(|| {
+            let db_path = temp_dir
+                .path()
+                .join(format!("bench_txn_batch_{file_index}.db"));
+            file_index = file_index.wrapping_add(1);
+
             let db = Database::open(&db_path).expect("open database");
 
             db.batch_write(|batch_db| {

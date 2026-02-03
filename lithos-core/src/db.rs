@@ -39,6 +39,14 @@ pub struct Database {
     inner: redb::Database,
 }
 
+/// A single write transaction for batching many operations.
+///
+/// This is intentionally scoped to a closure (see [`Database::batch_write`])
+/// so callers cannot accidentally hold a transaction across unrelated work.
+pub struct WriteBatch {
+    tx: redb::WriteTransaction,
+}
+
 /// Database error types.
 #[expect(
     clippy::module_name_repetitions,
@@ -383,11 +391,11 @@ impl Database {
 
     /// Execute multiple writes in a batch with single fsync.
     ///
-    /// Per ADR 0002: Uses `Durability::None` for batch operations,
-    /// then a final commit with `Durability::Immediate` for durability.
+    /// Note: redb durability tuning is intentionally deferred; this API focuses
+    /// on a single transaction with one commit.
     ///
-    /// The closure receives a `&Database` for performing operations.
-    /// All operations in the batch share the same transaction.
+    /// The closure receives a [`WriteBatch`] for performing operations.
+    /// All operations in the batch share the same write transaction.
     ///
     /// # Errors
     ///
@@ -401,9 +409,9 @@ impl Database {
     /// # use std::path::Path;
     /// # fn main() -> Result<(), lithos_core::db::DbError> {
     /// let db = Database::open(Path::new("/tmp/test.db"))?;
-    /// // db.batch_write(|db| {
+    /// // db.batch_write(|batch| {
     /// //     for i in 0..1000 {
-    /// //         db.put("notes", &format!("note_{}", i), &note)?;
+    /// //         batch.put("notes", &format!("note_{}", i), &note)?;
     /// //     }
     /// //     Ok(())
     /// // })?;
@@ -413,14 +421,16 @@ impl Database {
     #[inline]
     pub fn batch_write<F>(&self, f: F) -> Result<(), DbError>
     where
-        F: FnOnce(&Self) -> Result<(), DbError>,
+        F: FnOnce(&mut WriteBatch) -> Result<(), DbError>,
     {
-        // Execute batch operations
-        // Note: In redb 3.1, durability settings are per-database, not
-        // per-transaction For now, we just execute the closure with
-        // normal write semantics Future optimization: investigate
-        // redb's Durability settings
-        f(self)
+        let tx = self.inner.begin_write()?;
+        let mut batch = WriteBatch {
+            tx,
+        };
+
+        f(&mut batch)?;
+        batch.tx.commit()?;
+        Ok(())
     }
 
     /// Insert a value into a multimap (1:N relationship).
@@ -600,6 +610,112 @@ impl Database {
         }
 
         Ok(results)
+    }
+}
+
+impl WriteBatch {
+    /// Insert or update a value within the batch transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if serialization fails or if the underlying redb table
+    /// operation fails.
+    #[inline]
+    pub fn put<V>(
+        &mut self,
+        table: &str,
+        key: &str,
+        value: &V,
+    ) -> Result<(), DbError>
+    where
+        V: rkyv::Archive
+            + for<'ser> rkyv::Serialize<
+                rkyv::api::high::HighSerializer<
+                    rkyv::util::AlignedVec,
+                    rkyv::ser::allocator::ArenaHandle<'ser>,
+                    rkyv::rancor::Error,
+                >,
+            >,
+    {
+        const TABLE: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("data");
+        let namespaced_key = format!("{table}:{key}");
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(value)
+            .map_err(|e| DbError::Serialization(e.to_string()))?;
+        {
+            let mut table_ref = self.tx.open_table(TABLE)?;
+            table_ref.insert(namespaced_key.as_str(), bytes.as_slice())?;
+        };
+        Ok(())
+    }
+
+    /// Delete a value by key within the batch transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb table operation fails.
+    #[inline]
+    pub fn delete(&mut self, table: &str, key: &str) -> Result<bool, DbError> {
+        const TABLE: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("data");
+        let namespaced_key = format!("{table}:{key}");
+
+        let existed = {
+            let mut table_ref = self.tx.open_table(TABLE)?;
+            table_ref.remove(namespaced_key.as_str())?.is_some()
+        };
+        Ok(existed)
+    }
+
+    /// Insert a value into a multimap within the batch transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb multimap table operation fails.
+    #[inline]
+    pub fn multimap_insert(
+        &mut self,
+        table: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<(), DbError> {
+        use redb::MultimapTableDefinition;
+
+        let table_def: MultimapTableDefinition<&str, &str> =
+            MultimapTableDefinition::new(table);
+        let namespaced_key = format!("multimap:{key}");
+
+        {
+            let mut tbl = self.tx.open_multimap_table(table_def)?;
+            tbl.insert(namespaced_key.as_str(), value)?;
+        };
+        Ok(())
+    }
+
+    /// Remove a value from a multimap within the batch transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb multimap table operation fails.
+    #[inline]
+    pub fn multimap_remove(
+        &mut self,
+        table: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<bool, DbError> {
+        use redb::MultimapTableDefinition;
+
+        let table_def: MultimapTableDefinition<&str, &str> =
+            MultimapTableDefinition::new(table);
+        let namespaced_key = format!("multimap:{key}");
+
+        let removed = {
+            let mut tbl = self.tx.open_multimap_table(table_def)?;
+            tbl.remove(namespaced_key.as_str(), value)?
+        };
+        Ok(removed)
     }
 }
 
