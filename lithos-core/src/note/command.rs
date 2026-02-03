@@ -318,4 +318,50 @@ mod tests {
             "Deleting missing note should be a no-op, got: {result:?}"
         );
     }
+
+    #[test]
+    fn update_removes_old_tag_indexes_when_tags_change() {
+        let (_dir, db) = test_db();
+        let cmd = Command::new(&db);
+
+        // GIVEN: a note with an initial tag
+        let mut note = cmd.create("notes/test.md".to_owned()).unwrap();
+        let id_str = note.id.to_string();
+        let old_tag = Tag::new("#old-tag").unwrap();
+        note.tags = vec![old_tag.clone()];
+        cmd.update(note.clone()).unwrap();
+
+        // Verify old tag is indexed
+        let old_tag_ids = db
+            .multimap_get("tags_to_notes", old_tag.full_path.as_str())
+            .unwrap();
+        assert!(
+            old_tag_ids.contains(&id_str),
+            "Old tag index should contain note before update"
+        );
+
+        // WHEN: updating the note with a different tag
+        let new_tag = Tag::new("#new-tag").unwrap();
+        note.tags = vec![new_tag.clone()];
+        cmd.update(note.clone()).unwrap();
+
+        // THEN: old tag index should not contain the note
+        let old_tag_ids_after = db
+            .multimap_get("tags_to_notes", old_tag.full_path.as_str())
+            .unwrap();
+        assert!(
+            !old_tag_ids_after.contains(&id_str),
+            "Old tag index should not contain note after update with \
+             different tag"
+        );
+
+        // AND: new tag index should contain the note
+        let new_tag_ids = db
+            .multimap_get("tags_to_notes", new_tag.full_path.as_str())
+            .unwrap();
+        assert!(
+            new_tag_ids.contains(&id_str),
+            "New tag index should contain note after update"
+        );
+    }
 }
