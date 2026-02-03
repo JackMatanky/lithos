@@ -464,7 +464,7 @@ pub mod fixtures {
               unwrap/expect acceptable in tests."
 )]
 mod tests {
-    use super::*;
+    use super::{fixtures::TEST_NOTE_ID, *};
     use crate::note::{
         frontmatter::FieldValue,
         link::{EmbedType, Target},
@@ -485,8 +485,8 @@ mod tests {
         )]
         fn mutators_update_aggregate_state() {
             // GIVEN: a basic note
-            let note_id = Uuid::now_v7();
-            let mut note = Note::new(note_id, "note.md".to_owned()).unwrap();
+            let mut note =
+                Note::new(TEST_NOTE_ID, "note.md".to_owned()).unwrap();
 
             // WHEN: adding various sub-entities
             note.tags.push(Tag::new("#test").unwrap());
@@ -563,7 +563,7 @@ mod tests {
             // GIVEN: a note with various link types (2 wikilinks, 1 markdown, 1
             // embed)
             let mut note =
-                Note::new(Uuid::now_v7(), "note.md".to_owned()).unwrap();
+                Note::new(TEST_NOTE_ID, "note.md".to_owned()).unwrap();
 
             note.links.push(
                 Link::new_wikilink(
@@ -652,7 +652,7 @@ mod tests {
             #[case] expected: Result<(), NoteError>,
         ) {
             // GIVEN: a vault path from the validation matrix
-            let test_id = Uuid::now_v7();
+            let test_id = TEST_NOTE_ID;
 
             // WHEN: creating a note
             let result = Note::new(test_id, path.to_owned());
@@ -711,7 +711,7 @@ mod tests {
         )]
         fn succeeds_when_all_entities_are_valid() {
             // GIVEN: a note aggregate with consistent sub-entities
-            let note_id = Uuid::now_v7();
+            let note_id = TEST_NOTE_ID;
             let note = note_fixture(
                 note_id,
                 "valid.md",
