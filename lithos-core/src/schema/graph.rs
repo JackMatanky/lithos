@@ -243,8 +243,6 @@ mod tests {
         }
     }
 
-    use lithos_test_utils::assert_eq_detailed;
-
     use super::*;
 
     /// 3.3-UNIT-021: `detects_circular_inheritance`.
@@ -279,7 +277,7 @@ mod tests {
         let order = graph.resolve_order().unwrap();
 
         // THEN: it should return parent before child
-        assert_eq_detailed!(order, vec![
+        assert_eq!(order, vec![
             "parent".try_into().unwrap(),
             "child".try_into().unwrap()
         ]);
