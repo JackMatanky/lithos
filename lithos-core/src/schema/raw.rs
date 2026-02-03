@@ -125,11 +125,16 @@ mod tests {
     use super::*;
     use crate::schema::property_spec::BoolSpecDef;
 
+    const TEST_SCHEMA_ID: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0601);
+    const TEST_PROPERTY_ID: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0602);
+
     #[test]
     fn raw_schema_initializes_fields() {
         // GIVEN: a raw schema definition
         let schema = RawSchema::new(
-            Uuid::now_v7(),
+            TEST_SCHEMA_ID,
             SchemaName::new("note".to_owned()).expect("valid schema name"),
             None,
             HashSet::new(),
@@ -151,7 +156,7 @@ mod tests {
     fn raw_property_variants_construct() {
         // GIVEN: inline and reference properties
         let inline = RawPropertyInline {
-            id: Uuid::now_v7(),
+            id: TEST_PROPERTY_ID,
             name: "archived".to_owned(),
             required: false,
             array: false,
