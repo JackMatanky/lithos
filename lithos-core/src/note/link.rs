@@ -653,6 +653,9 @@ mod tests {
 
         use super::super::Target;
 
+        const TEST_RESOLVED_ID: Uuid =
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0A01);
+
         /// Creates a valid unresolved target for testing.
         pub fn unresolved_target(name: &str) -> Target {
             Target::Unresolved {
@@ -663,7 +666,7 @@ mod tests {
         /// Creates a valid resolved target for testing.
         pub fn resolved_target(path: &str) -> Target {
             Target::Resolved {
-                id: Uuid::now_v7(),
+                id: TEST_RESOLVED_ID,
                 path: path.into(),
             }
         }
