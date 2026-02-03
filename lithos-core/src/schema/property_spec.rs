@@ -1071,7 +1071,6 @@ mod tests {
     }
 
     mod number_spec {
-        use lithos_test_utils::assert_err_kind;
         use rstest::rstest;
 
         use super::*;
@@ -1146,7 +1145,7 @@ mod tests {
         fn number_spec_validates_spec_definition() {
             // GIVEN: an invalid NumberSpec (min > max)
             let result = NumberSpec::try_new(Some(10.0f64), Some(5.0f64), None);
-            assert_err_kind!(result, SchemaError::ValidationFailed(_));
+            assert!(matches!(result, Err(SchemaError::ValidationFailed(_))));
 
             // AND: valid specs pass
             let valid =
@@ -1160,35 +1159,40 @@ mod tests {
                 .expect("valid NumberSpec");
 
             let nan_result = spec.validate_range(f64::NAN);
-            assert_err_kind!(nan_result, SchemaError::ValidationFailed(_));
+            assert!(matches!(
+                nan_result,
+                Err(SchemaError::ValidationFailed(_))
+            ));
 
             let inf_result = spec.validate_range(f64::INFINITY);
-            assert_err_kind!(inf_result, SchemaError::ValidationFailed(_));
+            assert!(matches!(
+                inf_result,
+                Err(SchemaError::ValidationFailed(_))
+            ));
         }
 
         #[test]
         fn number_spec_rejects_non_finite_spec_fields() {
             let invalid_min_result =
                 NumberSpec::try_new(Some(f64::NAN), Some(10.0f64), None);
-            assert_err_kind!(
+            assert!(matches!(
                 invalid_min_result,
-                SchemaError::ValidationFailed(_)
-            );
+                Err(SchemaError::ValidationFailed(_))
+            ));
 
             let invalid_step_result = NumberSpec::try_new(
-                Some(0.0f64),
+                Some(-10.0f64),
                 Some(10.0f64),
                 Some(f64::INFINITY),
             );
-            assert_err_kind!(
+            assert!(matches!(
                 invalid_step_result,
-                SchemaError::ValidationFailed(_)
-            );
+                Err(SchemaError::ValidationFailed(_))
+            ));
         }
     }
 
     mod file_spec {
-        use lithos_test_utils::assert_err_kind;
         use rstest::rstest;
 
         use super::*;
@@ -1226,7 +1230,10 @@ mod tests {
                 .expect("valid FileSpec");
 
             let result = spec.validate_str("notes_evil/note.md");
-            assert_err_kind!(result, SchemaError::InvalidDirectoryPath(_));
+            assert!(matches!(
+                result,
+                Err(SchemaError::InvalidDirectoryPath(_))
+            ));
         }
 
         #[test]
@@ -1235,7 +1242,10 @@ mod tests {
                 .expect("valid FileSpec");
 
             let result = spec.validate_str("../notes/note.md");
-            assert_err_kind!(result, SchemaError::InvalidDirectoryPath(_));
+            assert!(matches!(
+                result,
+                Err(SchemaError::InvalidDirectoryPath(_))
+            ));
         }
 
         #[test]
@@ -1244,7 +1254,10 @@ mod tests {
                 .expect("valid FileSpec");
 
             let result = spec.validate_str("/notes/note.md");
-            assert_err_kind!(result, SchemaError::InvalidDirectoryPath(_));
+            assert!(matches!(
+                result,
+                Err(SchemaError::InvalidDirectoryPath(_))
+            ));
         }
 
         #[test]
@@ -1253,7 +1266,10 @@ mod tests {
                 .expect("valid FileSpec");
 
             let result = spec.validate_str("notes/");
-            assert_err_kind!(result, SchemaError::InvalidDirectoryPath(_));
+            assert!(matches!(
+                result,
+                Err(SchemaError::InvalidDirectoryPath(_))
+            ));
         }
 
         #[test]
@@ -1290,8 +1306,6 @@ mod tests {
     }
 
     mod date_spec {
-        use lithos_test_utils::assert_err_kind;
-
         use super::*;
 
         #[test]
@@ -1305,7 +1319,7 @@ mod tests {
 
             // AND: rejects invalid dates
             let result = spec.validate_str("not-a-date");
-            assert_err_kind!(result, SchemaError::InvalidDateFormat(_));
+            assert!(matches!(result, Err(SchemaError::InvalidDateFormat(_))));
         }
     }
 
