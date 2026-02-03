@@ -72,37 +72,45 @@ impl super::ports::Query for Query<'_> {
     reason = "Test code uses unwrap/expect for clarity"
 )]
 mod tests {
-    use tempfile::tempdir;
+    use tempfile::{TempDir, tempdir};
     use uuid::Uuid;
 
     use super::*;
     use crate::schema::{aggregate::SchemaName, command, ports::Query as _};
 
-    #[test]
-    fn find_by_id_returns_none_for_unindexed_schema() {
+    const TEST_SCHEMA_ID_A: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0201);
+    const TEST_SCHEMA_ID_B: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0202);
+
+    fn test_db() -> (TempDir, Database) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("schema.redb");
         let db = Database::open(&path).unwrap();
+        (dir, db)
+    }
+
+    fn schema_fixture(id: Uuid, name: &str) -> Schema {
+        Schema::new(id, SchemaName::new(name.to_owned()).unwrap(), vec![])
+            .unwrap()
+    }
+
+    #[test]
+    fn find_by_id_returns_none_for_unindexed_schema() {
+        let (_dir, db) = test_db();
         let qry = Query::new(&db);
 
-        let result = qry.find_by_id(Uuid::now_v7()).unwrap();
+        let result = qry.find_by_id(TEST_SCHEMA_ID_A).unwrap();
         assert!(result.is_none(), "find_by_id should return None");
     }
 
     #[test]
     fn find_by_name_returns_saved_schema() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("schema.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let cmd = command::Command::new(&db);
         let qry = Query::new(&db);
 
-        let schema = Schema::new(
-            Uuid::now_v7(),
-            SchemaName::new("note".to_owned()).unwrap(),
-            vec![],
-        )
-        .unwrap();
+        let schema = schema_fixture(TEST_SCHEMA_ID_A, "note");
         cmd.save(&schema).unwrap();
 
         let stored = qry.find_by_name("note").unwrap();
@@ -116,24 +124,12 @@ mod tests {
 
     #[test]
     fn list_returns_all_saved_schemas() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("schema.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let cmd = command::Command::new(&db);
         let qry = Query::new(&db);
 
-        let schema_a = Schema::new(
-            Uuid::now_v7(),
-            SchemaName::new("note".to_owned()).unwrap(),
-            vec![],
-        )
-        .unwrap();
-        let schema_b = Schema::new(
-            Uuid::now_v7(),
-            SchemaName::new("project".to_owned()).unwrap(),
-            vec![],
-        )
-        .unwrap();
+        let schema_a = schema_fixture(TEST_SCHEMA_ID_A, "note");
+        let schema_b = schema_fixture(TEST_SCHEMA_ID_B, "project");
 
         cmd.save(&schema_a).unwrap();
         cmd.save(&schema_b).unwrap();
