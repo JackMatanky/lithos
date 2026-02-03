@@ -543,35 +543,57 @@ mod tests {
     }
 
     mod proptests {
-        use proptest::prelude::*;
+        use proptest::{prelude::*, test_runner::TestRunner};
 
         use super::super::*;
 
-        proptest! {
-            /// 3.3-UNIT-015: `validates_property_name_format_proptest`.
-            /// Priority: P2.
-            #[test]
-            fn validates_property_name_format_proptest(name in "[a-zA-Z0-9_-]{1,64}") {
-                // GIVEN an arbitrary valid property name
-                // WHEN creating a PropertyName
-                // THEN it must succeed
-                PropertyName::new(name).unwrap();
-            }
+        /// 3.3-UNIT-015: `validates_property_name_format_proptest`.
+        /// Priority: P2.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses Result::unwrap() for proptest verification. \
+                      Acceptable in test-only code paths."
+        )]
+        fn validates_property_name_format_proptest() {
+            let mut runner = TestRunner::deterministic();
+            let strategy = "[a-zA-Z0-9_-]{1,64}";
 
-            /// 3.3-UNIT-016: `rejects_invalid_property_name_characters_proptest`.
-            /// Priority: P2.
-            #[test]
-            fn rejects_invalid_property_name_characters_proptest(
-                name in ".*[^a-zA-Z0-9_-].*".prop_filter(
-                    "invalid identifier length",
-                    |s: &String| !s.is_empty() && s.len() <= 64
-                )
-            ) {
-                // GIVEN an arbitrary string containing invalid characters
-                // WHEN creating a PropertyName (filtering for correct length)
-                // THEN it must fail
-                PropertyName::new(name).unwrap_err();
-            }
+            runner
+                .run(&strategy, |name| {
+                    // GIVEN an arbitrary valid property name
+                    // WHEN creating a PropertyName
+                    // THEN it must succeed
+                    PropertyName::new(name).unwrap();
+                    Ok(())
+                })
+                .unwrap();
+        }
+
+        /// 3.3-UNIT-016: `rejects_invalid_property_name_characters_proptest`.
+        /// Priority: P2.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses Result::unwrap_err() for proptest \
+                      verification. Acceptable in test-only code paths."
+        )]
+        fn rejects_invalid_property_name_characters_proptest() {
+            let mut runner = TestRunner::deterministic();
+            let strategy = ".*[^a-zA-Z0-9_-].*"
+                .prop_filter("invalid identifier length", |s: &String| {
+                    !s.is_empty() && s.len() <= 64
+                });
+
+            runner
+                .run(&strategy, |name| {
+                    // GIVEN an arbitrary string containing invalid characters
+                    // WHEN creating a PropertyName (filtering for correct
+                    // length) THEN it must fail
+                    PropertyName::new(name).unwrap_err();
+                    Ok(())
+                })
+                .unwrap();
         }
     }
 }
