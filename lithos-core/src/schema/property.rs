@@ -294,6 +294,9 @@ pub mod fixtures {
 
     use super::{super::property_spec::StringSpec, *};
 
+    const TEST_PROPERTY_ID: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0801);
+
     /// `PropertyBuilder` for flexible test data generation.
     pub struct PropertyBuilder {
         array: bool,
@@ -338,7 +341,7 @@ pub mod fixtures {
         pub fn build(self) -> Property {
             let name = PropertyName::new(self.name).expect("Valid name");
             Property::new(
-                Uuid::now_v7(),
+                TEST_PROPERTY_ID,
                 name,
                 self.required,
                 self.array,
@@ -421,14 +424,19 @@ pub mod fixtures {
 )]
 mod tests {
     mod property {
+        use uuid::Uuid;
+
         use super::super::{super::property_spec::StringSpec, *};
+
+        const TEST_PROPERTY_ID: Uuid =
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0802);
 
         #[test]
         fn accessors_return_expected_values() {
             // GIVEN: a property aggregate
             let spec = PropertySpec::String(StringSpec::default());
             let property = Property::new(
-                Uuid::now_v7(),
+                TEST_PROPERTY_ID,
                 PropertyName::new("status".to_owned()).unwrap(),
                 true,
                 false,
