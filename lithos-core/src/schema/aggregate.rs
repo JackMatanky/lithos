@@ -587,6 +587,15 @@ mod tests {
         *,
     };
 
+    const TEST_PROPERTY_ID_A: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0701);
+    const TEST_PROPERTY_ID_B: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0702);
+    const TEST_PROPERTY_ID_C: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0703);
+    const TEST_SCHEMA_ID_A: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0704);
+
     /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
     /// Priority: P1.
     #[test]
@@ -595,8 +604,8 @@ mod tests {
         let mut bank = PropertyBank::new();
         let spec = PropertySpec::String(StringSpec::default());
         let name = PropertyName::new("test".to_owned()).unwrap();
-        let prop =
-            Property::new(Uuid::now_v7(), name, false, false, spec).unwrap();
+        let prop = Property::new(TEST_PROPERTY_ID_A, name, false, false, spec)
+            .unwrap();
 
         // WHEN: registering the same property twice
         bank.register(prop.clone()).unwrap();
@@ -615,7 +624,7 @@ mod tests {
         let spec = PropertySpec::String(StringSpec::default());
         let name_str = "test".to_owned();
         let name = PropertyName::new(name_str.clone()).unwrap();
-        let id = Uuid::now_v7();
+        let id = TEST_PROPERTY_ID_B;
         let prop = Property::new(id, name, false, false, spec).unwrap();
 
         // WHEN: registering the property
@@ -640,15 +649,21 @@ mod tests {
         let mut bank = PropertyBank::new();
         let spec1 = PropertySpec::String(StringSpec::default());
         let name = PropertyName::new("test".to_owned()).unwrap();
-        let prop1 =
-            Property::new(Uuid::now_v7(), name.clone(), false, false, spec1)
-                .unwrap();
+        let prop1 = Property::new(
+            TEST_PROPERTY_ID_A,
+            name.clone(),
+            false,
+            false,
+            spec1,
+        )
+        .unwrap();
         bank.register(prop1).unwrap();
 
         // WHEN: registering a different definition with the same name
         let spec2 = PropertySpec::Bool(BoolSpec::default());
         let prop2 =
-            Property::new(Uuid::now_v7(), name, false, false, spec2).unwrap();
+            Property::new(TEST_PROPERTY_ID_B, name, false, false, spec2)
+                .unwrap();
         let res = bank.register(prop2);
 
         // THEN: it must return a DuplicatePropertyName error
@@ -665,14 +680,15 @@ mod tests {
         // GIVEN: a schema with properties
         let name = SchemaName::new("status".to_owned()).unwrap();
         let property = Property::new(
-            Uuid::now_v7(),
+            TEST_PROPERTY_ID_C,
             PropertyName::new("flag".to_owned()).unwrap(),
             true,
             false,
             PropertySpec::Bool(BoolSpec::default()),
         )
         .unwrap();
-        let schema = Schema::new(Uuid::now_v7(), name, vec![property]).unwrap();
+        let schema =
+            Schema::new(TEST_SCHEMA_ID_A, name, vec![property]).unwrap();
 
         // THEN: accessor methods return expected values
         assert_eq!(&schema.name().0, "status");
@@ -691,7 +707,7 @@ mod tests {
         // GIVEN: a property bank with an inserted property
         let mut bank = PropertyBank::new();
         let property = Property::new(
-            Uuid::now_v7(),
+            TEST_PROPERTY_ID_A,
             PropertyName::new("flag".to_owned()).unwrap(),
             true,
             false,
