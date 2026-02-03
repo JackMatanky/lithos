@@ -75,6 +75,7 @@ Key constraints from the overall architecture:
 - **redb guard lifetimes**: do not return `AccessGuard` or any reference derived from it beyond the transaction scope; closure-based APIs are preferred.
 - **Sync-first core**: schema model construction/validation remains synchronous.
 - **Lean models**: avoid “stringly typed” keys and avoid hidden allocations.
+- **API clarity**: prefer borrowed argument and accessor types (e.g. `&str` rather than `&String`) and keep allocation decisions explicit (see https://rust-analyzer.github.io/book/contributing/style.html).
 
 ## 2. Guide-Level Explanation (The "What")
 
@@ -140,6 +141,7 @@ Rationale (Rust API Guidelines + Lithos style rules):
 - private fields enforce invariants by construction;
 - `Box<str>` is lean for immutable identifiers;
 - avoid `Deref<Target=str>` on domain newtypes unless you are explicitly implementing the “owned type derefs to borrowed view” pattern (e.g., `String -> str`). For domain identifiers, prefer explicit `as_str()`.
+  - This follows the Rust API Guidelines’ `Deref` guidance for pointer-like types: https://rust-lang.github.io/api-guidelines/checklist.html
 
 #### Component: `PropertyName` (validated identifier)
 
