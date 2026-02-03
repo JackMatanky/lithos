@@ -634,45 +634,61 @@ mod tests {
     }
 
     mod proptests {
-        use proptest::prelude::*;
+        use proptest::{prelude::*, test_runner::TestRunner};
 
         use super::*;
 
         // 3.3-UNIT-012: `merge_handles_various_path_lengths`.
         // Priority: P2.
-        proptest! {
-            #[test]
-            fn merge_handles_various_path_lengths(
-                vault_path in "[a-zA-Z0-9/_-]{1,200}",
-                templates_dir in "[a-zA-Z0-9/_-]{0,100}"
-            ) {
-                // GIVEN a global config and generated vault path/template overrides
-                let global = sample_global_config();
-                let vault_config = Vault {
-                    filesystem: VaultPaths {
-                        schema: Schema::default(),
-                        template: Template {
-                            templates_dir: templates_dir.clone(),
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses Result::unwrap() for proptest verification. \
+                      Acceptable in test-only code paths."
+        )]
+        fn merge_handles_various_path_lengths() {
+            let mut runner = TestRunner::deterministic();
+            let strategy = ("[a-zA-Z0-9/_-]{1,200}", "[a-zA-Z0-9/_-]{0,100}");
+
+            runner
+                .run(&strategy, |(vault_path, templates_dir)| {
+                    // GIVEN a global config and generated vault path/template
+                    // overrides
+                    let global = sample_global_config();
+                    let vault_config = Vault {
+                        filesystem: VaultPaths {
+                            schema: Schema::default(),
+                            template: Template {
+                                templates_dir: templates_dir.clone(),
+                            },
+                            cache_dir: ".cache".to_owned(),
                         },
-                        cache_dir: ".cache".to_owned(),
-                    },
-                    frontmatter: None,
-                    logging: None,
-                };
+                        frontmatter: None,
+                        logging: None,
+                    };
 
-                // WHEN building a config from the generated inputs
-                let result = Config::build(Some(&global), &vault_path, vault_config);
+                    // WHEN building a config from the generated inputs
+                    let result =
+                        Config::build(Some(&global), &vault_path, vault_config);
 
-                // THEN empty paths fail and valid paths preserve metadata
-                if vault_path.is_empty() {
-                    prop_assert!(result.is_err(), "Empty vault_path should fail");
-                } else {
-                    prop_assert!(result.is_ok(), "Valid paths should merge successfully");
-                    if let Ok(config) = result {
-                        prop_assert_eq!(config.vault_metadata.path.as_str(), vault_path);
+                    // THEN empty paths fail and valid paths preserve metadata
+                    if vault_path.is_empty() {
+                        prop_assert!(
+                            result.is_err(),
+                            "Empty vault_path should fail"
+                        );
+                        return Ok(());
                     }
-                }
-            }
+
+                    let config = result.unwrap();
+                    prop_assert_eq!(
+                        config.vault_metadata.path.as_str(),
+                        vault_path,
+                        "Valid paths should preserve vault_path"
+                    );
+                    Ok(())
+                })
+                .unwrap();
         }
     }
 
