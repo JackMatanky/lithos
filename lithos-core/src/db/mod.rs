@@ -1,12 +1,12 @@
 //! Zero-copy database layer using redb and rkyv.
 //!
 //! This module provides concrete types (not traits) for database operations,
-//! following the `std::fs::File` pattern. Zero-copy reads are achieved through
+//! following the `std::fs::File` pattern. “Zero-copy” reads are achieved via
 //! closure-based APIs that keep transactions properly scoped.
 //!
 //! # Architecture
 //!
-//! - `Database` - Concrete type wrapping `redb::Database`
+//! - [`Database`] - Concrete type wrapping `redb::Database`
 //! - Closure-based API - Transactions scoped within closures (safe, no unsafe)
 //! - Sync-first design - No async overhead
 //!
@@ -23,8 +23,23 @@
 //! # }
 //! ```
 
+#![allow(
+    clippy::pub_use,
+    reason = "This module intentionally re-exports a small public surface \
+              (db::DbError, db::WriteBatch) for ergonomic crate consumers"
+)]
+#![allow(
+    clippy::module_name_repetitions,
+    reason = "DbError is intentionally explicit at the crate API boundary"
+)]
+
+mod batch;
+mod error;
+
 use std::path::Path;
 
+pub use batch::WriteBatch;
+pub use error::DbError;
 use redb::{ReadableDatabase as _, TableDefinition};
 use rkyv::util::AlignedVec;
 
@@ -38,86 +53,6 @@ const DATA_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("data");
 #[non_exhaustive]
 pub struct Database {
     inner: redb::Database,
-}
-
-/// Database error types.
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Context-specific error name is intentional"
-)]
-#[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
-pub enum DbError {
-    /// Database operation failed.
-    #[error("database error: {0}")]
-    Database(String),
-
-    /// Database file not found or cannot be opened.
-    #[error("failed to open database: {0}")]
-    Open(String),
-
-    /// Key not found in database.
-    #[error("key not found")]
-    NotFound,
-
-    /// Serialization failed.
-    #[error("serialization error: {0}")]
-    Serialization(String),
-
-    /// Deserialization or validation failed.
-    #[error("deserialization error: {0}")]
-    Deserialization(String),
-
-    /// Transaction failed.
-    #[error("transaction error: {0}")]
-    Transaction(String),
-
-    /// Table operation failed.
-    #[error("table error: {0}")]
-    Table(String),
-}
-
-impl From<redb::DatabaseError> for DbError {
-    #[inline]
-    fn from(e: redb::DatabaseError) -> Self {
-        Self::Database(e.to_string())
-    }
-}
-
-impl From<redb::TransactionError> for DbError {
-    #[inline]
-    fn from(e: redb::TransactionError) -> Self {
-        Self::Transaction(e.to_string())
-    }
-}
-
-impl From<redb::TableError> for DbError {
-    #[inline]
-    fn from(e: redb::TableError) -> Self {
-        Self::Table(e.to_string())
-    }
-}
-
-impl From<redb::StorageError> for DbError {
-    #[inline]
-    fn from(e: redb::StorageError) -> Self {
-        Self::Database(e.to_string())
-    }
-}
-
-impl From<redb::CommitError> for DbError {
-    #[inline]
-    fn from(e: redb::CommitError) -> Self {
-        Self::Transaction(e.to_string())
-    }
-}
-
-/// A single write transaction for batching many operations.
-///
-/// This is intentionally scoped to a closure (see [`Database::batch_write`])
-/// so callers cannot accidentally hold a transaction across unrelated work.
-pub struct WriteBatch {
-    tx: redb::WriteTransaction,
 }
 
 impl Database {
@@ -150,12 +85,12 @@ impl Database {
 
     /// Zero-copy read (HOT PATH for LSP).
     ///
-    /// The closure receives a reference to the archived data directly from
-    /// the database page. The transaction remains alive for the duration
-    /// of the closure, ensuring memory safety without unsafe code.
+    /// The closure receives a reference to the archived data within the
+    /// transaction scope, ensuring safety without unsafe code.
     ///
-    /// This is the default read method - it's fast and requires no allocations.
-    /// For full deserialization (e.g., for mutations), use `get_owned()`.
+    /// Note: redb does not guarantee alignment of returned byte slices, so this
+    /// method performs an alignment copy into an `AlignedVec` before validating
+    /// and accessing archived bytes.
     ///
     /// # Type Parameters
     ///
@@ -165,7 +100,6 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::NotFound` - Key does not exist (returns `None`)
     /// - `DbError::Deserialization` - Data validation failed
     /// - `DbError::Transaction` - Transaction or table operation failed
     ///
@@ -207,8 +141,6 @@ impl Database {
             Some(value) => {
                 let bytes: &[u8] = value.value();
 
-                // redb does not guarantee alignment of returned byte slices.
-                // rkyv requires properly-aligned buffers for safe access.
                 let mut aligned = AlignedVec::<16>::new();
                 aligned.extend_from_slice(bytes);
 
@@ -227,8 +159,7 @@ impl Database {
     /// Full deserialization (COLD PATH for mutations).
     ///
     /// Deserializes the value into an owned `V`. This is slower than `get()`
-    /// because it allocates and copies data. Use this only when you need to
-    /// mutate the value.
+    /// because it allocates and copies data.
     ///
     /// # Type Parameters
     ///
@@ -237,7 +168,6 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// - `DbError::NotFound` - Key does not exist (returns `None`, not error)
     /// - `DbError::Deserialization` - Data validation or deserialization failed
     /// - `DbError::Transaction` - Transaction or table operation failed
     ///
@@ -382,10 +312,7 @@ impl Database {
         Ok(existed)
     }
 
-    /// Execute multiple writes in a batch with single fsync.
-    ///
-    /// Note: redb durability tuning is intentionally deferred; this API focuses
-    /// on a single transaction with one commit.
+    /// Execute multiple writes in a batch with a single commit.
     ///
     /// The closure receives a [`WriteBatch`] for performing operations.
     /// All operations in the batch share the same write transaction.
@@ -404,7 +331,7 @@ impl Database {
     /// let db = Database::open(Path::new("/tmp/test.db"))?;
     /// // db.batch_write(|batch| {
     /// //     for i in 0..1000 {
-    /// //         batch.put("notes", &format!("note_{}", i), &note)?;
+    /// //         batch.put("notes", &format!("note_{i}"), &note)?;
     /// //     }
     /// //     Ok(())
     /// // })?;
@@ -417,12 +344,10 @@ impl Database {
         F: FnOnce(&mut WriteBatch) -> Result<(), DbError>,
     {
         let tx = self.inner.begin_write()?;
-        let mut batch = WriteBatch {
-            tx,
-        };
+        let mut batch = WriteBatch::new(tx);
 
         f(&mut batch)?;
-        batch.tx.commit()?;
+        batch.commit()?;
         Ok(())
     }
 
@@ -434,19 +359,6 @@ impl Database {
     /// # Errors
     ///
     /// - `DbError::Transaction` - Transaction or table operation failed
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use lithos_core::db::Database;
-    /// # use std::path::Path;
-    /// # fn main() -> Result<(), lithos_core::db::DbError> {
-    /// let db = Database::open(Path::new("/tmp/test.db"))?;
-    /// // db.multimap_insert("tag_index", "rust", "note-1")?;
-    /// // db.multimap_insert("tag_index", "rust", "note-2")?;
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
     pub fn multimap_insert(
         &self,
@@ -476,18 +388,6 @@ impl Database {
     /// # Errors
     ///
     /// - `DbError::Transaction` - Transaction or table operation failed
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use lithos_core::db::Database;
-    /// # use std::path::Path;
-    /// # fn main() -> Result<(), lithos_core::db::DbError> {
-    /// let db = Database::open(Path::new("/tmp/test.db"))?;
-    /// // let removed = db.multimap_remove("tag_index", "rust", "note-1")?;
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
     pub fn multimap_remove(
         &self,
@@ -513,23 +413,11 @@ impl Database {
     /// Get all values for a key from a multimap.
     ///
     /// Returns a `Vec<String>` containing all values. For large result sets,
-    /// consider using a closure-based API in the future.
+    /// consider adding a closure-based API to avoid allocations.
     ///
     /// # Errors
     ///
     /// - `DbError::Transaction` - Transaction or table operation failed
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use lithos_core::db::Database;
-    /// # use std::path::Path;
-    /// # fn main() -> Result<(), lithos_core::db::DbError> {
-    /// let db = Database::open(Path::new("/tmp/test.db"))?;
-    /// // let note_ids = db.multimap_get("tag_index", "rust")?;
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
     pub fn multimap_get(
         &self,
@@ -559,6 +447,7 @@ impl Database {
     /// List all values in a table (owned).
     ///
     /// # Errors
+    ///
     /// Returns `DbError` if transaction or deserialization fails.
     #[inline]
     pub fn list_owned<V>(&self, table: &str) -> Result<Vec<V>, DbError>
@@ -604,108 +493,6 @@ impl Database {
     }
 }
 
-impl WriteBatch {
-    /// Insert or update a value within the batch transaction.
-    ///
-    /// # Errors
-    ///
-    /// Returns `DbError` if serialization fails or if the underlying redb table
-    /// operation fails.
-    #[inline]
-    pub fn put<V>(
-        &mut self,
-        table: &str,
-        key: &str,
-        value: &V,
-    ) -> Result<(), DbError>
-    where
-        V: rkyv::Archive
-            + for<'ser> rkyv::Serialize<
-                rkyv::api::high::HighSerializer<
-                    rkyv::util::AlignedVec,
-                    rkyv::ser::allocator::ArenaHandle<'ser>,
-                    rkyv::rancor::Error,
-                >,
-            >,
-    {
-        let namespaced_key = format!("{table}:{key}");
-
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(value)
-            .map_err(|e| DbError::Serialization(e.to_string()))?;
-        {
-            let mut table_ref = self.tx.open_table(DATA_TABLE)?;
-            table_ref.insert(namespaced_key.as_str(), bytes.as_slice())?;
-        };
-        Ok(())
-    }
-
-    /// Delete a value by key within the batch transaction.
-    ///
-    /// # Errors
-    ///
-    /// Returns `DbError` if the underlying redb table operation fails.
-    #[inline]
-    pub fn delete(&mut self, table: &str, key: &str) -> Result<bool, DbError> {
-        let namespaced_key = format!("{table}:{key}");
-
-        let existed = {
-            let mut table_ref = self.tx.open_table(DATA_TABLE)?;
-            table_ref.remove(namespaced_key.as_str())?.is_some()
-        };
-        Ok(existed)
-    }
-
-    /// Insert a value into a multimap within the batch transaction.
-    ///
-    /// # Errors
-    ///
-    /// Returns `DbError` if the underlying redb multimap table operation fails.
-    #[inline]
-    pub fn multimap_insert(
-        &mut self,
-        table: &str,
-        key: &str,
-        value: &str,
-    ) -> Result<(), DbError> {
-        use redb::MultimapTableDefinition;
-
-        let table_def: MultimapTableDefinition<&str, &str> =
-            MultimapTableDefinition::new(table);
-        let namespaced_key = format!("multimap:{key}");
-
-        {
-            let mut tbl = self.tx.open_multimap_table(table_def)?;
-            tbl.insert(namespaced_key.as_str(), value)?;
-        };
-        Ok(())
-    }
-
-    /// Remove a value from a multimap within the batch transaction.
-    ///
-    /// # Errors
-    ///
-    /// Returns `DbError` if the underlying redb multimap table operation fails.
-    #[inline]
-    pub fn multimap_remove(
-        &mut self,
-        table: &str,
-        key: &str,
-        value: &str,
-    ) -> Result<bool, DbError> {
-        use redb::MultimapTableDefinition;
-
-        let table_def: MultimapTableDefinition<&str, &str> =
-            MultimapTableDefinition::new(table);
-        let namespaced_key = format!("multimap:{key}");
-
-        let removed = {
-            let mut tbl = self.tx.open_multimap_table(table_def)?;
-            tbl.remove(namespaced_key.as_str(), value)?
-        };
-        Ok(removed)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -717,20 +504,8 @@ mod tests {
                   in test-only code paths."
     )]
     fn database_can_be_constructed() {
-        // This test verifies the API compiles and basic types are correct
         let temp = tempfile::tempdir().unwrap();
         let db_path = temp.path().join("test.db");
         let _result: Result<Database, DbError> = Database::open(&db_path);
-    }
-
-    #[test]
-    fn db_error_converts_from_redb_errors() {
-        // Verify From impls compile
-        let db_err = redb::DatabaseError::from(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "test",
-        ));
-        let result: DbError = db_err.into();
-        assert!(result.to_string().contains("database error"));
     }
 }

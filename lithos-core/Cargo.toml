@@ -46,7 +46,7 @@ criterion = { workspace = true, features = ["html_reports"] }
 [[bench]]
 name = "db_perf"
 harness = false
-path = "../benches/db_perf.rs"
+path = "benches/db_perf.rs"
 
 [features]
 default = []

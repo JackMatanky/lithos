@@ -109,8 +109,14 @@ mod tests {
         // THEN: serialization succeeds and includes expected fields
         assert!(result.is_ok(), "should serialize successfully");
         if let Ok(json) = result {
-            assert!(json.contains("vault"));
-            assert!(json.contains("1234567890"));
+            assert!(
+                json.contains("vault"),
+                "JSON should contain vault_path field"
+            );
+            assert!(
+                json.contains("1234567890"),
+                "JSON should contain timestamp value"
+            );
         }
     }
 }
