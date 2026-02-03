@@ -163,3 +163,158 @@ impl super::ports::Command for Command<'_> {
         Ok(note)
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test code uses unwrap/expect for clarity"
+)]
+mod tests {
+    use tempfile::tempdir;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::note::{
+        aggregate::{Note, NotePath},
+        ports::Command as _,
+        tag::Tag,
+    };
+
+    #[test]
+    fn create_persists_note_and_path_index() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("notes.redb");
+        let db = Database::open(&path).unwrap();
+        let cmd = Command::new(&db);
+
+        let note = cmd.create("notes/a.md".to_owned()).unwrap();
+        let id_str = note.id.to_string();
+
+        let stored = db.get_owned::<Note>("notes", &id_str).unwrap();
+        let stored_note = stored.expect("Stored note should exist");
+        assert_eq!(
+            stored_note.path.as_str(),
+            "notes/a.md",
+            "Stored note path should match"
+        );
+
+        let ids = db.multimap_get("path_to_id", note.path.as_str()).unwrap();
+        assert!(
+            ids.contains(&id_str),
+            "Path index should contain created note id"
+        );
+    }
+
+    #[test]
+    fn update_updates_path_and_tags_indexes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("notes.redb");
+        let db = Database::open(&path).unwrap();
+        let cmd = Command::new(&db);
+
+        let mut note = cmd.create("notes/a.md".to_owned()).unwrap();
+        let id_str = note.id.to_string();
+        let old_path = note.path.as_str().to_owned();
+
+        note.path = NotePath::new("notes/b.md".to_owned()).unwrap();
+        let tag = Tag::new("#project").unwrap();
+        note.tags = vec![tag];
+
+        cmd.update(note.clone()).unwrap();
+
+        let old_ids = db.multimap_get("path_to_id", old_path.as_str()).unwrap();
+        assert!(
+            !old_ids.contains(&id_str),
+            "Old path index should not contain updated note id"
+        );
+
+        let new_ids =
+            db.multimap_get("path_to_id", note.path.as_str()).unwrap();
+        assert!(
+            new_ids.contains(&id_str),
+            "New path index should contain updated note id"
+        );
+
+        let tag_key = note
+            .tags
+            .first()
+            .expect("Note should have one tag")
+            .full_path
+            .as_str();
+        let tag_ids = db.multimap_get("tags_to_notes", tag_key).unwrap();
+        assert!(
+            tag_ids.contains(&id_str),
+            "Tag index should contain updated note id"
+        );
+
+        let stored = db.get_owned::<Note>("notes", &id_str).unwrap();
+        let stored_note = stored.expect("Updated note should exist");
+        assert_eq!(
+            stored_note.path.as_str(),
+            "notes/b.md",
+            "Stored note path should be updated"
+        );
+        assert_eq!(
+            stored_note.tags.len(),
+            1,
+            "Stored note should have updated tags"
+        );
+    }
+
+    #[test]
+    fn delete_removes_note_and_indexes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("notes.redb");
+        let db = Database::open(&path).unwrap();
+        let cmd = Command::new(&db);
+
+        let mut note = cmd.create("notes/a.md".to_owned()).unwrap();
+        let id = note.id;
+        let id_str = id.to_string();
+
+        let tag = Tag::new("#project").unwrap();
+        note.tags = vec![tag];
+        cmd.update(note.clone()).unwrap();
+
+        cmd.delete(id).unwrap();
+
+        let stored = db.get_owned::<Note>("notes", &id_str).unwrap();
+        assert!(stored.is_none(), "Deleted note should not exist");
+
+        let path_ids =
+            db.multimap_get("path_to_id", note.path.as_str()).unwrap();
+        assert!(
+            !path_ids.contains(&id_str),
+            "Path index should not contain deleted note id"
+        );
+
+        let tag_key = note
+            .tags
+            .first()
+            .expect("Note should have one tag")
+            .full_path
+            .as_str();
+        let tag_ids = db.multimap_get("tags_to_notes", tag_key).unwrap();
+        assert!(
+            !tag_ids.contains(&id_str),
+            "Tag index should not contain deleted note id"
+        );
+    }
+
+    #[test]
+    fn delete_missing_note_is_noop() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("notes.redb");
+        let db = Database::open(&path).unwrap();
+        let cmd = Command::new(&db);
+
+        let _existing = cmd.create("notes/existing.md".to_owned()).unwrap();
+        let missing_id = Uuid::now_v7();
+        let result = cmd.delete(missing_id);
+
+        assert!(
+            result.is_ok(),
+            "Deleting missing note should be a no-op, got: {result:?}"
+        );
+    }
+}
