@@ -292,7 +292,11 @@ mod tests {
         let result = composition.detect_cycles(&templates);
 
         // THEN it must return a CircularComposition error
-        assert!(matches!(result, Err(TemplateError::CircularComposition(_))));
+        assert!(
+            matches!(result, Err(TemplateError::CircularComposition(_))),
+            "Expected CircularComposition error for self-extending template, \
+             got: {result:?}"
+        );
     }
 
     /// 3.4-UNIT-029: `should_detect_circular_include`.
@@ -322,7 +326,11 @@ mod tests {
         let result = composition.detect_cycles(&templates);
 
         // THEN it reports a circular composition error
-        assert!(matches!(result, Err(TemplateError::CircularComposition(_))));
+        assert!(
+            matches!(result, Err(TemplateError::CircularComposition(_))),
+            "Expected CircularComposition error for self-including template, \
+             got: {result:?}"
+        );
     }
 
     /// 3.4-UNIT-030: `validate_rejects_variable_type_mismatch`.
@@ -358,9 +366,10 @@ mod tests {
 
         // THEN: validation reports a type mismatch
         let result = composition.validate(&base);
-        assert!(matches!(
-            result,
-            Err(TemplateError::VariableTypeMismatch { .. })
-        ));
+        assert!(
+            matches!(result, Err(TemplateError::VariableTypeMismatch { .. })),
+            "Expected VariableTypeMismatch error when overriding String with \
+             Number, got: {result:?}"
+        );
     }
 }
