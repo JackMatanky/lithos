@@ -571,20 +571,56 @@ mod tests {
             let obj_val = FieldValue::Object(obj_map);
             let str_val = FieldValue::String("s".into());
 
-            assert!(arr_val.as_array().is_some());
-            assert!(bool_val.as_bool().is_some());
-            assert!(date_val.as_date().is_some());
-            assert!(date_val.as_datetime().is_some());
-            assert!(num_val.as_number().is_some());
-            assert!(obj_val.as_object().is_some());
-            assert!(str_val.as_str().is_some());
+            assert!(
+                arr_val.as_array().is_some(),
+                "Array should coerce to array"
+            );
+            assert!(
+                bool_val.as_bool().is_some(),
+                "Boolean should coerce to bool"
+            );
+            assert!(
+                date_val.as_date().is_some(),
+                "Date should coerce to timestamp"
+            );
+            assert!(
+                date_val.as_datetime().is_some(),
+                "Date should coerce to DateTime"
+            );
+            assert!(
+                num_val.as_number().is_some(),
+                "Number should coerce to f64"
+            );
+            assert!(
+                obj_val.as_object().is_some(),
+                "Object should coerce to HashMap"
+            );
+            assert!(str_val.as_str().is_some(), "String should coerce to str");
 
-            assert!(arr_val.as_bool().is_none());
-            assert!(bool_val.as_array().is_none());
-            assert!(date_val.as_number().is_none());
-            assert!(num_val.as_date().is_none());
-            assert!(obj_val.as_str().is_none());
-            assert!(str_val.as_object().is_none());
+            assert!(
+                arr_val.as_bool().is_none(),
+                "Array should not coerce to bool"
+            );
+            assert!(
+                bool_val.as_array().is_none(),
+                "Boolean should not coerce to array"
+            );
+            assert!(
+                date_val.as_number().is_none(),
+                "Date should not coerce to number"
+            );
+            assert!(
+                num_val.as_date().is_none(),
+                "Number should not coerce to date"
+            );
+            assert!(
+                obj_val.as_str().is_none(),
+                "Object should not coerce to string"
+            );
+            assert!(
+                str_val.as_object().is_none(),
+                "String should not coerce to object"
+            );
         }
 
         #[test]
