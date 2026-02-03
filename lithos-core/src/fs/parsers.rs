@@ -421,41 +421,56 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test unwrap")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Setup phase - test fixture extraction"
+        )]
         fn should_dispatch_json_correctly() {
             let dispatcher = Dispatcher::new();
             let result: Result<serde_json::Value, _> =
                 dispatcher.parse(Path::new("test.json"), fixtures::VALID_JSON);
-            assert!(result.is_ok());
+            assert!(result.is_ok(), "JSON parsing should succeed: {result:?}");
+            let value = result.expect("JSON should be parsed");
             assert_eq!(
-                result.unwrap().get("name").and_then(|v| v.as_str()),
-                Some("test")
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test"),
+                "Parsed JSON should contain 'name' field with value 'test'"
             );
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test unwrap")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Setup phase - test fixture extraction"
+        )]
         fn should_dispatch_toml_correctly() {
             let dispatcher = Dispatcher::new();
             let result: Result<toml::Value, _> =
                 dispatcher.parse(Path::new("test.toml"), fixtures::VALID_TOML);
-            assert!(result.is_ok());
+            assert!(result.is_ok(), "TOML parsing should succeed: {result:?}");
+            let value = result.expect("TOML should be parsed");
             assert_eq!(
-                result.unwrap().get("name").and_then(|v| v.as_str()),
-                Some("test")
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test"),
+                "Parsed TOML should contain 'name' field with value 'test'"
             );
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test unwrap")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Setup phase - test fixture extraction"
+        )]
         fn should_dispatch_yaml_correctly() {
             let dispatcher = Dispatcher::new();
             let result: Result<serde_yaml::Value, _> =
                 dispatcher.parse(Path::new("test.yaml"), fixtures::VALID_YAML);
-            assert!(result.is_ok());
+            assert!(result.is_ok(), "YAML parsing should succeed: {result:?}");
+            let value = result.expect("YAML should be parsed");
             assert_eq!(
-                result.unwrap().get("name").and_then(|v| v.as_str()),
-                Some("test")
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test"),
+                "Parsed YAML should contain 'name' field with value 'test'"
             );
         }
 
