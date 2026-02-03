@@ -202,9 +202,13 @@ mod tests {
             let heading = Heading::new(3, "Summary".to_owned(), 22).unwrap();
 
             // THEN: accessors expose fields
-            assert_eq!(heading.level(), 3);
-            assert_eq!(heading.text(), "Summary");
-            assert_eq!(heading.position(), 22);
+            assert_eq!(heading.level(), 3, "Heading level should be 3");
+            assert_eq!(
+                heading.text(),
+                "Summary",
+                "Heading text should be 'Summary'"
+            );
+            assert_eq!(heading.position(), 22, "Heading position should be 22");
         }
 
         #[test]
@@ -222,9 +226,13 @@ mod tests {
             let result = Heading::new(level, text, position).unwrap();
 
             // THEN: it has the correct values
-            assert_eq!(result.level(), 2);
-            assert_eq!(result.text(), "Implementation");
-            assert_eq!(result.position(), 10);
+            assert_eq!(result.level(), 2, "Heading level should be 2");
+            assert_eq!(
+                result.text(),
+                "Implementation",
+                "Heading text should be 'Implementation'"
+            );
+            assert_eq!(result.position(), 10, "Heading position should be 10");
         }
 
         #[test]
@@ -271,9 +279,17 @@ mod tests {
                 Section::new(Some(heading.clone()), "Body".to_owned(), 0..4);
 
             // THEN: accessors return expected values
-            assert_eq!(section.content(), "Body");
-            assert_eq!(section.heading().unwrap().text(), "Intro");
-            assert_eq!(section.range(), 0..4);
+            assert_eq!(
+                section.content(),
+                "Body",
+                "Section content should be 'Body'"
+            );
+            assert_eq!(
+                section.heading().unwrap().text(),
+                "Intro",
+                "Section heading text should be 'Intro'"
+            );
+            assert_eq!(section.range(), 0..4, "Section range should be 0..4");
         }
 
         #[test]
@@ -291,9 +307,21 @@ mod tests {
             let result = Section::new(heading.clone(), content, range.clone());
 
             // THEN: it has the correct values
-            assert_eq!(result.heading(), heading.as_ref());
-            assert_eq!(result.content(), "Section content");
-            assert_eq!(result.range(), range);
+            assert_eq!(
+                result.heading(),
+                heading.as_ref(),
+                "Section heading should match input"
+            );
+            assert_eq!(
+                result.content(),
+                "Section content",
+                "Section content should match input"
+            );
+            assert_eq!(
+                result.range(),
+                range,
+                "Section range should match input"
+            );
         }
     }
 }

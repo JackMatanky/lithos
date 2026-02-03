@@ -462,8 +462,8 @@ mod tests {
             note.set_frontmatter(Some(Frontmatter::new(fm_fields).unwrap()));
 
             // THEN: the aggregate state is updated correctly
-            assert_eq!(note.tags.len(), 1);
-            assert_eq!(note.headings.len(), 1);
+            assert_eq!(note.tags.len(), 1, "Note should have 1 tag");
+            assert_eq!(note.headings.len(), 1, "Note should have 1 heading");
             assert_eq!(note.tasks.len(), 1, "Note should have 1 task");
             assert_eq!(note.sections.len(), 1, "Note should have 1 section");
             assert_eq!(
@@ -550,10 +550,10 @@ mod tests {
             let embed_count = note.embeds().count();
 
             // THEN: each iterator returns the correct count for its type
-            assert_eq!(all_count, 4);
-            assert_eq!(wiki_count, 2);
-            assert_eq!(md_count, 1);
-            assert_eq!(embed_count, 1);
+            assert_eq!(all_count, 4, "Note should have 4 total links");
+            assert_eq!(wiki_count, 2, "Note should have 2 wikilinks");
+            assert_eq!(md_count, 1, "Note should have 1 markdown link");
+            assert_eq!(embed_count, 1, "Note should have 1 embed");
         }
     }
 

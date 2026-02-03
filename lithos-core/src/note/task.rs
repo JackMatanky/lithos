@@ -148,9 +148,13 @@ mod tests {
                 .unwrap();
 
             // THEN: accessors return expected values
-            assert_eq!(task.text(), "Review");
-            assert_eq!(task.status(), TaskStatus::Cancelled);
-            assert_eq!(task.position(), 5);
+            assert_eq!(task.text(), "Review", "Task text should be 'Review'");
+            assert_eq!(
+                task.status(),
+                TaskStatus::Cancelled,
+                "Task status should be Cancelled"
+            );
+            assert_eq!(task.position(), 5, "Task position should be 5");
         }
 
         #[test]
@@ -168,9 +172,17 @@ mod tests {
             let result = Task::new(text, status, position).unwrap();
 
             // THEN: it has the correct values
-            assert_eq!(result.text(), "Buy milk");
-            assert_eq!(result.status(), TaskStatus::Incomplete);
-            assert_eq!(result.position(), 50);
+            assert_eq!(
+                result.text(),
+                "Buy milk",
+                "Task text should be 'Buy milk'"
+            );
+            assert_eq!(
+                result.status(),
+                TaskStatus::Incomplete,
+                "Task status should be Incomplete"
+            );
+            assert_eq!(result.position(), 50, "Task position should be 50");
         }
 
         #[test]

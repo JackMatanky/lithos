@@ -1236,7 +1236,11 @@ mod tests {
             let result = spec.validate_str(path);
 
             // THEN: the result matches the expectation
-            assert_eq!(result, expected);
+            assert_eq!(
+                result, expected,
+                "FileSpec validation result should match expected for path: \
+                 {path}"
+            );
         }
 
         #[test]
@@ -1359,9 +1363,21 @@ mod tests {
                 .expect("Default NumberSpec should be valid");
 
             // THEN: spec_type returns correct discriminant
-            assert_eq!(b.spec_type(), PropertySpecType::Bool);
-            assert_eq!(s.spec_type(), PropertySpecType::String);
-            assert_eq!(n.spec_type(), PropertySpecType::Number);
+            assert_eq!(
+                b.spec_type(),
+                PropertySpecType::Bool,
+                "BoolSpec should return Bool type"
+            );
+            assert_eq!(
+                s.spec_type(),
+                PropertySpecType::String,
+                "StringSpec should return String type"
+            );
+            assert_eq!(
+                n.spec_type(),
+                PropertySpecType::Number,
+                "NumberSpec should return Number type"
+            );
 
             // AND: validate dispatches to inner spec (tested via successful
             // bool parse)
