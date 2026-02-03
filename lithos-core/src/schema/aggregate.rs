@@ -92,7 +92,10 @@ pub struct PropertyBank {
 ///
 /// let name = SchemaName::new("project-note".into()).unwrap();
 /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
-/// assert!(schema.properties().is_empty());
+/// assert!(
+///     schema.properties().is_empty(),
+///     "New schema should have empty properties"
+/// );
 /// ```
 #[derive(
     Debug,
@@ -139,7 +142,7 @@ pub struct Schema {
 /// assert_eq!(&name3.0, "MySchema");
 ///
 /// let invalid = SchemaName::new("".to_string());
-/// assert!(invalid.is_err());
+/// assert!(invalid.is_err(), "Empty name should be rejected");
 /// ```
 #[derive(
     Debug,
@@ -243,7 +246,7 @@ impl PropertyBank {
     /// let bank = PropertyBank::new();
     ///
     /// let result = bank.decode("missing");
-    /// assert!(result.is_err());
+    /// assert!(result.is_err(), "Decoding missing property should fail");
     /// ```
     #[inline]
     pub fn decode(&self, key: &str) -> Result<&Property, SchemaError> {

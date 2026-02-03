@@ -18,7 +18,10 @@ use crate::fs;
 ///     min: Some(1.0),
 ///     max: Some(5.0),
 /// };
-/// assert!(definition.has_default());
+/// assert!(
+///     definition.has_default(),
+///     "Variable with default should return true"
+/// );
 /// ```
 #[derive(
     Debug,

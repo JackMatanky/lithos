@@ -306,7 +306,10 @@ mod tests {
         let result = filesystem.validate();
 
         // THEN: it fails
-        assert!(result.is_err());
+        assert!(
+            result.is_err(),
+            "Filesystem with empty paths should fail validation"
+        );
     }
 
     #[test]

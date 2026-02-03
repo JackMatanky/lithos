@@ -531,12 +531,23 @@ mod tests {
             // THEN: the aggregate state is updated correctly
             assert_eq!(note.tags.len(), 1);
             assert_eq!(note.headings.len(), 1);
-            assert_eq!(note.tasks.len(), 1);
-            assert_eq!(note.sections.len(), 1);
-            assert_eq!(note.links.len(), 2); // unified links
-            assert_eq!(note.wikilinks().count(), 1);
-            assert_eq!(note.embeds().count(), 1);
-            assert!(note.frontmatter().is_some());
+            assert_eq!(note.tasks.len(), 1, "Note should have 1 task");
+            assert_eq!(note.sections.len(), 1, "Note should have 1 section");
+            assert_eq!(
+                note.links.len(),
+                2,
+                "Note should have 2 links (unified links)"
+            );
+            assert_eq!(
+                note.wikilinks().count(),
+                1,
+                "Note should have 1 wikilink"
+            );
+            assert_eq!(note.embeds().count(), 1, "Note should have 1 embed");
+            assert!(
+                note.frontmatter().is_some(),
+                "Note should have frontmatter set"
+            );
         }
 
         /// 3.1-UNIT-010: `filtered_link_iterators_work`.
@@ -653,7 +664,10 @@ mod tests {
                     "Expected path '{path}' to be valid"
                 ),
                 Err(NoteError::InvalidPath(_)) => {
-                    assert!(matches!(result, Err(NoteError::InvalidPath(_))));
+                    assert!(
+                        matches!(result, Err(NoteError::InvalidPath(_))),
+                        "Expected path '{path}' to be invalid, got: {result:?}"
+                    );
                 }
                 Err(e) => panic!("Unexpected error kind in matrix: {e:?}"),
             }

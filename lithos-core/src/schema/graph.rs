@@ -198,7 +198,10 @@ mod tests {
 
                 // THEN: it must detect the circular inheritance
                 let res = graph.resolve_order();
-                assert!(matches!(res, Err(SchemaError::CircularInheritance(_))));
+                assert!(
+                    matches!(res, Err(SchemaError::CircularInheritance(_))),
+                    "Proptest circular dependency should be detected, got: {res:?}"
+                );
             }
 
             /// 3.3-UNIT-019: `schema_graph_accepts_arbitrary_lineage`.
@@ -235,9 +238,16 @@ mod tests {
 
                 // THEN: it must succeed and return the correct order
                 let res = graph.resolve_order();
-                assert!(res.is_ok());
+                assert!(
+                    res.is_ok(),
+                    "Linear graph should resolve successfully, got: {res:?}"
+                );
                 if let Ok(order) = res {
-                    assert_eq!(order.len(), unique_names.len());
+                    assert_eq!(
+                        order.len(),
+                        unique_names.len(),
+                        "Resolution order should contain all schemas"
+                    );
                 }
             }
         }
@@ -258,7 +268,11 @@ mod tests {
         let res = graph.resolve_order();
 
         // THEN: it must return a CircularInheritance error
-        assert!(matches!(res, Err(SchemaError::CircularInheritance(_))));
+        assert!(
+            matches!(res, Err(SchemaError::CircularInheritance(_))),
+            "Circular inheritance between schemas should be detected, got: \
+             {res:?}"
+        );
     }
 
     /// 3.3-UNIT-020: `resolves_empty_graph`.

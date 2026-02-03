@@ -142,7 +142,10 @@ mod tests {
         ];
 
         for err in errors {
-            assert!(!err.to_string().is_empty());
+            assert!(
+                !err.to_string().is_empty(),
+                "Error {err:?} should have non-empty display message"
+            );
         }
     }
 }

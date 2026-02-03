@@ -22,8 +22,11 @@ use super::error::NoteError;
 /// let heading = Anchor::Heading("introduction".into());
 /// let block = Anchor::BlockRef("abc123".into());
 ///
-/// assert!(heading.is_heading());
-/// assert!(block.is_block_ref());
+/// assert!(heading.is_heading(), "Heading anchor should be recognized");
+/// assert!(
+///     block.is_block_ref(),
+///     "Block reference anchor should be recognized"
+/// );
 /// ```
 #[derive(
     Debug,
@@ -108,8 +111,8 @@ pub enum EmbedType {
 ///     100,
 /// )
 /// .unwrap();
-/// assert_eq!(link.style(), Style::WikiLink);
-/// assert!(link.target().is_unresolved());
+/// assert_eq!(link.style(), Style::WikiLink, "Link style should be WikiLink");
+/// assert!(link.target().is_unresolved(), "Link target should be unresolved");
 ///
 /// // Embed an image (Wiki-style)
 /// let embed = Link::new_embed(
@@ -121,7 +124,7 @@ pub enum EmbedType {
 ///     200,
 /// )
 /// .unwrap();
-/// assert!(embed.is_embed());
+/// assert!(embed.is_embed(), "Link should be an embed");
 /// ```
 #[derive(
     Debug,
@@ -336,7 +339,7 @@ impl Link {
     ///     0,
     /// )
     /// .unwrap();
-    /// assert!(embed.is_embed());
+    /// assert!(embed.is_embed(), "Embed link should be recognized");
     /// ```
     #[inline]
     #[must_use]
@@ -368,8 +371,12 @@ impl Link {
     ///     200,
     /// )
     /// .unwrap();
-    /// assert_eq!(embed.style(), Style::WikiLink);
-    /// assert!(embed.is_embed());
+    /// assert_eq!(
+    ///     embed.style(),
+    ///     Style::WikiLink,
+    ///     "Embed style should be WikiLink"
+    /// );
+    /// assert!(embed.is_embed(), "Link should be an embed");
     /// ```
     #[inline]
     pub fn new_embed(
@@ -463,9 +470,9 @@ impl Link {
     ///     100,
     /// )
     /// .unwrap();
-    /// assert_eq!(link.style(), Style::WikiLink);
-    /// assert_eq!(link.alias(), Some("Alias"));
-    /// assert!(link.anchor().is_some());
+    /// assert_eq!(link.style(), Style::WikiLink, "Link style should be WikiLink");
+    /// assert_eq!(link.alias(), Some("Alias"), "Link alias should match");
+    /// assert!(link.anchor().is_some(), "Link anchor should be present");
     /// ```
     #[inline]
     pub fn new_wikilink(
@@ -527,7 +534,7 @@ impl Link {
     ///     0,
     /// )
     /// .unwrap();
-    /// assert!(embed.validate().is_ok());
+    /// assert!(embed.validate().is_ok(), "Valid embed should pass validation");
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), NoteError> {

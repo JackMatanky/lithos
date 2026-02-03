@@ -59,7 +59,7 @@ const RESERVED_WORDS: &[&str] = &[
 /// ```
 /// # use lithos_core::template::aggregate::Metadata;
 /// let metadata = Metadata::default();
-/// assert!(metadata.tags.is_empty());
+/// assert!(metadata.tags.is_empty(), "New metadata should have empty tags");
 /// ```
 #[derive(
     Debug,
@@ -179,7 +179,7 @@ impl Template {
     /// let mut templates = HashMap::new();
     /// templates.insert(base.name.to_string(), base.clone());
     /// let composed = Template::compose(&base, &composition, &templates)?;
-    /// assert!(composed.extends().is_some());
+    /// assert!(composed.extends().is_some(), "Composed template should extend base");
     /// # Ok(())
     /// # }
     /// # run().unwrap();
@@ -579,12 +579,25 @@ mod tests {
             let event_count = template.pending_events().len();
 
             // THEN: accessors expose expected data
-            assert_eq!(template.name, "base");
-            assert_eq!(template.content, "Hello");
-            assert!(template.extends().is_none());
-            assert!(!template.has_variables());
-            assert_eq!(event_count, 1);
-            assert_eq!(template.take_events().len(), 1);
+            assert_eq!(template.name, "base", "Template name should be 'base'");
+            assert_eq!(
+                template.content, "Hello",
+                "Template content should be 'Hello'"
+            );
+            assert!(
+                template.extends().is_none(),
+                "Template should not extend another template"
+            );
+            assert!(
+                !template.has_variables(),
+                "Template should have no variables"
+            );
+            assert_eq!(event_count, 1, "Template should have 1 pending event");
+            assert_eq!(
+                template.take_events().len(),
+                1,
+                "Taking events should return 1 event"
+            );
         }
 
         /// 3.4-UNIT-023: `should_reject_template_when_name_format_is_invalid`.
@@ -639,11 +652,9 @@ mod tests {
             name in "[a-zA-Z0-9_-]{1,64}"
         ) {
             // GIVEN: a generated valid identifier
-            let input = name;
-
             // WHEN: constructing a template with the identifier
             let result = Template::new(
-                input,
+                name.clone(),
                 "content".to_owned(),
                 HashMap::new(),
                 None,
@@ -651,7 +662,11 @@ mod tests {
             );
 
             // THEN: construction succeeds
-            prop_assert!(result.is_ok());
+            prop_assert!(
+                result.is_ok(),
+                "Template with valid name '{}' should be created",
+                name
+            );
         }
     }
 

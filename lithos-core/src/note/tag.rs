@@ -298,7 +298,10 @@ mod tests {
                 s in "#[a-zA-Z0-9_-]*/[ !@#$%^&*()]+/[a-zA-Z0-9_-]*"
             ) {
                 let result = Tag::new(&s);
-                prop_assert!(result.is_err());
+                prop_assert!(
+                    result.is_err(),
+                    "Tag with invalid characters '{s}' should be rejected"
+                );
             }
 
             #[test]
@@ -306,7 +309,10 @@ mod tests {
                 s in "#[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*"
             ) {
                 let result = Tag::new(&s);
-                prop_assert!(result.is_ok());
+                prop_assert!(
+                    result.is_ok(),
+                    "Valid tag '{s}' should be accepted"
+                );
             }
         }
     }
