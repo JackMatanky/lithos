@@ -126,3 +126,53 @@ impl NoteCreated {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frontmatter_validated_event_populates_fields() {
+        let id = Uuid::now_v7();
+        let event = FrontmatterValidated::new(id, 3, 1_234_567_890);
+
+        assert_eq!(event.note_id, id, "Note ID should match input");
+        assert_eq!(event.field_count, 3, "Field count should match input");
+        assert_eq!(
+            event.timestamp, 1_234_567_890,
+            "Timestamp should match input"
+        );
+    }
+
+    #[test]
+    fn note_created_event_populates_fields() {
+        let id = Uuid::now_v7();
+        let event = NoteCreated::new(id, "notes/test.md".to_owned(), 42);
+
+        assert_eq!(event.id, id, "Note ID should match input");
+        assert_eq!(event.path, "notes/test.md", "Path should match input");
+        assert_eq!(event.timestamp, 42, "Timestamp should match input");
+    }
+
+    #[test]
+    fn note_events_enum_wraps_variants() {
+        let id = Uuid::now_v7();
+        let validated = FrontmatterValidated::new(id, 1, 10);
+        let created = NoteCreated::new(id, "notes/test.md".to_owned(), 20);
+
+        let wrapped_validated =
+            NoteEvents::FrontmatterValidated(validated.clone());
+        let wrapped_created = NoteEvents::NoteCreated(created.clone());
+
+        assert_eq!(
+            wrapped_validated,
+            NoteEvents::FrontmatterValidated(validated),
+            "FrontmatterValidated should wrap in NoteEvents"
+        );
+        assert_eq!(
+            wrapped_created,
+            NoteEvents::NoteCreated(created),
+            "NoteCreated should wrap in NoteEvents"
+        );
+    }
+}
