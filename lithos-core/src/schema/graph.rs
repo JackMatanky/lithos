@@ -156,100 +156,108 @@ mod tests {
     mod proptests {
         use std::collections::BTreeSet;
 
-        use proptest::prelude::*;
+        use proptest::{prelude::*, test_runner::TestRunner};
 
         use super::super::*;
 
-        proptest! {
-            /// 3.3-UNIT-018: `schema_graph_detects_arbitrary_cycles`.
-            /// Priority: P0.
-            #[test]
-            #[expect(
-                clippy::indexing_slicing,
-                clippy::integer_division_remainder_used,
-                clippy::arithmetic_side_effects,
-                reason = "Test uses index-based collection access and modulo \
-                          arithmetic for circular graph traversal. Index safety \
-                          is guaranteed by loop bounds over `unique_names` length."
-            )]
-            fn schema_graph_detects_arbitrary_cycles(
-                names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10)
-            ) {
-                // GIVEN: a set of unique schema names
-                let unique_names: Vec<_> = names
-                    .into_iter()
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
-                    .collect();
-                if unique_names.len() < 2 { return Ok(()); }
+        /// 3.3-UNIT-018: `schema_graph_detects_arbitrary_cycles`.
+        /// Priority: P0.
+        #[test]
+        #[expect(
+            clippy::indexing_slicing,
+            clippy::integer_division_remainder_used,
+            reason = "Test uses index-based collection access and modulo \
+                      arithmetic for circular graph traversal. Index safety \
+                      is guaranteed by loop bounds over `unique_names` length."
+        )]
+        fn schema_graph_detects_arbitrary_cycles() {
+            let mut runner = TestRunner::deterministic();
+            let strategy = prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10);
 
-                // WHEN: creating a circular inheritance graph
-                let mut graph = Graph::new();
-                for i in 0..unique_names.len() {
-                    let next = (i + 1) % unique_names.len();
-                    let name = SchemaName::new(
-                        unique_names[i].clone()
-                    ).unwrap();
-                    let next_name = SchemaName::new(
-                        unique_names[next].clone()
-                    ).unwrap();
-                    graph.add_node(name, Some(next_name));
-                }
+            runner
+                .run(&strategy, |names| {
+                    // GIVEN: a set of unique schema names
+                    let unique_names: Vec<_> = names
+                        .into_iter()
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect();
+                    if unique_names.len() < 2 {
+                        return Ok(());
+                    }
 
-                // THEN: it must detect the circular inheritance
-                let res = graph.resolve_order();
-                assert!(
-                    matches!(res, Err(SchemaError::CircularInheritance(_))),
-                    "Proptest circular dependency should be detected, got: {res:?}"
-                );
-            }
+                    // WHEN: creating a circular inheritance graph
+                    let mut graph = Graph::new();
+                    for i in 0..unique_names.len() {
+                        let next = (i + 1) % unique_names.len();
+                        let name =
+                            SchemaName::new(unique_names[i].clone()).unwrap();
+                        let next_name =
+                            SchemaName::new(unique_names[next].clone())
+                                .unwrap();
+                        graph.add_node(name, Some(next_name));
+                    }
 
-            /// 3.3-UNIT-019: `schema_graph_accepts_arbitrary_lineage`.
-            /// Priority: P1.
-            #[test]
-            #[expect(
-                clippy::indexing_slicing,
-                clippy::arithmetic_side_effects,
-                reason = "Test uses index-based collection access for building \
-                          linear inheritance graphs. Index safety is guaranteed \
-                          by loop bounds over `unique_names` length."
-            )]
-            fn schema_graph_accepts_arbitrary_lineage(
-                names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10)
-            ) {
-                // GIVEN: a set of unique schema names
-                let unique_names: Vec<_> = names
-                    .into_iter()
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
-                    .collect();
+                    // THEN: it must detect the circular inheritance
+                    let res = graph.resolve_order();
+                    assert!(
+                        matches!(res, Err(SchemaError::CircularInheritance(_))),
+                        "Proptest circular dependency should be detected, \
+                         got: {res:?}"
+                    );
+                    Ok(())
+                })
+                .expect("Deterministic proptest should not fail");
+        }
 
-                // WHEN: creating a valid linear inheritance graph
-                let mut graph = Graph::new();
-                for i in 0..unique_names.len() {
-                    let name = SchemaName::new(unique_names[i].clone()).unwrap();
-                    let parent = if i == 0 {
-                        None
-                    } else {
-                        Some(SchemaName::new(unique_names[i-1].clone()).unwrap())
-                    };
-                    graph.add_node(name, parent);
-                }
+        /// 3.3-UNIT-019: `schema_graph_accepts_arbitrary_lineage`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "Test uses index-based collection access for building \
+                      linear inheritance graphs. Index safety is guaranteed \
+                      by loop bounds over `unique_names` length."
+        )]
+        fn schema_graph_accepts_arbitrary_lineage() {
+            let mut runner = TestRunner::deterministic();
+            let strategy = prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10);
 
-                // THEN: it must succeed and return the correct order
-                let res = graph.resolve_order();
-                assert!(
-                    res.is_ok(),
-                    "Linear graph should resolve successfully, got: {res:?}"
-                );
-                if let Ok(order) = res {
+            runner
+                .run(&strategy, |names| {
+                    // GIVEN: a set of unique schema names
+                    let unique_names: Vec<_> = names
+                        .into_iter()
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect();
+
+                    // WHEN: creating a valid linear inheritance graph
+                    let mut graph = Graph::new();
+                    for (i, name_str) in unique_names.iter().enumerate() {
+                        let name = SchemaName::new(name_str.clone()).unwrap();
+                        let parent = match i {
+                            0 => None,
+                            _ => Some(
+                                SchemaName::new(unique_names[i - 1].clone())
+                                    .unwrap(),
+                            ),
+                        };
+                        graph.add_node(name, parent);
+                    }
+
+                    // THEN: it must succeed and return the correct order
+                    let res = graph.resolve_order();
+                    let order =
+                        res.expect("Linear graph should resolve successfully");
                     assert_eq!(
                         order.len(),
                         unique_names.len(),
                         "Resolution order should contain all schemas"
                     );
-                }
-            }
+                    Ok(())
+                })
+                .expect("Deterministic proptest should not fail");
         }
     }
 
