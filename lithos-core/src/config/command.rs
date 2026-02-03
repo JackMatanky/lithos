@@ -63,3 +63,50 @@ impl<'db> super::ports::Command for Command<'db> {
         self.save_vault(config)
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test code uses unwrap/expect for clarity"
+)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn save_global_persists_configuration() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.redb");
+        let db = Database::open(&path).unwrap();
+        let cmd = Command::new(&db);
+
+        let global = Global::default();
+        cmd.save_global(&global).unwrap();
+
+        let stored = db.get_owned::<Global>("config", "global").unwrap();
+        let stored_global = stored.expect("Stored global config should exist");
+        assert_eq!(
+            stored_global, global,
+            "Stored global config should match input"
+        );
+    }
+
+    #[test]
+    fn save_vault_persists_configuration() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.redb");
+        let db = Database::open(&path).unwrap();
+        let cmd = Command::new(&db);
+
+        let vault = Vault::default();
+        cmd.save_vault(&vault).unwrap();
+
+        let stored = db.get_owned::<Vault>("config", "vault").unwrap();
+        let stored_vault = stored.expect("Stored vault config should exist");
+        assert_eq!(
+            stored_vault, vault,
+            "Stored vault config should match input"
+        );
+    }
+}
