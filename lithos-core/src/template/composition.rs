@@ -262,23 +262,80 @@ impl Composition {
               assertions. Acceptable in test-only code paths."
 )]
 mod tests {
+    /// Test fixtures and builders for Template composition tests.
+    mod fixtures {
+        use super::super::*;
+        use crate::template::{
+            aggregate::Metadata, variable::VariableDefinition,
+        };
+
+        /// Builder for creating test Template instances.
+        pub struct TemplateTestBuilder {
+            name: String,
+            content: String,
+            variables: HashMap<String, VariableDefinition>,
+            extends: Option<String>,
+            metadata: Metadata,
+        }
+
+        impl TemplateTestBuilder {
+            pub fn new(name: &str) -> Self {
+                Self {
+                    name: name.to_owned(),
+                    content: "default content".to_owned(),
+                    variables: HashMap::new(),
+                    extends: None,
+                    metadata: Metadata::default(),
+                }
+            }
+
+            pub fn with_content(mut self, content: &str) -> Self {
+                self.content = content.to_owned();
+                self
+            }
+
+            pub fn extending(mut self, parent: &str) -> Self {
+                self.extends = Some(parent.to_owned());
+                self
+            }
+
+            pub fn with_variable(
+                mut self,
+                name: &str,
+                var: VariableDefinition,
+            ) -> Self {
+                self.variables.insert(name.to_owned(), var);
+                self
+            }
+
+            pub fn build(self) -> Result<Template, TemplateError> {
+                Template::new(
+                    self.name,
+                    self.content,
+                    self.variables,
+                    self.extends,
+                    self.metadata,
+                )
+            }
+        }
+    }
+
     use super::*;
-    use crate::template::{aggregate::Metadata, variable::VariableDefinition};
+    use crate::template::variable::VariableDefinition;
 
     /// 3.4-UNIT-028: `should_detect_circular_composition`.
     /// Priority: P0.
     #[test]
     fn should_detect_circular_composition() {
+        use fixtures::TemplateTestBuilder;
+
         // GIVEN a template that extends itself
         let mut templates = HashMap::new();
-        let base = Template::new(
-            "A".to_owned(),
-            "content".to_owned(),
-            HashMap::new(),
-            Some("A".to_owned()),
-            Metadata::default(),
-        )
-        .expect("Valid template setup");
+        let base = TemplateTestBuilder::new("A")
+            .with_content("content")
+            .extending("A")
+            .build()
+            .expect("Valid template setup");
         templates.insert("A".to_owned(), base);
 
         let composition = Composition {
@@ -303,16 +360,14 @@ mod tests {
     /// Priority: P0.
     #[test]
     fn should_detect_circular_include() {
+        use fixtures::TemplateTestBuilder;
+
         // GIVEN a base template with a self-include
         let mut templates = HashMap::new();
-        let base = Template::new(
-            "A".to_owned(),
-            "content".to_owned(),
-            HashMap::new(),
-            None,
-            Metadata::default(),
-        )
-        .expect("Valid template setup");
+        let base = TemplateTestBuilder::new("A")
+            .with_content("content")
+            .build()
+            .expect("Valid template setup");
         templates.insert("A".to_owned(), base);
 
         let composition = Composition {
@@ -337,22 +392,19 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn validate_rejects_variable_type_mismatch() {
+        use fixtures::TemplateTestBuilder;
+
         // GIVEN: a base template with a string variable
-        let mut variables = HashMap::new();
-        variables.insert("title".to_owned(), VariableDefinition::String {
-            default: None,
-            max_length: None,
-            min_length: None,
-            pattern: None,
-        });
-        let base = Template::new(
-            "base".to_owned(),
-            "Hello {{title}}".to_owned(),
-            variables,
-            None,
-            Metadata::default(),
-        )
-        .unwrap();
+        let base = TemplateTestBuilder::new("base")
+            .with_content("Hello {{title}}")
+            .with_variable("title", VariableDefinition::String {
+                default: None,
+                max_length: None,
+                min_length: None,
+                pattern: None,
+            })
+            .build()
+            .unwrap();
 
         // WHEN: overriding with an incompatible value
         let mut overrides = HashMap::new();
