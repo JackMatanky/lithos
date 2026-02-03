@@ -126,10 +126,17 @@ impl super::ports::Command for Command<'_> {
 mod tests {
     use std::collections::HashMap;
 
-    use tempfile::tempdir;
+    use tempfile::{TempDir, tempdir};
 
     use super::*;
     use crate::template::{aggregate::Metadata, ports::Command as _};
+
+    fn test_db() -> (TempDir, Database) {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("templates.redb");
+        let db = Database::open(&path).unwrap();
+        (dir, db)
+    }
 
     fn template_fixture(name: &str) -> Template {
         Template::new(
@@ -144,9 +151,7 @@ mod tests {
 
     #[test]
     fn create_persists_template_and_name_index() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("templates.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
         let template = template_fixture("daily");
@@ -167,9 +172,7 @@ mod tests {
 
     #[test]
     fn update_refreshes_name_index_when_name_changes() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("templates.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
         let mut template = template_fixture("daily");
@@ -194,9 +197,7 @@ mod tests {
 
     #[test]
     fn delete_removes_template_and_name_index() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("templates.redb");
-        let db = Database::open(&path).unwrap();
+        let (_dir, db) = test_db();
         let cmd = Command::new(&db);
 
         let template = template_fixture("daily");
