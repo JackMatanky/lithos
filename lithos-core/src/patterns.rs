@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "Patterns provided for future use across contexts"
-)]
-
 //! Predefined regex patterns for domain validation across bounded contexts.
 
 // ============================================================================
