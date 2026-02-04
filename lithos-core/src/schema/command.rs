@@ -3,12 +3,6 @@
 //! This module implements the Command port trait for Schema write operations,
 //! using the Database layer for persistence.
 
-#![allow(
-    clippy::missing_inline_in_public_items,
-    clippy::elidable_lifetime_names,
-    reason = "CQRS pattern: trait impls don't need inline"
-)]
-
 use super::{aggregate::Schema, error::SchemaError};
 use crate::db::Database;
 
