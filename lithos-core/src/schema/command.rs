@@ -52,10 +52,6 @@ impl<'db> Command<'db> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test code uses unwrap/expect for clarity"
-)]
 mod tests {
     use tempfile::{TempDir, tempdir};
     use uuid::Uuid;
@@ -68,29 +64,54 @@ mod tests {
     const TEST_SCHEMA_ID_PROJECT: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0102);
 
-    fn test_db() -> (TempDir, Database) {
-        let dir = tempdir().unwrap();
+    fn test_db() -> Result<(TempDir, Database), String> {
+        let dir = tempdir().map_err(|e| e.to_string())?;
         let path = dir.path().join("schema.redb");
-        let db = Database::open(&path).unwrap();
-        (dir, db)
+        let db = Database::open(&path).map_err(|e| e.to_string())?;
+        Ok((dir, db))
     }
 
-    fn schema_fixture(id: Uuid, name: &str) -> Schema {
-        Schema::new(id, SchemaName::new(name.to_owned()).unwrap(), vec![])
-            .unwrap()
+    fn schema_fixture(id: Uuid, name: &str) -> Result<Schema, String> {
+        let schema_name =
+            SchemaName::new(name.to_owned()).map_err(|e| e.to_string())?;
+        Schema::new(id, schema_name, vec![]).map_err(|e| e.to_string())
     }
 
     #[test]
     fn save_persists_schema_by_name() {
-        let (_dir, db) = test_db();
+        let db_result = test_db();
+        assert!(db_result.is_ok(), "Failed to create test db: {db_result:?}");
+        let Ok((_dir, db)) = db_result else {
+            return;
+        };
         let cmd = Command::new(&db);
 
-        let schema = schema_fixture(TEST_SCHEMA_ID_NOTE, "note");
+        let schema_result = schema_fixture(TEST_SCHEMA_ID_NOTE, "note");
+        assert!(
+            schema_result.is_ok(),
+            "Failed to create schema fixture: {schema_result:?}"
+        );
+        let Ok(schema) = schema_result else {
+            return;
+        };
 
-        cmd.save(&schema).unwrap();
+        let save_result = cmd.save(&schema).map_err(|e| e.to_string());
+        assert!(save_result.is_ok(), "Save should succeed: {save_result:?}");
 
-        let stored = db.get_owned::<Schema>("schemas", "note").unwrap();
-        let stored_schema = stored.expect("Stored schema should exist");
+        let stored_result = db
+            .get_owned::<Schema>("schemas", "note")
+            .map_err(|e| e.to_string());
+        assert!(
+            stored_result.is_ok(),
+            "Read after save should succeed: {stored_result:?}"
+        );
+        let Ok(stored) = stored_result else {
+            return;
+        };
+        assert!(stored.is_some(), "Stored schema should exist");
+        let Some(stored_schema) = stored else {
+            return;
+        };
         assert_eq!(
             stored_schema.name().as_ref(),
             "note",
@@ -100,15 +121,40 @@ mod tests {
 
     #[test]
     fn delete_removes_schema_by_name() {
-        let (_dir, db) = test_db();
+        let db_result = test_db();
+        assert!(db_result.is_ok(), "Failed to create test db: {db_result:?}");
+        let Ok((_dir, db)) = db_result else {
+            return;
+        };
         let cmd = Command::new(&db);
 
-        let schema = schema_fixture(TEST_SCHEMA_ID_PROJECT, "project");
-        cmd.save(&schema).unwrap();
+        let schema_result = schema_fixture(TEST_SCHEMA_ID_PROJECT, "project");
+        assert!(
+            schema_result.is_ok(),
+            "Failed to create schema fixture: {schema_result:?}"
+        );
+        let Ok(schema) = schema_result else {
+            return;
+        };
+        let save_result = cmd.save(&schema).map_err(|e| e.to_string());
+        assert!(save_result.is_ok(), "Save should succeed: {save_result:?}");
 
-        cmd.delete("project").unwrap();
+        let delete_result = cmd.delete("project").map_err(|e| e.to_string());
+        assert!(
+            delete_result.is_ok(),
+            "Delete should succeed: {delete_result:?}"
+        );
 
-        let stored = db.get_owned::<Schema>("schemas", "project").unwrap();
+        let stored_result = db
+            .get_owned::<Schema>("schemas", "project")
+            .map_err(|e| e.to_string());
+        assert!(
+            stored_result.is_ok(),
+            "Read after delete should succeed: {stored_result:?}"
+        );
+        let Ok(stored) = stored_result else {
+            return;
+        };
         assert!(stored.is_none(), "Deleted schema should not exist");
     }
 }
