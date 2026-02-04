@@ -56,7 +56,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 ## TDD Acceptance Criteria (Quality Gates)
 
 **Given** I need a high-performance in-memory cache
-**When** I run `mise run test:unit:adapters moka_cache`
+**When** I run `mise run test:unit:core moka_cache`
 **Then** all tests pass with all public components validated
 **And** `get`, `put`, `delete` operations demonstrate sub-millisecond latency
 **And** cache hit/miss behavior matches expected Moka semantics
@@ -73,7 +73,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 **And** cache hit rate for hot data remains stable during vault indexing simulation
 
 **Given** I need documentation-driven examples
-**When** I run `mise run test:unit:adapters --doc`
+**When** I run `mise run test:unit:core --doc`
 **Then** all doc tests demonstrate proper builder pattern and cache usage
 **And** examples demonstrate async execution within tokio runtime
 
@@ -90,7 +90,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [x] Subtask 1.2: Add `pub(crate) mod moka;` to `crates/adapters/src/spi/cache/mod.rs`
   - [x] Subtask 1.3: Write a unit test in `moka.rs` under `#[cfg(test)]` that fails to import `MokaCache`
   - [x] Subtask 1.4: Write a unit test in `moka.rs` that fails to import `MokaCacheBuilder`
-  - [x] Subtask 1.5: Run `mise run test:unit:adapters moka` and verify both tests fail with "unresolved import" (RED)
+  - [x] Subtask 1.5: Run `mise run test:unit:core moka` and verify both tests fail with "unresolved import" (RED)
   - [x] Subtask 1.6: Run `mise run lint` and ensure environment is clean
 
 ### Phase 2: Struct Definition & Configuration
@@ -105,7 +105,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [x] Subtask 2.8: Implement `time_to_idle` method in builder
   - [x] Subtask 2.9: Write failing test expecting builder `.new()` to return `Result<Cache, CacheError>`
   - [x] Subtask 2.10: Implement `new()` by initializing an internal `moka::future::Cache` with configured parameters; ensure defaults (e.g., 10,000 capacity, None for durations) are applied if builder methods were not called.
-  - [x] Subtask 2.11: Run `mise run test:unit:adapters moka_config` and verify all configuration tests pass (GREEN)
+  - [x] Subtask 2.11: Run `mise run test:unit:core moka_config` and verify all configuration tests pass (GREEN)
   - [x] Subtask 2.12: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 3: Trait Implementation - Core Operations
@@ -124,7 +124,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [x] Subtask 3.12: Implement `invalidate` by delegating to `delete`
   - [x] Subtask 3.13: Write failing test verifying generic bounds `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static`
   - [x] Subtask 3.14: Apply trait bounds `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static` to the `MokaCache` struct and `Cache` implementation.
-  - [x] Subtask 3.15: Run `mise run test:unit:adapters moka_trait` and verify all operation tests pass (GREEN)
+  - [x] Subtask 3.15: Run `mise run test:unit:core moka_trait` and verify all operation tests pass (GREEN)
   - [x] Subtask 3.16: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 4: Observability & Tracing
@@ -137,7 +137,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [x] Subtask 4.6: Add `#[tracing::instrument(skip(self, value), level = "debug")]` to `put`
   - [x] Subtask 4.7: Write failing test expecting instrumentation for `delete()` and `invalidate()`
   - [x] Subtask 4.8: Add proper instrumentation and events to `delete` and `invalidate`
-  - [x] Subtask 4.9: Run `mise run test:unit:adapters moka_tracing` and verify pass (GREEN)
+  - [x] Subtask 4.9: Run `mise run test:unit:core moka_tracing` and verify pass (GREEN)
   - [x] Subtask 4.10: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 5: Eviction & Expiration
@@ -148,14 +148,14 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [x] Subtask 5.4: Ensure builder's `time_to_idle` is correctly passed to Moka backend
   - [x] Subtask 5.5: Write failing test for `max_capacity`: put 100 items into cache with capacity 10, verify size <= 10
   - [x] Subtask 5.6: Write failing test for TinyLFU: Access 'Hot Key' 20 times, then access 100 'Scan Keys' once each; verify 'Hot Key' is not evicted by the scan (Moka's TinyLFU behavior).
-  - [x] Subtask 5.7: Run `mise run test:unit:adapters moka_eviction` and verify pass (GREEN)
+  - [x] Subtask 5.7: Run `mise run test:unit:core moka_eviction` and verify pass (GREEN)
   - [x] Subtask 5.8: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 6: Error Handling
 - [x] Task 6: Map internal Moka states to CacheError
   - [x] Subtask 6.1: Write failing test for error mapping: Implement a test case for `From<moka::Error> for CacheError` or simulate a backend failure in `new()` to verify `CacheError::BackendError` propagation.
   - [x] Subtask 6.2: Ensure method returns `CacheError::BackendError` with descriptive message
-  - [x] Subtask 6.3: Run `mise run test:unit:adapters moka_errors` and verify pass (GREEN)
+  - [x] Subtask 6.3: Run `mise run test:unit:core moka_errors` and verify pass (GREEN)
   - [x] Subtask 6.4: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 7: Documentation & Doc Testing
@@ -164,7 +164,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [x] Subtask 7.2: Implement doc comments in `moka.rs` to make the doc test pass
   - [x] Subtask 7.3: Write failing doc test showing how TinyLFU prevents scan pollution (textual explanation + example)
   - [x] Subtask 7.4: Add module-level docs explaining eviction policies and async safety
-  - [x] Subtask 7.5: Run `mise run test:unit:adapters --doc` and verify all pass (GREEN)
+  - [x] Subtask 7.5: Run `mise run test:unit:core --doc` and verify all pass (GREEN)
   - [x] Subtask 7.6: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 8: Final Quality Gate
@@ -213,7 +213,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 ### TDD Methodology
 - **RED-GREEN-REFACTOR**: Never write code without a failing test.
 - **Co-located Tests**: All unit tests MUST live in `moka.rs` under `#[cfg(test)]`.
-- **Mise Orchestration**: Use `mise run test:unit:adapters` for verification.
+- **Mise Orchestration**: Use `mise run test:unit:core` for verification.
 
 ### References
 - [Source: project-context.md#Hexagonal-Boundary-Enforcement]

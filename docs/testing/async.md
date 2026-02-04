@@ -18,13 +18,13 @@ The Tokio runtime behaves differently than standard threads. Violating its invar
 
 ### Isolation
 - **Fresh Runtime**: Each test gets its own Tokio runtime instance created by the `#[tokio::test]` macro.
-- **Fresh Filesystem**: Use `IsolatedTestContext` to get a unique, randomized temporary directory per test.
+- **Fresh Filesystem**: Use `tempfile::TempDir` to get a unique, randomized temporary directory per test.
 - **No Global State**: Avoid `static` mutable state. Use dependency injection for shared resources (e.g., pass `Arc<Bus>` rather than accessing a `lazy_static` Bus).
 
 ## 2. Golden Rules (The Invariants)
 
-1.  **Strict Flavor**: All tests must use `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]` (or the `async_test!` macro). Single-threaded tests mask race conditions by executing tasks sequentially. Multi-threaded tests force actual parallelism.
-2.  **Mandatory Timeouts**: All async operations must be wrapped in `with_timeout` (default 5s) or `with_cancellation`. Hanging CI pipelines are a major productivity killer.
+1.  **Strict Flavor**: All tests must use `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]`. Single-threaded tests mask race conditions by executing tasks sequentially. Multi-threaded tests force actual parallelism.
+2.  **Mandatory Timeouts**: All async operations must be wrapped in `tokio::time::timeout` or explicit cancellation. Hanging CI pipelines are a major productivity killer.
 3.  **Cancellation Paths**: Every long-running process (Actor/Service) must be tested for graceful shutdown via cancellation token or channel close.
 4.  **Error Paths**: Async results must be verified for both success (`Ok`) and failure (`Err`) conditions. Panics in spawned tasks must be caught and reported, not silently ignored.
 
@@ -34,11 +34,11 @@ The Tokio runtime behaves differently than standard threads. Violating its invar
 The `multi_thread` flavor with 2 workers is the project standard. It balances speed with the ability to detect common async bugs like sending non-`Send` types across threads or deadlocking shared resources.
 
 ```rust
-// Preferred: Use the macro provided by lithos-test-utils
-// Automatically configures multi_thread + 2 workers
-async_test!(async fn my_concurrent_test() {
+// Project standard: multi_thread runtime with 2 workers
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn my_concurrent_test() {
     // Test logic here
-});
+}
 
 // Manual (if specific config needed, e.g., simulating high contention)
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -51,17 +51,14 @@ async fn heavy_concurrency_test() {
 If you must use `std::fs` (e.g., legacy code, initial setup, or Redb internals), offload it.
 
 ```rust
-use lithos_test_utils::spawn_blocking_test;
+use tokio::task::spawn_blocking;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_non_blocking_file_read() {
-    // spawn_blocking_test offloads to a dedicated blocking thread pool
-    // It returns a Result<Result<T, E>, JoinError>
-    // The outer Result handles the JoinError (panic in task)
-    // The inner Result handles the application error (IO error)
-    let content = spawn_blocking_test(|| {
+    // spawn_blocking offloads to a dedicated blocking thread pool
+    let content = spawn_blocking(|| {
         // This closure runs on a thread where blocking is safe
-        std::fs::read_to_string("vault_config.toml").map_err(|e| e.to_string())
+        std::fs::read_to_string("vault_config.toml")
     })
     .await
     .expect("Task failed/panicked")
@@ -75,11 +72,11 @@ async fn test_non_blocking_file_read() {
 Eliminate flakiness by pausing the global virtual clock.
 
 ```rust
-use lithos_test_utils::time_test;
-use tokio::time::{advance, Duration};
+use tokio::time::{advance, pause, Duration};
 
-time_test!(async fn validates_cache_expiry() {
-    // Virtual time is PAUSED by default in this macro.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn validates_cache_expiry() {
+    pause();
 
     // 1. Set a key with 60s TTL
     // The creation timestamp is captured relative to the frozen clock
@@ -93,7 +90,7 @@ time_test!(async fn validates_cache_expiry() {
     // 3. Advance another 31s (total 61s - expired)
     advance(Duration::from_secs(31)).await;
     assert!(cache.get("key").await.is_none());
-});
+}
 ```
 
 ### Resource Throttling & JoinSets
@@ -211,7 +208,7 @@ If `mise run test` hangs, it usually means a task is:
 3.  Running an infinite loop without `.await` points (CPU starvation).
 
 **Mitigation**:
-- Enable `console-subscriber` in `lithos-test-utils` config.
+- Enable `console-subscriber` in the test environment when debugging async scheduling.
 - Use `#[tokio::test(flavor = "multi_thread")]` to prevent single-thread starvation.
 - Ensure strict timeouts (`with_timeout`) are applied.
 

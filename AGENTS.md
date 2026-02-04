@@ -37,33 +37,36 @@ To activate specialized agents, use: `"As [agent-name], ..."` (e.g., `"As dev, i
 - **ADR documentation**: All architectural decisions documented in [docs/adr/](docs/adr/)
 
 ### Project Structure
-- `crates/domain/` - Pure business logic (no I/O, no external deps)
-- `crates/app/` - Application services and use cases
-- `crates/adapters/` - Infrastructure (DB, file system, cache)
-- `crates/cli/` - Command-line interface
-- `tests/` - Integration and E2E tests
-- `benches/` - Performance benchmarks
+- `lithos-core/` - Core library with all business logic and infrastructure
+  - `src/config/` - Configuration management context
+  - `src/note/` - Note domain context
+  - `src/schema/` - Schema domain context
+  - `src/template/` - Template domain context
+  - `src/db/` - Database infrastructure
+  - `src/fs/` - Filesystem utilities
+  - `benches/` - Performance benchmarks
+- `lithos-cli/` - Command-line interface binary
 
 For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-context.md)
 
 ## Key Architectural Constraints
 
 ⚠️ **NON-NEGOTIABLE RULES**:
-1. **Domain purity**: `crates/domain/` MUST have zero external dependencies
+1. **Domain purity**: `lithos-core/src/{context}/` MUST have zero external dependencies
 2. **Zero-copy patterns**: Use rkyv for serialization, avoid cloning in hot paths
 3. **Test-first**: Red-green-refactor cycle required - tests before implementation
 4. **ADRs required**: Document all architectural decisions in [docs/adr/](docs/adr/)
-5. **Hexagonal architecture**: Domain → App → Adapters (dependencies flow inward only)
+5. **Dependency flow**: CLI → Core contexts → DB/FS (dependencies flow inward only)
 
 ## Where Does This Code Go?
 
-**Pure business logic (no I/O)?** → `crates/domain/src/`
-**Application orchestration?** → `crates/app/src/`
-**Database/cache/file operations?** → `crates/adapters/src/spi/`
-**API/CLI interface?** → `crates/adapters/src/api/` or `crates/cli/src/`
+**Pure business logic (no I/O)?** → `lithos-core/src/{context}/` (note, schema, template, config)
+**Database operations?** → `lithos-core/src/db/`
+**File system utilities?** → `lithos-core/src/fs/`
+**CLI interface?** → `lithos-cli/src/`
 **Tests for domain logic?** → Same file as impl with `#[cfg(test)]`
-**Integration tests?** → `tests/suite/integration/`
-**Benchmarks?** → `benches/`
+**Integration tests?** → `lithos-core/tests/`
+**Benchmarks?** → `lithos-core/benches/`
 
 ## Critical Rust Patterns & Anti-Patterns
 
@@ -173,10 +176,9 @@ Before marking any task complete:
 ## Before Submitting Work
 
 1. **Run full verification**: `mise run verify` must be 100% green
-2. **Check architecture compliance**: `mise run test:arch` passes
-3. **Review test quality**: Critical paths tested, edge cases covered
-4. **Code hygiene check**: No debug prints, commented code, or TODOs
-5. **Documentation**: If architectural change, ADR created in `docs/adr/`
+2. **Review test quality**: Critical paths tested, edge cases covered
+3. **Code hygiene check**: No debug prints, commented code, or TODOs
+4. **Documentation**: If architectural change, ADR created in `docs/adr/`
 
 ## Common Commands (mise tasks)
 
@@ -198,20 +200,22 @@ Before marking any task complete:
 | `mise run adr:metrics`       | Generate metrics for ADR management.                                              |
 | `mise run ci`                | Simulate CI/CD pipeline.                                                          |
 | `mise run timing`            | Run verify with detailed timing information.                                      |
-| `mise run test`              | Run all unit and integration tests (alias: `t`).                                  |
-| `mise run test:unit`         | Run all unit tests across the workspace using `nextest`.                          |
-| `mise run test:unit:<crate>` | Run unit tests for a specific crate (e.g., `test:unit:app`).                      |
-| `mise run test:unit:domain`  | Run domain crate unit tests (alias: `tud`).                                       |
-| `mise run test:unit:app`     | Run app crate unit tests (alias: `tuap`).                                         |
-| `mise run test:unit:adapters`| Run adapters crate unit tests (alias: `tuad`).                                    |
-| `mise run test:unit:cli`     | Run CLI crate unit tests (alias: `tuc`).                                          |
+| `mise run test`              | Run all tests (unit, integration, e2e) (alias: `t`).                              |
+| `mise run test:unit`         | Run all unit tests using `nextest` (alias: `tu`).                                 |
+| `mise run test:unit:core`    | Run core crate unit tests (alias: `tucore`).                                      |
+| `mise run test:unit:cli`     | Run CLI crate unit tests (alias: `tucli`).                                        |
+| `mise run test:unit:config`  | Run config module unit tests (alias: `tuconf`).                                   |
+| `mise run test:unit:note`    | Run note module unit tests (alias: `tunote`).                                     |
+| `mise run test:unit:schema`  | Run schema module unit tests (alias: `tusch`).                                    |
+| `mise run test:unit:template`| Run template module unit tests (alias: `tutemp`).                                 |
+| `mise run test:unit:db`      | Run db module unit tests (alias: `tudb`).                                         |
+| `mise run test:unit:fs`      | Run fs module unit tests (alias: `tufs`).                                         |
 | `mise run test:bench`        | Run all performance benchmarks using `criterion`.                                 |
-| `mise run test:bench:domain` | Run domain crate benchmarks (alias: `tbd`).                                       |
-| `mise run test:bench:app`    | Run app crate benchmarks (alias: `tbap`).                                         |
-| `mise run test:bench:adapters`| Run adapters crate benchmarks (alias: `tbad`).                                   |
-| `mise run test:bench:cli`    | Run CLI crate benchmarks (alias: `tbc`).                                          |
-| `mise run test:integration`  | Run all integration tests across the workspace.                                   |
-| `mise run test:e2e`          | Run end-to-end tests using `cli_smoke` binary.                                    |
-| `mise run test:arch`         | Run architectural enforcement tests using `purity` binary.                        |
-| `mise run test:coverage`     | Generate code coverage reports using `tarpaulin`.                                 |
-| `mise run test:watch`        | Watch mode: automatically run tests on file changes.                              |
+| `mise run test:bench:core`   | Run core crate benchmarks (alias: `tbcore`).                                      |
+| `mise run test:bench:cli`    | Run CLI crate benchmarks (alias: `tbcli`).                                        |
+| `mise run test:integration`  | Run all integration tests across the workspace (alias: `ti`).                     |
+| `mise run test:e2e`          | Run end-to-end tests (alias: `te`).                                               |
+| `mise run test:coverage`     | Generate code coverage reports using `tarpaulin` (alias: `tc`).                   |
+| `mise run test:watch`        | Watch mode: automatically run tests on file changes (alias: `tw`).                |
+| `mise run test:burn-in`      | Run tests repeatedly to detect flaky failures (alias: `tb`).                      |
+| `mise run test:changed`      | Run tests only for crates affected by changes (alias: `tc`).                      |

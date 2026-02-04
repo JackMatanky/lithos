@@ -13,7 +13,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 ## Original Epic Acceptance Criteria
 
 **Given** benchmarking infrastructure exists per ADR 0012
-**When** I create `benches/cache_benchmarks.rs` in the adapters crate
+**When** I create `lithos-core/benches/cache_benchmarks.rs` in the adapters crate
 **Then** it includes benchmark suites for:
 
 - `MokaCache` standalone operations
@@ -68,7 +68,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 ## TDD Acceptance Criteria (Quality Gates)
 
 **Given** I need to measure performance
-**When** I run `mise run test:bench:adapters`
+**When** I run `mise run test:bench:core`
 **Then** all benchmark suites execute successfully
 **And** throughput and latency metrics are reported for all cache implementations
 **And** performance results are compared against baselines
@@ -86,11 +86,11 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 
 ### Phase 1: Infrastructure Setup
 - [ ] Task 1: Initialize benchmarking structure in adapters crate
-  - [ ] Subtask 1.1: Create directory `crates/adapters/benches/`
+  - [ ] Subtask 1.1: Create directory `lithos-core/benches/`
   - [ ] Subtask 1.2: Add `[[bench]]` section to `crates/adapters/Cargo.toml` for `cache_benchmarks`
-  - [ ] Subtask 1.3: Create empty `crates/adapters/benches/cache_benchmarks.rs`
+  - [ ] Subtask 1.3: Create empty `lithos-core/benches/cache_benchmarks.rs`
   - [ ] Subtask 1.4: Write a failing benchmark that cannot import `criterion` or cache types
-  - [ ] Subtask 1.5: Run `mise run test:bench:adapters` and verify failure (RED)
+  - [ ] Subtask 1.5: Run `mise run test:bench:core` and verify failure (RED)
   - [ ] Subtask 1.6: Run `mise run lint` and fix all clippy warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -106,7 +106,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
   - [ ] Subtask 2.4: Implement concurrent benchmark using `criterion::AsyncBencher` and a shared `tokio` runtime to coordinate 100 tasks performing mixed get/put (80/20 ratio).
   - [ ] Subtask 2.5: Write failing benchmark for TinyLFU scan resistance
   - [ ] Subtask 2.6: Implement scan resistance benchmark: Setup 100 "hot" keys, access them to prime TinyLFU, then perform 10,000 sequential "scan" reads of unique keys; verify hit rate of the original 100 keys.
-  - [ ] Subtask 2.7: Run `mise run test:bench:adapters` and verify Moka metrics are reported
+  - [ ] Subtask 2.7: Run `mise run test:bench:core` and verify Moka metrics are reported
   - [ ] Subtask 2.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -122,7 +122,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
   - [ ] Subtask 3.4: Implement Redb read benchmark verifying zero-copy performance
   - [ ] Subtask 3.5: Write failing benchmark for Redb `put()` transactions
   - [ ] Subtask 3.6: Implement Redb write benchmark with ACID guarantees
-  - [ ] Subtask 3.7: Run `mise run test:bench:adapters` and verify Redb metrics are reported
+  - [ ] Subtask 3.7: Run `mise run test:bench:core` and verify Redb metrics are reported
   - [ ] Subtask 3.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -137,7 +137,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
   - [ ] Subtask 4.3: Write failing benchmark for memory usage with 10,000 entries
   - [ ] Subtask 4.4: Implement memory usage measurement: use `dhat` in a standalone profiling run or estimate heap usage by comparing `GlobalAlloc` stats before and after 10k entry insertion.
   - [ ] Subtask 4.5: Verify memory usage stays below 100MB for 10k 1KB entries
-  - [ ] Subtask 4.6: Run `mise run test:bench:adapters` and verify Coordinator metrics
+  - [ ] Subtask 4.6: Run `mise run test:bench:core` and verify Coordinator metrics
   - [ ] Subtask 4.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -147,7 +147,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 
 ### Phase 5: Final Verification & Baseline Generation
 - [ ] Task 5: Generate performance baselines and verify quality
-  - [ ] Subtask 5.1: Run `mise run test:bench:adapters` to generate initial baselines in `target/criterion/`
+  - [ ] Subtask 5.1: Run `mise run test:bench:core` to generate initial baselines in `target/criterion/`
   - [ ] Subtask 5.2: Run `mise run lint` one final time
   - [ ] Subtask 5.3: Run `mise run fmt` and verify formatting
   - [ ] Subtask 5.4: Run `mise run verify` to ensure all Lithos quality gates are satisfied
@@ -178,7 +178,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 - **dhat** (optional): For memory profiling if detailed analysis is needed.
 
 ### File Structure Requirements
-- **Location**: `crates/adapters/benches/cache_benchmarks.rs`
+- **Location**: `lithos-core/benches/cache_benchmarks.rs`
 - **Config**: Updated `Cargo.toml` in adapters crate.
 
 ### Project Structure Notes
@@ -187,7 +187,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 
 ### TDD Methodology
 - **RED-GREEN-REFACTOR**: Applied to benchmarks - write the measurement logic first, then ensure it reports valid metrics.
-- **Mise Orchestration**: Use `mise run test:bench:adapters` for execution.
+- **Mise Orchestration**: Use `mise run test:bench:core` for execution.
 
 ### References
 - [Source: project-context.md#Performance-Benchmarking]
@@ -210,5 +210,5 @@ None - Story created through systematic analysis of artifacts and project contex
 - Provided specific tasks for concurrent and memory usage measurements.
 
 ### File List
-- `crates/adapters/benches/cache_benchmarks.rs` - Benchmark suite.
+- `lithos-core/benches/cache_benchmarks.rs` - Benchmark suite.
 - `crates/adapters/Cargo.toml` - Configuration.

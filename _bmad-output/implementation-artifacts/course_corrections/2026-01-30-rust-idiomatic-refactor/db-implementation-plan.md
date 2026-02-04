@@ -1032,7 +1032,7 @@ impl<'db> super::ports::Query for NoteQuery<'db> {
 
 **Objective**: Validate zero-copy performance gains.
 
-**File**: `benches/zero_copy_bench.rs`
+**File**: `lithos-core/benches/zero_copy_bench.rs`
 
 ```rust
 use criterion::{black_box, criterion_group, criterion_main, Criterion};

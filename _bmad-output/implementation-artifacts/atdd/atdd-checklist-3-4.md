@@ -117,7 +117,7 @@ N/A - Backend domain logic only.
 - [ ] Implement `Template::new` constructor.
 - [ ] Add basic validation for name and content size.
 - [ ] Initialize `metadata` with defaults.
-- [ ] Run test: `mise run test:unit:domain -- creates_valid_template_successfully`
+- [ ] Run test: `mise run test:unit:core -- creates_valid_template_successfully`
 - [ ] ✅ Test passes (green phase)
 
 **Estimated Effort:** 1 hour
@@ -131,7 +131,7 @@ N/A - Backend domain logic only.
 - [ ] Implement DFS algorithm in `TemplateComposition::detect_cycles`.
 - [ ] Add tracking of visited nodes to prevent infinite loops.
 - [ ] Check depth counter against limit (5).
-- [ ] Run test: `mise run test:unit:domain -- composition`
+- [ ] Run test: `mise run test:unit:core -- composition`
 - [ ] ✅ Test passes (green phase)
 
 **Estimated Effort:** 4 hours
@@ -142,10 +142,10 @@ N/A - Backend domain logic only.
 
 ```bash
 # Run all failing tests for this story
-mise run test:unit:domain -- models::template::tests
+mise run test:unit:core -- models::template::tests
 
 # Run specific test group
-mise run test:unit:domain -- models::template::tests::composition
+mise run test:unit:core -- models::template::tests::composition
 
 # Run tests with coverage
 mise run test:coverage
@@ -191,7 +191,7 @@ mise run test:coverage
 
 ### Initial Test Run (RED Phase Verification)
 
-**Command:** `mise run test:unit:domain -- models::template::tests`
+**Command:** `mise run test:unit:core -- models::template::tests`
 
 **Summary:**
 

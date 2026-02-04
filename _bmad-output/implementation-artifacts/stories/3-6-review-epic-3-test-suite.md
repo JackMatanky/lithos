@@ -300,7 +300,7 @@ crates/domain/
 │   └── lib.rs
 ├── tests/                 // Integration tests
 │   └── integration_tests.rs
-└── benches/              // Performance benchmarks
+└── lithos-core/benches/              // Performance benchmarks
     └── domain_benchmarks.rs
 
 // Test placement rules
@@ -376,7 +376,7 @@ crates/
 │   ├── tests/
 │   │   ├── integration_tests.rs    # Cross-entity integration
 │   │   └── property_tests.rs       # Property-based tests
-│   └── benches/
+│   └── lithos-core/benches/
 │       └── domain_benchmarks.rs    # Performance tests
 ```
 
@@ -525,7 +525,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - 2026-01-19: Ran `mise run test:coverage --package domain --skip-e2e` to generate tarpaulin HTML report and per-file coverage stats.
 - 2026-01-19: Audited fixture duplication, property-based test usage, `rstest` usage, overlapping scenarios, and slow-test contributors for Task 3.
 - 2026-01-19: Added shared proptest identifier strategies to test utils and reused in domain/template tests.
-- 2026-01-19: Ran `mise run test:unit --package domain` after proptest strategy updates.
+- 2026-01-19: Ran `mise run test:unit -p core` after proptest strategy updates.
 - 2026-01-19: Consolidated note fixtures in-domain and added integration fixture module under tests/suite/common.
 - 2026-01-19: Optimized doc-tests with hidden boilerplate and updated resolver example; ran domain doctests.
 - 2026-01-19: Added doc-tests for core domain constructors and validators; verified doctest pass.

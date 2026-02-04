@@ -68,27 +68,27 @@ So that multiple cache backends can be swapped and automatically mocked for test
 ## TDD Acceptance Criteria (Quality Gates)
 
 **Given** I need comprehensive cache error testing
-**When** I run `mise run test:unit:adapters cache_error`
+**When** I run `mise run test:unit:core cache_error`
 **Then** all tests pass with all public components tested
 **And** each `CacheError` variant demonstrates unique error propagation paths
 **And** error messages include actionable context following ADR 0006
 **And** all error types implement `Send + Sync + Debug + Display`
 
 **Given** I need cache trait contract verification
-**When** I run `mise run test:unit:adapters cache_trait`
+**When** I run `mise run test:unit:core cache_trait`
 **Then** all mock-based tests demonstrate expected contract behavior
 **And** edge cases (missing keys, overwrites, deletions) are covered
 **And** async behavior is verified through mock expectations
 **And** trait bounds prevent compilation with invalid types
 
 **Given** I need automatic mock generation verification
-**When** I run `mise run test:unit:adapters cache_mock`
+**When** I run `mise run test:unit:core cache_mock`
 **Then** `MockCacheReader<K, V>` and `MockCacheWriter<K, V>` are automatically generated and compile
 **And** mock expectations can be set for all trait methods
 **And** mock usage tests pass without manual mocking
 
 **Given** I need documentation-driven examples
-**When** I run `mise run test:unit:adapters --doc`
+**When** I run `mise run test:unit:core --doc`
 **Then** all doc tests compile and run successfully
 **And** examples demonstrate real usage patterns
 **And** error handling examples show proper recovery strategies
@@ -101,7 +101,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 1.2: Write failing test that cannot find `Cache` trait in `crates/adapters/src/spi/cache/mod.rs` under `#[cfg(test)]`
   - [x] Subtask 1.3: Write failing test that cannot find `MockCache` in `crates/adapters/src/spi/cache/mod.rs` under `#[cfg(test)]`
   - [x] Subtask 1.4: Verify all tests fail with "cannot find type" or "cannot find trait" errors
-  - [x] Subtask 1.5: Run `mise run test:unit:adapters` and confirm 100% test failure rate (expected RED state)
+  - [x] Subtask 1.5: Run `mise run test:unit:core` and confirm 100% test failure rate (expected RED state)
   - [x] Subtask 1.6: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 2
 
 ### Phase 2: Error Hierarchy (Test-Driven Development)
@@ -116,7 +116,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 2.8: Add `Send + Sync` trait bounds to make test pass
   - [x] Subtask 2.9: Write failing test that verifies error messages follow ADR 0006 format
   - [x] Subtask 2.10: Add `thiserror::Error` derive and proper error messages to make test pass
-  - [x] Subtask 2.11: Run `mise run test:unit:adapters cache_error` and verify 100% pass rate
+  - [x] Subtask 2.11: Run `mise run test:unit:core cache_error` and verify 100% pass rate
   - [x] Subtask 2.12: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 3
 
 ### Phase 3: Cache Trait Interface (Test-Driven Development)
@@ -135,7 +135,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 3.12: Add `invalidate` method to trait with default implementation
   - [x] Subtask 3.13: Write failing test that fails to compile due to async method in trait
   - [x] Subtask 3.14: Add `#[async_trait]` annotation to make test pass
-  - [x] Subtask 3.15: Run `mise run test:unit:adapters cache_trait` and verify 100% pass rate
+  - [x] Subtask 3.15: Run `mise run test:unit:core cache_trait` and verify 100% pass rate
   - [x] Subtask 3.16: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 4
 
 ### Phase 4: Type Safety and Trait Bounds (Test-Driven Development)
@@ -150,7 +150,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 4.8: Add `K: Send + Sync + 'static` and `V: Send + Sync + 'static` bounds
   - [x] Subtask 4.9: Write failing test that requires rkyv bounds compilation error documentation
   - [x] Subtask 4.10: Add documentation explaining rkyv requirements for persistent caches
-  - [x] Subtask 4.11: Run `mise run test:unit:adapters cache_bounds` and verify 100% pass rate
+  - [x] Subtask 4.11: Run `mise run test:unit:core cache_bounds` and verify 100% pass rate
   - [x] Subtask 4.12: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 5
 
 ### Phase 5: Mock Generation and Behavior Testing (Test-Driven Development)
@@ -165,7 +165,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 5.8: Verify mock allows setting `expect_delete()` expectation and test passes
   - [x] Subtask 5.9: Write failing test that tries to set expectation on `invalidate` method
   - [x] Subtask 5.10: Verify mock allows setting `expect_invalidate()` expectation and test passes
-  - [x] Subtask 5.11: Run `mise run test:unit:adapters cache_mock` and verify 100% pass rate
+  - [x] Subtask 5.11: Run `mise run test:unit:core cache_mock` and verify 100% pass rate
   - [x] Subtask 5.12: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 6
 
 ### Phase 6: Behavior Contract Testing (Test-Driven Development)
@@ -182,7 +182,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 6.10: Implement mock expectation that returns `Ok(true)` and test passes
   - [x] Subtask 6.11: Write failing test that verifies `invalidate` behaves identically to `delete`
   - [x] Subtask 6.12: Implement mock expectation and test passes
-  - [x] Subtask 6.13: Run `mise run test:unit:adapters cache_behavior` and verify 100% pass rate
+  - [x] Subtask 6.13: Run `mise run test:unit:core cache_behavior` and verify 100% pass rate
   - [x] Subtask 6.14: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 7
 
 ### Phase 7: Error Handling Testing (Test-Driven Development)
@@ -195,7 +195,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 7.6: Implement mock expectation that returns `Err(CacheError::BackendError(...))` and test passes
   - [x] Subtask 7.7: Write failing test that verifies error messages contain actionable context
   - [x] Subtask 7.8: Implement proper error message formatting and test passes
-  - [x] Subtask 7.9: Run `mise run test:unit:adapters cache_error_handling` and verify 100% pass rate
+  - [x] Subtask 7.9: Run `mise run test:unit:core cache_error_handling` and verify 100% pass rate
   - [x] Subtask 7.10: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 8
 
 ### Phase 8: Documentation and Doc Testing (Test-Driven Development)
@@ -208,7 +208,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 8.6: Add working mock example to documentation and test passes
   - [x] Subtask 8.7: Write failing doc test that demonstrates trait bounds in documentation
   - [x] Subtask 8.8: Add working trait bounds example to documentation and test passes
-  - [x] Subtask 8.9: Run `mise run test:unit:adapters --doc` and verify 100% pass rate
+  - [x] Subtask 8.9: Run `mise run test:unit:core --doc` and verify 100% pass rate
   - [x] Subtask 8.10: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 9
 
 ### Phase 10: CQRS Refactor (Architectural Integrity)
@@ -277,7 +277,7 @@ This story follows strict Test-Driven Development (TDD) methodology aligned with
 
 ### TDD Workflow Requirements
 - **Phase-Based Development**: Complete all subtasks in each phase before moving to next phase
-- **Test Verification**: Each subtask must end with `mise run test:unit:adapters` verification showing expected pass/fail state
+- **Test Verification**: Each subtask must end with `mise run test:unit:core` verification showing expected pass/fail state
 - **Public Component Gates**: Do not proceed to next phase until current phase tests all public components
 - **Quality Gates**: Each phase must pass `mise run lint` and `mise run fmt` before proceeding
 - **Documentation Updates**: Doc tests must be written and passing before implementation is considered complete

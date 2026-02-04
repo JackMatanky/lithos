@@ -59,9 +59,9 @@ mise run test
 # Run unit tests only
 mise run test:unit
 
-# Run specific crate tests
-mise run test:unit:domain
-mise run test:unit:app
+# Run specific module tests
+mise run test:unit:note
+mise run test:unit:schema
 
 # Run integration tests
 mise run test:integration
@@ -84,20 +84,16 @@ Lithos follows Rust standard test organization:
 
 ```
 lithos-rust/
-├── src/                    # Source code
-│   └── lib.rs             # Unit tests here (#[cfg(test)] modules)
-├── tests/                 # Integration tests
-│   ├── suite/
-│   │   ├── integration/   # Cross-module integration tests
-│   │   └── e2e/          # End-to-end CLI tests
-│   └── architectural/     # Architecture enforcement tests
-└── benches/              # Performance benchmarks
+├── lithos-core/            # Core crate
+│   ├── src/                # Unit tests (#[cfg(test)] modules)
+│   ├── tests/              # Integration tests (when added)
+│   └── benches/            # Performance benchmarks
+└── lithos-cli/             # CLI crate (E2E binaries)
 ```
 
 **Unit tests**: Co-located with code using `#[cfg(test)]` modules
-**Integration tests**: In `tests/suite/integration/` for cross-module testing
-**E2E tests**: In `tests/suite/e2e/` for full CLI workflows
-**Architectural tests**: In `tests/architectural/` for enforcing design rules
+**Integration tests**: In `lithos-core/tests/` for cross-module testing (when added)
+**E2E tests**: In `lithos-cli/` for full CLI workflows
 
 ## Historical Context
 
@@ -105,7 +101,7 @@ lithos-rust/
 
 - **ADR 0008** (Event Testing) → [event.md](event.md)
 - **ADR 0009** (CQRS Testing) → [cqrs.md](cqrs.md)
-- **ADR 0010** (Test Utilities) → Covered across guides
+- **ADR 0010** (Test Utilities) → Retired; use inline fixtures and tempfile patterns
 - **ADR 0011** (Integration Testing) → Cross-module patterns in guides
 
 **Rationale**: Testing patterns are tactical implementation details, not architectural decisions. ADRs should document "what" decisions were made (e.g., "use CQRS"), while these guides document "how" to implement them (e.g., "how to test CQRS patterns").

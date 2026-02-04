@@ -659,7 +659,7 @@ fields.insert("created".to_string(), FrontmatterValue::Date(Utc.with_ymd_and_hms
 
 **Performance Testing:**
 ```rust
-// Add to benches/domain_models.rs using criterion per @docs/testing/developer-guide.md
+// Add to lithos-core/benches/domain_models.rs using criterion per @docs/testing/developer-guide.md
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn bench_note_creation(c: &mut Criterion) {

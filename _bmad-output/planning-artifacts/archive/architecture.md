@@ -396,7 +396,7 @@ lithos/
 
 - **Crate Separation:** Strict hexagonal boundaries - domain depends on nothing, app depends only on domain, adapters depend on domain + external crates, cli depends on app + adapters
 - **Module Organization:** Within crates, use `mod.rs` for submodules, keep related functionality together; avoid deep nesting (max 3 levels)
-- **Test Placement:** Unit tests in same file as implementation (`#[cfg(test)]`), integration tests in `tests/` directory at crate root, performance tests in `benches/`
+- **Test Placement:** Unit tests in same file as implementation (`#[cfg(test)]`), integration tests in `lithos-core/tests/` (when added), performance tests in `lithos-core/benches/`
 - **Binary Organization:** CLI crate should be minimal, delegating to library crates
 
 **File Structure Standards:**
@@ -774,7 +774,7 @@ lithos/
 │   ├── integration/              # Cross-crate (SPI Mocking)
 │   ├── e2e/                      # CLI-driven workflow tests
 │   └── arch/                     # Dependency & Boundary enforcement
-└── benches/                      # Performance Benchmarks (Criterion)
+└── lithos-core/benches/           # Performance Benchmarks (Criterion)
 ```
 
 ### Architectural Boundaries
@@ -816,7 +816,7 @@ lithos/
 - **Validation Hierarchy:**
   - **Syntactic (Adapter):** Structural validity of YAML/TOML/Schema JSON.
   - **Semantic/Compliance (App):** Contract check between a Note and its Schema.
-- **Performance:** Monitored via `benches/`, optimized via `rkyv` byte-layouts.
+- **Performance:** Monitored via `lithos-core/benches/`, optimized via `rkyv` byte-layouts.
 - **Task Management:** Centralized in `.mise/tasks/` and orchestrated via `mise.toml`.
 
 ### Integration Points
@@ -851,7 +851,7 @@ lithos/
 
 - **Unit:** Inline `#[cfg(test)]` modules for logic.
 - **Integration:** `tests/integration/` for crate boundary testing.
-- **Architecture:** `tests/arch/` for dependency enforcement (e.g., ensuring `app` never imports `adapters`).
+- **Architecture:** Enforced via module visibility and dependency flow rules.
 - **E2E:** `tests/e2e/` for CLI behavior validation.
 
 **Asset Organization:**

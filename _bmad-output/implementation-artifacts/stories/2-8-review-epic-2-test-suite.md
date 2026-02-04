@@ -116,7 +116,7 @@ During the implementation of Story 2.8, a comprehensive "no-bounds" critique of 
 6.  **Insta Filter Fix**: Switched to global regex filters for automatic UUID/Timestamp redaction.
 7.  **IsolatedTestContext**: Context factory pattern for unique temp dirs and database namespaces per test.
 8.  **Architecture Purity Test**: programmatic enforcement ensuring `lithos-domain` has zero I/O dependencies.
-9.  **Categorized Workspace**: Centralized infrastructure under `tests/` (suite, utils, macros) and `benches/`.
+9.  **Categorized Workspace**: Centralized infrastructure under `tests/` (suite, utils, macros) and `lithos-core/benches/`.
 
 ### Quality Assurance and Commit (MANDATORY FINAL TASK)
 - [x] Run `mise run fmt` to format all code according to project standards

@@ -33,7 +33,7 @@ Only include the code strictly necessary to prove the behavior.
 - **Unit Tests**: Colocated in module with `#[cfg(test)]`. Focused on implementation details and private logic.
 - **Integration Tests**: Located in `tests/` directory. Validate public API behavior and cross-module interactions.
 - **Doc Tests**: Used for public API examples. Keep them minimal and focused on documentation accuracy.
-- **Benchmarks**: Located in `benches/`. Isolated from functional tests to prevent interference.
+- **Benchmarks**: Located in `lithos-core/benches/`. Isolated from functional tests to prevent interference.
 
 ## 5. Assertion and Signal Quality
 - **One Behavior Per Test**: A test should prove exactly one thing.

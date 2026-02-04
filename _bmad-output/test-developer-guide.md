@@ -17,15 +17,25 @@ All testing tasks MUST be orchestrated via `mise`. This ensures the correct envi
 
 | Command                      | Action                                                                            |
 | :--------------------------- | :-------------------------------------------------------------------------------- |
-| `mise run test`              | Run all unit and integration tests (alias: `t`).                                  |
-| `mise run test:unit`         | Run all unit tests across the workspace using `nextest`.                          |
-| `mise run test:unit:<crate>` | Run unit tests for a specific crate (e.g., `test:unit:app`).                      |
-| `mise run test:integration`  | Run all integration tests across the workspace.                                   |
-| `mise run test:e2e`          | Run end-to-end tests using `cli_smoke` binary.                                    |
-| `mise run test:arch`         | Run architectural enforcement tests using `purity` binary.                        |
-| `mise run test:coverage`     | Generate code coverage reports using `tarpaulin`.                                 |
+| `mise run test`              | Run all tests (unit, integration, e2e) (alias: `t`).                              |
+| `mise run test:unit`         | Run all unit tests using `nextest` (alias: `tu`).                                 |
+| `mise run test:unit:core`    | Run core crate unit tests (alias: `tucore`).                                      |
+| `mise run test:unit:cli`     | Run CLI crate unit tests (alias: `tucli`).                                        |
+| `mise run test:unit:config`  | Run config module unit tests (alias: `tuconf`).                                   |
+| `mise run test:unit:note`    | Run note module unit tests (alias: `tunote`).                                     |
+| `mise run test:unit:schema`  | Run schema module unit tests (alias: `tusch`).                                    |
+| `mise run test:unit:template`| Run template module unit tests (alias: `tutemp`).                                 |
+| `mise run test:unit:db`      | Run db module unit tests (alias: `tudb`).                                         |
+| `mise run test:unit:fs`      | Run fs module unit tests (alias: `tufs`).                                         |
+| `mise run test:integration`  | Run all integration tests across the workspace (alias: `ti`).                     |
+| `mise run test:e2e`          | Run end-to-end tests (alias: `te`).                                               |
+| `mise run test:coverage`     | Generate code coverage reports using `tarpaulin` (alias: `tc`).                   |
 | `mise run test:bench`        | Run all performance benchmarks using `criterion`.                                 |
-| `mise run test:watch`        | Watch mode: automatically run tests on file changes.                              |
+| `mise run test:bench:core`   | Run core crate benchmarks (alias: `tbcore`).                                      |
+| `mise run test:bench:cli`    | Run CLI crate benchmarks (alias: `tbcli`).                                        |
+| `mise run test:watch`        | Watch mode: automatically run tests on file changes (alias: `tw`).                |
+| `mise run test:burn-in`      | Run tests repeatedly to detect flaky failures (alias: `tb`).                      |
+| `mise run test:changed`      | Run tests only for crates affected by changes (alias: `tc`).                      |
 | `mise run verify`            | Full quality gate orchestration (fmt + lint + tests + adr:validate) (alias: `v`). |
 
 ## 2. Tools & Infrastructure
@@ -56,7 +66,7 @@ Tests that go in the **same module** as the tested unit. This allows visibility 
 
 ### Integration Tests
 
-Tests that live in the `tests/` directory. They are external to the library and can only test the **public API**.
+Tests that live in `lithos-core/tests/` (when present). They are external to the library and can only test the **public API**.
 
 - **Focus**: Verifying that multiple parts of the system work together correctly.
 - **Tools**: `nextest`, `mockall`.
@@ -73,7 +83,7 @@ Executable examples within the source code using `///`.
 | :------------------------------- | :-------------------------------------------------------- | :------------------------------ | :------------------- |
 | **Domain (Unit)**                | Business logic, state transitions, conversions. Zero I/O. | `lithos-core/src/**/*.rs`       | `mise run test:unit` |
 | **Application (Integration)**    | Cross-module orchestration, port contracts, event flows.  | `lithos-core/src/**/*.rs`       | `nextest`            |
-| **Infrastructure (Integration)** | Adapters, persistence, external APIs.                     | `tests/arch/src/**/*.rs`        | `nextest`            |
+| **Infrastructure (Integration)** | Adapters, persistence, external APIs.                     | `lithos-core/tests/`            | `nextest`            |
 | **CLI (E2E)**                    | End-to-end user flows, binary execution.                  | `lithos-cli/src/**/*.rs`        | `assert_cmd`         |
 
 ## 4. Safety Invariants
@@ -173,10 +183,10 @@ mod tests {
 
 ### Advanced Verification
 
-- **Observability**: Use `TestTracingSubscriber` to verify emitted spans and events.
+- **Observability**: Use `tracing-test` or a custom subscriber to verify emitted spans and events.
 - **Property Testing**: Use `Proptest` for mathematical edge cases and state transition verification.
-- **Error Assertions**: Use the `assert_err_kind!` macro for standardized error matching.
-- **Domain Purity**: Programmatic enforcement ensures `lithos-domain` remains free of I/O dependencies.
+- **Error Assertions**: Use `matches!` and explicit error assertions for standardized matching.
+- **Domain Purity**: Programmatic enforcement ensures `lithos-core` domain contexts remain free of I/O dependencies.
 
 ### Snapshot Testing
 
@@ -703,5 +713,4 @@ fn processes_valid_note() {
 
 ### Lithos-Specific Documentation
 - [System-Level Test Design](./test-design-system.md) - Overall testing strategy
-- [Architecture Tests](../tests/arch/) - Hexagonal boundary enforcement
 - [AGENTS.md](../AGENTS.md) - AI agent testing guidelines

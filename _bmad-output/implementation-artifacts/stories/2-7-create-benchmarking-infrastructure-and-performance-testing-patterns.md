@@ -54,7 +54,7 @@ So that performance is monitored and regressions are caught early.
 
 - [x] Implement benchmarking infrastructure (Phase 1: 1 week)
   - [x] Add criterion.rs dependency (v0.5.1) with tokio async_tokio feature
-  - [x] Create benches/ directory structure with categorized benchmark groups
+  - [x] Create lithos-core/benches/ directory structure with categorized benchmark groups
   - [x] Implement baseline storage mechanism for regression comparison (target/criterion)
   - [x] Add HTML report generation with trend analysis (Criterion default)
 
@@ -87,12 +87,12 @@ So that performance is monitored and regressions are caught early.
 
 - **Architecture Compliance:** Use async patterns for benchmark setup, follow existing test utilities for fixtures. Ensure benchmarks run in isolated environments.
 - **Testing Standards:** Benchmarks should be statistically significant, with proper warm-up. Performance gates prevent regressions.
-- **Source Tree Components:** Add `benches/` directory with criterion integration, extend mise tasks.
+- **Source Tree Components:** Add `lithos-core/benches/` directory with criterion integration, extend mise tasks.
 - **Dependencies:** Add `criterion` crate for benchmarking, integrate with existing tokio for async benchmarks.
 
 ### Project Structure Notes
 
-- Follow existing conventions, add `benches/` alongside `tests/`
+- Follow existing conventions, add `lithos-core/benches/` alongside `tests/`
 - Benchmark results stored in CI artifacts for comparison
 - Align with NFR2 performance requirements
 
@@ -120,7 +120,7 @@ _Reviewer: dev on Tue Jan 13 2026_
 ## Change Log
 
 - 2026-01-12: Established Criterion v0.5.1 with `async_tokio` feature.
-- 2026-01-12: Created `crates/app/benches/core_ops.rs` with `event_bus` benchmark group.
+- 2026-01-12: Created `lithos-core/benches/core_ops.rs` with `event_bus` benchmark group.
 - 2026-01-13: Refactored benchmarks to use centralized `standard_criterion` and added `dhat` memory profiling.
 
 ## Dev Agent Record
@@ -132,7 +132,7 @@ dev agent (recommended for implementation)
 ### Debug Log References
 
 - [2026-01-12] - Established Criterion v0.5.1 with `async_tokio` feature.
-- [2026-01-12] - Created `crates/app/benches/core_ops.rs` with `event_bus` benchmark group.
+- [2026-01-12] - Created `lithos-core/benches/core_ops.rs` with `event_bus` benchmark group.
 - [2026-01-12] - Centralized benchmarking and integration infrastructure in `crates/test-utils`.
 - [2026-01-12] - Consolidated mise tasks; refactored `.mise/tasks/test/bench` for flexibility.
 - [2026-01-12] - Verified benchmark execution and quality gates.
@@ -140,7 +140,7 @@ dev agent (recommended for implementation)
 ### Completion Notes List
 
 - **Research completed**: Analyzed Criterion.rs for statistical benchmarking. Version 0.5.1 is used with `async_tokio` feature for event-driven architecture support. Identified core metrics: parsing, querying, storage, rendering. Evaluated `iai` and `dhat` as complementary tools.
-- **Infrastructure established**: Created root `benches/` directory with `README.md` documentation. Implemented micro-benchmarks in `crates/app/benches/core_ops.rs` using `criterion` and `lithos-test-utils`.
+- **Infrastructure established**: Created root `lithos-core/benches/` directory with `README.md` documentation. Implemented micro-benchmarks in `lithos-core/benches/core_ops.rs` using `criterion` and `lithos-test-utils`.
 - **Memory Profiling**: Integrated `dhat` into `core_ops.rs` via the `dhat-on` feature, allowing for heap profiling during benchmarks.
 - **Centralized Utilities**: Moved `IntegrationFixture`, `IntegrationConfig`, and `create_benchmark_runtime` to `crates/test-utils` to ensure project-wide availability and consistency. Added `standard_criterion()` for unified benchmark configuration.
 - **Performance Gates**: Established `performance_gates` module in `test-utils` with configurable thresholds. Configured `standard_criterion` to use these thresholds for noise/regression detection.
@@ -155,9 +155,9 @@ dev agent (recommended for implementation)
 - crates/test-utils/src/bench.rs - Centralized benchmarking utilities (runtime creation, NFR2 thresholds, `standard_criterion`).
 - crates/test-utils/src/integration.rs - Centralized integration testing fixtures and configuration.
 - crates/app/Cargo.toml - Added `criterion` and `dhat` dev-dependencies, registered `core_ops` benchmark, added `dhat-on` feature, set `bench = false` for lib.
-- crates/app/benches/core_ops.rs - Micro-benchmarks for event bus operations using centralized utilities and optional `dhat` profiling.
+- lithos-core/benches/core_ops.rs - Micro-benchmarks for event bus operations using centralized utilities and optional `dhat` profiling.
 - tests/integration/common.rs - Refactored to re-export utilities from `lithos-test-utils`.
-- benches/README.md - Documentation for benchmarking structure and NFR2 targets.
+- lithos-core/benches/README.md - Documentation for benchmarking structure and NFR2 targets.
 - mise.toml - Removed redundant `test:benchmark` task; consolidated with file-based task.
 - .mise/tasks/test/bench - Refactored for better argument pass-through to `cargo bench`.
 - crates/domain/Cargo.toml - Set `bench = false` for lib.

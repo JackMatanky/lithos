@@ -42,7 +42,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 ## TDD Acceptance Criteria (Quality Gates)
 
 **Given** I am refactoring for modularity
-**When** I run `mise run test:unit:adapters`
+**When** I run `mise run test:unit:core`
 **Then** all tests pass for the new split `Reader` and `Writer` handles
 **And** `CacheCodec` tests verify correct serialization/deserialization for supported backends
 **And** concrete Builders (`MokaBuilder`, `RedbBuilder`) provide `build_reader()` and `build_writer()` for independent handle creation
@@ -68,7 +68,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [x] Subtask 1.6: [TDD] Write `rkyv_codec::returns_error_on_corrupted_bytes` (failing)
   - [x] Subtask 1.7: Implement `RkyvCodec` using `rkyv::api::high` and `rkyv::access`
   - [x] Subtask 1.8: Define `IdentityCodec` for in-memory caches (no-op pass-through)
-  - [x] Subtask 1.9: Run `mise run test:unit:adapters deserializer` (GREEN)
+  - [x] Subtask 1.9: Run `mise run test:unit:core deserializer` (GREEN)
   - [x] Subtask 1.10: Run `mise run lint`, fix all warnings/errors, and verify no `rkyv` bounds leak into the public trait
   - [x] Subtask 1.11: Run `mise run verify` to ensure all Lithos quality gates are satisfied
   - [x] Subtask 1.12: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
@@ -86,7 +86,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [x] Subtask 2.8: [Optional] Add `Builder::build_both() -> Result<(Reader<K, V>, Writer<K, V>), CacheError>` convenience method that creates shared `Arc<Inner>`
   - [x] Subtask 2.9: Re-export `Builder` as `MokaBuilder`, `Reader` as `MokaReader`, and `Writer` as `MokaWriter` in `mod.rs`
   - [x] Subtask 2.10: Remove the unified `Cache<K, V>` struct that implements both CacheReader and CacheWriter
-  - [x] Subtask 2.11: Run `mise run test:unit:adapters moka` (GREEN)
+  - [x] Subtask 2.11: Run `mise run test:unit:core moka` (GREEN)
   - [x] Subtask 2.12: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -105,7 +105,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [x] Subtask 3.4: [Optional] Add `Builder::build_both()` convenience method (stub)
   - [x] Subtask 3.5: Re-export `Builder` as `RedbBuilder`, `Reader` as `RedbReader`, and `Writer` as `RedbWriter` in `mod.rs`
   - [x] Subtask 3.6: Delete the unified `Cache<K, V>` struct that implements both CacheReader and CacheWriter to prevent usage during refactor
-  - [x] Subtask 3.7: Run `mise run test:unit:adapters redb` (GREEN - minimal compile check)
+  - [x] Subtask 3.7: Run `mise run test:unit:core redb` (GREEN - minimal compile check)
   - [x] Subtask 3.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -125,7 +125,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [x] Subtask 4.5: [Optional] Implement `Builder::build_both()` that creates shared `Arc<Inner>` and returns `(Reader, Writer)` tuple
   - [x] Subtask 4.6: [TDD] Write `redb_builder::initializes_db_with_correct_table` (failing, use `IsolatedTestContext`)
   - [x] Subtask 4.7: Add `tracing::instrument` to `build_reader()` and `build_writer()`
-  - [x] Subtask 4.8: Run `mise run test:unit:adapters builder` (GREEN)
+  - [x] Subtask 4.8: Run `mise run test:unit:core builder` (GREEN)
   - [x] Subtask 4.9: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -140,7 +140,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [x] Subtask 5.3: Implement `spawn<F, R>(&self, span: Span, f: F) -> Result<R, CacheError>` where `F: FnOnce() -> Result<R, redb::Error> + Send + 'static`
   - [x] Subtask 5.4: Ensure `spawn` enters the provided span and catches Tokio JoinErrors
   - [x] Subtask 5.5: Implement error mapping helper `map_redb_error` that converts `redb::Error` to `CacheError::BackendError` or `IoError`
-  - [x] Subtask 5.6: Run `mise run test:unit:adapters redb` (GREEN)
+  - [x] Subtask 5.6: Run `mise run test:unit:core redb` (GREEN)
   - [x] Subtask 5.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -166,7 +166,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - Begin read transaction
     - No commit needed
   - [x] Subtask 6.7: Ensure `Inner` structs are non-clonable (enforcing `Arc` usage for sharing)
-  - [x] Subtask 6.8: Run `mise run test:unit:adapters` (GREEN)
+  - [x] Subtask 6.8: Run `mise run test:unit:core` (GREEN)
   - [x] Subtask 6.9: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -188,7 +188,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [x] Subtask 7.6: [TDD] Write `redb_reader::returns_entry_view_without_allocating` (failing, use `IsolatedTestContext`)
   - [x] Subtask 7.7: Define `pub struct EntryView<'guard, V>` that wraps `AccessGuard<'guard, [u8]>` for zero-copy retrieval
   - [x] Subtask 7.8: Implement `EntryView` to provide zero-copy access to archived data using `rkyv::access` without deserialization in the hot path
-  - [x] Subtask 7.9: Run `mise run test:unit:adapters` (GREEN)
+  - [x] Subtask 7.9: Run `mise run test:unit:core` (GREEN)
   - [x] Subtask 7.10: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -208,7 +208,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [x] Subtask 8.4: Keep existing `Entry as CacheEntry` and `Outcome as CacheResult` exports (these remain unchanged)
   - [x] Subtask 8.5: Ensure `Inner` and `Executor` remain `pub(crate)` and are not re-exported (hidden from public SPI)
   - [x] Subtask 8.6: [TDD] Write `api::allows_usage_without_specifying_codec` (failing)
-  - [x] Subtask 8.7: Run `mise run test:unit:adapters` (GREEN)
+  - [x] Subtask 8.7: Run `mise run test:unit:core` (GREEN)
   - [x] Subtask 8.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes

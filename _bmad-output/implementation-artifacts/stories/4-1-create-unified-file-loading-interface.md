@@ -205,7 +205,7 @@ crates/adapters/src/
 crates/domain/tests/
 └── file_loader_integration.rs    # Cross-crate integration tests (moved to unit tests)
 
-benches/
+lithos-core/benches/
 └── file_loader.rs                # Criterion performance benchmarks (to be implemented)
 ```
 

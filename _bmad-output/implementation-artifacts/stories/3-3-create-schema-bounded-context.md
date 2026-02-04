@@ -1564,7 +1564,7 @@ Expected files to be created (9 TDD tasks for 3-2, 7 TDD tasks for 3-1):
 - crates/domain/src/schema/patterns.rs (Predefined regex patterns - Task 7)
 - crates/domain/src/lib.rs (UPDATED with public re-exports)
 - crates/domain/Cargo.toml (UPDATED with blake3 dependency)
-- benches/schema_benchmarks.rs (performance benchmarks - Task 6)
+- lithos-core/benches/schema_benchmarks.rs (performance benchmarks - Task 6)
 
 Comprehensive tests in each file with #[cfg(test)] modules (80%+ coverage target, quality focus)
 ```

@@ -41,7 +41,7 @@ This document outlines the high-level test strategy and architectural decisions 
 ## Test Levels Strategy
 
 - **Unit: 70%**
-  - Focus: Pure business logic in `crates/domain`, template parsing, schema validation rules, and CQRS command/query logic.
+  - Focus: Pure business logic in `lithos-core/src/`, template parsing, schema validation rules, and CQRS command/query logic.
   - Rationale: High cyclomatic complexity in schema inheritance and template composition requires granular, fast feedback.
   - Tools: `mise run test:unit`, `proptest`.
 
@@ -53,14 +53,14 @@ This document outlines the high-level test strategy and architectural decisions 
 - **E2E: 10%**
   - Focus: CLI command structure, interactive prompts, and full user journeys (e.g., `lithos new` to note creation).
   - Rationale: Ensures the "parsimonious setup" and guided UX meet success metrics without over-testing implementation details.
-  - Tools: `assert_cmd`, `predicates`, `TestVault`.
+  - Tools: `assert_cmd`, `predicates`, `tempfile`.
 
 ## Quality Gates & "Definition of Done"
 
 A test is considered "Production Ready" only if it meets these five criteria:
 
-1. **Deterministic**: 0% flakiness. No `sleep()` calls; use proper synchronization or virtual clock (`time_test!`).
-2. **Isolated**: Must not depend on or affect other tests. Use `TestVault` or `IsolatedTestContext` for unique environments.
+1. **Deterministic**: 0% flakiness. No `sleep()` calls; use proper synchronization or paused clocks in async tests.
+2. **Isolated**: Must not depend on or affect other tests. Use `tempfile::TempDir` for unique environments.
 3. **Explicit**: Assertions must be visible in the test body. Avoid hidden "pass-through" assertions in helpers.
 4. **Fast**: Unit tests < 10ms, Integration < 100ms, E2E < 2s.
 5. **Self-Cleaning**: Must clean up all temporary files or database entries upon completion (ensured by `RAII` patterns).
@@ -78,7 +78,6 @@ A test is considered "Production Ready" only if it meets these five criteria:
   - "Clean slate protocol" tests to verify recovery from Redb corruption.
 - **Maintainability:**
   - 80%+ coverage target enforced by `tarpaulin`.
-  - Architecture tests (`tests/arch/`) to enforce hexagonal boundaries.
 
 ## Test Data Strategy
 
@@ -87,7 +86,7 @@ Lithos uses a tiered approach to test data to ensure reproducibility and scale:
 1. **Inline Fixtures**: For unit tests, data is defined directly in the test body or a local `setup` function.
 2. **Deterministic Randomness**: Using `proptest` with fixed seeds for complex edge-case discovery.
 3. **Reference Vaults**: Located in `docs/refs/obsidian/`, these provide a standard "Golden Set" of markdown files for integration and E2E testing.
-4. **Isolated Contexts**: Every test that touches the filesystem MUST use `IsolatedTestContext` to prevent cross-test interference.
+4. **Isolated Contexts**: Every test that touches the filesystem MUST use `tempfile::TempDir` to prevent cross-test interference.
 
 ## Test Environment Requirements
 
@@ -105,7 +104,7 @@ Lithos uses a tiered approach to test data to ensure reproducibility and scale:
 - ✅ Hexagonal testing architecture (Unit/Integration/E2E split)
 - ✅ Standard Rust testing patterns with idiomatic test organization
 - ✅ CI/CD pipeline with coverage reporting and quality gates
-- ✅ Domain purity testing and architectural boundary enforcement
+- ✅ Domain purity preserved through module boundaries and code review
 - ✅ Performance benchmarking framework with criterion
 - ✅ Property-based testing with proptest
 

@@ -320,7 +320,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 **Acceptance Criteria:**
 
 **Given** benchmarking infrastructure exists per ADR 0012
-**When** I create `benches/cache_benchmarks.rs` in the adapters crate
+**When** I create `lithos-core/benches/cache_benchmarks.rs`
 **Then** it includes benchmark suites for:
 
 - `MokaCache` standalone operations

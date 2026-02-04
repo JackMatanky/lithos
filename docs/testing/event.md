@@ -33,7 +33,7 @@ Events are the public API of the domain.
 Distinguish between the reliability of the Data Plane and the transience of the Control Plane.
 
 ```rust
-use lithos_test_utils::MockEventBus;
+use crate::tests::mocks::MockEventBus;
 
 #[tokio::test]
 async fn dual_plane_emission() {
@@ -57,7 +57,7 @@ async fn dual_plane_emission() {
 Avoid flakiness in read-model tests by using the polling helper.
 
 ```rust
-use lithos_test_utils::EventualConsistencyTester;
+use crate::tests::mocks::EventualConsistencyTester;
 
 #[tokio::test]
 async fn read_model_eventually_syncs() {
@@ -74,7 +74,7 @@ async fn read_model_eventually_syncs() {
 Verify that the domain events fulfill their serialization contracts using `PayloadAssertion`.
 
 ```rust
-use lithos_test_utils::PayloadAssertion;
+use crate::tests::mocks::PayloadAssertion;
 
 #[test]
 fn event_contract_is_stable() {
@@ -96,7 +96,7 @@ fn event_contract_is_stable() {
 Use `EventRecord` and `SequenceAssertion` to validate causal chains.
 
 ```rust
-use lithos_test_utils::{EventRecord, TimingAssertion, SequenceAssertion};
+use crate::tests::mocks::{EventRecord, TimingAssertion, SequenceAssertion};
 
 #[test]
 fn events_occur_in_causal_order() {
@@ -159,14 +159,14 @@ fn can_read_legacy_event_version() {
 ```
 
 ### Trace Verification (Observability)
-Use `TestTracingSubscriber` to verify that high-level operations emit correct observability spans. This ensures we can debug production issues.
+Use `tracing-test` or a custom subscriber to verify that high-level operations emit correct observability spans. This ensures we can debug production issues.
 
 ```rust
-use lithos_test_utils::obs::TestTracingSubscriber;
+use tracing_test::traced_test;
 
 #[tokio::test]
 async fn operation_emits_traces() {
-    let subscriber = TestTracingSubscriber::install();
+    let _guard = traced_test();
 
     // Perform complex operation
     my_complex_operation().await;
