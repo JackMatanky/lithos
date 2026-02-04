@@ -439,16 +439,14 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Setup phase - test fixture extraction"
-        )]
         fn should_dispatch_json_correctly() {
             let dispatcher = Dispatcher::new();
             let result: Result<serde_json::Value, _> =
                 dispatcher.parse(Path::new("test.json"), fixtures::VALID_JSON);
             assert!(result.is_ok(), "JSON parsing should succeed: {result:?}");
-            let value = result.expect("JSON should be parsed");
+            let Ok(value) = result else {
+                return;
+            };
             assert_eq!(
                 value.get("name").and_then(|v| v.as_str()),
                 Some("test"),
@@ -457,16 +455,14 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Setup phase - test fixture extraction"
-        )]
         fn should_dispatch_toml_correctly() {
             let dispatcher = Dispatcher::new();
             let result: Result<toml::Value, _> =
                 dispatcher.parse(Path::new("test.toml"), fixtures::VALID_TOML);
             assert!(result.is_ok(), "TOML parsing should succeed: {result:?}");
-            let value = result.expect("TOML should be parsed");
+            let Ok(value) = result else {
+                return;
+            };
             assert_eq!(
                 value.get("name").and_then(|v| v.as_str()),
                 Some("test"),
@@ -475,16 +471,14 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Setup phase - test fixture extraction"
-        )]
         fn should_dispatch_yaml_correctly() {
             let dispatcher = Dispatcher::new();
             let result: Result<serde_yaml::Value, _> =
                 dispatcher.parse(Path::new("test.yaml"), fixtures::VALID_YAML);
             assert!(result.is_ok(), "YAML parsing should succeed: {result:?}");
-            let value = result.expect("YAML should be parsed");
+            let Ok(value) = result else {
+                return;
+            };
             assert_eq!(
                 value.get("name").and_then(|v| v.as_str()),
                 Some("test"),
@@ -504,10 +498,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Setup phase - test fixture extraction"
-        )]
         fn should_dispatch_json_by_content() {
             let dispatcher = Dispatcher::new();
             let result: Result<serde_json::Value, _> =
@@ -517,7 +507,9 @@ mod tests {
                 "JSON should be dispatched by content when extension is \
                  missing: {result:?}"
             );
-            let value = result.expect("JSON should be parsed");
+            let Ok(value) = result else {
+                return;
+            };
             assert_eq!(
                 value.get("name").and_then(|v| v.as_str()),
                 Some("test"),
@@ -526,10 +518,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Setup phase - test fixture extraction"
-        )]
         fn should_dispatch_yaml_by_content() {
             let dispatcher = Dispatcher::new();
             let result: Result<serde_yaml::Value, _> =
@@ -539,7 +527,9 @@ mod tests {
                 "YAML should be dispatched by content when extension is \
                  missing: {result:?}"
             );
-            let value = result.expect("YAML should be parsed");
+            let Ok(value) = result else {
+                return;
+            };
             assert_eq!(
                 value.get("name").and_then(|v| v.as_str()),
                 Some("test"),
@@ -548,10 +538,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Setup phase - test fixture extraction"
-        )]
         fn should_dispatch_toml_by_content() {
             let dispatcher = Dispatcher::new();
             let result: Result<toml::Value, _> =
@@ -561,7 +547,9 @@ mod tests {
                 "TOML should be dispatched by content when extension is \
                  missing: {result:?}"
             );
-            let value = result.expect("TOML should be parsed");
+            let Ok(value) = result else {
+                return;
+            };
             assert_eq!(
                 value.get("name").and_then(|v| v.as_str()),
                 Some("test"),
@@ -570,10 +558,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Setup phase - test fixture extraction"
-        )]
         fn should_prioritize_extension_over_content() {
             let dispatcher = Dispatcher::new();
             let result: Result<serde_json::Value, _> = dispatcher
@@ -583,7 +567,9 @@ mod tests {
                 "Extension should take priority over content detection: \
                  {result:?}"
             );
-            let value = result.expect("JSON should be parsed via TOML parser");
+            let Ok(value) = result else {
+                return;
+            };
             assert_eq!(
                 value.get("name").and_then(|v| v.as_str()),
                 Some("test"),
@@ -636,10 +622,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Setup phase - test fixture extraction"
-        )]
         fn should_handle_mixed_line_endings() {
             let mixed = "name = \"test\"\r\nversion = 1\nenabled = true";
             let result: Result<toml::Value, _> =
@@ -648,8 +630,9 @@ mod tests {
                 result.is_ok(),
                 "TOML should handle mixed line endings, got: {result:?}"
             );
-            let value =
-                result.expect("TOML with mixed line endings should parse");
+            let Ok(value) = result else {
+                return;
+            };
             assert_eq!(
                 value.get("name").and_then(|v| v.as_str()),
                 Some("test"),
