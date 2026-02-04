@@ -3,14 +3,6 @@
 //! This module implements the Command port trait for Config write operations,
 //! using the Database layer for persistence.
 
-#![allow(
-    clippy::same_name_method,
-    clippy::missing_inline_in_public_items,
-    clippy::elidable_lifetime_names,
-    reason = "CQRS pattern: public methods intentionally delegate to trait \
-              impls with same names"
-)]
-
 use super::{error::ConfigError, global::Global, vault::Vault};
 use crate::db::Database;
 
@@ -36,6 +28,11 @@ impl<'db> Command<'db> {
     /// # Errors
     /// Returns `ConfigError` if save operation fails.
     #[inline]
+    #[expect(
+        clippy::same_name_method,
+        reason = "Inherent convenience method intentionally matches the port \
+                  trait method name"
+    )]
     pub fn save_global(&self, config: &Global) -> Result<(), ConfigError> {
         self.db
             .put("config", "global", config)
@@ -47,6 +44,11 @@ impl<'db> Command<'db> {
     /// # Errors
     /// Returns `ConfigError` if save operation fails.
     #[inline]
+    #[expect(
+        clippy::same_name_method,
+        reason = "Inherent convenience method intentionally matches the port \
+                  trait method name"
+    )]
     pub fn save_vault(&self, config: &Vault) -> Result<(), ConfigError> {
         self.db
             .put("config", "vault", config)
@@ -54,11 +56,13 @@ impl<'db> Command<'db> {
     }
 }
 
-impl<'db> super::ports::Command for Command<'db> {
+impl super::ports::Command for Command<'_> {
+    #[inline]
     fn save_global(&self, config: &Global) -> Result<(), ConfigError> {
         self.save_global(config)
     }
 
+    #[inline]
     fn save_vault(&self, config: &Vault) -> Result<(), ConfigError> {
         self.save_vault(config)
     }
