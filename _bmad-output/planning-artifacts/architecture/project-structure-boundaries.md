@@ -13,70 +13,101 @@ section: "Project Structure"
 
 ```text
 lithos/
-├── .gitattributes                # LF enforcement
-├── .gitignore                    # standard Rust ignores
-├── .mise/                        # TASK ORCHESTRATION (mise-first)
-│   └── tasks/
-│       ├── dev-setup.sh          # Env bootstrap (mise run setup)
-│       ├── run-benchmarks.sh     # Performance validation (mise run bench)
-│       └── install-hooks.sh      # Git hook setup
-├── .pre-commit-config.yaml       # QUALITY GATE (miette, clippy, rustfmt)
-├── Cargo.toml                    # Workspace configuration (Rust 1.92+)
-├── Cargo.lock                    # Dependency lock file
-├── mise.toml                     # Task definitions & tool versions
-├── deny.toml                     # Dependency license & security policy
-├── rustfmt.toml                  # Formatting (import sorting)
-├── clippy.toml                   # Complexity limits (cognitive < 15)
-├── README.md                     # Project overview
-├── _bmad-output/                 # AI Agent Context
-├── docs/                         # Documentation
-│   ├── adr/                      # Architectural Decision Records
-│   └── guides/                   # Guides and references
-├── crates/
-│   ├── lithos-core/              # SINGLE CORE CRATE (Logic + Infra)
-│   │   ├── Cargo.toml
-│   │   ├── src/
-│   │   │   ├── lib.rs            # Prelude & Public API
-│   │   │   ├── db.rs             # Zero-copy Redb Database Layer
-│   │   │   ├── config.rs         # Config aggregate entry point
-│   │   │   ├── config/           # Config implementation details
-│   │   │   │   ├── global.rs
-│   │   │   │   ├── vault.rs
-│   │   │   │   ├── types.rs
-│   │   │   │   ├── events.rs     # Co-located events
-│   │   │   │   └── error.rs      # Co-located errors
-│   │   │   ├── note.rs           # Note aggregate entry point
-│   │   │   ├── note/             # Note implementation details
-│   │   │   │   ├── frontmatter.rs
-│   │   │   │   ├── link.rs
-│   │   │   │   ├── structure.rs
-│   │   │   │   ├── tag.rs
-│   │   │   │   ├── task.rs
-│   │   │   │   ├── events.rs
-│   │   │   │   └── error.rs
-│   │   │   ├── schema.rs         # Schema aggregate entry point
-│   │   │   ├── schema/           # Schema implementation details
-│   │   │   │   ├── property.rs
-│   │   │   │   ├── resolver.rs
-│   │   │   │   ├── events.rs
-│   │   │   │   └── error.rs
-│   │   │   ├── template.rs       # Template aggregate entry point
-│   │   │   ├── template/         # Template implementation details
-│   │   │   │   ├── variable.rs
-│   │   │   │   ├── composition.rs
-│   │   │   │   ├── events.rs
-│   │   │   │   └── error.rs
-│   │   │   └── fs/               # Generic filesystem utilities
-│   ├── lithos-cli/               # BINARY CRATE (CLI Driver)
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── main.rs           # Entry point
-│   │       ├── commands/         # CLI Command definitions
-│   │       └── terminal.rs       # Miette/Clap integration
-├── lithos-core/                  # Core crate
-│   ├── tests/                    # Integration tests (when added)
-│   └── lithos-core/benches/                  # Performance Benchmarks (Criterion)
-└── lithos-cli/                   # CLI crate
+├── .mise/tasks/                # TASK ORCHESTRATION (mise-first)
+│   ├── adr/                    # ADR management tasks (validate, metrics)
+│   ├── test/                   # Specialized test suite execution tasks
+│   ├── build                   # Binary build and optimization task
+│   ├── clean                   # Artifact cleanup task
+│   ├── dev-setup               # Environment bootstrap task
+│   ├── doc                     # Documentation generation task
+│   ├── fmt                     # Code formatting task
+│   └── lint                    # Static analysis (clippy) task
+├── _bmad-output/               # AI AGENT CONTEXT & ARTIFACTS
+│   ├── planning-artifacts/     # Architecture, PRD, and Epics
+│   ├── implementation-artifacts/ # Story tracking, retros, and reports
+│   └── test-artifacts/         # Quality assurance design and review logs
+├── docs/                       # PROJECT DOCUMENTATION
+│   ├── adr/                    # Architectural Decision Records (0001-0012)
+│   └── design/                 # Technical design specifications
+├── lithos-core/                # CORE LIBRARY (Logic + Infrastructure)
+│   ├── benches/                # Performance benchmarks (Criterion)
+│   │   └── redb_rkyv.rs        # Persistence layer performance validation
+│   ├── tests/                  # Integration tests (Cross-context flows)
+│   └── src/
+│       ├── lib.rs              # Crate root and public prelude
+│       ├── patterns.rs         # Shared domain patterns (Aggregate, Command)
+│       ├── db/                 # PERSISTENCE INFRASTRUCTURE (redb + rkyv)
+│       │   ├── mod.rs          # Database module entry
+│       │   ├── batch.rs        # Atomic write batch implementation
+│       │   └── error.rs        # Storage-specific error types
+│       ├── note/               # NOTE CONTEXT (Knowledge Graph)
+│       │   ├── mod.rs          # Context entry and visibility
+│       │   ├── aggregate.rs    # Note aggregate root and invariants
+│       │   ├── command.rs      # Write operations (CQRS)
+│       │   ├── query.rs        # Read-side indexing and searching
+│       │   ├── ports.rs        # Hexagonal boundary interfaces
+│       │   ├── frontmatter.rs  # Metadata extraction and parsing
+│       │   ├── link.rs         # Wiki-link and embed logic
+│       │   ├── structure.rs    # Markdown structural analysis
+│       │   ├── tag.rs          # Tag indexing logic
+│       │   ├── task.rs         # Task/Todo extraction
+│       │   ├── error.rs        # Context-specific errors
+│       │   └── events.rs       # Domain events
+│       ├── schema/             # SCHEMA CONTEXT (Validation)
+│       │   ├── mod.rs          # Context entry and visibility
+│       │   ├── aggregate.rs    # Schema aggregate root
+│       │   ├── command.rs      # Schema lifecycle management
+│       │   ├── query.rs        # Schema lookup and resolution
+│       │   ├── ports.rs        # Boundary interfaces
+│       │   ├── property.rs     # Individual property logic
+│       │   ├── property_spec.rs # Property specification types
+│       │   ├── resolver.rs     # Reference resolution
+│       │   ├── graph.rs        # Schema inheritance graph
+│       │   ├── raw.rs          # Unvalidated input models
+│       │   ├── error.rs        # Context-specific errors
+│       │   └── events.rs       # Domain events
+│       ├── template/           # TEMPLATE CONTEXT (Generation)
+│       │   ├── mod.rs          # Context entry and visibility
+│       │   ├── aggregate.rs    # Template aggregate root
+│       │   ├── command.rs      # Rendering operations
+│       │   ├── query.rs        # Template lookup and resolution
+│       │   ├── ports.rs        # Boundary interfaces
+│       │   ├── variable.rs     # Variable injection logic
+│       │   ├── composition.rs  # Component/Partial logic
+│       │   ├── syntax.rs       # Syntax highlighting/parsing
+│       │   ├── validation.rs   # Template safety checks
+│       │   ├── error.rs        # Context-specific errors
+│       │   └── events.rs       # Domain events
+│       ├── config/             # CONFIG CONTEXT (System Settings)
+│       │   ├── mod.rs          # Context entry and visibility
+│       │   ├── aggregate.rs    # Config aggregate root
+│       │   ├── command.rs      # Settings updates
+│       │   ├── query.rs        # Settings retrieval
+│       │   ├── ports.rs        # Boundary interfaces
+│       │   ├── types.rs        # Shared config models
+│       │   ├── global.rs       # System-wide settings
+│       │   ├── vault.rs        # Vault-specific settings
+│       │   ├── error.rs        # Context-specific errors
+│       │   └── events.rs       # Domain events
+│       └── fs/                 # FILESYSTEM (OS Integration)
+│           ├── mod.rs          # FS module entry
+│           ├── parsers.rs      # Markdown/YAML/TOML parsers
+│           ├── validator.rs    # Path and Syntax validation
+│           └── error.rs        # I/O specific errors
+├── lithos-cli/                 # BINARY CRATE (CLI Driver)
+│   └── src/main.rs             # CLI entry point (Clap + Miette)
+├── .gitattributes              # LF enforcement
+├── .gitignore                  # standard Rust ignores
+├── .pre-commit-config.yaml     # QUALITY GATE (miette, clippy, rustfmt)
+├── mise.toml                   # Task definitions & tool versions
+├── Cargo.toml                  # Workspace configuration (Rust 1.92+)
+├── Cargo.lock                  # Dependency lock file
+├── clippy.toml                 # Complexity limits (cognitive < 15)
+├── deny.toml                   # Dependency license & security policy
+├── rustfmt.toml                # Formatting (import sorting)
+├── nextest.toml                # Test runner configuration
+├── rust-toolchain.toml         # Toolchain version lock
+└── README.md                   # Project overview
 ```
 
 ## Architectural Boundaries
@@ -88,47 +119,48 @@ lithos/
 
 **Logical Boundaries (Module Visibility):**
 
-- **Public API:** Only types reachable from `lithos-core/lib.rs` are public.
-- **Context Isolation:** Modules (`note/`, `schema/`) rely on `pub(crate)` to enforce internal isolation. They depend on `db.rs` but not on each other (unless via public API).
-- **Dependency Flow:** Infrastructure (`db.rs`, `fs/`) -> Domain (`note/`, `schema/`) -> CLI.
+- **Public API:** Only types reachable from `lithos-core/src/lib.rs` are public.
+- **Context Isolation:** Modules (`note/`, `schema/`) rely on `pub(crate)` to enforce internal isolation. They depend on `db/` but not on each other (unless via public API).
+- **Dependency Flow:** Infrastructure (`db/`, `fs/`) -> Domain (`note/`, `schema/`) -> CLI.
 
 **Component Boundaries:**
 
 - **Indexer:** Not a separate actor anymore, but a logical phase in `lithos-cli`. Writes are atomic and coordinated via `db.batch_write()` for bulk operations.
-- **Compliance Engine:** Located in `lithos-core/schema/compliance.rs` (or similar). Checks if Note metadata satisfies Schema rules.
+- **Compliance Engine:** Located in `lithos-core/src/schema/`. Checks if Note metadata satisfies Schema rules.
 
 **Service Boundaries:**
 
-- **Template Designer (FR9):** Located in `lithos-core/template/designer.rs` (if interactive logic moves there) or `lithos-cli/src/commands/template.rs` for interaction. The core logic remains in `lithos-core/template/`.
-- **Metrics Calculator:** Aggregates vault-wide data. Likely a submodule `lithos-core/metrics/` or helper in `lithos-core/note/stats.rs`.
+- **Template System:** The core logic remains in `lithos-core/src/template/`. Interaction is handled via `lithos-cli`.
+- **Metrics & Stats:** Aggregates vault-wide data. Likely implemented as queries in `lithos-core/src/note/query.rs` or a specialized metrics module.
 
 **Data Boundaries:**
 
 - **Identity (UUID v7):** We use UUID v7 (Time-ordered) instead of paths or numeric IDs.
   - **Performance:** Ensures new notes are appended to Redb B-Tree leaves sequentially, achieving O(1) insertion.
   - **Persistence:** Allows notes to be moved or renamed while preserving their logical relationships in the Knowledge Graph.
-- **Zero-Copy Serialization:** **rkyv** buffers are generated in `db.rs` and returned as `ArchivedGuard`, allowing the CLI to read data without memory duplication.
+- **Zero-Copy Serialization:** **rkyv** buffers are managed in `src/db/` and returned via closure-based APIs, allowing the CLI to read data without memory duplication.
 
 **File Organization Patterns:**
 
-- **File First, Folder Second:** Use `<module>.rs` as the entry point, with `<module>/` folder for implementation details. NO `mod.rs`.
-- **Co-location:** Errors (`error.rs`), Events (`events.rs`), and Ports (`ports.rs` if needed) are co-located within the module folder.
+- **Module Folder with mod.rs:** Use `<module>/mod.rs` as the entry point for all contexts.
+- **CQRS Structure:** Split logic into `aggregate.rs` (invariants), `command.rs` (writes), and `query.rs` (reads).
+- **Co-location:** Errors (`error.rs`), Events (`events.rs`), and Ports (`ports.rs`) are co-located within the context folder.
 
 ## Requirements to Structure Mapping
 
 **Feature/Epic Mapping:**
 
-- **Knowledge Graph (FR20-FR25):** `lithos-core/note/` + `lithos-core/db.rs` (Links/Embeds/Tags).
-- **Schema & Compliance (FR8-FR14):** `lithos-core/schema/`.
-- **Template Design (FR1-FR7, FR9):** `lithos-core/template/`.
-- **Interactive CLI (FR41-FR47):** `lithos-cli/src/commands/` + `lithos-core/api/ui.rs` (if abstracting UI).
+- **Knowledge Graph (FR20-FR25):** `lithos-core/src/note/` + `lithos-core/src/db/` (Links/Embeds/Tags).
+- **Schema & Compliance (FR8-FR14):** `lithos-core/src/schema/`.
+- **Template Design (FR1-FR7, FR9):** `lithos-core/src/template/`.
+- **Interactive CLI (FR41-FR47):** `lithos-cli/src/main.rs` (Driver) delegating to `lithos-core/src/` contexts.
 
 **Cross-Cutting Concerns:**
 
-- **Metadata Extraction:** Handled in `lithos-core/fs/parsers/markdown.rs`.
+- **Metadata Extraction:** Handled in `lithos-core/src/note/frontmatter.rs` and `lithos-core/src/fs/parsers.rs`.
 - **Validation Hierarchy:**
-  - **Syntactic:** Structural validity of YAML/TOML/Schema JSON (in `lithos-core/fs/validator.rs`).
-  - **Semantic:** Contract check between a Note and its Schema (in `lithos-core/schema/`).
+  - **Syntactic:** Structural validity of YAML/TOML/Schema JSON (in `lithos-core/src/fs/validator.rs`).
+  - **Semantic:** Contract check between a Note and its Schema (in `lithos-core/src/schema/`).
 - **Performance:** Monitored via `lithos-core/benches/`, optimized via `rkyv` byte-layouts.
 - **Task Management:** Centralized in `.mise/tasks/` and orchestrated via `mise.toml`.
 
@@ -136,18 +168,18 @@ lithos/
 
 **Internal Communication:**
 
-- **Hybrid Bus (ADR 0007):** Minimized for Phase 1. `db.rs` handles data persistence. Events are emitted via simple callbacks or staged in `UnitOfWork` for later dispatch if needed.
-- **Database:** `lithos-core/db.rs` exposes a concrete `Database` struct with zero-copy methods (`get_archived`, `put_reserve`).
+- **Hybrid Bus (ADR 0007):** Minimized for Phase 1. `src/db/` handles data persistence. Events are emitted via simple callbacks or staged in `UnitOfWork` for later dispatch if needed.
+- **Database:** `lithos-core/src/db/mod.rs` exposes a concrete `Database` struct with zero-copy methods (`get`, `put`).
 
 **External Integrations:**
 
-- **Obsidian Vault:** Interfaced via `lithos-core/fs` and extracted via `lithos-core/fs/parsers`.
-- **Hierarchical Config:** Managed by `figment` in `lithos-core/config` (Global -> User -> Project -> Vault -> Env -> Flag).
+- **Obsidian Vault:** Interfaced via `lithos-core/src/fs/` and extracted via `lithos-core/src/fs/parsers.rs`.
+- **Hierarchical Config:** Managed by `figment` in `lithos-core/src/config/` (Global -> User -> Project -> Vault -> Env -> Flag).
 
 **Data Flow:**
 
-- **Write Path:** CLI -> Note::save(&db) -> Database::put_reserve -> Redb.
-- **Read Path:** CLI -> Note::find_by_id(&db) -> Database::get_archived -> Zero-copy view.
+- **Write Path:** CLI -> Note::command::save(&db) -> Database::put -> Redb.
+- **Read Path:** CLI -> Note::query::find_by_id(&db) -> Database::get -> Zero-copy view.
 
 ## Development Workflow Integration
 
