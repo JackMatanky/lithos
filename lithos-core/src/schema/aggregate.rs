@@ -1,8 +1,7 @@
-//! Schema domain aggregates: Schema and `PropertyBank`.
+//! Schema domain aggregates for property registration and validation.
 //!
-//! This module contains the primary aggregate roots for the Schema bounded
-//! context, providing a pure domain representation of schemas and a centralized
-//! property registry.
+//! Provides a pure domain representation of metadata schemas and a centralized
+//! `PropertyBank` for O(1) property lookups.
 
 #![allow(
     clippy::module_name_repetitions,
@@ -75,14 +74,14 @@ pub struct PropertyBank {
     pending_events: Vec<Events>,
 }
 
-/// Schema aggregate defining metadata validation rules (Output).
+/// Schema aggregate defining metadata validation constraints.
 ///
-/// Represents a fully resolved schema with no external dependencies.
-/// This is the "Truth" used for validation.
+/// Represents a fully resolved schema used as the source of truth for
+/// validating note metadata.
 ///
-/// # Invariants
-/// - Schema name must be valid alphanumeric/underscore/dash format.
-/// - Properties are fully resolved and unique by name.
+/// # Constraints
+/// - **Identity**: Name must match alphanumeric/underscore/dash format.
+/// - **Integrity**: Properties must be fully resolved and unique by name.
 ///
 /// # Examples
 ///

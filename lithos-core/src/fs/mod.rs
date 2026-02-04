@@ -60,8 +60,8 @@ pub fn is_windows_absolute_path(path: &str) -> bool {
 
 /// Validates a vault-relative path.
 ///
-/// Bundles common path rules: non-empty, relative, no-traversal, optional
-/// extension.
+/// Bundles common path constraints: non-empty, relative, no-traversal,
+/// optional extension.
 ///
 /// # Errors
 ///

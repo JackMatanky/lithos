@@ -4,7 +4,7 @@
 //! resolved configuration for a vault operation. It handles the merging logic
 //! between global settings and vault-specific overrides.
 //!
-//! # Business Rules
+//! # Constraints
 //! - **Precedence**: Vault-specific configuration always overrides global
 //!   configuration.
 //! - **Defaults**: Sensible system defaults are applied when both global and
@@ -30,9 +30,9 @@ use super::{
 /// Merged configuration result from global and vault configurations.
 ///
 /// This struct represents the final merged configuration after applying
-/// business rules for precedence (vault overrides global). The configuration
-/// is immutable once created and represents the complete runtime configuration
-/// for a vault operation.
+/// domain constraints for precedence (vault overrides global). The
+/// configuration is immutable once created and represents the complete runtime
+/// configuration for a vault operation.
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
@@ -88,7 +88,7 @@ impl Config {
     }
 
     /// Build a new Config by combining optional Global and Vault configurations
-    /// with business rules.
+    /// with domain constraints.
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
@@ -280,7 +280,7 @@ impl Config {
         std::mem::take(&mut self.pending_events)
     }
 
-    /// Validate configuration against critical business rules.
+    /// Validate configuration against critical domain constraints.
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if any required field is empty.

@@ -29,7 +29,7 @@ impl<'db> Query<'db> {
 impl super::ports::Query for Query<'_> {
     /// Load configuration (Global + Vault merged).
     ///
-    /// # Business Rules
+    /// # Constraints
     /// - Loads both Global and Vault configurations
     /// - Merges using `Config::build` with Vault precedence
     /// - Validates merged result

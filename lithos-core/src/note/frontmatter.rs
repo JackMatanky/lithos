@@ -1,4 +1,4 @@
-//! Frontmatter domain entities and business logic.
+//! Frontmatter domain entities and metadata extraction.
 #![allow(
     missing_docs,
     clippy::exhaustive_structs,
@@ -46,12 +46,14 @@ impl Frontmatter {
         })
     }
 
+    /// Returns a reference to the value for the given key, if it exists.
     #[inline]
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&FieldValue> {
         self.fields.get(key)
     }
 
+    /// Returns `true` if the frontmatter contains a field with the given key.
     #[inline]
     #[must_use]
     pub fn has(&self, key: &str) -> bool {
@@ -154,6 +156,7 @@ impl Frontmatter {
         })
     }
 
+    /// Returns the title of the note, using the configured title key.
     #[inline]
     #[must_use]
     pub fn title(&self, config: &crate::config::aggregate::Config) -> String {
@@ -163,6 +166,7 @@ impl Frontmatter {
             .to_owned()
     }
 
+    /// Returns the file class of the note, using the configured key.
     #[inline]
     #[must_use]
     pub fn file_class(
@@ -175,6 +179,7 @@ impl Frontmatter {
             .to_owned()
     }
 
+    /// Returns the aliases of the note as a vector of strings.
     #[inline]
     #[must_use]
     pub fn aliases(
@@ -526,11 +531,17 @@ impl FieldValue {
 /// A high-level type descriptor for [`FieldValue`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldValueType {
+    /// Array of field values.
     Array,
+    /// Boolean value.
     Boolean,
+    /// Date timestamp.
     Date,
+    /// Floating point number.
     Number,
+    /// Map of string keys to field values.
     Object,
+    /// String value.
     String,
 }
 
