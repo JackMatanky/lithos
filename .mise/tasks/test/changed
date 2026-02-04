@@ -73,13 +73,13 @@ run_tests_for_crate() {
 
     echo "🏃 Running unit tests for crate '${crate}'..."
 
-    # Map directory names to package names for mise run test:unit
+    # Map directory names to simplified package names
     case "${crate}" in
         lithos-core)
-            mise run test:unit --package core
+            mise run test:unit -p core
             ;;
         lithos-cli)
-            mise run test:unit --package cli
+            mise run test:unit -p cli
             ;;
         *)
             echo "⚠️  Unknown crate: ${crate}" >&2

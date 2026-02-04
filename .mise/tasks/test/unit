@@ -6,8 +6,8 @@
 #MISE outputs=["{{vars.nextest_dir}}/default"]
 #MISE env={RUST_BACKTRACE="1"}
 #USAGE flag "-v --verbose" help="Verbose output"
-#USAGE flag "-p --package <package>" help="Run tests for a specific package" {
-#USAGE   choices "core" "lithos-core" "cli" "lithos" "config" "note" "schema" "template" "db" "fs" "core:config" "core:note" "core:schema" "core:template" "core:db" "core:fs" "test-utils" "lithos-test-utils"
+#USAGE flag "-p --package <package>" help="Run tests for a specific package or module" {
+#USAGE   choices "core" "cli" "config" "note" "schema" "template" "db" "fs"
 #USAGE }
 #USAGE arg "[filter]" help="Filter tests by name"
 
@@ -24,23 +24,12 @@ set -euo pipefail
 #######################################
 map_package_name() {
     case "${usage_package:-}" in
-    core | lithos-core)
+    core | config | note | schema | template | db | fs)
+        # Modules live inside lithos-core
         echo "lithos-core"
         ;;
-    cli | lithos)
-        # Cargo package name for the CLI is "lithos".
+    cli)
         echo "lithos"
-        ;;
-    test-utils | lithos-test-utils)
-        echo "lithos-test-utils"
-        ;;
-    core:*)
-        # Bounded contexts live inside lithos-core.
-        echo "lithos-core"
-        ;;
-    config | note | schema | template | db | fs)
-        # Bounded contexts live inside lithos-core.
-        echo "lithos-core"
         ;;
     "")
         echo ""
@@ -71,9 +60,6 @@ context_filter() {
     case "${usage_package:-}" in
     config | note | schema | template | db | fs)
         usage_filter="${usage_package}::"
-        ;;
-    core:*)
-        usage_filter="${usage_package#core:}::"
         ;;
     *)
         ;;

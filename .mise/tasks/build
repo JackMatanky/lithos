@@ -6,7 +6,7 @@
 #MISE outputs=["{{vars.target_dir}}/debug/{{vars.binary_name}}", "{{vars.target_dir}}/release/{{vars.binary_name}}"]
 #USAGE flag "-r --release" help="Build in release mode"
 #USAGE flag "-p --package <package>" help="Build a specific package" {
-#USAGE   choices "core" "lithos-core" "cli" "lithos"
+#USAGE   choices "core" "cli"
 #USAGE }
 
 set -euo pipefail
@@ -22,10 +22,10 @@ set -euo pipefail
 #######################################
 map_package_name() {
     case "${usage_package:-}" in
-    core | lithos-core)
+    core)
         echo "lithos-core"
         ;;
-    cli | lithos)
+    cli)
         echo "lithos"
         ;;
     *)

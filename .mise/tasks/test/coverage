@@ -6,8 +6,8 @@
 #MISE outputs=["{{vars.coverage_report}}"]
 #MISE env={TARGET_DIR="{{vars.target_dir}}", COVERAGE_REPORT="{{vars.coverage_report}}"}
 #USAGE flag "-o --open" help="Open coverage report in browser"
-#USAGE flag "-p --package <package>" help="Run coverage for a specific package" {
-#USAGE   choices "core" "lithos-core" "cli" "lithos"
+#USAGE flag "-p --package <package>" help="Run coverage for a specific package or module" {
+#USAGE   choices "core" "cli" "config" "note" "schema" "template" "db" "fs"
 #USAGE }
 
 #######################################
@@ -21,11 +21,32 @@
 #######################################
 map_package_name() {
     case "${usage_package:-}" in
-    core | lithos-core)
+    core | config | note | schema | template | db | fs)
+        # Modules live inside lithos-core
         echo "lithos-core"
         ;;
-    cli | lithos)
+    cli)
         echo "lithos"
+        ;;
+    *)
+        echo ""
+        ;;
+    esac
+}
+
+#######################################
+# Build test filter for module-specific coverage.
+# Globals:
+#   usage_package
+# Arguments:
+#   None
+# Outputs:
+#   Echoes the test filter or empty string
+#######################################
+build_module_filter() {
+    case "${usage_package:-}" in
+    config | note | schema | template | db | fs)
+        echo "${usage_package}::"
         ;;
     *)
         echo ""
@@ -73,11 +94,20 @@ run_tarpaulin() {
     build_tarpaulin_args tarpaulin_args "${resolved_package}"
 
     local test_args=()
+    local module_filter
+    module_filter=$(build_module_filter)
+
     if [[ "${usage_skip_e2e:-}" == "1" ]]; then
         test_args=("--" "--skip" "cli_smoke" "--skip" "purity")
+    elif [[ -n "${module_filter}" ]]; then
+        test_args=("--" "${module_filter}")
     fi
 
-    cargo tarpaulin "${tarpaulin_args[@]}" "${test_args[@]}"
+    if [[ ${#test_args[@]} -gt 0 ]]; then
+        cargo tarpaulin "${tarpaulin_args[@]}" "${test_args[@]}"
+    else
+        cargo tarpaulin "${tarpaulin_args[@]}"
+    fi
 }
 
 #######################################
