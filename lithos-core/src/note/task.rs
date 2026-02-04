@@ -70,11 +70,13 @@ impl Task {
     /// # Examples
     /// ```
     /// use lithos_core::note::task::{Task, TaskStatus};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let task =
-    ///     Task::new("Buy milk".to_string(), TaskStatus::Incomplete, 50).unwrap();
+    /// let task = Task::new("Buy milk".to_string(), TaskStatus::Incomplete, 50)?;
     /// assert_eq!(task.text(), "Buy milk");
     /// assert_eq!(task.status(), TaskStatus::Incomplete);
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -125,7 +127,7 @@ impl Task {
 mod tests {
     use super::*;
 
-    mod new {
+    mod constructor {
         use super::*;
 
         #[test]

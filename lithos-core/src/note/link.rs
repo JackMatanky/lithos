@@ -100,6 +100,7 @@ pub enum EmbedType {
 /// ```
 /// use lithos_core::note::link::{Anchor, EmbedType, Link, Style, Target};
 /// use uuid::Uuid;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// // Wiki-link to an unresolved note with heading anchor
 /// let link = Link::new_wikilink(
@@ -109,8 +110,7 @@ pub enum EmbedType {
 ///     Some("my alias".to_string()),
 ///     Some(Anchor::Heading("section".into())),
 ///     100,
-/// )
-/// .unwrap();
+/// )?;
 /// assert_eq!(link.style(), Style::WikiLink, "Link style should be WikiLink");
 /// assert!(link.target().is_unresolved(), "Link target should be unresolved");
 ///
@@ -122,9 +122,10 @@ pub enum EmbedType {
 ///     EmbedType::Image,
 ///     None,
 ///     200,
-/// )
-/// .unwrap();
+/// )?;
 /// assert!(embed.is_embed(), "Link should be an embed");
+/// # Ok(())
+/// # }
 /// ```
 #[derive(
     Debug,
@@ -278,6 +279,7 @@ impl Link {
     /// # Examples
     /// ```
     /// use lithos_core::note::link::{Link, Target};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let link = Link::new_wikilink(
     ///     Target::Unresolved {
@@ -286,9 +288,10 @@ impl Link {
     ///     Some("display text".to_string()),
     ///     None,
     ///     0,
-    /// )
-    /// .unwrap();
+    /// )?;
     /// assert_eq!(link.alias(), Some("display text"));
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     #[must_use]
@@ -329,6 +332,7 @@ impl Link {
     /// # Examples
     /// ```
     /// use lithos_core::note::link::{EmbedType, Link, Target};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let embed = Link::new_embed(
     ///     Target::Unresolved {
@@ -337,9 +341,10 @@ impl Link {
     ///     EmbedType::Image,
     ///     None,
     ///     0,
-    /// )
-    /// .unwrap();
+    /// )?;
     /// assert!(embed.is_embed(), "Embed link should be recognized");
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     #[must_use]
@@ -361,6 +366,7 @@ impl Link {
     /// # Examples
     /// ```
     /// use lithos_core::note::link::{EmbedType, Link, Style, Target};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let embed = Link::new_embed(
     ///     Target::Unresolved {
@@ -369,14 +375,15 @@ impl Link {
     ///     EmbedType::Image,
     ///     None,
     ///     200,
-    /// )
-    /// .unwrap();
+    /// )?;
     /// assert_eq!(
     ///     embed.style(),
     ///     Style::WikiLink,
     ///     "Embed style should be WikiLink"
     /// );
     /// assert!(embed.is_embed(), "Link should be an embed");
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn new_embed(
@@ -411,6 +418,7 @@ impl Link {
     /// # Examples
     /// ```
     /// use lithos_core::note::link::{Anchor, Link, Style, Target};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let link = Link::new_markdown_link(
     ///     Target::External {
@@ -419,10 +427,11 @@ impl Link {
     ///     Some("Rust".to_string()),
     ///     Some(Anchor::Heading("install".into())),
     ///     75,
-    /// )
-    /// .unwrap();
+    /// )?;
     /// assert_eq!(link.style(), Style::MdLink);
     /// assert_eq!(link.alias(), Some("Rust"));
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn new_markdown_link(
@@ -459,6 +468,7 @@ impl Link {
     /// ```
     /// use lithos_core::note::link::{Anchor, Link, Style, Target};
     /// use uuid::Uuid;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let link = Link::new_wikilink(
     ///     Target::Resolved {
@@ -468,11 +478,12 @@ impl Link {
     ///     Some("Alias".to_string()),
     ///     Some(Anchor::Heading("intro".into())),
     ///     100,
-    /// )
-    /// .unwrap();
+    /// )?;
     /// assert_eq!(link.style(), Style::WikiLink, "Link style should be WikiLink");
     /// assert_eq!(link.alias(), Some("Alias"), "Link alias should match");
     /// assert!(link.anchor().is_some(), "Link anchor should be present");
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn new_wikilink(
@@ -524,6 +535,7 @@ impl Link {
     /// # Examples
     /// ```
     /// use lithos_core::note::link::{EmbedType, Link, Target};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let embed = Link::new_embed(
     ///     Target::Unresolved {
@@ -532,9 +544,10 @@ impl Link {
     ///     EmbedType::Image,
     ///     None,
     ///     0,
-    /// )
-    /// .unwrap();
+    /// )?;
     /// assert!(embed.validate().is_ok(), "Valid embed should pass validation");
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), NoteError> {

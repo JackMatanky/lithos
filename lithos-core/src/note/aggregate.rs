@@ -48,10 +48,13 @@ use crate::fs::validate_vault_path;
 /// ```
 /// # use lithos_core::note::aggregate::Note;
 /// # use uuid::Uuid;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // For new files (first-time indexing)
 /// let new_id = Uuid::now_v7();
-/// let note = Note::new(new_id, "projects/example.md".to_string()).unwrap();
+/// let note = Note::new(new_id, "projects/example.md".to_string())?;
 /// assert_eq!(note.path.as_str(), "projects/example.md");
+/// # Ok(())
+/// # }
 /// ```
 #[derive(
     Debug,
@@ -174,7 +177,8 @@ impl Note {
     /// # use lithos_core::note::aggregate::Note;
     /// # use lithos_core::note::link::{Link, Target, EmbedType};
     /// # use uuid::Uuid;
-    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string())?;
     /// let embed = Link::new_embed(
     ///     Target::Unresolved {
     ///         raw: "img.png".into(),
@@ -182,10 +186,11 @@ impl Note {
     ///     EmbedType::Image,
     ///     None,
     ///     0,
-    /// )
-    /// .unwrap();
+    /// )?;
     /// note.links.push(embed);
     /// assert_eq!(note.embeds().count(), 1);
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn embeds(&self) -> impl Iterator<Item = &Link> {
@@ -206,7 +211,8 @@ impl Note {
     /// # use lithos_core::note::aggregate::Note;
     /// # use lithos_core::note::link::{Link, Target};
     /// # use uuid::Uuid;
-    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string())?;
     /// let link = Link::new_markdown_link(
     ///     Target::External {
     ///         url: "https://example.com".into(),
@@ -214,10 +220,11 @@ impl Note {
     ///     None,
     ///     None,
     ///     20,
-    /// )
-    /// .unwrap();
+    /// )?;
     /// note.links.push(link);
     /// assert_eq!(note.markdown_links().count(), 1);
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn markdown_links(&self) -> impl Iterator<Item = &Link> {
@@ -236,8 +243,11 @@ impl Note {
     /// ```
     /// # use lithos_core::note::aggregate::Note;
     /// # use uuid::Uuid;
-    /// let note = Note::new(Uuid::now_v7(), "notes/intro.md".to_string()).unwrap();
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let note = Note::new(Uuid::now_v7(), "notes/intro.md".to_string())?;
     /// assert_eq!(note.path.as_str(), "notes/intro.md");
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn new(id: Uuid, path: String) -> Result<Self, NoteError> {
@@ -295,9 +305,12 @@ impl Note {
     /// ```
     /// # use lithos_core::note::aggregate::Note;
     /// # use uuid::Uuid;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let note_id = Uuid::now_v7();
-    /// let note = Note::new(note_id, "test.md".to_string()).unwrap();
-    /// note.validate().unwrap();
+    /// let note = Note::new(note_id, "test.md".to_string())?;
+    /// note.validate()?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), NoteError> {
@@ -317,7 +330,8 @@ impl Note {
     /// # use lithos_core::note::aggregate::Note;
     /// # use lithos_core::note::link::{Link, Target};
     /// # use uuid::Uuid;
-    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string())?;
     /// let link = Link::new_wikilink(
     ///     Target::Unresolved {
     ///         raw: "other-note".into(),
@@ -325,10 +339,11 @@ impl Note {
     ///     None,
     ///     None,
     ///     0,
-    /// )
-    /// .unwrap();
+    /// )?;
     /// note.links.push(link);
     /// assert_eq!(note.wikilinks().count(), 1);
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn wikilinks(&self) -> impl Iterator<Item = &Link> {
@@ -369,21 +384,9 @@ impl NotePath {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    clippy::disallowed_methods,
-    reason = "Test module organization and behavior verification patterns; \
-              module item ordering is intentionally grouped for readability. \
-              Expect/unwrap is permitted in Arrange phase of tests."
+    reason = "Test module groups fixtures and submodules for readability."
 )]
 mod tests {
-    use fixtures::TEST_NOTE_ID;
-
-    use super::*;
-    use crate::note::{
-        frontmatter::FieldValue,
-        link::{EmbedType, Target},
-        task::TaskStatus,
-    };
-
     /// Test fixtures for Note model testing.
     mod fixtures {
         use super::*;
@@ -402,18 +405,11 @@ mod tests {
         pub const TEST_NOTE_ID_LATER: Uuid =
             Uuid::from_u128(0x0188_0000_0000_0001_8000_0000_0000_0002);
 
-        // Additional fixtures can be added here as tests expand.
-    }
-
-    mod accessors {
-        use super::*;
-
-        fn base_note() -> Note {
+        pub fn base_note() -> Result<Note, NoteError> {
             Note::new(TEST_NOTE_ID, "note.md".to_owned())
-                .expect("Failed to create note fixture")
         }
 
-        fn wikilink(raw: &str, pos: usize) -> Link {
+        pub fn wikilink(raw: &str, pos: usize) -> Result<Link, NoteError> {
             Link::new_wikilink(
                 Target::Unresolved {
                     raw: raw.into(),
@@ -422,10 +418,9 @@ mod tests {
                 None,
                 pos,
             )
-            .expect("Valid wikilink expected")
         }
 
-        fn embed(raw: &str, pos: usize) -> Link {
+        pub fn embed(raw: &str, pos: usize) -> Result<Link, NoteError> {
             Link::new_embed(
                 Target::Unresolved {
                     raw: raw.into(),
@@ -434,14 +429,33 @@ mod tests {
                 None,
                 pos,
             )
-            .expect("Valid embed expected")
         }
+
+        // Additional fixtures can be added here as tests expand.
+    }
+
+    use fixtures::TEST_NOTE_ID;
+
+    use super::*;
+    use crate::note::{
+        frontmatter::FieldValue,
+        link::{EmbedType, Target},
+        task::TaskStatus,
+    };
+
+    mod accessors {
+        use super::*;
 
         /// 3.1-UNIT-009: `tags_update_aggregate_state`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn tags_update_aggregate_state() {
-            let mut note = base_note();
+            let mut note = fixtures::base_note().expect("Valid note fixture");
             let tag = Tag::new("#test").expect("Valid tag expected");
             note.tags.push(tag);
 
@@ -451,8 +465,13 @@ mod tests {
         /// 3.1-UNIT-009: `headings_update_aggregate_state`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn headings_update_aggregate_state() {
-            let mut note = base_note();
+            let mut note = fixtures::base_note().expect("Valid note fixture");
             let heading = Heading::new(1, "H1".into(), 0)
                 .expect("Valid heading expected");
             note.headings.push(heading);
@@ -463,8 +482,13 @@ mod tests {
         /// 3.1-UNIT-009: `tasks_update_aggregate_state`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn tasks_update_aggregate_state() {
-            let mut note = base_note();
+            let mut note = fixtures::base_note().expect("Valid note fixture");
             let task = Task::new("Task".into(), TaskStatus::Incomplete, 0)
                 .expect("Valid task expected");
             note.tasks.push(task);
@@ -475,8 +499,13 @@ mod tests {
         /// 3.1-UNIT-009: `sections_update_aggregate_state`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn sections_update_aggregate_state() {
-            let mut note = base_note();
+            let mut note = fixtures::base_note().expect("Valid note fixture");
             note.sections.push(Section::new(None, "Body".into(), 0..4));
 
             assert_eq!(note.sections.len(), 1, "Note should have 1 section");
@@ -485,10 +514,16 @@ mod tests {
         /// 3.1-UNIT-009: `links_update_aggregate_state`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn links_update_aggregate_state() {
-            let mut note = base_note();
-            note.links.push(wikilink("link.md", 0));
-            note.links.push(embed("img.png", 1));
+            let mut note = fixtures::base_note().expect("Valid note fixture");
+            note.links
+                .push(fixtures::wikilink("link.md", 0).expect("Valid link"));
+            note.links.push(fixtures::embed("img.png", 1).expect("Valid link"));
 
             assert_eq!(
                 note.links.len(),
@@ -500,8 +535,13 @@ mod tests {
         /// 3.1-UNIT-009: `frontmatter_updates_aggregate_state`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn frontmatter_updates_aggregate_state() {
-            let mut note = base_note();
+            let mut note = fixtures::base_note().expect("Valid note fixture");
             let fm_fields =
                 [("title".to_owned(), FieldValue::String("Title".into()))]
                     .into_iter()
@@ -519,13 +559,20 @@ mod tests {
         /// 3.1-UNIT-010: `filtered_link_iterators_work`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn filtered_link_iterators_work() {
             // GIVEN: a note with various link types (2 wikilinks, 1 markdown, 1
             // embed)
-            let mut note = base_note();
+            let mut note = fixtures::base_note().expect("Valid note fixture");
 
-            note.links.push(wikilink("wiki1.md", 0));
-            note.links.push(wikilink("wiki2.md", 10));
+            note.links
+                .push(fixtures::wikilink("wiki1.md", 0).expect("Valid link"));
+            note.links
+                .push(fixtures::wikilink("wiki2.md", 10).expect("Valid link"));
             let md = Link::new_markdown_link(
                 Target::External {
                     url: "https://example.com".into(),
@@ -537,7 +584,8 @@ mod tests {
             .expect("Valid link expected");
             note.links.push(md);
 
-            note.links.push(embed("img.png", 30));
+            note.links
+                .push(fixtures::embed("img.png", 30).expect("Valid link"));
 
             // WHEN: using filtered iterators to query specific link types
             let all_count = note.links.len();
@@ -553,7 +601,7 @@ mod tests {
         }
     }
 
-    mod new {
+    mod constructor {
         use rstest::rstest;
 
         use super::*;
@@ -610,6 +658,11 @@ mod tests {
         /// 3.1-UNIT-005: `generates_sequential_uuids`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn generates_sequential_uuids() {
             // GIVEN: two UUIDs with different timestamps (v7 format embeds
             // timestamp) Use fixed test constants that represent
@@ -638,6 +691,11 @@ mod tests {
         /// 3.1-UNIT-006: `succeeds_when_all_entities_are_valid`.
         /// Priority: P0.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn succeeds_when_all_entities_are_valid() {
             // GIVEN: a note aggregate with consistent sub-entities
             let note_id = TEST_NOTE_ID;

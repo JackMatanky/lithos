@@ -225,13 +225,16 @@ impl VariableDefinition {
     /// # Examples
     /// ```
     /// # use lithos_core::template::variable::VariableDefinition;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let definition = VariableDefinition::String {
     ///     default: None,
     ///     min_length: Some(1),
     ///     max_length: Some(5),
     ///     pattern: None,
     /// };
-    /// definition.validate_value(&serde_json::json!("note")).unwrap();
+    /// definition.validate_value(&serde_json::json!("note"))?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     #[expect(

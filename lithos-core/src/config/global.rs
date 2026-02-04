@@ -124,11 +124,14 @@ impl TrustedVaults {
     /// # Examples
     /// ```ignore
     /// # use lithos_core::TrustedVaultsConfig;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let trusted = TrustedVaultsConfig {
     ///     list: Some(vec!["/vault".to_string()]),
     ///     map: None,
     /// };
-    /// trusted.validate().unwrap();
+    /// trusted.validate()?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {

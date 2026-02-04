@@ -272,8 +272,11 @@ impl Frontmatter {
     /// # Examples
     /// ```
     /// # use lithos_core::config::types::Frontmatter;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let frontmatter = Frontmatter::default();
-    /// frontmatter.validate().unwrap();
+    /// frontmatter.validate()?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
@@ -309,8 +312,11 @@ impl Logging {
     /// # Examples
     /// ```
     /// # use lithos_core::config::types::Logging;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let logging = Logging::default();
-    /// logging.validate().unwrap();
+    /// logging.validate()?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {

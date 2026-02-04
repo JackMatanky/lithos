@@ -113,7 +113,33 @@ impl super::ports::Command for Command<'_> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module groups fixtures and submodules for readability."
+)]
 mod tests {
+    mod fixtures {
+        use super::*;
+
+        pub fn test_db() -> Result<(TempDir, Database), String> {
+            let dir = tempdir().map_err(|e| e.to_string())?;
+            let path = dir.path().join("templates.redb");
+            let db = Database::open(&path).map_err(|e| e.to_string())?;
+            Ok((dir, db))
+        }
+
+        pub fn template_fixture(name: &str) -> Result<Template, String> {
+            Template::new(
+                name.to_owned(),
+                "Hello".to_owned(),
+                HashMap::new(),
+                None,
+                Metadata::default(),
+            )
+            .map_err(|e| e.to_string())
+        }
+    }
+
     use std::collections::HashMap;
 
     use tempfile::{TempDir, tempdir};
@@ -121,201 +147,113 @@ mod tests {
     use super::*;
     use crate::template::{aggregate::Metadata, ports::Command as _};
 
-    fn test_db() -> Result<(TempDir, Database), String> {
-        let dir = tempdir().map_err(|e| e.to_string())?;
-        let path = dir.path().join("templates.redb");
-        let db = Database::open(&path).map_err(|e| e.to_string())?;
-        Ok((dir, db))
-    }
+    mod persistence {
+        use super::*;
 
-    fn template_fixture(name: &str) -> Result<Template, String> {
-        Template::new(
-            name.to_owned(),
-            "Hello".to_owned(),
-            HashMap::new(),
-            None,
-            Metadata::default(),
-        )
-        .map_err(|e| e.to_string())
-    }
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn create_persists_template_and_name_index() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test db");
+            let cmd = Command::new(&db);
 
-    #[test]
-    fn create_persists_template_and_name_index() {
-        let db_result = test_db();
-        assert!(db_result.is_ok(), "Failed to create test db: {db_result:?}");
-        let Ok((_dir, db)) = db_result else {
-            return;
-        };
-        let cmd = Command::new(&db);
+            let template = fixtures::template_fixture("daily")
+                .expect("Failed to create template fixture");
 
-        let template_result = template_fixture("daily");
-        assert!(
-            template_result.is_ok(),
-            "Failed to create template fixture: {template_result:?}"
-        );
-        let Ok(template) = template_result else {
-            return;
-        };
+            cmd.create(&template).expect("Create should succeed");
 
-        let create_result = cmd.create(&template).map_err(|e| e.to_string());
-        assert!(
-            create_result.is_ok(),
-            "Create should succeed, got: {create_result:?}"
-        );
+            let id_str = template.id().to_string();
+            let stored = db
+                .get_owned::<Template>("templates", &id_str)
+                .expect("Read after create should succeed");
+            let stored_template = stored.expect("Stored template should exist");
+            assert_eq!(
+                stored_template.name(),
+                "daily",
+                "Stored template name should match"
+            );
 
-        let id_str = template.id().to_string();
-        let stored_result = db
-            .get_owned::<Template>("templates", &id_str)
-            .map_err(|e| e.to_string());
-        assert!(
-            stored_result.is_ok(),
-            "Read after create should succeed, got: {stored_result:?}"
-        );
-        let Ok(stored) = stored_result else {
-            return;
-        };
-        assert!(stored.is_some(), "Stored template should exist");
-        let Some(stored_template) = stored else {
-            return;
-        };
-        assert_eq!(
-            stored_template.name(),
-            "daily",
-            "Stored template name should match"
-        );
+            let ids = db
+                .multimap_get("template_name_to_id", "daily")
+                .expect("Name index read should succeed");
+            assert!(
+                ids.contains(&id_str),
+                "Name index should contain template id"
+            );
+        }
 
-        let ids_result = db
-            .multimap_get("template_name_to_id", "daily")
-            .map_err(|e| e.to_string());
-        assert!(
-            ids_result.is_ok(),
-            "Name index read should succeed, got: {ids_result:?}"
-        );
-        let Ok(ids) = ids_result else {
-            return;
-        };
-        assert!(ids.contains(&id_str), "Name index should contain template id");
-    }
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn update_refreshes_name_index_when_name_changes() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test db");
+            let cmd = Command::new(&db);
 
-    #[test]
-    fn update_refreshes_name_index_when_name_changes() {
-        let db_result = test_db();
-        assert!(db_result.is_ok(), "Failed to create test db: {db_result:?}");
-        let Ok((_dir, db)) = db_result else {
-            return;
-        };
-        let cmd = Command::new(&db);
+            let mut template = fixtures::template_fixture("daily")
+                .expect("Failed to create template fixture");
 
-        let template_result = template_fixture("daily");
-        assert!(
-            template_result.is_ok(),
-            "Failed to create template fixture: {template_result:?}"
-        );
-        let Ok(mut template) = template_result else {
-            return;
-        };
+            cmd.create(&template).expect("Create should succeed");
 
-        let create_result = cmd.create(&template).map_err(|e| e.to_string());
-        assert!(
-            create_result.is_ok(),
-            "Create should succeed, got: {create_result:?}"
-        );
+            let id_str = template.id().to_string();
+            template.name = "weekly".to_owned();
+            cmd.update(&template).expect("Update should succeed");
 
-        let id_str = template.id().to_string();
-        template.name = "weekly".to_owned();
-        let update_result = cmd.update(&template).map_err(|e| e.to_string());
-        assert!(
-            update_result.is_ok(),
-            "Update should succeed, got: {update_result:?}"
-        );
+            let old_ids = db
+                .multimap_get("template_name_to_id", "daily")
+                .expect("Old name index read should succeed");
+            assert!(
+                !old_ids.contains(&id_str),
+                "Old name index should not contain template id"
+            );
 
-        let old_ids_result = db
-            .multimap_get("template_name_to_id", "daily")
-            .map_err(|e| e.to_string());
-        assert!(
-            old_ids_result.is_ok(),
-            "Old name index read should succeed, got: {old_ids_result:?}"
-        );
-        let Ok(old_ids) = old_ids_result else {
-            return;
-        };
-        assert!(
-            !old_ids.contains(&id_str),
-            "Old name index should not contain template id"
-        );
+            let new_ids = db
+                .multimap_get("template_name_to_id", "weekly")
+                .expect("New name index read should succeed");
+            assert!(
+                new_ids.contains(&id_str),
+                "New name index should contain template id"
+            );
+        }
 
-        let new_ids_result = db
-            .multimap_get("template_name_to_id", "weekly")
-            .map_err(|e| e.to_string());
-        assert!(
-            new_ids_result.is_ok(),
-            "New name index read should succeed, got: {new_ids_result:?}"
-        );
-        let Ok(new_ids) = new_ids_result else {
-            return;
-        };
-        assert!(
-            new_ids.contains(&id_str),
-            "New name index should contain template id"
-        );
-    }
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn delete_removes_template_and_name_index() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test db");
+            let cmd = Command::new(&db);
 
-    #[test]
-    fn delete_removes_template_and_name_index() {
-        let db_result = test_db();
-        assert!(db_result.is_ok(), "Failed to create test db: {db_result:?}");
-        let Ok((_dir, db)) = db_result else {
-            return;
-        };
-        let cmd = Command::new(&db);
+            let template = fixtures::template_fixture("daily")
+                .expect("Failed to create template fixture");
+            let id = template.id();
+            let id_str = id.to_string();
+            cmd.create(&template).expect("Create should succeed");
 
-        let template_result = template_fixture("daily");
-        assert!(
-            template_result.is_ok(),
-            "Failed to create template fixture: {template_result:?}"
-        );
-        let Ok(template) = template_result else {
-            return;
-        };
-        let id = template.id();
-        let id_str = id.to_string();
-        let create_result = cmd.create(&template).map_err(|e| e.to_string());
-        assert!(
-            create_result.is_ok(),
-            "Create should succeed, got: {create_result:?}"
-        );
+            cmd.delete(id).expect("Delete should succeed");
 
-        let delete_result = cmd.delete(id).map_err(|e| e.to_string());
-        assert!(
-            delete_result.is_ok(),
-            "Delete should succeed, got: {delete_result:?}"
-        );
+            let stored = db
+                .get_owned::<Template>("templates", &id_str)
+                .expect("Read after delete should succeed");
+            assert!(stored.is_none(), "Deleted template should not exist");
 
-        let stored_result = db
-            .get_owned::<Template>("templates", &id_str)
-            .map_err(|e| e.to_string());
-        assert!(
-            stored_result.is_ok(),
-            "Read after delete should succeed, got: {stored_result:?}"
-        );
-        let Ok(stored) = stored_result else {
-            return;
-        };
-        assert!(stored.is_none(), "Deleted template should not exist");
-
-        let ids_result = db
-            .multimap_get("template_name_to_id", "daily")
-            .map_err(|e| e.to_string());
-        assert!(
-            ids_result.is_ok(),
-            "Name index read should succeed, got: {ids_result:?}"
-        );
-        let Ok(ids) = ids_result else {
-            return;
-        };
-        assert!(
-            !ids.contains(&id_str),
-            "Name index should not contain deleted template id"
-        );
+            let ids = db
+                .multimap_get("template_name_to_id", "daily")
+                .expect("Name index read should succeed");
+            assert!(
+                !ids.contains(&id_str),
+                "Name index should not contain deleted template id"
+            );
+        }
     }
 }

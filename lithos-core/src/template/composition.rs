@@ -39,7 +39,7 @@ use super::{aggregate::Template, error::TemplateError};
 /// assert_eq!(composition.additional_sections.len(), 1);
 /// # Ok(())
 /// # }
-/// # run().unwrap();
+/// # run()?;
 /// ```
 #[derive(
     Debug,
@@ -302,119 +302,135 @@ mod tests {
         }
     }
 
-    use super::*;
-    use crate::template::variable::VariableDefinition;
+    mod validation {
+        use std::collections::HashMap;
 
-    /// 3.4-UNIT-028: `should_detect_circular_composition`.
-    /// Priority: P0.
-    #[test]
-    fn should_detect_circular_composition() {
-        use fixtures::TemplateTestBuilder;
-
-        // GIVEN a template that extends itself
-        let mut templates = HashMap::new();
-        let base_result = TemplateTestBuilder::new("A")
-            .with_content("content")
-            .extending("A")
-            .build();
-        assert!(base_result.is_ok(), "Valid template setup: {base_result:?}");
-        let Ok(base) = base_result else {
-            return;
+        use super::{
+            super::{Composition, TemplateError},
+            fixtures,
         };
-        templates.insert("A".to_owned(), base);
+        use crate::template::variable::VariableDefinition;
 
-        let composition = Composition {
-            additional_sections: Vec::new(),
-            base_template: "A".to_owned(),
-            includes: Vec::new(),
-            variable_overrides: HashMap::new(),
-        };
+        /// 3.4-UNIT-028: `should_detect_circular_composition`.
+        /// Priority: P0.
+        #[test]
+        fn should_detect_circular_composition() {
+            use fixtures::TemplateTestBuilder;
 
-        // WHEN detecting cycles
-        let result = composition.detect_cycles(&templates);
+            // GIVEN a template that extends itself
+            let mut templates = HashMap::new();
+            let base_result = TemplateTestBuilder::new("A")
+                .with_content("content")
+                .extending("A")
+                .build();
+            assert!(
+                base_result.is_ok(),
+                "Valid template setup: {base_result:?}"
+            );
+            let Ok(base) = base_result else {
+                return;
+            };
+            templates.insert("A".to_owned(), base);
 
-        // THEN it must return a CircularComposition error
-        assert!(
-            matches!(result, Err(TemplateError::CircularComposition(_))),
-            "Expected CircularComposition error for self-extending template, \
-             got: {result:?}"
-        );
-    }
+            let composition = Composition {
+                additional_sections: Vec::new(),
+                base_template: "A".to_owned(),
+                includes: Vec::new(),
+                variable_overrides: HashMap::new(),
+            };
 
-    /// 3.4-UNIT-029: `should_detect_circular_include`.
-    /// Priority: P0.
-    #[test]
-    fn should_detect_circular_include() {
-        use fixtures::TemplateTestBuilder;
+            // WHEN detecting cycles
+            let result = composition.detect_cycles(&templates);
 
-        // GIVEN a base template with a self-include
-        let mut templates = HashMap::new();
-        let base_result =
-            TemplateTestBuilder::new("A").with_content("content").build();
-        assert!(base_result.is_ok(), "Valid template setup: {base_result:?}");
-        let Ok(base) = base_result else {
-            return;
-        };
-        templates.insert("A".to_owned(), base);
+            // THEN it must return a CircularComposition error
+            assert!(
+                matches!(result, Err(TemplateError::CircularComposition(_))),
+                "Expected CircularComposition error for self-extending \
+                 template, got: {result:?}"
+            );
+        }
 
-        let composition = Composition {
-            additional_sections: Vec::new(),
-            base_template: "A".to_owned(),
-            includes: vec!["A".to_owned()],
-            variable_overrides: HashMap::new(),
-        };
+        /// 3.4-UNIT-029: `should_detect_circular_include`.
+        /// Priority: P0.
+        #[test]
+        fn should_detect_circular_include() {
+            use fixtures::TemplateTestBuilder;
 
-        // WHEN detecting cycles
-        let result = composition.detect_cycles(&templates);
+            // GIVEN a base template with a self-include
+            let mut templates = HashMap::new();
+            let base_result =
+                TemplateTestBuilder::new("A").with_content("content").build();
+            assert!(
+                base_result.is_ok(),
+                "Valid template setup: {base_result:?}"
+            );
+            let Ok(base) = base_result else {
+                return;
+            };
+            templates.insert("A".to_owned(), base);
 
-        // THEN it reports a circular composition error
-        assert!(
-            matches!(result, Err(TemplateError::CircularComposition(_))),
-            "Expected CircularComposition error for self-including template, \
-             got: {result:?}"
-        );
-    }
+            let composition = Composition {
+                additional_sections: Vec::new(),
+                base_template: "A".to_owned(),
+                includes: vec!["A".to_owned()],
+                variable_overrides: HashMap::new(),
+            };
 
-    /// 3.4-UNIT-030: `validate_rejects_variable_type_mismatch`.
-    /// Priority: P1.
-    #[test]
-    fn validate_rejects_variable_type_mismatch() {
-        use fixtures::TemplateTestBuilder;
+            // WHEN detecting cycles
+            let result = composition.detect_cycles(&templates);
 
-        // GIVEN: a base template with a string variable
-        let base = TemplateTestBuilder::new("base")
-            .with_content("Hello {{title}}")
-            .with_variable("title", VariableDefinition::String {
-                default: None,
-                max_length: None,
-                min_length: None,
-                pattern: None,
-            })
-            .build();
-        assert!(base.is_ok(), "Valid template setup: {base:?}");
-        let Ok(base) = base else {
-            return;
-        };
+            // THEN it reports a circular composition error
+            assert!(
+                matches!(result, Err(TemplateError::CircularComposition(_))),
+                "Expected CircularComposition error for self-including \
+                 template, got: {result:?}"
+            );
+        }
 
-        // WHEN: overriding with an incompatible value
-        let mut overrides = HashMap::new();
-        overrides.insert(
-            "title".to_owned(),
-            serde_json::Value::Number(serde_json::Number::from(42i64)),
-        );
-        let composition = Composition {
-            additional_sections: Vec::new(),
-            base_template: "base".to_owned(),
-            includes: Vec::new(),
-            variable_overrides: overrides,
-        };
+        /// 3.4-UNIT-030: `validate_rejects_variable_type_mismatch`.
+        /// Priority: P1.
+        #[test]
+        fn validate_rejects_variable_type_mismatch() {
+            use fixtures::TemplateTestBuilder;
 
-        // THEN: validation reports a type mismatch
-        let result = composition.validate(&base);
-        assert!(
-            matches!(result, Err(TemplateError::VariableTypeMismatch { .. })),
-            "Expected VariableTypeMismatch error when overriding String with \
-             Number, got: {result:?}"
-        );
+            // GIVEN: a base template with a string variable
+            let base = TemplateTestBuilder::new("base")
+                .with_content("Hello {{title}}")
+                .with_variable("title", VariableDefinition::String {
+                    default: None,
+                    max_length: None,
+                    min_length: None,
+                    pattern: None,
+                })
+                .build();
+            assert!(base.is_ok(), "Valid template setup: {base:?}");
+            let Ok(base) = base else {
+                return;
+            };
+
+            // WHEN: overriding with an incompatible value
+            let mut overrides = HashMap::new();
+            overrides.insert(
+                "title".to_owned(),
+                serde_json::Value::Number(serde_json::Number::from(42i64)),
+            );
+            let composition = Composition {
+                additional_sections: Vec::new(),
+                base_template: "base".to_owned(),
+                includes: Vec::new(),
+                variable_overrides: overrides,
+            };
+
+            // THEN: validation reports a type mismatch
+            let result = composition.validate(&base);
+            assert!(
+                matches!(
+                    result,
+                    Err(TemplateError::VariableTypeMismatch { .. })
+                ),
+                "Expected VariableTypeMismatch error when overriding String \
+                 with Number, got: {result:?}"
+            );
+        }
     }
 }

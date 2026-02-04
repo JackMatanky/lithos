@@ -25,17 +25,20 @@ use super::{
 /// # use lithos_core::schema::resolver::Resolver;
 /// # use std::collections::HashSet;
 /// # use uuid::Uuid;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let bank = PropertyBank::new();
 /// let raw = RawSchema::new(
 ///     Uuid::now_v7(),
-///     SchemaName::new("test".into()).unwrap(),
+///     SchemaName::new("test".into())?,
 ///     None,
 ///     HashSet::new(),
 ///     Vec::new(),
 /// );
 ///
-/// let schema = Resolver::resolve(raw, None, &bank).unwrap();
+/// let schema = Resolver::resolve(raw, None, &bank)?;
 /// assert_eq!(&schema.name().0, "test");
+/// # Ok(())
+/// # }
 /// ```
 #[non_exhaustive]
 pub struct Resolver;

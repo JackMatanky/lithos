@@ -55,9 +55,12 @@ pub struct Property {
 /// # Examples
 /// ```
 /// # use lithos_core::schema::property::PropertyName;
-/// let name = PropertyName::new("status".to_string()).unwrap();
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let name = PropertyName::new("status".to_string())?;
 /// assert_eq!(&name.0, "status");
 /// assert!(PropertyName::new("".to_string()).is_err());
+/// # Ok(())
+/// # }
 /// ```
 #[derive(
     Debug,
@@ -152,12 +155,15 @@ impl Property {
     /// # use lithos_core::schema::property::{Property, PropertyName};
     /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
     /// # use uuid::Uuid;
-    /// let name = PropertyName::new("is_active".to_string()).unwrap();
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("is_active".to_string())?;
     /// let spec = PropertySpec::Bool(BoolSpec::default());
     /// let id = Uuid::now_v7();
     ///
-    /// let property = Property::new(id, name, true, false, spec).unwrap();
+    /// let property = Property::new(id, name, true, false, spec)?;
     /// assert!(property.required(), "Property should be required");
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -219,11 +225,13 @@ impl Property {
     /// # use lithos_core::schema::property::{Property, PropertyName};
     /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
     /// # use uuid::Uuid;
-    /// let name = PropertyName::new("enabled".to_string()).unwrap();
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("enabled".to_string())?;
     /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property =
-    ///     Property::new(Uuid::now_v7(), name, true, false, spec).unwrap();
-    /// property.validate_value(&serde_json::json!(true)).unwrap();
+    /// let property = Property::new(Uuid::now_v7(), name, true, false, spec)?;
+    /// property.validate_value(&serde_json::json!(true))?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn validate_value(
@@ -375,14 +383,15 @@ mod tests {
         }
 
         #[cfg(test)]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Expect/unwrap is permitted in Arrange phase of tests."
-        )]
         mod tests {
             use super::*;
 
             #[test]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test uses expect for deterministic fixture setup \
+                          and value extraction."
+            )]
             fn builder_sets_fields() {
                 let property = PropertyBuilder::new()
                     .name("priority")
@@ -409,10 +418,6 @@ mod tests {
         }
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Expect/unwrap is permitted in Arrange phase of tests."
-    )]
     mod property {
         use uuid::Uuid;
 
@@ -422,6 +427,11 @@ mod tests {
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0802);
 
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn accessors_return_expected_values() {
             // GIVEN: a property aggregate
             let spec = PropertySpec::String(StringSpec::default());

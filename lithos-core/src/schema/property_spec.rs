@@ -284,9 +284,12 @@ impl PropertySpec {
     /// # Examples
     /// ```
     /// # use lithos_core::schema::property_spec::{PropertySpecDef, BoolSpecDef};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let def = PropertySpecDef::Bool(BoolSpecDef::default());
-    /// let spec = def.try_into_validated().unwrap();
-    /// spec.validate(&serde_json::json!(true)).unwrap();
+    /// let spec = def.try_into_validated()?;
+    /// spec.validate(&serde_json::json!(true))?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     #[expect(

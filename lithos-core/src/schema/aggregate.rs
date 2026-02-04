@@ -41,14 +41,17 @@ use crate::patterns;
 /// # use lithos_core::schema::property::{Property, PropertyName};
 /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
 /// # use uuid::Uuid;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut bank = PropertyBank::new();
-/// let name = PropertyName::new("is_active".to_string()).unwrap();
+/// let name = PropertyName::new("is_active".to_string())?;
 /// let spec = PropertySpec::Bool(BoolSpec::default());
 /// let id = Uuid::now_v7();
-/// let property = Property::new(id, name, true, false, spec).unwrap();
+/// let property = Property::new(id, name, true, false, spec)?;
 ///
-/// bank.register(property).unwrap();
+/// bank.register(property)?;
 /// assert!(bank.has_name("is_active"));
+/// # Ok(())
+/// # }
 /// ```
 #[derive(
     Debug,
@@ -88,13 +91,16 @@ pub struct PropertyBank {
 /// ```
 /// use lithos_core::schema::aggregate::{Schema, SchemaName};
 /// use uuid::Uuid;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// let name = SchemaName::new("project-note".into()).unwrap();
-/// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+/// let name = SchemaName::new("project-note".into())?;
+/// let schema = Schema::new(Uuid::now_v7(), name, vec![])?;
 /// assert!(
 ///     schema.properties().is_empty(),
 ///     "New schema should have empty properties"
 /// );
+/// # Ok(())
+/// # }
 /// ```
 #[derive(
     Debug,
@@ -130,18 +136,21 @@ pub struct Schema {
 ///
 /// ```
 /// use lithos_core::schema::aggregate::SchemaName;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// let name = SchemaName::new("project-note".to_string()).unwrap();
+/// let name = SchemaName::new("project-note".to_string())?;
 /// assert_eq!(&name.0, "project-note");
 ///
-/// let name2 = SchemaName::new("daily_note".to_string()).unwrap();
+/// let name2 = SchemaName::new("daily_note".to_string())?;
 /// assert_eq!(&name2.0, "daily_note");
 ///
-/// let name3 = SchemaName::new("MySchema".to_string()).unwrap();
+/// let name3 = SchemaName::new("MySchema".to_string())?;
 /// assert_eq!(&name3.0, "MySchema");
 ///
 /// let invalid = SchemaName::new("".to_string());
 /// assert!(invalid.is_err(), "Empty name should be rejected");
+/// # Ok(())
+/// # }
 /// ```
 #[derive(
     Debug,
@@ -339,16 +348,19 @@ impl PropertyBank {
     ///     property_spec::{BoolSpec, PropertySpec},
     /// };
     /// use uuid::Uuid;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let mut bank = PropertyBank::new();
     ///
-    /// let name = PropertyName::new("is_active".to_string()).unwrap();
+    /// let name = PropertyName::new("is_active".to_string())?;
     /// let spec = PropertySpec::Bool(BoolSpec::default());
     /// let id = Uuid::now_v7();
-    /// let property = Property::new(id, name, true, false, spec).unwrap();
+    /// let property = Property::new(id, name, true, false, spec)?;
     ///
-    /// bank.register(property).unwrap();
+    /// bank.register(property)?;
     /// assert_eq!(bank.all().count(), 1);
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -410,10 +422,13 @@ impl Schema {
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaName};
     /// use uuid::Uuid;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let name = SchemaName::new("test".into()).unwrap();
-    /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+    /// let name = SchemaName::new("test".into())?;
+    /// let schema = Schema::new(Uuid::now_v7(), name, vec![])?;
     /// assert!(schema.get("missing").is_none());
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     #[must_use]
@@ -449,10 +464,13 @@ impl Schema {
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaName};
     /// use uuid::Uuid;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let name = SchemaName::new("project-note".to_string()).unwrap();
-    /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+    /// let name = SchemaName::new("project-note".to_string())?;
+    /// let schema = Schema::new(Uuid::now_v7(), name, vec![])?;
     /// assert_eq!(&schema.name().0, "project-note");
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -544,8 +562,8 @@ impl SchemaName {
 
 #[cfg(test)]
 #[expect(
-    clippy::disallowed_methods,
-    reason = "Expect/unwrap is permitted in Arrange phase of tests."
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module groups fixtures and submodules for readability."
 )]
 mod tests {
     use uuid::Uuid;
@@ -558,6 +576,37 @@ mod tests {
         *,
     };
 
+    mod fixtures {
+        use super::*;
+
+        pub fn sample_schema() -> Result<Schema, SchemaError> {
+            let name = SchemaName::new("status".to_owned())?;
+            let property = Property::new(
+                TEST_PROPERTY_ID_C,
+                PropertyName::new("flag".to_owned())?,
+                true,
+                false,
+                PropertySpec::Bool(BoolSpec::default()),
+            )?;
+            Schema::new(TEST_SCHEMA_ID_A, name, vec![property])
+        }
+
+        pub fn bank_with_property() -> Result<(PropertyBank, Uuid), SchemaError>
+        {
+            let mut bank = PropertyBank::new();
+            let property = Property::new(
+                TEST_PROPERTY_ID_A,
+                PropertyName::new("flag".to_owned())?,
+                true,
+                false,
+                PropertySpec::Bool(BoolSpec::default()),
+            )?;
+            let id = property.id();
+            bank.register(property)?;
+            Ok((bank, id))
+        }
+    }
+
     const TEST_PROPERTY_ID_A: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0701);
     const TEST_PROPERTY_ID_B: Uuid =
@@ -567,204 +616,243 @@ mod tests {
     const TEST_SCHEMA_ID_A: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0704);
 
-    /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
-    /// Priority: P1.
-    #[test]
-    fn is_idempotent_on_identical_registration() {
-        // GIVEN: a PropertyBank and an existing property
-        let mut bank = PropertyBank::new();
-        let spec = PropertySpec::String(StringSpec::default());
-        let name = PropertyName::new("test".to_owned()).expect("Valid name");
-        let prop = Property::new(TEST_PROPERTY_ID_A, name, false, false, spec)
+    mod property_bank {
+        use super::*;
+
+        /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn is_idempotent_on_identical_registration() {
+            // GIVEN: a PropertyBank and an existing property
+            let mut bank = PropertyBank::new();
+            let spec = PropertySpec::String(StringSpec::default());
+            let name =
+                PropertyName::new("test".to_owned()).expect("Valid name");
+            let prop =
+                Property::new(TEST_PROPERTY_ID_A, name, false, false, spec)
+                    .expect("Valid property");
+
+            // WHEN: registering the same property twice
+            bank.register(prop.clone())
+                .expect("First registration should succeed");
+            bank.register(prop)
+                .expect("Second registration (identical) should succeed");
+
+            // THEN: the count remains 1
+            let count = bank.all().count();
+            assert_eq!(
+                count, 1,
+                "Expected 1 property after identical registrations"
+            );
+        }
+
+        /// 3.3-UNIT-020: `maintains_dual_indices_for_fast_lookup`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn maintains_dual_indices_for_fast_lookup() {
+            // GIVEN: a PropertyBank and a Property definition
+            let mut bank = PropertyBank::new();
+            let spec = PropertySpec::String(StringSpec::default());
+            let name_str = "test".to_owned();
+            let name = PropertyName::new(name_str).expect("Valid name");
+            let id = TEST_PROPERTY_ID_B;
+            let prop = Property::new(id, name, false, false, spec)
+                .expect("Valid property");
+
+            // WHEN: registering the property
+            bank.register(prop).expect("Registration should succeed");
+
+            // THEN: it should be accessible by both ID and name
+            assert!(
+                bank.get_by_id(id).is_some(),
+                "Registered property should be retrievable by ID: {id}"
+            );
+            assert!(
+                bank.get_by_name("test").is_some(),
+                "Registered property should be retrievable by name: 'test'"
+            );
+        }
+
+        /// 3.3-UNIT-024: `rejects_duplicate_names_with_different_definitions`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn rejects_duplicate_names_with_different_definitions() {
+            // GIVEN: a PropertyBank with a registered property
+            let mut bank = PropertyBank::new();
+            let spec1 = PropertySpec::String(StringSpec::default());
+            let name =
+                PropertyName::new("test".to_owned()).expect("Valid name");
+            let prop1 = Property::new(
+                TEST_PROPERTY_ID_A,
+                name.clone(),
+                false,
+                false,
+                spec1,
+            )
             .expect("Valid property");
+            bank.register(prop1).expect("Initial registration should succeed");
 
-        // WHEN: registering the same property twice
-        bank.register(prop.clone()).expect("First registration should succeed");
-        bank.register(prop)
-            .expect("Second registration (identical) should succeed");
+            // WHEN: registering a different definition with the same name
+            let spec2 = PropertySpec::Bool(BoolSpec::default());
+            let prop2 =
+                Property::new(TEST_PROPERTY_ID_B, name, false, false, spec2)
+                    .expect("Valid property definition");
+            let res = bank.register(prop2);
 
-        // THEN: the count remains 1
-        let count = bank.all().count();
-        assert_eq!(
-            count, 1,
-            "Expected 1 property after identical registrations"
-        );
+            // THEN: it must return a DuplicatePropertyName error
+            assert!(
+                matches!(res, Err(SchemaError::DuplicatePropertyName(_))),
+                "Duplicate property name should be rejected with \
+                 DuplicatePropertyName, got: {res:?}"
+            );
+        }
+
+        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn property_bank_accessors_cover_ids_and_names() {
+            let (bank, id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
+
+            assert!(
+                bank.has_id(id),
+                "PropertyBank should contain property by ID"
+            );
+            assert!(
+                bank.has_name("flag"),
+                "PropertyBank should contain property by name 'flag'"
+            );
+            assert!(
+                bank.get_by_id(id).is_some(),
+                "Should retrieve property by ID: {id}"
+            );
+            assert!(
+                bank.get_by_name("flag").is_some(),
+                "Should retrieve property by name: 'flag'"
+            );
+            assert!(
+                bank.get(id.to_string().as_str()).is_some(),
+                "Should retrieve property by ID string: {id}"
+            );
+            bank.decode(id.to_string().as_str())
+                .expect("Should decode ID string");
+        }
+
+        /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn property_bank_events_emitted_on_registration() {
+            let (mut bank, _id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
+
+            assert_eq!(
+                bank.pending_events().len(),
+                1,
+                "Expected exactly 1 pending event"
+            );
+
+            let events = bank.take_events();
+            assert_eq!(
+                events.len(),
+                1,
+                "take_events should return exactly 1 event after registration"
+            );
+            assert!(
+                bank.pending_events().is_empty(),
+                "pending_events should be empty after take_events"
+            );
+        }
     }
 
-    /// 3.3-UNIT-020: `maintains_dual_indices_for_fast_lookup`.
-    /// Priority: P1.
-    #[test]
-    fn maintains_dual_indices_for_fast_lookup() {
-        // GIVEN: a PropertyBank and a Property definition
-        let mut bank = PropertyBank::new();
-        let spec = PropertySpec::String(StringSpec::default());
-        let name_str = "test".to_owned();
-        let name = PropertyName::new(name_str).expect("Valid name");
-        let id = TEST_PROPERTY_ID_B;
-        let prop = Property::new(id, name, false, false, spec)
-            .expect("Valid property");
+    mod schema {
+        use super::*;
 
-        // WHEN: registering the property
-        bank.register(prop).expect("Registration should succeed");
+        /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn schema_accessors_return_expected_values() {
+            let schema =
+                fixtures::sample_schema().expect("Valid schema fixture");
 
-        // THEN: it should be accessible by both ID and name
-        assert!(
-            bank.get_by_id(id).is_some(),
-            "Registered property should be retrievable by ID: {id}"
-        );
-        assert!(
-            bank.get_by_name("test").is_some(),
-            "Registered property should be retrievable by name: 'test'"
-        );
-    }
+            assert_eq!(schema.name().0, "status");
+            assert_eq!(schema.name().as_ref(), "status");
+            assert_eq!(schema.name().to_string(), "status");
+        }
 
-    /// 3.3-UNIT-024: `rejects_duplicate_names_with_different_definitions`.
-    /// Priority: P1.
-    #[test]
-    fn rejects_duplicate_names_with_different_definitions() {
-        // GIVEN: a PropertyBank with a registered property
-        let mut bank = PropertyBank::new();
-        let spec1 = PropertySpec::String(StringSpec::default());
-        let name = PropertyName::new("test".to_owned()).expect("Valid name");
-        let prop1 = Property::new(
-            TEST_PROPERTY_ID_A,
-            name.clone(),
-            false,
-            false,
-            spec1,
-        )
-        .expect("Valid property");
-        bank.register(prop1).expect("Initial registration should succeed");
+        /// 3.2-UNIT-010: `schema_property_accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn schema_property_accessors_return_expected_values() {
+            let schema =
+                fixtures::sample_schema().expect("Valid schema fixture");
 
-        // WHEN: registering a different definition with the same name
-        let spec2 = PropertySpec::Bool(BoolSpec::default());
-        let prop2 =
-            Property::new(TEST_PROPERTY_ID_B, name, false, false, spec2)
-                .expect("Valid property definition");
-        let res = bank.register(prop2);
+            assert!(
+                schema.has("flag"),
+                "Expected schema to have property 'flag'"
+            );
+            assert!(
+                schema.get("flag").is_some(),
+                "Expected schema.get('flag') to be Some"
+            );
+            assert_eq!(
+                schema.properties().len(),
+                1,
+                "Expected exactly 1 property"
+            );
+        }
 
-        // THEN: it must return a DuplicatePropertyName error
-        assert!(
-            matches!(res, Err(SchemaError::DuplicatePropertyName(_))),
-            "Duplicate property name should be rejected with \
-             DuplicatePropertyName, got: {res:?}"
-        );
-    }
+        /// 3.2-UNIT-010: `schema_pending_events_emitted_on_create`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn schema_pending_events_emitted_on_create() {
+            let schema =
+                fixtures::sample_schema().expect("Valid schema fixture");
 
-    /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
-    /// Priority: P1.
-    #[test]
-    fn schema_accessors_return_expected_values() {
-        let schema = sample_schema();
-
-        assert_eq!(schema.name().0, "status");
-        assert_eq!(schema.name().as_ref(), "status");
-        assert_eq!(schema.name().to_string(), "status");
-    }
-
-    /// 3.2-UNIT-010: `schema_property_accessors_return_expected_values`.
-    /// Priority: P1.
-    #[test]
-    fn schema_property_accessors_return_expected_values() {
-        let schema = sample_schema();
-
-        assert!(schema.has("flag"), "Expected schema to have property 'flag'");
-        assert!(
-            schema.get("flag").is_some(),
-            "Expected schema.get('flag') to be Some"
-        );
-        assert_eq!(schema.properties().len(), 1, "Expected exactly 1 property");
-    }
-
-    /// 3.2-UNIT-010: `schema_pending_events_emitted_on_create`.
-    /// Priority: P1.
-    #[test]
-    fn schema_pending_events_emitted_on_create() {
-        let schema = sample_schema();
-
-        assert_eq!(
-            schema.pending_events().len(),
-            1,
-            "Expected exactly 1 pending event"
-        );
-    }
-
-    /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
-    /// Priority: P1.
-    #[test]
-    fn property_bank_accessors_cover_ids_and_names() {
-        let (bank, id) = bank_with_property();
-
-        assert!(bank.has_id(id), "PropertyBank should contain property by ID");
-        assert!(
-            bank.has_name("flag"),
-            "PropertyBank should contain property by name 'flag'"
-        );
-        assert!(
-            bank.get_by_id(id).is_some(),
-            "Should retrieve property by ID: {id}"
-        );
-        assert!(
-            bank.get_by_name("flag").is_some(),
-            "Should retrieve property by name: 'flag'"
-        );
-        assert!(
-            bank.get(id.to_string().as_str()).is_some(),
-            "Should retrieve property by ID string: {id}"
-        );
-        bank.decode(id.to_string().as_str()).expect("Should decode ID string");
-    }
-
-    /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.
-    /// Priority: P1.
-    #[test]
-    fn property_bank_events_emitted_on_registration() {
-        let (mut bank, _id) = bank_with_property();
-
-        assert_eq!(
-            bank.pending_events().len(),
-            1,
-            "Expected exactly 1 pending event"
-        );
-
-        let events = bank.take_events();
-        assert_eq!(
-            events.len(),
-            1,
-            "take_events should return exactly 1 event after registration"
-        );
-        assert!(
-            bank.pending_events().is_empty(),
-            "pending_events should be empty after take_events"
-        );
-    }
-
-    fn sample_schema() -> Schema {
-        let name = SchemaName::new("status".to_owned()).expect("Valid name");
-        let property = Property::new(
-            TEST_PROPERTY_ID_C,
-            PropertyName::new("flag".to_owned()).expect("Valid name"),
-            true,
-            false,
-            PropertySpec::Bool(BoolSpec::default()),
-        )
-        .expect("Valid property");
-        Schema::new(TEST_SCHEMA_ID_A, name, vec![property])
-            .expect("Valid schema")
-    }
-
-    fn bank_with_property() -> (PropertyBank, Uuid) {
-        let mut bank = PropertyBank::new();
-        let property = Property::new(
-            TEST_PROPERTY_ID_A,
-            PropertyName::new("flag".to_owned()).expect("Valid name"),
-            true,
-            false,
-            PropertySpec::Bool(BoolSpec::default()),
-        )
-        .expect("Valid property");
-        let id = property.id();
-        bank.register(property).expect("Registration should succeed");
-        (bank, id)
+            assert_eq!(
+                schema.pending_events().len(),
+                1,
+                "Expected exactly 1 pending event"
+            );
+        }
     }
 }

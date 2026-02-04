@@ -147,9 +147,11 @@ impl Metadata {
     /// # Examples
     /// ```
     /// # use lithos_core::config::vault::Metadata;
-    /// let metadata =
-    ///     Metadata::new("/vaults/work".to_string(), None, None).unwrap();
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let metadata = Metadata::new("/vaults/work".to_string(), None, None)?;
     /// assert_eq!(metadata.path, "/vaults/work");
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn new(

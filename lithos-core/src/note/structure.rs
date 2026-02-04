@@ -44,11 +44,14 @@ impl Heading {
     /// # Examples
     /// ```
     /// use lithos_core::note::structure::Heading;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let heading = Heading::new(2, "Implementation".to_string(), 10).unwrap();
+    /// let heading = Heading::new(2, "Implementation".to_string(), 10)?;
     /// assert_eq!(heading.level(), 2);
     /// assert_eq!(heading.text(), "Implementation");
     /// assert_eq!(heading.position(), 10);
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -140,14 +143,17 @@ impl Section {
     /// # Examples
     /// ```
     /// use lithos_core::note::structure::{Heading, Section};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let range = 10..50;
     /// let section = Section::new(
-    ///     Some(Heading::new(1, "Title".to_string(), 10).unwrap()),
+    ///     Some(Heading::new(1, "Title".to_string(), 10)?),
     ///     "Content here...".to_string(),
     ///     range.clone(),
     /// );
     /// assert_eq!(section.range(), range);
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     #[must_use]
