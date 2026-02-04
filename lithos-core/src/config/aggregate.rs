@@ -310,8 +310,11 @@ impl Config {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
+    clippy::disallowed_methods,
+    clippy::panic,
     reason = "Test-only: the module item ordering is intentionally grouped \
-              for readability."
+              for readability. Expect/unwrap/panic is permitted in tests for \
+              setup and failure verification."
 )]
 mod tests {
     // # LINT_DISABLE_REASON: Standard test utilities and behavioral
@@ -336,16 +339,10 @@ mod tests {
             };
 
             // WHEN: building the config
-            let result = Config::build(None, "/vault", vault);
+            let config = Config::build(None, "/vault", vault)
+                .expect("Config build should succeed");
 
             // THEN: it succeeds and applies defaults
-            assert!(
-                result.is_ok(),
-                "Config build should succeed, got: {result:?}"
-            );
-            let Ok(config) = result else {
-                return;
-            };
             assert_eq!(config.vault_metadata.path, "/vault");
             assert_eq!(config.global_filesystem.schema.schemas_dir, "schemas");
         }
@@ -425,39 +422,28 @@ mod tests {
             let vault = sample_vault_config();
 
             // WHEN: building the configuration
-            let result1 = Config::build(Some(&global), "/vault", vault.clone());
-            assert!(
-                result1.is_ok(),
-                "First merge for trait verification failed: {result1:?}"
-            );
+            let config = Config::build(Some(&global), "/vault", vault.clone())
+                .expect("First merge for trait verification failed");
 
             // THEN: debug/clone/eq traits behave as expected
-            if let Ok(config) = result1 {
-                let debug_str = format!("{config:?}");
-                assert!(
-                    !debug_str.is_empty(),
-                    "Debug derivation should produce non-empty string"
-                );
+            let debug_str = format!("{config:?}");
+            assert!(
+                !debug_str.is_empty(),
+                "Debug derivation should produce non-empty string"
+            );
 
-                let cloned = config.clone();
-                assert_eq!(
-                    config, cloned,
-                    "Cloned config must be equal to original"
-                );
+            let cloned = config.clone();
+            assert_eq!(
+                config, cloned,
+                "Cloned config must be equal to original"
+            );
 
-                let result2 = Config::build(Some(&global), "/vault", vault);
-                assert!(
-                    result2.is_ok(),
-                    "Second merge for trait verification failed"
-                );
-                if let Ok(config2) = result2 {
-                    assert_eq!(
-                        config, config2,
-                        "Merged configs with identical input must be equal \
-                         (PartialEq)"
-                    );
-                }
-            }
+            let config2 = Config::build(Some(&global), "/vault", vault)
+                .expect("Second merge for trait verification failed");
+            assert_eq!(
+                config, config2,
+                "Merged configs with identical input must be equal (PartialEq)"
+            );
         }
     }
 
@@ -511,57 +497,50 @@ mod tests {
             };
 
             // WHEN: merging the configs
-            let result = Config::build(Some(&global), "/vault", vault);
-
-            // THEN: merge should succeed and apply system defaults
-            assert!(
-                result.is_ok(),
-                "Merge with empty values should succeed, got: {result:?}"
-            );
+            let config = Config::build(Some(&global), "/vault", vault)
+                .expect("Merge with empty values should succeed");
 
             // THEN: defaults are applied to merged configuration
-            if let Ok(config) = result {
-                // Verify defaults were applied to vault filesystem
-                assert_eq!(
-                    config.vault_filesystem.cache_dir, ".cache",
-                    "Should fall back to default cache_dir"
-                );
-                let default_filesystem = VaultPaths::default();
-                let default_frontmatter = Frontmatter::default();
-                let default_logging = Logging::default();
-                assert_eq!(
-                    config.vault_filesystem.template.templates_dir,
-                    default_filesystem.template.templates_dir,
-                    "Should fall back to default templates_dir"
-                );
-                assert_eq!(
-                    config.vault_filesystem.schema.schemas_dir,
-                    default_filesystem.schema.schemas_dir,
-                    "Should fall back to default schemas_dir"
-                );
-                assert_eq!(
-                    config.vault_filesystem.schema.property_bank_filename,
-                    default_filesystem.schema.property_bank_filename,
-                    "Should fall back to default property_bank_filename"
-                );
-                assert_eq!(
-                    config.logging.log_level, default_logging.log_level,
-                    "Should fall back to default log_level"
-                );
-                assert_eq!(
-                    config.frontmatter.file_class_key,
-                    default_frontmatter.file_class_key,
-                    "Should fall back to default file_class_key"
-                );
-                assert_eq!(
-                    config.frontmatter.title_key, default_frontmatter.title_key,
-                    "Should fall back to default title_key"
-                );
-                assert_eq!(
-                    config.frontmatter.alias_key, default_frontmatter.alias_key,
-                    "Should fall back to default alias_key"
-                );
-            }
+            // Verify defaults were applied to vault filesystem
+            assert_eq!(
+                config.vault_filesystem.cache_dir, ".cache",
+                "Should fall back to default cache_dir"
+            );
+            let default_filesystem = VaultPaths::default();
+            let default_frontmatter = Frontmatter::default();
+            let default_logging = Logging::default();
+            assert_eq!(
+                config.vault_filesystem.template.templates_dir,
+                default_filesystem.template.templates_dir,
+                "Should fall back to default templates_dir"
+            );
+            assert_eq!(
+                config.vault_filesystem.schema.schemas_dir,
+                default_filesystem.schema.schemas_dir,
+                "Should fall back to default schemas_dir"
+            );
+            assert_eq!(
+                config.vault_filesystem.schema.property_bank_filename,
+                default_filesystem.schema.property_bank_filename,
+                "Should fall back to default property_bank_filename"
+            );
+            assert_eq!(
+                config.logging.log_level, default_logging.log_level,
+                "Should fall back to default log_level"
+            );
+            assert_eq!(
+                config.frontmatter.file_class_key,
+                default_frontmatter.file_class_key,
+                "Should fall back to default file_class_key"
+            );
+            assert_eq!(
+                config.frontmatter.title_key, default_frontmatter.title_key,
+                "Should fall back to default title_key"
+            );
+            assert_eq!(
+                config.frontmatter.alias_key, default_frontmatter.alias_key,
+                "Should fall back to default alias_key"
+            );
         }
 
         /// 3.3-UNIT-015: `merge_is_idempotent`.
@@ -573,20 +552,17 @@ mod tests {
             let vault = sample_vault_config();
 
             // WHEN: merging the same inputs multiple times
-            let result1 = Config::build(Some(&global), "/vault", vault.clone());
-            assert!(result1.is_ok(), "First merge should succeed");
+            let merged1 = Config::build(Some(&global), "/vault", vault.clone())
+                .expect("First merge should succeed");
 
-            let result2 = Config::build(Some(&global), "/vault", vault);
-            assert!(result2.is_ok(), "Second merge should succeed");
+            let merged2 = Config::build(Some(&global), "/vault", vault)
+                .expect("Second merge should succeed");
 
             // THEN: results should be identical
-            if let (Ok(merged1), Ok(merged2)) = (result1, result2) {
-                assert_eq!(
-                    merged1, merged2,
-                    "Repeated merges with same input must yield identical \
-                     output"
-                );
-            }
+            assert_eq!(
+                merged1, merged2,
+                "Repeated merges with same input must yield identical output"
+            );
         }
 
         /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
@@ -599,15 +575,8 @@ mod tests {
             let vault = sample_vault_config();
 
             // WHEN: merging vault and global configs
-            let merged_result = Config::build(Some(&global), "/vault", vault);
-            assert!(
-                merged_result.is_ok(),
-                "Config build should succeed with valid sample data, got: \
-                 {merged_result:?}"
-            );
-            let Ok(merged) = merged_result else {
-                return;
-            };
+            let merged = Config::build(Some(&global), "/vault", vault)
+                .expect("Config build should succeed with valid sample data");
 
             // THEN: vault values override global defaults
             assert_eq!(
@@ -728,41 +697,41 @@ mod tests {
             // THEN: validation should succeed or fail as expected
             match expected_error_field {
                 None => {
+                    let config = result.expect("Configuration should be valid");
                     assert!(
-                        result.is_ok(),
-                        "Configuration with path='{path}' and level='{level}' \
-                         should be valid, but failed: {result:?}"
+                        config.validate().is_ok(),
+                        "Explicit validate() call should also pass for valid \
+                         config"
                     );
-                    if let Ok(config) = result {
-                        assert!(
-                            config.validate().is_ok(),
-                            "Explicit validate() call should also pass for \
-                             valid config"
-                        );
-                    }
                 }
                 Some(field_name) => {
                     // # LINT_DISABLE_REASON: Standard error matching pattern
                     // for Config validation.
                     if field_name == "vault_path" {
-                        assert!(matches!(
-                            result.as_ref(),
-                            Err(ConfigError::ValidationFailed { .. })
-                        ));
+                        assert!(
+                            matches!(
+                                result.as_ref(),
+                                Err(ConfigError::ValidationFailed { .. })
+                            ),
+                            "Expected ValidationFailed for {field_name}, got: \
+                             {result:?}"
+                        );
                     } else if field_name == "log_level" {
-                        assert!(matches!(
-                            result.as_ref(),
-                            Err(ConfigError::InvalidEnumValue { .. })
-                        ));
+                        assert!(
+                            matches!(
+                                result.as_ref(),
+                                Err(ConfigError::InvalidEnumValue { .. })
+                            ),
+                            "Expected InvalidEnumValue for {field_name}, got: \
+                             {result:?}"
+                        );
                     } else {
-                        assert_eq!(
-                            field_name, "",
+                        panic!(
                             "Unsupported field in test matrix: {field_name}"
                         );
-                        return;
                     }
 
-                    let err = result.unwrap_err();
+                    let err = result.expect_err("Expected error result");
                     // Verify error variant and extract field name in single
                     // match
                     #[expect(
@@ -797,12 +766,7 @@ mod tests {
                             field
                         }
                         other => {
-                            assert_eq!(
-                                other.to_string(),
-                                "",
-                                "Unexpected error variant: {other:?}"
-                            );
-                            return;
+                            panic!("Unexpected error variant: {other:?}");
                         }
                     };
                     assert_eq!(
