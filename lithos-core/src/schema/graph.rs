@@ -147,16 +147,14 @@ impl Graph {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     mod proptests {
         use std::collections::BTreeSet;
 
-        use proptest::{prelude::*, test_runner::TestRunner};
+        use proptest::{
+            prelude::*,
+            test_runner::{TestCaseError, TestRunner},
+        };
 
         use super::super::*;
 
@@ -174,40 +172,49 @@ mod tests {
             let mut runner = TestRunner::deterministic();
             let strategy = prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10);
 
-            runner
-                .run(&strategy, |names| {
-                    // GIVEN: a set of unique schema names
-                    let unique_names: Vec<_> = names
-                        .into_iter()
-                        .collect::<BTreeSet<_>>()
-                        .into_iter()
-                        .collect();
-                    if unique_names.len() < 2 {
-                        return Ok(());
-                    }
+            let run_result = runner.run(&strategy, |names| {
+                let parse_name =
+                    |raw: String| -> Result<SchemaName, TestCaseError> {
+                        match SchemaName::new(raw) {
+                            Ok(name) => Ok(name),
+                            Err(e) => Err(TestCaseError::fail(format!(
+                                "Invalid generated schema name: {e}"
+                            ))),
+                        }
+                    };
 
-                    // WHEN: creating a circular inheritance graph
-                    let mut graph = Graph::new();
-                    for i in 0..unique_names.len() {
-                        let next = (i + 1) % unique_names.len();
-                        let name =
-                            SchemaName::new(unique_names[i].clone()).unwrap();
-                        let next_name =
-                            SchemaName::new(unique_names[next].clone())
-                                .unwrap();
-                        graph.add_node(name, Some(next_name));
-                    }
+                // GIVEN: a set of unique schema names
+                let unique_names: Vec<_> = names
+                    .into_iter()
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect();
+                if unique_names.len() < 2 {
+                    return Ok(());
+                }
 
-                    // THEN: it must detect the circular inheritance
-                    let res = graph.resolve_order();
-                    assert!(
-                        matches!(res, Err(SchemaError::CircularInheritance(_))),
-                        "Proptest circular dependency should be detected, \
-                         got: {res:?}"
-                    );
-                    Ok(())
-                })
-                .expect("Deterministic proptest should not fail");
+                // WHEN: creating a circular inheritance graph
+                let mut graph = Graph::new();
+                for i in 0..unique_names.len() {
+                    let next = (i + 1) % unique_names.len();
+                    let name = parse_name(unique_names[i].clone())?;
+                    let next_name = parse_name(unique_names[next].clone())?;
+                    graph.add_node(name, Some(next_name));
+                }
+
+                // THEN: it must detect the circular inheritance
+                let res = graph.resolve_order();
+                assert!(
+                    matches!(res, Err(SchemaError::CircularInheritance(_))),
+                    "Proptest circular dependency should be detected, got: \
+                     {res:?}"
+                );
+                Ok(())
+            });
+            assert!(
+                run_result.is_ok(),
+                "Deterministic proptest should not fail: {run_result:?}"
+            );
         }
 
         /// 3.3-UNIT-019: `schema_graph_accepts_arbitrary_lineage`.
@@ -223,45 +230,65 @@ mod tests {
             let mut runner = TestRunner::deterministic();
             let strategy = prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10);
 
-            runner
-                .run(&strategy, |names| {
-                    // GIVEN: a set of unique schema names
-                    let unique_names: Vec<_> = names
-                        .into_iter()
-                        .collect::<BTreeSet<_>>()
-                        .into_iter()
-                        .collect();
+            let run_result = runner.run(&strategy, |names| {
+                let parse_name =
+                    |raw: String| -> Result<SchemaName, TestCaseError> {
+                        match SchemaName::new(raw) {
+                            Ok(name) => Ok(name),
+                            Err(e) => Err(TestCaseError::fail(format!(
+                                "Invalid generated schema name: {e}"
+                            ))),
+                        }
+                    };
 
-                    // WHEN: creating a valid linear inheritance graph
-                    let mut graph = Graph::new();
-                    for (i, name_str) in unique_names.iter().enumerate() {
-                        let name = SchemaName::new(name_str.clone()).unwrap();
-                        let parent = match i {
-                            0 => None,
-                            _ => Some(
-                                SchemaName::new(unique_names[i - 1].clone())
-                                    .unwrap(),
-                            ),
-                        };
-                        graph.add_node(name, parent);
-                    }
+                // GIVEN: a set of unique schema names
+                let unique_names: Vec<_> = names
+                    .into_iter()
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect();
 
-                    // THEN: it must succeed and return the correct order
-                    let res = graph.resolve_order();
-                    let order =
-                        res.expect("Linear graph should resolve successfully");
-                    assert_eq!(
-                        order.len(),
-                        unique_names.len(),
-                        "Resolution order should contain all schemas"
-                    );
-                    Ok(())
-                })
-                .expect("Deterministic proptest should not fail");
+                // WHEN: creating a valid linear inheritance graph
+                let mut graph = Graph::new();
+                for (i, name_str) in unique_names.iter().enumerate() {
+                    let name = parse_name(name_str.clone())?;
+                    let parent = match i {
+                        0 => None,
+                        _ => Some(parse_name(unique_names[i - 1].clone())?),
+                    };
+                    graph.add_node(name, parent);
+                }
+
+                // THEN: it must succeed and return the correct order
+                let res = graph.resolve_order();
+                prop_assert!(
+                    res.is_ok(),
+                    "Linear graph should resolve successfully, got: {res:?}"
+                );
+                let Ok(order) = res else {
+                    return Ok(());
+                };
+                assert_eq!(
+                    order.len(),
+                    unique_names.len(),
+                    "Resolution order should contain all schemas"
+                );
+                Ok(())
+            });
+            assert!(
+                run_result.is_ok(),
+                "Deterministic proptest should not fail: {run_result:?}"
+            );
         }
     }
 
     use super::*;
+
+    fn schema_name_literal(lit: &str) -> Option<SchemaName> {
+        let result: Result<SchemaName, _> = lit.try_into();
+        assert!(result.is_ok(), "Valid schema name expected: {result:?}");
+        result.ok()
+    }
 
     /// 3.3-UNIT-021: `detects_circular_inheritance`.
     /// Priority: P0.
@@ -269,8 +296,16 @@ mod tests {
     fn detects_circular_inheritance() {
         // GIVEN: a simple circular dependency between two schemas
         let mut graph = Graph::new();
-        graph.add_node("a".try_into().unwrap(), Some("b".try_into().unwrap()));
-        graph.add_node("b".try_into().unwrap(), Some("a".try_into().unwrap()));
+        let Some(a) = schema_name_literal("a") else {
+            return;
+        };
+
+        let Some(b) = schema_name_literal("b") else {
+            return;
+        };
+
+        graph.add_node(a.clone(), Some(b.clone()));
+        graph.add_node(b, Some(a));
 
         // WHEN: resolving the order
         let res = graph.resolve_order();
@@ -291,9 +326,14 @@ mod tests {
         let graph = Graph::new();
 
         // WHEN: resolving the order
-        let order = graph
-            .resolve_order()
-            .expect("Empty graph should resolve successfully");
+        let order_result = graph.resolve_order();
+        assert!(
+            order_result.is_ok(),
+            "Empty graph should resolve successfully, got: {order_result:?}"
+        );
+        let Ok(order) = order_result else {
+            return;
+        };
 
         // THEN: it should return an empty order
         assert!(
@@ -308,21 +348,32 @@ mod tests {
     fn determines_topological_resolution_order() {
         // GIVEN: a linear inheritance: child -> parent
         let mut graph = Graph::new();
-        graph.add_node(
-            "child".try_into().unwrap(),
-            Some("parent".try_into().unwrap()),
-        );
-        graph.add_node("parent".try_into().unwrap(), None);
+        let Some(child) = schema_name_literal("child") else {
+            return;
+        };
+
+        let Some(parent) = schema_name_literal("parent") else {
+            return;
+        };
+
+        graph.add_node(child.clone(), Some(parent.clone()));
+        graph.add_node(parent.clone(), None);
 
         // WHEN: resolving the order
-        let order = graph
-            .resolve_order()
-            .expect("Valid linear graph should resolve successfully");
+        let order_result = graph.resolve_order();
+        assert!(
+            order_result.is_ok(),
+            "Valid linear graph should resolve successfully, got: \
+             {order_result:?}"
+        );
+        let Ok(order) = order_result else {
+            return;
+        };
 
         // THEN: it should return parent before child
         assert_eq!(
             order,
-            vec!["parent".try_into().unwrap(), "child".try_into().unwrap()],
+            vec![parent, child],
             "Parent schema should be ordered before child schema"
         );
     }
