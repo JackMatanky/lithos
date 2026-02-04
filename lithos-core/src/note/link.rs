@@ -641,11 +641,6 @@ impl Target {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     /// Test fixtures for Link testing.
     mod fixtures {
@@ -832,8 +827,15 @@ mod tests {
             let alias = Some("Display Text".to_owned());
 
             // WHEN: creating a wiki-link
-            let link =
-                Link::new_wikilink(target, alias.clone(), anchor, 100).unwrap();
+            let link_result =
+                Link::new_wikilink(target, alias.clone(), anchor, 100);
+            assert!(
+                link_result.is_ok(),
+                "Expected valid wikilink, got: {link_result:?}"
+            );
+            let Ok(link) = link_result else {
+                return;
+            };
 
             // THEN: it should have correct properties
             assert_eq!(
@@ -863,13 +865,19 @@ mod tests {
             let target = external_target("https://example.com");
 
             // WHEN: creating a markdown link
-            let link = Link::new_markdown_link(
+            let link_result = Link::new_markdown_link(
                 target,
                 Some("Example".to_owned()),
                 None,
                 50,
-            )
-            .unwrap();
+            );
+            assert!(
+                link_result.is_ok(),
+                "Expected valid markdown link, got: {link_result:?}"
+            );
+            let Ok(link) = link_result else {
+                return;
+            };
 
             // THEN: it should have correct properties
             assert_eq!(
@@ -892,8 +900,15 @@ mod tests {
             let target = unresolved_target("diagram.png");
 
             // WHEN: creating an embed
-            let embed =
-                Link::new_embed(target, EmbedType::Image, None, 200).unwrap();
+            let embed_result =
+                Link::new_embed(target, EmbedType::Image, None, 200);
+            assert!(
+                embed_result.is_ok(),
+                "Expected valid embed, got: {embed_result:?}"
+            );
+            let Ok(embed) = embed_result else {
+                return;
+            };
 
             // THEN: it should be a valid embed
             assert!(embed.is_embed(), "Link should be an embed");
@@ -975,13 +990,19 @@ mod tests {
         #[test]
         fn validate_accepts_valid_wikilink() {
             // GIVEN: a valid wiki-link with heading anchor
-            let link = Link::new_wikilink(
+            let link_result = Link::new_wikilink(
                 resolved_target("note.md"),
                 None,
                 Some(Anchor::Heading("section".into())),
                 0,
-            )
-            .unwrap();
+            );
+            assert!(
+                link_result.is_ok(),
+                "Expected valid wiki-link, got: {link_result:?}"
+            );
+            let Ok(link) = link_result else {
+                return;
+            };
 
             // WHEN: validating the link
             let result = link.validate();
@@ -1054,13 +1075,19 @@ mod tests {
         #[test]
         fn validate_accepts_external_link_with_heading() {
             // GIVEN: an external link with a heading anchor (valid)
-            let link = Link::new_markdown_link(
+            let link_result = Link::new_markdown_link(
                 external_target("https://example.com#section"),
                 None,
                 Some(Anchor::Heading("section".into())),
                 0,
-            )
-            .unwrap();
+            );
+            assert!(
+                link_result.is_ok(),
+                "Expected valid external markdown link, got: {link_result:?}"
+            );
+            let Ok(link) = link_result else {
+                return;
+            };
 
             // WHEN: validating the link
             let result = link.validate();
@@ -1085,13 +1112,19 @@ mod tests {
             #[case] embed_type: EmbedType,
         ) {
             // GIVEN: a valid embed with different types
-            let embed = Link::new_embed(
+            let embed_result = Link::new_embed(
                 resolved_target("content"),
                 embed_type,
                 None,
                 0,
-            )
-            .unwrap();
+            );
+            assert!(
+                embed_result.is_ok(),
+                "Expected valid embed, got: {embed_result:?}"
+            );
+            let Ok(embed) = embed_result else {
+                return;
+            };
 
             // WHEN: validating the embed
             let result = embed.validate();
@@ -1121,9 +1154,15 @@ mod tests {
             let target = resolved_target("target.md");
             let anchor = Some(Anchor::Heading("section".into()));
             let alias = Some("Alias Text".to_owned());
-            let link =
-                Link::new_wikilink(target, alias.clone(), anchor.clone(), 42)
-                    .unwrap();
+            let link_result =
+                Link::new_wikilink(target, alias.clone(), anchor.clone(), 42);
+            assert!(
+                link_result.is_ok(),
+                "Expected valid link, got: {link_result:?}"
+            );
+            let Ok(link) = link_result else {
+                return;
+            };
 
             // THEN: all accessors should return expected values
             assert!(
@@ -1157,9 +1196,15 @@ mod tests {
             #[case] embed_type: EmbedType,
         ) {
             // GIVEN: an embed with a specific type
-            let embed =
-                Link::new_embed(unresolved_target("file"), embed_type, None, 0)
-                    .unwrap();
+            let embed_result =
+                Link::new_embed(unresolved_target("file"), embed_type, None, 0);
+            assert!(
+                embed_result.is_ok(),
+                "Expected valid embed, got: {embed_result:?}"
+            );
+            let Ok(embed) = embed_result else {
+                return;
+            };
 
             // THEN: embed_type() should return the correct type
             assert_eq!(
