@@ -786,13 +786,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lithos-test-arch"
-version = "0.1.0"
-dependencies = [
- "lithos-core",
-]
-
-[[package]]
 name = "log"
 version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"

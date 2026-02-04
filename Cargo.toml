@@ -6,7 +6,7 @@
 # -----------------------------------------------------------------------------
 
 [workspace]
-members = ["lithos-core", "lithos-cli", "tests/*"]
+members = ["lithos-core", "lithos-cli"]
 exclude = ["_legacy/*"]
 resolver = "2"
 
