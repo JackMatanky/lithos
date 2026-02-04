@@ -498,16 +498,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn database_can_be_constructed() {
-        let temp_result = tempfile::tempdir();
-        assert!(
-            temp_result.is_ok(),
-            "tempdir should be created: {temp_result:?}"
-        );
-        let Ok(temp) = temp_result else {
-            return;
-        };
+    fn database_can_be_constructed() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
         let db_path = temp.path().join("test.db");
-        let _result: Result<Database, DbError> = Database::open(&db_path);
+        Database::open(&db_path).map_err(|err| {
+            format!("Database should open successfully, got: {err:?}")
+        })?;
+        Ok(())
     }
 }
