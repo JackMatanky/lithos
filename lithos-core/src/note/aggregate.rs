@@ -371,7 +371,7 @@ impl NotePath {
     clippy::arbitrary_source_item_ordering,
     clippy::panic,
     reason = "Test module organization and behavior verification patterns; \
-              unwrap/expect acceptable in tests."
+              explicit panic used for unexpected test-matrix variants."
 )]
 mod tests {
     use fixtures::TEST_NOTE_ID;
@@ -410,56 +410,97 @@ mod tests {
         /// 3.1-UNIT-009: `mutators_update_aggregate_state`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap() for ergonomic addition of \
-                      sub-entities during state transition testing. \
-                      Acceptable in test-only code paths."
-        )]
         fn mutators_update_aggregate_state() {
             // GIVEN: a basic note
-            let mut note =
-                Note::new(TEST_NOTE_ID, "note.md".to_owned()).unwrap();
+            let note_result = Note::new(TEST_NOTE_ID, "note.md".to_owned());
+            assert!(
+                note_result.is_ok(),
+                "Failed to create note fixture: {note_result:?}"
+            );
+            let Ok(mut note) = note_result else {
+                return;
+            };
 
             // WHEN: adding various sub-entities
-            note.tags.push(Tag::new("#test").unwrap());
-            note.headings.push(Heading::new(1, "H1".into(), 0).unwrap());
-            note.tasks.push(
-                Task::new("Task".into(), TaskStatus::Incomplete, 0).unwrap(),
+            let tag_result = Tag::new("#test");
+            assert!(tag_result.is_ok(), "Valid tag expected: {tag_result:?}");
+            let Ok(tag) = tag_result else {
+                return;
+            };
+            note.tags.push(tag);
+
+            let heading_result = Heading::new(1, "H1".into(), 0);
+            assert!(
+                heading_result.is_ok(),
+                "Valid heading expected: {heading_result:?}"
             );
+            let Ok(heading) = heading_result else {
+                return;
+            };
+            note.headings.push(heading);
+
+            let task_result =
+                Task::new("Task".into(), TaskStatus::Incomplete, 0);
+            assert!(
+                task_result.is_ok(),
+                "Valid task expected: {task_result:?}"
+            );
+            let Ok(task) = task_result else {
+                return;
+            };
+            note.tasks.push(task);
+
             note.sections.push(Section::new(None, "Body".into(), 0..4));
 
             // Add a wikilink
-            note.links.push(
-                Link::new_wikilink(
-                    Target::Unresolved {
-                        raw: "link.md".into(),
-                    },
-                    None,
-                    None,
-                    0,
-                )
-                .unwrap(),
+            let wikilink_result = Link::new_wikilink(
+                Target::Unresolved {
+                    raw: "link.md".into(),
+                },
+                None,
+                None,
+                0,
             );
+            assert!(
+                wikilink_result.is_ok(),
+                "Valid wikilink expected: {wikilink_result:?}"
+            );
+            let Ok(wikilink) = wikilink_result else {
+                return;
+            };
+            note.links.push(wikilink);
 
             // Add an embed
-            note.links.push(
-                Link::new_embed(
-                    Target::Unresolved {
-                        raw: "img.png".into(),
-                    },
-                    EmbedType::Image,
-                    None,
-                    0,
-                )
-                .unwrap(),
+            let embed_result = Link::new_embed(
+                Target::Unresolved {
+                    raw: "img.png".into(),
+                },
+                EmbedType::Image,
+                None,
+                0,
             );
+            assert!(
+                embed_result.is_ok(),
+                "Valid embed expected: {embed_result:?}"
+            );
+            let Ok(embed) = embed_result else {
+                return;
+            };
+            note.links.push(embed);
 
             let fm_fields =
                 [("title".to_owned(), FieldValue::String("Title".into()))]
                     .into_iter()
                     .collect();
-            note.set_frontmatter(Some(Frontmatter::new(fm_fields).unwrap()));
+            let frontmatter_result = Frontmatter::new(fm_fields);
+            assert!(
+                frontmatter_result.is_ok(),
+                "Valid frontmatter expected: {frontmatter_result:?}"
+            );
+            let Ok(frontmatter) = frontmatter_result else {
+                return;
+            };
+            note.set_frontmatter(Some(frontmatter));
 
             // THEN: the aggregate state is updated correctly
             assert_eq!(note.tags.len(), 1, "Note should have 1 tag");
@@ -486,62 +527,82 @@ mod tests {
         /// 3.1-UNIT-010: `filtered_link_iterators_work`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap() for populating Note with \
-                      diverse link variants for iterator testing. Failures \
-                      represent environment or test data issues."
-        )]
         fn filtered_link_iterators_work() {
             // GIVEN: a note with various link types (2 wikilinks, 1 markdown, 1
             // embed)
-            let mut note =
-                Note::new(TEST_NOTE_ID, "note.md".to_owned()).unwrap();
+            let note_result = Note::new(TEST_NOTE_ID, "note.md".to_owned());
+            assert!(
+                note_result.is_ok(),
+                "Failed to create note fixture: {note_result:?}"
+            );
+            let Ok(mut note) = note_result else {
+                return;
+            };
 
-            note.links.push(
-                Link::new_wikilink(
-                    Target::Unresolved {
-                        raw: "wiki1.md".into(),
-                    },
-                    None,
-                    None,
-                    0,
-                )
-                .unwrap(),
+            let wiki1_result = Link::new_wikilink(
+                Target::Unresolved {
+                    raw: "wiki1.md".into(),
+                },
+                None,
+                None,
+                0,
             );
-            note.links.push(
-                Link::new_wikilink(
-                    Target::Unresolved {
-                        raw: "wiki2.md".into(),
-                    },
-                    None,
-                    None,
-                    10,
-                )
-                .unwrap(),
+            assert!(
+                wiki1_result.is_ok(),
+                "Valid link expected: {wiki1_result:?}"
             );
-            note.links.push(
-                Link::new_markdown_link(
-                    Target::External {
-                        url: "https://example.com".into(),
-                    },
-                    None,
-                    None,
-                    20,
-                )
-                .unwrap(),
+            let Ok(wiki1) = wiki1_result else {
+                return;
+            };
+            note.links.push(wiki1);
+
+            let wiki2_result = Link::new_wikilink(
+                Target::Unresolved {
+                    raw: "wiki2.md".into(),
+                },
+                None,
+                None,
+                10,
             );
-            note.links.push(
-                Link::new_embed(
-                    Target::Unresolved {
-                        raw: "img.png".into(),
-                    },
-                    EmbedType::Image,
-                    None,
-                    30,
-                )
-                .unwrap(),
+            assert!(
+                wiki2_result.is_ok(),
+                "Valid link expected: {wiki2_result:?}"
             );
+            let Ok(wiki2) = wiki2_result else {
+                return;
+            };
+            note.links.push(wiki2);
+
+            let md_result = Link::new_markdown_link(
+                Target::External {
+                    url: "https://example.com".into(),
+                },
+                None,
+                None,
+                20,
+            );
+            assert!(md_result.is_ok(), "Valid link expected: {md_result:?}");
+            let Ok(md) = md_result else {
+                return;
+            };
+            note.links.push(md);
+
+            let embed_result = Link::new_embed(
+                Target::Unresolved {
+                    raw: "img.png".into(),
+                },
+                EmbedType::Image,
+                None,
+                30,
+            );
+            assert!(
+                embed_result.is_ok(),
+                "Valid link expected: {embed_result:?}"
+            );
+            let Ok(embed) = embed_result else {
+                return;
+            };
+            note.links.push(embed);
 
             // WHEN: using filtered iterators to query specific link types
             let all_count = note.links.len();
@@ -609,7 +670,6 @@ mod tests {
         /// 3.1-UNIT-005: `generates_sequential_uuids`.
         /// Priority: P1.
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test fixture creation")]
         fn generates_sequential_uuids() {
             // GIVEN: two UUIDs with different timestamps (v7 format embeds
             // timestamp) Use fixed test constants that represent
@@ -617,9 +677,23 @@ mod tests {
             use super::fixtures::{TEST_NOTE_ID_EARLIER, TEST_NOTE_ID_LATER};
 
             // WHEN: creating notes with time-ordered UUIDs
-            let note1 =
-                Note::new(TEST_NOTE_ID_EARLIER, "one.md".into()).unwrap();
-            let note2 = Note::new(TEST_NOTE_ID_LATER, "two.md".into()).unwrap();
+            let note1_result = Note::new(TEST_NOTE_ID_EARLIER, "one.md".into());
+            assert!(
+                note1_result.is_ok(),
+                "Failed to create note fixture: {note1_result:?}"
+            );
+            let Ok(note1) = note1_result else {
+                return;
+            };
+
+            let note2_result = Note::new(TEST_NOTE_ID_LATER, "two.md".into());
+            assert!(
+                note2_result.is_ok(),
+                "Failed to create note fixture: {note2_result:?}"
+            );
+            let Ok(note2) = note2_result else {
+                return;
+            };
 
             // THEN: later UUIDs sort after earlier ones
             assert!(
@@ -636,34 +710,51 @@ mod tests {
         /// 3.1-UNIT-006: `succeeds_when_all_entities_are_valid`.
         /// Priority: P0.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::expect() during arrangement of \
-                      complex Note aggregate. Failures here indicate logic \
-                      errors in test data rather than code under test."
-        )]
         fn succeeds_when_all_entities_are_valid() {
             // GIVEN: a note aggregate with consistent sub-entities
             let note_id = TEST_NOTE_ID;
+            let tag_result = Tag::new("#work");
+            assert!(tag_result.is_ok(), "Valid tag expected: {tag_result:?}");
+            let Ok(tag) = tag_result else {
+                return;
+            };
+
+            let heading_result = Heading::new(1, "Title".into(), 0);
+            assert!(
+                heading_result.is_ok(),
+                "Valid heading expected: {heading_result:?}"
+            );
+            let Ok(heading) = heading_result else {
+                return;
+            };
+
+            let link_result = Link::new_wikilink(
+                Target::Unresolved {
+                    raw: "target.md".into(),
+                },
+                None,
+                None,
+                0,
+            );
+            assert!(
+                link_result.is_ok(),
+                "Valid link expected: {link_result:?}"
+            );
+            let Ok(link) = link_result else {
+                return;
+            };
+
             let note = note_fixture(
                 note_id,
                 "valid.md",
-                vec![Tag::new("#work").expect("Valid tag")],
-                vec![
-                    Heading::new(1, "Title".into(), 0).expect("Valid heading"),
-                ],
-                vec![
-                    Link::new_wikilink(
-                        Target::Unresolved {
-                            raw: "target.md".into(),
-                        },
-                        None,
-                        None,
-                        0,
-                    )
-                    .expect("Valid link"),
-                ],
+                vec![tag],
+                vec![heading],
+                vec![link],
             );
+            assert!(note.is_ok(), "Valid note fixture expected: {note:?}");
+            let Ok(note) = note else {
+                return;
+            };
 
             // WHEN: validating the aggregate
             let result = note.validate();
@@ -679,21 +770,16 @@ mod tests {
 
     /// Test fixture: Create a Note with custom fields for validation tests.
     /// Direct struct construction bypasses `Note::new()` validation.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture uses expect() for initialization; panics here \
-                  indicate broken test data setup."
-    )]
     fn note_fixture(
         id: Uuid,
         path: &str,
         tags: Vec<Tag>,
         headings: Vec<Heading>,
         links: Vec<Link>,
-    ) -> Note {
-        Note {
+    ) -> Result<Note, NoteError> {
+        Ok(Note {
             id,
-            path: NotePath::new(path.to_owned()).expect("Valid test path"),
+            path: NotePath::new(path.to_owned())?,
             frontmatter: None,
             links,
             tags,
@@ -701,6 +787,6 @@ mod tests {
             tasks: vec![],
             sections: vec![],
             pending_events: vec![],
-        }
+        })
     }
 }
