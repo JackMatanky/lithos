@@ -369,9 +369,8 @@ impl NotePath {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    clippy::panic,
     reason = "Test module organization and behavior verification patterns; \
-              explicit panic used for unexpected test-matrix variants."
+              module item ordering is intentionally grouped for readability."
 )]
 mod tests {
     use fixtures::TEST_NOTE_ID;
@@ -663,7 +662,12 @@ mod tests {
                         "Expected path '{path}' to be invalid, got: {result:?}"
                     );
                 }
-                Err(e) => panic!("Unexpected error kind in matrix: {e:?}"),
+                Err(e) => {
+                    assert!(
+                        matches!(e, NoteError::InvalidPath(_)),
+                        "Unexpected error kind in matrix: {e:?}"
+                    );
+                }
             }
         }
 
