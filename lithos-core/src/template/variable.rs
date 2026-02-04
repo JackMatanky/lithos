@@ -2,7 +2,8 @@
 #![allow(
     missing_docs,
     clippy::exhaustive_enums,
-    reason = "rkyv generates Archived types with public fields; docs TODO"
+    reason = "rkyv derives generate archived/resolver items that are missing \
+              docs"
 )]
 
 use super::error::TemplateError;
