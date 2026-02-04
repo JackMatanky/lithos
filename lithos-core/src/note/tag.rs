@@ -202,11 +202,6 @@ impl Tag {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::unwrap() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use super::*;
 
@@ -217,7 +212,11 @@ mod tests {
 
         #[test]
         fn accessors_return_expected_values() {
-            let tag = Tag::new("#work/project").unwrap();
+            let tag_result = Tag::new("#work/project");
+            assert!(tag_result.is_ok(), "Tag should parse: {tag_result:?}");
+            let Ok(tag) = tag_result else {
+                return;
+            };
             assert_eq!(tag.full_path.as_str(), "work/project");
             assert_eq!(tag.segments.len(), 2);
             assert_eq!(&*tag.segments, &["work".into(), "project".into()]);
@@ -258,8 +257,9 @@ mod tests {
             match expected {
                 Ok(segments) => {
                     assert!(result.is_ok(), "Failed for {input}: {result:?}",);
-                    let tag =
-                        result.expect("Tag should be parsed successfully");
+                    let Ok(tag) = result else {
+                        return;
+                    };
                     let actual_segments: Vec<&str> =
                         tag.segments.iter().map(AsRef::as_ref).collect();
                     assert_eq!(
@@ -268,10 +268,15 @@ mod tests {
                     );
                 }
                 Err(e) => {
+                    assert!(
+                        result.is_err(),
+                        "Expected error for {input}, got: {result:?}"
+                    );
+                    let Err(actual) = result else {
+                        return;
+                    };
                     assert_eq!(
-                        result
-                            .expect_err("Should return error for invalid tag"),
-                        e,
+                        actual, e,
                         "Error should match expected for input: {input}"
                     );
                 }
@@ -290,16 +295,18 @@ mod tests {
             let strategy =
                 "#[a-zA-Z0-9_-]*/[ !@#$%^&*()]+/[a-zA-Z0-9_-]*".prop_map(|s| s);
 
-            runner
-                .run(&strategy, |s| {
-                    let result = Tag::new(&s);
-                    prop_assert!(
-                        result.is_err(),
-                        "Tag with invalid characters '{s}' should be rejected"
-                    );
-                    Ok(())
-                })
-                .expect("Deterministic proptest should not fail");
+            let run_result = runner.run(&strategy, |s| {
+                let result = Tag::new(&s);
+                prop_assert!(
+                    result.is_err(),
+                    "Tag with invalid characters '{s}' should be rejected"
+                );
+                Ok(())
+            });
+            assert!(
+                run_result.is_ok(),
+                "Deterministic proptest should not fail: {run_result:?}"
+            );
         }
 
         #[test]
@@ -307,16 +314,18 @@ mod tests {
             let mut runner = TestRunner::deterministic();
             let strategy = "#[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*".prop_map(|s| s);
 
-            runner
-                .run(&strategy, |s| {
-                    let result = Tag::new(&s);
-                    prop_assert!(
-                        result.is_ok(),
-                        "Valid tag '{s}' should be accepted"
-                    );
-                    Ok(())
-                })
-                .expect("Deterministic proptest should not fail");
+            let run_result = runner.run(&strategy, |s| {
+                let result = Tag::new(&s);
+                prop_assert!(
+                    result.is_ok(),
+                    "Valid tag '{s}' should be accepted"
+                );
+                Ok(())
+            });
+            assert!(
+                run_result.is_ok(),
+                "Deterministic proptest should not fail: {run_result:?}"
+            );
         }
     }
 }
