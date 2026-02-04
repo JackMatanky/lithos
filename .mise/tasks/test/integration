@@ -80,6 +80,9 @@ add_package_args() {
 add_filter_args() {
     local -n _filter_ref_args=$1
 
+    # Integration tests only
+    _filter_ref_args+=("--filter-expr" "kind(test)")
+
     # Add user-provided filter if specified
     if [[ -n "${usage_filter:-}" ]]; then
         _filter_ref_args+=("${usage_filter}")
@@ -100,6 +103,7 @@ add_execution_args() {
 
     # Nextest partitioning for consistent test distribution
     _exec_ref_args+=("--partition" "hash:1/1")
+    _exec_ref_args+=("--no-tests" "pass")
 
     if [[ "${usage_verbose:-}" == "1" ]]; then
         _exec_ref_args+=("--verbose")
