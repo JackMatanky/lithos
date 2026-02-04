@@ -181,56 +181,93 @@ impl Section {
 mod tests {
     use super::*;
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Fixture helpers use expect for deterministic setup."
+    )]
+    mod fixtures {
+        use super::*;
+
+        pub fn summary_heading() -> Heading {
+            Heading::new(3, "Summary".to_owned(), 22)
+                .expect("Failed to create heading fixture")
+        }
+
+        pub fn implementation_heading() -> Heading {
+            Heading::new(2, "Implementation".to_owned(), 10)
+                .expect("Valid heading should be created")
+        }
+
+        pub fn intro_heading() -> Heading {
+            Heading::new(1, "Intro".to_owned(), 0)
+                .expect("Failed to create heading fixture")
+        }
+
+        pub fn section_with_intro() -> Section {
+            Section::new(Some(intro_heading()), "Body".to_owned(), 0..4)
+        }
+
+        pub fn section_with_title()
+        -> (Section, Option<Heading>, std::ops::Range<usize>) {
+            let heading = Some(
+                Heading::new(1, "Title".into(), 0)
+                    .expect("Failed to create heading fixture"),
+            );
+            let range = 0..15;
+            let section = Section::new(
+                heading.clone(),
+                "Section content".to_owned(),
+                range.clone(),
+            );
+            (section, heading, range)
+        }
+    }
+
     mod heading {
         use super::*;
 
         #[test]
-        fn accessors_return_expected_values() {
-            // GIVEN: a heading
-            let heading_result = Heading::new(3, "Summary".to_owned(), 22);
-            assert!(
-                heading_result.is_ok(),
-                "Failed to create heading fixture: {heading_result:?}"
-            );
-            let Ok(heading) = heading_result else {
-                return;
-            };
-
-            // THEN: accessors expose fields
+        fn heading_level_accessor_returns_level() {
+            let heading = fixtures::summary_heading();
             assert_eq!(heading.level(), 3, "Heading level should be 3");
+        }
+
+        #[test]
+        fn heading_text_accessor_returns_text() {
+            let heading = fixtures::summary_heading();
             assert_eq!(
                 heading.text(),
                 "Summary",
                 "Heading text should be 'Summary'"
             );
+        }
+
+        #[test]
+        fn heading_position_accessor_returns_position() {
+            let heading = fixtures::summary_heading();
             assert_eq!(heading.position(), 22, "Heading position should be 22");
         }
 
         #[test]
-        fn new_succeeds_for_valid_input() {
-            // GIVEN: valid heading parameters
-            let level = 2;
-            let text = "Implementation".to_owned();
-            let position = 10;
+        fn new_heading_sets_level() {
+            let heading = fixtures::implementation_heading();
+            assert_eq!(heading.level(), 2, "Heading level should be 2");
+        }
 
-            // WHEN: creating a new heading
-            let result_value = Heading::new(level, text, position);
-            assert!(
-                result_value.is_ok(),
-                "Valid heading should be created, got: {result_value:?}"
-            );
-            let Ok(result) = result_value else {
-                return;
-            };
-
-            // THEN: it has the correct values
-            assert_eq!(result.level(), 2, "Heading level should be 2");
+        #[test]
+        fn new_heading_sets_text() {
+            let heading = fixtures::implementation_heading();
             assert_eq!(
-                result.text(),
+                heading.text(),
                 "Implementation",
                 "Heading text should be 'Implementation'"
             );
-            assert_eq!(result.position(), 10, "Heading position should be 10");
+        }
+
+        #[test]
+        fn new_heading_sets_position() {
+            let heading = fixtures::implementation_heading();
+            assert_eq!(heading.position(), 10, "Heading position should be 10");
         }
 
         #[test]
@@ -270,74 +307,55 @@ mod tests {
         use super::*;
 
         #[test]
-        fn accessors_return_expected_values() {
-            // GIVEN: a section with heading
-            let heading_result = Heading::new(1, "Intro".to_owned(), 0);
-            assert!(
-                heading_result.is_ok(),
-                "Failed to create heading fixture: {heading_result:?}"
-            );
-            let Ok(heading) = heading_result else {
-                return;
-            };
-            let section =
-                Section::new(Some(heading.clone()), "Body".to_owned(), 0..4);
-
-            // THEN: accessors return expected values
+        fn section_content_accessor_returns_content() {
+            let section = fixtures::section_with_intro();
             assert_eq!(
                 section.content(),
                 "Body",
                 "Section content should be 'Body'"
             );
-            assert_eq!(
-                {
-                    let heading_option = section.heading();
-                    assert!(
-                        heading_option.is_some(),
-                        "Section heading should be present"
-                    );
-                    let Some(heading_ref) = heading_option else {
-                        return;
-                    };
-                    heading_ref.text()
-                },
-                "Intro",
+        }
+
+        #[test]
+        fn section_heading_accessor_returns_heading() {
+            let section = fixtures::section_with_intro();
+            assert!(
+                matches!(section.heading(), Some(heading) if heading.text() == "Intro"),
                 "Section heading text should be 'Intro'"
             );
+        }
+
+        #[test]
+        fn section_range_accessor_returns_range() {
+            let section = fixtures::section_with_intro();
             assert_eq!(section.range(), 0..4, "Section range should be 0..4");
         }
 
         #[test]
-        fn new_succeeds_for_valid_input() {
-            // GIVEN: valid section parameters
-            let heading_result = Heading::new(1, "Title".into(), 0);
-            assert!(
-                heading_result.is_ok(),
-                "Failed to create heading fixture: {heading_result:?}"
-            );
-            let Ok(heading_value) = heading_result else {
-                return;
-            };
-            let heading = Some(heading_value);
-            let content = "Section content".to_owned();
-            let range = 0..15;
-
-            // WHEN: creating a new section
-            let result = Section::new(heading.clone(), content, range.clone());
-
-            // THEN: it has the correct values
+        fn new_section_sets_heading() {
+            let (section, heading, _range) = fixtures::section_with_title();
             assert_eq!(
-                result.heading(),
+                section.heading(),
                 heading.as_ref(),
                 "Section heading should match input"
             );
+        }
+
+        #[test]
+        fn new_section_sets_content() {
+            let (section, _heading, _range) = fixtures::section_with_title();
             assert_eq!(
-                result.content(),
+                section.content(),
                 "Section content",
                 "Section content should match input"
             );
+        }
+
+        #[test]
+        fn new_section_sets_range() {
+            let (section, _heading, range) = fixtures::section_with_title();
             assert_eq!(
-                result.range(),
+                section.range(),
                 range,
                 "Section range should match input"
             );
