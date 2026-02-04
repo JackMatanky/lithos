@@ -3,8 +3,8 @@
     missing_docs,
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
-    reason = "rkyv generates Archived types with public fields/variants; docs \
-              TODO for new methods"
+    reason = "rkyv derives generate archived/resolver items that are missing \
+              docs"
 )]
 
 use std::collections::HashMap;
