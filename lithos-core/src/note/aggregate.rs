@@ -408,52 +408,100 @@ mod tests {
     mod accessors {
         use super::*;
 
-        /// 3.1-UNIT-009: `mutators_update_aggregate_state`.
+        fn base_note() -> Note {
+            Note::new(TEST_NOTE_ID, "note.md".to_owned())
+                .expect("Failed to create note fixture")
+        }
+
+        fn wikilink(raw: &str, pos: usize) -> Link {
+            Link::new_wikilink(
+                Target::Unresolved {
+                    raw: raw.into(),
+                },
+                None,
+                None,
+                pos,
+            )
+            .expect("Valid wikilink expected")
+        }
+
+        fn embed(raw: &str, pos: usize) -> Link {
+            Link::new_embed(
+                Target::Unresolved {
+                    raw: raw.into(),
+                },
+                EmbedType::Image,
+                None,
+                pos,
+            )
+            .expect("Valid embed expected")
+        }
+
+        /// 3.1-UNIT-009: `tags_update_aggregate_state`.
         /// Priority: P1.
         #[test]
-        fn mutators_update_aggregate_state() {
-            // GIVEN: a basic note
-            let mut note = Note::new(TEST_NOTE_ID, "note.md".to_owned())
-                .expect("Failed to create note fixture");
-
-            // WHEN: adding various sub-entities
+        fn tags_update_aggregate_state() {
+            let mut note = base_note();
             let tag = Tag::new("#test").expect("Valid tag expected");
             note.tags.push(tag);
 
+            assert_eq!(note.tags.len(), 1, "Note should have 1 tag");
+        }
+
+        /// 3.1-UNIT-009: `headings_update_aggregate_state`.
+        /// Priority: P1.
+        #[test]
+        fn headings_update_aggregate_state() {
+            let mut note = base_note();
             let heading = Heading::new(1, "H1".into(), 0)
                 .expect("Valid heading expected");
             note.headings.push(heading);
 
+            assert_eq!(note.headings.len(), 1, "Note should have 1 heading");
+        }
+
+        /// 3.1-UNIT-009: `tasks_update_aggregate_state`.
+        /// Priority: P1.
+        #[test]
+        fn tasks_update_aggregate_state() {
+            let mut note = base_note();
             let task = Task::new("Task".into(), TaskStatus::Incomplete, 0)
                 .expect("Valid task expected");
             note.tasks.push(task);
 
+            assert_eq!(note.tasks.len(), 1, "Note should have 1 task");
+        }
+
+        /// 3.1-UNIT-009: `sections_update_aggregate_state`.
+        /// Priority: P1.
+        #[test]
+        fn sections_update_aggregate_state() {
+            let mut note = base_note();
             note.sections.push(Section::new(None, "Body".into(), 0..4));
 
-            // Add a wikilink
-            let wikilink = Link::new_wikilink(
-                Target::Unresolved {
-                    raw: "link.md".into(),
-                },
-                None,
-                None,
-                0,
-            )
-            .expect("Valid wikilink expected");
-            note.links.push(wikilink);
+            assert_eq!(note.sections.len(), 1, "Note should have 1 section");
+        }
 
-            // Add an embed
-            let embed = Link::new_embed(
-                Target::Unresolved {
-                    raw: "img.png".into(),
-                },
-                EmbedType::Image,
-                None,
-                0,
-            )
-            .expect("Valid embed expected");
-            note.links.push(embed);
+        /// 3.1-UNIT-009: `links_update_aggregate_state`.
+        /// Priority: P1.
+        #[test]
+        fn links_update_aggregate_state() {
+            let mut note = base_note();
+            note.links.push(wikilink("link.md", 0));
+            note.links.push(embed("img.png", 1));
 
+            assert_eq!(
+                note.links.len(),
+                2,
+                "Note should have 2 links (unified links)"
+            );
+        }
+
+        /// 3.1-UNIT-009: `frontmatter_updates_aggregate_state`.
+        /// Priority: P1.
+        #[test]
+        fn frontmatter_updates_aggregate_state() {
+            let mut note = base_note();
             let fm_fields =
                 [("title".to_owned(), FieldValue::String("Title".into()))]
                     .into_iter()
@@ -462,22 +510,6 @@ mod tests {
                 .expect("Valid frontmatter expected");
             note.set_frontmatter(Some(frontmatter));
 
-            // THEN: the aggregate state is updated correctly
-            assert_eq!(note.tags.len(), 1, "Note should have 1 tag");
-            assert_eq!(note.headings.len(), 1, "Note should have 1 heading");
-            assert_eq!(note.tasks.len(), 1, "Note should have 1 task");
-            assert_eq!(note.sections.len(), 1, "Note should have 1 section");
-            assert_eq!(
-                note.links.len(),
-                2,
-                "Note should have 2 links (unified links)"
-            );
-            assert_eq!(
-                note.wikilinks().count(),
-                1,
-                "Note should have 1 wikilink"
-            );
-            assert_eq!(note.embeds().count(), 1, "Note should have 1 embed");
             assert!(
                 note.frontmatter().is_some(),
                 "Note should have frontmatter set"
@@ -490,31 +522,10 @@ mod tests {
         fn filtered_link_iterators_work() {
             // GIVEN: a note with various link types (2 wikilinks, 1 markdown, 1
             // embed)
-            let mut note = Note::new(TEST_NOTE_ID, "note.md".to_owned())
-                .expect("Failed to create note fixture");
+            let mut note = base_note();
 
-            let wiki1 = Link::new_wikilink(
-                Target::Unresolved {
-                    raw: "wiki1.md".into(),
-                },
-                None,
-                None,
-                0,
-            )
-            .expect("Valid link expected");
-            note.links.push(wiki1);
-
-            let wiki2 = Link::new_wikilink(
-                Target::Unresolved {
-                    raw: "wiki2.md".into(),
-                },
-                None,
-                None,
-                10,
-            )
-            .expect("Valid link expected");
-            note.links.push(wiki2);
-
+            note.links.push(wikilink("wiki1.md", 0));
+            note.links.push(wikilink("wiki2.md", 10));
             let md = Link::new_markdown_link(
                 Target::External {
                     url: "https://example.com".into(),
@@ -526,16 +537,7 @@ mod tests {
             .expect("Valid link expected");
             note.links.push(md);
 
-            let embed = Link::new_embed(
-                Target::Unresolved {
-                    raw: "img.png".into(),
-                },
-                EmbedType::Image,
-                None,
-                30,
-            )
-            .expect("Valid link expected");
-            note.links.push(embed);
+            note.links.push(embed("img.png", 30));
 
             // WHEN: using filtered iterators to query specific link types
             let all_count = note.links.len();
