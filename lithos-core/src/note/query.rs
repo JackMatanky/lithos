@@ -75,9 +75,19 @@ impl super::ports::Query for Query<'_> {
     clippy::arbitrary_source_item_ordering,
     reason = "Test module groups fixtures and submodules for readability."
 )]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test setup uses expect for deterministic fixtures."
+)]
 mod tests {
     mod fixtures {
+        use std::collections::HashMap;
+
+        use tempfile::{TempDir, tempdir};
+        use uuid::Uuid;
+
         use super::*;
+        use crate::note::frontmatter::{FieldValue, Frontmatter};
 
         pub const TEST_MISSING_ID: Uuid =
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0901);
@@ -88,17 +98,25 @@ mod tests {
             let db = Database::open(&path).map_err(|e| e.to_string())?;
             Ok((dir, db))
         }
+
+        pub fn complex_frontmatter() -> Result<Frontmatter, String> {
+            Frontmatter::new(HashMap::from([(
+                "root".to_owned(),
+                FieldValue::Object(HashMap::from([(
+                    "nested".to_owned(),
+                    FieldValue::Array(vec![
+                        FieldValue::String("x".to_owned()),
+                        FieldValue::Boolean(true),
+                    ]),
+                )])),
+            )]))
+            .map_err(|e| e.to_string())
+        }
     }
-
-    use std::collections::HashMap;
-
-    use tempfile::{TempDir, tempdir};
-    use uuid::Uuid;
 
     use super::*;
     use crate::note::{
         command,
-        frontmatter::{FieldValue, Frontmatter},
         ports::{Command as _, Query as _},
     };
 
@@ -106,12 +124,7 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn cqrs_roundtrip_preserves_frontmatter_in_note_archive() {
+        fn find_by_id_returns_note_with_matching_id() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
 
@@ -121,34 +134,68 @@ mod tests {
             let mut note = cmd
                 .create("notes/a.md".to_owned())
                 .expect("Create should succeed");
+            let fm = fixtures::complex_frontmatter()
+                .expect("Frontmatter construction should succeed");
+            note.set_frontmatter(Some(fm));
 
-            let fm = Frontmatter::new(HashMap::from([(
-                "root".to_owned(),
-                FieldValue::Object(HashMap::from([(
-                    "nested".to_owned(),
-                    FieldValue::Array(vec![
-                        FieldValue::String("x".to_owned()),
-                        FieldValue::Boolean(true),
-                    ]),
-                )])),
-            )]));
-            let fm = fm.expect("Frontmatter construction should succeed");
+            let id = note.id;
+            let update_result = cmd.update(note);
+            assert!(
+                update_result.is_ok(),
+                "Update should succeed, got: {update_result:?}"
+            );
+
+            let observed = qry
+                .find_by_id(id)
+                .expect("Query by id should succeed")
+                .expect("Query by id should return Some(note)");
+            assert_eq!(observed.id, id, "Observed id should match");
+        }
+
+        #[test]
+        fn find_by_id_preserves_frontmatter() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+
+            let cmd = command::Command::new(&db);
+            let qry = Query::new(&db);
+
+            let mut note = cmd
+                .create("notes/a.md".to_owned())
+                .expect("Create should succeed");
+            let fm = fixtures::complex_frontmatter()
+                .expect("Frontmatter construction should succeed");
             note.set_frontmatter(Some(fm.clone()));
 
             let id = note.id;
-            cmd.update(note).expect("Update should succeed");
+            let update_result = cmd.update(note);
+            assert!(
+                update_result.is_ok(),
+                "Update should succeed, got: {update_result:?}"
+            );
 
-            let observed =
-                qry.find_by_id(id).expect("Query by id should succeed");
-            let observed =
-                observed.expect("Query by id should return Some(note)");
-            assert_eq!(observed.id, id);
-            assert_eq!(observed.frontmatter, Some(fm));
+            let observed = qry
+                .find_by_id(id)
+                .expect("Query by id should succeed")
+                .expect("Query by id should return Some(note)");
+            assert_eq!(
+                observed.frontmatter,
+                Some(fm),
+                "Frontmatter should roundtrip"
+            );
+        }
 
-            // Sanity: changing the id misses the record
+        #[test]
+        fn find_by_id_returns_none_for_missing_id() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let cmd = command::Command::new(&db);
+            let qry = Query::new(&db);
+
+            cmd.create("notes/a.md".to_owned()).expect("Create should succeed");
             let miss = qry
                 .find_by_id(fixtures::TEST_MISSING_ID)
-                .expect("Query should succeed even for non-existent ID");
+                .expect("Query by id should succeed");
             assert!(miss.is_none(), "Non-existent ID should return None");
         }
     }
