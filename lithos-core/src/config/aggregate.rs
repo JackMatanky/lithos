@@ -310,12 +310,10 @@ impl Config {
 #[cfg(test)]
 #[expect(
     clippy::panic,
-    reason = "Test safety boundary - panic is acceptable in test code for \
-              exhaustive match failures."
-)]
-#[expect(
     clippy::arbitrary_source_item_ordering,
-    reason = "Test module organization is intentional"
+    reason = "Test-only: panic is acceptable for exhaustive match failures, \
+              and the module item ordering is intentionally grouped for \
+              readability."
 )]
 mod tests {
     // # LINT_DISABLE_REASON: Standard test utilities and behavioral
