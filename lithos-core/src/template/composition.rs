@@ -243,11 +243,6 @@ impl Composition {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     /// Test fixtures and builders for Template composition tests.
     mod fixtures {
@@ -318,11 +313,14 @@ mod tests {
 
         // GIVEN a template that extends itself
         let mut templates = HashMap::new();
-        let base = TemplateTestBuilder::new("A")
+        let base_result = TemplateTestBuilder::new("A")
             .with_content("content")
             .extending("A")
-            .build()
-            .expect("Valid template setup");
+            .build();
+        assert!(base_result.is_ok(), "Valid template setup: {base_result:?}");
+        let Ok(base) = base_result else {
+            return;
+        };
         templates.insert("A".to_owned(), base);
 
         let composition = Composition {
@@ -351,10 +349,12 @@ mod tests {
 
         // GIVEN a base template with a self-include
         let mut templates = HashMap::new();
-        let base = TemplateTestBuilder::new("A")
-            .with_content("content")
-            .build()
-            .expect("Valid template setup");
+        let base_result =
+            TemplateTestBuilder::new("A").with_content("content").build();
+        assert!(base_result.is_ok(), "Valid template setup: {base_result:?}");
+        let Ok(base) = base_result else {
+            return;
+        };
         templates.insert("A".to_owned(), base);
 
         let composition = Composition {
@@ -390,12 +390,18 @@ mod tests {
                 min_length: None,
                 pattern: None,
             })
-            .build()
-            .unwrap();
+            .build();
+        assert!(base.is_ok(), "Valid template setup: {base:?}");
+        let Ok(base) = base else {
+            return;
+        };
 
         // WHEN: overriding with an incompatible value
         let mut overrides = HashMap::new();
-        overrides.insert("title".to_owned(), serde_json::json!(42i64));
+        overrides.insert(
+            "title".to_owned(),
+            serde_json::Value::Number(serde_json::Number::from(42i64)),
+        );
         let composition = Composition {
             additional_sections: Vec::new(),
             base_template: "base".to_owned(),
