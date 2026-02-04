@@ -534,24 +534,20 @@ mod tests {
 
             // THEN it should be configured with Strict mode and an absolute
             // root
-            match &validator.mode {
-                Mode::Strict {
-                    root: validator_root,
-                } => assert!(
+            assert!(
+                matches!(validator.mode, Mode::Strict { .. }),
+                "Expected Strict mode, found {:?}",
+                validator.mode
+            );
+            if let Mode::Strict {
+                root: validator_root,
+            } = &validator.mode
+            {
+                assert!(
                     validator_root.is_absolute(),
                     "Expected absolute root, found {}",
                     validator_root.display()
-                ),
-                #[expect(
-                    clippy::panic,
-                    reason = "panic!() used to fail test immediately if \
-                              constructor created wrong mode. This is \
-                              intentional test-only behavior for explicit \
-                              invariant validation."
-                )]
-                Mode::Flexible => {
-                    panic!("Test fixture guaranteed Strict mode");
-                }
+                );
             }
         }
     }
