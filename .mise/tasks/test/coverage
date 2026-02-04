@@ -9,6 +9,7 @@
 #USAGE flag "-p --package <package>" help="Run coverage for a specific package or module" {
 #USAGE   choices "core" "cli" "config" "note" "schema" "template" "db" "fs"
 #USAGE }
+#USAGE flag "--skip-e2e" help="Skip E2E tests (when coverage tooling cannot build CLI binaries)"
 
 #######################################
 # Map shorthand package names to full cargo package names.
@@ -35,79 +36,81 @@ map_package_name() {
 }
 
 #######################################
-# Build test filter for module-specific coverage.
+# Build base tarpaulin arguments (output format and directory).
 # Globals:
-#   usage_package
+#   TARGET_DIR (from env)
 # Arguments:
-#   None
+#   Reference to an array for arguments
 # Outputs:
-#   Echoes the test filter or empty string
+#   None
 #######################################
-build_module_filter() {
-    case "${usage_package:-}" in
-    config | note | schema | template | db | fs)
-        echo "${usage_package}::"
-        ;;
-    *)
-        echo ""
-        ;;
-    esac
+build_tarpaulin_base_args() {
+    local -n _base_ref_args=$1
+    local output_dir="${TARGET_DIR}/tarpaulin"
+
+    mkdir -p "${output_dir}"
+
+    _base_ref_args+=("--ignore-tests")
+    _base_ref_args+=("--out" "Html")
+    _base_ref_args+=("--output-dir" "${output_dir}")
 }
 
-
-
 #######################################
-# Build tarpaulin args based on package selection.
+# Add package selection to tarpaulin args.
 # Arguments:
 #   Reference to an array for arguments
 #   The resolved package name
 # Outputs:
 #   None
 #######################################
-build_tarpaulin_args() {
-    local -n _tarpaulin_ref_args=$1
+add_package_selection() {
+    local -n _pkg_ref_args=$1
     local package_name=$2
 
     if [[ -n "${package_name}" ]]; then
-        _tarpaulin_ref_args+=("--packages" "${package_name}")
+        _pkg_ref_args+=("--packages" "${package_name}")
     else
-        _tarpaulin_ref_args+=("--workspace")
+        _pkg_ref_args+=("--workspace")
     fi
+}
+
+#######################################
+# Build test filter arguments for tarpaulin.
+# Globals:
+#   usage_package
+#   usage_skip_e2e
+# Arguments:
+#   Reference to an array for arguments
+# Outputs:
+#   None
+#######################################
+build_test_filter_args() {
+    local -n _filter_ref_args=$1
+
+    # Handle --skip-e2e flag
+    if [[ "${usage_skip_e2e:-}" == "1" ]]; then
+        _filter_ref_args+=("--" "--skip" "cli_smoke")
+        return
+    fi
+
+    # Handle module-specific filtering
+    case "${usage_package:-}" in
+    config | note | schema | template | db | fs)
+        _filter_ref_args+=("--" "${usage_package}::")
+        ;;
+    esac
 }
 
 #######################################
 # Generate code coverage report using tarpaulin.
 # Arguments:
-#   None
+#   Arguments for cargo tarpaulin (array elements)
 # Outputs:
 #   Writes coverage report to stdout
 #######################################
 run_tarpaulin() {
     echo "📊 Generating code coverage report..."
-    local output_dir="${TARGET_DIR}/tarpaulin"
-    mkdir -p "${output_dir}"
-
-    local resolved_package
-    resolved_package=$(map_package_name)
-
-    local tarpaulin_args=("--ignore-tests" "--out" "Html" "--output-dir" "${output_dir}")
-    build_tarpaulin_args tarpaulin_args "${resolved_package}"
-
-    local test_args=()
-    local module_filter
-    module_filter=$(build_module_filter)
-
-    if [[ "${usage_skip_e2e:-}" == "1" ]]; then
-        test_args=("--" "--skip" "cli_smoke" "--skip" "purity")
-    elif [[ -n "${module_filter}" ]]; then
-        test_args=("--" "${module_filter}")
-    fi
-
-    if [[ ${#test_args[@]} -gt 0 ]]; then
-        cargo tarpaulin "${tarpaulin_args[@]}" "${test_args[@]}"
-    else
-        cargo tarpaulin "${tarpaulin_args[@]}"
-    fi
+    cargo tarpaulin "$@"
 }
 
 #######################################
@@ -131,15 +134,30 @@ open_report() {
 #######################################
 # Main entry point.
 # Globals:
-#   None
+#   usage_package
+#   usage_skip_e2e
+#   usage_open
 # Arguments:
 #   $@
 # Outputs:
 #   None
 #######################################
 main() {
-    run_tarpaulin
+    local resolved_package
+    resolved_package=$(map_package_name)
+
+    # Build tarpaulin arguments
+    local tarpaulin_args=()
+    build_tarpaulin_base_args tarpaulin_args
+    add_package_selection tarpaulin_args "${resolved_package}"
+    build_test_filter_args tarpaulin_args
+
+    # Run coverage
+    run_tarpaulin "${tarpaulin_args[@]}"
+
+    # Open report if requested
     open_report
+
     echo "✅ Coverage report generated"
 }
 

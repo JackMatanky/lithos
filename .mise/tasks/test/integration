@@ -9,6 +9,7 @@
 #USAGE flag "-p --package <package>" help="Run tests for a specific package" {
 #USAGE   choices "core" "cli"
 #USAGE }
+#USAGE arg "[filter]" help="Filter tests by name"
 
 #######################################
 # Map shorthand package names to full cargo package names.
@@ -68,7 +69,9 @@ add_package_args() {
 }
 
 #######################################
-# Add exclusion filters to remove unwanted tests.
+# Add optional user-provided test filter.
+# Globals:
+#   usage_filter
 # Arguments:
 #   Reference to an array for arguments
 # Outputs:
@@ -77,11 +80,7 @@ add_package_args() {
 add_filter_args() {
     local -n _filter_ref_args=$1
 
-    # Filter out E2E (cli_smoke) and Arch (purity) tests using the robust syntax
-    # "not (test(foo)) and not (test(bar))"
-    _filter_ref_args+=("--filter-expr" "not (test(cli_smoke)) and not (test(purity))")
-
-    # Optional user-provided filter
+    # Add user-provided filter if specified
     if [[ -n "${usage_filter:-}" ]]; then
         _filter_ref_args+=("${usage_filter}")
     fi
