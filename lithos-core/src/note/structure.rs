@@ -4,11 +4,6 @@
 //! notes. Headings (H1-H6) mark structural points in the document, while
 //! sections group content between headings.
 
-#![expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal builders and tests"
-)]
-
 use super::error::NoteError;
 
 /// Represents a heading within a note.
@@ -27,17 +22,13 @@ use super::error::NoteError;
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal builders and tests"
-)]
 pub struct Heading {
     /// Heading level (1-6, corresponding to # through ######).
-    pub(crate) level: u8,
+    level: u8,
     /// Heading text content.
-    pub(crate) text: Box<str>,
+    text: Box<str>,
     /// Character position in the source document.
-    pub(crate) position: usize,
+    position: usize,
 }
 
 impl Heading {
@@ -119,18 +110,14 @@ impl Heading {
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal builders and tests"
-)]
 pub struct Section {
     /// Optional heading that starts this section (None for content before
     /// first heading).
-    pub(crate) heading: Option<Heading>,
+    heading: Option<Heading>,
     /// Section content text.
-    pub(crate) content: Box<str>,
+    content: Box<str>,
     /// Character range in the source document.
-    pub(crate) range: std::ops::Range<usize>,
+    range: std::ops::Range<usize>,
 }
 
 impl Section {
