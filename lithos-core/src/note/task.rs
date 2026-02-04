@@ -124,6 +124,10 @@ impl Task {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test setup uses expect for deterministic fixtures."
+)]
 mod tests {
     use super::*;
 
@@ -131,57 +135,28 @@ mod tests {
         use super::*;
 
         #[test]
-        fn accessors_return_expected_values() {
-            // GIVEN: a task
-            let task_result =
-                Task::new("Review".to_owned(), TaskStatus::Cancelled, 5);
-            assert!(
-                task_result.is_ok(),
-                "Task should be created successfully: {task_result:?}"
-            );
-            let Ok(task) = task_result else {
-                return;
-            };
-
-            // THEN: accessors return expected values
+        fn new_sets_text() {
+            let task = Task::new("Review".to_owned(), TaskStatus::Cancelled, 5)
+                .expect("Task should be created successfully");
             assert_eq!(task.text(), "Review", "Task text should be 'Review'");
+        }
+
+        #[test]
+        fn new_sets_status() {
+            let task = Task::new("Review".to_owned(), TaskStatus::Cancelled, 5)
+                .expect("Task should be created successfully");
             assert_eq!(
                 task.status(),
                 TaskStatus::Cancelled,
                 "Task status should be Cancelled"
             );
-            assert_eq!(task.position(), 5, "Task position should be 5");
         }
 
         #[test]
-        fn succeeds_for_valid_input() {
-            // GIVEN: valid task parameters
-            let text = "Buy milk".to_owned();
-            let status = TaskStatus::Incomplete;
-            let position = 50;
-
-            // WHEN: creating a new task
-            let result = Task::new(text, status, position);
-            assert!(
-                result.is_ok(),
-                "Task should be created successfully: {result:?}"
-            );
-            let Ok(result) = result else {
-                return;
-            };
-
-            // THEN: it has the correct values
-            assert_eq!(
-                result.text(),
-                "Buy milk",
-                "Task text should be 'Buy milk'"
-            );
-            assert_eq!(
-                result.status(),
-                TaskStatus::Incomplete,
-                "Task status should be Incomplete"
-            );
-            assert_eq!(result.position(), 50, "Task position should be 50");
+        fn new_sets_position() {
+            let task = Task::new("Review".to_owned(), TaskStatus::Cancelled, 5)
+                .expect("Task should be created successfully");
+            assert_eq!(task.position(), 5, "Task position should be 5");
         }
 
         #[test]
