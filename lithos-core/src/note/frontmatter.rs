@@ -620,64 +620,105 @@ mod tests {
         use super::{super::*, TEST_TIMESTAMP};
 
         #[test]
-        fn field_value_coercion_covers_all_variants() {
-            let arr_val = FieldValue::Array(vec![FieldValue::Boolean(true)]);
-            let bool_val = FieldValue::Boolean(true);
-            let date_val = FieldValue::Date(TEST_TIMESTAMP);
-            let num_val = FieldValue::Number(1.0f64);
-            let mut obj_map = HashMap::new();
-            obj_map.insert("k".to_owned(), FieldValue::Boolean(false));
-            let obj_val = FieldValue::Object(obj_map);
-            let str_val = FieldValue::String("s".into());
+        fn array_coerces_to_array() {
+            let value = FieldValue::Array(vec![FieldValue::Boolean(true)]);
+            assert!(value.as_array().is_some(), "Array should coerce to array");
+        }
 
+        #[test]
+        fn array_does_not_coerce_to_bool() {
+            let value = FieldValue::Array(vec![FieldValue::Boolean(true)]);
             assert!(
-                arr_val.as_array().is_some(),
-                "Array should coerce to array"
+                value.as_bool().is_none(),
+                "Array should not coerce to bool"
             );
+        }
+
+        #[test]
+        fn boolean_coerces_to_bool() {
+            let value = FieldValue::Boolean(true);
+            assert!(value.as_bool().is_some(), "Boolean should coerce to bool");
+        }
+
+        #[test]
+        fn boolean_does_not_coerce_to_array() {
+            let value = FieldValue::Boolean(true);
             assert!(
-                bool_val.as_bool().is_some(),
-                "Boolean should coerce to bool"
+                value.as_array().is_none(),
+                "Boolean should not coerce to array"
             );
+        }
+
+        #[test]
+        fn date_coerces_to_timestamp_and_datetime() {
+            let value = FieldValue::Date(TEST_TIMESTAMP);
             assert!(
-                date_val.as_date().is_some(),
+                value.as_date().is_some(),
                 "Date should coerce to timestamp"
             );
             assert!(
-                date_val.as_datetime().is_some(),
+                value.as_datetime().is_some(),
                 "Date should coerce to DateTime"
             );
-            assert!(
-                num_val.as_number().is_some(),
-                "Number should coerce to f64"
-            );
-            assert!(
-                obj_val.as_object().is_some(),
-                "Object should coerce to HashMap"
-            );
-            assert!(str_val.as_str().is_some(), "String should coerce to str");
+        }
 
+        #[test]
+        fn date_does_not_coerce_to_number() {
+            let value = FieldValue::Date(TEST_TIMESTAMP);
             assert!(
-                arr_val.as_bool().is_none(),
-                "Array should not coerce to bool"
-            );
-            assert!(
-                bool_val.as_array().is_none(),
-                "Boolean should not coerce to array"
-            );
-            assert!(
-                date_val.as_number().is_none(),
+                value.as_number().is_none(),
                 "Date should not coerce to number"
             );
+        }
+
+        #[test]
+        fn number_coerces_to_number() {
+            let value = FieldValue::Number(1.0f64);
+            assert!(value.as_number().is_some(), "Number should coerce to f64");
+        }
+
+        #[test]
+        fn number_does_not_coerce_to_date() {
+            let value = FieldValue::Number(1.0f64);
             assert!(
-                num_val.as_date().is_none(),
+                value.as_date().is_none(),
                 "Number should not coerce to date"
             );
+        }
+
+        #[test]
+        fn object_coerces_to_object() {
+            let mut obj_map = HashMap::new();
+            obj_map.insert("k".to_owned(), FieldValue::Boolean(false));
+            let value = FieldValue::Object(obj_map);
             assert!(
-                obj_val.as_str().is_none(),
+                value.as_object().is_some(),
+                "Object should coerce to HashMap"
+            );
+        }
+
+        #[test]
+        fn object_does_not_coerce_to_string() {
+            let mut obj_map = HashMap::new();
+            obj_map.insert("k".to_owned(), FieldValue::Boolean(false));
+            let value = FieldValue::Object(obj_map);
+            assert!(
+                value.as_str().is_none(),
                 "Object should not coerce to string"
             );
+        }
+
+        #[test]
+        fn string_coerces_to_str() {
+            let value = FieldValue::String("s".into());
+            assert!(value.as_str().is_some(), "String should coerce to str");
+        }
+
+        #[test]
+        fn string_does_not_coerce_to_object() {
+            let value = FieldValue::String("s".into());
             assert!(
-                str_val.as_object().is_none(),
+                value.as_object().is_none(),
                 "String should not coerce to object"
             );
         }
