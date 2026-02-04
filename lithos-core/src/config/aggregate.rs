@@ -321,6 +321,10 @@ impl Config {
 mod tests {
     // # LINT_DISABLE_REASON: Standard test utilities and behavioral
     // verification patterns.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Fixture helpers use expect for deterministic setup."
+    )]
     mod fixtures {
         use super::*;
 
@@ -376,162 +380,19 @@ mod tests {
                 }),
             }
         }
-    }
 
-    use super::*;
-    use crate::config::{
-        global::Paths as GlobalPaths, vault::Paths as VaultPaths,
-    };
-
-    mod integrity {
-        use super::*;
-
-        /// 3.3-UNIT-020: `build_handles_missing_global`.
-        /// Priority: P1.
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic config construction."
-        )]
-        fn build_handles_missing_global() {
-            // GIVEN: no global configuration
-            let vault = Vault {
-                filesystem: VaultPaths::default(),
-                frontmatter: None,
-                logging: None,
-            };
-
-            // WHEN: building the config
-            let config = Config::build(None, "/vault", vault)
-                .expect("Config build should succeed");
-
-            // THEN: it succeeds and applies defaults
-            assert_eq!(config.vault_metadata.path, "/vault");
-            assert_eq!(config.global_filesystem.schema.schemas_dir, "schemas");
+        pub fn merged_config_with_sample_overrides() -> Config {
+            let global = sample_global_config();
+            let vault = sample_vault_config();
+            Config::build(Some(&global), "/vault", vault)
+                .expect("Config build should succeed with sample data")
         }
 
-        /// 3.3-UNIT-021: `config_manages_domain_events`.
-        /// Priority: P1.
-        #[test]
-        fn config_manages_domain_events() {
-            // GIVEN: a configuration aggregate
-            let mut config = Config::default();
-            let _initial_events = config.take_events(); // clear construction events
-            assert!(
-                config.pending_events().is_empty(),
-                "Config should have no pending events after take_events()"
-            );
-
-            // WHEN: adding a domain event
-            let event =
-                Events::ConfigUpdated(ConfigUpdated::new("test".to_owned(), 0));
-            config.add_event(event);
-
-            // THEN: it is recorded and can be taken
-            assert_eq!(
-                config.pending_events().len(),
-                1,
-                "Config should have 1 pending event after adding"
-            );
-            assert_eq!(
-                config.take_events().len(),
-                1,
-                "take_events() should return 1 event"
-            );
-            assert!(
-                config.pending_events().is_empty(),
-                "Config should have no pending events after take_events()"
-            );
-        }
-
-        /// 3.3-UNIT-019:
-        /// `merge_frontmatter_handles_various_input_combinations`.
-        /// Priority: P1.
-        #[test]
-        fn merge_frontmatter_handles_various_input_combinations() {
-            // GIVEN: combinations of global and vault frontmatter configs
-            let g = Frontmatter {
-                title_key: "gt".to_owned(),
-                ..Frontmatter::default()
-            };
-            let v = Frontmatter {
-                title_key: "vt".to_owned(),
-                ..Frontmatter::default()
-            };
-
-            // THEN: vault takes precedence
-            assert_eq!(
-                Config::merge_frontmatter(Some(&g), Some(&v)).title_key,
-                "vt"
-            );
-            // AND: global used if vault missing
-            assert_eq!(
-                Config::merge_frontmatter(Some(&g), None).title_key,
-                "gt"
-            );
-            // AND: defaults used if both missing
-            assert_eq!(
-                Config::merge_frontmatter(None, None).title_key,
-                "title"
-            );
-        }
-
-        /// 3.3-UNIT-017: `supports_clone_debug_and_partial_eq`.
-        /// Priority: P3.
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic config construction."
-        )]
-        fn supports_clone_debug_and_partial_eq() {
-            // GIVEN: a merged configuration built from valid fixtures
-            let global = fixtures::sample_global_config();
-            let vault = fixtures::sample_vault_config();
-
-            // WHEN: building the configuration
-            let config = Config::build(Some(&global), "/vault", vault.clone())
-                .expect("First merge for trait verification failed");
-
-            // THEN: debug/clone/eq traits behave as expected
-            let debug_str = format!("{config:?}");
-            assert!(
-                !debug_str.is_empty(),
-                "Debug derivation should produce non-empty string"
-            );
-
-            let cloned = config.clone();
-            assert_eq!(
-                config, cloned,
-                "Cloned config must be equal to original"
-            );
-
-            let config2 = Config::build(Some(&global), "/vault", vault)
-                .expect("Second merge for trait verification failed");
-            assert_eq!(
-                config, config2,
-                "Merged configs with identical input must be equal (PartialEq)"
-            );
-        }
-    }
-
-    mod merge {
-        use super::*;
-
-        /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
-        /// Priority: P1.
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic config construction."
-        )]
-        fn falls_back_to_defaults_when_inputs_are_empty() {
-            // GIVEN: configs with empty fields that should fall back to system
-            // defaults
+        pub fn merged_config_with_empty_inputs() -> Config {
             let global = Global {
                 filesystem: GlobalPaths {
                     schema: Schema {
-                        schemas_dir: String::new(), /* Empty - should use
-                                                     * default */
+                        schemas_dir: String::new(),
                         property_bank_filename: String::new(),
                     },
                     template: Template {
@@ -546,8 +407,7 @@ mod tests {
                     title_key: String::new(),
                 },
                 logging: Logging {
-                    log_level: String::new(), /* Empty - should use default
-                                               * "info" */
+                    log_level: String::new(),
                 },
                 trusted_vaults: None,
             };
@@ -567,47 +427,313 @@ mod tests {
                 logging: None,
             };
 
-            // WHEN: merging the configs
-            let config = Config::build(Some(&global), "/vault", vault)
-                .expect("Merge with empty values should succeed");
+            Config::build(Some(&global), "/vault", vault)
+                .expect("Merge with empty values should succeed")
+        }
 
-            // THEN: defaults are applied to merged configuration
-            // Verify defaults were applied to vault filesystem
+        pub fn config_with_cleared_events() -> Config {
+            let mut config = Config::default();
+            let events = config.take_events();
+            drop(events);
+            config
+        }
+    }
+
+    use super::*;
+    use crate::config::{
+        global::Paths as GlobalPaths, vault::Paths as VaultPaths,
+    };
+
+    mod integrity {
+        use super::*;
+
+        /// 3.3-UNIT-020: `build_handles_missing_global`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic config construction."
+        )]
+        fn build_handles_missing_global_sets_vault_path() {
+            let vault = Vault {
+                filesystem: VaultPaths::default(),
+                frontmatter: None,
+                logging: None,
+            };
+
+            let config = Config::build(None, "/vault", vault)
+                .expect("Config build should succeed");
+
+            assert_eq!(config.vault_metadata.path, "/vault");
+        }
+
+        /// 3.3-UNIT-020: `build_handles_missing_global`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic config construction."
+        )]
+        fn build_handles_missing_global_applies_global_defaults() {
+            let vault = Vault {
+                filesystem: VaultPaths::default(),
+                frontmatter: None,
+                logging: None,
+            };
+
+            let config = Config::build(None, "/vault", vault)
+                .expect("Config build should succeed");
+
+            assert_eq!(config.global_filesystem.schema.schemas_dir, "schemas");
+        }
+
+        /// 3.3-UNIT-021: `config_manages_domain_events`.
+        /// Priority: P1.
+        #[test]
+        fn pending_events_empty_after_take_events() {
+            let config = fixtures::config_with_cleared_events();
+            assert!(
+                config.pending_events().is_empty(),
+                "Config should have no pending events after take_events()"
+            );
+        }
+
+        /// 3.3-UNIT-021: `config_manages_domain_events`.
+        /// Priority: P1.
+        #[test]
+        fn add_event_records_pending_event() {
+            let mut config = fixtures::config_with_cleared_events();
+            let event =
+                Events::ConfigUpdated(ConfigUpdated::new("test".to_owned(), 0));
+            config.add_event(event);
+
+            assert_eq!(
+                config.pending_events().len(),
+                1,
+                "Config should have 1 pending event after adding"
+            );
+        }
+
+        /// 3.3-UNIT-021: `config_manages_domain_events`.
+        /// Priority: P1.
+        #[test]
+        fn take_events_returns_added_event() {
+            let mut config = fixtures::config_with_cleared_events();
+            let event =
+                Events::ConfigUpdated(ConfigUpdated::new("test".to_owned(), 0));
+            config.add_event(event);
+
+            assert_eq!(
+                config.take_events().len(),
+                1,
+                "take_events() should return 1 event"
+            );
+        }
+
+        /// 3.3-UNIT-021: `config_manages_domain_events`.
+        /// Priority: P1.
+        #[test]
+        fn take_events_clears_pending_events() {
+            let mut config = fixtures::config_with_cleared_events();
+            let event =
+                Events::ConfigUpdated(ConfigUpdated::new("test".to_owned(), 0));
+            config.add_event(event);
+            let _events = config.take_events();
+
+            assert!(
+                config.pending_events().is_empty(),
+                "Config should have no pending events after take_events()"
+            );
+        }
+
+        /// 3.3-UNIT-019:
+        /// `merge_frontmatter_handles_various_input_combinations`.
+        /// Priority: P1.
+        #[test]
+        fn merge_frontmatter_prefers_vault_values() {
+            let g = Frontmatter {
+                title_key: "gt".to_owned(),
+                ..Frontmatter::default()
+            };
+            let v = Frontmatter {
+                title_key: "vt".to_owned(),
+                ..Frontmatter::default()
+            };
+
+            assert_eq!(
+                Config::merge_frontmatter(Some(&g), Some(&v)).title_key,
+                "vt"
+            );
+        }
+
+        /// 3.3-UNIT-019:
+        /// `merge_frontmatter_handles_various_input_combinations`.
+        /// Priority: P1.
+        #[test]
+        fn merge_frontmatter_uses_global_when_vault_missing() {
+            let g = Frontmatter {
+                title_key: "gt".to_owned(),
+                ..Frontmatter::default()
+            };
+
+            assert_eq!(
+                Config::merge_frontmatter(Some(&g), None).title_key,
+                "gt"
+            );
+        }
+
+        /// 3.3-UNIT-019:
+        /// `merge_frontmatter_handles_various_input_combinations`.
+        /// Priority: P1.
+        #[test]
+        fn merge_frontmatter_uses_defaults_when_all_missing() {
+            assert_eq!(
+                Config::merge_frontmatter(None, None).title_key,
+                "title"
+            );
+        }
+
+        /// 3.3-UNIT-017: `supports_clone_debug_and_partial_eq`.
+        /// Priority: P3.
+        #[test]
+        fn debug_trait_produces_output() {
+            let config = fixtures::merged_config_with_sample_overrides();
+            let debug_str = format!("{config:?}");
+            assert!(
+                !debug_str.is_empty(),
+                "Debug derivation should produce non-empty string"
+            );
+        }
+
+        /// 3.3-UNIT-017: `supports_clone_debug_and_partial_eq`.
+        /// Priority: P3.
+        #[test]
+        fn clone_trait_preserves_equality() {
+            let config = fixtures::merged_config_with_sample_overrides();
+            let cloned = config.clone();
+            assert_eq!(
+                config, cloned,
+                "Cloned config must be equal to original"
+            );
+        }
+
+        /// 3.3-UNIT-017: `supports_clone_debug_and_partial_eq`.
+        /// Priority: P3.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic config construction."
+        )]
+        fn merge_is_equivalent_for_identical_inputs() {
+            let global = fixtures::sample_global_config();
+            let vault = fixtures::sample_vault_config();
+            let config = Config::build(Some(&global), "/vault", vault.clone())
+                .expect("First merge for trait verification failed");
+            let config2 = Config::build(Some(&global), "/vault", vault)
+                .expect("Second merge for trait verification failed");
+            assert_eq!(
+                config, config2,
+                "Merged configs with identical input must be equal (PartialEq)"
+            );
+        }
+    }
+
+    mod merge {
+        use super::*;
+
+        /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
+        /// Priority: P1.
+        #[test]
+        fn defaults_apply_to_cache_dir() {
+            let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
                 config.vault_filesystem.cache_dir, ".cache",
                 "Should fall back to default cache_dir"
             );
+        }
+
+        /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
+        /// Priority: P1.
+        #[test]
+        fn defaults_apply_to_templates_dir() {
+            let config = fixtures::merged_config_with_empty_inputs();
             let default_filesystem = VaultPaths::default();
-            let default_frontmatter = Frontmatter::default();
-            let default_logging = Logging::default();
             assert_eq!(
                 config.vault_filesystem.template.templates_dir,
                 default_filesystem.template.templates_dir,
                 "Should fall back to default templates_dir"
             );
+        }
+
+        /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
+        /// Priority: P1.
+        #[test]
+        fn defaults_apply_to_schemas_dir() {
+            let config = fixtures::merged_config_with_empty_inputs();
+            let default_filesystem = VaultPaths::default();
             assert_eq!(
                 config.vault_filesystem.schema.schemas_dir,
                 default_filesystem.schema.schemas_dir,
                 "Should fall back to default schemas_dir"
             );
+        }
+
+        /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
+        /// Priority: P1.
+        #[test]
+        fn defaults_apply_to_property_bank_filename() {
+            let config = fixtures::merged_config_with_empty_inputs();
+            let default_filesystem = VaultPaths::default();
             assert_eq!(
                 config.vault_filesystem.schema.property_bank_filename,
                 default_filesystem.schema.property_bank_filename,
                 "Should fall back to default property_bank_filename"
             );
+        }
+
+        /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
+        /// Priority: P1.
+        #[test]
+        fn defaults_apply_to_log_level() {
+            let config = fixtures::merged_config_with_empty_inputs();
+            let default_logging = Logging::default();
             assert_eq!(
                 config.logging.log_level, default_logging.log_level,
                 "Should fall back to default log_level"
             );
+        }
+
+        /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
+        /// Priority: P1.
+        #[test]
+        fn defaults_apply_to_frontmatter_file_class_key() {
+            let config = fixtures::merged_config_with_empty_inputs();
+            let default_frontmatter = Frontmatter::default();
             assert_eq!(
                 config.frontmatter.file_class_key,
                 default_frontmatter.file_class_key,
                 "Should fall back to default file_class_key"
             );
+        }
+
+        /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
+        /// Priority: P1.
+        #[test]
+        fn defaults_apply_to_frontmatter_title_key() {
+            let config = fixtures::merged_config_with_empty_inputs();
+            let default_frontmatter = Frontmatter::default();
             assert_eq!(
                 config.frontmatter.title_key, default_frontmatter.title_key,
                 "Should fall back to default title_key"
             );
+        }
+
+        /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
+        /// Priority: P1.
+        #[test]
+        fn defaults_apply_to_frontmatter_alias_key() {
+            let config = fixtures::merged_config_with_empty_inputs();
+            let default_frontmatter = Frontmatter::default();
             assert_eq!(
                 config.frontmatter.alias_key, default_frontmatter.alias_key,
                 "Should fall back to default alias_key"
@@ -643,34 +769,42 @@ mod tests {
         /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
         /// Priority: P0.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic config construction."
-        )]
-        fn vault_values_take_precedence_over_global() {
-            // GIVEN: a global config with default settings and a vault config
-            // with custom overrides
-            let global = fixtures::sample_global_config();
-            let vault = fixtures::sample_vault_config();
-
-            // WHEN: merging vault and global configs
-            let merged = Config::build(Some(&global), "/vault", vault)
-                .expect("Config build should succeed with valid sample data");
-
-            // THEN: vault values override global defaults
+        fn vault_templates_dir_overrides_global() {
+            let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
                 merged.vault_filesystem.template.templates_dir,
                 "custom_templates",
                 "Vault filesystem should have custom templates"
             );
+        }
+
+        /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
+        /// Priority: P0.
+        #[test]
+        fn vault_log_level_overrides_global() {
+            let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
                 merged.logging.log_level, "debug",
                 "Log level should override global"
             );
+        }
+
+        /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
+        /// Priority: P0.
+        #[test]
+        fn vault_frontmatter_file_class_overrides_global() {
+            let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
                 merged.frontmatter.file_class_key, "type",
                 "File class key should override global"
             );
+        }
+
+        /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
+        /// Priority: P0.
+        #[test]
+        fn vault_frontmatter_date_created_overrides_global() {
+            let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
                 merged.frontmatter.date_created_key, "created",
                 "Date created key should override global"
@@ -741,21 +875,12 @@ mod tests {
     }
 
     mod validate {
-        use rstest::rstest;
-
         use super::*;
 
         /// 3.3-UNIT-016: `enforces_required_fields_and_enum_constraints`.
         /// Priority: P0.
-        #[rstest]
-        #[case::valid_config("/vault", "info", None)]
-        #[case::empty_path("", "info", Some("vault_path"))]
-        #[case::invalid_log_level("/vault", "invalid", Some("log_level"))]
-        fn enforces_required_fields_and_enum_constraints(
-            #[case] path: &str,
-            #[case] level: &str,
-            #[case] expected_error_field: Option<&str>,
-        ) {
+        #[test]
+        fn valid_config_passes_validation() {
             // GIVEN: a vault config with specific field values
             let global = fixtures::sample_global_config();
             let vault = Vault {
@@ -766,130 +891,75 @@ mod tests {
                 },
                 frontmatter: None,
                 logging: Some(Logging {
-                    log_level: level.to_owned(),
+                    log_level: "info".to_owned(),
                 }),
             };
 
             // WHEN: attempting to merge the configs
-            let result = Config::build(Some(&global), path, vault);
+            let result = Config::build(Some(&global), "/vault", vault);
 
-            // THEN: validation should succeed or fail as expected
-            match expected_error_field {
-                None => {
-                    assert!(
-                        result.is_ok(),
-                        "Configuration should be valid, got: {result:?}"
-                    );
-                    let Ok(config) = result else {
-                        return;
-                    };
-                    assert!(
-                        config.validate().is_ok(),
-                        "Explicit validate() call should also pass for valid \
-                         config"
-                    );
-                }
-                Some(field_name) => {
-                    assert!(
-                        matches!(field_name, "vault_path" | "log_level"),
-                        "Unsupported field in test matrix: {field_name}"
-                    );
-                    // # LINT_DISABLE_REASON: Standard error matching pattern
-                    // for Config validation.
-                    match field_name {
-                        "vault_path" => {
-                            assert!(
-                                matches!(
-                                    result.as_ref(),
-                                    Err(ConfigError::ValidationFailed { .. })
-                                ),
-                                "Expected ValidationFailed for {field_name}, \
-                                 got: {result:?}"
-                            );
-                        }
-                        "log_level" => {
-                            assert!(
-                                matches!(
-                                    result.as_ref(),
-                                    Err(ConfigError::InvalidEnumValue { .. })
-                                ),
-                                "Expected InvalidEnumValue for {field_name}, \
-                                 got: {result:?}"
-                            );
-                        }
-                        _ => {
-                            assert!(
-                                matches!(
-                                    field_name,
-                                    "vault_path" | "log_level"
-                                ),
-                                "Unsupported field in test matrix: \
-                                 {field_name}"
-                            );
-                            return;
-                        }
-                    }
+            assert!(
+                matches!(&result, Ok(config) if config.validate().is_ok()),
+                "Expected valid config, got: {result:?}"
+            );
+        }
 
-                    assert!(
-                        result.is_err(),
-                        "Expected error result for {field_name}, got: \
-                         {result:?}"
-                    );
-                    let Err(err) = result else {
-                        return;
-                    };
-                    // Verify error variant and extract field name in single
-                    // match
-                    #[expect(
-                        clippy::wildcard_enum_match_arm,
-                        reason = "Test safety boundary: wildcards in \
-                                  exhaustive matches are prohibited in \
-                                  production to ensure new variants are \
-                                  handled, but acceptable here to fail tests \
-                                  on unexpected variants."
-                    )]
-                    let field = match err {
-                        ConfigError::ValidationFailed {
-                            field,
-                            ..
-                        } => {
-                            assert_eq!(
-                                field_name, "vault_path",
-                                "ValidationFailed should only occur for \
-                                 vault_path in this test"
-                            );
-                            field
-                        }
-                        ConfigError::InvalidEnumValue {
-                            field,
-                            ..
-                        } => {
-                            assert_eq!(
-                                field_name, "log_level",
-                                "InvalidEnumValue should only occur for \
-                                 log_level in this test"
-                            );
-                            field
-                        }
-                        other => {
-                            assert!(
-                                matches!(
-                                    other,
-                                    ConfigError::ValidationFailed { .. }
-                                        | ConfigError::InvalidEnumValue { .. }
-                                ),
-                                "Unexpected error variant: {other:?}"
-                            );
-                            return;
-                        }
-                    };
-                    assert_eq!(
-                        field.as_ref(),
-                        field_name,
-                        "Error reported for wrong field"
-                    );
-                }
-            }
+        /// 3.3-UNIT-016: `enforces_required_fields_and_enum_constraints`.
+        /// Priority: P0.
+        #[test]
+        fn empty_path_reports_validation_failed() {
+            let global = fixtures::sample_global_config();
+            let vault = Vault {
+                filesystem: VaultPaths {
+                    schema: Schema::default(),
+                    template: Template::default(),
+                    cache_dir: ".cache".to_owned(),
+                },
+                frontmatter: None,
+                logging: Some(Logging {
+                    log_level: "info".to_owned(),
+                }),
+            };
+
+            let result = Config::build(Some(&global), "", vault);
+
+            assert!(
+                matches!(
+                    &result,
+                    Err(ConfigError::ValidationFailed { field, .. })
+                        if field.as_ref() == "vault_path"
+                ),
+                "Expected ValidationFailed for vault_path, got: {result:?}"
+            );
+        }
+
+        /// 3.3-UNIT-016: `enforces_required_fields_and_enum_constraints`.
+        /// Priority: P0.
+        #[test]
+        fn invalid_log_level_reports_invalid_enum() {
+            let global = fixtures::sample_global_config();
+            let vault = Vault {
+                filesystem: VaultPaths {
+                    schema: Schema::default(),
+                    template: Template::default(),
+                    cache_dir: ".cache".to_owned(),
+                },
+                frontmatter: None,
+                logging: Some(Logging {
+                    log_level: "invalid".to_owned(),
+                }),
+            };
+
+            let result = Config::build(Some(&global), "/vault", vault);
+
+            assert!(
+                matches!(
+                    &result,
+                    Err(ConfigError::InvalidEnumValue { field, .. })
+                        if field.as_ref() == "log_level"
+                ),
+                "Expected InvalidEnumValue for log_level, got: {result:?}"
+            );
         }
     }
 }
