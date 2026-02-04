@@ -116,11 +116,6 @@ impl RawSchema {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use super::*;
     use crate::schema::property_spec::BoolSpecDef;
@@ -133,9 +128,17 @@ mod tests {
     #[test]
     fn raw_schema_initializes_fields() {
         // GIVEN: a raw schema definition
+        let name_result = SchemaName::new("note".to_owned());
+        assert!(
+            name_result.is_ok(),
+            "valid schema name expected, got: {name_result:?}"
+        );
+        let Ok(name) = name_result else {
+            return;
+        };
         let schema = RawSchema::new(
             TEST_SCHEMA_ID,
-            SchemaName::new("note".to_owned()).expect("valid schema name"),
+            name,
             None,
             HashSet::new(),
             Vec::new(),
