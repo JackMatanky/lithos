@@ -26,11 +26,11 @@ build_test_args() {
   # Arch tests are usually fast and don't need many threads, but we follow project standards
   ref_args+=("--test-threads" "${TEST_THREADS:-4}")
 
-  # Target the architecture test crate.
-  ref_args+=("--package" "lithos-test-arch")
+  # Target the lithos-core crate.
+  ref_args+=("--package" "lithos-core")
 
   # Filter for arch tests based on integration test binary name.
-  ref_args+=("--filter-expr" "binary(boundary_tests)")
+  ref_args+=("--test" "boundary_tests")
 
 
   # Nextest partitioning for consistent test distribution
