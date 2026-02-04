@@ -265,23 +265,20 @@ impl Toml {
     ///
     /// # Errors
     /// Returns `ParseError` if parsing fails.
-    #[expect(
-        clippy::string_slice,
-        reason = "TOML parser guarantees span byte offsets fall on UTF-8 char \
-                  boundaries."
-    )]
     #[inline]
     pub fn parse<T: DeserializeOwned>(
         path: &Path,
         content: &str,
     ) -> Result<T, ParseError> {
         toml::from_str(content).map_err(|e| {
-            let (line, column) = e.span().map_or((None, None), |span| {
-                let lines: Vec<&str> = content[..span.start].lines().collect();
-                let line = lines.len();
-                let column = lines.last().map_or(0, |l| l.len());
-                (Some(line), Some(column))
-            });
+            let (line, column) = e
+                .span()
+                .and_then(|span| content.get(..span.start))
+                .map_or((None, None), |prefix| {
+                    let line_no = prefix.lines().count();
+                    let col = prefix.lines().last().map_or(0, str::len);
+                    (Some(line_no), Some(col))
+                });
 
             ParseError::Toml {
                 path: path.into(),
