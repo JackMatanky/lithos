@@ -122,11 +122,6 @@ impl Task {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::unwrap() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use super::*;
 
@@ -136,8 +131,15 @@ mod tests {
         #[test]
         fn accessors_return_expected_values() {
             // GIVEN: a task
-            let task = Task::new("Review".to_owned(), TaskStatus::Cancelled, 5)
-                .unwrap();
+            let task_result =
+                Task::new("Review".to_owned(), TaskStatus::Cancelled, 5);
+            assert!(
+                task_result.is_ok(),
+                "Task should be created successfully: {task_result:?}"
+            );
+            let Ok(task) = task_result else {
+                return;
+            };
 
             // THEN: accessors return expected values
             assert_eq!(task.text(), "Review", "Task text should be 'Review'");
@@ -157,11 +159,14 @@ mod tests {
             let position = 50;
 
             // WHEN: creating a new task
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup phase - test fixture creation"
-            )]
-            let result = Task::new(text, status, position).unwrap();
+            let result = Task::new(text, status, position);
+            assert!(
+                result.is_ok(),
+                "Task should be created successfully: {result:?}"
+            );
+            let Ok(result) = result else {
+                return;
+            };
 
             // THEN: it has the correct values
             assert_eq!(
