@@ -58,15 +58,18 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ### Architectural Integrity
 - **Dependency Flow Architecture:**
-    - **Single Core Crate:** `lithos-core` contains all business logic and infrastructure. Dependencies flow INWARD from generic infrastructure (`db/`, `fs/`) to domain contexts (`note/`, `schema/`).
-    - **Context Isolation:** Domain contexts must depend ONLY on `db.rs` and shared utilities. They must NOT depend on other contexts directly unless via public API.
+    - **Single Core Crate:** `lithos-core` contains all business logic and infrastructure. Dependencies flow INWARD from generic infrastructure (`db/`, `fs/`, `config/`) to business contexts (`note/`, `schema/`, `template/`).
+    - **Context Isolation:** Business contexts (note, schema, template) MUST NOT import each other. They depend only on infrastructure and shared utilities.
     - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `lithos-cli`).
-- **CQRS & Naming Convention:**
-    - **Static Methods:** Prefer static methods on aggregates over traits for commands/queries (e.g., `Note::find_by_id(&db, id)`).
-    - **Naming:**
-        - Queries: `find_*`, `get_*`, `list_*`, `count_*`
-        - Commands: `save`, `delete`, `update`, `create`
-    - **Traits:** Use traits ONLY when polymorphism is required for testing or LSP backends.
+- **Port-Based CQRS:**
+    - **Port Traits:** Each context defines storage capabilities via a `<Context>Store` trait (e.g., `SchemaStore`) with GATs for zero-copy reads.
+    - **Generic CQRS:** Command/Query types are generic over the port (e.g., `Query<S: SchemaStore>`).
+    - **Concrete Adapters:** Infrastructure provides concrete implementations (e.g., `RedbSchemaStore`).
+    - **Static Methods:** Use static methods or type aliases for ergonomics (e.g., `RedbNoteQuery::new(&db).find(...)`).
+- **Naming Convention:**
+    - Queries: `find_*`, `get_*`, `list_*`, `count_*`
+    - Commands: `save`, `delete`, `update`, `create`
+    - Ports: `<Context>Store` (e.g., `NoteStore`)
 - **Sync-First Execution Model:**
     - **Default to Sync:** Core domain logic and file I/O must be synchronous.
     - **Async at Edges:** Use `async` ONLY for LSP server, network I/O, or explicit concurrency (e.g., parallel indexing).
@@ -79,6 +82,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Language-Specific Rules (Rust)
 
 #### Idiomatic Patterns
+- **Type-Driven Design:** Enforce invariants at compile time. Use private fields with validated constructors (`new() -> Result<Self>`) and newtype wrappers for domain constraints (`struct NoteId(Uuid)`). Make illegal states unrepresentable.
 - **Standard Traits:** Always derive `Debug`, `Clone`, and `PartialEq`. Use `Default` for configurations.
 - **Conversion Traits:** Mandate `From/Into` (infallible) and `TryFrom/TryInto` (fallible). AI must use these instead of ad-hoc `to_x()` methods.
 - **Collection Safety:** Use the `HashMap::entry` API for updates. Use `.get()` or `.first()` instead of index-based access (`[0]`).
@@ -93,8 +97,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Numeric Safety:** Prohibit 'as' casting; use .try_into().context("...") to prevent silent truncation and handle errors gracefully. Avoid .expect() in production—propagate errors instead.
 
 #### Persistence & Performance
-- **rkyv Requirements:** Domain types for storage MUST derive `Archive`, `Serialize`, `Deserialize`, and `CheckBytes`.
-- **Zero-Copy Boundary:** Usage of `rkyv` validation and byte-casting must be isolated to the `adapters/spi/storage` layer. Domain entities should remain ergonomically usable.
+- **rkyv Requirements:** `Stored*` types for storage MUST derive `Archive`, `Serialize`, `Deserialize`, and `CheckBytes`.
+- **Storage Separation:** Isolate rkyv coupling to `Stored*` types (ADR 0009). Domain types remain ergonomic. Use mechanical conversions at the storage boundary.
+- **Zero-Copy Boundary:** Port traits use GATs (`type Archived<'a>`) to enable closure-based archived reads without leaking transaction lifetimes.
 - **Note Identity:** Use **UUID v7** for primary keys in Redb to ensure time-ordered insertion and logical stability during file renames.
 - **Memory Strategy:** Favor `Box<str>` or `SmolStr` for immutable identifiers. Use `Cow<'a, str>` for metadata frequently read from storage buffers.
 
@@ -144,9 +149,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Strict Undefineds:** Use `UndefinedBehavior::Strict`. Template authors (agents) must ensure all variables are provided or have defaults in the MiniJinja context. Rendering code should fail fast on undefined variables.
 
 ### Testing Rules
-- **Hexagonal Testing Hierarchy:**
-    - **Domain Tests:** Pure unit tests with zero dependencies. Focus on logic, math, and conversions.
-    - **Integration Tests:** Use `nextest` to run concurrent tests. Mock all SPI ports using a mocking framework (e.g., mockall) or manual implementations to test the app layer in isolation, ensuring no real I/O. Tools: nextest for concurrent execution, mockall for mocking SPI ports. Locations: Unit in `lithos-core/src/`, Integration in `lithos-core/tests/` (when added), E2E against the CLI binary. Percentages: Unit 70%, Integration 20%, E2E 10%.
+- **Port-Based Testing Hierarchy:**
+    - **Domain Tests:** Pure unit tests with zero dependencies. Focus on logic, invariants, and conversions.
+    - **Integration Tests:** Use `FakeStore` implementations to test CQRS logic without DB. Use real `RedbStore` with temporary DBs for full integration. Locations: Unit in `lithos-core/src/`, Integration in `lithos-core/tests/`.
     - **E2E CLI Tests:** Use `assert_cmd` or similar to test the compiled binary against real temporary vaults.
 - **Authorized Entry Points:** All testing via Mise: Use 'mise run test' for all types, 'test:unit:<module>' for specific modules (config/note/schema/template/db/fs), 'test:coverage' for tarpaulin reports, 'test:bench' for criterion. Example: 'mise run test:unit:note'.
 - **Mandatory Tools:** nextest (runner), tarpaulin (coverage), insta (snapshots), pretty_assertions (diffs), criterion (benchmarks), proptest (property testing).
@@ -173,9 +178,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 #### Naming & Mechanical Sympathy
 - **Transparency:** Prohibit hiding expensive clones or allocations behind getter methods. If a method clones, it MUST be named `clone_x()` or `to_x_owned()`.
 - **Port/Adapter Naming:**
-    - **Ports:** `[Subject]Port` (e.g., `NoteRepositoryPort`).
-    - **Adapters:** `[Subject][Technology]Adapter` (e.g., `NoteRedbAdapter`).
-- **DTO Isolation:** End transport-specific structs with `Dto`. DTOs must live only in the `adapters` layer and never leak into the `domain`.
+    - **Ports:** `<Context>Store` (e.g., `NoteStore`).
+    - **Adapters:** `Redb<Context>Store` (e.g., `RedbNoteStore`).
+- **DTO Isolation:** Use `Stored*` prefix for persistence DTOs (e.g., `StoredNote`). These live in the storage layer and never leak into the public domain API.
 
 #### Documentation as "Agent Glue"
 - **The "Why" Mandate:** Doc comments (`///`) must focus on **Invariants** and **Architectural Context**. (e.g. "Must be wrapped in `Arc` because it is shared across threads").
@@ -183,7 +188,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Error Transparency:** Every `Result`-returning function must have an `# Errors` section detailing the `thiserror` variants.
 
 #### Structural Quality (Boundary Protection)
-- **Strict Module Visibility**: Use `pub(crate)` by default. Only promote to `pub` at the crate root (`lib.rs`) to explicitly define the public API surface.
+- **Strict Module Visibility**: Use `pub(crate)` by default. Only promote to `pub` at the crate root (`lib.rs` and context roots) to explicitly define the public API surface.
+- **Context Isolation**: Business contexts must not import each other. Check dependencies in review.
 - **No Unsafe**: Strictly prohibit `unsafe` code. `Cargo.toml` enforces `unsafe_code = "forbid"`.
 - **Import Grouping**: Strictly enforce `rustfmt`'s `group_imports = "StdExternalCrate"` to maintain a clear dependency hierarchy.
 
