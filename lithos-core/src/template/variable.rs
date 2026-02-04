@@ -399,12 +399,24 @@ impl VariableDefinition {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect()."
-)]
 mod tests {
     use super::*;
+
+    fn str_value(value: &str) -> serde_json::Value {
+        serde_json::Value::String(value.to_owned())
+    }
+
+    fn f64_value(value: f64) -> serde_json::Value {
+        let num_opt = serde_json::Number::from_f64(value);
+        assert!(
+            num_opt.is_some(),
+            "Expected finite f64 for JSON number, got: {value}"
+        );
+        let Some(num) = num_opt else {
+            return serde_json::Value::Null;
+        };
+        serde_json::Value::Number(num)
+    }
 
     #[test]
     fn should_validate_boolean_constraints() {
@@ -414,8 +426,8 @@ mod tests {
         };
 
         // WHEN: validating boolean and non-boolean values
-        let valid_result = def.validate_value(&serde_json::json!(true));
-        let invalid_result = def.validate_value(&serde_json::json!("true"));
+        let valid_result = def.validate_value(&serde_json::Value::Bool(true));
+        let invalid_result = def.validate_value(&str_value("true"));
 
         // THEN: only the boolean value is accepted
         assert!(
@@ -439,9 +451,9 @@ mod tests {
         };
 
         // WHEN: validating values within and outside the range
-        let valid_result = def.validate_value(&serde_json::json!(5.0f64));
-        let too_low = def.validate_value(&serde_json::json!(0.5f64));
-        let too_high = def.validate_value(&serde_json::json!(10.5f64));
+        let valid_result = def.validate_value(&f64_value(5.0f64));
+        let too_low = def.validate_value(&f64_value(0.5f64));
+        let too_high = def.validate_value(&f64_value(10.5f64));
 
         // THEN: range constraints are enforced
         assert!(
@@ -479,7 +491,7 @@ mod tests {
         );
         assert_eq!(
             default_val,
-            Some(serde_json::json!("Title")),
+            Some(str_value("Title")),
             "Default value should match the configured value"
         );
     }
@@ -493,14 +505,13 @@ mod tests {
         };
 
         // THEN: it validates ISO8601 strings
-        let valid =
-            def.validate_value(&serde_json::json!("2024-01-15T10:00:00Z"));
+        let valid = def.validate_value(&str_value("2024-01-15T10:00:00Z"));
         assert!(
             valid.is_ok(),
             "Valid ISO8601 date should be accepted, got: {valid:?}"
         );
 
-        let invalid = def.validate_value(&serde_json::json!("invalid"));
+        let invalid = def.validate_value(&str_value("invalid"));
         assert!(
             invalid.is_err(),
             "Invalid date string should be rejected, got: {invalid:?}"
@@ -511,15 +522,13 @@ mod tests {
             default: None,
             format: Some("%Y-%m-%d".to_owned()),
         };
-        let valid_fmt =
-            def_fmt.validate_value(&serde_json::json!("2024-01-15"));
+        let valid_fmt = def_fmt.validate_value(&str_value("2024-01-15"));
         assert!(
             valid_fmt.is_ok(),
             "Valid custom format date should be accepted, got: {valid_fmt:?}"
         );
 
-        let invalid_fmt =
-            def_fmt.validate_value(&serde_json::json!("2024/01/15"));
+        let invalid_fmt = def_fmt.validate_value(&str_value("2024/01/15"));
         assert!(
             invalid_fmt.is_err(),
             "Date not matching custom format should be rejected, got: \
@@ -536,20 +545,20 @@ mod tests {
         };
 
         // THEN: it validates vault-relative paths and extensions
-        let valid = def.validate_value(&serde_json::json!("note.md"));
+        let valid = def.validate_value(&str_value("note.md"));
         assert!(
             valid.is_ok(),
             "Valid file with correct extension should be accepted, got: \
              {valid:?}"
         );
 
-        let wrong_ext = def.validate_value(&serde_json::json!("img.png"));
+        let wrong_ext = def.validate_value(&str_value("img.png"));
         assert!(
             wrong_ext.is_err(),
             "File with wrong extension should be rejected, got: {wrong_ext:?}"
         );
 
-        let abs_path = def.validate_value(&serde_json::json!("/abs/path"));
+        let abs_path = def.validate_value(&str_value("/abs/path"));
         assert!(
             abs_path.is_err(),
             "Absolute path should be rejected, got: {abs_path:?}"
@@ -560,7 +569,7 @@ mod tests {
             default: None,
             file_types: None,
         };
-        let any_file = def_any.validate_value(&serde_json::json!("any.file"));
+        let any_file = def_any.validate_value(&str_value("any.file"));
         assert!(
             any_file.is_ok(),
             "File with no type restriction should accept any extension, got: \
@@ -577,20 +586,20 @@ mod tests {
         };
 
         // THEN: it accepts matching extensions
-        let md_file = def.validate_value(&serde_json::json!("test.md"));
+        let md_file = def.validate_value(&str_value("test.md"));
         assert!(
             md_file.is_ok(),
             "File with .md extension should be accepted, got: {md_file:?}"
         );
 
-        let txt_file = def.validate_value(&serde_json::json!("test.txt"));
+        let txt_file = def.validate_value(&str_value("test.txt"));
         assert!(
             txt_file.is_ok(),
             "File with .txt extension should be accepted, got: {txt_file:?}"
         );
 
         // AND: rejects others
-        let png_file = def.validate_value(&serde_json::json!("test.png"));
+        let png_file = def.validate_value(&str_value("test.png"));
         assert!(
             png_file.is_err(),
             "File with .png extension should be rejected, got: {png_file:?}"
@@ -608,20 +617,20 @@ mod tests {
         };
 
         // THEN: it enforces length limits
-        let valid = def.validate_value(&serde_json::json!("abc"));
+        let valid = def.validate_value(&str_value("abc"));
         assert!(
             valid.is_ok(),
             "String within length constraints should be accepted, got: \
              {valid:?}"
         );
 
-        let too_short = def.validate_value(&serde_json::json!("a"));
+        let too_short = def.validate_value(&str_value("a"));
         assert!(
             too_short.is_err(),
             "String below min length should be rejected, got: {too_short:?}"
         );
 
-        let too_long = def.validate_value(&serde_json::json!("abcdef"));
+        let too_long = def.validate_value(&str_value("abcdef"));
         assert!(
             too_long.is_err(),
             "String above max length should be rejected, got: {too_long:?}"
@@ -634,7 +643,7 @@ mod tests {
             max_length: None,
             pattern: None,
         };
-        let below_min = def_min.validate_value(&serde_json::json!("ab"));
+        let below_min = def_min.validate_value(&str_value("ab"));
         assert!(
             below_min.is_err(),
             "String below min_length should be rejected, got: {below_min:?}"
@@ -646,7 +655,7 @@ mod tests {
             max_length: Some(3),
             pattern: None,
         };
-        let above_max = def_max.validate_value(&serde_json::json!("abcd"));
+        let above_max = def_max.validate_value(&str_value("abcd"));
         assert!(
             above_max.is_err(),
             "String above max_length should be rejected, got: {above_max:?}"
@@ -664,13 +673,13 @@ mod tests {
         };
 
         // THEN: it validates matching strings (multiple times to trigger cache)
-        let match1 = def.validate_value(&serde_json::json!("123"));
+        let match1 = def.validate_value(&str_value("123"));
         assert!(
             match1.is_ok(),
             "String matching pattern should be accepted, got: {match1:?}"
         );
 
-        let match2 = def.validate_value(&serde_json::json!("456"));
+        let match2 = def.validate_value(&str_value("456"));
         assert!(
             match2.is_ok(),
             "Second matching string should be accepted (tests cache), got: \
@@ -678,7 +687,7 @@ mod tests {
         );
 
         // AND: rejects non-matching strings
-        let no_match = def.validate_value(&serde_json::json!("abc"));
+        let no_match = def.validate_value(&str_value("abc"));
         assert!(
             no_match.is_err(),
             "String not matching pattern should be rejected, got: {no_match:?}"
