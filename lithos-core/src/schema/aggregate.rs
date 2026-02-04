@@ -655,29 +655,33 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn schema_accessors_return_expected_values() {
-        // GIVEN: a schema with properties
-        let name = SchemaName::new("status".to_owned()).expect("Valid name");
-        let property = Property::new(
-            TEST_PROPERTY_ID_C,
-            PropertyName::new("flag".to_owned()).expect("Valid name"),
-            true,
-            false,
-            PropertySpec::Bool(BoolSpec::default()),
-        )
-        .expect("Valid property");
-        let schema = Schema::new(TEST_SCHEMA_ID_A, name, vec![property])
-            .expect("Valid schema");
+        let schema = sample_schema();
 
-        // THEN: accessor methods return expected values
         assert_eq!(schema.name().0, "status");
         assert_eq!(schema.name().as_ref(), "status");
         assert_eq!(schema.name().to_string(), "status");
+    }
+
+    /// 3.2-UNIT-010: `schema_property_accessors_return_expected_values`.
+    /// Priority: P1.
+    #[test]
+    fn schema_property_accessors_return_expected_values() {
+        let schema = sample_schema();
+
         assert!(schema.has("flag"), "Expected schema to have property 'flag'");
         assert!(
             schema.get("flag").is_some(),
             "Expected schema.get('flag') to be Some"
         );
         assert_eq!(schema.properties().len(), 1, "Expected exactly 1 property");
+    }
+
+    /// 3.2-UNIT-010: `schema_pending_events_emitted_on_create`.
+    /// Priority: P1.
+    #[test]
+    fn schema_pending_events_emitted_on_create() {
+        let schema = sample_schema();
+
         assert_eq!(
             schema.pending_events().len(),
             1,
@@ -689,20 +693,8 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn property_bank_accessors_cover_ids_and_names() {
-        // GIVEN: a property bank with an inserted property
-        let mut bank = PropertyBank::new();
-        let property = Property::new(
-            TEST_PROPERTY_ID_A,
-            PropertyName::new("flag".to_owned()).expect("Valid name"),
-            true,
-            false,
-            PropertySpec::Bool(BoolSpec::default()),
-        )
-        .expect("Valid property");
-        let id = property.id();
-        bank.register(property).expect("Registration should succeed");
+        let (bank, id) = bank_with_property();
 
-        // THEN: accessors for id/name work
         assert!(bank.has_id(id), "PropertyBank should contain property by ID");
         assert!(
             bank.has_name("flag"),
@@ -721,6 +713,14 @@ mod tests {
             "Should retrieve property by ID string: {id}"
         );
         bank.decode(id.to_string().as_str()).expect("Should decode ID string");
+    }
+
+    /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.
+    /// Priority: P1.
+    #[test]
+    fn property_bank_events_emitted_on_registration() {
+        let (mut bank, _id) = bank_with_property();
+
         assert_eq!(
             bank.pending_events().len(),
             1,
@@ -737,5 +737,34 @@ mod tests {
             bank.pending_events().is_empty(),
             "pending_events should be empty after take_events"
         );
+    }
+
+    fn sample_schema() -> Schema {
+        let name = SchemaName::new("status".to_owned()).expect("Valid name");
+        let property = Property::new(
+            TEST_PROPERTY_ID_C,
+            PropertyName::new("flag".to_owned()).expect("Valid name"),
+            true,
+            false,
+            PropertySpec::Bool(BoolSpec::default()),
+        )
+        .expect("Valid property");
+        Schema::new(TEST_SCHEMA_ID_A, name, vec![property])
+            .expect("Valid schema")
+    }
+
+    fn bank_with_property() -> (PropertyBank, Uuid) {
+        let mut bank = PropertyBank::new();
+        let property = Property::new(
+            TEST_PROPERTY_ID_A,
+            PropertyName::new("flag".to_owned()).expect("Valid name"),
+            true,
+            false,
+            PropertySpec::Bool(BoolSpec::default()),
+        )
+        .expect("Valid property");
+        let id = property.id();
+        bank.register(property).expect("Registration should succeed");
+        (bank, id)
     }
 }
