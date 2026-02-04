@@ -423,12 +423,6 @@ mod tests {
         }
 
         impl Workspace {
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test fixture setup uses blocking std::fs for \
-                          simplicity. These operations are synchronous and \
-                          don't impact async test behavior."
-            )]
             pub fn create_file<P: AsRef<Path>>(
                 &self,
                 path: P,
@@ -436,21 +430,24 @@ mod tests {
             ) -> PathBuf {
                 let full_path = self.root.join(path);
                 if let Some(parent) = full_path.parent() {
-                    std::fs::create_dir_all(parent).expect(
-                        "Test setup: Failed to create parent directories",
+                    let result = std::fs::create_dir_all(parent);
+                    assert!(
+                        result.is_ok(),
+                        "Test setup: Failed to create parent directories: \
+                         {result:?}"
                     );
                 }
-                std::fs::write(&full_path, content.unwrap_or(DEFAULT_CONTENT))
-                    .expect("Test setup: Failed to write file");
+                let result = std::fs::write(
+                    &full_path,
+                    content.unwrap_or(DEFAULT_CONTENT),
+                );
+                assert!(
+                    result.is_ok(),
+                    "Test setup: Failed to write file: {result:?}"
+                );
                 full_path
             }
 
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test fixture setup uses blocking std::fs for \
-                          simplicity. These operations are synchronous and \
-                          don't impact async test behavior."
-            )]
             pub fn create_symlink<P: AsRef<Path>, T: AsRef<Path>>(
                 &self,
                 link_path: P,
@@ -458,36 +455,44 @@ mod tests {
             ) -> PathBuf {
                 let full_link_path = self.root.join(link_path);
                 if let Some(parent) = full_link_path.parent() {
-                    std::fs::create_dir_all(parent).expect(
-                        "Test setup: Failed to create parent directories",
+                    let result = std::fs::create_dir_all(parent);
+                    assert!(
+                        result.is_ok(),
+                        "Test setup: Failed to create parent directories: \
+                         {result:?}"
                     );
                 }
 
                 #[cfg(unix)]
-                std::os::unix::fs::symlink(target, &full_link_path)
-                    .expect("Test setup: Failed to create symlink");
+                let result =
+                    std::os::unix::fs::symlink(target, &full_link_path);
+                #[cfg(unix)]
+                assert!(
+                    result.is_ok(),
+                    "Test setup: Failed to create symlink: {result:?}"
+                );
                 #[cfg(windows)]
-                std::os::windows::fs::symlink_file(target, &full_link_path)
-                    .expect("Test setup: Failed to create symlink");
+                {
+                    let result = std::os::windows::fs::symlink_file(
+                        target,
+                        &full_link_path,
+                    );
+                    assert!(
+                        result.is_ok(),
+                        "Test setup: Failed to create symlink: {result:?}"
+                    );
+                }
 
                 full_link_path
             }
 
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test fixture setup uses blocking std::fs for \
-                          simplicity. These operations are synchronous and \
-                          don't impact async test behavior."
-            )]
-            pub fn new() -> Self {
-                let temp_dir =
-                    TempDir::new().expect("failed to create temp dir");
-                let root = std::fs::canonicalize(temp_dir.path())
-                    .expect("failed to canonicalize temp dir");
-                Self {
+            pub fn new() -> Result<Self, std::io::Error> {
+                let temp_dir = TempDir::new()?;
+                let root = temp_dir.path().canonicalize()?;
+                Ok(Self {
                     temp_dir,
                     root,
-                }
+                })
             }
         }
     }
@@ -577,16 +582,13 @@ mod tests {
             }
 
             #[test]
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test assertions use Result::expect() for clear \
-                          failure messages. See clippy.toml \
-                          allow-expect-in-tests."
-            )]
             fn accepts_encoded_path_as_literal() {
                 let validator = Validator::new_flexible();
                 let result = validator.validate("safe%2Ffile");
-                result.expect("safe encoded characters should pass");
+                assert!(
+                    result.is_ok(),
+                    "safe encoded characters should pass, got: {result:?}"
+                );
             }
         }
 
@@ -615,16 +617,13 @@ mod tests {
             }
 
             #[test]
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test assertions use Result::expect() for clear \
-                          failure messages. See clippy.toml \
-                          allow-expect-in-tests."
-            )]
             fn accepts_relative_paths() {
                 let validator = Validator::new_flexible();
                 let result = validator.validate("config/lithos.toml");
-                result.expect("relative path should be valid");
+                assert!(
+                    result.is_ok(),
+                    "relative path should be valid, got: {result:?}"
+                );
             }
         }
 
@@ -652,16 +651,13 @@ mod tests {
             }
 
             #[test]
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test assertions use Result::expect() for clear \
-                          failure messages. See clippy.toml \
-                          allow-expect-in-tests."
-            )]
             fn accepts_normal_files() {
                 let validator = Validator::new_flexible();
                 let result = validator.validate("notes/daily.md");
-                result.expect("normal file should be valid");
+                assert!(
+                    result.is_ok(),
+                    "normal file should be valid, got: {result:?}"
+                );
             }
         }
     }
@@ -674,38 +670,53 @@ mod tests {
             };
 
             #[test]
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test fixture uses blocking std::fs for setup and \
-                          expect() for assertions. See clippy.toml \
-                          allow-expect-in-tests."
-            )]
             fn rejects_escaped_symlinks() {
-                let ws = Workspace::new();
+                let ws_result = Workspace::new();
+                assert!(
+                    ws_result.is_ok(),
+                    "Workspace should be created, got: {:?}",
+                    ws_result.as_ref().err()
+                );
+                let Ok(ws) = ws_result else {
+                    return;
+                };
                 let outside_target =
                     std::env::temp_dir().join(fixtures::OUTSIDE_NAME);
-                std::fs::write(&outside_target, "outside")
-                    .expect("Test setup: Failed to create outside target");
+                let write_result = std::fs::write(&outside_target, "outside");
+                assert!(
+                    write_result.is_ok(),
+                    "Test setup: Failed to create outside target: \
+                     {write_result:?}"
+                );
 
                 let symlink_path =
                     ws.create_symlink("escaped_link", &outside_target);
 
                 let validator = Validator::new_strict(ws.root.clone());
-                let result = validator.resolve_safe_symlink(&symlink_path);
+                let resolve_result =
+                    validator.resolve_safe_symlink(&symlink_path);
 
                 assert!(
                     matches!(
-                        result,
+                        resolve_result,
                         Err(PathValidationError::SymlinkEscapeError)
                     ),
-                    "Expected SymlinkEscapeError, found {result:?}"
+                    "Expected SymlinkEscapeError, found {resolve_result:?}"
                 );
                 drop(std::fs::remove_file(&outside_target));
             }
 
             #[test]
             fn detects_symlink_loops() {
-                let ws = Workspace::new();
+                let ws_result = Workspace::new();
+                assert!(
+                    ws_result.is_ok(),
+                    "Workspace should be created, got: {:?}",
+                    ws_result.as_ref().err()
+                );
+                let Ok(ws) = ws_result else {
+                    return;
+                };
                 let link_a = ws.root.join("link_a");
                 let link_b = ws.root.join("link_b");
 
@@ -722,7 +733,15 @@ mod tests {
 
             #[test]
             fn rejects_internal_hidden_targets() {
-                let ws = Workspace::new();
+                let ws_result = Workspace::new();
+                assert!(
+                    ws_result.is_ok(),
+                    "Workspace should be created, got: {:?}",
+                    ws_result.as_ref().err()
+                );
+                let Ok(ws) = ws_result else {
+                    return;
+                };
                 let hidden_file = ws.create_file(".secret.txt", None);
                 let symlink_path =
                     ws.create_symlink("link_to_secret", &hidden_file);
@@ -744,33 +763,52 @@ mod tests {
             use super::super::{fixtures::Workspace, *};
 
             #[test]
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test fixture uses blocking std::fs for setup and \
-                          std::env::current_dir for CWD manipulation."
-            )]
             fn allows_external_symlinks() {
-                let ws = Workspace::new();
+                let ws_result = Workspace::new();
+                assert!(
+                    ws_result.is_ok(),
+                    "Workspace should be created, got: {:?}",
+                    ws_result.as_ref().err()
+                );
+                let Ok(ws) = ws_result else {
+                    return;
+                };
                 let outside_target =
                     std::env::temp_dir().join(fixtures::DOTFILE_NAME);
-                std::fs::write(&outside_target, "dotfile")
-                    .expect("Test setup: Failed to write outside target");
+                let write_result = std::fs::write(&outside_target, "dotfile");
+                assert!(
+                    write_result.is_ok(),
+                    "Test setup: Failed to write outside target: \
+                     {write_result:?}"
+                );
 
-                let _link = ws.create_symlink("dotfile_link", &outside_target);
+                let _link_path =
+                    ws.create_symlink("dotfile_link", &outside_target);
 
                 let validator = Validator::new_flexible();
-                let original_cwd = std::env::current_dir().expect("cwd");
-                std::env::set_current_dir(&ws.root)
-                    .expect("Test setup: Failed to change directory");
 
-                let result = validator.resolve_safe_symlink("dotfile_link");
-                std::env::set_current_dir(original_cwd)
-                    .expect("Test teardown: Failed to restore directory");
+                let repo_root =
+                    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                let set_result = std::env::set_current_dir(&ws.root);
+                assert!(
+                    set_result.is_ok(),
+                    "Test setup: Failed to change directory: {set_result:?}"
+                );
+
+                let resolve_result =
+                    validator.resolve_safe_symlink("dotfile_link");
+
+                let restore_result = std::env::set_current_dir(repo_root);
+                assert!(
+                    restore_result.is_ok(),
+                    "Test teardown: Failed to restore directory: \
+                     {restore_result:?}"
+                );
 
                 assert!(
-                    result.is_ok(),
+                    resolve_result.is_ok(),
                     "flexible mode should allow external symlinks, found \
-                     {result:?}"
+                     {resolve_result:?}"
                 );
                 drop(std::fs::remove_file(&outside_target));
             }
@@ -792,37 +830,41 @@ mod tests {
 
         /// Helper to create circular symlinks (extracted to reduce nesting).
         #[cfg(unix)]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test helper uses platform-specific std::os::unix::fs \
-                      for symlink creation. Blocking I/O acceptable for \
-                      fixture setup."
-        )]
         fn create_symlink_loop(
             link_a: &std::path::Path,
             link_b: &std::path::Path,
         ) {
-            std::os::unix::fs::symlink(link_b, link_a)
-                .expect("Test setup: Failed to create symlink");
-            std::os::unix::fs::symlink(link_a, link_b)
-                .expect("Test setup: Failed to create symlink");
+            let symlink_result = std::os::unix::fs::symlink(link_b, link_a);
+            assert!(
+                symlink_result.is_ok(),
+                "Test setup: Failed to create symlink: {symlink_result:?}"
+            );
+            let symlink_result_second =
+                std::os::unix::fs::symlink(link_a, link_b);
+            assert!(
+                symlink_result_second.is_ok(),
+                "Test setup: Failed to create symlink: \
+                 {symlink_result_second:?}"
+            );
         }
 
         #[cfg(windows)]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test helper uses platform-specific std::os::windows::fs \
-                      for symlink creation. Blocking I/O acceptable for \
-                      fixture setup."
-        )]
         fn create_symlink_loop(
             link_a: &std::path::Path,
             link_b: &std::path::Path,
         ) {
-            std::os::windows::fs::symlink_file(link_b, link_a)
-                .expect("Test setup: Failed to create symlink");
-            std::os::windows::fs::symlink_file(link_a, link_b)
-                .expect("Test setup: Failed to create symlink");
+            let symlink_result =
+                std::os::windows::fs::symlink_file(link_b, link_a);
+            assert!(
+                symlink_result.is_ok(),
+                "Test setup: Failed to create symlink: {symlink_result:?}"
+            );
+            let symlink_result =
+                std::os::windows::fs::symlink_file(link_a, link_b);
+            assert!(
+                symlink_result.is_ok(),
+                "Test setup: Failed to create symlink: {symlink_result:?}"
+            );
         }
     }
 
@@ -830,11 +872,6 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test assertions use Result::expect() for clear failure \
-                      messages. See clippy.toml allow-expect-in-tests."
-        )]
         fn handles_platform_separators_consistently() {
             let validator = Validator::new_flexible();
             #[cfg(unix)]
@@ -843,7 +880,11 @@ mod tests {
             let path = "config\\notes\\file.md";
 
             let result = validator.validate(path);
-            result.expect("platform separators should be handled correctly");
+            assert!(
+                result.is_ok(),
+                "platform separators should be handled correctly, got: \
+                 {result:?}"
+            );
         }
 
         #[test]
