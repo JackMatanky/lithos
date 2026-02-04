@@ -166,10 +166,36 @@ impl super::ports::Command for Command<'_> {
 
 #[cfg(test)]
 #[expect(
-    clippy::disallowed_methods,
-    reason = "Expect/unwrap is permitted in Arrange phase of tests."
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module groups fixtures and submodules for readability."
 )]
 mod tests {
+    mod fixtures {
+        use super::*;
+
+        pub const TEST_MISSING_ID: Uuid =
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0301);
+
+        pub fn test_db() -> Result<(TempDir, Database), String> {
+            let dir = tempdir().map_err(|e| e.to_string())?;
+            let path = dir.path().join("notes.redb");
+            let db = Database::open(&path).map_err(|e| e.to_string())?;
+            Ok((dir, db))
+        }
+
+        pub fn create_note(cmd: &Command, path: &str) -> Result<Note, String> {
+            cmd.create(path.to_owned()).map_err(|e| e.to_string())
+        }
+
+        pub fn parse_path(path: &str) -> Result<NotePath, String> {
+            NotePath::new(path.to_owned()).map_err(|e| e.to_string())
+        }
+
+        pub fn parse_tag(tag: &str) -> Result<Tag, String> {
+            Tag::new(tag).map_err(|e| e.to_string())
+        }
+    }
+
     use tempfile::{TempDir, tempdir};
     use uuid::Uuid;
 
@@ -180,217 +206,235 @@ mod tests {
         tag::Tag,
     };
 
-    const TEST_MISSING_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0301);
+    mod persistence {
+        use super::*;
 
-    fn test_db() -> Result<(TempDir, Database), String> {
-        let dir = tempdir().map_err(|e| e.to_string())?;
-        let path = dir.path().join("notes.redb");
-        let db = Database::open(&path).map_err(|e| e.to_string())?;
-        Ok((dir, db))
-    }
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn create_persists_note_and_path_index() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let cmd = Command::new(&db);
 
-    fn create_note(cmd: &Command, path: &str) -> Result<Note, String> {
-        cmd.create(path.to_owned()).map_err(|e| e.to_string())
-    }
+            let note = fixtures::create_note(&cmd, "notes/a.md")
+                .expect("Create should succeed");
+            let id_str = note.id.to_string();
 
-    fn parse_path(path: &str) -> Result<NotePath, String> {
-        NotePath::new(path.to_owned()).map_err(|e| e.to_string())
-    }
+            let stored = db
+                .get_owned::<Note>("notes", &id_str)
+                .expect("Read-back should succeed");
+            let stored_note = stored.expect("Stored note should exist");
+            assert_eq!(
+                stored_note.path.as_str(),
+                "notes/a.md",
+                "Stored note path should match"
+            );
 
-    fn parse_tag(tag: &str) -> Result<Tag, String> {
-        Tag::new(tag).map_err(|e| e.to_string())
-    }
+            let ids = db
+                .multimap_get("path_to_id", note.path.as_str())
+                .expect("Path index should be readable");
+            assert!(
+                ids.contains(&id_str),
+                "Path index should contain created note id"
+            );
+        }
 
-    #[test]
-    fn create_persists_note_and_path_index() {
-        let (_dir, db) = test_db().expect("Failed to create test DB");
-        let cmd = Command::new(&db);
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn update_updates_path_and_tags_indexes() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let cmd = Command::new(&db);
 
-        let note =
-            create_note(&cmd, "notes/a.md").expect("Create should succeed");
-        let id_str = note.id.to_string();
+            let mut note = fixtures::create_note(&cmd, "notes/a.md")
+                .expect("Create should succeed");
+            let id_str = note.id.to_string();
+            let old_path = note.path.as_str().to_owned();
 
-        let stored = db
-            .get_owned::<Note>("notes", &id_str)
-            .expect("Read-back should succeed");
-        let stored_note = stored.expect("Stored note should exist");
-        assert_eq!(
-            stored_note.path.as_str(),
-            "notes/a.md",
-            "Stored note path should match"
-        );
+            let path = fixtures::parse_path("notes/b.md")
+                .expect("NotePath should be valid");
+            note.path = path;
 
-        let ids = db
-            .multimap_get("path_to_id", note.path.as_str())
-            .expect("Path index should be readable");
-        assert!(
-            ids.contains(&id_str),
-            "Path index should contain created note id"
-        );
-    }
+            let tag =
+                fixtures::parse_tag("#project").expect("Tag should parse");
+            note.tags = vec![tag];
 
-    #[test]
-    fn update_updates_path_and_tags_indexes() {
-        let (_dir, db) = test_db().expect("Failed to create test DB");
-        let cmd = Command::new(&db);
+            cmd.update(note.clone()).expect("Update should succeed");
 
-        let mut note =
-            create_note(&cmd, "notes/a.md").expect("Create should succeed");
-        let id_str = note.id.to_string();
-        let old_path = note.path.as_str().to_owned();
+            let old_ids = db
+                .multimap_get("path_to_id", old_path.as_str())
+                .expect("Old path index should be readable");
+            assert!(
+                !old_ids.contains(&id_str),
+                "Old path index should not contain updated note id"
+            );
 
-        let path = parse_path("notes/b.md").expect("NotePath should be valid");
-        note.path = path;
+            let new_ids = db
+                .multimap_get("path_to_id", note.path.as_str())
+                .expect("New path index should be readable");
+            assert!(
+                new_ids.contains(&id_str),
+                "New path index should contain updated note id"
+            );
 
-        let tag = parse_tag("#project").expect("Tag should parse");
-        note.tags = vec![tag];
+            let tag_key = note
+                .tags
+                .first()
+                .map(|t| t.full_path.as_str())
+                .expect("Note should have one tag");
 
-        cmd.update(note.clone()).expect("Update should succeed");
+            let tag_ids = db
+                .multimap_get("tags_to_notes", tag_key)
+                .expect("Tag index should be readable");
+            assert!(
+                tag_ids.contains(&id_str),
+                "Tag index should contain updated note id"
+            );
 
-        let old_ids = db
-            .multimap_get("path_to_id", old_path.as_str())
-            .expect("Old path index should be readable");
-        assert!(
-            !old_ids.contains(&id_str),
-            "Old path index should not contain updated note id"
-        );
+            let stored = db
+                .get_owned::<Note>("notes", &id_str)
+                .expect("Read-back should succeed");
+            let stored_note = stored.expect("Updated note should exist");
+            assert_eq!(
+                stored_note.path.as_str(),
+                "notes/b.md",
+                "Stored note path should be updated"
+            );
+            assert_eq!(
+                stored_note.tags.len(),
+                1,
+                "Stored note should have updated tags"
+            );
+        }
 
-        let new_ids = db
-            .multimap_get("path_to_id", note.path.as_str())
-            .expect("New path index should be readable");
-        assert!(
-            new_ids.contains(&id_str),
-            "New path index should contain updated note id"
-        );
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn delete_removes_note_and_indexes() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let cmd = Command::new(&db);
 
-        let tag_key = note
-            .tags
-            .first()
-            .map(|t| t.full_path.as_str())
-            .expect("Note should have one tag");
+            let mut note = fixtures::create_note(&cmd, "notes/a.md")
+                .expect("Create should succeed");
+            let id = note.id;
+            let id_str = id.to_string();
 
-        let tag_ids = db
-            .multimap_get("tags_to_notes", tag_key)
-            .expect("Tag index should be readable");
-        assert!(
-            tag_ids.contains(&id_str),
-            "Tag index should contain updated note id"
-        );
+            let tag =
+                fixtures::parse_tag("#project").expect("Tag should parse");
+            note.tags = vec![tag];
 
-        let stored = db
-            .get_owned::<Note>("notes", &id_str)
-            .expect("Read-back should succeed");
-        let stored_note = stored.expect("Updated note should exist");
-        assert_eq!(
-            stored_note.path.as_str(),
-            "notes/b.md",
-            "Stored note path should be updated"
-        );
-        assert_eq!(
-            stored_note.tags.len(),
-            1,
-            "Stored note should have updated tags"
-        );
-    }
+            cmd.update(note.clone()).expect("Update should succeed");
+            cmd.delete(id).expect("Delete should succeed");
 
-    #[test]
-    fn delete_removes_note_and_indexes() {
-        let (_dir, db) = test_db().expect("Failed to create test DB");
-        let cmd = Command::new(&db);
+            let stored = db
+                .get_owned::<Note>("notes", &id_str)
+                .expect("Read-back should succeed");
+            assert!(stored.is_none(), "Deleted note should not exist");
 
-        let mut note =
-            create_note(&cmd, "notes/a.md").expect("Create should succeed");
-        let id = note.id;
-        let id_str = id.to_string();
+            let path_ids = db
+                .multimap_get("path_to_id", note.path.as_str())
+                .expect("Path index should be readable");
+            assert!(
+                !path_ids.contains(&id_str),
+                "Path index should not contain deleted note id"
+            );
 
-        let tag = parse_tag("#project").expect("Tag should parse");
-        note.tags = vec![tag];
+            let tag_key = note
+                .tags
+                .first()
+                .map(|t| t.full_path.as_str())
+                .expect("Note should have one tag");
+            let tag_ids = db
+                .multimap_get("tags_to_notes", tag_key)
+                .expect("Tag index should be readable");
+            assert!(
+                !tag_ids.contains(&id_str),
+                "Tag index should not contain deleted note id"
+            );
+        }
 
-        cmd.update(note.clone()).expect("Update should succeed");
-        cmd.delete(id).expect("Delete should succeed");
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn delete_missing_note_is_noop() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let cmd = Command::new(&db);
 
-        let stored = db
-            .get_owned::<Note>("notes", &id_str)
-            .expect("Read-back should succeed");
-        assert!(stored.is_none(), "Deleted note should not exist");
+            fixtures::create_note(&cmd, "notes/existing.md")
+                .expect("Create should succeed");
+            cmd.delete(fixtures::TEST_MISSING_ID)
+                .expect("Deleting missing note should be a no-op");
+        }
 
-        let path_ids = db
-            .multimap_get("path_to_id", note.path.as_str())
-            .expect("Path index should be readable");
-        assert!(
-            !path_ids.contains(&id_str),
-            "Path index should not contain deleted note id"
-        );
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn update_removes_old_tag_indexes_when_tags_change() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let cmd = Command::new(&db);
 
-        let tag_key = note
-            .tags
-            .first()
-            .map(|t| t.full_path.as_str())
-            .expect("Note should have one tag");
-        let tag_ids = db
-            .multimap_get("tags_to_notes", tag_key)
-            .expect("Tag index should be readable");
-        assert!(
-            !tag_ids.contains(&id_str),
-            "Tag index should not contain deleted note id"
-        );
-    }
+            // GIVEN: a note with an initial tag
+            let mut note = fixtures::create_note(&cmd, "notes/test.md")
+                .expect("Create should succeed");
+            let id_str = note.id.to_string();
+            let old_tag =
+                fixtures::parse_tag("#old-tag").expect("Tag should parse");
+            note.tags = vec![old_tag.clone()];
+            cmd.update(note.clone()).expect("Update should succeed");
 
-    #[test]
-    fn delete_missing_note_is_noop() {
-        let (_dir, db) = test_db().expect("Failed to create test DB");
-        let cmd = Command::new(&db);
+            // Verify old tag is indexed
+            let old_tag_ids = db
+                .multimap_get("tags_to_notes", old_tag.full_path.as_str())
+                .expect("Old tag index lookup should succeed");
+            assert!(
+                old_tag_ids.contains(&id_str),
+                "Old tag index should contain note before update"
+            );
 
-        create_note(&cmd, "notes/existing.md").expect("Create should succeed");
-        cmd.delete(TEST_MISSING_ID)
-            .expect("Deleting missing note should be a no-op");
-    }
+            // WHEN: updating the note with a different tag
+            let new_tag =
+                fixtures::parse_tag("#new-tag").expect("Tag should parse");
+            note.tags = vec![new_tag.clone()];
+            cmd.update(note.clone()).expect("Update should succeed");
 
-    #[test]
-    fn update_removes_old_tag_indexes_when_tags_change() {
-        let (_dir, db) = test_db().expect("Failed to create test DB");
-        let cmd = Command::new(&db);
+            // THEN: old tag index should not contain the note
+            let old_tag_ids_after = db
+                .multimap_get("tags_to_notes", old_tag.full_path.as_str())
+                .expect("Old tag index lookup should succeed");
+            assert!(
+                !old_tag_ids_after.contains(&id_str),
+                "Old tag index should not contain note after update with \
+                 different tag"
+            );
 
-        // GIVEN: a note with an initial tag
-        let mut note =
-            create_note(&cmd, "notes/test.md").expect("Create should succeed");
-        let id_str = note.id.to_string();
-        let old_tag = parse_tag("#old-tag").expect("Tag should parse");
-        note.tags = vec![old_tag.clone()];
-        cmd.update(note.clone()).expect("Update should succeed");
-
-        // Verify old tag is indexed
-        let old_tag_ids = db
-            .multimap_get("tags_to_notes", old_tag.full_path.as_str())
-            .expect("Old tag index lookup should succeed");
-        assert!(
-            old_tag_ids.contains(&id_str),
-            "Old tag index should contain note before update"
-        );
-
-        // WHEN: updating the note with a different tag
-        let new_tag = parse_tag("#new-tag").expect("Tag should parse");
-        note.tags = vec![new_tag.clone()];
-        cmd.update(note.clone()).expect("Update should succeed");
-
-        // THEN: old tag index should not contain the note
-        let old_tag_ids_after = db
-            .multimap_get("tags_to_notes", old_tag.full_path.as_str())
-            .expect("Old tag index lookup should succeed");
-        assert!(
-            !old_tag_ids_after.contains(&id_str),
-            "Old tag index should not contain note after update with \
-             different tag"
-        );
-
-        // AND: new tag index should contain the note
-        let new_tag_ids = db
-            .multimap_get("tags_to_notes", new_tag.full_path.as_str())
-            .expect("New tag index lookup should succeed");
-        assert!(
-            new_tag_ids.contains(&id_str),
-            "New tag index should contain note after update"
-        );
+            // AND: new tag index should contain the note
+            let new_tag_ids = db
+                .multimap_get("tags_to_notes", new_tag.full_path.as_str())
+                .expect("New tag index lookup should succeed");
+            assert!(
+                new_tag_ids.contains(&id_str),
+                "New tag index should contain note after update"
+            );
+        }
     }
 }

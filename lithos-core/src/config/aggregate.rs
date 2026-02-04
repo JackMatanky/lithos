@@ -97,10 +97,13 @@ impl Config {
     /// # Examples
     /// ```
     /// # use lithos_core::config::{aggregate::Config, global::Global, vault::Vault};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let global = Global::default();
     /// let vault = Vault::default();
-    /// let config = Config::build(Some(&global), "/vault", vault).unwrap();
+    /// let config = Config::build(Some(&global), "/vault", vault)?;
     /// assert_eq!(config.vault_metadata.path, "/vault");
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn build(
@@ -289,10 +292,13 @@ impl Config {
     /// # Examples
     /// ```
     /// # use lithos_core::config::{aggregate::Config, global::Global, vault::Vault};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let global = Global::default();
     /// let vault = Vault::default();
-    /// let config = Config::build(Some(&global), "/vault", vault).unwrap();
-    /// config.validate().unwrap();
+    /// let config = Config::build(Some(&global), "/vault", vault)?;
+    /// config.validate()?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
@@ -310,15 +316,68 @@ impl Config {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    clippy::disallowed_methods,
-    clippy::panic,
-    reason = "Test-only: the module item ordering is intentionally grouped \
-              for readability. Expect/unwrap/panic is permitted in tests for \
-              setup and failure verification."
+    reason = "Test module groups fixtures and submodules for readability."
 )]
 mod tests {
     // # LINT_DISABLE_REASON: Standard test utilities and behavioral
     // verification patterns.
+    mod fixtures {
+        use super::*;
+
+        /// Test fixture: Create sample global configuration with system
+        /// defaults.
+        pub fn sample_global_config() -> Global {
+            Global {
+                filesystem: GlobalPaths {
+                    schema: Schema {
+                        schemas_dir: "schemas".to_owned(),
+                        property_bank_filename: "property_bank.json".to_owned(),
+                    },
+                    template: Template {
+                        templates_dir: "templates".to_owned(),
+                    },
+                },
+                frontmatter: Frontmatter {
+                    alias_key: "aliases".to_owned(),
+                    date_created_key: "date_created".to_owned(),
+                    date_modified_key: "date_modified".to_owned(),
+                    file_class_key: "file_class".to_owned(),
+                    title_key: "title".to_owned(),
+                },
+                logging: Logging {
+                    log_level: "info".to_owned(),
+                },
+                trusted_vaults: None,
+            }
+        }
+
+        /// Test fixture: Create sample vault configuration with user overrides.
+        pub fn sample_vault_config() -> Vault {
+            Vault {
+                filesystem: VaultPaths {
+                    schema: Schema {
+                        schemas_dir: "schemas".to_owned(),
+                        property_bank_filename: "property_bank.json".to_owned(),
+                    },
+                    template: Template {
+                        templates_dir: "custom_templates".to_owned(), /* vault override */
+                    },
+                    cache_dir: ".cache".to_owned(),
+                },
+                frontmatter: Some(Frontmatter {
+                    alias_key: "aliases".to_owned(),
+                    date_created_key: "created".to_owned(), // vault override
+                    date_modified_key: "modified".to_owned(), // vault override
+                    file_class_key: "type".to_owned(),      // vault override
+                    title_key: "title".to_owned(),
+                }),
+                logging: Some(Logging {
+                    log_level: "debug".to_owned(), // vault override
+                }),
+            }
+        }
+    }
+
     use super::*;
     use crate::config::{
         global::Paths as GlobalPaths, vault::Paths as VaultPaths,
@@ -330,6 +389,10 @@ mod tests {
         /// 3.3-UNIT-020: `build_handles_missing_global`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic config construction."
+        )]
         fn build_handles_missing_global() {
             // GIVEN: no global configuration
             let vault = Vault {
@@ -416,10 +479,14 @@ mod tests {
         /// 3.3-UNIT-017: `supports_clone_debug_and_partial_eq`.
         /// Priority: P3.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic config construction."
+        )]
         fn supports_clone_debug_and_partial_eq() {
             // GIVEN: a merged configuration built from valid fixtures
-            let global = sample_global_config();
-            let vault = sample_vault_config();
+            let global = fixtures::sample_global_config();
+            let vault = fixtures::sample_vault_config();
 
             // WHEN: building the configuration
             let config = Config::build(Some(&global), "/vault", vault.clone())
@@ -453,6 +520,10 @@ mod tests {
         /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic config construction."
+        )]
         fn falls_back_to_defaults_when_inputs_are_empty() {
             // GIVEN: configs with empty fields that should fall back to system
             // defaults
@@ -546,10 +617,14 @@ mod tests {
         /// 3.3-UNIT-015: `merge_is_idempotent`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic config construction."
+        )]
         fn merge_is_idempotent() {
             // GIVEN: the same global and vault configs
-            let global = sample_global_config();
-            let vault = sample_vault_config();
+            let global = fixtures::sample_global_config();
+            let vault = fixtures::sample_vault_config();
 
             // WHEN: merging the same inputs multiple times
             let merged1 = Config::build(Some(&global), "/vault", vault.clone())
@@ -568,11 +643,15 @@ mod tests {
         /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
         /// Priority: P0.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic config construction."
+        )]
         fn vault_values_take_precedence_over_global() {
             // GIVEN: a global config with default settings and a vault config
             // with custom overrides
-            let global = sample_global_config();
-            let vault = sample_vault_config();
+            let global = fixtures::sample_global_config();
+            let vault = fixtures::sample_vault_config();
 
             // WHEN: merging vault and global configs
             let merged = Config::build(Some(&global), "/vault", vault)
@@ -615,7 +694,7 @@ mod tests {
                 runner.run(&strategy, |(vault_path, templates_dir)| {
                     // GIVEN a global config and generated vault path/template
                     // overrides
-                    let global = sample_global_config();
+                    let global = fixtures::sample_global_config();
                     let vault_config = Vault {
                         filesystem: VaultPaths {
                             schema: Schema::default(),
@@ -678,7 +757,7 @@ mod tests {
             #[case] expected_error_field: Option<&str>,
         ) {
             // GIVEN: a vault config with specific field values
-            let global = sample_global_config();
+            let global = fixtures::sample_global_config();
             let vault = Vault {
                 filesystem: VaultPaths {
                     schema: Schema::default(),
@@ -697,7 +776,13 @@ mod tests {
             // THEN: validation should succeed or fail as expected
             match expected_error_field {
                 None => {
-                    let config = result.expect("Configuration should be valid");
+                    assert!(
+                        result.is_ok(),
+                        "Configuration should be valid, got: {result:?}"
+                    );
+                    let Ok(config) = result else {
+                        return;
+                    };
                     assert!(
                         config.validate().is_ok(),
                         "Explicit validate() call should also pass for valid \
@@ -705,33 +790,54 @@ mod tests {
                     );
                 }
                 Some(field_name) => {
+                    assert!(
+                        matches!(field_name, "vault_path" | "log_level"),
+                        "Unsupported field in test matrix: {field_name}"
+                    );
                     // # LINT_DISABLE_REASON: Standard error matching pattern
                     // for Config validation.
-                    if field_name == "vault_path" {
-                        assert!(
-                            matches!(
-                                result.as_ref(),
-                                Err(ConfigError::ValidationFailed { .. })
-                            ),
-                            "Expected ValidationFailed for {field_name}, got: \
-                             {result:?}"
-                        );
-                    } else if field_name == "log_level" {
-                        assert!(
-                            matches!(
-                                result.as_ref(),
-                                Err(ConfigError::InvalidEnumValue { .. })
-                            ),
-                            "Expected InvalidEnumValue for {field_name}, got: \
-                             {result:?}"
-                        );
-                    } else {
-                        panic!(
-                            "Unsupported field in test matrix: {field_name}"
-                        );
+                    match field_name {
+                        "vault_path" => {
+                            assert!(
+                                matches!(
+                                    result.as_ref(),
+                                    Err(ConfigError::ValidationFailed { .. })
+                                ),
+                                "Expected ValidationFailed for {field_name}, \
+                                 got: {result:?}"
+                            );
+                        }
+                        "log_level" => {
+                            assert!(
+                                matches!(
+                                    result.as_ref(),
+                                    Err(ConfigError::InvalidEnumValue { .. })
+                                ),
+                                "Expected InvalidEnumValue for {field_name}, \
+                                 got: {result:?}"
+                            );
+                        }
+                        _ => {
+                            assert!(
+                                matches!(
+                                    field_name,
+                                    "vault_path" | "log_level"
+                                ),
+                                "Unsupported field in test matrix: \
+                                 {field_name}"
+                            );
+                            return;
+                        }
                     }
 
-                    let err = result.expect_err("Expected error result");
+                    assert!(
+                        result.is_err(),
+                        "Expected error result for {field_name}, got: \
+                         {result:?}"
+                    );
+                    let Err(err) = result else {
+                        return;
+                    };
                     // Verify error variant and extract field name in single
                     // match
                     #[expect(
@@ -766,7 +872,15 @@ mod tests {
                             field
                         }
                         other => {
-                            panic!("Unexpected error variant: {other:?}");
+                            assert!(
+                                matches!(
+                                    other,
+                                    ConfigError::ValidationFailed { .. }
+                                        | ConfigError::InvalidEnumValue { .. }
+                                ),
+                                "Unexpected error variant: {other:?}"
+                            );
+                            return;
                         }
                     };
                     assert_eq!(
@@ -776,58 +890,6 @@ mod tests {
                     );
                 }
             }
-        }
-    }
-
-    /// Test fixture: Create sample global configuration with system defaults.
-    fn sample_global_config() -> Global {
-        Global {
-            filesystem: GlobalPaths {
-                schema: Schema {
-                    schemas_dir: "schemas".to_owned(),
-                    property_bank_filename: "property_bank.json".to_owned(),
-                },
-                template: Template {
-                    templates_dir: "templates".to_owned(),
-                },
-            },
-            frontmatter: Frontmatter {
-                alias_key: "aliases".to_owned(),
-                date_created_key: "date_created".to_owned(),
-                date_modified_key: "date_modified".to_owned(),
-                file_class_key: "file_class".to_owned(),
-                title_key: "title".to_owned(),
-            },
-            logging: Logging {
-                log_level: "info".to_owned(),
-            },
-            trusted_vaults: None,
-        }
-    }
-
-    /// Test fixture: Create sample vault configuration with user overrides.
-    fn sample_vault_config() -> Vault {
-        Vault {
-            filesystem: VaultPaths {
-                schema: Schema {
-                    schemas_dir: "schemas".to_owned(), // same as global
-                    property_bank_filename: "property_bank.json".to_owned(),
-                },
-                template: Template {
-                    templates_dir: "custom_templates".to_owned(), /* vault override */
-                },
-                cache_dir: ".cache".to_owned(),
-            },
-            frontmatter: Some(Frontmatter {
-                alias_key: "aliases".to_owned(),
-                date_created_key: "created".to_owned(), // vault override
-                date_modified_key: "modified".to_owned(), // vault override
-                file_class_key: "type".to_owned(),      // vault override
-                title_key: "title".to_owned(),
-            }),
-            logging: Some(Logging {
-                log_level: "debug".to_owned(), // vault override
-            }),
         }
     }
 }

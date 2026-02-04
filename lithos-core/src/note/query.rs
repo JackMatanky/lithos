@@ -72,10 +72,24 @@ impl super::ports::Query for Query<'_> {
 
 #[cfg(test)]
 #[expect(
-    clippy::disallowed_methods,
-    reason = "Expect/unwrap is permitted in Arrange phase of tests."
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module groups fixtures and submodules for readability."
 )]
 mod tests {
+    mod fixtures {
+        use super::*;
+
+        pub const TEST_MISSING_ID: Uuid =
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0901);
+
+        pub fn test_db() -> Result<(TempDir, Database), String> {
+            let dir = tempdir().map_err(|e| e.to_string())?;
+            let path = dir.path().join("test.redb");
+            let db = Database::open(&path).map_err(|e| e.to_string())?;
+            Ok((dir, db))
+        }
+    }
+
     use std::collections::HashMap;
 
     use tempfile::{TempDir, tempdir};
@@ -88,51 +102,54 @@ mod tests {
         ports::{Command as _, Query as _},
     };
 
-    const TEST_MISSING_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0901);
+    mod query {
+        use super::*;
 
-    fn test_db() -> Result<(TempDir, Database), String> {
-        let dir = tempdir().map_err(|e| e.to_string())?;
-        let path = dir.path().join("test.redb");
-        let db = Database::open(&path).map_err(|e| e.to_string())?;
-        Ok((dir, db))
-    }
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn cqrs_roundtrip_preserves_frontmatter_in_note_archive() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
 
-    #[test]
-    fn cqrs_roundtrip_preserves_frontmatter_in_note_archive() {
-        let (_dir, db) = test_db().expect("Failed to create test DB");
+            let cmd = command::Command::new(&db);
+            let qry = Query::new(&db);
 
-        let cmd = command::Command::new(&db);
-        let qry = Query::new(&db);
+            let mut note = cmd
+                .create("notes/a.md".to_owned())
+                .expect("Create should succeed");
 
-        let mut note =
-            cmd.create("notes/a.md".to_owned()).expect("Create should succeed");
+            let fm = Frontmatter::new(HashMap::from([(
+                "root".to_owned(),
+                FieldValue::Object(HashMap::from([(
+                    "nested".to_owned(),
+                    FieldValue::Array(vec![
+                        FieldValue::String("x".to_owned()),
+                        FieldValue::Boolean(true),
+                    ]),
+                )])),
+            )]));
+            let fm = fm.expect("Frontmatter construction should succeed");
+            note.set_frontmatter(Some(fm.clone()));
 
-        let fm = Frontmatter::new(HashMap::from([(
-            "root".to_owned(),
-            FieldValue::Object(HashMap::from([(
-                "nested".to_owned(),
-                FieldValue::Array(vec![
-                    FieldValue::String("x".to_owned()),
-                    FieldValue::Boolean(true),
-                ]),
-            )])),
-        )]));
-        let fm = fm.expect("Frontmatter construction should succeed");
-        note.set_frontmatter(Some(fm.clone()));
+            let id = note.id;
+            cmd.update(note).expect("Update should succeed");
 
-        let id = note.id;
-        cmd.update(note).expect("Update should succeed");
+            let observed =
+                qry.find_by_id(id).expect("Query by id should succeed");
+            let observed =
+                observed.expect("Query by id should return Some(note)");
+            assert_eq!(observed.id, id);
+            assert_eq!(observed.frontmatter, Some(fm));
 
-        let observed = qry.find_by_id(id).expect("Query by id should succeed");
-        let observed = observed.expect("Query by id should return Some(note)");
-        assert_eq!(observed.id, id);
-        assert_eq!(observed.frontmatter, Some(fm));
-
-        // Sanity: changing the id misses the record
-        let miss = qry
-            .find_by_id(TEST_MISSING_ID)
-            .expect("Query should succeed even for non-existent ID");
-        assert!(miss.is_none(), "Non-existent ID should return None");
+            // Sanity: changing the id misses the record
+            let miss = qry
+                .find_by_id(fixtures::TEST_MISSING_ID)
+                .expect("Query should succeed even for non-existent ID");
+            assert!(miss.is_none(), "Non-existent ID should return None");
+        }
     }
 }

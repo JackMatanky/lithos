@@ -53,69 +53,93 @@ impl<'db> Command<'db> {
 
 #[cfg(test)]
 #[expect(
-    clippy::disallowed_methods,
-    reason = "Expect/unwrap is permitted in Arrange phase of tests."
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module groups fixtures and submodules for readability."
 )]
 mod tests {
+    mod fixtures {
+        use super::*;
+
+        pub const TEST_SCHEMA_ID_NOTE: Uuid =
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0101);
+        pub const TEST_SCHEMA_ID_PROJECT: Uuid =
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0102);
+
+        pub fn test_db() -> Result<(TempDir, Database), String> {
+            let dir = tempdir().map_err(|e| e.to_string())?;
+            let path = dir.path().join("schema.redb");
+            let db = Database::open(&path).map_err(|e| e.to_string())?;
+            Ok((dir, db))
+        }
+
+        pub fn schema_fixture(id: Uuid, name: &str) -> Result<Schema, String> {
+            let schema_name =
+                SchemaName::new(name.to_owned()).map_err(|e| e.to_string())?;
+            Schema::new(id, schema_name, vec![]).map_err(|e| e.to_string())
+        }
+    }
+
     use tempfile::{TempDir, tempdir};
     use uuid::Uuid;
 
     use super::*;
     use crate::schema::aggregate::SchemaName;
 
-    const TEST_SCHEMA_ID_NOTE: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0101);
-    const TEST_SCHEMA_ID_PROJECT: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0102);
+    mod persistence {
+        use super::*;
 
-    fn test_db() -> Result<(TempDir, Database), String> {
-        let dir = tempdir().map_err(|e| e.to_string())?;
-        let path = dir.path().join("schema.redb");
-        let db = Database::open(&path).map_err(|e| e.to_string())?;
-        Ok((dir, db))
-    }
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn save_persists_schema_by_name() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test db");
+            let cmd = Command::new(&db);
 
-    fn schema_fixture(id: Uuid, name: &str) -> Result<Schema, String> {
-        let schema_name =
-            SchemaName::new(name.to_owned()).map_err(|e| e.to_string())?;
-        Schema::new(id, schema_name, vec![]).map_err(|e| e.to_string())
-    }
+            let schema =
+                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")
+                    .expect("Failed to create schema fixture");
 
-    #[test]
-    fn save_persists_schema_by_name() {
-        let (_dir, db) = test_db().expect("Failed to create test db");
-        let cmd = Command::new(&db);
+            cmd.save(&schema).expect("Save should succeed");
 
-        let schema = schema_fixture(TEST_SCHEMA_ID_NOTE, "note")
+            let stored = db
+                .get_owned::<Schema>("schemas", "note")
+                .expect("Read after save should succeed");
+            let stored_schema = stored.expect("Stored schema should exist");
+            assert_eq!(
+                stored_schema.name().as_ref(),
+                "note",
+                "Stored schema name should match"
+            );
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn delete_removes_schema_by_name() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test db");
+            let cmd = Command::new(&db);
+
+            let schema = fixtures::schema_fixture(
+                fixtures::TEST_SCHEMA_ID_PROJECT,
+                "project",
+            )
             .expect("Failed to create schema fixture");
+            cmd.save(&schema).expect("Save should succeed");
 
-        cmd.save(&schema).expect("Save should succeed");
+            cmd.delete("project").expect("Delete should succeed");
 
-        let stored = db
-            .get_owned::<Schema>("schemas", "note")
-            .expect("Read after save should succeed");
-        let stored_schema = stored.expect("Stored schema should exist");
-        assert_eq!(
-            stored_schema.name().as_ref(),
-            "note",
-            "Stored schema name should match"
-        );
-    }
-
-    #[test]
-    fn delete_removes_schema_by_name() {
-        let (_dir, db) = test_db().expect("Failed to create test db");
-        let cmd = Command::new(&db);
-
-        let schema = schema_fixture(TEST_SCHEMA_ID_PROJECT, "project")
-            .expect("Failed to create schema fixture");
-        cmd.save(&schema).expect("Save should succeed");
-
-        cmd.delete("project").expect("Delete should succeed");
-
-        let stored = db
-            .get_owned::<Schema>("schemas", "project")
-            .expect("Read after delete should succeed");
-        assert!(stored.is_none(), "Deleted schema should not exist");
+            let stored = db
+                .get_owned::<Schema>("schemas", "project")
+                .expect("Read after delete should succeed");
+            assert!(stored.is_none(), "Deleted schema should not exist");
+        }
     }
 }

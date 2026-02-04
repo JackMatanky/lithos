@@ -18,16 +18,16 @@ use super::{aggregate::SchemaName, error::SchemaError};
 /// ```
 /// # use lithos_core::schema::graph::Graph;
 /// # use lithos_core::schema::aggregate::SchemaName;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// let mut graph = Graph::new();
-/// graph.add_node(
-///     "child".try_into().unwrap(),
-///     Some("parent".try_into().unwrap()),
-/// );
-/// graph.add_node("parent".try_into().unwrap(), None);
+/// graph.add_node("child".try_into()?, Some("parent".try_into()?));
+/// graph.add_node("parent".try_into()?, None);
 ///
-/// let order = graph.resolve_order().unwrap();
+/// let order = graph.resolve_order()?;
 /// assert_eq!(order.len(), 2);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]

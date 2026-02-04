@@ -62,10 +62,11 @@ pub struct RawPropertyRef {
 /// use lithos_core::schema::property_spec::{PropertySpecDef, BoolSpecDef};
 /// use std::collections::HashSet;
 /// use uuid::Uuid;
+/// # fn run() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// let schema = RawSchema::new(
 ///     Uuid::now_v7(),
-///     SchemaName::new("note".to_string()).unwrap(),
+///     SchemaName::new("note".to_string())?,
 ///     None,
 ///     HashSet::new(),
 ///     vec![RawProperty::Inline(RawPropertyInline {
@@ -77,6 +78,8 @@ pub struct RawPropertyRef {
 ///     })],
 /// );
 /// assert_eq!(schema.properties.len(), 1);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]

@@ -180,7 +180,7 @@ impl Template {
     /// assert!(composed.extends().is_some(), "Composed template should extend base");
     /// # Ok(())
     /// # }
-    /// # run().unwrap();
+    /// # run()?;
     /// ```
     #[inline]
     pub fn compose(
@@ -272,6 +272,7 @@ impl Template {
     /// # use lithos_core::template::aggregate::{Template, Metadata};
     /// # use lithos_core::template::variable::VariableDefinition;
     /// # use std::collections::HashMap;
+    /// # fn main() -> Result<(), lithos_core::template::error::TemplateError> {
     /// let mut variables = HashMap::new();
     /// variables.insert("title".to_string(), VariableDefinition::String {
     ///     default: Some("Daily".to_string()),
@@ -286,8 +287,10 @@ impl Template {
     ///     None,
     ///     Metadata::default(),
     /// )
-    /// .unwrap();
+    /// ?;
     /// assert_eq!(template.name, "daily");
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn new(
@@ -408,6 +411,7 @@ impl Template {
     /// ```
     /// # use lithos_core::template::aggregate::{Template, Metadata};
     /// # use std::collections::HashMap;
+    /// # fn main() -> Result<(), lithos_core::template::error::TemplateError> {
     /// let template = Template::new(
     ///     "basic".to_string(),
     ///     "Hello {{name}}".to_string(),
@@ -415,8 +419,10 @@ impl Template {
     ///     None,
     ///     Metadata::default(),
     /// )
-    /// .unwrap();
-    /// template.validate().unwrap();
+    /// ?;
+    /// template.validate()?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), TemplateError> {
@@ -526,19 +532,15 @@ impl Template {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Expect/unwrap is permitted in Arrange phase of tests."
-)]
 mod tests {
     use proptest::prelude::*;
 
     use super::*;
 
-    mod new {
+    mod fixtures {
         use super::*;
 
-        fn base_template() -> Template {
+        pub fn base_template() -> Result<Template, TemplateError> {
             Template::new(
                 "base".to_owned(),
                 "Hello".to_owned(),
@@ -546,14 +548,23 @@ mod tests {
                 None,
                 Metadata::default(),
             )
-            .expect("Expected valid template")
         }
+    }
+
+    mod constructor {
+        use super::*;
 
         /// 3.4-UNIT-022: `name_and_content_accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn name_and_content_accessors_return_expected_values() {
-            let template = base_template();
+            let template =
+                fixtures::base_template().expect("Valid base template");
 
             assert_eq!(template.name, "base", "Template name should be 'base'");
             assert_eq!(
@@ -565,8 +576,14 @@ mod tests {
         /// 3.4-UNIT-022: `extends_is_none_for_base_template`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn extends_is_none_for_base_template() {
-            let template = base_template();
+            let template =
+                fixtures::base_template().expect("Valid base template");
 
             assert!(
                 template.extends().is_none(),
@@ -577,8 +594,14 @@ mod tests {
         /// 3.4-UNIT-022: `has_variables_false_for_base_template`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn has_variables_false_for_base_template() {
-            let template = base_template();
+            let template =
+                fixtures::base_template().expect("Valid base template");
 
             assert!(
                 !template.has_variables(),
@@ -589,8 +612,14 @@ mod tests {
         /// 3.4-UNIT-022: `pending_events_emitted_on_create`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn pending_events_emitted_on_create() {
-            let template = base_template();
+            let template =
+                fixtures::base_template().expect("Valid base template");
 
             assert_eq!(
                 template.pending_events().len(),
@@ -602,8 +631,14 @@ mod tests {
         /// 3.4-UNIT-022: `take_events_drains_event_queue`.
         /// Priority: P1.
         #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
         fn take_events_drains_event_queue() {
-            let mut template = base_template();
+            let mut template =
+                fixtures::base_template().expect("Valid base template");
 
             assert_eq!(
                 template.take_events().len(),
@@ -697,6 +732,11 @@ mod tests {
     /// 3.4-UNIT-026: `should_compose_templates_with_sections`.
     /// Priority: P1.
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test uses expect for deterministic fixture setup and value \
+                  extraction."
+    )]
     fn should_compose_templates_with_sections() {
         // GIVEN: a base template and a composition
         let base = Template::new(
@@ -757,6 +797,11 @@ mod tests {
     /// 3.4-UNIT-027: `apply_sections_handles_missing_variable`.
     /// Priority: P2.
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test uses expect for deterministic fixture setup and value \
+                  extraction."
+    )]
     fn apply_sections_handles_missing_variable() {
         // GIVEN: a template without variables
         let base = Template::new(

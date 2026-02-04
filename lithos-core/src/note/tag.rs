@@ -171,8 +171,9 @@ impl Tag {
     /// # Examples
     /// ```
     /// use lithos_core::note::tag::Tag;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let tag = Tag::new("#work/project/urgent").unwrap();
+    /// let tag = Tag::new("#work/project/urgent")?;
     /// assert_eq!(tag.full_path.as_str(), "work/project/urgent");
     /// assert_eq!(tag.segments.len(), 3);
     /// assert_eq!(&*tag.segments, &[
@@ -181,9 +182,11 @@ impl Tag {
     ///     "urgent".into()
     /// ]);
     ///
-    /// let simple_tag = Tag::new("#personal").unwrap();
+    /// let simple_tag = Tag::new("#personal")?;
     /// assert_eq!(simple_tag.full_path.as_str(), "personal");
     /// assert_eq!(&*simple_tag.segments, &["personal".into()]);
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -205,7 +208,7 @@ impl Tag {
 mod tests {
     use super::*;
 
-    mod new {
+    mod constructor {
         use rstest::rstest;
 
         use super::*;

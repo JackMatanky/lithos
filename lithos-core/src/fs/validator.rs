@@ -291,13 +291,15 @@ impl Validator {
     /// use std::path::PathBuf;
     ///
     /// use lithos_core::fs::validator::Validator;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let root = std::env::current_dir().unwrap().join("/path/to/vault");
+    /// let root = std::env::current_dir()?.join("/path/to/vault");
     /// let validator = Validator::new_strict(root);
     ///
     /// let symlink_path = PathBuf::from("link_to_file");
     /// let resolved = validator.resolve_safe_symlink(&symlink_path)?;
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn resolve_safe_symlink<P: AsRef<Path>>(
@@ -399,10 +401,6 @@ impl Validator {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Expect/unwrap is permitted in Arrange phase of tests."
-)]
 mod tests {
     use super::*;
 
@@ -671,6 +669,11 @@ mod tests {
             };
 
             #[test]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test uses expect for deterministic fixture setup \
+                          and value extraction."
+            )]
             fn rejects_escaped_symlinks() {
                 let ws = Workspace::new().expect("Workspace should be created");
                 let mut outside_file = NamedTempFile::new()
@@ -697,6 +700,11 @@ mod tests {
             }
 
             #[test]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test uses expect for deterministic fixture setup \
+                          and value extraction."
+            )]
             fn detects_symlink_loops() {
                 let ws = Workspace::new().expect("Workspace should be created");
                 let link_a = ws.root.join("link_a");
@@ -714,6 +722,11 @@ mod tests {
             }
 
             #[test]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test uses expect for deterministic fixture setup \
+                          and value extraction."
+            )]
             fn rejects_internal_hidden_targets() {
                 let ws = Workspace::new().expect("Workspace should be created");
                 let hidden_file = ws.create_file(".secret.txt", None);
@@ -742,6 +755,11 @@ mod tests {
             };
 
             #[test]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test uses expect for deterministic fixture setup \
+                          and value extraction."
+            )]
             fn allows_external_symlinks() {
                 let ws = Workspace::new().expect("Workspace should be created");
                 let mut outside_file = NamedTempFile::new()
@@ -803,6 +821,11 @@ mod tests {
                 let guard = cwd_lock().lock().map_err(|err| {
                     std::io::Error::other(format!("CWD lock poisoned: {err}"))
                 })?;
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "Test-only CWD guard needs current working \
+                              directory."
+                )]
                 let previous = std::env::current_dir()?;
                 std::env::set_current_dir(path)?;
                 Ok(Self {
