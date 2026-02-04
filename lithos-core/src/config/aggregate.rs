@@ -309,11 +309,9 @@ impl Config {
 
 #[cfg(test)]
 #[expect(
-    clippy::panic,
     clippy::arbitrary_source_item_ordering,
-    reason = "Test-only: panic is acceptable for exhaustive match failures, \
-              and the module item ordering is intentionally grouped for \
-              readability."
+    reason = "Test-only: the module item ordering is intentionally grouped \
+              for readability."
 )]
 mod tests {
     // # LINT_DISABLE_REASON: Standard test utilities and behavioral
@@ -746,22 +744,22 @@ mod tests {
                 Some(field_name) => {
                     // # LINT_DISABLE_REASON: Standard error matching pattern
                     // for Config validation.
-                    match field_name {
-                        "vault_path" => {
-                            assert!(matches!(
-                                result.as_ref(),
-                                Err(ConfigError::ValidationFailed { .. })
-                            ));
-                        }
-                        "log_level" => {
-                            assert!(matches!(
-                                result.as_ref(),
-                                Err(ConfigError::InvalidEnumValue { .. })
-                            ));
-                        }
-                        _ => panic!(
+                    if field_name == "vault_path" {
+                        assert!(matches!(
+                            result.as_ref(),
+                            Err(ConfigError::ValidationFailed { .. })
+                        ));
+                    } else if field_name == "log_level" {
+                        assert!(matches!(
+                            result.as_ref(),
+                            Err(ConfigError::InvalidEnumValue { .. })
+                        ));
+                    } else {
+                        assert_eq!(
+                            field_name, "",
                             "Unsupported field in test matrix: {field_name}"
-                        ),
+                        );
+                        return;
                     }
 
                     let err = result.unwrap_err();
@@ -798,7 +796,14 @@ mod tests {
                             );
                             field
                         }
-                        _ => panic!("Unexpected error variant: {err:?}"),
+                        other => {
+                            assert_eq!(
+                                other.to_string(),
+                                "",
+                                "Unexpected error variant: {other:?}"
+                            );
+                            return;
+                        }
                     };
                     assert_eq!(
                         field.as_ref(),
