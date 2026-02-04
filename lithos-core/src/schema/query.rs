@@ -67,6 +67,10 @@ impl super::ports::Query for Query<'_> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Expect/unwrap is permitted in Arrange phase of tests."
+)]
 mod tests {
     use tempfile::{TempDir, tempdir};
     use uuid::Uuid;
@@ -93,52 +97,49 @@ mod tests {
     }
 
     #[test]
-    fn find_by_id_returns_none_for_unindexed_schema() -> Result<(), String> {
-        let (_dir, db) = test_db()?;
+    fn find_by_id_returns_none_for_unindexed_schema() {
+        let (_dir, db) = test_db().expect("Failed to create test DB");
         let qry = Query::new(&db);
 
         let result =
-            qry.find_by_id(TEST_SCHEMA_ID_A).map_err(|e| e.to_string())?;
-        if result.is_some() {
-            return Err("find_by_id should return None".to_owned());
-        }
-        Ok(())
+            qry.find_by_id(TEST_SCHEMA_ID_A).expect("Query should succeed");
+        assert!(result.is_none(), "find_by_id should return None");
     }
 
     #[test]
-    fn find_by_name_returns_saved_schema() -> Result<(), String> {
-        let (_dir, db) = test_db()?;
+    fn find_by_name_returns_saved_schema() {
+        let (_dir, db) = test_db().expect("Failed to create test DB");
         let cmd = command::Command::new(&db);
         let qry = Query::new(&db);
 
-        let schema = schema_fixture(TEST_SCHEMA_ID_A, "note")?;
-        cmd.save(&schema).map_err(|e| e.to_string())?;
+        let schema = schema_fixture(TEST_SCHEMA_ID_A, "note")
+            .expect("Failed to create schema fixture");
+        cmd.save(&schema).expect("Save should succeed");
 
-        let stored = qry.find_by_name("note").map_err(|e| e.to_string())?;
-        let stored_schema = stored
-            .ok_or_else(|| "Schema should be found by name".to_owned())?;
-        if stored_schema.name().as_ref() != "note" {
-            return Err("Stored schema name should match".to_owned());
-        }
-        Ok(())
+        let stored = qry.find_by_name("note").expect("Query should succeed");
+        let stored_schema = stored.expect("Schema should be found by name");
+        assert_eq!(
+            stored_schema.name().as_ref(),
+            "note",
+            "Stored schema name should match"
+        );
     }
 
     #[test]
-    fn list_returns_all_saved_schemas() -> Result<(), String> {
-        let (_dir, db) = test_db()?;
+    fn list_returns_all_saved_schemas() {
+        let (_dir, db) = test_db().expect("Failed to create test DB");
         let cmd = command::Command::new(&db);
         let qry = Query::new(&db);
 
-        let schema_a = schema_fixture(TEST_SCHEMA_ID_A, "note")?;
-        let schema_b = schema_fixture(TEST_SCHEMA_ID_B, "project")?;
+        let schema_a = schema_fixture(TEST_SCHEMA_ID_A, "note")
+            .expect("Failed to create schema fixture");
+        let schema_b = schema_fixture(TEST_SCHEMA_ID_B, "project")
+            .expect("Failed to create schema fixture");
 
-        cmd.save(&schema_a).map_err(|e| e.to_string())?;
-        cmd.save(&schema_b).map_err(|e| e.to_string())?;
+        cmd.save(&schema_a).expect("Save should succeed");
+        cmd.save(&schema_b).expect("Save should succeed");
 
-        let schemas = qry.list().map_err(|e| e.to_string())?;
-        if schemas.len() != 2 {
-            return Err("List should return all saved schemas".to_owned());
-        }
-        Ok(())
+        let schemas = qry.list().expect("List should succeed");
+        assert_eq!(schemas.len(), 2, "List should return all saved schemas");
     }
 }
