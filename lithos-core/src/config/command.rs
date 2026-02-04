@@ -69,51 +69,53 @@ impl super::ports::Command for Command<'_> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test code uses unwrap/expect for clarity"
-)]
 mod tests {
     use tempfile::{TempDir, tempdir};
 
     use super::*;
 
-    fn test_db() -> (TempDir, Database) {
-        let dir = tempdir().unwrap();
+    fn test_db() -> Result<(TempDir, Database), String> {
+        let dir = tempdir().map_err(|e| e.to_string())?;
         let path = dir.path().join("config.redb");
-        let db = Database::open(&path).unwrap();
-        (dir, db)
+        let db = Database::open(&path).map_err(|e| e.to_string())?;
+        Ok((dir, db))
     }
 
     #[test]
-    fn save_global_persists_configuration() {
-        let (_dir, db) = test_db();
+    fn save_global_persists_configuration() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
         let cmd = Command::new(&db);
 
         let global = Global::default();
-        cmd.save_global(&global).unwrap();
+        cmd.save_global(&global).map_err(|e| e.to_string())?;
 
-        let stored = db.get_owned::<Global>("config", "global").unwrap();
-        let stored_global = stored.expect("Stored global config should exist");
-        assert_eq!(
-            stored_global, global,
-            "Stored global config should match input"
-        );
+        let stored = db
+            .get_owned::<Global>("config", "global")
+            .map_err(|e| e.to_string())?;
+        let stored_global = stored
+            .ok_or_else(|| "Stored global config should exist".to_owned())?;
+        if stored_global != global {
+            return Err("Stored global config should match input".to_owned());
+        }
+        Ok(())
     }
 
     #[test]
-    fn save_vault_persists_configuration() {
-        let (_dir, db) = test_db();
+    fn save_vault_persists_configuration() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
         let cmd = Command::new(&db);
 
         let vault = Vault::default();
-        cmd.save_vault(&vault).unwrap();
+        cmd.save_vault(&vault).map_err(|e| e.to_string())?;
 
-        let stored = db.get_owned::<Vault>("config", "vault").unwrap();
-        let stored_vault = stored.expect("Stored vault config should exist");
-        assert_eq!(
-            stored_vault, vault,
-            "Stored vault config should match input"
-        );
+        let stored = db
+            .get_owned::<Vault>("config", "vault")
+            .map_err(|e| e.to_string())?;
+        let stored_vault = stored
+            .ok_or_else(|| "Stored vault config should exist".to_owned())?;
+        if stored_vault != vault {
+            return Err("Stored vault config should match input".to_owned());
+        }
+        Ok(())
     }
 }
