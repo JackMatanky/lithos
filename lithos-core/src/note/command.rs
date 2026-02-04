@@ -165,6 +165,10 @@ impl super::ports::Command for Command<'_> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Expect/unwrap is permitted in Arrange phase of tests."
+)]
 mod tests {
     use tempfile::{TempDir, tempdir};
     use uuid::Uuid;
@@ -186,48 +190,40 @@ mod tests {
         Ok((dir, db))
     }
 
+    fn create_note(cmd: &Command, path: &str) -> Result<Note, String> {
+        cmd.create(path.to_owned()).map_err(|e| e.to_string())
+    }
+
+    fn parse_path(path: &str) -> Result<NotePath, String> {
+        NotePath::new(path.to_owned()).map_err(|e| e.to_string())
+    }
+
+    fn parse_tag(tag: &str) -> Result<Tag, String> {
+        Tag::new(tag).map_err(|e| e.to_string())
+    }
+
     #[test]
     fn create_persists_note_and_path_index() {
-        let db_result = test_db();
-        assert!(db_result.is_ok(), "Failed to create test DB: {db_result:?}");
-        let Ok((_dir, db)) = db_result else {
-            return;
-        };
+        let (_dir, db) = test_db().expect("Failed to create test DB");
         let cmd = Command::new(&db);
 
-        let note_result = cmd.create("notes/a.md".to_owned());
-        assert!(note_result.is_ok(), "Create should succeed: {note_result:?}");
-        let Ok(note) = note_result else {
-            return;
-        };
+        let note =
+            create_note(&cmd, "notes/a.md").expect("Create should succeed");
         let id_str = note.id.to_string();
 
-        let stored_result = db.get_owned::<Note>("notes", &id_str);
-        assert!(
-            stored_result.is_ok(),
-            "Read-back should succeed: {stored_result:?}"
-        );
-        let Ok(stored) = stored_result else {
-            return;
-        };
-        assert!(stored.is_some(), "Stored note should exist");
-        let Some(stored_note) = stored else {
-            return;
-        };
+        let stored = db
+            .get_owned::<Note>("notes", &id_str)
+            .expect("Read-back should succeed");
+        let stored_note = stored.expect("Stored note should exist");
         assert_eq!(
             stored_note.path.as_str(),
             "notes/a.md",
             "Stored note path should match"
         );
 
-        let ids_result = db.multimap_get("path_to_id", note.path.as_str());
-        assert!(
-            ids_result.is_ok(),
-            "Path index should be readable: {ids_result:?}"
-        );
-        let Ok(ids) = ids_result else {
-            return;
-        };
+        let ids = db
+            .multimap_get("path_to_id", note.path.as_str())
+            .expect("Path index should be readable");
         assert!(
             ids.contains(&id_str),
             "Path index should contain created note id"
@@ -236,101 +232,56 @@ mod tests {
 
     #[test]
     fn update_updates_path_and_tags_indexes() {
-        let db_result = test_db();
-        assert!(db_result.is_ok(), "Failed to create test DB: {db_result:?}");
-        let Ok((_dir, db)) = db_result else {
-            return;
-        };
+        let (_dir, db) = test_db().expect("Failed to create test DB");
         let cmd = Command::new(&db);
 
-        let note_result = cmd.create("notes/a.md".to_owned());
-        assert!(note_result.is_ok(), "Create should succeed: {note_result:?}");
-        let Ok(mut note) = note_result else {
-            return;
-        };
+        let mut note =
+            create_note(&cmd, "notes/a.md").expect("Create should succeed");
         let id_str = note.id.to_string();
         let old_path = note.path.as_str().to_owned();
 
-        let path_result = NotePath::new("notes/b.md".to_owned());
-        assert!(
-            path_result.is_ok(),
-            "NotePath should be valid: {path_result:?}"
-        );
-        let Ok(path) = path_result else {
-            return;
-        };
+        let path = parse_path("notes/b.md").expect("NotePath should be valid");
         note.path = path;
 
-        let tag_result = Tag::new("#project");
-        assert!(tag_result.is_ok(), "Tag should parse: {tag_result:?}");
-        let Ok(tag) = tag_result else {
-            return;
-        };
+        let tag = parse_tag("#project").expect("Tag should parse");
         note.tags = vec![tag];
 
-        let update_result = cmd.update(note.clone());
-        assert!(
-            update_result.is_ok(),
-            "Update should succeed: {update_result:?}"
-        );
+        cmd.update(note.clone()).expect("Update should succeed");
 
-        let old_ids_result = db.multimap_get("path_to_id", old_path.as_str());
-        assert!(
-            old_ids_result.is_ok(),
-            "Old path index should be readable: {old_ids_result:?}"
-        );
-        let Ok(old_ids) = old_ids_result else {
-            return;
-        };
+        let old_ids = db
+            .multimap_get("path_to_id", old_path.as_str())
+            .expect("Old path index should be readable");
         assert!(
             !old_ids.contains(&id_str),
             "Old path index should not contain updated note id"
         );
 
-        let new_ids_result = db.multimap_get("path_to_id", note.path.as_str());
-        assert!(
-            new_ids_result.is_ok(),
-            "New path index should be readable: {new_ids_result:?}"
-        );
-        let Ok(new_ids) = new_ids_result else {
-            return;
-        };
+        let new_ids = db
+            .multimap_get("path_to_id", note.path.as_str())
+            .expect("New path index should be readable");
         assert!(
             new_ids.contains(&id_str),
             "New path index should contain updated note id"
         );
 
-        let tag_key = note.tags.first().map(|t| t.full_path.as_str());
-        assert!(tag_key.is_some(), "Note should have one tag");
-        let Some(tag_key) = tag_key else {
-            return;
-        };
+        let tag_key = note
+            .tags
+            .first()
+            .map(|t| t.full_path.as_str())
+            .expect("Note should have one tag");
 
-        let tag_ids_result = db.multimap_get("tags_to_notes", tag_key);
-        assert!(
-            tag_ids_result.is_ok(),
-            "Tag index should be readable: {tag_ids_result:?}"
-        );
-        let Ok(tag_ids) = tag_ids_result else {
-            return;
-        };
+        let tag_ids = db
+            .multimap_get("tags_to_notes", tag_key)
+            .expect("Tag index should be readable");
         assert!(
             tag_ids.contains(&id_str),
             "Tag index should contain updated note id"
         );
 
-        let stored_result = db.get_owned::<Note>("notes", &id_str);
-        assert!(
-            stored_result.is_ok(),
-            "Read-back should succeed: {stored_result:?}"
-        );
-        let Ok(stored) = stored_result else {
-            return;
-        };
-        assert!(stored.is_some(), "Updated note should exist");
-        let Some(stored_note) = stored else {
-            return;
-        };
+        let stored = db
+            .get_owned::<Note>("notes", &id_str)
+            .expect("Read-back should succeed");
+        let stored_note = stored.expect("Updated note should exist");
         assert_eq!(
             stored_note.path.as_str(),
             "notes/b.md",
@@ -345,75 +296,41 @@ mod tests {
 
     #[test]
     fn delete_removes_note_and_indexes() {
-        let db_result = test_db();
-        assert!(db_result.is_ok(), "Failed to create test DB: {db_result:?}");
-        let Ok((_dir, db)) = db_result else {
-            return;
-        };
+        let (_dir, db) = test_db().expect("Failed to create test DB");
         let cmd = Command::new(&db);
 
-        let note_result = cmd.create("notes/a.md".to_owned());
-        assert!(note_result.is_ok(), "Create should succeed: {note_result:?}");
-        let Ok(mut note) = note_result else {
-            return;
-        };
+        let mut note =
+            create_note(&cmd, "notes/a.md").expect("Create should succeed");
         let id = note.id;
         let id_str = id.to_string();
 
-        let tag_result = Tag::new("#project");
-        assert!(tag_result.is_ok(), "Tag should parse: {tag_result:?}");
-        let Ok(tag) = tag_result else {
-            return;
-        };
+        let tag = parse_tag("#project").expect("Tag should parse");
         note.tags = vec![tag];
-        let update_result = cmd.update(note.clone());
-        assert!(
-            update_result.is_ok(),
-            "Update should succeed: {update_result:?}"
-        );
 
-        let delete_result = cmd.delete(id);
-        assert!(
-            delete_result.is_ok(),
-            "Delete should succeed: {delete_result:?}"
-        );
+        cmd.update(note.clone()).expect("Update should succeed");
+        cmd.delete(id).expect("Delete should succeed");
 
-        let stored_result = db.get_owned::<Note>("notes", &id_str);
-        assert!(
-            stored_result.is_ok(),
-            "Read-back should succeed: {stored_result:?}"
-        );
-        let Ok(stored) = stored_result else {
-            return;
-        };
+        let stored = db
+            .get_owned::<Note>("notes", &id_str)
+            .expect("Read-back should succeed");
         assert!(stored.is_none(), "Deleted note should not exist");
 
-        let path_ids_result = db.multimap_get("path_to_id", note.path.as_str());
-        assert!(
-            path_ids_result.is_ok(),
-            "Path index should be readable: {path_ids_result:?}"
-        );
-        let Ok(path_ids) = path_ids_result else {
-            return;
-        };
+        let path_ids = db
+            .multimap_get("path_to_id", note.path.as_str())
+            .expect("Path index should be readable");
         assert!(
             !path_ids.contains(&id_str),
             "Path index should not contain deleted note id"
         );
 
-        let tag_key = note.tags.first().map(|t| t.full_path.as_str());
-        assert!(tag_key.is_some(), "Note should have one tag");
-        let Some(tag_key) = tag_key else {
-            return;
-        };
-        let tag_ids_result = db.multimap_get("tags_to_notes", tag_key);
-        assert!(
-            tag_ids_result.is_ok(),
-            "Tag index should be readable: {tag_ids_result:?}"
-        );
-        let Ok(tag_ids) = tag_ids_result else {
-            return;
-        };
+        let tag_key = note
+            .tags
+            .first()
+            .map(|t| t.full_path.as_str())
+            .expect("Note should have one tag");
+        let tag_ids = db
+            .multimap_get("tags_to_notes", tag_key)
+            .expect("Tag index should be readable");
         assert!(
             !tag_ids.contains(&id_str),
             "Tag index should not contain deleted note id"
@@ -422,94 +339,45 @@ mod tests {
 
     #[test]
     fn delete_missing_note_is_noop() {
-        let db_result = test_db();
-        assert!(db_result.is_ok(), "Failed to create test DB: {db_result:?}");
-        let Ok((_dir, db)) = db_result else {
-            return;
-        };
+        let (_dir, db) = test_db().expect("Failed to create test DB");
         let cmd = Command::new(&db);
 
-        let existing_result = cmd.create("notes/existing.md".to_owned());
-        assert!(
-            existing_result.is_ok(),
-            "Create should succeed: {existing_result:?}"
-        );
-        let result = cmd.delete(TEST_MISSING_ID);
-
-        assert!(
-            result.is_ok(),
-            "Deleting missing note should be a no-op, got: {result:?}"
-        );
+        create_note(&cmd, "notes/existing.md").expect("Create should succeed");
+        cmd.delete(TEST_MISSING_ID)
+            .expect("Deleting missing note should be a no-op");
     }
 
     #[test]
     fn update_removes_old_tag_indexes_when_tags_change() {
-        let db_result = test_db();
-        assert!(db_result.is_ok(), "Failed to create test DB: {db_result:?}");
-        let Ok((_dir, db)) = db_result else {
-            return;
-        };
+        let (_dir, db) = test_db().expect("Failed to create test DB");
         let cmd = Command::new(&db);
 
         // GIVEN: a note with an initial tag
-        let note_result = cmd.create("notes/test.md".to_owned());
-        assert!(note_result.is_ok(), "Create should succeed: {note_result:?}");
-        let Ok(mut note) = note_result else {
-            return;
-        };
+        let mut note =
+            create_note(&cmd, "notes/test.md").expect("Create should succeed");
         let id_str = note.id.to_string();
-        let old_tag_result = Tag::new("#old-tag");
-        assert!(old_tag_result.is_ok(), "Tag should parse: {old_tag_result:?}");
-        let Ok(old_tag) = old_tag_result else {
-            return;
-        };
+        let old_tag = parse_tag("#old-tag").expect("Tag should parse");
         note.tags = vec![old_tag.clone()];
-        let initial_update_result = cmd.update(note.clone());
-        assert!(
-            initial_update_result.is_ok(),
-            "Update should succeed: {initial_update_result:?}"
-        );
+        cmd.update(note.clone()).expect("Update should succeed");
 
         // Verify old tag is indexed
         let old_tag_ids = db
             .multimap_get("tags_to_notes", old_tag.full_path.as_str())
-            .map_err(|e| e.to_string());
-        assert!(
-            old_tag_ids.is_ok(),
-            "Old tag index lookup should succeed: {old_tag_ids:?}"
-        );
-        let Ok(old_tag_ids) = old_tag_ids else {
-            return;
-        };
+            .expect("Old tag index lookup should succeed");
         assert!(
             old_tag_ids.contains(&id_str),
             "Old tag index should contain note before update"
         );
 
         // WHEN: updating the note with a different tag
-        let new_tag_result = Tag::new("#new-tag");
-        assert!(new_tag_result.is_ok(), "Tag should parse: {new_tag_result:?}");
-        let Ok(new_tag) = new_tag_result else {
-            return;
-        };
+        let new_tag = parse_tag("#new-tag").expect("Tag should parse");
         note.tags = vec![new_tag.clone()];
-        let second_update_result = cmd.update(note.clone());
-        assert!(
-            second_update_result.is_ok(),
-            "Update should succeed: {second_update_result:?}"
-        );
+        cmd.update(note.clone()).expect("Update should succeed");
 
         // THEN: old tag index should not contain the note
         let old_tag_ids_after = db
             .multimap_get("tags_to_notes", old_tag.full_path.as_str())
-            .map_err(|e| e.to_string());
-        assert!(
-            old_tag_ids_after.is_ok(),
-            "Old tag index lookup should succeed: {old_tag_ids_after:?}"
-        );
-        let Ok(old_tag_ids_after) = old_tag_ids_after else {
-            return;
-        };
+            .expect("Old tag index lookup should succeed");
         assert!(
             !old_tag_ids_after.contains(&id_str),
             "Old tag index should not contain note after update with \
@@ -519,14 +387,7 @@ mod tests {
         // AND: new tag index should contain the note
         let new_tag_ids = db
             .multimap_get("tags_to_notes", new_tag.full_path.as_str())
-            .map_err(|e| e.to_string());
-        assert!(
-            new_tag_ids.is_ok(),
-            "New tag index lookup should succeed: {new_tag_ids:?}"
-        );
-        let Ok(new_tag_ids) = new_tag_ids else {
-            return;
-        };
+            .expect("New tag index lookup should succeed");
         assert!(
             new_tag_ids.contains(&id_str),
             "New tag index should contain note after update"
