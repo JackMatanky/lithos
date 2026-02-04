@@ -1160,67 +1160,77 @@ mod tests {
         }
 
         #[test]
-        fn number_spec_validates_spec_definition() {
-            // GIVEN: an invalid NumberSpec (min > max)
+        fn number_spec_rejects_min_greater_than_max() {
             let result = NumberSpec::try_new(Some(10.0f64), Some(5.0f64), None);
             assert!(
                 matches!(result, Err(SchemaError::ValidationFailed(_))),
                 "Expected ValidationFailed for min > max, got: {result:?}"
             );
+        }
 
-            // AND: valid specs pass
-            let valid =
+        #[test]
+        fn number_spec_accepts_valid_bounds() {
+            let result =
                 NumberSpec::try_new(Some(5.0f64), Some(10.0f64), Some(1.0f64));
             assert!(
-                valid.is_ok(),
+                result.is_ok(),
                 "Valid NumberSpec should succeed, got error: {:?}",
-                valid.err()
+                result.err()
             );
         }
 
         #[test]
-        fn number_spec_rejects_non_finite_values() {
-            let spec_result =
-                NumberSpec::try_new(Some(0.0f64), Some(10.0f64), None);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic spec setup."
+        )]
+        fn number_spec_rejects_nan_value() {
+            let spec = NumberSpec::try_new(Some(0.0f64), Some(10.0f64), None)
+                .expect("Expected valid NumberSpec");
+            let result = spec.validate_range(f64::NAN);
             assert!(
-                spec_result.is_ok(),
-                "Expected valid NumberSpec, got: {spec_result:?}"
+                matches!(result, Err(SchemaError::ValidationFailed(_))),
+                "Expected ValidationFailed for NaN, got: {result:?}"
             );
-            let Ok(spec) = spec_result else {
-                return;
-            };
-
-            let nan_result = spec.validate_range(f64::NAN);
-            assert!(matches!(
-                nan_result,
-                Err(SchemaError::ValidationFailed(_))
-            ));
-
-            let inf_result = spec.validate_range(f64::INFINITY);
-            assert!(matches!(
-                inf_result,
-                Err(SchemaError::ValidationFailed(_))
-            ));
         }
 
         #[test]
-        fn number_spec_rejects_non_finite_spec_fields() {
-            let invalid_min_result =
-                NumberSpec::try_new(Some(f64::NAN), Some(10.0f64), None);
-            assert!(matches!(
-                invalid_min_result,
-                Err(SchemaError::ValidationFailed(_))
-            ));
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic spec setup."
+        )]
+        fn number_spec_rejects_infinite_value() {
+            let spec = NumberSpec::try_new(Some(0.0f64), Some(10.0f64), None)
+                .expect("Expected valid NumberSpec");
+            let result = spec.validate_range(f64::INFINITY);
+            assert!(
+                matches!(result, Err(SchemaError::ValidationFailed(_))),
+                "Expected ValidationFailed for infinity, got: {result:?}"
+            );
+        }
 
-            let invalid_step_result = NumberSpec::try_new(
+        #[test]
+        fn number_spec_rejects_non_finite_min_bound() {
+            let result =
+                NumberSpec::try_new(Some(f64::NAN), Some(10.0f64), None);
+            assert!(
+                matches!(result, Err(SchemaError::ValidationFailed(_))),
+                "Expected ValidationFailed for non-finite min, got: {result:?}"
+            );
+        }
+
+        #[test]
+        fn number_spec_rejects_non_finite_step() {
+            let result = NumberSpec::try_new(
                 Some(-10.0f64),
                 Some(10.0f64),
                 Some(f64::INFINITY),
             );
-            assert!(matches!(
-                invalid_step_result,
-                Err(SchemaError::ValidationFailed(_))
-            ));
+            assert!(
+                matches!(result, Err(SchemaError::ValidationFailed(_))),
+                "Expected ValidationFailed for non-finite step, got: \
+                 {result:?}"
+            );
         }
     }
 
@@ -1393,26 +1403,28 @@ mod tests {
         use super::*;
 
         #[test]
-        fn date_spec_validates_iso8601() {
-            // GIVEN: a DateSpec with RFC3339-like format
-            let spec_result =
-                DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ".to_owned());
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic DateSpec setup."
+        )]
+        fn date_spec_accepts_valid_date() {
+            let spec = DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ".to_owned())
+                .expect("Expected valid DateSpec");
+            let result = spec.validate_str("2024-01-15T14:30:00Z");
             assert!(
-                spec_result.is_ok(),
-                "Expected valid DateSpec, got: {spec_result:?}"
+                result.is_ok(),
+                "Expected date validation to succeed, got: {result:?}"
             );
-            let Ok(spec) = spec_result else {
-                return;
-            };
+        }
 
-            // THEN: it accepts matching strings
-            let ok_result = spec.validate_str("2024-01-15T14:30:00Z");
-            assert!(
-                ok_result.is_ok(),
-                "Expected date validation to succeed, got: {ok_result:?}"
-            );
-
-            // AND: rejects invalid dates
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic DateSpec setup."
+        )]
+        fn date_spec_rejects_invalid_date() {
+            let spec = DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ".to_owned())
+                .expect("Expected valid DateSpec");
             let result = spec.validate_str("not-a-date");
             assert!(
                 matches!(result, Err(SchemaError::InvalidDateFormat(_))),
@@ -1425,59 +1437,70 @@ mod tests {
     mod property_spec {
         use super::*;
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Helper uses expect for deterministic spec setup."
+        )]
+        fn bool_spec() -> PropertySpec {
+            PropertySpecDef::Bool(BoolSpecDef::default())
+                .try_into_validated()
+                .expect("Expected default BoolSpec to validate")
+        }
+
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Helper uses expect for deterministic spec setup."
+        )]
+        fn string_spec() -> PropertySpec {
+            PropertySpecDef::String(StringSpecDef::default())
+                .try_into_validated()
+                .expect("Expected default StringSpec to validate")
+        }
+
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Helper uses expect for deterministic spec setup."
+        )]
+        fn number_spec() -> PropertySpec {
+            PropertySpecDef::Number(NumberSpecDef::default())
+                .try_into_validated()
+                .expect("Expected default NumberSpec to validate")
+        }
+
         #[test]
-        fn property_spec_dispatch_works() {
-            // GIVEN: various spec variants
-            let b_result = PropertySpecDef::Bool(BoolSpecDef::default())
-                .try_into_validated();
-            assert!(
-                b_result.is_ok(),
-                "Expected default BoolSpec to validate, got: {b_result:?}"
-            );
-            let Ok(b) = b_result else {
-                return;
-            };
-
-            let s_result = PropertySpecDef::String(StringSpecDef::default())
-                .try_into_validated();
-            assert!(
-                s_result.is_ok(),
-                "Expected default StringSpec to validate, got: {s_result:?}"
-            );
-            let Ok(s) = s_result else {
-                return;
-            };
-
-            let n_result = PropertySpecDef::Number(NumberSpecDef::default())
-                .try_into_validated();
-            assert!(
-                n_result.is_ok(),
-                "Expected default NumberSpec to validate, got: {n_result:?}"
-            );
-            let Ok(n) = n_result else {
-                return;
-            };
-
-            // THEN: spec_type returns correct discriminant
+        fn bool_spec_type_reports_bool() {
+            let spec = bool_spec();
             assert_eq!(
-                b.spec_type(),
+                spec.spec_type(),
                 PropertySpecType::Bool,
                 "BoolSpec should return Bool type"
             );
+        }
+
+        #[test]
+        fn string_spec_type_reports_string() {
+            let spec = string_spec();
             assert_eq!(
-                s.spec_type(),
+                spec.spec_type(),
                 PropertySpecType::String,
                 "StringSpec should return String type"
             );
+        }
+
+        #[test]
+        fn number_spec_type_reports_number() {
+            let spec = number_spec();
             assert_eq!(
-                n.spec_type(),
+                spec.spec_type(),
                 PropertySpecType::Number,
                 "NumberSpec should return Number type"
             );
+        }
 
-            // AND: validate dispatches to inner spec (tested via successful
-            // bool parse)
-            let result = b.validate(&serde_json::Value::Bool(true));
+        #[test]
+        fn validate_dispatches_to_bool_spec() {
+            let spec = bool_spec();
+            let result = spec.validate(&serde_json::Value::Bool(true));
             assert!(
                 result.is_ok(),
                 "Bool validation should succeed, got error: {:?}",
