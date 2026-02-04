@@ -71,12 +71,13 @@ pub struct Paths {
 #[non_exhaustive]
 pub struct SchemaVersion(pub String);
 
-/// Vault-specific configuration (highest precedence).
+/// Vault-specific configuration.
 ///
-/// # Business Rules
+/// # Constraints
 /// - Vault configuration overrides Global configuration.
 /// - Loaded from vault-specific lithos.toml.
-/// - All fields optional (missing fields fall back to global).
+/// - The vault configuration has the highest precedence in the configuration
+///   hierarchy.
 #[derive(
     Debug,
     Default,
@@ -193,7 +194,7 @@ impl Metadata {
 }
 
 impl Paths {
-    /// Create new vault filesystem configuration.
+    /// Create a new vault filesystem configuration.
     #[inline]
     #[must_use]
     pub fn new(cache_dir: String, schema: Schema, template: Template) -> Self {

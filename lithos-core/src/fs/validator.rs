@@ -82,7 +82,7 @@ pub type ValidationMode = Mode;
 
 /// Path validator with configurable security modes.
 ///
-/// # Invariants
+/// # Constraints
 ///
 /// - **Security Focused**: Always rejects `..` components in input paths
 /// - **Platform Agnostic**: Correctly handles Windows and Unix path separators

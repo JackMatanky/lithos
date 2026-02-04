@@ -1,8 +1,7 @@
-//! Template aggregate root and related types.
+//! Template aggregate root and composition logic.
 //!
-//! This module defines the Template aggregate root with rkyv serialization
-//! support. The rkyv derive macros generate non-exhaustive archived types which
-//! trigger clippy warnings. These are suppressed below.
+//! Handles template lifecycle, variable definitions, and hierarchical
+//! composition through section insertion.
 #![allow(
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
@@ -419,7 +418,7 @@ impl Template {
         }
     }
 
-    /// Validates template business rules.
+    /// Validates template constraints.
     ///
     /// # Errors
     /// Returns `TemplateError::ValidationFailed` if placeholders are
@@ -449,7 +448,7 @@ impl Template {
         Ok(())
     }
 
-    /// Validates a template name according to business rules.
+    /// Validates a template name according to domain constraints.
     ///
     /// # Errors
     /// Returns `TemplateError` if the name is empty, too long, or contains
@@ -496,7 +495,7 @@ impl Template {
         Ok(())
     }
 
-    /// Validates a variable name according to business rules.
+    /// Validates a variable name according to domain constraints.
     ///
     /// # Errors
     /// Returns `TemplateError` if the name is empty, too long, contains

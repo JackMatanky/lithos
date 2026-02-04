@@ -218,7 +218,7 @@ impl Composition {
         Ok(())
     }
 
-    /// Validates composition business rules.
+    /// Validates composition constraints.
     ///
     /// # Errors
     /// Returns `TemplateError::VariableNotFound` if override key missing in

@@ -9,7 +9,7 @@ use super::{
 
 /// Command port for configuration write operations.
 ///
-/// # Invariants
+/// # Constraints
 /// - All operations return Result for error handling
 /// - Commands may modify state (write operations)
 ///
@@ -32,7 +32,7 @@ pub trait Command: Send + Sync {
 
 /// Query port for configuration read operations.
 ///
-/// # Invariants
+/// # Constraints
 /// - All operations return Result for error handling
 /// - Queries must NOT modify state (read-only operations)
 ///
@@ -42,7 +42,7 @@ pub trait Command: Send + Sync {
 pub trait Query: Send + Sync {
     /// Load configuration (Global + Vault merged).
     ///
-    /// # Business Rules
+    /// # Constraints
     /// - Loads both Global and Vault configurations
     /// - Merges using `Config::build` with Vault precedence
     /// - Validates merged result

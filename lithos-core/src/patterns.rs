@@ -3,31 +3,7 @@
     reason = "Patterns provided for future use across contexts"
 )]
 
-//! Predefined regex patterns for domain validation.
-//!
-//! This module provides reusable regex pattern constants that can be used
-//! across all bounded contexts (Config, Note, Schema, Template) for consistent
-//! validation of common data formats.
-//!
-//! # Visibility
-//! All items are `pub`.
-//!
-//! # Available Patterns
-//!
-//! ## Domain-Specific Patterns (Currently Used)
-//! - **`ALPHANUMERIC_NAME`**: Name validation for schemas, properties, and
-//!   templates
-//! - **`IDENTIFIER_NAME`**: Variable name validation (programming identifier
-//!   style)
-//!
-//! ## General Patterns (Future Use)
-//! - Email validation
-//! - URL validation
-//! - `WikiLink` validation (Obsidian-style links)
-//! - UUID v4 validation
-//! - Slug validation (kebab-case)
-//! - US Phone number validation
-//! - US Zip code validation
+//! Predefined regex patterns for domain validation across bounded contexts.
 
 // ============================================================================
 // Domain-Specific Patterns (Actively Used)
@@ -76,7 +52,7 @@ pub const URL: &str = r"^https?://[^\s/$.?#].[^\s]*$";
 pub const UUID_V4: &str =
     "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
 
-/// `WikiLink` validation pattern.
+/// `WikiLink` validation pattern (Obsidian-style).
 pub const WIKILINK: &str = r"^\[\[([^\]|]+)(\|[^\]]+)?\]\]$";
 
 /// US Zip code validation pattern.

@@ -1,15 +1,15 @@
-//! Note bounded context aggregate root.
+//! Note aggregate root and core domain entities.
 //!
-//! This module defines the Note aggregate root that composes subentities
-//! from other modules: Frontmatter, Links, Tags, Heading, Task, and Section.
+//! Composes frontmatter, links, tags, headings, tasks, and sections into a
+//! unified document model.
 //!
-//! # Business Rules
-//! - Note IDs use UUID v7 for stable, time-ordered identity.
-//! - All file paths must be vault-relative and validated against path
+//! # Constraints
+//! - **Identity**: Uses UUID v7 for stable, time-ordered identity.
+//! - **Security**: All file paths must be vault-relative and validated against
 //!   traversal.
-//! - Validation follows a three-phase pipeline: Syntactic -> Orchestration ->
+//! - **Validation**: Uses a three-phase pipeline: Syntactic -> Orchestration ->
 //!   Semantic.
-//! - Links are value objects owned by the Note aggregate; the parent
+//! - **Ownership**: Links are value objects owned by the Note; the parent
 //!   relationship is implicit through containment.
 #![expect(
     clippy::exhaustive_structs,

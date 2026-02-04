@@ -15,12 +15,13 @@ use super::{
     types::{Frontmatter, Logging, Schema, Template},
 };
 
-/// Global default configuration (lowest precedence).
+/// Global default configuration.
 ///
-/// # Business Rules
+/// # Constraints
 /// - Provides system-wide defaults.
 /// - Loaded from global lithos.toml or system defaults.
-/// - All fields must have values (no optionals).
+/// - The global configuration has the lowest precedence in the configuration
+///   hierarchy.
 #[derive(
     Debug,
     Clone,
