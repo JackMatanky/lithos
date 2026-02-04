@@ -7,11 +7,8 @@
 #MISE env={RUST_BACKTRACE="1"}
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE flag "-p --package <package>" help="Run tests for a specific package" {
-#USAGE   choices "domain" "app" "adapters" "cli" "test-utils" "integration-tests"
+#USAGE   choices "core" "lithos-core" "cli" "lithos"
 #USAGE }
-#USAGE arg "[filter]" help="Filter tests by name"
-
-set -euo pipefail
 
 #######################################
 # Map shorthand package names to full cargo package names.
@@ -24,10 +21,10 @@ set -euo pipefail
 #######################################
 map_package_name() {
     case "${usage_package:-}" in
-    domain | app | adapters | test-utils | integration-tests)
-        echo "lithos-${usage_package}"
+    core | lithos-core)
+        echo "lithos-core"
         ;;
-    cli)
+    cli | lithos)
         echo "lithos"
         ;;
     *)

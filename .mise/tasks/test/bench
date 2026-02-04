@@ -4,12 +4,8 @@
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #USAGE arg "[filter]" help="Filter benchmarks by name"
 #USAGE flag "-p --package <package>" help="Run benchmarks for a specific package" {
-#USAGE   choices "domain" "app" "adapters" "cli" "test-utils"
+#USAGE   choices "core" "lithos-core" "cli" "lithos"
 #USAGE }
-#USAGE flag "-q --quick" help="Run in quick mode"
-#USAGE flag "-n --noplot" help="Disable plot and HTML generation"
-
-set -euo pipefail
 
 #######################################
 # Map shorthand package names to full cargo package names.
@@ -22,10 +18,10 @@ set -euo pipefail
 #######################################
 map_package_name() {
   case "${usage_package:-}" in
-  domain | app | adapters | test-utils)
-    echo "lithos-${usage_package}"
+  core | lithos-core)
+    echo "lithos-core"
     ;;
-  cli)
+  cli | lithos)
     echo "lithos"
     ;;
   *)

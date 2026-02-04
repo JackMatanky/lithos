@@ -7,31 +7,8 @@
 #MISE env={TARGET_DIR="{{vars.target_dir}}", COVERAGE_REPORT="{{vars.coverage_report}}"}
 #USAGE flag "-o --open" help="Open coverage report in browser"
 #USAGE flag "-p --package <package>" help="Run coverage for a specific package" {
-#USAGE   choices "domain" "app" "adapters" "cli" "test-utils" "integration-tests"
+#USAGE   choices "core" "lithos-core" "cli" "lithos"
 #USAGE }
-#USAGE flag "--skip-e2e" help="Skip cli_smoke/purity tests (when coverage tooling cannot build CLI binaries)"
-
-set -euo pipefail
-
-#######################################
-# Open file cross-platform.
-# Arguments:
-#   path: File path to open
-# Outputs:
-#   None
-#######################################
-open_file() {
-    local path="$1"
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        open "${path}"
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        if command -v xdg-open >/dev/null; then
-            xdg-open "${path}"
-        else
-            echo "⚠️ Could not find xdg-open to open ${path}"
-        fi
-    fi
-}
 
 #######################################
 # Map shorthand package names to full cargo package names.
@@ -44,10 +21,10 @@ open_file() {
 #######################################
 map_package_name() {
     case "${usage_package:-}" in
-    domain | app | adapters | test-utils | integration-tests)
-        echo "lithos-${usage_package}"
+    core | lithos-core)
+        echo "lithos-core"
         ;;
-    cli)
+    cli | lithos)
         echo "lithos"
         ;;
     *)
@@ -55,6 +32,8 @@ map_package_name() {
         ;;
     esac
 }
+
+
 
 #######################################
 # Build tarpaulin args based on package selection.

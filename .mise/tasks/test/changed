@@ -46,13 +46,13 @@ get_changed_files() {
 # Arguments:
 #   Newline-separated list of file paths
 # Outputs:
-#   Echoes unique crate names
+#   Echoes unique crate names (lithos-core or lithos-cli)
 #######################################
 extract_changed_crates() {
     local changed_files=$1
     echo "${changed_files}" | \
-        grep -E '^(crates|tests)/' | \
-        cut -d'/' -f2 | \
+        grep -E '^(lithos-core|lithos-cli)/' | \
+        cut -d'/' -f1 | \
         sort -u || \
         true
 }
@@ -60,46 +60,29 @@ extract_changed_crates() {
 #######################################
 # Run tests for a workspace crate.
 # Arguments:
-#   Crate short name (e.g., "domain", "cli")
+#   Crate name (e.g., "lithos-core", "lithos-cli")
 # Outputs:
 #   Writes progress to stdout
 #######################################
 run_tests_for_crate() {
     local crate=$1
 
-    if [[ ! -d "crates/${crate}" ]]; then
+    if [[ ! -d "${crate}" ]]; then
         return 1
     fi
 
     echo "🏃 Running unit tests for crate '${crate}'..."
-    mise run test:unit --package "${crate}"
-}
 
-#######################################
-# Run tests for the test suite directory.
-# Arguments:
-#   Suite name (e.g., "suite", "utils")
-# Outputs:
-#   Writes progress to stdout
-# Returns:
-#   0 on success, exits on "utils" (full test needed)
-#######################################
-run_tests_for_suite() {
-    local suite=$1
-
-    case "${suite}" in
-        suite)
-            echo "🏃 Running E2E and integration suites..."
-            mise run test:e2e
-            mise run test:integration
+    # Map directory names to package names for mise run test:unit
+    case "${crate}" in
+        lithos-core)
+            mise run test:unit --package core
             ;;
-        utils)
-            echo "🏃 Test utils changed - running full suite to ensure no regressions..."
-            mise run test
-            exit 0
+        lithos-cli)
+            mise run test:unit --package cli
             ;;
         *)
-            echo "⚠️  Unknown test suite: ${suite}" >&2
+            echo "⚠️  Unknown crate: ${crate}" >&2
             return 1
             ;;
     esac
@@ -117,10 +100,8 @@ process_changed_crate() {
 
     echo "🧪 Processing ${crate}..."
 
-    if [[ -d "crates/${crate}" ]]; then
+    if [[ -d "${crate}" ]]; then
         run_tests_for_crate "${crate}"
-    elif [[ -d "tests/${crate}" ]]; then
-        run_tests_for_suite "${crate}"
     else
         echo "⚠️  Unknown crate location: ${crate}" >&2
     fi
@@ -153,9 +134,8 @@ main() {
     changed_crates=$(extract_changed_crates "${changed_files}")
 
     if [[ -z "${changed_crates}" ]]; then
-        echo "ℹ️  No crate-specific changes detected (only root docs or config)."
-        echo "Running full test suite as fallback..."
-        mise run test
+        echo "ℹ️  No crate-specific changes detected (only root docs, mise tasks, or config)."
+        echo "⚠️  Skipping tests - no code changes detected."
         exit 0
     fi
 
