@@ -386,6 +386,10 @@ impl NotePath {
     clippy::arbitrary_source_item_ordering,
     reason = "Test module groups fixtures and submodules for readability."
 )]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test setup uses expect for deterministic fixtures."
+)]
 mod tests {
     /// Test fixtures for Note model testing.
     mod fixtures {
@@ -431,6 +435,25 @@ mod tests {
             )
         }
 
+        pub fn note_with_link_mix() -> Result<Note, NoteError> {
+            let mut note = base_note()?;
+
+            note.links.push(wikilink("wiki1.md", 0)?);
+            note.links.push(wikilink("wiki2.md", 10)?);
+            let md = Link::new_markdown_link(
+                Target::External {
+                    url: "https://example.com".into(),
+                },
+                None,
+                None,
+                20,
+            )?;
+            note.links.push(md);
+            note.links.push(embed("img.png", 30)?);
+
+            Ok(note)
+        }
+
         // Additional fixtures can be added here as tests expand.
     }
 
@@ -449,11 +472,6 @@ mod tests {
         /// 3.1-UNIT-009: `tags_update_aggregate_state`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn tags_update_aggregate_state() {
             let mut note = fixtures::base_note().expect("Valid note fixture");
             let tag = Tag::new("#test").expect("Valid tag expected");
@@ -465,11 +483,6 @@ mod tests {
         /// 3.1-UNIT-009: `headings_update_aggregate_state`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn headings_update_aggregate_state() {
             let mut note = fixtures::base_note().expect("Valid note fixture");
             let heading = Heading::new(1, "H1".into(), 0)
@@ -482,11 +495,6 @@ mod tests {
         /// 3.1-UNIT-009: `tasks_update_aggregate_state`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn tasks_update_aggregate_state() {
             let mut note = fixtures::base_note().expect("Valid note fixture");
             let task = Task::new("Task".into(), TaskStatus::Incomplete, 0)
@@ -499,11 +507,6 @@ mod tests {
         /// 3.1-UNIT-009: `sections_update_aggregate_state`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn sections_update_aggregate_state() {
             let mut note = fixtures::base_note().expect("Valid note fixture");
             note.sections.push(Section::new(None, "Body".into(), 0..4));
@@ -514,11 +517,6 @@ mod tests {
         /// 3.1-UNIT-009: `links_update_aggregate_state`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn links_update_aggregate_state() {
             let mut note = fixtures::base_note().expect("Valid note fixture");
             note.links
@@ -535,11 +533,6 @@ mod tests {
         /// 3.1-UNIT-009: `frontmatter_updates_aggregate_state`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn frontmatter_updates_aggregate_state() {
             let mut note = fixtures::base_note().expect("Valid note fixture");
             let fm_fields =
@@ -559,44 +552,44 @@ mod tests {
         /// 3.1-UNIT-010: `filtered_link_iterators_work`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn filtered_link_iterators_work() {
-            // GIVEN: a note with various link types (2 wikilinks, 1 markdown, 1
-            // embed)
-            let mut note = fixtures::base_note().expect("Valid note fixture");
+        fn all_links_iterator_returns_total_count() {
+            let note =
+                fixtures::note_with_link_mix().expect("Valid note fixture");
 
-            note.links
-                .push(fixtures::wikilink("wiki1.md", 0).expect("Valid link"));
-            note.links
-                .push(fixtures::wikilink("wiki2.md", 10).expect("Valid link"));
-            let md = Link::new_markdown_link(
-                Target::External {
-                    url: "https://example.com".into(),
-                },
-                None,
-                None,
-                20,
-            )
-            .expect("Valid link expected");
-            note.links.push(md);
-
-            note.links
-                .push(fixtures::embed("img.png", 30).expect("Valid link"));
-
-            // WHEN: using filtered iterators to query specific link types
             let all_count = note.links.len();
-            let wiki_count = note.wikilinks().count();
-            let md_count = note.markdown_links().count();
-            let embed_count = note.embeds().count();
-
-            // THEN: each iterator returns the correct count for its type
             assert_eq!(all_count, 4, "Note should have 4 total links");
+        }
+
+        /// 3.1-UNIT-010: `filtered_link_iterators_work`.
+        /// Priority: P1.
+        #[test]
+        fn wikilinks_iterator_returns_wiki_count() {
+            let note =
+                fixtures::note_with_link_mix().expect("Valid note fixture");
+
+            let wiki_count = note.wikilinks().count();
             assert_eq!(wiki_count, 2, "Note should have 2 wikilinks");
+        }
+
+        /// 3.1-UNIT-010: `filtered_link_iterators_work`.
+        /// Priority: P1.
+        #[test]
+        fn markdown_links_iterator_returns_markdown_count() {
+            let note =
+                fixtures::note_with_link_mix().expect("Valid note fixture");
+
+            let md_count = note.markdown_links().count();
             assert_eq!(md_count, 1, "Note should have 1 markdown link");
+        }
+
+        /// 3.1-UNIT-010: `filtered_link_iterators_work`.
+        /// Priority: P1.
+        #[test]
+        fn embeds_iterator_returns_embed_count() {
+            let note =
+                fixtures::note_with_link_mix().expect("Valid note fixture");
+
+            let embed_count = note.embeds().count();
             assert_eq!(embed_count, 1, "Note should have 1 embed");
         }
     }
@@ -658,11 +651,6 @@ mod tests {
         /// 3.1-UNIT-005: `generates_sequential_uuids`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn generates_sequential_uuids() {
             // GIVEN: two UUIDs with different timestamps (v7 format embeds
             // timestamp) Use fixed test constants that represent
@@ -672,7 +660,6 @@ mod tests {
             // WHEN: creating notes with time-ordered UUIDs
             let note1 = Note::new(TEST_NOTE_ID_EARLIER, "one.md".into())
                 .expect("Failed to create note fixture");
-
             let note2 = Note::new(TEST_NOTE_ID_LATER, "two.md".into())
                 .expect("Failed to create note fixture");
 
@@ -691,19 +678,12 @@ mod tests {
         /// 3.1-UNIT-006: `succeeds_when_all_entities_are_valid`.
         /// Priority: P0.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn succeeds_when_all_entities_are_valid() {
             // GIVEN: a note aggregate with consistent sub-entities
             let note_id = TEST_NOTE_ID;
             let tag = Tag::new("#work").expect("Valid tag expected");
-
             let heading = Heading::new(1, "Title".into(), 0)
                 .expect("Valid heading expected");
-
             let link = Link::new_wikilink(
                 Target::Unresolved {
                     raw: "target.md".into(),
