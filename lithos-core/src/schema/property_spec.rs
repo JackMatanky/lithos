@@ -988,11 +988,6 @@ fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use super::*;
 
@@ -1054,13 +1049,19 @@ mod tests {
             #[case] expected: Result<(), SchemaError>,
         ) {
             // GIVEN: a validated spec
-            let spec = StringSpec::try_new(
+            let spec_result = StringSpec::try_new(
                 def.min_length,
                 def.max_length,
                 def.pattern,
                 def.enum_values,
-            )
-            .expect("valid StringSpecDef");
+            );
+            assert!(
+                spec_result.is_ok(),
+                "Expected valid StringSpecDef, got: {spec_result:?}"
+            );
+            let Ok(spec) = spec_result else {
+                return;
+            };
 
             // WHEN: validating a string value
             let result = spec.validate_str(value);
@@ -1131,8 +1132,14 @@ mod tests {
             #[case] expected: Result<(), SchemaError>,
         ) {
             // GIVEN: a validated spec
-            let spec = NumberSpec::try_new(def.min, def.max, def.step)
-                .expect("valid NumberSpecDef");
+            let spec_result = NumberSpec::try_new(def.min, def.max, def.step);
+            assert!(
+                spec_result.is_ok(),
+                "Expected valid NumberSpecDef, got: {spec_result:?}"
+            );
+            let Ok(spec) = spec_result else {
+                return;
+            };
 
             // WHEN: validating a numeric value
             let result = (|| {
@@ -1170,8 +1177,15 @@ mod tests {
 
         #[test]
         fn number_spec_rejects_non_finite_values() {
-            let spec = NumberSpec::try_new(Some(0.0f64), Some(10.0f64), None)
-                .expect("valid NumberSpec");
+            let spec_result =
+                NumberSpec::try_new(Some(0.0f64), Some(10.0f64), None);
+            assert!(
+                spec_result.is_ok(),
+                "Expected valid NumberSpec, got: {spec_result:?}"
+            );
+            let Ok(spec) = spec_result else {
+                return;
+            };
 
             let nan_result = spec.validate_range(f64::NAN);
             assert!(matches!(
@@ -1229,8 +1243,14 @@ mod tests {
             #[case] expected: Result<(), SchemaError>,
         ) {
             // GIVEN: a FileSpec with a directory restriction
-            let spec = FileSpec::try_new(Some(dir.to_owned()), None)
-                .expect("valid FileSpec");
+            let spec_result = FileSpec::try_new(Some(dir.to_owned()), None);
+            assert!(
+                spec_result.is_ok(),
+                "Expected valid FileSpec, got: {spec_result:?}"
+            );
+            let Ok(spec) = spec_result else {
+                return;
+            };
 
             // WHEN: validating file paths
             let result = spec.validate_str(path);
@@ -1245,8 +1265,15 @@ mod tests {
 
         #[test]
         fn file_spec_rejects_prefix_bypass() {
-            let spec = FileSpec::try_new(Some("notes/".to_owned()), None)
-                .expect("valid FileSpec");
+            let spec_result =
+                FileSpec::try_new(Some("notes/".to_owned()), None);
+            assert!(
+                spec_result.is_ok(),
+                "Expected valid FileSpec, got: {spec_result:?}"
+            );
+            let Ok(spec) = spec_result else {
+                return;
+            };
 
             let result = spec.validate_str("notes_evil/note.md");
             assert!(matches!(
@@ -1257,8 +1284,15 @@ mod tests {
 
         #[test]
         fn file_spec_rejects_parent_dir_traversal() {
-            let spec = FileSpec::try_new(Some("notes/".to_owned()), None)
-                .expect("valid FileSpec");
+            let spec_result =
+                FileSpec::try_new(Some("notes/".to_owned()), None);
+            assert!(
+                spec_result.is_ok(),
+                "Expected valid FileSpec, got: {spec_result:?}"
+            );
+            let Ok(spec) = spec_result else {
+                return;
+            };
 
             let result = spec.validate_str("../notes/note.md");
             assert!(matches!(
@@ -1269,8 +1303,15 @@ mod tests {
 
         #[test]
         fn file_spec_rejects_absolute_paths() {
-            let spec = FileSpec::try_new(Some("notes/".to_owned()), None)
-                .expect("valid FileSpec");
+            let spec_result =
+                FileSpec::try_new(Some("notes/".to_owned()), None);
+            assert!(
+                spec_result.is_ok(),
+                "Expected valid FileSpec, got: {spec_result:?}"
+            );
+            let Ok(spec) = spec_result else {
+                return;
+            };
 
             let result = spec.validate_str("/notes/note.md");
             assert!(matches!(
@@ -1281,8 +1322,15 @@ mod tests {
 
         #[test]
         fn file_spec_rejects_value_equal_to_directory() {
-            let spec = FileSpec::try_new(Some("notes/".to_owned()), None)
-                .expect("valid FileSpec");
+            let spec_result =
+                FileSpec::try_new(Some("notes/".to_owned()), None);
+            assert!(
+                spec_result.is_ok(),
+                "Expected valid FileSpec, got: {spec_result:?}"
+            );
+            let Ok(spec) = spec_result else {
+                return;
+            };
 
             let result = spec.validate_str("notes/");
             assert!(matches!(
@@ -1296,7 +1344,10 @@ mod tests {
             // GIVEN: a valid file_class spec
             let result =
                 FileSpec::try_new(None, Some("any-schema-name".to_owned()));
-            result.unwrap();
+            assert!(
+                result.is_ok(),
+                "Expected valid file_class spec, got: {result:?}"
+            );
         }
 
         #[test]
@@ -1305,7 +1356,10 @@ mod tests {
             let result = FileSpec::try_new(None, Some(String::new()));
 
             // THEN: it should be invalid
-            result.unwrap_err();
+            assert!(
+                result.is_err(),
+                "Expected invalid file_class spec, got: {result:?}"
+            );
         }
     }
 
@@ -1319,8 +1373,16 @@ mod tests {
 
             // THEN: it accepts booleans
             let p = PropertySpec::Bool(spec);
-            p.validate(&serde_json::json!(true)).unwrap();
-            p.validate(&serde_json::json!(false)).unwrap();
+            let true_result = p.validate(&serde_json::Value::Bool(true));
+            assert!(
+                true_result.is_ok(),
+                "Expected bool validation to succeed, got: {true_result:?}"
+            );
+            let false_result = p.validate(&serde_json::Value::Bool(false));
+            assert!(
+                false_result.is_ok(),
+                "Expected bool validation to succeed, got: {false_result:?}"
+            );
         }
     }
 
@@ -1330,11 +1392,22 @@ mod tests {
         #[test]
         fn date_spec_validates_iso8601() {
             // GIVEN: a DateSpec with RFC3339-like format
-            let spec = DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ".to_owned())
-                .expect("valid DateSpec");
+            let spec_result =
+                DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ".to_owned());
+            assert!(
+                spec_result.is_ok(),
+                "Expected valid DateSpec, got: {spec_result:?}"
+            );
+            let Ok(spec) = spec_result else {
+                return;
+            };
 
             // THEN: it accepts matching strings
-            spec.validate_str("2024-01-15T14:30:00Z").unwrap();
+            let ok_result = spec.validate_str("2024-01-15T14:30:00Z");
+            assert!(
+                ok_result.is_ok(),
+                "Expected date validation to succeed, got: {ok_result:?}"
+            );
 
             // AND: rejects invalid dates
             let result = spec.validate_str("not-a-date");
@@ -1352,15 +1425,35 @@ mod tests {
         #[test]
         fn property_spec_dispatch_works() {
             // GIVEN: various spec variants
-            let b = PropertySpecDef::Bool(BoolSpecDef::default())
-                .try_into_validated()
-                .expect("Default BoolSpec should be valid");
-            let s = PropertySpecDef::String(StringSpecDef::default())
-                .try_into_validated()
-                .expect("Default StringSpec should be valid");
-            let n = PropertySpecDef::Number(NumberSpecDef::default())
-                .try_into_validated()
-                .expect("Default NumberSpec should be valid");
+            let b_result = PropertySpecDef::Bool(BoolSpecDef::default())
+                .try_into_validated();
+            assert!(
+                b_result.is_ok(),
+                "Expected default BoolSpec to validate, got: {b_result:?}"
+            );
+            let Ok(b) = b_result else {
+                return;
+            };
+
+            let s_result = PropertySpecDef::String(StringSpecDef::default())
+                .try_into_validated();
+            assert!(
+                s_result.is_ok(),
+                "Expected default StringSpec to validate, got: {s_result:?}"
+            );
+            let Ok(s) = s_result else {
+                return;
+            };
+
+            let n_result = PropertySpecDef::Number(NumberSpecDef::default())
+                .try_into_validated();
+            assert!(
+                n_result.is_ok(),
+                "Expected default NumberSpec to validate, got: {n_result:?}"
+            );
+            let Ok(n) = n_result else {
+                return;
+            };
 
             // THEN: spec_type returns correct discriminant
             assert_eq!(
@@ -1381,7 +1474,7 @@ mod tests {
 
             // AND: validate dispatches to inner spec (tested via successful
             // bool parse)
-            let result = b.validate(&serde_json::json!(true));
+            let result = b.validate(&serde_json::Value::Bool(true));
             assert!(
                 result.is_ok(),
                 "Bool validation should succeed, got error: {:?}",
