@@ -399,6 +399,10 @@ impl Validator {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Expect/unwrap is permitted in Arrange phase of tests."
+)]
 mod tests {
     use super::*;
 
@@ -667,23 +671,11 @@ mod tests {
 
             #[test]
             fn rejects_escaped_symlinks() {
-                let ws_result = Workspace::new();
-                assert!(
-                    ws_result.is_ok(),
-                    "Workspace should be created, got: {:?}",
-                    ws_result.as_ref().err()
-                );
-                let Ok(ws) = ws_result else {
-                    return;
-                };
+                let ws = Workspace::new().expect("Workspace should be created");
                 let outside_target =
                     std::env::temp_dir().join(fixtures::OUTSIDE_NAME);
-                let write_result = std::fs::write(&outside_target, "outside");
-                assert!(
-                    write_result.is_ok(),
-                    "Test setup: Failed to create outside target: \
-                     {write_result:?}"
-                );
+                std::fs::write(&outside_target, "outside")
+                    .expect("Test setup: Failed to create outside target");
 
                 let symlink_path =
                     ws.create_symlink("escaped_link", &outside_target);
@@ -704,15 +696,7 @@ mod tests {
 
             #[test]
             fn detects_symlink_loops() {
-                let ws_result = Workspace::new();
-                assert!(
-                    ws_result.is_ok(),
-                    "Workspace should be created, got: {:?}",
-                    ws_result.as_ref().err()
-                );
-                let Ok(ws) = ws_result else {
-                    return;
-                };
+                let ws = Workspace::new().expect("Workspace should be created");
                 let link_a = ws.root.join("link_a");
                 let link_b = ws.root.join("link_b");
 
@@ -729,15 +713,7 @@ mod tests {
 
             #[test]
             fn rejects_internal_hidden_targets() {
-                let ws_result = Workspace::new();
-                assert!(
-                    ws_result.is_ok(),
-                    "Workspace should be created, got: {:?}",
-                    ws_result.as_ref().err()
-                );
-                let Ok(ws) = ws_result else {
-                    return;
-                };
+                let ws = Workspace::new().expect("Workspace should be created");
                 let hidden_file = ws.create_file(".secret.txt", None);
                 let symlink_path =
                     ws.create_symlink("link_to_secret", &hidden_file);
@@ -760,23 +736,11 @@ mod tests {
 
             #[test]
             fn allows_external_symlinks() {
-                let ws_result = Workspace::new();
-                assert!(
-                    ws_result.is_ok(),
-                    "Workspace should be created, got: {:?}",
-                    ws_result.as_ref().err()
-                );
-                let Ok(ws) = ws_result else {
-                    return;
-                };
+                let ws = Workspace::new().expect("Workspace should be created");
                 let outside_target =
                     std::env::temp_dir().join(fixtures::DOTFILE_NAME);
-                let write_result = std::fs::write(&outside_target, "dotfile");
-                assert!(
-                    write_result.is_ok(),
-                    "Test setup: Failed to write outside target: \
-                     {write_result:?}"
-                );
+                std::fs::write(&outside_target, "dotfile")
+                    .expect("Test setup: Failed to write outside target");
 
                 let _link_path =
                     ws.create_symlink("dotfile_link", &outside_target);
@@ -785,21 +749,14 @@ mod tests {
 
                 let repo_root =
                     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                let set_result = std::env::set_current_dir(&ws.root);
-                assert!(
-                    set_result.is_ok(),
-                    "Test setup: Failed to change directory: {set_result:?}"
-                );
+                std::env::set_current_dir(&ws.root)
+                    .expect("Test setup: Failed to change directory");
 
                 let resolve_result =
                     validator.resolve_safe_symlink("dotfile_link");
 
-                let restore_result = std::env::set_current_dir(repo_root);
-                assert!(
-                    restore_result.is_ok(),
-                    "Test teardown: Failed to restore directory: \
-                     {restore_result:?}"
-                );
+                std::env::set_current_dir(repo_root)
+                    .expect("Test teardown: Failed to restore directory");
 
                 assert!(
                     resolve_result.is_ok(),

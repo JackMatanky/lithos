@@ -526,6 +526,10 @@ impl Template {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Expect/unwrap is permitted in Arrange phase of tests."
+)]
 mod tests {
     use proptest::prelude::*;
 
@@ -539,20 +543,14 @@ mod tests {
         #[test]
         fn accessors_return_expected_values() {
             // GIVEN: a new template aggregate
-            let template_result = Template::new(
+            let mut template = Template::new(
                 "base".to_owned(),
                 "Hello".to_owned(),
                 HashMap::new(),
                 None,
                 Metadata::default(),
-            );
-            assert!(
-                template_result.is_ok(),
-                "Expected valid template, got: {template_result:?}"
-            );
-            let Ok(mut template) = template_result else {
-                return;
-            };
+            )
+            .expect("Expected valid template");
 
             // WHEN: reading template accessors
             let event_count = template.pending_events().len();
@@ -616,15 +614,9 @@ mod tests {
             );
 
             // WHEN: validation runs during construction
-            assert!(
-                result.is_err(),
-                "Expected unbalanced template to fail, got: {result:?}"
-            );
-            let Err(error) = result else {
-                return;
-            };
-
             // THEN: a validation error describes the unbalanced syntax
+            let error =
+                result.expect_err("Expected unbalanced template to fail");
             assert!(error.to_string().contains("Unbalanced"));
         }
     }
@@ -668,7 +660,7 @@ mod tests {
     #[test]
     fn should_compose_templates_with_sections() {
         // GIVEN: a base template and a composition
-        let base_result = Template::new(
+        let base = Template::new(
             "base".to_owned(),
             "Base: {{v}}".to_owned(),
             [("v".to_owned(), VariableDefinition::Boolean {
@@ -678,14 +670,8 @@ mod tests {
             .collect(),
             None,
             Metadata::default(),
-        );
-        assert!(
-            base_result.is_ok(),
-            "Expected valid base template, got: {base_result:?}"
-        );
-        let Ok(base) = base_result else {
-            return;
-        };
+        )
+        .expect("Expected valid base template");
 
         let composition = Composition {
             base_template: "base".to_owned(),
@@ -719,15 +705,8 @@ mod tests {
             [("base".to_owned(), base.clone())].into_iter().collect();
 
         // WHEN: composing the template
-        let composed_result =
-            Template::compose(&base, &composition, &templates);
-        assert!(
-            composed_result.is_ok(),
-            "Expected compose to succeed, got: {composed_result:?}"
-        );
-        let Ok(composed) = composed_result else {
-            return;
-        };
+        let composed = Template::compose(&base, &composition, &templates)
+            .expect("Expected compose to succeed");
 
         // THEN: content is correctly assembled
         assert!(composed.content.starts_with("Header\n"));
@@ -741,20 +720,14 @@ mod tests {
     #[test]
     fn apply_sections_handles_missing_variable() {
         // GIVEN: a template without variables
-        let base_result = Template::new(
+        let base = Template::new(
             "b".to_owned(),
             "no var".to_owned(),
             HashMap::new(),
             None,
             Metadata::default(),
-        );
-        assert!(
-            base_result.is_ok(),
-            "Expected valid base template, got: {base_result:?}"
-        );
-        let Ok(base) = base_result else {
-            return;
-        };
+        )
+        .expect("Expected valid base template");
 
         // WHEN: applying a section relative to a missing variable
         let mut content = "no var".to_owned();

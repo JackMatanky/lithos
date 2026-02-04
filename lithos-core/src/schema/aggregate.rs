@@ -543,6 +543,10 @@ impl SchemaName {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Expect/unwrap is permitted in Arrange phase of tests."
+)]
 mod tests {
     use uuid::Uuid;
 
@@ -566,68 +570,62 @@ mod tests {
     /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
     /// Priority: P1.
     #[test]
-    fn is_idempotent_on_identical_registration() -> Result<(), String> {
+    fn is_idempotent_on_identical_registration() {
         // GIVEN: a PropertyBank and an existing property
         let mut bank = PropertyBank::new();
         let spec = PropertySpec::String(StringSpec::default());
-        let name =
-            PropertyName::new("test".to_owned()).map_err(|e| e.to_string())?;
+        let name = PropertyName::new("test".to_owned()).expect("Valid name");
         let prop = Property::new(TEST_PROPERTY_ID_A, name, false, false, spec)
-            .map_err(|e| e.to_string())?;
+            .expect("Valid property");
 
         // WHEN: registering the same property twice
-        bank.register(prop.clone()).map_err(|e| e.to_string())?;
-        bank.register(prop).map_err(|e| e.to_string())?;
+        bank.register(prop.clone()).expect("First registration should succeed");
+        bank.register(prop)
+            .expect("Second registration (identical) should succeed");
 
         // THEN: the count remains 1
         let count = bank.all().count();
-        if count != 1 {
-            return Err(format!("Expected 1 property, got {count}"));
-        }
-        Ok(())
+        assert_eq!(
+            count, 1,
+            "Expected 1 property after identical registrations"
+        );
     }
 
     /// 3.3-UNIT-020: `maintains_dual_indices_for_fast_lookup`.
     /// Priority: P1.
     #[test]
-    fn maintains_dual_indices_for_fast_lookup() -> Result<(), String> {
+    fn maintains_dual_indices_for_fast_lookup() {
         // GIVEN: a PropertyBank and a Property definition
         let mut bank = PropertyBank::new();
         let spec = PropertySpec::String(StringSpec::default());
         let name_str = "test".to_owned();
-        let name =
-            PropertyName::new(name_str.clone()).map_err(|e| e.to_string())?;
+        let name = PropertyName::new(name_str).expect("Valid name");
         let id = TEST_PROPERTY_ID_B;
         let prop = Property::new(id, name, false, false, spec)
-            .map_err(|e| e.to_string())?;
+            .expect("Valid property");
 
         // WHEN: registering the property
-        bank.register(prop).map_err(|e| e.to_string())?;
+        bank.register(prop).expect("Registration should succeed");
 
         // THEN: it should be accessible by both ID and name
-        if bank.get_by_id(id).is_none() {
-            return Err(format!(
-                "Registered property should be retrievable by ID: {id}"
-            ));
-        }
-        if bank.get_by_name("test").is_none() {
-            return Err("Registered property should be retrievable by name: \
-                        'test'"
-                .to_owned());
-        }
-        Ok(())
+        assert!(
+            bank.get_by_id(id).is_some(),
+            "Registered property should be retrievable by ID: {id}"
+        );
+        assert!(
+            bank.get_by_name("test").is_some(),
+            "Registered property should be retrievable by name: 'test'"
+        );
     }
 
     /// 3.3-UNIT-024: `rejects_duplicate_names_with_different_definitions`.
     /// Priority: P1.
     #[test]
-    fn rejects_duplicate_names_with_different_definitions() -> Result<(), String>
-    {
+    fn rejects_duplicate_names_with_different_definitions() {
         // GIVEN: a PropertyBank with a registered property
         let mut bank = PropertyBank::new();
         let spec1 = PropertySpec::String(StringSpec::default());
-        let name =
-            PropertyName::new("test".to_owned()).map_err(|e| e.to_string())?;
+        let name = PropertyName::new("test".to_owned()).expect("Valid name");
         let prop1 = Property::new(
             TEST_PROPERTY_ID_A,
             name.clone(),
@@ -635,119 +633,109 @@ mod tests {
             false,
             spec1,
         )
-        .map_err(|e| e.to_string())?;
-        bank.register(prop1).map_err(|e| e.to_string())?;
+        .expect("Valid property");
+        bank.register(prop1).expect("Initial registration should succeed");
 
         // WHEN: registering a different definition with the same name
         let spec2 = PropertySpec::Bool(BoolSpec::default());
         let prop2 =
             Property::new(TEST_PROPERTY_ID_B, name, false, false, spec2)
-                .map_err(|e| e.to_string())?;
+                .expect("Valid property definition");
         let res = bank.register(prop2);
 
         // THEN: it must return a DuplicatePropertyName error
-        if !matches!(res, Err(SchemaError::DuplicatePropertyName(_))) {
-            return Err(format!(
-                "Duplicate property name should be rejected, got: {res:?}"
-            ));
-        }
-        Ok(())
+        assert!(
+            matches!(res, Err(SchemaError::DuplicatePropertyName(_))),
+            "Duplicate property name should be rejected with \
+             DuplicatePropertyName, got: {res:?}"
+        );
     }
 
     /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
     /// Priority: P1.
     #[test]
-    fn schema_accessors_return_expected_values() -> Result<(), String> {
+    fn schema_accessors_return_expected_values() {
         // GIVEN: a schema with properties
-        let name =
-            SchemaName::new("status".to_owned()).map_err(|e| e.to_string())?;
+        let name = SchemaName::new("status".to_owned()).expect("Valid name");
         let property = Property::new(
             TEST_PROPERTY_ID_C,
-            PropertyName::new("flag".to_owned()).map_err(|e| e.to_string())?,
+            PropertyName::new("flag".to_owned()).expect("Valid name"),
             true,
             false,
             PropertySpec::Bool(BoolSpec::default()),
         )
-        .map_err(|e| e.to_string())?;
+        .expect("Valid property");
         let schema = Schema::new(TEST_SCHEMA_ID_A, name, vec![property])
-            .map_err(|e| e.to_string())?;
+            .expect("Valid schema");
 
         // THEN: accessor methods return expected values
-        if &schema.name().0 != "status" {
-            return Err("Expected schema name to be 'status'".to_owned());
-        }
-        if schema.name().as_ref() != "status" {
-            return Err("Expected schema name to be 'status'".to_owned());
-        }
-        if schema.name().to_string() != "status" {
-            return Err("Expected schema name to be 'status'".to_owned());
-        }
-        if !schema.has("flag") {
-            return Err("Expected schema to have property 'flag'".to_owned());
-        }
-        if schema.get("flag").is_none() {
-            return Err("Expected schema.get('flag') to be Some".to_owned());
-        }
-        if schema.properties().len() != 1 {
-            return Err("Expected exactly 1 property".to_owned());
-        }
-        if schema.pending_events().len() != 1 {
-            return Err("Expected exactly 1 pending event".to_owned());
-        }
-        Ok(())
+        assert_eq!(schema.name().0, "status");
+        assert_eq!(schema.name().as_ref(), "status");
+        assert_eq!(schema.name().to_string(), "status");
+        assert!(schema.has("flag"), "Expected schema to have property 'flag'");
+        assert!(
+            schema.get("flag").is_some(),
+            "Expected schema.get('flag') to be Some"
+        );
+        assert_eq!(schema.properties().len(), 1, "Expected exactly 1 property");
+        assert_eq!(
+            schema.pending_events().len(),
+            1,
+            "Expected exactly 1 pending event"
+        );
     }
 
     /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
     /// Priority: P1.
     #[test]
-    fn property_bank_accessors_cover_ids_and_names() -> Result<(), String> {
+    fn property_bank_accessors_cover_ids_and_names() {
         // GIVEN: a property bank with an inserted property
         let mut bank = PropertyBank::new();
         let property = Property::new(
             TEST_PROPERTY_ID_A,
-            PropertyName::new("flag".to_owned()).map_err(|e| e.to_string())?,
+            PropertyName::new("flag".to_owned()).expect("Valid name"),
             true,
             false,
             PropertySpec::Bool(BoolSpec::default()),
         )
-        .map_err(|e| e.to_string())?;
+        .expect("Valid property");
         let id = property.id();
-        bank.register(property).map_err(|e| e.to_string())?;
+        bank.register(property).expect("Registration should succeed");
 
         // THEN: accessors for id/name work
-        if !bank.has_id(id) {
-            return Err("PropertyBank should contain property by ID".to_owned());
-        }
-        if !bank.has_name("flag") {
-            return Err("PropertyBank should contain property by name 'flag'"
-                .to_owned());
-        }
-        if bank.get_by_id(id).is_none() {
-            return Err(format!("Should retrieve property by ID: {id}"));
-        }
-        if bank.get_by_name("flag").is_none() {
-            return Err("Should retrieve property by name: 'flag'".to_owned());
-        }
-        if bank.get(id.to_string().as_str()).is_none() {
-            return Err(format!("Should retrieve property by ID string: {id}"));
-        }
-        bank.decode(id.to_string().as_str()).map_err(|e| e.to_string())?;
-        if bank.pending_events().len() != 1 {
-            return Err("Expected exactly 1 pending event".to_owned());
-        }
+        assert!(bank.has_id(id), "PropertyBank should contain property by ID");
+        assert!(
+            bank.has_name("flag"),
+            "PropertyBank should contain property by name 'flag'"
+        );
+        assert!(
+            bank.get_by_id(id).is_some(),
+            "Should retrieve property by ID: {id}"
+        );
+        assert!(
+            bank.get_by_name("flag").is_some(),
+            "Should retrieve property by name: 'flag'"
+        );
+        assert!(
+            bank.get(id.to_string().as_str()).is_some(),
+            "Should retrieve property by ID string: {id}"
+        );
+        bank.decode(id.to_string().as_str()).expect("Should decode ID string");
+        assert_eq!(
+            bank.pending_events().len(),
+            1,
+            "Expected exactly 1 pending event"
+        );
 
         let events = bank.take_events();
-        if events.len() != 1 {
-            return Err("take_events should return exactly 1 event after \
-                        registration"
-                .to_owned());
-        }
-        if !bank.pending_events().is_empty() {
-            return Err(
-                "pending_events should be empty after take_events".to_owned()
-            );
-        }
-
-        Ok(())
+        assert_eq!(
+            events.len(),
+            1,
+            "take_events should return exactly 1 event after registration"
+        );
+        assert!(
+            bank.pending_events().is_empty(),
+            "pending_events should be empty after take_events"
+        );
     }
 }

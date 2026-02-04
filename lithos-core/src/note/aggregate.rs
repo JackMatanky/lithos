@@ -369,8 +369,10 @@ impl NotePath {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
+    clippy::disallowed_methods,
     reason = "Test module organization and behavior verification patterns; \
-              module item ordering is intentionally grouped for readability."
+              module item ordering is intentionally grouped for readability. \
+              Expect/unwrap is permitted in Arrange phase of tests."
 )]
 mod tests {
     use fixtures::TEST_NOTE_ID;
@@ -411,94 +413,53 @@ mod tests {
         #[test]
         fn mutators_update_aggregate_state() {
             // GIVEN: a basic note
-            let note_result = Note::new(TEST_NOTE_ID, "note.md".to_owned());
-            assert!(
-                note_result.is_ok(),
-                "Failed to create note fixture: {note_result:?}"
-            );
-            let Ok(mut note) = note_result else {
-                return;
-            };
+            let mut note = Note::new(TEST_NOTE_ID, "note.md".to_owned())
+                .expect("Failed to create note fixture");
 
             // WHEN: adding various sub-entities
-            let tag_result = Tag::new("#test");
-            assert!(tag_result.is_ok(), "Valid tag expected: {tag_result:?}");
-            let Ok(tag) = tag_result else {
-                return;
-            };
+            let tag = Tag::new("#test").expect("Valid tag expected");
             note.tags.push(tag);
 
-            let heading_result = Heading::new(1, "H1".into(), 0);
-            assert!(
-                heading_result.is_ok(),
-                "Valid heading expected: {heading_result:?}"
-            );
-            let Ok(heading) = heading_result else {
-                return;
-            };
+            let heading = Heading::new(1, "H1".into(), 0)
+                .expect("Valid heading expected");
             note.headings.push(heading);
 
-            let task_result =
-                Task::new("Task".into(), TaskStatus::Incomplete, 0);
-            assert!(
-                task_result.is_ok(),
-                "Valid task expected: {task_result:?}"
-            );
-            let Ok(task) = task_result else {
-                return;
-            };
+            let task = Task::new("Task".into(), TaskStatus::Incomplete, 0)
+                .expect("Valid task expected");
             note.tasks.push(task);
 
             note.sections.push(Section::new(None, "Body".into(), 0..4));
 
             // Add a wikilink
-            let wikilink_result = Link::new_wikilink(
+            let wikilink = Link::new_wikilink(
                 Target::Unresolved {
                     raw: "link.md".into(),
                 },
                 None,
                 None,
                 0,
-            );
-            assert!(
-                wikilink_result.is_ok(),
-                "Valid wikilink expected: {wikilink_result:?}"
-            );
-            let Ok(wikilink) = wikilink_result else {
-                return;
-            };
+            )
+            .expect("Valid wikilink expected");
             note.links.push(wikilink);
 
             // Add an embed
-            let embed_result = Link::new_embed(
+            let embed = Link::new_embed(
                 Target::Unresolved {
                     raw: "img.png".into(),
                 },
                 EmbedType::Image,
                 None,
                 0,
-            );
-            assert!(
-                embed_result.is_ok(),
-                "Valid embed expected: {embed_result:?}"
-            );
-            let Ok(embed) = embed_result else {
-                return;
-            };
+            )
+            .expect("Valid embed expected");
             note.links.push(embed);
 
             let fm_fields =
                 [("title".to_owned(), FieldValue::String("Title".into()))]
                     .into_iter()
                     .collect();
-            let frontmatter_result = Frontmatter::new(fm_fields);
-            assert!(
-                frontmatter_result.is_ok(),
-                "Valid frontmatter expected: {frontmatter_result:?}"
-            );
-            let Ok(frontmatter) = frontmatter_result else {
-                return;
-            };
+            let frontmatter = Frontmatter::new(fm_fields)
+                .expect("Valid frontmatter expected");
             note.set_frontmatter(Some(frontmatter));
 
             // THEN: the aggregate state is updated correctly
@@ -529,78 +490,51 @@ mod tests {
         fn filtered_link_iterators_work() {
             // GIVEN: a note with various link types (2 wikilinks, 1 markdown, 1
             // embed)
-            let note_result = Note::new(TEST_NOTE_ID, "note.md".to_owned());
-            assert!(
-                note_result.is_ok(),
-                "Failed to create note fixture: {note_result:?}"
-            );
-            let Ok(mut note) = note_result else {
-                return;
-            };
+            let mut note = Note::new(TEST_NOTE_ID, "note.md".to_owned())
+                .expect("Failed to create note fixture");
 
-            let wiki1_result = Link::new_wikilink(
+            let wiki1 = Link::new_wikilink(
                 Target::Unresolved {
                     raw: "wiki1.md".into(),
                 },
                 None,
                 None,
                 0,
-            );
-            assert!(
-                wiki1_result.is_ok(),
-                "Valid link expected: {wiki1_result:?}"
-            );
-            let Ok(wiki1) = wiki1_result else {
-                return;
-            };
+            )
+            .expect("Valid link expected");
             note.links.push(wiki1);
 
-            let wiki2_result = Link::new_wikilink(
+            let wiki2 = Link::new_wikilink(
                 Target::Unresolved {
                     raw: "wiki2.md".into(),
                 },
                 None,
                 None,
                 10,
-            );
-            assert!(
-                wiki2_result.is_ok(),
-                "Valid link expected: {wiki2_result:?}"
-            );
-            let Ok(wiki2) = wiki2_result else {
-                return;
-            };
+            )
+            .expect("Valid link expected");
             note.links.push(wiki2);
 
-            let md_result = Link::new_markdown_link(
+            let md = Link::new_markdown_link(
                 Target::External {
                     url: "https://example.com".into(),
                 },
                 None,
                 None,
                 20,
-            );
-            assert!(md_result.is_ok(), "Valid link expected: {md_result:?}");
-            let Ok(md) = md_result else {
-                return;
-            };
+            )
+            .expect("Valid link expected");
             note.links.push(md);
 
-            let embed_result = Link::new_embed(
+            let embed = Link::new_embed(
                 Target::Unresolved {
                     raw: "img.png".into(),
                 },
                 EmbedType::Image,
                 None,
                 30,
-            );
-            assert!(
-                embed_result.is_ok(),
-                "Valid link expected: {embed_result:?}"
-            );
-            let Ok(embed) = embed_result else {
-                return;
-            };
+            )
+            .expect("Valid link expected");
             note.links.push(embed);
 
             // WHEN: using filtered iterators to query specific link types
@@ -681,23 +615,11 @@ mod tests {
             use super::fixtures::{TEST_NOTE_ID_EARLIER, TEST_NOTE_ID_LATER};
 
             // WHEN: creating notes with time-ordered UUIDs
-            let note1_result = Note::new(TEST_NOTE_ID_EARLIER, "one.md".into());
-            assert!(
-                note1_result.is_ok(),
-                "Failed to create note fixture: {note1_result:?}"
-            );
-            let Ok(note1) = note1_result else {
-                return;
-            };
+            let note1 = Note::new(TEST_NOTE_ID_EARLIER, "one.md".into())
+                .expect("Failed to create note fixture");
 
-            let note2_result = Note::new(TEST_NOTE_ID_LATER, "two.md".into());
-            assert!(
-                note2_result.is_ok(),
-                "Failed to create note fixture: {note2_result:?}"
-            );
-            let Ok(note2) = note2_result else {
-                return;
-            };
+            let note2 = Note::new(TEST_NOTE_ID_LATER, "two.md".into())
+                .expect("Failed to create note fixture");
 
             // THEN: later UUIDs sort after earlier ones
             assert!(
@@ -717,36 +639,20 @@ mod tests {
         fn succeeds_when_all_entities_are_valid() {
             // GIVEN: a note aggregate with consistent sub-entities
             let note_id = TEST_NOTE_ID;
-            let tag_result = Tag::new("#work");
-            assert!(tag_result.is_ok(), "Valid tag expected: {tag_result:?}");
-            let Ok(tag) = tag_result else {
-                return;
-            };
+            let tag = Tag::new("#work").expect("Valid tag expected");
 
-            let heading_result = Heading::new(1, "Title".into(), 0);
-            assert!(
-                heading_result.is_ok(),
-                "Valid heading expected: {heading_result:?}"
-            );
-            let Ok(heading) = heading_result else {
-                return;
-            };
+            let heading = Heading::new(1, "Title".into(), 0)
+                .expect("Valid heading expected");
 
-            let link_result = Link::new_wikilink(
+            let link = Link::new_wikilink(
                 Target::Unresolved {
                     raw: "target.md".into(),
                 },
                 None,
                 None,
                 0,
-            );
-            assert!(
-                link_result.is_ok(),
-                "Valid link expected: {link_result:?}"
-            );
-            let Ok(link) = link_result else {
-                return;
-            };
+            )
+            .expect("Valid link expected");
 
             let note = note_fixture(
                 note_id,
@@ -754,11 +660,8 @@ mod tests {
                 vec![tag],
                 vec![heading],
                 vec![link],
-            );
-            assert!(note.is_ok(), "Valid note fixture expected: {note:?}");
-            let Ok(note) = note else {
-                return;
-            };
+            )
+            .expect("Valid note fixture expected");
 
             // WHEN: validating the aggregate
             let result = note.validate();

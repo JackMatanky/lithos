@@ -375,26 +375,22 @@ mod tests {
         }
 
         #[cfg(test)]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Expect/unwrap is permitted in Arrange phase of tests."
+        )]
         mod tests {
             use super::*;
 
             #[test]
             fn builder_sets_fields() {
-                let property_result = PropertyBuilder::new()
+                let property = PropertyBuilder::new()
                     .name("priority")
                     .required(true)
                     .array(true)
                     .spec(PropertySpec::String(StringSpec::default()))
-                    .build();
-
-                assert!(
-                    property_result.is_ok(),
-                    "Expected builder to produce a valid Property, got: \
-                     {property_result:?}"
-                );
-                let Ok(property) = property_result else {
-                    return;
-                };
+                    .build()
+                    .expect("Expected builder to produce a valid Property");
 
                 assert_eq!(
                     &property.name().0,
@@ -413,6 +409,10 @@ mod tests {
         }
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Expect/unwrap is permitted in Arrange phase of tests."
+    )]
     mod property {
         use uuid::Uuid;
 
@@ -425,24 +425,12 @@ mod tests {
         fn accessors_return_expected_values() {
             // GIVEN: a property aggregate
             let spec = PropertySpec::String(StringSpec::default());
-            let name_result = PropertyName::new("status".to_owned());
-            assert!(
-                name_result.is_ok(),
-                "Expected valid property name, got: {name_result:?}"
-            );
-            let Ok(name) = name_result else {
-                return;
-            };
+            let name = PropertyName::new("status".to_owned())
+                .expect("Expected valid property name");
 
-            let property_result =
-                Property::new(TEST_PROPERTY_ID, name, true, false, spec);
-            assert!(
-                property_result.is_ok(),
-                "Expected valid property, got: {property_result:?}"
-            );
-            let Ok(property) = property_result else {
-                return;
-            };
+            let property =
+                Property::new(TEST_PROPERTY_ID, name, true, false, spec)
+                    .expect("Expected valid property");
 
             // THEN: accessors expose fields correctly
             assert!(
