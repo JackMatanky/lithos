@@ -90,12 +90,10 @@ impl FullPath {
     /// Creates a new `FullPath` from a raw tag string.
     fn new(input: &str) -> Result<Self, NoteError> {
         Self::validate(input)?;
-        #[expect(
-            clippy::string_slice,
-            reason = "Safe because we check input.starts_with('#') in \
-                      validate()"
-        )]
-        Ok(Self(input[1..].into()))
+        let tag_path = input.strip_prefix('#').ok_or_else(|| {
+            NoteError::Tag("Tag must start with #".to_owned())
+        })?;
+        Ok(Self(tag_path.into()))
     }
 
     /// Validates a raw tag string.
@@ -105,15 +103,9 @@ impl FullPath {
     /// empty.
     #[inline]
     pub fn validate(input: &str) -> Result<(), NoteError> {
-        if !input.starts_with('#') {
-            return Err(NoteError::Tag("Tag must start with #".to_owned()));
-        }
-
-        #[expect(
-            clippy::string_slice,
-            reason = "Safe because we check input.starts_with('#') above"
-        )]
-        let tag_path = &input[1..];
+        let tag_path = input.strip_prefix('#').ok_or_else(|| {
+            NoteError::Tag("Tag must start with #".to_owned())
+        })?;
 
         if tag_path.is_empty() {
             return Err(NoteError::Tag("Tag cannot be empty".to_owned()));
