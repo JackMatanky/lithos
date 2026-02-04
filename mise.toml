@@ -55,16 +55,7 @@ CLI_CRATE = "{{vars.cli_crate}}"
 core_crate = "lithos-core"
 cli_crate = "lithos-cli"
 
-# Test paths
-tests_dir = "tests"
-test_utils_crate = "{{vars.tests_dir}}/utils"
-test_macros_crate = "{{vars.tests_dir}}/macros"
-
-# Test Suite
-test_suite_dir = "{{vars.tests_dir}}/suite"
-test_arch_dir = "{{vars.test_suite_dir}}/arch"
-test_e2e_dir = "{{vars.test_suite_dir}}/e2e"
-test_integration_dir = "{{vars.test_suite_dir}}/integration"
+# Test and benchmark paths
 test_bench_dir = "benches"
 
 # Directory paths
@@ -90,9 +81,9 @@ binary_name = "lithos"
 
 # -------------------------- Testing -------------------------- #
 [tasks.test]
-description = "Run all tests (unit, integration, e2e, and arch)"
+description = "Run all tests (unit, integration, and e2e)"
 alias = "t"
-depends = ["test:unit", "test:integration", "test:e2e", "test:arch"]
+depends = ["test:unit", "test:integration", "test:e2e"]
 
 # Specific crate unit tests for developer convenience
 [tasks."test:unit:core"]
@@ -105,6 +96,43 @@ quiet = false
 description = "Run CLI crate unit tests"
 alias = "tucli"
 run = "mise run test:unit -- -p lithos"
+quiet = false
+
+# Specific module unit tests within lithos-core for granular testing
+[tasks."test:unit:config"]
+description = "Run config module unit tests"
+alias = "tuconf"
+run = "mise run test:unit -- -p config"
+quiet = false
+
+[tasks."test:unit:note"]
+description = "Run note module unit tests"
+alias = "tunote"
+run = "mise run test:unit -- -p note"
+quiet = false
+
+[tasks."test:unit:schema"]
+description = "Run schema module unit tests"
+alias = "tusch"
+run = "mise run test:unit -- -p schema"
+quiet = false
+
+[tasks."test:unit:template"]
+description = "Run template module unit tests"
+alias = "tutemp"
+run = "mise run test:unit -- -p template"
+quiet = false
+
+[tasks."test:unit:db"]
+description = "Run db module unit tests"
+alias = "tudb"
+run = "mise run test:unit -- -p db"
+quiet = false
+
+[tasks."test:unit:fs"]
+description = "Run fs module unit tests"
+alias = "tufs"
+run = "mise run test:unit -- -p fs"
 quiet = false
 
 # Specific crate benchmarks for developer convenience

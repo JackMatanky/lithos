@@ -2,8 +2,8 @@
 #MISE description="Run end-to-end (E2E) tests using nextest"
 #MISE alias="te"
 #MISE depends=["fmt", "build"]
-#MISE sources=["{{vars.test_e2e_dir}}/**/*.rs", "Cargo.toml"]
-#MISE env={RUST_BACKTRACE="1", TEST_E2E_DIR="{{vars.test_e2e_dir}}"}
+#MISE sources=["lithos-cli/**/*.rs", "Cargo.toml"]
+#MISE env={RUST_BACKTRACE="1"}
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE arg "[filter]" help="Filter tests by name"
 
