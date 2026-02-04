@@ -205,6 +205,10 @@ impl Tag {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test setup uses expect for deterministic fixtures."
+)]
 mod tests {
     use super::*;
 
@@ -214,76 +218,81 @@ mod tests {
         use super::*;
 
         #[test]
-        fn accessors_return_expected_values() {
-            let tag_result = Tag::new("#work/project");
-            assert!(tag_result.is_ok(), "Tag should parse: {tag_result:?}");
-            let Ok(tag) = tag_result else {
-                return;
-            };
-            assert_eq!(tag.full_path.as_str(), "work/project");
-            assert_eq!(tag.segments.len(), 2);
-            assert_eq!(&*tag.segments, &["work".into(), "project".into()]);
+        fn full_path_returns_expected_value() {
+            let tag = Tag::new("#work/project").expect("Tag should parse");
+            assert_eq!(
+                tag.full_path.as_str(),
+                "work/project",
+                "Full path should omit leading #"
+            );
+        }
+
+        #[test]
+        fn segments_length_matches_expected() {
+            let tag = Tag::new("#work/project").expect("Tag should parse");
+            assert_eq!(tag.segments.len(), 2, "Segments length should match");
+        }
+
+        #[test]
+        fn segments_match_expected_values() {
+            let tag = Tag::new("#work/project").expect("Tag should parse");
+            assert_eq!(
+                &*tag.segments,
+                &["work".into(), "project".into()],
+                "Segments should match expected values"
+            );
         }
 
         #[rstest]
-        #[case::simple("#personal", Ok(vec!["personal"]))]
+        #[case::simple("#personal", vec!["personal"])]
         #[case::hierarchical(
             "#work/project/urgent",
-            Ok(vec!["work", "project", "urgent"])
+            vec!["work", "project", "urgent"]
         )]
+        fn tag_parsing_accepts_valid_inputs(
+            #[case] input: &str,
+            #[case] expected: Vec<&str>,
+        ) {
+            let tag = Tag::new(input).expect("Tag should parse");
+            let actual_segments: Vec<&str> =
+                tag.segments.iter().map(AsRef::as_ref).collect();
+            assert_eq!(
+                actual_segments, expected,
+                "Tag segments should match expected for input: {input}"
+            );
+        }
+
+        #[rstest]
         #[case::missing_hash(
             "invalid",
-            Err(NoteError::Tag("Tag must start with #".to_owned()))
+            NoteError::Tag("Tag must start with #".to_owned())
         )]
         #[case::only_hash(
             "#",
-            Err(NoteError::Tag("Tag cannot be empty".to_owned()))
+            NoteError::Tag("Tag cannot be empty".to_owned())
         )]
         #[case::empty_segments(
             "#work//urgent",
-            Err(NoteError::Tag("Empty tag segment".to_owned()))
+            NoteError::Tag("Empty tag segment".to_owned())
         )]
         #[case::invalid_chars(
             "#work project",
-            Err(NoteError::Tag(
+            NoteError::Tag(
                 "Invalid tag segment 'work project': only alphanumeric, \
                   underscore, and hyphen allowed"
                     .to_owned(),
-            ))
+            )
         )]
-        fn tag_parsing_matrix(
+        fn tag_parsing_rejects_invalid_inputs(
             #[case] input: &str,
-            #[case] expected: Result<Vec<&str>, NoteError>,
+            #[case] expected: NoteError,
         ) {
             let result = Tag::new(input);
-
-            match expected {
-                Ok(segments) => {
-                    assert!(result.is_ok(), "Failed for {input}: {result:?}",);
-                    let Ok(tag) = result else {
-                        return;
-                    };
-                    let actual_segments: Vec<&str> =
-                        tag.segments.iter().map(AsRef::as_ref).collect();
-                    assert_eq!(
-                        actual_segments, segments,
-                        "Tag segments should match expected for input: {input}"
-                    );
-                }
-                Err(e) => {
-                    assert!(
-                        result.is_err(),
-                        "Expected error for {input}, got: {result:?}"
-                    );
-                    let Err(actual) = result else {
-                        return;
-                    };
-                    assert_eq!(
-                        actual, e,
-                        "Error should match expected for input: {input}"
-                    );
-                }
-            }
+            assert_eq!(
+                result,
+                Err(expected),
+                "Expected error for {input}, got: {result:?}"
+            );
         }
     }
 
@@ -293,7 +302,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn rejects_invalid_characters_in_segments() {
+        fn rejects_invalid_characters_in_segments() -> Result<(), String> {
             let mut runner = TestRunner::deterministic();
             let strategy =
                 "#[a-zA-Z0-9_-]*/[ !@#$%^&*()]+/[a-zA-Z0-9_-]*".prop_map(|s| s);
@@ -306,14 +315,15 @@ mod tests {
                 );
                 Ok(())
             });
-            assert!(
-                run_result.is_ok(),
-                "Deterministic proptest should not fail: {run_result:?}"
-            );
+            run_result.map_err(|e| {
+                format!("Deterministic proptest should not fail: {e:?}")
+            })?;
+
+            Ok(())
         }
 
         #[test]
-        fn accepts_valid_alphanumeric_tags() {
+        fn accepts_valid_alphanumeric_tags() -> Result<(), String> {
             let mut runner = TestRunner::deterministic();
             let strategy = "#[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*".prop_map(|s| s);
 
@@ -325,10 +335,11 @@ mod tests {
                 );
                 Ok(())
             });
-            assert!(
-                run_result.is_ok(),
-                "Deterministic proptest should not fail: {run_result:?}"
-            );
+            run_result.map_err(|e| {
+                format!("Deterministic proptest should not fail: {e:?}")
+            })?;
+
+            Ok(())
         }
     }
 }
