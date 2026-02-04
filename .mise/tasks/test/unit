@@ -31,10 +31,8 @@ map_package_name() {
     cli)
         echo "lithos"
         ;;
-    "")
-        echo ""
-        ;;
     *)
+        # Empty string for workspace-wide or unrecognized
         echo ""
         ;;
     esac

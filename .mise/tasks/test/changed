@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Run tests only for crates affected by changes"
 #MISE alias="tc"
-#USAGE arg "[base_ref]" help="The git ref to compare against (default: origin/main or HEAD~1)"
+#USAGE arg "[base_ref]" help="Git ref to compare against (auto-detects origin/main or falls back to HEAD~1)"
 
 set -euo pipefail
 

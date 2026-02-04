@@ -22,11 +22,21 @@ generate_adr_metrics() {
         status=$(grep -oE "\*   \*\*Status\*\*:[[:space:]]*[A-Za-z]+" "$adr" | awk -F': ' '{print $2}')
 
         case "$status" in
-        Accepted) ((ACCEPTED++)) ;;
-        Proposed) ((PROPOSED++)) ;;
-        Superseded) ((SUPERSEDED++)) ;;
-        Rejected) ((REJECTED++)) ;;
-        Deprecated) ((DEPRECATED++)) ;;
+        Accepted)
+            ((ACCEPTED++))
+            ;;
+        Proposed)
+            ((PROPOSED++))
+            ;;
+        Superseded)
+            ((SUPERSEDED++))
+            ;;
+        Rejected)
+            ((REJECTED++))
+            ;;
+        Deprecated)
+            ((DEPRECATED++))
+            ;;
         esac
 
         # Check for completeness (all 6 headers present)

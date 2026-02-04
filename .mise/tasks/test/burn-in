@@ -2,8 +2,8 @@
 #MISE description="Run tests repeatedly to detect flaky failures (Burn-In)"
 #MISE alias="tb"
 #MISE depends=["fmt", "build"]
-#USAGE arg "[iterations]" help="Number of iterations to run (default: 10)"
-#USAGE arg "[task]" help="The mise task to run (default: test)"
+#USAGE arg "[iterations]" help="Number of iterations to run" default="10"
+#USAGE arg "[task]" help="The mise task to run" default="test"
 
 set -euo pipefail
 
