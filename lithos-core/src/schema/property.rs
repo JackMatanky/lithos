@@ -263,15 +263,8 @@ impl PropertyName {
     /// Returns `SchemaError` if validation fails.
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
-        static RE: LazyLock<Regex> = LazyLock::new(|| {
-            #[expect(
-                clippy::expect_used,
-                clippy::disallowed_methods,
-                reason = "Static regex literal is safe and efficient"
-            )]
-            Regex::new(patterns::ALPHANUMERIC_NAME)
-                .expect("Static regex literal")
-        });
+        static RE: LazyLock<Result<Regex, regex::Error>> =
+            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME));
 
         if name.is_empty() {
             return Err(SchemaError::EmptyPropertyName);
@@ -280,7 +273,13 @@ impl PropertyName {
             return Err(SchemaError::PropertyNameTooLong(name.len()));
         }
 
-        if !RE.is_match(name) {
+        let re = RE.as_ref().map_err(|error| {
+            SchemaError::ValidationFailed(format!(
+                "Invalid property name regex: {error}"
+            ))
+        })?;
+
+        if !re.is_match(name) {
             return Err(SchemaError::InvalidPropertyName(name.to_owned()));
         }
         Ok(())
@@ -288,11 +287,6 @@ impl PropertyName {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     /// Test fixtures and builders for `Property`.
     mod fixtures {
@@ -334,18 +328,11 @@ mod tests {
 
             /// Builds the `Property` entity.
             ///
-            /// # Panics
-            /// Panics if the property configuration is invalid.
+            /// # Errors
+            /// Returns `SchemaError` if the property configuration is invalid.
             #[inline]
-            #[must_use]
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test builder uses Result::expect() for creating \
-                          properties from hardcoded test data. Failures here \
-                          indicate logic errors in test setup."
-            )]
-            pub fn build(self) -> Property {
-                let name = PropertyName::new(self.name).expect("Valid name");
+            pub fn build(self) -> Result<Property, SchemaError> {
+                let name = PropertyName::new(self.name)?;
                 Property::new(
                     TEST_PROPERTY_ID,
                     name,
@@ -353,7 +340,6 @@ mod tests {
                     self.array,
                     self.spec,
                 )
-                .expect("Valid property")
             }
 
             /// Sets the name of the property.
@@ -394,12 +380,21 @@ mod tests {
 
             #[test]
             fn builder_sets_fields() {
-                let property = PropertyBuilder::new()
+                let property_result = PropertyBuilder::new()
                     .name("priority")
                     .required(true)
                     .array(true)
                     .spec(PropertySpec::String(StringSpec::default()))
                     .build();
+
+                assert!(
+                    property_result.is_ok(),
+                    "Expected builder to produce a valid Property, got: \
+                     {property_result:?}"
+                );
+                let Ok(property) = property_result else {
+                    return;
+                };
 
                 assert_eq!(
                     &property.name().0,
@@ -430,14 +425,24 @@ mod tests {
         fn accessors_return_expected_values() {
             // GIVEN: a property aggregate
             let spec = PropertySpec::String(StringSpec::default());
-            let property = Property::new(
-                TEST_PROPERTY_ID,
-                PropertyName::new("status".to_owned()).unwrap(),
-                true,
-                false,
-                spec,
-            )
-            .unwrap();
+            let name_result = PropertyName::new("status".to_owned());
+            assert!(
+                name_result.is_ok(),
+                "Expected valid property name, got: {name_result:?}"
+            );
+            let Ok(name) = name_result else {
+                return;
+            };
+
+            let property_result =
+                Property::new(TEST_PROPERTY_ID, name, true, false, spec);
+            assert!(
+                property_result.is_ok(),
+                "Expected valid property, got: {property_result:?}"
+            );
+            let Ok(property) = property_result else {
+                return;
+            };
 
             // THEN: accessors expose fields correctly
             assert!(
@@ -490,11 +495,30 @@ mod tests {
             // GIVEN: various property name inputs
             // WHEN: creating PropertyName instances
             // THEN: it should accept valid names and reject invalid ones
-            PropertyName::new("valid_name".into()).unwrap();
-            PropertyName::new("valid-name-123".into()).unwrap();
-            PropertyName::new(String::new()).unwrap_err();
-            PropertyName::new("Invalid Name".into()).unwrap_err();
-            PropertyName::new("a".repeat(65)).unwrap_err();
+            let ok1 = PropertyName::new("valid_name".into());
+            assert!(ok1.is_ok(), "Expected valid_name to pass, got: {ok1:?}");
+
+            let ok2 = PropertyName::new("valid-name-123".into());
+            assert!(
+                ok2.is_ok(),
+                "Expected valid-name-123 to pass, got: {ok2:?}"
+            );
+
+            let empty = PropertyName::new(String::new());
+            assert!(empty.is_err(), "Expected empty to fail, got: {empty:?}");
+
+            let invalid_space = PropertyName::new("Invalid Name".into());
+            assert!(
+                invalid_space.is_err(),
+                "Expected space-containing name to fail, got: \
+                 {invalid_space:?}"
+            );
+
+            let too_long = PropertyName::new("a".repeat(65));
+            assert!(
+                too_long.is_err(),
+                "Expected >64 char name to fail, got: {too_long:?}"
+            );
         }
 
         /// 3.3-UNIT-008: `property_name_validates_format`.
@@ -504,9 +528,17 @@ mod tests {
             // GIVEN: invalid and valid name formats
             // WHEN: creating PropertyName instances
             // THEN: it should reject invalid characters
-            PropertyName::new("invalid_name!".into()).unwrap_err();
+            let invalid = PropertyName::new("invalid_name!".into());
+            assert!(
+                invalid.is_err(),
+                "Expected invalid_name! to fail, got: {invalid:?}"
+            );
             // AND: accept valid snake/kebab case with underscores
-            PropertyName::new("valid_name".into()).unwrap();
+            let valid = PropertyName::new("valid_name".into());
+            assert!(
+                valid.is_ok(),
+                "Expected valid_name to pass, got: {valid:?}"
+            );
         }
 
         /// 3.3-UNIT-009: `property_name_validates_length`.
@@ -550,34 +582,26 @@ mod tests {
         /// 3.3-UNIT-015: `validates_property_name_format_proptest`.
         /// Priority: P2.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap() for proptest verification. \
-                      Acceptable in test-only code paths."
-        )]
         fn validates_property_name_format_proptest() {
             let mut runner = TestRunner::deterministic();
             let strategy = "[a-zA-Z0-9_-]{1,64}";
 
-            runner
-                .run(&strategy, |name| {
-                    // GIVEN an arbitrary valid property name
-                    // WHEN creating a PropertyName
-                    // THEN it must succeed
-                    PropertyName::new(name).unwrap();
-                    Ok(())
-                })
-                .unwrap();
+            let run_result = runner.run(&strategy, |name| {
+                // GIVEN an arbitrary valid property name
+                // WHEN creating a PropertyName
+                // THEN it must succeed
+                prop_assert!(PropertyName::new(name).is_ok());
+                Ok(())
+            });
+            assert!(
+                run_result.is_ok(),
+                "Proptest run should succeed, got: {run_result:?}"
+            );
         }
 
         /// 3.3-UNIT-016: `rejects_invalid_property_name_characters_proptest`.
         /// Priority: P2.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap_err() for proptest \
-                      verification. Acceptable in test-only code paths."
-        )]
         fn rejects_invalid_property_name_characters_proptest() {
             let mut runner = TestRunner::deterministic();
             let strategy = ".*[^a-zA-Z0-9_-].*"
@@ -585,15 +609,17 @@ mod tests {
                     !s.is_empty() && s.len() <= 64
                 });
 
-            runner
-                .run(&strategy, |name| {
-                    // GIVEN an arbitrary string containing invalid characters
-                    // WHEN creating a PropertyName (filtering for correct
-                    // length) THEN it must fail
-                    PropertyName::new(name).unwrap_err();
-                    Ok(())
-                })
-                .unwrap();
+            let run_result = runner.run(&strategy, |name| {
+                // GIVEN an arbitrary string containing invalid characters
+                // WHEN creating a PropertyName (filtering for correct
+                // length) THEN it must fail
+                prop_assert!(PropertyName::new(name).is_err());
+                Ok(())
+            });
+            assert!(
+                run_result.is_ok(),
+                "Proptest run should succeed, got: {run_result:?}"
+            );
         }
     }
 }
