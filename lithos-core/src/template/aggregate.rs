@@ -538,42 +538,81 @@ mod tests {
     mod new {
         use super::*;
 
-        /// 3.4-UNIT-022: `accessors_return_expected_values`.
-        /// Priority: P1.
-        #[test]
-        fn accessors_return_expected_values() {
-            // GIVEN: a new template aggregate
-            let mut template = Template::new(
+        fn base_template() -> Template {
+            Template::new(
                 "base".to_owned(),
                 "Hello".to_owned(),
                 HashMap::new(),
                 None,
                 Metadata::default(),
             )
-            .expect("Expected valid template");
+            .expect("Expected valid template")
+        }
 
-            // WHEN: reading template accessors
-            let event_count = template.pending_events().len();
+        /// 3.4-UNIT-022: `name_and_content_accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        fn name_and_content_accessors_return_expected_values() {
+            let template = base_template();
 
-            // THEN: accessors expose expected data
             assert_eq!(template.name, "base", "Template name should be 'base'");
             assert_eq!(
                 template.content, "Hello",
                 "Template content should be 'Hello'"
             );
+        }
+
+        /// 3.4-UNIT-022: `extends_is_none_for_base_template`.
+        /// Priority: P1.
+        #[test]
+        fn extends_is_none_for_base_template() {
+            let template = base_template();
+
             assert!(
                 template.extends().is_none(),
                 "Template should not extend another template"
             );
+        }
+
+        /// 3.4-UNIT-022: `has_variables_false_for_base_template`.
+        /// Priority: P1.
+        #[test]
+        fn has_variables_false_for_base_template() {
+            let template = base_template();
+
             assert!(
                 !template.has_variables(),
                 "Template should have no variables"
             );
-            assert_eq!(event_count, 1, "Template should have 1 pending event");
+        }
+
+        /// 3.4-UNIT-022: `pending_events_emitted_on_create`.
+        /// Priority: P1.
+        #[test]
+        fn pending_events_emitted_on_create() {
+            let template = base_template();
+
+            assert_eq!(
+                template.pending_events().len(),
+                1,
+                "Template should have 1 pending event"
+            );
+        }
+
+        /// 3.4-UNIT-022: `take_events_drains_event_queue`.
+        /// Priority: P1.
+        #[test]
+        fn take_events_drains_event_queue() {
+            let mut template = base_template();
+
             assert_eq!(
                 template.take_events().len(),
                 1,
                 "Taking events should return 1 event"
+            );
+            assert!(
+                template.pending_events().is_empty(),
+                "Pending events should be empty after take_events"
             );
         }
 
