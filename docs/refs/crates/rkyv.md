@@ -150,6 +150,34 @@ let original: Data = deserialize::<Data, rkyv::rancor::Error>(archived)?;
 
 **Note:** `deserialize` allocates and should be treated as an escape hatch for cold paths or interoperability.
 
+### 4.1 Write-Side Performance (Lithos Guidance)
+
+rkyv can reduce read costs dramatically, but write-side choices determine whether storage remains fast and maintainable over time.
+
+Practical checklist:
+
+1) **Batch writes under one transaction**
+
+- Serialization cost matters, but Redb commit/transaction boundaries often dominate. Prefer “many inserts, one commit” where correctness allows.
+
+2) **Reuse allocation when serializing many values**
+
+- If you serialize in loops, prefer allocator-backed APIs (e.g., arena allocation patterns) so repeated writes don’t constantly reallocate buffers.
+
+3) **Keep persisted shapes storage-oriented**
+
+- If rkyv derives spread across the entire domain model, small refactors become persisted-format migrations.
+- Consider a persistence DTO boundary (e.g., `NoteRecord`, `SchemaRecord`) where storage types own rkyv derives and the on-disk layout.
+
+4) **Prefer projections over re-reading full values**
+
+- If a write implies derived relationships (aliases, tags, schema/file-class, metadata), write those to explicit projection/index tables during the same transaction.
+- This turns many queries into “index lookup + small fetch” instead of “load full blob + scan/deserialize”.
+
+5) **Treat format control as a contract**
+
+- Alignment, endianness, and pointer-width features define compatibility boundaries. Pick them deliberately for persisted storage and change them only with a migration plan.
+
 #### Low-Level API (Advanced)
 
 ```rust

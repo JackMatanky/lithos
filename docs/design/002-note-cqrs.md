@@ -137,6 +137,30 @@ Frontmatter as a query substrate:
 
 Design rule: the API must make it obvious which tier is being used.
 
+### 2.3 Read-Optimized Projections (Indexes)
+
+For Lithos, “instant queries” are usually made instant by persisting **read-optimized projections** (a.k.a. indexes / denormalized tables). These are not “extra features”; they are the normal way to avoid loading and deserializing full `Note` values for lookups.
+
+Core ideas:
+
+- **Commands maintain projections**. If a write changes a note’s tags/aliases/schema/file-class, the command side must update the relevant index tables in the same transaction as the note write.
+- **Queries prefer projections first**. For many queries, the best shape is “lookup ids/paths from an index, then optionally fetch full notes only for the final small set.”
+- **Projections are storage-shaped**. Keys should be stable and cheap (usually `Box<str>` / bytes), not domain-heavy types.
+
+Common note projections (examples, not a final schema):
+
+- `path -> note_id` (or `path -> note bytes` if path is canonical key)
+- `tag_key -> [note_id]`
+- `alias_key -> note_id`
+- `(field_name, field_value) -> [note_id]` (frontmatter-driven metadata index)
+- `schema_name_key -> [note_id]` / `file_class_key -> [note_id]`
+
+Design rules:
+
+- Treat projection updates as part of the write contract (Unit of Work): **no partial index updates**.
+- Keep the “hot tier” query API closure-based where it helps (compute from archived values) but avoid scanning full notes when an index can answer the query.
+- Prefer adding projections only when benchmarks show a query is hot; remove/avoid speculative indexes.
+
 ## 3. Detailed Design (The "How")
 
 ### 3.1 System Architecture

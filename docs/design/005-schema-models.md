@@ -77,6 +77,17 @@ Key constraints from the overall architecture:
 - **Lean models**: avoid “stringly typed” keys and avoid hidden allocations.
 - **API clarity**: prefer borrowed argument and accessor types (e.g. `&str` rather than `&String`) and keep allocation decisions explicit (see https://rust-analyzer.github.io/book/contributing/style.html).
 
+### 1.4 Minimizing “derive-everything” Blast Radius (rkyv)
+
+Schemas and property banks are attractive to archive “as-is”, but large rkyv derive surfaces create a maintenance hazard: small model refactors can silently become **persisted-format changes**.
+
+Guidance:
+
+- Prefer isolating rkyv derives onto **persistence DTOs** (storage-layer types) when it reduces coupling. Domain types stay ergonomic; persisted types stay stable.
+- Keep archived compute closure-based and local to the storage/query tier; do not leak archived references outside transaction scope.
+- Treat any change to archived layout, rkyv attributes, or format-control feature set as a migration decision.
+- Introduce projections for hot queries rather than forcing the primary persisted schema blob to satisfy every read shape.
+
 ## 2. Guide-Level Explanation (The "What")
 
 ### 2.1 User/Dev Experience

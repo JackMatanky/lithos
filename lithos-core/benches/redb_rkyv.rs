@@ -1,4 +1,4 @@
-//! Database performance benchmarks for the redb + rkyv storage layer.
+//! redb + rkyv storage benchmarks.
 //!
 //! # Relevance contract
 //!
