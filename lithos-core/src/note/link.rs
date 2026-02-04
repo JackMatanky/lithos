@@ -656,10 +656,14 @@ impl Target {
 #[cfg(test)]
 mod tests {
     /// Test fixtures for Link testing.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Fixture helpers use expect for deterministic setup."
+    )]
     mod fixtures {
         use uuid::Uuid;
 
-        use super::super::Target;
+        use super::super::{Anchor, EmbedType, Link, Target};
 
         const TEST_RESOLVED_ID: Uuid =
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0A01);
@@ -685,6 +689,71 @@ mod tests {
                 url: url.into(),
             }
         }
+
+        pub fn wikilink_with_anchor_and_alias() -> Link {
+            Link::new_wikilink(
+                unresolved_target("Target Note"),
+                Some("Display Text".to_owned()),
+                Some(Anchor::Heading("section".into())),
+                100,
+            )
+            .expect("Expected valid wikilink")
+        }
+
+        pub fn markdown_link_with_alias() -> Link {
+            Link::new_markdown_link(
+                external_target("https://example.com"),
+                Some("Example".to_owned()),
+                None,
+                50,
+            )
+            .expect("Expected valid markdown link")
+        }
+
+        pub fn embed_image() -> Link {
+            Link::new_embed(
+                unresolved_target("diagram.png"),
+                EmbedType::Image,
+                None,
+                200,
+            )
+            .expect("Expected valid embed")
+        }
+
+        pub fn resolved_wikilink_with_heading() -> Link {
+            Link::new_wikilink(
+                resolved_target("note.md"),
+                None,
+                Some(Anchor::Heading("section".into())),
+                0,
+            )
+            .expect("Expected valid wiki-link")
+        }
+
+        pub fn markdown_link_with_heading() -> Link {
+            Link::new_markdown_link(
+                external_target("https://example.com#section"),
+                None,
+                Some(Anchor::Heading("section".into())),
+                0,
+            )
+            .expect("Expected valid markdown link")
+        }
+
+        pub fn embed_with_type(embed_type: EmbedType) -> Link {
+            Link::new_embed(resolved_target("content"), embed_type, None, 0)
+                .expect("Expected valid embed")
+        }
+
+        pub fn fully_populated_wikilink() -> Link {
+            Link::new_wikilink(
+                resolved_target("target.md"),
+                Some("Alias Text".to_owned()),
+                Some(Anchor::Heading("section".into())),
+                42,
+            )
+            .expect("Expected valid link")
+        }
     }
 
     mod anchor {
@@ -693,19 +762,30 @@ mod tests {
         /// 3.2-UNIT-012: `heading_anchor_is_recognized`.
         /// Priority: P1.
         #[test]
-        fn heading_anchor_is_recognized() {
-            // GIVEN: a heading anchor
+        fn heading_anchor_reports_heading() {
             let anchor = Anchor::Heading("introduction".into());
-
-            // THEN: it should be identified as a heading
             assert!(
                 anchor.is_heading(),
                 "Anchor::Heading should return true for is_heading()"
             );
+        }
+
+        /// 3.2-UNIT-012: `heading_anchor_is_recognized`.
+        /// Priority: P1.
+        #[test]
+        fn heading_anchor_is_not_block_ref() {
+            let anchor = Anchor::Heading("introduction".into());
             assert!(
                 !anchor.is_block_ref(),
                 "Anchor::Heading should return false for is_block_ref()"
             );
+        }
+
+        /// 3.2-UNIT-012: `heading_anchor_is_recognized`.
+        /// Priority: P1.
+        #[test]
+        fn heading_anchor_returns_text() {
+            let anchor = Anchor::Heading("introduction".into());
             assert_eq!(
                 anchor.text(),
                 "introduction",
@@ -716,19 +796,30 @@ mod tests {
         /// 3.2-UNIT-013: `block_ref_anchor_is_recognized`.
         /// Priority: P1.
         #[test]
-        fn block_ref_anchor_is_recognized() {
-            // GIVEN: a block reference anchor
+        fn block_ref_anchor_reports_block_ref() {
             let anchor = Anchor::BlockRef("abc123".into());
-
-            // THEN: it should be identified as a block reference
             assert!(
                 anchor.is_block_ref(),
                 "Anchor::BlockRef should return true for is_block_ref()"
             );
+        }
+
+        /// 3.2-UNIT-013: `block_ref_anchor_is_recognized`.
+        /// Priority: P1.
+        #[test]
+        fn block_ref_anchor_is_not_heading() {
+            let anchor = Anchor::BlockRef("abc123".into());
             assert!(
                 !anchor.is_heading(),
                 "Anchor::BlockRef should return false for is_heading()"
             );
+        }
+
+        /// 3.2-UNIT-013: `block_ref_anchor_is_recognized`.
+        /// Priority: P1.
+        #[test]
+        fn block_ref_anchor_returns_text() {
+            let anchor = Anchor::BlockRef("abc123".into());
             assert_eq!(
                 anchor.text(),
                 "abc123",
@@ -745,23 +836,41 @@ mod tests {
         /// 3.2-UNIT-014: `resolved_target_indicates_resolution_state`.
         /// Priority: P1.
         #[test]
-        fn resolved_target_indicates_resolution_state() {
-            // GIVEN: a resolved target
+        fn resolved_target_is_resolved() {
             let target = resolved_target("projects/rust.md");
-
-            // THEN: it should indicate resolved state
             assert!(
                 target.is_resolved(),
                 "Resolved target should return true for is_resolved()"
             );
+        }
+
+        /// 3.2-UNIT-014: `resolved_target_indicates_resolution_state`.
+        /// Priority: P1.
+        #[test]
+        fn resolved_target_is_not_unresolved() {
+            let target = resolved_target("projects/rust.md");
             assert!(
                 !target.is_unresolved(),
                 "Resolved target should return false for is_unresolved()"
             );
+        }
+
+        /// 3.2-UNIT-014: `resolved_target_indicates_resolution_state`.
+        /// Priority: P1.
+        #[test]
+        fn resolved_target_is_not_external() {
+            let target = resolved_target("projects/rust.md");
             assert!(
                 !target.is_external(),
                 "Resolved target should return false for is_external()"
             );
+        }
+
+        /// 3.2-UNIT-014: `resolved_target_indicates_resolution_state`.
+        /// Priority: P1.
+        #[test]
+        fn resolved_target_returns_vault_path() {
+            let target = resolved_target("projects/rust.md");
             assert_eq!(
                 target.vault_path(),
                 Some("projects/rust.md"),
@@ -772,23 +881,41 @@ mod tests {
         /// 3.2-UNIT-015: `unresolved_target_indicates_resolution_state`.
         /// Priority: P1.
         #[test]
-        fn unresolved_target_indicates_resolution_state() {
-            // GIVEN: an unresolved target
+        fn unresolved_target_is_unresolved() {
             let target = unresolved_target("Future Note");
-
-            // THEN: it should indicate unresolved state
             assert!(
                 target.is_unresolved(),
                 "Unresolved target should return true for is_unresolved()"
             );
+        }
+
+        /// 3.2-UNIT-015: `unresolved_target_indicates_resolution_state`.
+        /// Priority: P1.
+        #[test]
+        fn unresolved_target_is_not_resolved() {
+            let target = unresolved_target("Future Note");
             assert!(
                 !target.is_resolved(),
                 "Unresolved target should return false for is_resolved()"
             );
+        }
+
+        /// 3.2-UNIT-015: `unresolved_target_indicates_resolution_state`.
+        /// Priority: P1.
+        #[test]
+        fn unresolved_target_is_not_external() {
+            let target = unresolved_target("Future Note");
             assert!(
                 !target.is_external(),
                 "Unresolved target should return false for is_external()"
             );
+        }
+
+        /// 3.2-UNIT-015: `unresolved_target_indicates_resolution_state`.
+        /// Priority: P1.
+        #[test]
+        fn unresolved_target_returns_vault_path() {
+            let target = unresolved_target("Future Note");
             assert_eq!(
                 target.vault_path(),
                 Some("Future Note"),
@@ -799,23 +926,41 @@ mod tests {
         /// 3.2-UNIT-016: `external_target_indicates_external_state`.
         /// Priority: P1.
         #[test]
-        fn external_target_indicates_external_state() {
-            // GIVEN: an external target
+        fn external_target_is_external() {
             let target = external_target("https://example.com");
-
-            // THEN: it should indicate external state
             assert!(
                 target.is_external(),
                 "External target should return true for is_external()"
             );
+        }
+
+        /// 3.2-UNIT-016: `external_target_indicates_external_state`.
+        /// Priority: P1.
+        #[test]
+        fn external_target_is_not_resolved() {
+            let target = external_target("https://example.com");
             assert!(
                 !target.is_resolved(),
                 "External target should return false for is_resolved()"
             );
+        }
+
+        /// 3.2-UNIT-016: `external_target_indicates_external_state`.
+        /// Priority: P1.
+        #[test]
+        fn external_target_is_not_unresolved() {
+            let target = external_target("https://example.com");
             assert!(
                 !target.is_unresolved(),
                 "External target should return false for is_unresolved()"
             );
+        }
+
+        /// 3.2-UNIT-016: `external_target_indicates_external_state`.
+        /// Priority: P1.
+        #[test]
+        fn external_target_returns_no_vault_path() {
+            let target = external_target("https://example.com");
             assert_eq!(
                 target.vault_path(),
                 None,
@@ -826,115 +971,140 @@ mod tests {
 
     mod constructors {
         use super::{
-            super::{Anchor, EmbedType, Link, NoteError, Style},
-            fixtures::{external_target, unresolved_target},
+            super::{EmbedType, Link, NoteError, Style},
+            fixtures::{
+                embed_image, external_target, markdown_link_with_alias,
+                unresolved_target, wikilink_with_anchor_and_alias,
+            },
         };
 
         /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn new_wikilink_creates_valid_link() {
-            // GIVEN: an unresolved target with anchor and alias
-            let target = unresolved_target("Target Note");
-            let anchor = Some(Anchor::Heading("section".into()));
-            let alias = Some("Display Text".to_owned());
-
-            // WHEN: creating a wiki-link
-            let link_result =
-                Link::new_wikilink(target, alias.clone(), anchor, 100);
-            assert!(
-                link_result.is_ok(),
-                "Expected valid wikilink, got: {link_result:?}"
-            );
-            let Ok(link) = link_result else {
-                return;
-            };
-
-            // THEN: it should have correct properties
+        fn wikilink_style_is_wikilink() {
+            let link = wikilink_with_anchor_and_alias();
             assert_eq!(
                 link.style(),
                 Style::WikiLink,
                 "Link should be WikiLink style"
             );
+        }
+
+        /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
+        /// Priority: P1.
+        #[test]
+        fn wikilink_target_is_unresolved() {
+            let link = wikilink_with_anchor_and_alias();
             assert!(
                 link.target().is_unresolved(),
                 "Link target should be unresolved"
             );
+        }
+
+        /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
+        /// Priority: P1.
+        #[test]
+        fn wikilink_alias_matches() {
+            let link = wikilink_with_anchor_and_alias();
             assert_eq!(
                 link.alias(),
                 Some("Display Text"),
                 "Link alias should match"
             );
+        }
+
+        /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
+        /// Priority: P1.
+        #[test]
+        fn wikilink_has_anchor() {
+            let link = wikilink_with_anchor_and_alias();
             assert!(link.anchor().is_some(), "Link should have anchor");
+        }
+
+        /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
+        /// Priority: P1.
+        #[test]
+        fn wikilink_position_matches() {
+            let link = wikilink_with_anchor_and_alias();
             assert_eq!(link.position(), 100, "Link position should match");
+        }
+
+        /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
+        /// Priority: P1.
+        #[test]
+        fn wikilink_is_not_embed() {
+            let link = wikilink_with_anchor_and_alias();
             assert!(!link.is_embed(), "Wiki-link should not be an embed");
         }
 
         /// 3.2-UNIT-018: `new_markdown_link_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn new_markdown_link_creates_valid_link() {
-            // GIVEN: an external URL target
-            let target = external_target("https://example.com");
-
-            // WHEN: creating a markdown link
-            let link_result = Link::new_markdown_link(
-                target,
-                Some("Example".to_owned()),
-                None,
-                50,
-            );
-            assert!(
-                link_result.is_ok(),
-                "Expected valid markdown link, got: {link_result:?}"
-            );
-            let Ok(link) = link_result else {
-                return;
-            };
-
-            // THEN: it should have correct properties
+        fn markdown_link_style_is_mdlink() {
+            let link = markdown_link_with_alias();
             assert_eq!(
                 link.style(),
                 Style::MdLink,
                 "Link should be MdLink style"
             );
+        }
+
+        /// 3.2-UNIT-018: `new_markdown_link_creates_valid_link`.
+        /// Priority: P1.
+        #[test]
+        fn markdown_link_target_is_external() {
+            let link = markdown_link_with_alias();
             assert!(
                 link.target().is_external(),
                 "Link target should be external"
             );
+        }
+
+        /// 3.2-UNIT-018: `new_markdown_link_creates_valid_link`.
+        /// Priority: P1.
+        #[test]
+        fn markdown_link_is_not_embed() {
+            let link = markdown_link_with_alias();
             assert!(!link.is_embed(), "Markdown link should not be an embed");
         }
 
         /// 3.2-UNIT-019: `new_embed_creates_valid_embed`.
         /// Priority: P1.
         #[test]
-        fn new_embed_creates_valid_embed() {
-            // GIVEN: an image target
-            let target = unresolved_target("diagram.png");
-
-            // WHEN: creating an embed
-            let embed_result =
-                Link::new_embed(target, EmbedType::Image, None, 200);
-            assert!(
-                embed_result.is_ok(),
-                "Expected valid embed, got: {embed_result:?}"
-            );
-            let Ok(embed) = embed_result else {
-                return;
-            };
-
-            // THEN: it should be a valid embed
+        fn embed_reports_is_embed() {
+            let embed = embed_image();
             assert!(embed.is_embed(), "Link should be an embed");
+        }
+
+        /// 3.2-UNIT-019: `new_embed_creates_valid_embed`.
+        /// Priority: P1.
+        #[test]
+        fn embed_type_is_image() {
+            let embed = embed_image();
             assert_eq!(
                 embed.embed_type(),
                 Some(EmbedType::Image),
                 "Embed type should be Image"
             );
+        }
+
+        /// 3.2-UNIT-019: `new_embed_creates_valid_embed`.
+        /// Priority: P1.
+        #[test]
+        fn embed_style_is_wikilink() {
+            let embed = embed_image();
             assert_eq!(
                 embed.style(),
                 Style::WikiLink,
                 "Embed should be WikiLink style"
             );
+        }
+
+        /// 3.2-UNIT-019: `new_embed_creates_valid_embed`.
+        /// Priority: P1.
+        #[test]
+        fn embed_has_no_anchor() {
+            let embed = embed_image();
             assert!(embed.anchor().is_none(), "Embed should not have anchor");
         }
 
@@ -995,32 +1165,18 @@ mod tests {
 
         use super::{
             super::{Anchor, EmbedType, Link, NoteError, Style},
-            fixtures::{external_target, resolved_target},
+            fixtures::{
+                embed_with_type, external_target, markdown_link_with_heading,
+                resolved_target, resolved_wikilink_with_heading,
+            },
         };
 
         /// 3.2-UNIT-023: `validate_accepts_valid_wikilink`.
         /// Priority: P1.
         #[test]
         fn validate_accepts_valid_wikilink() {
-            // GIVEN: a valid wiki-link with heading anchor
-            let link_result = Link::new_wikilink(
-                resolved_target("note.md"),
-                None,
-                Some(Anchor::Heading("section".into())),
-                0,
-            );
-            assert!(
-                link_result.is_ok(),
-                "Expected valid wiki-link, got: {link_result:?}"
-            );
-            let Ok(link) = link_result else {
-                return;
-            };
-
-            // WHEN: validating the link
+            let link = resolved_wikilink_with_heading();
             let result = link.validate();
-
-            // THEN: it should pass validation
             assert!(
                 result.is_ok(),
                 "Valid wiki-link should pass validation, got: {result:?}"
@@ -1087,25 +1243,8 @@ mod tests {
         /// Priority: P1.
         #[test]
         fn validate_accepts_external_link_with_heading() {
-            // GIVEN: an external link with a heading anchor (valid)
-            let link_result = Link::new_markdown_link(
-                external_target("https://example.com#section"),
-                None,
-                Some(Anchor::Heading("section".into())),
-                0,
-            );
-            assert!(
-                link_result.is_ok(),
-                "Expected valid external markdown link, got: {link_result:?}"
-            );
-            let Ok(link) = link_result else {
-                return;
-            };
-
-            // WHEN: validating the link
+            let link = markdown_link_with_heading();
             let result = link.validate();
-
-            // THEN: it should pass validation
             assert!(
                 result.is_ok(),
                 "External link with heading should be valid, got: {result:?}"
@@ -1124,25 +1263,8 @@ mod tests {
         fn validate_accepts_resolved_target_with_all_embed_types(
             #[case] embed_type: EmbedType,
         ) {
-            // GIVEN: a valid embed with different types
-            let embed_result = Link::new_embed(
-                resolved_target("content"),
-                embed_type,
-                None,
-                0,
-            );
-            assert!(
-                embed_result.is_ok(),
-                "Expected valid embed, got: {embed_result:?}"
-            );
-            let Ok(embed) = embed_result else {
-                return;
-            };
-
-            // WHEN: validating the embed
+            let embed = embed_with_type(embed_type);
             let result = embed.validate();
-
-            // THEN: it should pass validation
             assert!(
                 result.is_ok(),
                 "Valid embed with type {embed_type:?} should pass validation, \
@@ -1155,44 +1277,65 @@ mod tests {
         use rstest::rstest;
 
         use super::{
-            super::{Anchor, EmbedType, Link},
-            fixtures::{resolved_target, unresolved_target},
+            super::{EmbedType, Link},
+            fixtures::{fully_populated_wikilink, unresolved_target},
         };
 
         /// 3.2-UNIT-028: `accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
-        fn accessors_return_expected_values() {
-            // GIVEN: a fully populated wiki-link
-            let target = resolved_target("target.md");
-            let anchor = Some(Anchor::Heading("section".into()));
-            let alias = Some("Alias Text".to_owned());
-            let link_result =
-                Link::new_wikilink(target, alias.clone(), anchor.clone(), 42);
-            assert!(
-                link_result.is_ok(),
-                "Expected valid link, got: {link_result:?}"
-            );
-            let Ok(link) = link_result else {
-                return;
-            };
-
-            // THEN: all accessors should return expected values
+        fn target_accessor_returns_resolved() {
+            let link = fully_populated_wikilink();
             assert!(
                 link.target().is_resolved(),
                 "target() should return resolved target"
             );
+        }
+
+        /// 3.2-UNIT-028: `accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        fn anchor_accessor_returns_some() {
+            let link = fully_populated_wikilink();
             assert!(
                 link.anchor().is_some(),
                 "anchor() should return Some for link with anchor"
             );
+        }
+
+        /// 3.2-UNIT-028: `accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        fn alias_accessor_returns_alias_text() {
+            let link = fully_populated_wikilink();
             assert_eq!(
                 link.alias(),
                 Some("Alias Text"),
                 "alias() should return the alias text"
             );
+        }
+
+        /// 3.2-UNIT-028: `accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        fn position_accessor_returns_position() {
+            let link = fully_populated_wikilink();
             assert_eq!(link.position(), 42, "position() should return 42");
+        }
+
+        /// 3.2-UNIT-028: `accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        fn is_embed_returns_false_for_wikilink() {
+            let link = fully_populated_wikilink();
             assert!(!link.is_embed(), "is_embed() should return false");
+        }
+
+        /// 3.2-UNIT-028: `accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        fn embed_type_returns_none_for_wikilink() {
+            let link = fully_populated_wikilink();
             assert!(
                 link.embed_type().is_none(),
                 "embed_type() should return None"
