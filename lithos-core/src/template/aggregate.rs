@@ -435,15 +435,8 @@ impl Template {
     /// invalid characters.
     #[inline]
     pub fn validate_name(name: &str) -> Result<(), TemplateError> {
-        static RE: LazyLock<Regex> = LazyLock::new(|| {
-            #[expect(
-                clippy::expect_used,
-                clippy::disallowed_methods,
-                reason = "Static regex literal is safe and efficient"
-            )]
-            Regex::new(patterns::ALPHANUMERIC_NAME)
-                .expect("Static regex literal")
-        });
+        static RE: LazyLock<Result<Regex, regex::Error>> =
+            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME));
 
         if name.is_empty() {
             return Err(TemplateError::EmptyTemplateName);
@@ -452,7 +445,13 @@ impl Template {
             return Err(TemplateError::TemplateNameTooLong(name.len()));
         }
 
-        if !RE.is_match(name) {
+        let re = RE.as_ref().map_err(|error| {
+            TemplateError::ValidationFailed(format!(
+                "Invalid template name regex: {error}"
+            ))
+        })?;
+
+        if !re.is_match(name) {
             return Err(TemplateError::InvalidTemplateName(name.to_owned()));
         }
         Ok(())
@@ -482,14 +481,8 @@ impl Template {
     /// invalid characters, or is a reserved word.
     #[inline]
     pub fn validate_variable_name(name: &str) -> Result<(), TemplateError> {
-        static RE: LazyLock<Regex> = LazyLock::new(|| {
-            #[expect(
-                clippy::expect_used,
-                clippy::disallowed_methods,
-                reason = "Static regex literal is safe and efficient"
-            )]
-            Regex::new(patterns::IDENTIFIER_NAME).expect("Static regex literal")
-        });
+        static RE: LazyLock<Result<Regex, regex::Error>> =
+            LazyLock::new(|| Regex::new(patterns::IDENTIFIER_NAME));
 
         if name.is_empty() {
             return Err(TemplateError::EmptyVariableName);
@@ -498,7 +491,13 @@ impl Template {
             return Err(TemplateError::VariableNameTooLong(name.len()));
         }
 
-        if !RE.is_match(name) {
+        let re = RE.as_ref().map_err(|error| {
+            TemplateError::ValidationFailed(format!(
+                "Invalid variable name regex: {error}"
+            ))
+        })?;
+
+        if !re.is_match(name) {
             return Err(TemplateError::InvalidVariableName(name.to_owned()));
         }
         Self::validate_variable_name_not_reserved(name)?;
@@ -527,11 +526,6 @@ impl Template {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use proptest::prelude::*;
 
@@ -545,14 +539,20 @@ mod tests {
         #[test]
         fn accessors_return_expected_values() {
             // GIVEN: a new template aggregate
-            let mut template = Template::new(
+            let template_result = Template::new(
                 "base".to_owned(),
                 "Hello".to_owned(),
                 HashMap::new(),
                 None,
                 Metadata::default(),
-            )
-            .unwrap();
+            );
+            assert!(
+                template_result.is_ok(),
+                "Expected valid template, got: {template_result:?}"
+            );
+            let Ok(mut template) = template_result else {
+                return;
+            };
 
             // WHEN: reading template accessors
             let event_count = template.pending_events().len();
@@ -616,7 +616,13 @@ mod tests {
             );
 
             // WHEN: validation runs during construction
-            let error = result.unwrap_err();
+            assert!(
+                result.is_err(),
+                "Expected unbalanced template to fail, got: {result:?}"
+            );
+            let Err(error) = result else {
+                return;
+            };
 
             // THEN: a validation error describes the unbalanced syntax
             assert!(error.to_string().contains("Unbalanced"));
@@ -632,27 +638,29 @@ mod tests {
         let mut runner = TestRunner::deterministic();
         let strategy = "[a-zA-Z0-9_-]{1,64}";
 
-        runner
-            .run(&strategy, |name| {
-                // GIVEN: a generated valid identifier
-                // WHEN: constructing a template with the identifier
-                let result = Template::new(
-                    name.clone(),
-                    "content".to_owned(),
-                    HashMap::new(),
-                    None,
-                    Metadata::default(),
-                );
+        let run_result = runner.run(&strategy, |name| {
+            // GIVEN: a generated valid identifier
+            // WHEN: constructing a template with the identifier
+            let result = Template::new(
+                name.clone(),
+                "content".to_owned(),
+                HashMap::new(),
+                None,
+                Metadata::default(),
+            );
 
-                // THEN: construction succeeds
-                prop_assert!(
-                    result.is_ok(),
-                    "Template with valid name '{}' should be created",
-                    name
-                );
-                Ok(())
-            })
-            .unwrap();
+            // THEN: construction succeeds
+            prop_assert!(
+                result.is_ok(),
+                "Template with valid name '{}' should be created",
+                name
+            );
+            Ok(())
+        });
+        assert!(
+            run_result.is_ok(),
+            "Proptest run should succeed, got: {run_result:?}"
+        );
     }
 
     /// 3.4-UNIT-026: `should_compose_templates_with_sections`.
@@ -660,7 +668,7 @@ mod tests {
     #[test]
     fn should_compose_templates_with_sections() {
         // GIVEN: a base template and a composition
-        let base = Template::new(
+        let base_result = Template::new(
             "base".to_owned(),
             "Base: {{v}}".to_owned(),
             [("v".to_owned(), VariableDefinition::Boolean {
@@ -670,8 +678,14 @@ mod tests {
             .collect(),
             None,
             Metadata::default(),
-        )
-        .unwrap();
+        );
+        assert!(
+            base_result.is_ok(),
+            "Expected valid base template, got: {base_result:?}"
+        );
+        let Ok(base) = base_result else {
+            return;
+        };
 
         let composition = Composition {
             base_template: "base".to_owned(),
@@ -693,17 +707,27 @@ mod tests {
                 },
             ],
             includes: vec![],
-            variable_overrides: [("v".to_owned(), serde_json::json!(true))]
-                .into_iter()
-                .collect(),
+            variable_overrides: [(
+                "v".to_owned(),
+                serde_json::Value::Bool(true),
+            )]
+            .into_iter()
+            .collect(),
         };
 
         let templates =
             [("base".to_owned(), base.clone())].into_iter().collect();
 
         // WHEN: composing the template
-        let composed =
-            Template::compose(&base, &composition, &templates).unwrap();
+        let composed_result =
+            Template::compose(&base, &composition, &templates);
+        assert!(
+            composed_result.is_ok(),
+            "Expected compose to succeed, got: {composed_result:?}"
+        );
+        let Ok(composed) = composed_result else {
+            return;
+        };
 
         // THEN: content is correctly assembled
         assert!(composed.content.starts_with("Header\n"));
@@ -717,14 +741,20 @@ mod tests {
     #[test]
     fn apply_sections_handles_missing_variable() {
         // GIVEN: a template without variables
-        let base = Template::new(
+        let base_result = Template::new(
             "b".to_owned(),
             "no var".to_owned(),
             HashMap::new(),
             None,
             Metadata::default(),
-        )
-        .unwrap();
+        );
+        assert!(
+            base_result.is_ok(),
+            "Expected valid base template, got: {base_result:?}"
+        );
+        let Ok(base) = base_result else {
+            return;
+        };
 
         // WHEN: applying a section relative to a missing variable
         let mut content = "no var".to_owned();
