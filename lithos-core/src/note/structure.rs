@@ -172,11 +172,6 @@ impl Section {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::unwrap() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use super::*;
 
@@ -184,46 +179,72 @@ mod tests {
         use super::*;
 
         #[test]
-        fn accessors_return_expected_values() {
+        fn accessors_return_expected_values() -> Result<(), String> {
             // GIVEN: a heading
-            let heading = Heading::new(3, "Summary".to_owned(), 22).unwrap();
+            let heading =
+                Heading::new(3, "Summary".to_owned(), 22).map_err(|e| {
+                    format!("Failed to create heading fixture: {e}")
+                })?;
 
             // THEN: accessors expose fields
-            assert_eq!(heading.level(), 3, "Heading level should be 3");
-            assert_eq!(
-                heading.text(),
-                "Summary",
-                "Heading text should be 'Summary'"
-            );
-            assert_eq!(heading.position(), 22, "Heading position should be 22");
+            if heading.level() != 3 {
+                return Err(format!(
+                    "Heading level should be 3, got {}",
+                    heading.level()
+                ));
+            }
+            if heading.text() != "Summary" {
+                return Err(format!(
+                    "Heading text should be 'Summary', got '{}'",
+                    heading.text()
+                ));
+            }
+            if heading.position() != 22 {
+                return Err(format!(
+                    "Heading position should be 22, got {}",
+                    heading.position()
+                ));
+            }
+
+            Ok(())
         }
 
         #[test]
-        fn new_succeeds_for_valid_input() {
+        fn new_succeeds_for_valid_input() -> Result<(), String> {
             // GIVEN: valid heading parameters
             let level = 2;
             let text = "Implementation".to_owned();
             let position = 10;
 
             // WHEN: creating a new heading
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup phase - test fixture creation"
-            )]
-            let result = Heading::new(level, text, position).unwrap();
+            let result = Heading::new(level, text, position)
+                .map_err(|e| format!("Valid heading should be created: {e}"))?;
 
             // THEN: it has the correct values
-            assert_eq!(result.level(), 2, "Heading level should be 2");
-            assert_eq!(
-                result.text(),
-                "Implementation",
-                "Heading text should be 'Implementation'"
-            );
-            assert_eq!(result.position(), 10, "Heading position should be 10");
+            if result.level() != 2 {
+                return Err(format!(
+                    "Heading level should be 2, got {}",
+                    result.level()
+                ));
+            }
+            if result.text() != "Implementation" {
+                return Err(format!(
+                    "Heading text should be 'Implementation', got '{}'",
+                    result.text()
+                ));
+            }
+            if result.position() != 10 {
+                return Err(format!(
+                    "Heading position should be 10, got {}",
+                    result.position()
+                ));
+            }
+
+            Ok(())
         }
 
         #[test]
-        fn new_returns_error_for_invalid_level() {
+        fn new_returns_error_for_invalid_level() -> Result<(), String> {
             // GIVEN: an invalid heading level
             let level = 7;
             let text = "Invalid".to_owned();
@@ -232,14 +253,18 @@ mod tests {
             let result = Heading::new(level, text, 0);
 
             // THEN: it returns InvalidHeadingLevel
-            assert!(
-                matches!(result, Err(NoteError::ValidationFailed(_))),
-                "Invalid heading level (7) should be rejected, got: {result:?}"
-            );
+            if !matches!(result, Err(NoteError::ValidationFailed(_))) {
+                return Err(format!(
+                    "Invalid heading level (7) should be rejected, got: \
+                     {result:?}"
+                ));
+            }
+
+            Ok(())
         }
 
         #[test]
-        fn new_returns_error_for_empty_text() {
+        fn new_returns_error_for_empty_text() -> Result<(), String> {
             // GIVEN: empty heading text
             let level = 1;
             let text = "   ".to_owned();
@@ -248,10 +273,13 @@ mod tests {
             let result = Heading::new(level, text, 0);
 
             // THEN: it returns ValidationFailed
-            assert!(
-                matches!(result, Err(NoteError::ValidationFailed(_))),
-                "Empty heading text should be rejected, got: {result:?}"
-            );
+            if !matches!(result, Err(NoteError::ValidationFailed(_))) {
+                return Err(format!(
+                    "Empty heading text should be rejected, got: {result:?}"
+                ));
+            }
+
+            Ok(())
         }
     }
 
@@ -259,34 +287,48 @@ mod tests {
         use super::*;
 
         #[test]
-        fn accessors_return_expected_values() {
+        fn accessors_return_expected_values() -> Result<(), String> {
             // GIVEN: a section with heading
-            let heading = Heading::new(1, "Intro".to_owned(), 0).unwrap();
+            let heading =
+                Heading::new(1, "Intro".to_owned(), 0).map_err(|e| {
+                    format!("Failed to create heading fixture: {e}")
+                })?;
             let section =
                 Section::new(Some(heading.clone()), "Body".to_owned(), 0..4);
 
             // THEN: accessors return expected values
-            assert_eq!(
-                section.content(),
-                "Body",
-                "Section content should be 'Body'"
-            );
-            assert_eq!(
-                section.heading().unwrap().text(),
-                "Intro",
-                "Section heading text should be 'Intro'"
-            );
-            assert_eq!(section.range(), 0..4, "Section range should be 0..4");
+            if section.content() != "Body" {
+                return Err(format!(
+                    "Section content should be 'Body', got '{}'",
+                    section.content()
+                ));
+            }
+            let Some(section_heading) = section.heading() else {
+                return Err("Section heading should be present".to_owned());
+            };
+            if section_heading.text() != "Intro" {
+                return Err(format!(
+                    "Section heading text should be 'Intro', got '{}'",
+                    section_heading.text()
+                ));
+            }
+            if section.range() != (0..4) {
+                return Err(format!(
+                    "Section range should be 0..4, got {:?}",
+                    section.range()
+                ));
+            }
+
+            Ok(())
         }
 
         #[test]
-        fn new_succeeds_for_valid_input() {
+        fn new_succeeds_for_valid_input() -> Result<(), String> {
             // GIVEN: valid section parameters
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup phase - test fixture creation"
-            )]
-            let heading = Some(Heading::new(1, "Title".into(), 0).unwrap());
+            let heading =
+                Some(Heading::new(1, "Title".into(), 0).map_err(|e| {
+                    format!("Failed to create heading fixture: {e}")
+                })?);
             let content = "Section content".to_owned();
             let range = 0..15;
 
@@ -294,21 +336,23 @@ mod tests {
             let result = Section::new(heading.clone(), content, range.clone());
 
             // THEN: it has the correct values
-            assert_eq!(
-                result.heading(),
-                heading.as_ref(),
-                "Section heading should match input"
-            );
-            assert_eq!(
-                result.content(),
-                "Section content",
-                "Section content should match input"
-            );
-            assert_eq!(
-                result.range(),
-                range,
-                "Section range should match input"
-            );
+            if result.heading() != heading.as_ref() {
+                return Err("Section heading should match input".to_owned());
+            }
+            if result.content() != "Section content" {
+                return Err(format!(
+                    "Section content should match input, got '{}'",
+                    result.content()
+                ));
+            }
+            if result.range() != range {
+                return Err(format!(
+                    "Section range should match input, got {:?}",
+                    result.range()
+                ));
+            }
+
+            Ok(())
         }
     }
 }
