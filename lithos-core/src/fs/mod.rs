@@ -17,10 +17,11 @@
 //!   - Re-exported as `FormatDispatcher` for clarity in calling code.
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
-#![allow(missing_docs, reason = "Transitional state of documentation")]
-
+/// Filesystem error types.
 pub mod error;
+/// Structured data parsers (TOML/JSON/YAML).
 pub mod parsers;
+/// Security-critical path validation utilities.
 pub mod validator;
 
 // Ergonomic aliases with domain-clarifying names (avoid `pub use` re-exports).
