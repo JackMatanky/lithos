@@ -71,10 +71,6 @@ impl super::ports::Query for Query<'_> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test code uses unwrap/expect for simplicity"
-)]
 mod tests {
     use std::collections::HashMap;
 
@@ -91,23 +87,31 @@ mod tests {
     const TEST_MISSING_ID: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0901);
 
-    fn test_db() -> (TempDir, Database) {
-        let dir = tempdir().unwrap();
+    fn test_db() -> Result<(TempDir, Database), String> {
+        let dir = tempdir().map_err(|e| e.to_string())?;
         let path = dir.path().join("test.redb");
-        let db = Database::open(&path).unwrap();
-        (dir, db)
+        let db = Database::open(&path).map_err(|e| e.to_string())?;
+        Ok((dir, db))
     }
 
     #[test]
     fn cqrs_roundtrip_preserves_frontmatter_in_note_archive() {
-        let (_dir, db) = test_db();
+        let db_result = test_db();
+        assert!(db_result.is_ok(), "Failed to create test DB: {db_result:?}");
+        let Ok((_dir, db)) = db_result else {
+            return;
+        };
 
         let cmd = command::Command::new(&db);
         let qry = Query::new(&db);
 
-        let mut note = cmd.create("notes/a.md".to_owned()).unwrap();
+        let note_result = cmd.create("notes/a.md".to_owned());
+        assert!(note_result.is_ok(), "Create should succeed: {note_result:?}");
+        let Ok(mut note) = note_result else {
+            return;
+        };
 
-        let fm = Frontmatter::new(HashMap::from([(
+        let fm_result = Frontmatter::new(HashMap::from([(
             "root".to_owned(),
             FieldValue::Object(HashMap::from([(
                 "nested".to_owned(),
@@ -116,21 +120,47 @@ mod tests {
                     FieldValue::Boolean(true),
                 ]),
             )])),
-        )]))
-        .unwrap();
+        )]));
+        assert!(
+            fm_result.is_ok(),
+            "Frontmatter construction should succeed: {fm_result:?}"
+        );
+        let Ok(fm) = fm_result else {
+            return;
+        };
         note.set_frontmatter(Some(fm.clone()));
 
         let id = note.id;
-        cmd.update(note).unwrap();
+        let update_result = cmd.update(note);
+        assert!(
+            update_result.is_ok(),
+            "Update should succeed: {update_result:?}"
+        );
 
-        let observed = qry.find_by_id(id).unwrap().unwrap();
+        let observed_result = qry.find_by_id(id);
+        assert!(
+            observed_result.is_ok(),
+            "Query by id should succeed: {observed_result:?}"
+        );
+        let Ok(observed) = observed_result else {
+            return;
+        };
+        assert!(observed.is_some(), "Query by id should return Some(note)");
+        let Some(observed) = observed else {
+            return;
+        };
         assert_eq!(observed.id, id);
         assert_eq!(observed.frontmatter, Some(fm));
 
         // Sanity: changing the id misses the record
-        let miss = qry
-            .find_by_id(TEST_MISSING_ID)
-            .expect("Query should succeed even for non-existent ID");
+        let miss_result = qry.find_by_id(TEST_MISSING_ID);
+        assert!(
+            miss_result.is_ok(),
+            "Query should succeed even for non-existent ID: {miss_result:?}"
+        );
+        let Ok(miss) = miss_result else {
+            return;
+        };
         assert!(miss.is_none(), "Non-existent ID should return None");
     }
 }
