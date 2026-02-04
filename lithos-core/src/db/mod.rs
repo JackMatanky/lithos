@@ -498,13 +498,15 @@ mod tests {
     use super::*;
 
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test uses Result::unwrap() for tempdir creation. Acceptable \
-                  in test-only code paths."
-    )]
     fn database_can_be_constructed() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp_result = tempfile::tempdir();
+        assert!(
+            temp_result.is_ok(),
+            "tempdir should be created: {temp_result:?}"
+        );
+        let Ok(temp) = temp_result else {
+            return;
+        };
         let db_path = temp.path().join("test.db");
         let _result: Result<Database, DbError> = Database::open(&db_path);
     }
