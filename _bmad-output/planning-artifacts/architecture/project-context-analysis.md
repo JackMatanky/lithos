@@ -39,7 +39,7 @@ The project encompasses 50 functional requirements across several key areas:
 - Rich command-line interface with subcommands and status reporting
 - Comprehensive error handling and recovery mechanisms
 
-These requirements drive a hexagonal architecture with sophisticated template engines, comprehensive schema validation systems, rich CLI interaction patterns, and robust vault indexing capabilities. The design emphasizes schema-driven development where schemas provide input parameters and validation rules, enabling modular template composition without manual coding.
+These requirements drive a port-based CQRS architecture with bounded contexts, sophisticated template engines, comprehensive schema validation systems, rich CLI interaction patterns, and robust vault indexing capabilities. The design emphasizes schema-driven development where schemas provide input parameters and validation rules, enabling modular template composition without manual coding.
 
 **Non-Functional Requirements:**
 
@@ -74,7 +74,7 @@ These requirements drive a hexagonal architecture with sophisticated template en
 
 - Primary domain: CLI developer tool with comprehensive template/schema management and future LSP ecosystem expansion
 - Complexity level: medium-high (50 functional requirements, solo developer, ecosystem expansion)
-- Estimated architectural components: 12-16 (hexagonal ports/adapters, domain services, CLI framework, storage layers, template engine, schema system, vault indexer, interactive components)
+- Estimated architectural components: 12-16 (bounded contexts with port-based CQRS, storage adapters, CLI framework, template engine, schema system, vault indexer, interactive components)
 - MVP scope recommendation: Reduce initial scope to 20-25 core functional requirements focusing on template execution, schema validation, and basic vault operations to maintain solo developer velocity and achieve 6-month MVP timeline
 - Success metrics: Template creation time reduction (target: 75% faster than manual), crash rate (target: 0%), schema compliance automation (target: 95%)
 - Agile guardrails: Weekly sprints with demo deliverables, daily standups, monthly retrospectives despite solo development to maintain discipline
@@ -103,7 +103,16 @@ These requirements drive a hexagonal architecture with sophisticated template en
 
 **Error Handling:** Clear, actionable error messages using `miette` in the CLI, with typed `thiserror` definitions in the core.
 
+**Type Safety:** Type-driven design - enforce invariants through the type system, private fields by default, validation at construction, newtype wrappers for domain constraints. Make illegal states unrepresentable.
+
 **Architecture:** **Single-Crate Core** (`lithos-core`) to minimize zero-copy friction, with a thin CLI driver (`lithos-cli`). This replaces the traditional multi-crate workspace to prioritize performance and simplicity while maintaining logical modularity.
+
+- **Logical Boundaries:** Enforced via visibility modifiers and port-based CQRS
+- **Business Contexts:** note, schema, template are isolated (no cross-imports)
+- **Cross-Cutting Infrastructure:** config, db, fs, patterns available to all contexts
+- **Port Pattern:** Each context defines storage port trait, CQRS types generic over port
+- **Zero-Copy:** GAT-enabled ports allow closure-based archived reads
+- **Testing:** Port traits enable test substitution (FakeStore implementations)
 
 **Interactive UX:** Fuzzy finding, schema-driven prompts, suggesters, multi-selection, progressive help - demands advanced CLI interaction patterns for 50+ features, with contextual help and guidance during input operations.
 
@@ -115,9 +124,14 @@ These requirements drive a hexagonal architecture with sophisticated template en
 
 **Configuration Management:** TOML-based configuration with extensive settings for templates, schemas, validation rules, and CLI behavior.
 
-**Event-Driven Architecture:** Implement from day one to prevent god-object orchestrators and enable decoupled services for vault-wide operations and future LSP integration.
+**Event-Driven Architecture:** Following ADR 0007, implement **Minimal Event Foundation** for Phase 1:
+- Domain methods return `(Entity, Vec<Event>)` - pure functions
+- Application layer (CLI) collects and dispatches events
+- Synchronous handlers for Phase 1 (logging, tracing)
+- Defer complex orchestration (async, MPSC channels) to Phase 2 (LSP)
+- Prevents god-object orchestrators while keeping implementation simple
 
-**Test Architecture:** Mirror hexagonal structure with pure domain tests, adapter integration tests, end-to-end CLI tests. CQRS requires separate test suites for write/read models. Performance testing with criterion benchmarks. Security testing for config encryption. TDD approach targeting 80%+ coverage.
+**Test Architecture:** Pure domain tests (business logic), port implementation tests (storage adapters), integration tests (cross-context workflows), end-to-end CLI tests. CQRS enables separate test strategies for commands vs queries. Performance testing with criterion benchmarks. Security testing for config encryption. TDD approach targeting 80%+ coverage.
 
 **Documentation Strategy:** Match progressive complexity UX - power users get API docs + advanced guides, new users get quickstart tutorials + guided CLI help. Migration guides critical for adoption. Documentation as code with mdBook focusing on concrete outcomes.
 

@@ -3,7 +3,7 @@ title: "Core Architectural Decisions"
 description: "Key architectural decisions and technology choices for Lithos implementation"
 author: "Jack"
 date: "2026-01-23"
-last_updated: "2026-01-23"
+last_updated: "2026-02-04"
 section: "Architecture Decisions"
 ---
 
@@ -27,7 +27,9 @@ section: "Architecture Decisions"
 - **Workspace:** Single Core Crate (`lithos-core`) to maximize compiler optimizations.
 - **Identity:** UUID v7 (Standardized sortable identifiers).
 - **Execution Model:** Sync-First Core, Async only at CLI/LSP edges.
-- **Module Structure:** File-First Modules (`<module>.rs` + `<module>/`), NO `mod.rs`.
+- **Module Structure:** Context modules use `<context>/mod.rs` pattern for organization.
+- **CQRS Pattern:** Concrete CQRS Generic Over Storage Port (see below).
+- **Type-Driven Design:** Enforce invariants through type system, private fields by default, validation at construction. See [Implementation Patterns](./implementation-patterns-consistency-rules.md#type-driven-design-patterns).
 
 **Deferred Decisions (Post-MVP):**
 
@@ -37,17 +39,129 @@ section: "Architecture Decisions"
 ## Data Architecture
 
 - **Engine:** Redb (Pure-Rust, ACID KV) with **rkyv** zero-copy serialization.
-- **Access Pattern:** Concrete `Database` struct in `lithos-core/db.rs` exposing zero-copy primitives (`get_archived`, `put_reserve`). No repository traits for MVP.
+- **Access Pattern:** Port-based CQRS with GAT-enabled zero-copy reads
+  - Each context defines `<Context>Store` port trait (e.g., `SchemaStore`, `NoteStore`)
+  - Concrete CQRS types generic over port: `Query<S: SchemaStore>`, `Command<S: SchemaStore>`
+  - Default adapter: `RedbSchemaStore<'db>` implements port with zero-copy primitives
+  - Type aliases hide generic complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>`
+  - Enables test substitution via `FakeSchemaStore` while maintaining zero-copy performance
+- **Storage DTOs:** Following ADR 0009 Appendix A, introduce `Stored*` types selectively:
+  - One per persisted aggregate (StoredNote, StoredSchema, StoredTemplate, StoredConfig)
+  - Keep conversions mechanical and co-located in storage adapters
+  - Treat changes to `Stored*` as migration decisions (stable on-disk format)
+  - Domain types remain ergonomic (no rkyv derives in domain surface)
 - **Identity:** UUID v7. Decouples identity from physical path to avoid the "directory trap."
-- **ADR Reference:** [ADR 0002: Persistence & Cache Infrastructure](docs/adr/0002-persistence-cache-infrastructure.md)
+- **ADR References:**
+  - [ADR 0002: Persistence & Cache Infrastructure](../../docs/adr/0002-persistence-cache-infrastructure.md)
+  - [ADR 0009: Domain Serialization Strategy](../../docs/adr/0009-domain-serialization-strategy.md) (see Appendix A)
+  - [Design Doc 012: CQRS Concrete Over Port](../../docs/design/012-cqrs-concrete-over-port.md)
 
 ## Internal Communication
 
-- **Strategy:** **Minimal Event Foundation**.
-  - **Data Plane:** Direct `db` writes for Phase 1. `db.batch_write()` handles atomicity.
+- **Strategy:** **Minimal Event Foundation** (Phase 1).
+  - **Pattern:** Domain methods return `(Entity, Vec<Event>)` - pure functions, no side effects
+  - **Orchestration:** Application layer (CLI) collects events and dispatches synchronously
+  - **Handlers:** Simple synchronous functions for logging, tracing, basic reactions
+  - **Data Plane:** Direct `db` writes via CQRS commands. `db.batch_write()` handles atomicity.
   - **Control Plane:** Simple callbacks or deferred dispatch via `UnitOfWork` if needed.
-  - **State Plane:** Deferred to LSP phase.
-- **ADR Reference:** [ADR 0007: Event Orchestration](docs/adr/0007-event-orchestration.md)
+  - **State Plane:** Deferred to LSP phase (async event bus, MPSC channels).
+  - **Benefits:** Prevents god-object orchestrators while keeping Phase 1 simple
+- **ADR Reference:** [ADR 0007: Event Orchestration](../../docs/adr/0007-event-orchestration.md)
+
+## CQRS Architecture Pattern
+
+**Pattern:** Concrete CQRS Generic Over Storage Port
+
+Each bounded context (note, schema, template, config) implements CQRS using:
+
+### Port Trait Pattern
+
+Storage capabilities defined via trait with GATs (Generic Associated Types) for zero-copy:
+
+```rust
+pub trait SchemaStore {
+    type Error;
+    type Archived<'a> where Self: 'a;  // GAT for zero-copy archived view
+
+    // Cold tier: owned read
+    fn find_owned_by_name(&self, name: &SchemaName)
+        -> Result<Option<Schema>, Self::Error>;
+
+    // Hot tier: zero-copy read with closure
+    fn with_archived_by_name<R>(
+        &self,
+        name: &SchemaName,
+        f: impl for<'a> FnOnce(Self::Archived<'a>) -> R,
+    ) -> Result<Option<R>, Self::Error>;
+
+    // Write operations
+    fn save(&self, schema: &Schema) -> Result<(), Self::Error>;
+}
+```
+
+### CQRS Layer Pattern
+
+Concrete types generic over storage port:
+
+```rust
+pub struct Query<S> {
+    store: S,
+}
+
+pub struct Command<S> {
+    store: S,
+}
+
+impl<S: SchemaStore> Query<S> {
+    pub fn new(store: S) -> Self {
+        Self { store }
+    }
+
+    pub fn find_owned_by_name(&self, name: &SchemaName)
+        -> Result<Option<Schema>, QueryError<S::Error>>
+    {
+        self.store.find_owned_by_name(name)
+            .map_err(QueryError::Storage)
+    }
+
+    // Hot path helper
+    pub fn with_archived_by_name<R>(
+        &self,
+        name: &SchemaName,
+        f: impl for<'a> FnOnce(S::Archived<'a>) -> R,
+    ) -> Result<Option<R>, QueryError<S::Error>>
+    {
+        self.store.with_archived_by_name(name, f)
+            .map_err(QueryError::Storage)
+    }
+}
+```
+
+### Type Aliases for Ergonomics
+
+Hide generic complexity from callers:
+
+```rust
+// In context/mod.rs
+pub type RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>;
+pub type RedbSchemaCommand<'db> = Command<RedbSchemaStore<'db>>;
+
+impl<'db> RedbSchemaQuery<'db> {
+    pub fn new_redb(db: &'db Database) -> Self {
+        Self::new(RedbSchemaStore::new(db))
+    }
+}
+```
+
+### Benefits
+
+- **Decoupling**: CQRS layer independent of concrete database implementation
+- **Zero-Copy Performance**: GATs enable `Archived<'a>` without leaking transaction lifetimes
+- **Testability**: Can substitute `FakeSchemaStore` implementing same port
+- **Static Dispatch**: Performance benefits when using concrete type aliases
+- **Future-Proof**: Can change storage backend by implementing new adapter
+
+**Reference:** [Design Doc 012: CQRS Concrete Over Port](../../docs/design/012-cqrs-concrete-over-port.md)
 
 ## Schema System Architecture
 

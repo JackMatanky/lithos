@@ -3,7 +3,7 @@ title: "Implementation Patterns & Consistency Rules"
 description: "Development patterns, naming conventions, and consistency rules for Lithos implementation"
 author: "Jack"
 date: "2026-01-23"
-last_updated: "2026-01-23"
+last_updated: "2026-02-04"
 section: "Implementation Standards"
 ---
 
@@ -11,7 +11,7 @@ section: "Implementation Standards"
 
 ## Pattern Categories Defined
 
-**Critical Conflict Points Identified:** 30+ areas where AI agents could make different choices in async Rust CLI applications with hexagonal architecture, CQRS, and event-driven patterns.
+**Critical Conflict Points Identified:** 30+ areas where AI agents could make different choices in async Rust CLI applications with port-based CQRS, bounded contexts, and event-driven patterns.
 
 ## Naming Patterns
 
@@ -142,18 +142,412 @@ pub struct SchemaView<'a> { /* ... */ }
 - If a builder for `MyType` is provided, expose `MyType::builder() -> MyTypeBuilder` and `MyTypeBuilder::build() -> Result<MyType, _>`.
 - Builder setters should read naturally and match field names where possible.
 
+## Type-Driven Design Patterns
+
+**Core Principle:** Make illegal states unrepresentable. Use Rust's type system to enforce invariants at compile time rather than runtime checks.
+
+### API Design & Ownership Patterns
+
+**Argument Ownership:**
+- **Prefer borrowed arguments:** Take `&str`, `&Path`, `&[T]` instead of `String`, `PathBuf`, `Vec<T>`.
+- **Take ownership only when needed:** If you need to store the data, take `T` or `impl Into<T>`.
+- **Use `impl Trait` for inputs:** `fn process(input: impl Read)` is more flexible than `fn process(input: &mut File)`.
+
+**String Efficiency:**
+- **Zero-copy where possible:** Use `&str` for read-only text.
+- **`Box<str>` for immutable owned:** Use `Box<str>` instead of `String` for immutable text fields (saves 8 bytes per string).
+- **`Cow<'a, str>` for mixed:** Use `Cow` when data might be borrowed or owned.
+
+**Construction Conventions:**
+- **`new()`:** Infallible constructor.
+- **`try_new()`:** Fallible constructor returning `Result`.
+- **`with_capacity()`:** Pre-allocation for collections.
+- **`from_*()`:** Conversion constructors.
+
+### Validation Through Construction
+
+**Pattern:** Hide direct field access, require validation at construction.
+
+✅ **Prefer:**
+
+```rust
+/// A validated schema name (non-empty, no path separators).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SchemaName(String);  // Private field
+
+impl SchemaName {
+    /// Creates a new schema name after validation.
+    ///
+    /// # Errors
+    /// Returns error if name is empty or contains path separators.
+    pub fn new(name: impl Into<String>) -> Result<Self, ValidationError> {
+        let name = name.into();
+
+        if name.is_empty() {
+            return Err(ValidationError::EmptyName);
+        }
+
+        if name.contains('/') || name.contains('\\') {
+            return Err(ValidationError::PathSeparatorInName);
+        }
+
+        Ok(Self(name))
+    }
+
+    /// Returns the name as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consumes the SchemaName and returns the inner String.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+// Implement useful traits
+impl AsRef<str> for SchemaName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for SchemaName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+```
+
+❌ **Avoid:**
+
+```rust
+// Public fields allow bypassing validation
+pub struct SchemaName {
+    pub name: String,  // Anyone can set to invalid value!
+}
+
+impl SchemaName {
+    pub fn new(name: String) -> Result<Self, ValidationError> {
+        if name.is_empty() {
+            return Err(ValidationError::EmptyName);
+        }
+        Ok(Self { name })
+    }
+}
+
+// Caller can bypass validation:
+let mut schema_name = SchemaName::new("valid".to_string())?;
+schema_name.name = "".to_string();  // Now invalid! Type system can't prevent this.
+```
+
+### Visibility Control Strategy
+
+**Default to Private:** Use the most restrictive visibility that works, only widen when necessary.
+
+**Visibility Hierarchy:**
+
+1. **Private (default):** `field: Type` - Only accessible within the defining module
+2. **Crate-Internal:** `pub(crate) field: Type` - Accessible within lithos-core
+3. **Parent Module:** `pub(super) field: Type` - Accessible in parent module only
+4. **Public:** `pub field: Type` - Part of external API (use sparingly)
+
+**Guidelines:**
+
+```rust
+// Domain aggregate
+pub struct Note {
+    // ✅ Public ID (needed for external queries)
+    pub id: Uuid,
+
+    // ✅ Controlled access through newtype
+    pub path: NotePath,  // NotePath validates on construction
+
+    // ❌ DON'T expose mutable collections directly
+    // pub links: Vec<Link>,  // Caller could push invalid links
+
+    // ✅ DO hide implementation details
+    links: Vec<Link>,  // Private - use accessor methods
+
+    // ✅ Expose as iterator, not mutable reference
+    pub fn links(&self) -> impl Iterator<Item = &Link> {
+        self.links.iter()
+    }
+
+    // ✅ Controlled mutation through method
+    pub fn add_link(&mut self, link: Link) -> Result<(), NoteError> {
+        // Can validate before adding
+        if link.target().is_empty() {
+            return Err(NoteError::InvalidLinkTarget);
+        }
+        self.links.push(link);
+        Ok(())
+    }
+}
+```
+
+### Accessor Pattern over Direct Access
+
+**Pattern:** Expose data through methods, not public fields.
+
+✅ **Prefer:**
+
+```rust
+pub struct Config {
+    vault_path: PathBuf,     // Private
+    max_cache_size: usize,   // Private
+}
+
+impl Config {
+    // Read-only access
+    pub fn vault_path(&self) -> &Path {
+        &self.vault_path
+    }
+
+    pub fn max_cache_size(&self) -> usize {
+        self.max_cache_size
+    }
+
+    // Controlled mutation
+    pub fn set_max_cache_size(&mut self, size: usize) -> Result<(), ConfigError> {
+        if size == 0 {
+            return Err(ConfigError::InvalidCacheSize);
+        }
+        self.max_cache_size = size;
+        Ok(())
+    }
+}
+```
+
+❌ **Avoid:**
+
+```rust
+pub struct Config {
+    pub vault_path: PathBuf,     // Can be set to anything
+    pub max_cache_size: usize,   // Can be set to 0
+}
+```
+
+**Benefits:**
+- Can add validation to setters later without breaking API
+- Can change internal representation without breaking callers
+- Clear ownership semantics (reference vs owned)
+
+### Newtype Pattern for Domain Constraints
+
+**Pattern:** Wrap primitive types to encode domain constraints.
+
+✅ **Examples:**
+
+```rust
+/// A note ID (UUID v7, time-ordered).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NoteId(Uuid);
+
+impl NoteId {
+    /// Creates a new time-ordered note ID.
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+
+    /// Parses a note ID from a string.
+    pub fn parse(s: &str) -> Result<Self, ParseError> {
+        let uuid = Uuid::parse_str(s)?;
+        Ok(Self(uuid))
+    }
+
+    pub fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+}
+
+/// A positive, non-zero count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Count(NonZeroUsize);
+
+impl Count {
+    pub fn new(value: usize) -> Result<Self, ValidationError> {
+        NonZeroUsize::new(value)
+            .map(Self)
+            .ok_or(ValidationError::ZeroCount)
+    }
+
+    pub fn get(&self) -> usize {
+        self.0.get()
+    }
+}
+
+/// A vault-relative path (validated, no traversal).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VaultPath(PathBuf);
+
+impl VaultPath {
+    pub fn new(path: impl AsRef<Path>) -> Result<Self, PathError> {
+        let path = path.as_ref();
+
+        if path.is_absolute() {
+            return Err(PathError::AbsolutePath);
+        }
+
+        if path.components().any(|c| c == Component::ParentDir) {
+            return Err(PathError::PathTraversal);
+        }
+
+        Ok(Self(path.to_path_buf()))
+    }
+
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+```
+
+### Non-Exhaustive Types for Evolution
+
+**Pattern:** Mark types as `#[non_exhaustive]` when they might grow.
+
+✅ **Use for:**
+
+```rust
+// Public enums that might gain variants
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub enum LinkStyle {
+    WikiLink,
+    Markdown,
+    Embed,
+    // Future: Audio, Video, etc.
+}
+
+// Public structs with optional fields
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct TemplateContext {
+    pub title: String,
+    pub date: DateTime<Utc>,
+    // Can add fields without breaking existing code
+}
+```
+
+**Benefits:**
+- Prevents external code from exhaustive matching (forces wildcard)
+- Prevents external code from direct struct construction
+- Allows adding variants/fields in minor versions
+
+### Builder Pattern for Complex Construction
+
+**When to use:** Types with many optional fields or complex validation.
+
+✅ **Pattern:**
+
+```rust
+#[derive(Debug, Clone)]
+pub struct Schema {
+    name: SchemaName,
+    properties: Vec<Property>,
+    extends: Option<SchemaName>,
+    version: u32,
+}
+
+pub struct SchemaBuilder {
+    name: Option<SchemaName>,
+    properties: Vec<Property>,
+    extends: Option<SchemaName>,
+    version: u32,
+}
+
+impl Schema {
+    pub fn builder() -> SchemaBuilder {
+        SchemaBuilder {
+            name: None,
+            properties: Vec::new(),
+            extends: None,
+            version: 1,
+        }
+    }
+}
+
+impl SchemaBuilder {
+    pub fn name(mut self, name: SchemaName) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    pub fn add_property(mut self, property: Property) -> Self {
+        self.properties.push(property);
+        self
+    }
+
+    pub fn extends(mut self, parent: SchemaName) -> Self {
+        self.extends = Some(parent);
+        self
+    }
+
+    pub fn version(mut self, version: u32) -> Self {
+        self.version = version;
+        self
+    }
+
+    pub fn build(self) -> Result<Schema, BuildError> {
+        let name = self.name.ok_or(BuildError::MissingName)?;
+
+        if self.properties.is_empty() {
+            return Err(BuildError::NoProperties);
+        }
+
+        Ok(Schema {
+            name,
+            properties: self.properties,
+            extends: self.extends,
+            version: self.version,
+        })
+    }
+}
+```
+
+### Summary: Type Safety Checklist
+
+When designing a type, ask:
+
+- [ ] Are all fields private unless truly needed public?
+- [ ] Do I use newtypes for domain constraints (IDs, validated strings)?
+- [ ] Do I provide constructors that enforce invariants?
+- [ ] Do I expose accessors instead of direct field access?
+- [ ] Is the type `#[non_exhaustive]` if it might evolve?
+- [ ] Do I use builder pattern for complex optional construction?
+- [ ] Do validation errors have helpful messages?
+- [ ] Can I make illegal states unrepresentable?
+
+**Anti-Patterns to Avoid:**
+
+❌ Public mutable fields on domain aggregates
+❌ Using `String`/`usize`/`PathBuf` directly without newtype wrappers
+❌ Exposing `Vec<T>` directly (use iterators or controlled mutation)
+❌ Validation in functions instead of type constructors
+❌ `pub struct` with all `pub` fields as default
+
+**Quick Wins:**
+
+✅ Mark all fields private by default
+✅ Wrap validated strings in newtypes (SchemaName, NotePath)
+✅ Use NonZero* types from std for positive numbers
+✅ Expose collections via `&[T]` or iterators, not `&mut Vec<T>`
+✅ Use `#[non_exhaustive]` on public enums
+
 ## Structure Patterns
 
 **Workspace Organization:**
 
 - **Crate Separation:** `lithos-core` (Logic + Infra) vs `lithos-cli` (Driver).
-- **Module Organization:** Within crates, use `<module>.rs` + `<module>/` folder. NO `mod.rs`.
+- **Module Organization:** Within crates, contexts use `<context>/mod.rs` pattern.
+  - Each context is a folder with `mod.rs` as entry point
+  - Submodules organized by responsibility (aggregate, command, query, ports, error, events)
 - **Test Placement:** Unit tests in same file (`#[cfg(test)]`), integration tests in `tests/`.
 - **Binary Organization:** CLI crate delegating to `lithos-core`.
 
 **File Structure Standards:**
 
-- **Lithos Core:** `src/lib.rs`, `src/db.rs`, `src/fs/`, `src/<context>.rs`, `src/<context>/` (errors/events co-located).
+- **Lithos Core:** `src/lib.rs`, `src/db/`, `src/fs/`, `src/<context>/` (contexts with mod.rs, errors/events/ports co-located).
 - **Lithos CLI:** `src/main.rs`, `src/commands/`.
 - **Common Patterns:** Group related items, keep files focused.
 
@@ -196,20 +590,149 @@ pub struct SchemaView<'a> { /* ... */ }
 
 **Inter-Module Communication:**
 
-- **Direct Calls:** `lithos-cli` calls `lithos-core` static methods directly.
-- **Database:** Passed as `&Database` reference to domain methods.
-- **No Traits:** Unless required for testing/mocking.
+- **Context Isolation:** Business contexts (note, schema, template) do not import each other.
+- **Cross-Cutting Infrastructure:** Config, db, fs, patterns are available to all contexts.
+- **Orchestration:** Cross-context workflows happen in CLI layer or dedicated app module.
+
+**Dependency Flow Rules:**
+
+✅ **ALLOWED:**
+```rust
+// From any business context (note, schema, template):
+use crate::config::Global;      // Config is cross-cutting infrastructure
+use crate::config::Vault;
+use crate::db;                  // Infrastructure
+use crate::fs;
+use crate::patterns;
+
+// Within context:
+use super::aggregate::Note;
+use super::error::NoteError;
+use super::ports::NoteStore;
+```
+
+❌ **FORBIDDEN:**
+```rust
+// Business contexts importing each other:
+use crate::note::Note;          // From schema context
+use crate::schema::Schema;      // From note context
+use crate::template::Template;  // From config context
+```
 
 **Database Access Rules:**
 
-- **Concrete Type:** Use `lithos_core::db::Database` directly.
-- **Zero-Copy First:** Prefer `db.get_archived()` for hot paths.
-- **Batch Operations:** Use `db.batch_write()` for bulk updates.
+- **Port-Based Access:** Contexts define storage port traits (e.g., `SchemaStore`, `NoteStore`)
+- **Generic CQRS:** Command/Query types are generic over port: `Query<S: SchemaStore>`
+- **Zero-Copy Reads:** Ports use GATs to enable closure-based archived access
+- **Default Backend:** Type aliases hide generics: `RedbSchemaQuery<'db>`
+- **Test Substitution:** Use `FakeSchemaStore` implementing the same port
+
+**CQRS Pattern:**
+
+```rust
+// Port trait (in context/ports.rs)
+pub trait SchemaStore {
+    type Error;
+    type Archived<'a> where Self: 'a;
+
+    fn find_owned_by_name(&self, name: &SchemaName)
+        -> Result<Option<Schema>, Self::Error>;
+
+    fn with_archived_by_name<R>(
+        &self,
+        name: &SchemaName,
+        f: impl for<'a> FnOnce(Self::Archived<'a>) -> R,
+    ) -> Result<Option<R>, Self::Error>;
+}
+
+// Query implementation (in context/query.rs)
+pub struct Query<S> {
+    store: S,
+}
+
+impl<S: SchemaStore> Query<S> {
+    pub fn new(store: S) -> Self {
+        Self { store }
+    }
+
+    pub fn find_owned_by_name(&self, name: &SchemaName)
+        -> Result<Option<Schema>, QueryError<S::Error>>
+    {
+        self.store.find_owned_by_name(name)
+            .map_err(QueryError::Storage)
+    }
+}
+
+// Type alias for default backend (in context/mod.rs)
+pub type RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>;
+```
 
 **CQRS Naming Conventions:**
 
 - **Queries:** `find_*`, `get_*`, `list_*`, `count_*`.
-- **Commands:** `save`, `delete`, `update`.
+- **Commands:** `save`, `delete`, `update`, `create`.
+- **Port Traits:** `<Context>Store` (e.g., `NoteStore`, `SchemaStore`)
+- **CQRS Types:** `Query<S>`, `Command<S>` generic over store port
+- **Type Aliases:** `Redb<Context>Query<'db>` for ergonomic use
+
+## Storage Patterns
+
+Following **ADR 0009 Appendix A**, minimize coupling between domain and storage format:
+
+**When to Introduce Stored Types:**
+
+- ✅ For persisted aggregates (Note, Schema, Template, Config)
+- ✅ When domain refactors shouldn't trigger migrations
+- ✅ When archived layout needs careful control (alignment, endianness)
+- ❌ Not for every type (avoid DTO explosion)
+- ❌ Not for value objects unless they cause migration pain
+
+**Pattern:**
+
+```rust
+// Domain type (in context/aggregate.rs)
+pub struct Schema {
+    pub name: SchemaName,  // Validated newtype
+    pub properties: Vec<Property>,
+    // Ergonomic, behavior-rich
+}
+
+// Stored type (in db/stored/ or storage adapter)
+#[derive(Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
+pub struct StoredSchema {
+    pub name: Box<str>,
+    pub version: u32,
+    pub properties: Vec<StoredProperty>,
+    // Stable layout - changes trigger migration decisions
+}
+
+// Conversions (in storage adapter)
+impl From<Schema> for StoredSchema { /* ... */ }
+impl TryFrom<StoredSchema> for Schema { /* ... */ }
+```
+
+**Guidelines:**
+
+1. **One `Stored*` per persisted aggregate** (not per value object)
+2. **Keep conversions mechanical and co-located** in storage layer
+3. **Use projections for new query patterns** (don't widen stored blobs)
+4. **Keep archived compute closure-scoped** (never leak transaction-scoped borrows)
+5. **Treat `Stored*` changes as migration decisions** (document format versions)
+
+**Location:**
+
+- `db/stored/schema.rs` - StoredSchema and conversions
+- `db/stored/note.rs` - StoredNote and conversions
+- Or `db/<context>_adapter.rs` if storing adapter and stored type together
+
+### Zero-Copy Idioms (Footguns to Avoid)
+
+- **rkyv format control**: Treat endianness/alignment/pointer-width feature choices as a persisted-format contract.
+- **rkyv validation**: Use `rkyv::access` at trust boundaries (files/network/user input).
+- **redb guards**: `AccessGuard` values borrow the transaction/table; do not return or store them beyond the transaction scope.
+- **redb custom Value**: Implement `redb::Value` via local newtypes/wrappers when you need custom encoding.
+- **moka determinism**: In tests, call `run_pending_tasks()` to ensure cache stats are consistent.
 
 ## Process Patterns
 
@@ -245,7 +768,8 @@ pub struct SchemaView<'a> { /* ... */ }
 **All AI Agents MUST:**
 
 - Follow established naming conventions without exception
-- Maintain hexagonal architecture boundaries (no domain → adapters dependencies)
+- Maintain context boundaries (business contexts must not import each other; only infrastructure/cross-cutting)
+- Use port-based CQRS pattern (generic over storage traits, not direct database coupling)
 - Use async/await consistently throughout the codebase with proper error handling
 - Implement comprehensive error handling with typed errors and context
 - Write tests for all public APIs and critical paths including async operations
@@ -260,7 +784,7 @@ pub struct SchemaView<'a> { /* ... */ }
 - **Pre-commit Hooks:** Run clippy, rustfmt, and tests before commits to maintain clean git history and catch issues early
 - **Code Reviews:** Automated checks for naming violations, dependency rules, architectural boundaries, and complexity metrics; manual review for logic and API design
 - **CI Pipeline:** Clippy with complexity limits, rustfmt, and custom lint enforcement with failure on violations; require green CI for merges
-- **Architecture Tests:** Integration tests verifying crate boundaries and hexagonal rules
+- **Architecture Tests:** Integration tests verifying context boundaries and dependency flow rules
 - **Documentation:** Pattern violations documented in commit messages with remediation steps
 - **Quality Gates:** Minimum test coverage (80%), no clippy warnings, performance regression checks, security audit passing
 

@@ -25,14 +25,16 @@ To activate specialized agents, use: `"As [agent-name], ..."` (e.g., `"As dev, i
 
 ### Technology Stack
 - **Language**: Rust (latest stable)
-- **Architecture**: Hexagonal (Ports & Adapters) - domain isolated from infrastructure
-- **Key Libraries**: redb (zero-copy DB), moka (concurrent cache), rkyv (serialization), pulldown-cmark (markdown parsing)
+- **Architecture**: Port-Based CQRS with Bounded Contexts - business contexts isolated, generic CQRS over storage ports
+- **Key Libraries**: redb (zero-copy DB), rkyv (serialization), pulldown-cmark (markdown parsing)
 - **Testing**: nextest, criterion benchmarks, tarpaulin coverage
 - **Build**: cargo workspace with mise task orchestration
 
 ### Critical Coding Standards
-- **Zero-copy patterns** for performance-critical paths (see [Technical Reference](#technical-reference-documentation))
-- **Hexagonal architecture**: Domain crate has no external dependencies
+- **Zero-copy patterns** for performance-critical paths via GAT-based port traits
+- **Port-based CQRS**: CQRS types generic over storage ports (`Query<S: SchemaStore>`)
+- **Context isolation**: Business contexts (note, schema, template) don't import each other
+- **Type-driven design**: Private fields by default, validation at construction, newtype wrappers
 - **Test-first development**: Red-green-refactor cycle required
 - **ADR documentation**: All architectural decisions documented in [docs/adr/](docs/adr/)
 
@@ -52,15 +54,22 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 ## Key Architectural Constraints
 
 ⚠️ **NON-NEGOTIABLE RULES**:
-1. **Domain purity**: `lithos-core/src/{context}/` MUST have zero external dependencies
-2. **Zero-copy patterns**: Use rkyv for serialization, avoid cloning in hot paths
-3. **Test-first**: Red-green-refactor cycle required - tests before implementation
-4. **ADRs required**: Document all architectural decisions in [docs/adr/](docs/adr/)
-5. **Dependency flow**: CLI → Core contexts → DB/FS (dependencies flow inward only)
+1. **Context isolation**: Business contexts (note, schema, template) MUST NOT import each other
+   - Config is cross-cutting infrastructure (available to all contexts)
+   - Only infrastructure (db, fs, patterns) and config may be imported by business contexts
+2. **Port-based CQRS**: CQRS types MUST be generic over storage port traits
+   - `Query<S: SchemaStore>`, `Command<S: SchemaStore>`
+   - Storage ports use GATs for zero-copy: `type Archived<'a> where Self: 'a`
+3. **Type safety**: Private fields by default, validation at construction, newtype wrappers for domain constraints
+4. **Zero-copy patterns**: Use rkyv via `Stored*` types in storage layer, avoid cloning in hot paths
+5. **Test-first**: Red-green-refactor cycle required - tests before implementation
+6. **ADRs required**: Document all architectural decisions in [docs/adr/](docs/adr/)
+7. **Dependency flow**: Infrastructure (db, fs, config, patterns) → Business Contexts (note, schema, template) → CLI
 
 ## Where Does This Code Go?
 
-**Pure business logic (no I/O)?** → `lithos-core/src/{context}/` (note, schema, template, config)
+**Pure business logic (no I/O)?** → `lithos-core/src/{context}/` (note, schema, template)
+**Cross-cutting configuration?** → `lithos-core/src/config/`
 **Database operations?** → `lithos-core/src/db/`
 **File system utilities?** → `lithos-core/src/fs/`
 **CLI interface?** → `lithos-cli/src/`
@@ -76,7 +85,7 @@ For deeper guidance on Rust style/module organization/tooling and crate-specific
 
 - **Clippy suppressions**: Prefer local `#[expect(clippy::lint_name, reason = "...")]` over `#[allow(...)]`; avoid crate/module-wide suppressions unless it’s a deliberate policy.
 - **Doc tests**: `nextest` does not run doctests; when changing public docs/examples, also run `cargo test --doc`.
-- **Module layout**: Prefer Rust 2018+ `file.rs` + `file/` layout for larger modules; avoid adding new `mod.rs` in new code.
+- **Module layout**: Contexts use `<context>/mod.rs` pattern with submodules for organization.
 - **Rustdoc hygiene**: For fallible/unsafe/panicking public APIs, document `# Errors`, `# Safety`, and/or `# Panics` (see [docs/refs/rust/style.md](docs/refs/rust/style.md)).
 
 ### Zero-Copy Library Footguns (Read Before Editing Hot Paths)
@@ -168,7 +177,9 @@ Before marking any task complete:
 - [ ] All public APIs have tests (functions, methods, traits)
 - [ ] Tests cover critical paths and business logic (not chasing % targets)
 - [ ] No `unwrap()`/`panic!` in production code
-- [ ] Hexagonal boundaries respected (domain has zero external deps)
+- [ ] Context boundaries respected (business contexts isolated, no cross-imports)
+- [ ] Port-based CQRS pattern followed (generic over storage traits)
+- [ ] Type-driven design applied (private fields, validated constructors)
 - [ ] Documentation updated (doc comments for public APIs)
 - [ ] Doc tests run when docs/examples changed (`cargo test --doc`)
 - [ ] ADR created if architectural decision made
