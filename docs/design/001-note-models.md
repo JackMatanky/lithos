@@ -70,6 +70,18 @@ Additional Rust best-practice constraints for this bounded context:
 - **No unsafe** code.
 - **Bounded context isolation**: note models should not depend on other contexts directly.
 
+### 1.4 Minimizing “derive-everything” Blast Radius (rkyv)
+
+rkyv is both a performance lever and a persisted-format contract. If we derive rkyv traits across a large portion of the note model surface, small refactors can accidentally become **format migrations**.
+
+Practical guidance (subject to revisiting as the codebase evolves):
+
+- **Prefer a persistence-shaped DTO boundary** when it meaningfully reduces coupling. The domain `Note` can remain ergonomic while a `PersistedNote`/`NoteRecord` type (storage layer) owns rkyv derives and on-disk representation.
+- **Keep archived compute near query code**. Hot-path reads should compute from `Archived*` types inside closures; avoid pulling archived types into broad domain surfaces.
+- **Treat layout changes as migrations**. Adding/reordering fields, changing newtype wrappers, or changing rkyv attributes should be considered a persisted-format decision.
+- **Use rkyv attributes intentionally**. For recursive/complex shapes, prefer the documented approaches (e.g. `#[rkyv(omit_bounds)]` on recursive fields) to avoid trait-solver blowups.
+- **Avoid “accidental persistence dependencies”**. Storage keys, projection encodings, and index tables should remain storage-layer concerns, not domain model concerns.
+
 ## 2. Guide-Level Explanation (The "What")
 
 ### 2.1 User/Dev Experience

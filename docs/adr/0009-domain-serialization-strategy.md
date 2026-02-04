@@ -190,3 +190,78 @@ fn domain_has_zero_required_dependencies() {
   - **Conditional Compilation**: Some API surfaces only available with feature enabled
   - **Testing Overhead**: Must test both with/without serde feature enabled
   - **Documentation Burden**: Must document feature flag in library docs and examples
+
+## Appendix A: Minimizing “derive-everything” Blast Radius (Current Reality)
+
+This ADR’s decision prohibits rkyv derives in domain types and prefers storage DTOs. In the current Rust conversion state, Lithos uses Redb + rkyv directly in `lithos-core` for persistence, which effectively places rkyv on (at least part of) the domain model surface.
+
+This appendix documents a practical pattern to minimize the coupling (and the migration pain) without turning the codebase into DTO boilerplate.
+
+### A.1 Point of focus: minimize “derive-everything” blast radius
+
+The core risk is *coupling*: if rkyv derives are applied broadly on “domain-shaped” types, then routine refactors become **persisted-format changes**.
+
+In concrete terms, right now `Schema` / `Note` are both “domain + stored” at once. If we keep it that way, we should expect more on-disk migrations when we refactor domain fields.
+
+### A.2 Practical pattern: `Raw*` / `Stored*` / `Domain*`
+
+The pattern is a three-shape model boundary:
+
+1) **`Raw*` (serde-only)**: input/wire shapes.
+  - Purpose: parse user data and hold “maybe invalid” values.
+  - Traits: serde derives only (feature-gated if needed).
+
+2) **`Stored*` (rkyv + validation)**: persisted/on-disk shapes.
+  - Purpose: define the stable archived layout and the format-control contract.
+  - Traits: rkyv derives, bytecheck/validation bounds, and any storage-specific annotations.
+  - Rule: treat changes to `Stored*` as migration decisions.
+
+3) **`Domain*` (behavioral/runtime)**: in-memory shapes.
+  - Purpose: invariants, ergonomics, and behavior.
+  - Traits: ideally no serde/rkyv derives (or only what is truly necessary for the layer).
+
+Mapping rules:
+
+- `Raw* -> Domain*` is validation/compilation.
+- `Domain* <-> Stored*` is persistence mapping.
+
+### A.3 Two viable paths (pick deliberately)
+
+**Path 1: Align fully with ADR 0009 (preferred end state)**
+
+- Keep `Domain*` free of rkyv.
+- Implement `Stored*` DTOs at the persistence boundary (in adapters / storage layer).
+- Keep archived compute, format-control choices, and validation local to storage.
+
+This best preserves domain ergonomics and makes format changes deliberate.
+
+**Path 2: Transitional “rkyv in core” with minimal bloat (acceptable short-term)**
+
+- Introduce `Stored*` types even if they live inside `lithos-core` initially (e.g., in a `db`/storage module), so the persisted layout is still explicit.
+- Keep `Domain*` types ergonomic and isolate rkyv derives onto the `Stored*` boundary.
+- Keep mapping mechanical and localized (one `Stored*` per persisted aggregate), not an explosion of DTOs.
+
+If we do *not* introduce `Stored*` and instead keep `Schema`/`Note` as “domain+stored combined”, the team should treat most refactors as potential migrations.
+
+### A.4 Low-bloat implementation guidelines
+
+Guidelines to keep the pattern from bloating the codebase:
+
+1) **One `Stored*` per persisted aggregate**
+
+- Prefer `StoredNote` / `StoredSchema` rather than duplicating every value object.
+- Only split further when a specific subgraph causes real pain (compile time, migrations, or archived-layout constraints).
+
+2) **Keep conversions mechanical and colocated**
+
+- Implement `From<Domain*> for Stored*` and `TryFrom<Stored*> for Domain*` (or builder-style constructors) in the persistence module.
+- Avoid sprinkling conversion logic throughout domain modules.
+
+3) **Use projections instead of widening stored blobs**
+
+- When new queries become hot, add read-optimized index/projection tables rather than reshaping the primary stored aggregate to serve every query.
+
+4) **Keep archived compute closure-scoped**
+
+- Do not leak archived references beyond transaction scope.
+- Prefer closure-based APIs that return owned computed results.

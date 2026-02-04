@@ -111,7 +111,7 @@ For each query, measure the tiers you will actually ship:
 
 ### 6.3 Suggested Criterion structure
 
-- `lithos-core/benches/db_perf.rs`: keep as the storage micro-benchmark suite.
+- `lithos-core/benches/redb_rkyv.rs`: keep as the storage micro-benchmark suite.
 - Add a new suite for end-to-end query shapes (example names):
   - `lithos-core/benches/instant_queries.rs`
   - `lithos-core/benches/schema_queries.rs`

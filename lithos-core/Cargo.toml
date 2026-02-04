@@ -44,9 +44,9 @@ tempfile.workspace = true
 criterion = { workspace = true, features = ["html_reports"] }
 
 [[bench]]
-name = "db_perf"
+name = "redb_rkyv"
 harness = false
-path = "benches/db_perf.rs"
+path = "benches/redb_rkyv.rs"
 
 [features]
 default = []

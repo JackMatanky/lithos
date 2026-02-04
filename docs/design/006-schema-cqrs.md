@@ -116,6 +116,21 @@ Projection/index mindset:
 
 Design rule: API names must make the tier obvious.
 
+### 2.3 Read-Optimized Projections (Indexes)
+
+Schema reads become “instant” when we persist **read-optimized projections** that match real query shapes (instead of repeatedly loading/deserializing entire schemas).
+
+Guidance:
+
+- Use projections to convert “lookup by human name” into “lookup by stable id”, e.g. `schema_id_by_name: SchemaNameKey -> SchemaId`.
+- Prefer **composite-key projections** when a query naturally filters by multiple dimensions, e.g. `(SchemaId, PropertyNameKey) -> PropertyId`.
+- Keep projections **storage-shaped** (cheap keys, deterministic encoding) and update them on the command side in the same transaction as the source write.
+
+Heuristic for introducing a projection:
+
+- Add it when a query is measurably hot and otherwise requires full schema loads or scans.
+- Keep it when it buys a clear performance win without adding too much write amplification or migration burden.
+
 ## 3. Detailed Design (The "How")
 
 ### 3.1 System Architecture

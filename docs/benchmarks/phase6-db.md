@@ -241,7 +241,7 @@ Investigate redb's internal write batching behavior. May need to test with 10,00
 ### Full Suite (All Benchmarks)
 
 ```bash
-cargo bench --package lithos-core --bench db_perf
+cargo bench --package lithos-core --bench redb_rkyv
 ```
 
 **Runtime:** ~5-10 minutes (includes statistical sampling)
@@ -250,17 +250,17 @@ cargo bench --package lithos-core --bench db_perf
 
 ```bash
 # Run only zero-copy read benchmark
-cargo bench --package lithos-core --bench db_perf -- bench_zero_copy_read
+cargo bench --package lithos-core --bench redb_rkyv -- bench_zero_copy_read
 
 # Run only batch write benchmark
-cargo bench --package lithos-core --bench db_perf -- bench_batch_write
+cargo bench --package lithos-core --bench redb_rkyv -- bench_batch_write
 ```
 
 ### Test Mode (Quick Validation)
 
 ```bash
 # Run benchmarks in test mode (single iteration)
-cargo bench --package lithos-core --bench db_perf -- --test
+cargo bench --package lithos-core --bench redb_rkyv -- --test
 ```
 
 **Runtime:** ~10 seconds
