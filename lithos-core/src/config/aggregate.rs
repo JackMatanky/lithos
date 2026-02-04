@@ -329,11 +329,6 @@ mod tests {
         /// 3.3-UNIT-020: `build_handles_missing_global`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap() on Config::build() for clear \
-                      failure messages. Acceptable in test-only code paths."
-        )]
         fn build_handles_missing_global() {
             // GIVEN: no global configuration
             let vault = Vault {
@@ -346,7 +341,13 @@ mod tests {
             let result = Config::build(None, "/vault", vault);
 
             // THEN: it succeeds and applies defaults
-            let config = result.unwrap();
+            assert!(
+                result.is_ok(),
+                "Config build should succeed, got: {result:?}"
+            );
+            let Ok(config) = result else {
+                return;
+            };
             assert_eq!(config.vault_metadata.path, "/vault");
             assert_eq!(config.global_filesystem.schema.schemas_dir, "schemas");
         }
@@ -593,13 +594,6 @@ mod tests {
         /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
         /// Priority: P0.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::expect() during aggregate \
-                      construction for clear failures. Building from \
-                      validated sample data is a safe invariant for this test \
-                      case."
-        )]
         fn vault_values_take_precedence_over_global() {
             // GIVEN: a global config with default settings and a vault config
             // with custom overrides
@@ -607,8 +601,15 @@ mod tests {
             let vault = sample_vault_config();
 
             // WHEN: merging vault and global configs
-            let merged = Config::build(Some(&global), "/vault", vault)
-                .expect("Config build should succeed with valid sample data");
+            let merged_result = Config::build(Some(&global), "/vault", vault);
+            assert!(
+                merged_result.is_ok(),
+                "Config build should succeed with valid sample data, got: \
+                 {merged_result:?}"
+            );
+            let Ok(merged) = merged_result else {
+                return;
+            };
 
             // THEN: vault values override global defaults
             assert_eq!(
@@ -639,17 +640,12 @@ mod tests {
         // 3.3-UNIT-012: `merge_handles_various_path_lengths`.
         // Priority: P2.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap() for proptest verification. \
-                      Acceptable in test-only code paths."
-        )]
         fn merge_handles_various_path_lengths() {
             let mut runner = TestRunner::deterministic();
             let strategy = ("[a-zA-Z0-9/_-]{1,200}", "[a-zA-Z0-9/_-]{0,100}");
 
-            runner
-                .run(&strategy, |(vault_path, templates_dir)| {
+            let run_result =
+                runner.run(&strategy, |(vault_path, templates_dir)| {
                     // GIVEN a global config and generated vault path/template
                     // overrides
                     let global = sample_global_config();
@@ -678,15 +674,23 @@ mod tests {
                         return Ok(());
                     }
 
-                    let config = result.unwrap();
+                    let config = result.map_err(|error| {
+                        proptest::test_runner::TestCaseError::fail(format!(
+                            "Config::build should succeed for vault_path \
+                             '{vault_path}', got: {error:?}"
+                        ))
+                    })?;
                     prop_assert_eq!(
                         config.vault_metadata.path.as_str(),
                         vault_path,
                         "Valid paths should preserve vault_path"
                     );
                     Ok(())
-                })
-                .unwrap();
+                });
+            assert!(
+                run_result.is_ok(),
+                "Proptest run should succeed, got: {run_result:?}"
+            );
         }
     }
 
