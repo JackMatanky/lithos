@@ -113,10 +113,6 @@ impl super::ports::Command for Command<'_> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test code uses unwrap/expect for clarity"
-)]
 mod tests {
     use std::collections::HashMap;
 
@@ -125,14 +121,14 @@ mod tests {
     use super::*;
     use crate::template::{aggregate::Metadata, ports::Command as _};
 
-    fn test_db() -> (TempDir, Database) {
-        let dir = tempdir().unwrap();
+    fn test_db() -> Result<(TempDir, Database), String> {
+        let dir = tempdir().map_err(|e| e.to_string())?;
         let path = dir.path().join("templates.redb");
-        let db = Database::open(&path).unwrap();
-        (dir, db)
+        let db = Database::open(&path).map_err(|e| e.to_string())?;
+        Ok((dir, db))
     }
 
-    fn template_fixture(name: &str) -> Template {
+    fn template_fixture(name: &str) -> Result<Template, String> {
         Template::new(
             name.to_owned(),
             "Hello".to_owned(),
@@ -140,74 +136,100 @@ mod tests {
             None,
             Metadata::default(),
         )
-        .unwrap()
+        .map_err(|e| e.to_string())
     }
 
     #[test]
-    fn create_persists_template_and_name_index() {
-        let (_dir, db) = test_db();
+    fn create_persists_template_and_name_index() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
         let cmd = Command::new(&db);
 
-        let template = template_fixture("daily");
-        cmd.create(&template).unwrap();
+        let template = template_fixture("daily")?;
+        cmd.create(&template).map_err(|e| e.to_string())?;
 
         let id_str = template.id().to_string();
-        let stored = db.get_owned::<Template>("templates", &id_str).unwrap();
-        let stored_template = stored.expect("Stored template should exist");
-        assert_eq!(
-            stored_template.name(),
-            "daily",
-            "Stored template name should match"
-        );
+        let stored = db
+            .get_owned::<Template>("templates", &id_str)
+            .map_err(|e| e.to_string())?;
+        let Some(stored_template) = stored else {
+            return Err("Stored template should exist".to_owned());
+        };
+        if stored_template.name() != "daily" {
+            return Err(format!(
+                "Stored template name should match: expected 'daily', got '{}'",
+                stored_template.name()
+            ));
+        }
 
-        let ids = db.multimap_get("template_name_to_id", "daily").unwrap();
-        assert!(ids.contains(&id_str), "Name index should contain template id");
+        let ids = db
+            .multimap_get("template_name_to_id", "daily")
+            .map_err(|e| e.to_string())?;
+        if !ids.contains(&id_str) {
+            return Err("Name index should contain template id".to_owned());
+        }
+
+        Ok(())
     }
 
     #[test]
-    fn update_refreshes_name_index_when_name_changes() {
-        let (_dir, db) = test_db();
+    fn update_refreshes_name_index_when_name_changes() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
         let cmd = Command::new(&db);
 
-        let mut template = template_fixture("daily");
-        cmd.create(&template).unwrap();
+        let mut template = template_fixture("daily")?;
+        cmd.create(&template).map_err(|e| e.to_string())?;
 
         let id_str = template.id().to_string();
         template.name = "weekly".to_owned();
-        cmd.update(&template).unwrap();
+        cmd.update(&template).map_err(|e| e.to_string())?;
 
-        let old_ids = db.multimap_get("template_name_to_id", "daily").unwrap();
-        assert!(
-            !old_ids.contains(&id_str),
-            "Old name index should not contain template id"
-        );
+        let old_ids = db
+            .multimap_get("template_name_to_id", "daily")
+            .map_err(|e| e.to_string())?;
+        if old_ids.contains(&id_str) {
+            return Err(
+                "Old name index should not contain template id".to_owned()
+            );
+        }
 
-        let new_ids = db.multimap_get("template_name_to_id", "weekly").unwrap();
-        assert!(
-            new_ids.contains(&id_str),
-            "New name index should contain template id"
-        );
+        let new_ids = db
+            .multimap_get("template_name_to_id", "weekly")
+            .map_err(|e| e.to_string())?;
+        if !new_ids.contains(&id_str) {
+            return Err("New name index should contain template id".to_owned());
+        }
+
+        Ok(())
     }
 
     #[test]
-    fn delete_removes_template_and_name_index() {
-        let (_dir, db) = test_db();
+    fn delete_removes_template_and_name_index() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
         let cmd = Command::new(&db);
 
-        let template = template_fixture("daily");
+        let template = template_fixture("daily")?;
         let id = template.id();
         let id_str = id.to_string();
-        cmd.create(&template).unwrap();
+        cmd.create(&template).map_err(|e| e.to_string())?;
 
-        cmd.delete(id).unwrap();
+        cmd.delete(id).map_err(|e| e.to_string())?;
 
-        let stored = db.get_owned::<Template>("templates", &id_str).unwrap();
-        assert!(stored.is_none(), "Deleted template should not exist");
+        let stored = db
+            .get_owned::<Template>("templates", &id_str)
+            .map_err(|e| e.to_string())?;
+        if stored.is_some() {
+            return Err("Deleted template should not exist".to_owned());
+        }
 
-        let ids = db.multimap_get("template_name_to_id", "daily").unwrap();
-        assert!(
-            !ids.contains(&id_str),
-            "Name index should not contain deleted template id"
-        );
+        let ids = db
+            .multimap_get("template_name_to_id", "daily")
+            .map_err(|e| e.to_string())?;
+        if ids.contains(&id_str) {
+            return Err(
+                "Name index should not contain deleted template id".to_owned()
+            );
+        }
+
+        Ok(())
     }
 }
