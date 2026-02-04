@@ -141,6 +141,10 @@ impl Resolver {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module groups fixtures and submodules for readability."
+)]
 mod tests {
     use uuid::Uuid;
 
@@ -161,229 +165,160 @@ mod tests {
     const TEST_PROPERTY_ID_EXCLUDE: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0505);
 
-    #[test]
-    fn resolve_includes_parent_properties() {
-        // GIVEN: a parent schema with a property
-        let bank = PropertyBank::new();
-        let parent_name_result = PropertyName::new("parent".to_owned());
-        assert!(
-            parent_name_result.is_ok(),
-            "valid name: {parent_name_result:?}"
-        );
-        let Ok(parent_name) = parent_name_result else {
-            return;
-        };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Fixture helpers use expect for deterministic setup."
+    )]
+    mod fixtures {
+        use super::*;
 
-        let parent_prop_result = Property::new(
-            TEST_PROPERTY_ID_PARENT,
-            parent_name,
-            true,
-            false,
-            PropertySpec::Bool(BoolSpec::default()),
-        );
-        assert!(
-            parent_prop_result.is_ok(),
-            "valid property: {parent_prop_result:?}"
-        );
-        let Ok(parent_prop) = parent_prop_result else {
-            return;
-        };
-        let mut bank_with_prop = PropertyBank::new();
-        let register_result = bank_with_prop.register(parent_prop.clone());
-        assert!(
-            register_result.is_ok(),
-            "register property: {register_result:?}"
-        );
+        pub fn parent_property() -> Property {
+            let name =
+                PropertyName::new("parent".to_owned()).expect("valid name");
+            Property::new(
+                TEST_PROPERTY_ID_PARENT,
+                name,
+                true,
+                false,
+                PropertySpec::Bool(BoolSpec::default()),
+            )
+            .expect("valid property")
+        }
 
-        let parent_schema_name_result = SchemaName::new("parent".to_owned());
-        assert!(
-            parent_schema_name_result.is_ok(),
-            "valid name: {parent_schema_name_result:?}"
-        );
-        let Ok(parent_schema_name) = parent_schema_name_result else {
-            return;
-        };
+        pub fn status_property() -> Property {
+            let name =
+                PropertyName::new("status".to_owned()).expect("valid name");
+            Property::new(
+                TEST_PROPERTY_ID_STATUS,
+                name,
+                true,
+                false,
+                PropertySpec::Bool(BoolSpec::default()),
+            )
+            .expect("valid property")
+        }
 
-        let parent_schema_result =
-            Schema::new(TEST_SCHEMA_ID_PARENT, parent_schema_name, vec![
-                parent_prop,
-            ]);
-        assert!(
-            parent_schema_result.is_ok(),
-            "valid schema: {parent_schema_result:?}"
-        );
-        let Ok(parent_schema) = parent_schema_result else {
-            return;
-        };
+        pub fn excluded_property() -> Property {
+            let name = PropertyName::new("p".to_owned()).expect("valid name");
+            Property::new(
+                TEST_PROPERTY_ID_EXCLUDE,
+                name,
+                true,
+                false,
+                PropertySpec::Bool(BoolSpec::default()),
+            )
+            .expect("valid property")
+        }
 
-        // WHEN: resolving a child raw schema
-        let raw = RawSchema::new(
-            TEST_SCHEMA_ID_CHILD,
-            {
-                let child_schema_name_result =
-                    SchemaName::new("child".to_owned());
-                assert!(
-                    child_schema_name_result.is_ok(),
-                    "valid name: {child_schema_name_result:?}"
-                );
-                let Ok(child_schema_name) = child_schema_name_result else {
-                    return;
-                };
-                child_schema_name
-            },
-            None,
-            HashSet::new(),
-            Vec::new(),
-        );
-        let schema_result = Resolver::resolve(raw, Some(&parent_schema), &bank);
-        assert!(schema_result.is_ok(), "resolve schema: {schema_result:?}");
-        let Ok(schema) = schema_result else {
-            return;
-        };
+        pub fn parent_schema_with_property(property: Property) -> Schema {
+            let name = SchemaName::new("parent".to_owned())
+                .expect("valid schema name");
+            Schema::new(TEST_SCHEMA_ID_PARENT, name, vec![property])
+                .expect("valid schema")
+        }
 
-        // THEN: parent property is retained
-        assert!(schema.has("parent"));
+        pub fn child_raw_schema() -> RawSchema {
+            let name =
+                SchemaName::new("child".to_owned()).expect("valid schema name");
+            RawSchema::new(
+                TEST_SCHEMA_ID_CHILD,
+                name,
+                None,
+                HashSet::new(),
+                Vec::new(),
+            )
+        }
+
+        pub fn child_raw_schema_with_excludes(
+            exclude_name: PropertyName,
+        ) -> RawSchema {
+            let name =
+                SchemaName::new("child".to_owned()).expect("valid schema name");
+            let mut excludes = HashSet::new();
+            excludes.insert(exclude_name);
+            RawSchema::new(
+                TEST_SCHEMA_ID_CHILD,
+                name,
+                None,
+                excludes,
+                Vec::new(),
+            )
+        }
+
+        pub fn property_bank_with(property: Property) -> PropertyBank {
+            let mut bank = PropertyBank::new();
+            bank.register(property).expect("register property should succeed");
+            bank
+        }
+
+        pub fn resolved_schema_with_parent_property() -> Schema {
+            let bank = PropertyBank::new();
+            let property = parent_property();
+            let parent_schema = parent_schema_with_property(property.clone());
+            let raw = child_raw_schema();
+            Resolver::resolve(raw, Some(&parent_schema), &bank)
+                .expect("resolve schema")
+        }
+
+        pub fn resolved_ref_property() -> Property {
+            let property = status_property();
+            let bank = property_bank_with(property);
+            let raw = RawProperty::Ref(RawPropertyRef {
+                ref_path: "status".to_owned(),
+            });
+            Resolver::resolve_single_property(raw, &bank).expect("resolve ref")
+        }
+
+        pub fn resolved_schema_with_excludes() -> Schema {
+            let bank = PropertyBank::new();
+            let property = excluded_property();
+            let parent_schema = parent_schema_with_property(property);
+            let exclude_name =
+                PropertyName::new("p".to_owned()).expect("valid name");
+            let raw = child_raw_schema_with_excludes(exclude_name);
+            Resolver::resolve(raw, Some(&parent_schema), &bank)
+                .expect("resolve schema")
+        }
+    }
+    mod resolve {
+        use super::*;
+
+        #[test]
+        fn includes_parent_properties() {
+            let schema = fixtures::resolved_schema_with_parent_property();
+            assert!(schema.has("parent"));
+        }
+
+        #[test]
+        fn excludes_properties_listed_in_child() {
+            let schema = fixtures::resolved_schema_with_excludes();
+            assert!(!schema.has("p"));
+        }
     }
 
-    #[test]
-    fn resolves_ref_property_with_plain_name() {
-        // GIVEN: a property bank with a property
-        let mut bank = PropertyBank::new();
-        let status_name_result = PropertyName::new("status".to_owned());
-        assert!(
-            status_name_result.is_ok(),
-            "valid name: {status_name_result:?}"
-        );
-        let Ok(status_name) = status_name_result else {
-            return;
-        };
+    mod resolve_single_property {
+        use super::*;
 
-        let property_result = Property::new(
-            TEST_PROPERTY_ID_STATUS,
-            status_name,
-            true,
-            false,
-            PropertySpec::Bool(BoolSpec::default()),
-        );
-        assert!(property_result.is_ok(), "valid property: {property_result:?}");
-        let Ok(property) = property_result else {
-            return;
-        };
+        #[test]
+        fn resolves_ref_property_by_plain_name() {
+            let property = fixtures::resolved_ref_property();
+            assert_eq!(&property.name().0, "status");
+        }
 
-        let register_result = bank.register(property.clone());
-        assert!(
-            register_result.is_ok(),
-            "register property: {register_result:?}"
-        );
+        #[test]
+        fn returns_error_for_missing_ref() {
+            let bank = PropertyBank::new();
+            let raw = RawProperty::Ref(RawPropertyRef {
+                ref_path: "missing".to_owned(),
+            });
 
-        let raw = RawProperty::Ref(RawPropertyRef {
-            ref_path: "status".to_owned(),
-        });
+            let result = Resolver::resolve_single_property(raw, &bank);
 
-        // WHEN: resolving the ref
-        let resolved_result = Resolver::resolve_single_property(raw, &bank);
-        assert!(resolved_result.is_ok(), "resolve ref: {resolved_result:?}");
-        let Ok(resolved) = resolved_result else {
-            return;
-        };
-
-        // THEN: it finds the property by name
-        assert_eq!(&resolved.name().0, "status");
-    }
-
-    #[test]
-    fn resolve_handles_excludes() {
-        // GIVEN: a parent schema with a property
-        let bank = PropertyBank::new();
-        let prop_name_result = PropertyName::new("p".to_owned());
-        assert!(prop_name_result.is_ok(), "valid name: {prop_name_result:?}");
-        let Ok(prop_name) = prop_name_result else {
-            return;
-        };
-
-        let prop_result = Property::new(
-            TEST_PROPERTY_ID_EXCLUDE,
-            prop_name,
-            true,
-            false,
-            PropertySpec::Bool(BoolSpec::default()),
-        );
-        assert!(prop_result.is_ok(), "valid property: {prop_result:?}");
-        let Ok(prop) = prop_result else {
-            return;
-        };
-
-        let parent_name_result = SchemaName::new("parent".into());
-        assert!(
-            parent_name_result.is_ok(),
-            "valid name: {parent_name_result:?}"
-        );
-        let Ok(parent_name) = parent_name_result else {
-            return;
-        };
-
-        let parent_result =
-            Schema::new(TEST_SCHEMA_ID_PARENT, parent_name, vec![prop]);
-        assert!(parent_result.is_ok(), "valid schema: {parent_result:?}");
-        let Ok(parent) = parent_result else {
-            return;
-        };
-
-        // AND: a child schema that excludes that property
-        let mut excludes = HashSet::new();
-        let exclude_name_result = PropertyName::new("p".to_owned());
-        assert!(
-            exclude_name_result.is_ok(),
-            "valid name: {exclude_name_result:?}"
-        );
-        let Ok(exclude_name) = exclude_name_result else {
-            return;
-        };
-        excludes.insert(exclude_name);
-        let raw = RawSchema::new(
-            TEST_SCHEMA_ID_CHILD,
-            {
-                let child_name_result = SchemaName::new("child".into());
-                assert!(
-                    child_name_result.is_ok(),
-                    "valid name: {child_name_result:?}"
-                );
-                let Ok(child_name) = child_name_result else {
-                    return;
-                };
-                child_name
-            },
-            None,
-            excludes,
-            vec![],
-        );
-
-        // WHEN: resolving
-        let resolved_result = Resolver::resolve(raw, Some(&parent), &bank);
-        assert!(resolved_result.is_ok(), "resolve schema: {resolved_result:?}");
-        let Ok(resolved) = resolved_result else {
-            return;
-        };
-
-        // THEN: the property is excluded
-        assert!(!resolved.has("p"));
-    }
-
-    #[test]
-    fn resolve_returns_error_for_missing_ref() {
-        // GIVEN: an empty property bank
-        let bank = PropertyBank::new();
-        let raw = RawProperty::Ref(RawPropertyRef {
-            ref_path: "missing".to_owned(),
-        });
-
-        // WHEN: resolving a missing ref
-        let result = Resolver::resolve_single_property(raw, &bank);
-
-        // THEN: it returns a PropertyNotFound error
-        assert!(
-            matches!(result, Err(SchemaError::PropertyNotFound(_))),
-            "Missing property reference should be detected, got: {result:?}"
-        );
+            assert!(
+                matches!(result, Err(SchemaError::PropertyNotFound(_))),
+                "Missing property reference should be detected, got: \
+                 {result:?}"
+            );
+        }
     }
 }
