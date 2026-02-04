@@ -252,33 +252,31 @@ impl Vault {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::unwrap() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use super::{Metadata, Paths};
 
     #[test]
-    fn derives_metadata_from_vault_path() {
+    fn derives_metadata_from_vault_path() -> Result<(), String> {
         // GIVEN: a vault path
         let vault_path = "/vaults/work".to_owned();
 
         // WHEN: building metadata from the path
-        let metadata = Metadata::new(vault_path.clone(), None, None).unwrap();
+        let metadata = Metadata::new(vault_path.clone(), None, None)
+            .map_err(|err| format!("Metadata::new failed: {err:?}"))?;
 
         // THEN: version and name defaults are applied
-        assert_eq!(
-            &*metadata.version,
-            env!("CARGO_PKG_VERSION"),
-            "Expected version default to be set"
-        );
-        assert_eq!(
-            metadata.name, "work",
-            "Expected vault name to default to directory basename"
-        );
-        assert_eq!(metadata.path, vault_path, "Expected path to match input");
+        if &*metadata.version != env!("CARGO_PKG_VERSION") {
+            return Err("Expected version default to be set".to_owned());
+        }
+        if metadata.name != "work" {
+            return Err("Expected vault name to default to directory basename"
+                .to_owned());
+        }
+        if metadata.path != vault_path {
+            return Err("Expected path to match input".to_owned());
+        }
+
+        Ok(())
     }
 
     #[test]
