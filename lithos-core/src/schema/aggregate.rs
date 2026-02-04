@@ -565,6 +565,10 @@ impl SchemaName {
     clippy::arbitrary_source_item_ordering,
     reason = "Test module groups fixtures and submodules for readability."
 )]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test setup uses expect for deterministic fixtures."
+)]
 mod tests {
     use uuid::Uuid;
 
@@ -622,11 +626,6 @@ mod tests {
         /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn is_idempotent_on_identical_registration() {
             // GIVEN: a PropertyBank and an existing property
             let mut bank = PropertyBank::new();
@@ -640,8 +639,7 @@ mod tests {
             // WHEN: registering the same property twice
             bank.register(prop.clone())
                 .expect("First registration should succeed");
-            bank.register(prop)
-                .expect("Second registration (identical) should succeed");
+            bank.register(prop).expect("Second registration should succeed");
 
             // THEN: the count remains 1
             let count = bank.all().count();
@@ -654,43 +652,32 @@ mod tests {
         /// 3.3-UNIT-020: `maintains_dual_indices_for_fast_lookup`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn maintains_dual_indices_for_fast_lookup() {
-            // GIVEN: a PropertyBank and a Property definition
-            let mut bank = PropertyBank::new();
-            let spec = PropertySpec::String(StringSpec::default());
-            let name_str = "test".to_owned();
-            let name = PropertyName::new(name_str).expect("Valid name");
-            let id = TEST_PROPERTY_ID_B;
-            let prop = Property::new(id, name, false, false, spec)
-                .expect("Valid property");
+        fn maintains_id_index_for_fast_lookup() {
+            let (bank, id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
 
-            // WHEN: registering the property
-            bank.register(prop).expect("Registration should succeed");
-
-            // THEN: it should be accessible by both ID and name
             assert!(
                 bank.get_by_id(id).is_some(),
                 "Registered property should be retrievable by ID: {id}"
             );
+        }
+
+        /// 3.3-UNIT-020: `maintains_dual_indices_for_fast_lookup`.
+        /// Priority: P1.
+        #[test]
+        fn maintains_name_index_for_fast_lookup() {
+            let (bank, _id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
+
             assert!(
-                bank.get_by_name("test").is_some(),
-                "Registered property should be retrievable by name: 'test'"
+                bank.get_by_name("flag").is_some(),
+                "Registered property should be retrievable by name: 'flag'"
             );
         }
 
         /// 3.3-UNIT-024: `rejects_duplicate_names_with_different_definitions`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn rejects_duplicate_names_with_different_definitions() {
             // GIVEN: a PropertyBank with a registered property
             let mut bank = PropertyBank::new();
@@ -725,12 +712,7 @@ mod tests {
         /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn property_bank_accessors_cover_ids_and_names() {
+        fn property_bank_has_id() {
             let (bank, id) = fixtures::bank_with_property()
                 .expect("Valid property bank fixture");
 
@@ -738,36 +720,76 @@ mod tests {
                 bank.has_id(id),
                 "PropertyBank should contain property by ID"
             );
+        }
+
+        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
+        /// Priority: P1.
+        #[test]
+        fn property_bank_has_name() {
+            let (bank, _id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
+
             assert!(
                 bank.has_name("flag"),
                 "PropertyBank should contain property by name 'flag'"
             );
+        }
+
+        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
+        /// Priority: P1.
+        #[test]
+        fn property_bank_gets_by_id() {
+            let (bank, id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
+
             assert!(
                 bank.get_by_id(id).is_some(),
                 "Should retrieve property by ID: {id}"
             );
+        }
+
+        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
+        /// Priority: P1.
+        #[test]
+        fn property_bank_gets_by_name() {
+            let (bank, _id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
+
             assert!(
                 bank.get_by_name("flag").is_some(),
                 "Should retrieve property by name: 'flag'"
             );
+        }
+
+        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
+        /// Priority: P1.
+        #[test]
+        fn property_bank_gets_by_id_string() {
+            let (bank, id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
+
             assert!(
                 bank.get(id.to_string().as_str()).is_some(),
                 "Should retrieve property by ID string: {id}"
             );
-            bank.decode(id.to_string().as_str())
-                .expect("Should decode ID string");
+        }
+
+        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
+        /// Priority: P1.
+        #[test]
+        fn property_bank_decodes_id_string() {
+            let (bank, id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
+
+            let result = bank.decode(id.to_string().as_str());
+            assert!(result.is_ok(), "Decode should succeed: {result:?}");
         }
 
         /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn property_bank_events_emitted_on_registration() {
-            let (mut bank, _id) = fixtures::bank_with_property()
+        fn property_bank_pending_events_len_is_one() {
+            let (bank, _id) = fixtures::bank_with_property()
                 .expect("Valid property bank fixture");
 
             assert_eq!(
@@ -775,6 +797,14 @@ mod tests {
                 1,
                 "Expected exactly 1 pending event"
             );
+        }
+
+        /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.
+        /// Priority: P1.
+        #[test]
+        fn property_bank_take_events_returns_one() {
+            let (mut bank, _id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
 
             let events = bank.take_events();
             assert_eq!(
@@ -782,6 +812,16 @@ mod tests {
                 1,
                 "take_events should return exactly 1 event after registration"
             );
+        }
+
+        /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.
+        /// Priority: P1.
+        #[test]
+        fn property_bank_pending_events_cleared_after_take() {
+            let (mut bank, _id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
+
+            let _events = bank.take_events();
             assert!(
                 bank.pending_events().is_empty(),
                 "pending_events should be empty after take_events"
@@ -795,29 +835,49 @@ mod tests {
         /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn schema_accessors_return_expected_values() {
+        fn schema_name_accessors_return_inner_value() {
             let schema =
                 fixtures::sample_schema().expect("Valid schema fixture");
 
-            assert_eq!(schema.name().0, "status");
-            assert_eq!(schema.name().as_ref(), "status");
-            assert_eq!(schema.name().to_string(), "status");
+            assert_eq!(
+                schema.name().0,
+                "status",
+                "Schema name should expose inner string"
+            );
+        }
+
+        /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        fn schema_name_as_ref_returns_expected_value() {
+            let schema =
+                fixtures::sample_schema().expect("Valid schema fixture");
+
+            assert_eq!(
+                schema.name().as_ref(),
+                "status",
+                "Schema name as_ref should match"
+            );
+        }
+
+        /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        fn schema_name_to_string_returns_expected_value() {
+            let schema =
+                fixtures::sample_schema().expect("Valid schema fixture");
+
+            assert_eq!(
+                schema.name().to_string(),
+                "status",
+                "Schema name should render to string"
+            );
         }
 
         /// 3.2-UNIT-010: `schema_property_accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn schema_property_accessors_return_expected_values() {
+        fn schema_has_property() {
             let schema =
                 fixtures::sample_schema().expect("Valid schema fixture");
 
@@ -825,10 +885,28 @@ mod tests {
                 schema.has("flag"),
                 "Expected schema to have property 'flag'"
             );
+        }
+
+        /// 3.2-UNIT-010: `schema_property_accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        fn schema_gets_property() {
+            let schema =
+                fixtures::sample_schema().expect("Valid schema fixture");
+
             assert!(
                 schema.get("flag").is_some(),
                 "Expected schema.get('flag') to be Some"
             );
+        }
+
+        /// 3.2-UNIT-010: `schema_property_accessors_return_expected_values`.
+        /// Priority: P1.
+        #[test]
+        fn schema_properties_len_is_one() {
+            let schema =
+                fixtures::sample_schema().expect("Valid schema fixture");
+
             assert_eq!(
                 schema.properties().len(),
                 1,
@@ -839,11 +917,6 @@ mod tests {
         /// 3.2-UNIT-010: `schema_pending_events_emitted_on_create`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn schema_pending_events_emitted_on_create() {
             let schema =
                 fixtures::sample_schema().expect("Valid schema fixture");
