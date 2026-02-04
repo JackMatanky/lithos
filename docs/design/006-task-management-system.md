@@ -11,6 +11,11 @@ tags: [tasks, lists, markdown, config, domain, epic-11, epic-12]
 
 > **Note**: See `docs/design/README.md` for usage instructions and T-Shirt sizing.
 
+Related specs:
+
+- [docs/design/001-config-models.md](001-config-models.md) (config model/value contracts used by task schema and metadata)
+- [docs/design/002-config-cqrs.md](002-config-cqrs.md) (how config layers and merged config are persisted/retrieved)
+
 ## 1. Problem Space (The "Why")
 
 ### 1.1 Context & Background
