@@ -71,75 +71,76 @@ impl super::ports::Query for Query<'_> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test code uses unwrap/expect for clarity"
-)]
 mod tests {
     use tempfile::{TempDir, tempdir};
 
     use super::*;
     use crate::config::{command, ports::Query as _};
 
-    fn test_db() -> (TempDir, Database) {
-        let dir = tempdir().unwrap();
+    fn test_db() -> Result<(TempDir, Database), String> {
+        let dir = tempdir().map_err(|e| e.to_string())?;
         let path = dir.path().join("config.redb");
-        let db = Database::open(&path).unwrap();
+        let db = Database::open(&path).map_err(|e| e.to_string())?;
 
         // Initialize config table (without writing unrelated data)
         let dummy = Global::default();
-        db.put("config", "_init", &dummy).unwrap();
-        db.delete("config", "_init").unwrap();
+        db.put("config", "_init", &dummy).map_err(|e| e.to_string())?;
+        db.delete("config", "_init").map_err(|e| e.to_string())?;
 
-        (dir, db)
+        Ok((dir, db))
     }
 
     #[test]
-    fn load_global_returns_none_when_missing() {
-        let (_dir, db) = test_db();
+    fn load_global_returns_none_when_missing() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
         let qry = Query::new(&db);
 
-        let global = qry.load_global().unwrap();
-        assert!(global.is_none(), "Missing global config should return None");
+        let global = qry.load_global().map_err(|e| e.to_string())?;
+        if global.is_some() {
+            return Err("Missing global config should return None".to_owned());
+        }
+        Ok(())
     }
 
     #[test]
-    fn load_vault_returns_none_when_missing() {
-        let (_dir, db) = test_db();
+    fn load_vault_returns_none_when_missing() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
         let qry = Query::new(&db);
 
-        let vault = qry.load_vault().unwrap();
-        assert!(vault.is_none(), "Missing vault config should return None");
+        let vault = qry.load_vault().map_err(|e| e.to_string())?;
+        if vault.is_some() {
+            return Err("Missing vault config should return None".to_owned());
+        }
+        Ok(())
     }
 
     #[test]
-    fn load_merges_global_and_vault_config() {
-        let (_dir, db) = test_db();
+    fn load_merges_global_and_vault_config() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
 
         let cmd = command::Command::new(&db);
         let mut global = Global::default();
         global.filesystem.template.templates_dir =
             "global_templates".to_owned();
-        cmd.save_global(&global).unwrap();
+        cmd.save_global(&global).map_err(|e| e.to_string())?;
 
         let mut vault = Vault::default();
         vault.filesystem.template.templates_dir = "vault_templates".to_owned();
-        cmd.save_vault(&vault).unwrap();
+        cmd.save_vault(&vault).map_err(|e| e.to_string())?;
 
         let qry = Query::new(&db);
-        let config = qry.load().unwrap();
+        let config = qry.load().map_err(|e| e.to_string())?;
 
-        assert_eq!(
-            config.vault_metadata.path, "vault",
-            "Query load should use fixed vault path"
-        );
-        assert_eq!(
-            config.vault_filesystem.template.templates_dir, "vault_templates",
-            "Vault templates_dir should take precedence"
-        );
-        assert_eq!(
-            config.global_filesystem.template.templates_dir, "global_templates",
-            "Global templates_dir should be preserved"
-        );
+        if config.vault_metadata.path != "vault" {
+            return Err("Query load should use fixed vault path".to_owned());
+        }
+        if config.vault_filesystem.template.templates_dir != "vault_templates" {
+            return Err("Vault templates_dir should take precedence".to_owned());
+        }
+        if config.global_filesystem.template.templates_dir != "global_templates"
+        {
+            return Err("Global templates_dir should be preserved".to_owned());
+        }
+        Ok(())
     }
 }
