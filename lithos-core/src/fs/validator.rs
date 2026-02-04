@@ -412,8 +412,6 @@ mod tests {
         use super::*;
 
         pub const DEFAULT_CONTENT: &str = "test content";
-        pub const OUTSIDE_NAME: &str = "outside.txt";
-        pub const DOTFILE_NAME: &str = "dotfile.toml";
 
         pub struct Workspace {
             #[expect(
@@ -502,6 +500,8 @@ mod tests {
     }
 
     mod constructor {
+        use tempfile::TempDir;
+
         use super::*;
 
         #[test]
@@ -523,15 +523,14 @@ mod tests {
         #[expect(
             clippy::disallowed_methods,
             clippy::pattern_type_mismatch,
-            reason = "Test setup requires std::env::current_dir() (disallowed \
-                      in production; use Figment config instead). Pattern \
-                      match on &Mode enum requires borrowing non-Copy PathBuf \
-                      field without explicit `ref` pattern (idiomatic Rust \
-                      2021)."
+            reason = "Pattern match on &Mode enum requires borrowing non-Copy \
+                      PathBuf field without explicit `ref` pattern (idiomatic \
+                      Rust 2021)."
         )]
         fn creates_strict_validator_with_root() {
             // GIVEN an absolute root path
-            let root = std::env::current_dir().expect("cwd").join("test_root");
+            let temp_dir = TempDir::new().expect("TempDir should be created");
+            let root = temp_dir.path().join("test_root");
 
             // WHEN creating a strict validator with the root
             let validator = Validator::new_strict(root);
@@ -664,21 +663,25 @@ mod tests {
 
     mod resolve_safe_symlink {
         mod strict {
-            use super::super::{
-                PathValidationError, Validator,
-                fixtures::{self, Workspace},
+            use std::io::Write as _;
+
+            use super::{
+                super::{PathValidationError, Validator, fixtures::Workspace},
+                NamedTempFile,
             };
 
             #[test]
             fn rejects_escaped_symlinks() {
                 let ws = Workspace::new().expect("Workspace should be created");
-                let outside_target =
-                    std::env::temp_dir().join(fixtures::OUTSIDE_NAME);
-                std::fs::write(&outside_target, "outside")
-                    .expect("Test setup: Failed to create outside target");
+                let mut outside_file = NamedTempFile::new()
+                    .expect("Outside file should be created");
+                outside_file
+                    .write_all(b"outside")
+                    .expect("Test setup: Failed to write outside target");
+                let outside_target = outside_file.path();
 
                 let symlink_path =
-                    ws.create_symlink("escaped_link", &outside_target);
+                    ws.create_symlink("escaped_link", outside_target);
 
                 let validator = Validator::new_strict(ws.root.clone());
                 let resolve_result =
@@ -691,7 +694,6 @@ mod tests {
                     ),
                     "Expected SymlinkEscapeError, found {resolve_result:?}"
                 );
-                drop(std::fs::remove_file(&outside_target));
             }
 
             #[test]
@@ -732,38 +734,39 @@ mod tests {
         }
 
         mod flexible {
-            use super::super::{fixtures::Workspace, *};
+            use std::io::Write as _;
+
+            use super::{
+                super::{fixtures::Workspace, *},
+                CwdGuard, NamedTempFile,
+            };
 
             #[test]
             fn allows_external_symlinks() {
                 let ws = Workspace::new().expect("Workspace should be created");
-                let outside_target =
-                    std::env::temp_dir().join(fixtures::DOTFILE_NAME);
-                std::fs::write(&outside_target, "dotfile")
+                let mut outside_file = NamedTempFile::new()
+                    .expect("Outside file should be created");
+                outside_file
+                    .write_all(b"dotfile")
                     .expect("Test setup: Failed to write outside target");
+                let outside_target = outside_file.path();
 
                 let _link_path =
-                    ws.create_symlink("dotfile_link", &outside_target);
+                    ws.create_symlink("dotfile_link", outside_target);
 
                 let validator = Validator::new_flexible();
 
-                let repo_root =
-                    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                std::env::set_current_dir(&ws.root)
+                let _cwd_guard = CwdGuard::new(&ws.root)
                     .expect("Test setup: Failed to change directory");
 
                 let resolve_result =
                     validator.resolve_safe_symlink("dotfile_link");
-
-                std::env::set_current_dir(repo_root)
-                    .expect("Test teardown: Failed to restore directory");
 
                 assert!(
                     resolve_result.is_ok(),
                     "flexible mode should allow external symlinks, found \
                      {resolve_result:?}"
                 );
-                drop(std::fs::remove_file(&outside_target));
             }
 
             #[test]
@@ -778,6 +781,40 @@ mod tests {
                     ),
                     "Expected PathTraversalError on input, found {result:?}"
                 );
+            }
+        }
+
+        use std::sync::{Mutex, MutexGuard, OnceLock};
+
+        use tempfile::NamedTempFile;
+
+        fn cwd_lock() -> &'static Mutex<()> {
+            static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+            LOCK.get_or_init(|| Mutex::new(()))
+        }
+
+        struct CwdGuard {
+            _guard: MutexGuard<'static, ()>,
+            previous: std::path::PathBuf,
+        }
+
+        impl CwdGuard {
+            fn new(path: &std::path::Path) -> Result<Self, std::io::Error> {
+                let guard = cwd_lock().lock().map_err(|err| {
+                    std::io::Error::other(format!("CWD lock poisoned: {err}"))
+                })?;
+                let previous = std::env::current_dir()?;
+                std::env::set_current_dir(path)?;
+                Ok(Self {
+                    _guard: guard,
+                    previous,
+                })
+            }
+        }
+
+        impl Drop for CwdGuard {
+            fn drop(&mut self) {
+                if std::env::set_current_dir(&self.previous).is_err() {}
             }
         }
 
