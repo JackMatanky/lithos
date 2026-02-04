@@ -5,7 +5,6 @@
 #![allow(
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
-    clippy::partial_pub_fields,
     reason = "rkyv Archive derive generates non-exhaustive archived types"
 )]
 
