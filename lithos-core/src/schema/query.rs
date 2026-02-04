@@ -67,10 +67,6 @@ impl super::ports::Query for Query<'_> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test code uses unwrap/expect for clarity"
-)]
 mod tests {
     use tempfile::{TempDir, tempdir};
     use uuid::Uuid;
@@ -83,58 +79,66 @@ mod tests {
     const TEST_SCHEMA_ID_B: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0202);
 
-    fn test_db() -> (TempDir, Database) {
-        let dir = tempdir().unwrap();
+    fn test_db() -> Result<(TempDir, Database), String> {
+        let dir = tempdir().map_err(|e| e.to_string())?;
         let path = dir.path().join("schema.redb");
-        let db = Database::open(&path).unwrap();
-        (dir, db)
+        let db = Database::open(&path).map_err(|e| e.to_string())?;
+        Ok((dir, db))
     }
 
-    fn schema_fixture(id: Uuid, name: &str) -> Schema {
-        Schema::new(id, SchemaName::new(name.to_owned()).unwrap(), vec![])
-            .unwrap()
+    fn schema_fixture(id: Uuid, name: &str) -> Result<Schema, String> {
+        let name =
+            SchemaName::new(name.to_owned()).map_err(|e| e.to_string())?;
+        Schema::new(id, name, vec![]).map_err(|e| e.to_string())
     }
 
     #[test]
-    fn find_by_id_returns_none_for_unindexed_schema() {
-        let (_dir, db) = test_db();
+    fn find_by_id_returns_none_for_unindexed_schema() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
         let qry = Query::new(&db);
 
-        let result = qry.find_by_id(TEST_SCHEMA_ID_A).unwrap();
-        assert!(result.is_none(), "find_by_id should return None");
+        let result =
+            qry.find_by_id(TEST_SCHEMA_ID_A).map_err(|e| e.to_string())?;
+        if result.is_some() {
+            return Err("find_by_id should return None".to_owned());
+        }
+        Ok(())
     }
 
     #[test]
-    fn find_by_name_returns_saved_schema() {
-        let (_dir, db) = test_db();
+    fn find_by_name_returns_saved_schema() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
         let cmd = command::Command::new(&db);
         let qry = Query::new(&db);
 
-        let schema = schema_fixture(TEST_SCHEMA_ID_A, "note");
-        cmd.save(&schema).unwrap();
+        let schema = schema_fixture(TEST_SCHEMA_ID_A, "note")?;
+        cmd.save(&schema).map_err(|e| e.to_string())?;
 
-        let stored = qry.find_by_name("note").unwrap();
-        let stored_schema = stored.expect("Schema should be found by name");
-        assert_eq!(
-            stored_schema.name().as_ref(),
-            "note",
-            "Stored schema name should match"
-        );
+        let stored = qry.find_by_name("note").map_err(|e| e.to_string())?;
+        let stored_schema = stored
+            .ok_or_else(|| "Schema should be found by name".to_owned())?;
+        if stored_schema.name().as_ref() != "note" {
+            return Err("Stored schema name should match".to_owned());
+        }
+        Ok(())
     }
 
     #[test]
-    fn list_returns_all_saved_schemas() {
-        let (_dir, db) = test_db();
+    fn list_returns_all_saved_schemas() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
         let cmd = command::Command::new(&db);
         let qry = Query::new(&db);
 
-        let schema_a = schema_fixture(TEST_SCHEMA_ID_A, "note");
-        let schema_b = schema_fixture(TEST_SCHEMA_ID_B, "project");
+        let schema_a = schema_fixture(TEST_SCHEMA_ID_A, "note")?;
+        let schema_b = schema_fixture(TEST_SCHEMA_ID_B, "project")?;
 
-        cmd.save(&schema_a).unwrap();
-        cmd.save(&schema_b).unwrap();
+        cmd.save(&schema_a).map_err(|e| e.to_string())?;
+        cmd.save(&schema_b).map_err(|e| e.to_string())?;
 
-        let schemas = qry.list().unwrap();
-        assert_eq!(schemas.len(), 2, "List should return all saved schemas");
+        let schemas = qry.list().map_err(|e| e.to_string())?;
+        if schemas.len() != 2 {
+            return Err("List should return all saved schemas".to_owned());
+        }
+        Ok(())
     }
 }
