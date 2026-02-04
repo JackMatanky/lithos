@@ -127,25 +127,12 @@ impl Composition {
         current_name: &str,
     ) -> Result<(), TemplateError> {
         if let Some(parent_name) = template.extends() {
-            #[expect(
-                clippy::arithmetic_side_effects,
-                reason = "DFS depth tracking: depth + 1 cannot overflow. Max \
-                          recursion depth is validated (MAX_COMPOSITION_DEPTH \
-                          = 10), so depth stays bounded and safe."
-            )]
-            self.dfs_check(parent_name, depth + 1, ctx)?;
+            self.dfs_check(parent_name, depth.saturating_add(1), ctx)?;
         }
 
         if current_name == self.base_template {
             for include in &self.includes {
-                #[expect(
-                    clippy::arithmetic_side_effects,
-                    reason = "DFS depth tracking: depth + 1 cannot overflow. \
-                              Max recursion depth is validated \
-                              (MAX_COMPOSITION_DEPTH = 10), so depth stays \
-                              bounded and safe."
-                )]
-                self.dfs_check(include, depth + 1, ctx)?;
+                self.dfs_check(include, depth.saturating_add(1), ctx)?;
             }
         }
         Ok(())
