@@ -6,10 +6,6 @@
     clippy::exhaustive_enums,
     reason = "rkyv generates Archived types with public fields/variants"
 )]
-#![expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal builders and tests"
-)]
 
 use super::error::NoteError;
 
@@ -29,17 +25,13 @@ use super::error::NoteError;
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal builders and tests"
-)]
 pub struct Task {
     /// Task description text.
-    pub(crate) text: Box<str>,
+    text: Box<str>,
     /// Current completion status.
-    pub(crate) status: TaskStatus,
+    status: TaskStatus,
     /// Character position in the source document.
-    pub(crate) position: usize,
+    position: usize,
 }
 
 /// Represents the status of a task item.
