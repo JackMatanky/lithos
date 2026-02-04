@@ -519,15 +519,8 @@ impl SchemaName {
     /// Returns `SchemaError` if validation fails.
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
-        static RE: LazyLock<Regex> = LazyLock::new(|| {
-            #[expect(
-                clippy::expect_used,
-                clippy::disallowed_methods,
-                reason = "Static regex literal is safe and efficient"
-            )]
-            Regex::new(patterns::ALPHANUMERIC_NAME)
-                .expect("Static regex literal")
-        });
+        static RE: LazyLock<Result<Regex, regex::Error>> =
+            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME));
 
         if name.is_empty() {
             return Err(SchemaError::EmptySchemaName);
@@ -536,7 +529,13 @@ impl SchemaName {
             return Err(SchemaError::SchemaNameTooLong(name.len()));
         }
 
-        if !RE.is_match(name) {
+        let re = RE.as_ref().map_err(|error| {
+            SchemaError::ValidationFailed(format!(
+                "Invalid schema name regex: {error}"
+            ))
+        })?;
+
+        if !re.is_match(name) {
             return Err(SchemaError::InvalidSchemaName(name.to_owned()));
         }
         Ok(())
