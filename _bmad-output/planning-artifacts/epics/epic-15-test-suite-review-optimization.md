@@ -23,10 +23,10 @@ Development team has a validated, efficient test suite with no redundancy, full 
   - Unit tests: Isolated component validation
   - Integration tests: Cross-component workflows
   - E2E tests: Full system flows via CLI
-  - Architectural tests: Purity checks (Epic 2 purity binary)
+  - Architectural boundaries: Enforced via module visibility and dependency flow
   - Performance benchmarks: NFR validation
 - **Integration Points**:
-  - Epic 2: Test utilities, fixtures, async helpers, event test framework
+  - Epic 2: Test architecture patterns and standards
   - All Epics 4-14: Individual epic test suites to optimize
 - **Performance Targets**:
   - Full test suite: <5 minutes on CI (NFR4 fast feedback)
@@ -35,7 +35,7 @@ Development team has a validated, efficient test suite with no redundancy, full 
   - E2E tests: <2 minutes
   - Parallel execution via nextest: 4x speedup typical
 - **Architectural Validation**:
-  - Hexagonal architecture: Domain has zero infrastructure dependencies (purity tests)
+  - Hexagonal architecture: Domain has zero infrastructure dependencies (module boundaries)
   - CQRS: Read/Write operations properly separated
   - Event-driven: Event contracts validated, no tight coupling
   - Epic boundaries: No cross-epic implementation dependencies

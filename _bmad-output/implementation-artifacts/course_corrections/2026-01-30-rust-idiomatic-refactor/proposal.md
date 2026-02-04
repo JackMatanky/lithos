@@ -65,7 +65,7 @@ We are moving from a strict **Interface-Defined Architecture** (Hexagonal) to a 
 
 - **Invalidation of Work-in-Progress**: Any feature branches currently in flight will likely be **unmergeable** without a total rewrite.
 - **Documentation Obsolescence**: All architectural documentation referencing the 4-crate structure (including `project-context.md`) becomes immediately obsolete.
-- **Tooling Updates**: CI pipelines, `mise` tasks, and test runners configured for the old crate structure (`test:unit:domain`, etc.) will fail immediately and require reconfiguration.
+- **Tooling Updates**: CI pipelines, `mise` tasks, and test runners configured for the old crate structure (`test:unit:core`, etc.) will fail immediately and require reconfiguration.
 
 ---
 
@@ -1383,9 +1383,9 @@ This section provides a concrete execution roadmap aligned with the 10 detailed 
   - `serde` (optional, feature-gated per Proposal 10)
   - NO `async-trait`, NO `moka`, NO `tokio` (defer to Phase 2)
 - [ ] Update `mise.toml` task definitions:
-  - Replace `test:unit:domain` → `test:unit:core`
+  - Replace `test:unit:core` → `test:unit:core`
   - Remove separate crate test tasks
-  - Keep `test:arch` for boundary enforcement
+  - Keep `test` for boundary enforcement
 
 **2.2 Directory Structure Creation**
 
@@ -1612,7 +1612,7 @@ For each context:
 
 **5.5 Architecture Tests**
 
-- [ ] Create `tests/arch/boundary_tests.rs`:
+- [ ] Boundary enforcement handled via module visibility and code review (no dedicated arch test crate)
   - Ensure `note/aggregate.rs` does NOT import `db`
   - Ensure domain modules are pure (no IO)
   - Ensure dependency flow is enforced
@@ -1623,7 +1623,7 @@ For each context:
 - [ ] NO async in core domain logic
 - [ ] Error reporting uses miette (CLI) and thiserror (core)
 - [ ] All obsolete cache/ code deleted
-- [ ] `mise run test:arch` passes
+- [ ] `mise run test` passes
 
 ---
 
@@ -1976,7 +1976,7 @@ For now, **separate storage is the pragmatic path to MVP completion**.
 **8.3 Quality Gates**
 
 - [ ] `mise run verify` passes (full suite)
-- [ ] `mise run test:arch` passes
+- [ ] `mise run test` passes
 - [ ] Coverage check
 
 **8.4 Final Checklist**

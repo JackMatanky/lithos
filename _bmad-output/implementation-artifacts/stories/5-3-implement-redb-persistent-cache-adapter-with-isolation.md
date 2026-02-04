@@ -76,7 +76,7 @@ So that data persists across application restarts and multiple cache consumers c
 ## TDD Acceptance Criteria (Quality Gates)
 
 **Given** I need a persistent disk cache
-**When** I run `mise run test:unit:adapters redb_cache`
+**When** I run `mise run test:unit:core redb_cache`
 **Then** all tests pass with all public components validated
 **And** data survives cache instance drops and recreations (persistence check)
 **And** multiple tables in the same DB file do not leak data between instances
@@ -94,7 +94,7 @@ So that data persists across application restarts and multiple cache consumers c
 **And** no data corruption occurs on failed writes
 
 **Given** I need documentation-driven examples
-**When** I run `mise run test:unit:adapters --doc`
+**When** I run `mise run test:unit:core --doc`
 **Then** all doc tests demonstrate table isolation and metadata usage
 **And** examples demonstrate proper database path handling
 
@@ -106,7 +106,7 @@ So that data persists across application restarts and multiple cache consumers c
   - [x] Subtask 1.2: Add `pub(crate) mod redb;` to `crates/adapters/src/spi/cache/mod.rs`
   - [x] Subtask 1.3: Write a unit test in `redb.rs` under `#[cfg(test)]` that fails to import `RedbCache`
   - [x] Subtask 1.4: Write failing test that fails to find `CachedEntry` type
-  - [x] Subtask 1.5: Run `mise run test:unit:adapters redb` and verify failures (RED)
+  - [x] Subtask 1.5: Run `mise run test:unit:core redb` and verify failures (RED)
   - [x] Subtask 1.6: Run `mise run lint` and ensure environment is clean
 
 ### Phase 2: Schema & Serialization
@@ -117,7 +117,7 @@ So that data persists across application restarts and multiple cache consumers c
   - [x] Subtask 2.4: Apply `rkyv` macros and verify serialization
   - [x] Subtask 2.5: Write failing test for `SerializationError` mapping
   - [x] Subtask 2.6: Implement error mapping for failed `rkyv` operations
-  - [x] Subtask 2.7: Run `mise run test:unit:adapters redb_serialization` and verify pass (GREEN)
+  - [x] Subtask 2.7: Run `mise run test:unit:core redb_serialization` and verify pass (GREEN)
   - [x] Subtask 2.8: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 3: Database & Table Management
@@ -130,7 +130,7 @@ So that data persists across application restarts and multiple cache consumers c
   - [x] Subtask 3.6: Verify multiple instances share the same `redb::Database` but different tables
   - [x] Subtask 3.7: Write failing test for `IoError` mapping during DB open
   - [x] Subtask 3.8: Implement I/O error mapping
-  - [x] Subtask 3.9: Run `mise run test:unit:adapters redb_init` and verify pass (GREEN)
+  - [x] Subtask 3.9: Run `mise run test:unit:core redb_init` and verify pass (GREEN)
   - [x] Subtask 3.10: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 4: Cache Trait Implementation
@@ -146,7 +146,7 @@ So that data persists across application restarts and multiple cache consumers c
   - [x] Subtask 4.9: Implement `clear` using Redb transaction to delete all rows in table
   - [x] Subtask 4.10: Write failing test for `invalidate` functionality
   - [x] Subtask 4.11: Implement `invalidate`
-  - [x] Subtask 4.12: Run `mise run test:unit:adapters redb_trait` and verify pass (GREEN)
+  - [x] Subtask 4.12: Run `mise run test:unit:core redb_trait` and verify pass (GREEN)
   - [x] Subtask 4.13: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 5: Metadata & Extended Operations
@@ -157,7 +157,7 @@ So that data persists across application restarts and multiple cache consumers c
   - [x] Subtask 5.4: Implement `get_with_metadata` returning both value and metadata
   - [x] Subtask 5.5: Write failing test verifying timestamp updates on every `put`
   - [x] Subtask 5.6: Ensure current Unix timestamp (via `SystemTime::now().duration_since(UNIX_EPOCH)`) is stored in `CachedEntry` on every write.
-  - [x] Subtask 5.7: Run `mise run test:unit:adapters redb_metadata` and verify pass (GREEN)
+  - [x] Subtask 5.7: Run `mise run test:unit:core redb_metadata` and verify pass (GREEN)
   - [x] Subtask 5.8: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 6: Observability & Tracing
@@ -166,7 +166,7 @@ So that data persists across application restarts and multiple cache consumers c
   - [x] Subtask 6.2: Add `#[tracing::instrument]` to all methods with required attributes
   - [x] Subtask 6.3: Write failing test expecting `cache_layer = "disk"` events
   - [x] Subtask 6.4: Add events to `get`, `put`, and `delete`
-  - [x] Subtask 6.5: Run `mise run test:unit:adapters redb_tracing` and verify pass (GREEN)
+  - [x] Subtask 6.5: Run `mise run test:unit:core redb_tracing` and verify pass (GREEN)
   - [x] Subtask 6.6: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 7: Documentation & Doc Testing
@@ -175,7 +175,7 @@ So that data persists across application restarts and multiple cache consumers c
   - [x] Subtask 7.2: Add working doc test to module-level documentation
   - [x] Subtask 7.3: Write failing doc test for metadata operations
   - [x] Subtask 7.4: Add metadata example to `RedbCache` docs
-  - [x] Subtask 7.5: Run `mise run test:unit:adapters --doc` and verify all pass (GREEN)
+  - [x] Subtask 7.5: Run `mise run test:unit:core --doc` and verify all pass (GREEN)
   - [x] Subtask 7.6: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 8: Final Quality Gate
@@ -223,7 +223,7 @@ So that data persists across application restarts and multiple cache consumers c
 ### TDD Methodology
 - **RED-GREEN-REFACTOR**: Strict adherence.
 - **Co-located Tests**: Unit tests live in `redb.rs` under `#[cfg(test)]`.
-- **Mise Orchestration**: Use `mise run test:unit:adapters` for verification.
+- **Mise Orchestration**: Use `mise run test:unit:core` for verification.
 
 ### References
 - [Source: project-context.md#Hexagonal-Boundary-Enforcement]

@@ -36,10 +36,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **mise**: **Primary and authorized entry point** for all tasks and tool version management (via `mise.toml`).
     - *Safety Invariant*: All commands MUST be executed via `mise run <task>` to ensure toolchain parity across environments.
     - **Available Tasks Reference:**
-        - **Quality Gates:** `quality` (fmt+lint+validate), `verify` (full gates + tests), `fmt`, `lint`, `deny`
-        - **Testing:** `test` (unit+integration, alias: `t`), `test:unit`, `test:integration`, `test:e2e`, `test:arch`, `test:coverage`, `test:watch`, `test:unit:*` (crate-specific)
+        - **Quality Gates:** `quality` (fmt+lint+adr:validate), `verify` (full gates + tests), `fmt`, `lint`, `deny`
+        - **Testing:** `test` (unit+integration+e2e, alias: `t`), `test:unit`, `test:integration`, `test:e2e`, `test:coverage`, `test:watch`, `test:burn-in`, `test:changed`, `test:unit:*` (module-specific)
         - **CI/CD:** `ci` (pipeline simulation), `verify` (alias: `v`)
-        - **Development:** `build`, `clean`, `doc`, `dev-setup`, `bench`
+        - **Development:** `build`, `clean`, `doc`, `dev-setup`, `test:bench`
         - **ADR Management:** `adr:validate`, `adr:metrics`
 - **pre-commit**: Mandatory quality gate for linting, formatting, and complexity checks before every commit. Bypassing hooks is strictly prohibited.
 
@@ -58,7 +58,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ### Architectural Integrity
 - **Dependency Flow Architecture:**
-    - **Single Core Crate:** `crates/lithos-core` contains all business logic and infrastructure. Dependencies flow INWARD from generic infrastructure (`db.rs`, `fs/`) to domain contexts (`note/`, `schema/`).
+    - **Single Core Crate:** `lithos-core` contains all business logic and infrastructure. Dependencies flow INWARD from generic infrastructure (`db/`, `fs/`) to domain contexts (`note/`, `schema/`).
     - **Context Isolation:** Domain contexts must depend ONLY on `db.rs` and shared utilities. They must NOT depend on other contexts directly unless via public API.
     - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `lithos-cli`).
 - **CQRS & Naming Convention:**
@@ -146,9 +146,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Testing Rules
 - **Hexagonal Testing Hierarchy:**
     - **Domain Tests:** Pure unit tests with zero dependencies. Focus on logic, math, and conversions.
-    - **Integration Tests:** Use `nextest` to run concurrent tests. Mock all SPI ports using a mocking framework (e.g., mockall) or manual implementations to test the app layer in isolation, ensuring no real I/O. Tools: nextest for concurrent execution, mockall for mocking SPI ports. Locations: Unit in crates/domain/src, Integration in crates/app/tests, E2E in tests/suite/e2e. Percentages: Unit 70%, Integration 20%, E2E 10%.
+    - **Integration Tests:** Use `nextest` to run concurrent tests. Mock all SPI ports using a mocking framework (e.g., mockall) or manual implementations to test the app layer in isolation, ensuring no real I/O. Tools: nextest for concurrent execution, mockall for mocking SPI ports. Locations: Unit in `lithos-core/src/`, Integration in `lithos-core/tests/` (when added), E2E against the CLI binary. Percentages: Unit 70%, Integration 20%, E2E 10%.
     - **E2E CLI Tests:** Use `assert_cmd` or similar to test the compiled binary against real temporary vaults.
-- **Authorized Entry Points:** All testing via Mise: Use 'mise run test' for all types, 'test:unit:<crate>' for specific crates, 'test:coverage' for tarpaulin reports, 'test:bench' for criterion. Example: 'mise run test:unit:domain'.
+- **Authorized Entry Points:** All testing via Mise: Use 'mise run test' for all types, 'test:unit:<module>' for specific modules (config/note/schema/template/db/fs), 'test:coverage' for tarpaulin reports, 'test:bench' for criterion. Example: 'mise run test:unit:note'.
 - **Mandatory Tools:** nextest (runner), tarpaulin (coverage), insta (snapshots), pretty_assertions (diffs), criterion (benchmarks), proptest (property testing).
 - **Schema Validation Authority:** Use the JSON schemas in `docs/schemas/` (from the Go implementation) as the source of truth for backward compatibility tests of the Rust Schema Engine.
 - **Starter Kit Pipeline:**
@@ -158,11 +158,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Async Testing:** ALWAYS use `#[tokio::test(flavor = "multi_thread")]` for integration tests to surface race conditions in the event bus or indexer. Safety invariants: Use timeouts (e.g., with_timeout), semaphore for I/O throttling. Block limit: >10ms requires spawn_blocking.
 - **Performance Benchmarking:** Use `criterion` for all NFR-critical paths (Indexing, Rendering). 10k-note vault benchmarks are mandatory for storage changes.
 - **Coverage Target:** Enforce 80%+ coverage via tarpaulin in CI pipelines. Focus coverage efforts on domain and app logic; ignore generated code.
-- **Deterministic Testing:** Use fixed UUIDs and Timestamps in test fixtures to ensure reproducible results. Use virtual clock (time_test! macro), fixed seeds for randomness, redactions in snapshots for UUIDs/timestamps.
+- **Deterministic Testing:** Use fixed UUIDs and timestamps in test fixtures to ensure reproducible results. For async timing, use `tokio::time::pause`/`advance` and fixed seeds for randomness; redact UUIDs/timestamps in snapshots if snapshots are introduced.
 - **Test Authoring Standards:** Naming: Verb-first (e.g., returns_error_when_invalid). Organization: Module-per-function for complex units. Rules: One behavior/assertion per test, parameterized with rstest named cases. Attributes: #[ignore] for incomplete tests.
 - **Doc-Tests:** Mandatory for public domain models and utilities. Use as living documentation with executable examples. Run via 'mise run test:unit'.
 - **Linting in Tests:** Use #[expect(...)] for intentional violations (e.g., unwrap in setup); #[allow(...)] for generated code. Unwrap OK in Arrange phase, never in Assert.
-- **Common Pitfalls:** Avoid thread starvation (use spawn_blocking), race conditions (multi_thread flavor), flakiness (virtual clock), shared state (use IsolatedTestContext).
+- **Common Pitfalls:** Avoid thread starvation (use spawn_blocking), race conditions (multi_thread flavor), flakiness (paused clocks for async), shared state (use `tempfile::TempDir` per test).
 - **Testability Assessment:** Controllability: Trait-based ports for mocking. Observability: Tracing/miette for inspection. Reliability: Workspace separation, Unit of Work for atomicity.
 - **Quality Gates:** Done criteria: Deterministic (0% flakiness), Isolated (no dependencies), Explicit (visible assertions), Fast (<10ms unit), Self-cleaning (RAII cleanup).
 - **NFR Testing:** Security: Validate encryption at SPI layer. Performance: Criterion benchmarks, regression testing. Reliability: Fault injection, clean slate recovery.

@@ -58,7 +58,7 @@ When you push, the pipeline should execute as follows:
 
 ### Stage 3: Testing (parallel, ~8-10 min)
 - ✅ **Test (ubuntu-latest, stable)** - Single matrix job
-  - Runs `mise run test` (all unit, integration, E2E, arch tests)
+  - Runs `mise run test` (all unit, integration, and E2E tests)
   - **Expected**: PASS ✅
 
 ### Stage 4: Quality Assurance (parallel, depends on Stage 3)

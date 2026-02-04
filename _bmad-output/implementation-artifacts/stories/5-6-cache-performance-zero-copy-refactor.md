@@ -56,7 +56,7 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
 **Then** significant improvements are observed in read/write operations
 
 **Given** I am refactoring core traits
-**When** I run `mise run test:unit:adapters`
+**When** I run `mise run test:unit:core`
 **Then** all existing cache tests pass without regression
 
 **Given** I modify the `Cache` trait to use Guards

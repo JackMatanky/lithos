@@ -22,7 +22,7 @@ To maintain the efficiency and quality of the Epic 3 test suite, follow these gu
 
 ## 4. Redundancy Elimination
 - Keep domain-specific fixtures co-located with their unit tests under `#[cfg(test)]` to avoid circular dependencies.
-- Use `tests/common/mod.rs` for integration fixtures shared across tests.
+- Use helper modules within `lithos-core/tests/` for integration fixtures shared across tests (when added).
 - Avoid duplicating test scenarios across unit and integration suites. Unit tests cover branches; integration tests cover entity interactions.
 
 ## 5. Performance Gates

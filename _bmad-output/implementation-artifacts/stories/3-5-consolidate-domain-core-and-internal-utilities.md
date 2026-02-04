@@ -43,7 +43,7 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 ## Tasks / Subtasks
 
 ### Task 0: Pre-Refactoring Test Coverage Validation (MANDATORY FIRST TASK)
-- [x] **CRITICAL:** Run `mise run test:unit:domain` to establish baseline test coverage
+- [x] **CRITICAL:** Run `mise run test:unit:core` to establish baseline test coverage
 - [x] **Test Gap Analysis:** Identify ANY domain logic that lacks unit test coverage
 - [x] **Fill Test Gaps:** Write comprehensive unit tests for ALL untested domain behavior before proceeding with refactoring
 - [x] **Behavioral Documentation:** Ensure each test clearly documents the expected behavior it validates
@@ -359,7 +359,7 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 - `crates/domain/src/schema/resolver.rs` - Path updates for context restructuring
 - `crates/domain/src/template/aggregate.rs` - Renamed to `TemplateEvents`, standardized patterns and semantic errors
 - `crates/domain/src/template/composition.rs` - Updates for context restructuring
-- `benches/schema_benchmarks.rs` - Path updates for context restructuring
+- `lithos-core/benches/schema_benchmarks.rs` - Path updates for context restructuring
 - `crates/domain/src/note/error.rs` - Created NoteError
 - `crates/domain/src/schema/error.rs` - Created SchemaError
 

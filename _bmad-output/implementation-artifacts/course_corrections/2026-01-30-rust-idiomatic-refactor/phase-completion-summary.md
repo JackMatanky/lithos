@@ -46,7 +46,7 @@ lithos-core/         # All domain, app, infrastructure code
 │   ├── db.rs        # Database layer (redb + rkyv)
 │   └── fs/          # File system utilities
 lithos-cli/          # CLI binary (thin wrapper)
-tests/arch/          # Architecture enforcement tests
+lithos-core/tests/   # Integration tests (when added)
 ```
 
 **Benefits Achieved:**
@@ -76,7 +76,7 @@ mise run verify                 # ✅ 100% green (22.55s)
 cargo test --workspace          # ✅ 340 tests pass
 cargo clippy --workspace        # ✅ Zero warnings
 cargo bench --package lithos-core  # ✅ Benchmarks functional
-mise run test:arch              # ✅ Architecture tests pass
+mise run test              # ✅ Architecture tests pass
 ```
 
 ### Performance Validation
@@ -471,7 +471,7 @@ cargo test --workspace
 cargo bench --package lithos-core
 
 # Check architecture
-mise run test:arch
+mise run test
 
 # Build CLI
 cargo build --release --bin lithos
@@ -494,7 +494,7 @@ Documentation:
 Code:
 ├── lithos-core/src/                         # All core code
 ├── lithos-cli/src/                          # CLI binary
-└── tests/arch/                              # Architecture tests
+└── lithos-core/tests/                       # Integration tests (when added)
 ```
 
 ### Current Branch

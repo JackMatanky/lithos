@@ -43,7 +43,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
   - [x] Set up `test` meta-task with unit and integration dependencies (mise.toml orchestration)
   - [x] Implement file tasks with embedded #MISE metadata (unit, integration, coverage, watch, bench)
   - [x] Rename scripts to remove .sh extension for proper file task recognition
-  - [x] Configure convenience tasks for crate-specific testing (test:unit:domain, etc.)
+  - [x] Configure convenience tasks for crate-specific testing (test:unit:core, etc.)
 - [x] Optimize quality gate orchestration **[Effort: 3-4 hours | Complexity: Medium]**
   - [x] Configure `verify` meta-task for comprehensive quality gates (mise.toml orchestration)
   - [x] Implement file tasks for fmt, lint, build, clean, doc, adr:validate, adr:metrics
@@ -232,19 +232,19 @@ alias = "t"
 depends = ["test:unit", "test:integration"]
 
 # Specific crate unit tests for developer convenience
-[tasks."test:unit:domain"]
+[tasks."test:unit:core"]
 description = "Run domain crate unit tests"
 alias = "tud"
 run = "mise run test:unit -- -p domain"
 env = { RUST_BACKTRACE = "1" }
 
-[tasks."test:unit:app"]
+[tasks."test:unit:core"]
 description = "Run app crate unit tests"
 alias = "tuap"
 run = "mise run test:unit -- -p app"
 env = { RUST_BACKTRACE = "1" }
 
-[tasks."test:unit:adapters"]
+[tasks."test:unit:core"]
 description = "Run adapters crate unit tests"
 alias = "tuad"
 run = "mise run test:unit -- -p adapters"

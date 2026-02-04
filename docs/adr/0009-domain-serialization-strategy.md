@@ -158,7 +158,7 @@ impl From<Note> for NoteDTO { /* ... */ }
 ### Enforcement
 
 ```rust
-// In tests/architectural/purity.rs
+// Example: enforce domain purity via CI checks or code review
 #[test]
 fn domain_has_zero_required_dependencies() {
     let manifest = std::fs::read_to_string("Cargo.toml").unwrap();

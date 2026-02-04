@@ -31,7 +31,7 @@ Tactical specification for testing Command and Query responsibilities in Lithos.
 Focus on the interactions between the handler and its ports.
 
 ```rust
-use lithos_test_utils::cqrs::{MockRepository, EventVerifier};
+use crate::tests::mocks::{MockRepository, EventVerifier};
 
 #[tokio::test]
 async fn create_user_saves_to_repo_and_publishes_event() {
@@ -58,7 +58,7 @@ async fn create_user_saves_to_repo_and_publishes_event() {
 Queries should be "Pure Functions" of the read model state.
 
 ```rust
-use lithos_test_utils::cqrs::StubQueryStore;
+use crate::tests::mocks::StubQueryStore;
 
 #[tokio::test]
 async fn get_user_query_returns_correct_stubbed_data() {
@@ -84,7 +84,7 @@ async fn get_user_query_returns_correct_stubbed_data() {
 Verify long-running workflows that span multiple aggregates using `SagaTester`. This is critical for testing "Eventual Consistency" logic (e.g., updating search index after note creation).
 
 ```rust
-use lithos_test_utils::cqrs::SagaTester;
+use crate::tests::mocks::SagaTester;
 
 #[tokio::test]
 async fn order_fulfillment_saga_flow() {
@@ -135,7 +135,7 @@ async fn command_fails_on_domain_invariant_violation() {
 For purely event-sourced aggregates, use the explicit framework. This abstracts away the repository store/load cycle.
 
 ```rust
-use lithos_test_utils::EventTestFramework;
+use crate::tests::mocks::EventTestFramework;
 
 #[test]
 fn account_withdraw_logic() {
@@ -217,7 +217,7 @@ mock.expect_save().times(1);
 // BAD: Using a real DB for a unit test
 let db = Redb::open("/tmp/test.db");
 ```
-**Fix**: Use `StubQueryStore` or `InMemoryRepository`. Real DBs belong in `tests/suite/integration`.
+**Fix**: Use `StubQueryStore` or `InMemoryRepository`. Real DBs belong in `lithos-core/tests/` (when added).
 
 ### ❌ The "Silent Failure"
 ```rust

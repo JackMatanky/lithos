@@ -67,7 +67,7 @@ So that I understand how to use the generic primitives in domain-specific contex
 ## Acceptance Criteria (Quality Gates)
 
 **Given** I am documenting the system
-**When** I run `mise run test:unit:adapters --doc`
+**When** I run `mise run test:unit:core --doc`
 **Then** all examples in doc comments pass
 **And** examples in `README.md` and `docs/` are verified against the current API
 
@@ -93,7 +93,7 @@ So that I understand how to use the generic primitives in domain-specific contex
 - [ ] Subtask 2.1: Add comprehensive `///` comments to `trait Cache` including `# Examples`, `# Errors`, and `# Panics`
 - [ ] Subtask 2.2: Ensure all trait methods have executable doc tests
 - [ ] Subtask 2.3: Document `CacheError` variants with detailed, context-aware descriptions
-- [ ] Subtask 2.4: Run `mise run test:unit:adapters --doc` and verify trait documentation passes
+- [ ] Subtask 2.4: Run `mise run test:unit:core --doc` and verify trait documentation passes
 - [ ] Subtask 2.5: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -116,7 +116,7 @@ So that I understand how to use the generic primitives in domain-specific contex
 - [ ] Subtask 4.1: Implement `Coordinator` doc comments explaining Read-Through/Write-Through strategies; include a note about the public `CacheCoordinator` re-export for ergonomic use.
 - [ ] Subtask 4.2: Add runnable examples for composing the coordinator with Moka and Redb backends using the public `CacheCoordinator` type.
 - [ ] Subtask 4.3: Document metadata-based invalidation patterns with concrete code snippets
-- [ ] Subtask 4.4: Run `mise run test:unit:adapters --doc` and verify coordinator examples pass
+- [ ] Subtask 4.4: Run `mise run test:unit:core --doc` and verify coordinator examples pass
 - [ ] Subtask 4.5: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes

@@ -217,8 +217,8 @@ pub struct SchemaView<'a> { /* ... */ }
 
 - **Unit Tests:** `#[cfg(test)]` in same file.
 - **Integration Tests:** `tests/integration/` (CLI -> Core -> DB).
-- **Architecture Tests:** `tests/arch/` (boundary enforcement).
-- **Benchmarks:** `benches/` (zero-copy validation).
+- **Architecture Boundaries:** Enforced via module visibility, dependency flow rules, and code review.
+- **Benchmarks:** `lithos-core/benches/` (zero-copy validation).
 
 **Configuration Management:**
 

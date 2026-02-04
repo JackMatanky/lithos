@@ -296,7 +296,7 @@ lithos-core/
 
 **Rationale:**
 - Tests should be co-located with implementation (already doing this)
-- Only keep `tests/arch/` for cross-cutting architecture enforcement
+- Enforce architecture boundaries via module visibility and code review (no dedicated arch test crate)
 - No need for separate test utilities crate in sync-first design
 
 ---

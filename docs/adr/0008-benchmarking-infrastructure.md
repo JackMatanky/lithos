@@ -25,7 +25,7 @@ Current challenges:
 Implement benchmarking infrastructure using Criterion.rs with the following components:
 
 1. **Library Selection**: Criterion.rs for statistical benchmarking
-2. **Organization**: Benchmarks in `benches/` directory with categorized groups
+2. **Organization**: Benchmarks in `lithos-core/benches/` directory with categorized groups
 3. **Infrastructure**: Baseline storage and regression detection
 4. **CI Integration**: Performance gates in CI pipeline
 5. **Categories**: Micro-benchmarks for core functions, integration benchmarks for end-to-end flows
@@ -100,7 +100,7 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
 
 1. **Phase 1: Core Infrastructure (1 week)**
    - Add criterion.rs dependency and basic bench setup
-   - Create `benches/` directory structure with categories
+   - Create `lithos-core/benches/` directory structure with categories
    - Implement async benchmarking patterns for tokio-based code
 
 2. **Phase 2: Benchmark Definition & Baselines (1 week)**

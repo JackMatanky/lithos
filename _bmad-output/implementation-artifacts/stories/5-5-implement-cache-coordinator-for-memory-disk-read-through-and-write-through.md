@@ -55,7 +55,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 ## TDD Acceptance Criteria (Quality Gates)
 
 **Given** I need a multi-layer cache coordinator
-**When** I run `mise run test:unit:adapters coordinator`
+**When** I run `mise run test:unit:core coordinator`
 **Then** all tests pass using `MockCacheReader` and `MockCacheWriter` to verify orchestration logic
 **And** `Reader` handle has NO access to `put` or `clear` methods
 **And** `Writer` handle has NO access to `get` or `has` methods
@@ -85,7 +85,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 1.2: Add `pub(crate) mod coordinator;` to `crates/adapters/src/spi/cache/mod.rs`
   - [x] Subtask 1.3: [TDD] Write `coordinator_init::fails_to_link` (verify failing to import components)
   - [x] Subtask 1.4: Re-export as `ReaderCoordinator` and `WriterCoordinator` in `crates/adapters/src/spi/cache/mod.rs`
-  - [x] Subtask 1.5: Run `mise run test:unit:adapters coordinator` and verify failure (RED)
+  - [x] Subtask 1.5: Run `mise run test:unit:core coordinator` and verify failure (RED)
   - [x] Subtask 1.6: Run `mise run lint` and fix all warnings/errors
   - [x] Subtask 1.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 1.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
@@ -100,7 +100,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 2.6: Implement `Builder::new()` and methods to set the four cache ports
   - [x] Subtask 2.7: Implement `Builder::build()` that returns `(ReaderCoordinator, WriterCoordinator)`
   - [x] Subtask 2.8: Ensure `Inner` is non-clonable and private to the module
-  - [x] Subtask 2.9: Run `mise run test:unit:adapters coordinator_init` and verify pass (GREEN)
+  - [x] Subtask 2.9: Run `mise run test:unit:core coordinator_init` and verify pass (GREEN)
   - [x] Subtask 2.10: Run `mise run lint` and fix all warnings/errors
   - [x] Subtask 2.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 2.12: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
@@ -111,7 +111,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 3.2: Add bounded `tokio::sync::mpsc` channel (default capacity 1024) to `Inner` for backfill requests
   - [x] Subtask 3.3: Implement `spawn_backfill_task` called during `Builder::build()` that consumes the receiver
   - [x] Subtask 3.4: Implement backfill logic: task calls `memory_writer.put()` and logs results; gracefully handles channel closure
-  - [x] Subtask 3.5: Run `mise run test:unit:adapters` and verify async trigger (GREEN)
+  - [x] Subtask 3.5: Run `mise run test:unit:core` and verify async trigger (GREEN)
   - [x] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
   - [x] Subtask 3.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 3.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
@@ -126,7 +126,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 4.6: Implement `has` orchestration checking memory then disk
   - [x] Subtask 4.7: [TDD] Write `keys::returns_union_of_both_layers` (failing)
   - [x] Subtask 4.8: Implement `keys` orchestration: fetch from both, merge into a `HashSet`, and return as `Vec<K>`
-  - [x] Subtask 4.9: Run `mise run test:unit:adapters coordinator_get` and verify pass (GREEN)
+  - [x] Subtask 4.9: Run `mise run test:unit:core coordinator_get` and verify pass (GREEN)
   - [x] Subtask 4.10: Run `mise run lint` and fix all warnings/errors
   - [x] Subtask 4.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 4.12: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
@@ -140,7 +140,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 5.5: [TDD] Write `delete::invalidates_both_layers_in_parallel` (failing)
   - [x] Subtask 5.6: Implement `delete` and `clear` using `tokio::join!` to minimize invalidation latency
   - [x] Subtask 5.7: [TDD] Write `invalidate::delegates_to_delete` (failing)
-  - [x] Subtask 5.8: Run `mise run test:unit:adapters coordinator_put` and verify pass (GREEN)
+  - [x] Subtask 5.8: Run `mise run test:unit:core coordinator_put` and verify pass (GREEN)
   - [x] Subtask 5.9: Run `mise run lint` and fix all warnings/errors
   - [x] Subtask 5.10: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 5.11: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
@@ -151,7 +151,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 6.2: Add `#[tracing::instrument]` to all handle methods and the backfill task
   - [x] Subtask 6.3: [TDD] Write `performance::get_latency_is_independent_of_backfill_speed` (failing)
   - [x] Subtask 6.4: Verify that `get()` returns sub-millisecond even if the backfill channel is throttled
-  - [x] Subtask 6.5: Run `mise run test:unit:adapters coordinator_tracing` and verify pass (GREEN)
+  - [x] Subtask 6.5: Run `mise run test:unit:core coordinator_tracing` and verify pass (GREEN)
   - [x] Subtask 6.6: Run `mise run lint` and fix all warnings/errors
   - [x] Subtask 6.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 6.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
@@ -161,7 +161,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 7.1: [TDD] Write failing doc test showing composition of split handles into a Coordinator
   - [x] Subtask 7.2: Implement doc comments in `coordinator.rs` to make the doc test pass
   - [x] Subtask 7.3: Add module-level docs explaining Async Backfill and CQRS benefits
-  - [x] Subtask 7.4: Run `mise run test:unit:adapters --doc` and verify all pass (GREEN)
+  - [x] Subtask 7.4: Run `mise run test:unit:core --doc` and verify all pass (GREEN)
   - [x] Subtask 7.5: Run `mise run lint` and fix all warnings/errors
   - [x] Subtask 7.6: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 7.7: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
@@ -171,7 +171,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 8.1: Create `crates/adapters/src/spi/cache/backfiller.rs`
   - [x] Subtask 8.2: Register module in `crates/adapters/src/spi/cache/mod.rs`
   - [x] Subtask 8.3: [TDD] Write `backfiller::verifies_compilation` (empty test)
-  - [x] Subtask 8.4: Run `mise run test:unit:adapters coordinator` (verify no regressions)
+  - [x] Subtask 8.4: Run `mise run test:unit:core coordinator` (verify no regressions)
 
 ### Phase 9: Implement Submission Handle Pattern (backfiller.rs)
 - [x] Task 9: Implement `Handle` and `Worker`
@@ -264,7 +264,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 ### TDD Methodology
 - **RED-GREEN-REFACTOR**: Strict adherence.
 - **Co-located Tests**: Unit tests live in `coordinator.rs` under `#[cfg(test)]`.
-- **Mise Orchestration**: Use `mise run test:unit:adapters` for verification.
+- **Mise Orchestration**: Use `mise run test:unit:core` for verification.
 
 ### References
 - [Source: project-context.md#Hexagonal-Boundary-Enforcement]

@@ -14,9 +14,9 @@ Added `test:changed` mise task that intelligently detects which crates have chan
 
 **How it works**:
 - Compares current branch against `origin/main` (or `HEAD~1` as fallback)
-- Extracts changed crates from `crates/` and `tests/` directories
-- Runs targeted tests per crate using `mise run test:unit --package <crate>`
-- Falls back to full test suite if test utilities change
+- Extracts changed crates from `lithos-core/` and `lithos-cli/`
+- Runs targeted tests per crate using `mise run test:unit -p core|cli`
+- Skips tests when only non-code files change
 
 **Usage**:
 ```bash

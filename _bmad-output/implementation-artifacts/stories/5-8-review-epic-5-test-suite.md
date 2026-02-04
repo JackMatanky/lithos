@@ -142,7 +142,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 - [ ] Subtask 3.2: Perform manual code mutation (e.g. changing expected values or return types) to ensure existing tests fail
 - [ ] Subtask 3.3: Verify Redb table isolation: writing to "table A" must not affect "table B" even with identical keys
 - [ ] Subtask 3.4: Verify `MokaCache` scan resistance: hot data must NOT be evicted during high-volume sequential reads
-- [ ] Subtask 3.5: Run `mise run test:unit:adapters` and verify all adversarial scenarios are handled
+- [ ] Subtask 3.5: Run `mise run test:unit:core` and verify all adversarial scenarios are handled
 - [ ] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -156,7 +156,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 - [ ] Subtask 4.3: Replace any manual mocks or concrete adapters in coordinator tests with `automock` expectations
 - [ ] Subtask 4.4: Validate `put` write-through ordering: Disk FIRST, then Memory
 - [ ] Subtask 4.5: Verify `delete` invalidates both layers even if one layer returns an error (best effort)
-- [ ] Subtask 4.6: Run `mise run test:unit:adapters coordinator` and verify pass
+- [ ] Subtask 4.6: Run `mise run test:unit:core coordinator` and verify pass
 - [ ] Subtask 4.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes

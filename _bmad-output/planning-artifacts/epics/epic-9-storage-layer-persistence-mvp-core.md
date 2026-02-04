@@ -531,7 +531,7 @@ So that NFR2 (2s vault indexing) and NFR9 (500MB memory) are validated at the st
 **Acceptance Criteria:**
 
 **Given** NFR2 requires 1000-note indexing in <2 seconds
-**When** I implement write performance benchmarks in `crates/adapters/benches/storage_write.rs`
+**When** I implement write performance benchmarks in `lithos-core/benches/storage_write.rs`
 **Then** benchmark `batch_insert_1000_notes` measures total time for 1000 sequential inserts
 **And** benchmark `batch_insert_parallel` measures time for batched transaction writes
 **And** benchmark validates <2 second total time requirement
@@ -543,7 +543,7 @@ So that NFR2 (2s vault indexing) and NFR9 (500MB memory) are validated at the st
 **And** parallel batch writes across multiple transactions complete in <2 seconds total
 
 **Given** NFR1 requires query operations <500ms
-**When** I implement read performance benchmarks in `crates/adapters/benches/storage_read.rs`
+**When** I implement read performance benchmarks in `lithos-core/benches/storage_read.rs`
 **Then** benchmark `lookup_by_path` measures single note retrieval time
 **And** benchmark `query_by_schema` measures fileClass filtering performance
 **And** benchmark `query_metadata` measures metadata filtering performance
@@ -556,7 +556,7 @@ So that NFR2 (2s vault indexing) and NFR9 (500MB memory) are validated at the st
 **And** complex queries (metadata filtering) complete in <100ms typical, <500ms worst-case
 
 **Given** NFR9 requires memory usage <500MB
-**When** I implement memory benchmarks in `crates/adapters/benches/storage_memory.rs`
+**When** I implement memory benchmarks in `lithos-core/benches/storage_memory.rs`
 **Then** benchmark `memory_usage_1000_notes` measures peak memory during full vault load
 **And** benchmark uses criterion with memory profiling enabled
 **And** benchmark validates total memory (Redb cache + Arc<Note> references) stays <500MB

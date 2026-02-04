@@ -90,7 +90,7 @@ If an “Ok” assertion fails, prefer printing the error you would have gotten:
 ### 2.4 Unit vs integration vs doc tests
 
 - **Unit tests**: colocated with code (`#[cfg(test)]`), can test private helpers.
-- **Integration tests**: under `tests/`, exercise the public surface.
+- **Integration tests**: under `lithos-core/tests/` (when added), exercise the public surface.
 - **Doc tests**: examples in `///` docs.
 
 Important detail:

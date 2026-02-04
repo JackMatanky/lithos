@@ -73,19 +73,18 @@ lithos/
 │   │       ├── main.rs           # Entry point
 │   │       ├── commands/         # CLI Command definitions
 │   │       └── terminal.rs       # Miette/Clap integration
-├── tests/                        # Automated Tests
-│   ├── integration/              # Cross-module flows
-│   ├── e2e/                      # CLI-driven workflow tests
-│   └── arch/                     # Dependency & Boundary enforcement
-└── benches/                      # Performance Benchmarks (Criterion)
+├── lithos-core/                  # Core crate
+│   ├── tests/                    # Integration tests (when added)
+│   └── lithos-core/benches/                  # Performance Benchmarks (Criterion)
+└── lithos-cli/                   # CLI crate
 ```
 
 ## Architectural Boundaries
 
 **API Boundaries:**
 
-- **CLI (`crates/lithos-cli`):** The primary driver. Orchestrates `lithos-core` logic and owns terminal rendering via `miette`.
-- **Core (`crates/lithos-core`):** Contains all business logic, storage implementation, and file processing.
+- **CLI (`lithos-cli`):** The primary driver. Orchestrates `lithos-core` logic and owns terminal rendering via `miette`.
+- **Core (`lithos-core`):** Contains all business logic, storage implementation, and file processing.
 
 **Logical Boundaries (Module Visibility):**
 
@@ -130,7 +129,7 @@ lithos/
 - **Validation Hierarchy:**
   - **Syntactic:** Structural validity of YAML/TOML/Schema JSON (in `lithos-core/fs/validator.rs`).
   - **Semantic:** Contract check between a Note and its Schema (in `lithos-core/schema/`).
-- **Performance:** Monitored via `benches/`, optimized via `rkyv` byte-layouts.
+- **Performance:** Monitored via `lithos-core/benches/`, optimized via `rkyv` byte-layouts.
 - **Task Management:** Centralized in `.mise/tasks/` and orchestrated via `mise.toml`.
 
 ## Integration Points
@@ -161,11 +160,10 @@ lithos/
 - **Mise-first:** `mise run build` handles static linking and binary stripping to produce a zero-dependency artifact.
 - **Tasks:**
   - `mise run verify`: Full quality gate (fmt, lint, test, adr).
-  - `mise run test:arch`: Enforce boundary rules.
 
 ## Test Organization
 
 - **Unit:** Inline `#[cfg(test)]` within `lithos-core` modules.
-- **Integration:** `tests/integration/` for full flows (CLI -> Core -> DB).
-- **Architecture:** `tests/arch/` for boundary enforcement.
-- **Benchmarks:** `benches/` for zero-copy validation.
+- **Integration:** `lithos-core/tests/` for full flows (CLI -> Core -> DB) when added.
+- **Architecture:** Enforced via module visibility and dependency flow rules.
+- **Benchmarks:** `lithos-core/benches/` for zero-copy validation.
