@@ -387,32 +387,13 @@ impl Template {
         let placeholder = self.syntax.wrap(var_name);
         if let Some(pos) = content.find(&placeholder) {
             if after {
-                #[expect(
-                    clippy::arithmetic_side_effects,
-                    reason = "String index arithmetic: pos from find() + \
-                              placeholder.len() guaranteed valid. Addition \
-                              cannot overflow as both values are within \
-                              string bounds."
-                )]
-                let insert_pos = pos + placeholder.len();
+                let insert_pos = pos.saturating_add(placeholder.len());
                 content.insert(insert_pos, '\n');
-                #[expect(
-                    clippy::arithmetic_side_effects,
-                    reason = "String index arithmetic: insert_pos + 1 \
-                              guaranteed valid—insert() just added newline at \
-                              insert_pos, so +1 is safe next char position."
-                )]
-                content.insert_str(insert_pos + 1, section_content);
+                content
+                    .insert_str(insert_pos.saturating_add(1), section_content);
             } else {
                 content.insert_str(pos, section_content);
-                #[expect(
-                    clippy::arithmetic_side_effects,
-                    reason = "String index arithmetic: pos + \
-                              section_content.len() guaranteed \
-                              valid—insert_str() just added section_content \
-                              at pos, so sum is safe position."
-                )]
-                content.insert(pos + section_content.len(), '\n');
+                content.insert(pos.saturating_add(section_content.len()), '\n');
             }
         }
     }
