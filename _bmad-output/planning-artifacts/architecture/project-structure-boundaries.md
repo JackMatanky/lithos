@@ -37,15 +37,24 @@ lithos/
 │       ├── lib.rs              # Crate root and public prelude
 │       ├── patterns.rs         # Shared domain patterns (Aggregate, Command)
 │       ├── db/                 # PERSISTENCE INFRASTRUCTURE (redb + rkyv)
-│       │   ├── mod.rs          # Database module entry
+│       │   ├── mod.rs          # Database module entry, core Database type
 │       │   ├── batch.rs        # Atomic write batch implementation
-│       │   └── error.rs        # Storage-specific error types
-│       ├── note/               # NOTE CONTEXT (Knowledge Graph)
-│       │   ├── mod.rs          # Context entry and visibility
+│       │   ├── error.rs        # Storage-specific error types
+│       │   ├── schema_store.rs # SchemaStore adapter (implements port)
+│       │   ├── note_store.rs   # NoteStore adapter (implements port)
+│       │   ├── template_store.rs # TemplateStore adapter (implements port)
+│       │   ├── config_store.rs # ConfigStore adapter (implements port)
+│       │   └── stored/         # Stored types (rkyv DTOs)
+│       │       ├── schema.rs   # StoredSchema and conversions
+│       │       ├── note.rs     # StoredNote and conversions
+│       │       ├── template.rs # StoredTemplate and conversions
+│       │       └── config.rs   # StoredConfig and conversions
+│       ├── note/               # NOTE CONTEXT (Knowledge Graph) - BUSINESS
+│       │   ├── mod.rs          # Public API, re-exports, type aliases (RedbNoteQuery)
 │       │   ├── aggregate.rs    # Note aggregate root and invariants
-│       │   ├── command.rs      # Write operations (CQRS)
-│       │   ├── query.rs        # Read-side indexing and searching
-│       │   ├── ports.rs        # Hexagonal boundary interfaces
+│       │   ├── command.rs      # Command<S: NoteStore> write operations
+│       │   ├── query.rs        # Query<S: NoteStore> read operations
+│       │   ├── ports.rs        # NoteStore port trait with GATs
 │       │   ├── frontmatter.rs  # Metadata extraction and parsing
 │       │   ├── link.rs         # Wiki-link and embed logic
 │       │   ├── structure.rs    # Markdown structural analysis
@@ -53,37 +62,37 @@ lithos/
 │       │   ├── task.rs         # Task/Todo extraction
 │       │   ├── error.rs        # Context-specific errors
 │       │   └── events.rs       # Domain events
-│       ├── schema/             # SCHEMA CONTEXT (Validation)
-│       │   ├── mod.rs          # Context entry and visibility
+│       ├── schema/             # SCHEMA CONTEXT (Validation) - BUSINESS
+│       │   ├── mod.rs          # Public API, re-exports, type aliases (RedbSchemaQuery)
 │       │   ├── aggregate.rs    # Schema aggregate root
-│       │   ├── command.rs      # Schema lifecycle management
-│       │   ├── query.rs        # Schema lookup and resolution
-│       │   ├── ports.rs        # Boundary interfaces
+│       │   ├── command.rs      # Command<S: SchemaStore> lifecycle management
+│       │   ├── query.rs        # Query<S: SchemaStore> lookup and resolution
+│       │   ├── ports.rs        # SchemaStore port trait with GATs
 │       │   ├── property.rs     # Individual property logic
 │       │   ├── property_spec.rs # Property specification types
 │       │   ├── resolver.rs     # Reference resolution
 │       │   ├── graph.rs        # Schema inheritance graph
-│       │   ├── raw.rs          # Unvalidated input models
+│       │   ├── raw.rs          # RawSchema (serde input, unvalidated)
 │       │   ├── error.rs        # Context-specific errors
 │       │   └── events.rs       # Domain events
-│       ├── template/           # TEMPLATE CONTEXT (Generation)
-│       │   ├── mod.rs          # Context entry and visibility
+│       ├── template/           # TEMPLATE CONTEXT (Generation) - BUSINESS
+│       │   ├── mod.rs          # Public API, re-exports, type aliases
 │       │   ├── aggregate.rs    # Template aggregate root
-│       │   ├── command.rs      # Rendering operations
-│       │   ├── query.rs        # Template lookup and resolution
-│       │   ├── ports.rs        # Boundary interfaces
+│       │   ├── command.rs      # Command<S: TemplateStore> rendering operations
+│       │   ├── query.rs        # Query<S: TemplateStore> lookup and resolution
+│       │   ├── ports.rs        # TemplateStore port trait with GATs
 │       │   ├── variable.rs     # Variable injection logic
 │       │   ├── composition.rs  # Component/Partial logic
 │       │   ├── syntax.rs       # Syntax highlighting/parsing
 │       │   ├── validation.rs   # Template safety checks
 │       │   ├── error.rs        # Context-specific errors
 │       │   └── events.rs       # Domain events
-│       ├── config/             # CONFIG CONTEXT (System Settings)
-│       │   ├── mod.rs          # Context entry and visibility
+│       ├── config/             # CONFIG CONTEXT (System Settings) - CROSS-CUTTING
+│       │   ├── mod.rs          # Public API, re-exports, type aliases
 │       │   ├── aggregate.rs    # Config aggregate root
-│       │   ├── command.rs      # Settings updates
-│       │   ├── query.rs        # Settings retrieval
-│       │   ├── ports.rs        # Boundary interfaces
+│       │   ├── command.rs      # Command<S: ConfigStore> settings updates
+│       │   ├── query.rs        # Query<S: ConfigStore> settings retrieval
+│       │   ├── ports.rs        # ConfigStore port trait with GATs
 │       │   ├── types.rs        # Shared config models
 │       │   ├── global.rs       # System-wide settings
 │       │   ├── vault.rs        # Vault-specific settings
@@ -120,8 +129,16 @@ lithos/
 **Logical Boundaries (Module Visibility):**
 
 - **Public API:** Only types reachable from `lithos-core/src/lib.rs` are public.
-- **Context Isolation:** Modules (`note/`, `schema/`) rely on `pub(crate)` to enforce internal isolation. They depend on `db/` but not on each other (unless via public API).
-- **Dependency Flow:** Infrastructure (`db/`, `fs/`) -> Domain (`note/`, `schema/`) -> CLI.
+- **Context Isolation:**
+  - **Business Contexts** (note, schema, template): Isolated from each other
+  - **Cross-Cutting Infrastructure** (config, db, fs, patterns): Available to all contexts
+  - Business contexts depend on infrastructure but NOT on each other
+- **Dependency Flow:** Infrastructure (db/, fs/, config/, patterns/) → Business Contexts (note/, schema/, template/) → CLI
+- **Port-Based CQRS:**
+  - Each context defines storage port trait with GATs (e.g., `SchemaStore`)
+  - CQRS types generic over port: `Query<S: SchemaStore>`, `Command<S: SchemaStore>`
+  - Default adapters: `RedbSchemaStore<'db>` implements ports
+  - Type aliases hide complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>`
 
 **Component Boundaries:**
 
@@ -139,12 +156,27 @@ lithos/
   - **Performance:** Ensures new notes are appended to Redb B-Tree leaves sequentially, achieving O(1) insertion.
   - **Persistence:** Allows notes to be moved or renamed while preserving their logical relationships in the Knowledge Graph.
 - **Zero-Copy Serialization:** **rkyv** buffers are managed in `src/db/` and returned via closure-based APIs, allowing the CLI to read data without memory duplication.
+  - `Stored*` types with rkyv derives for persistence
+  - Domain types remain ergonomic (no rkyv in domain surface)
+  - Port traits with GATs enable closure-based archived reads
+- **Storage DTOs:**
+  - One `Stored*` per persisted aggregate (StoredNote, StoredSchema, StoredTemplate, StoredConfig)
+  - Mechanical conversions at storage boundary
+  - Treat `Stored*` changes as migration decisions
 
 **File Organization Patterns:**
 
-- **Module Folder with mod.rs:** Use `<module>/mod.rs` as the entry point for all contexts.
-- **CQRS Structure:** Split logic into `aggregate.rs` (invariants), `command.rs` (writes), and `query.rs` (reads).
+- **Module Folder with mod.rs:** Use `<context>/mod.rs` as the entry point for all contexts.
+- **CQRS Structure:** Split logic into:
+  - `aggregate.rs` (invariants, domain entities)
+  - `command.rs` (Command<S> generic over port)
+  - `query.rs` (Query<S> generic over port)
+  - `ports.rs` (Storage port trait with GATs)
 - **Co-location:** Errors (`error.rs`), Events (`events.rs`), and Ports (`ports.rs`) are co-located within the context folder.
+- **Storage Adapters:** `Stored*` types and adapters can live in:
+  - `db/stored/<context>.rs` (for stored type definitions)
+  - `db/<context>_store.rs` (for port implementations like `RedbSchemaStore`)
+  - Or combined in one file if both are small
 
 ## Requirements to Structure Mapping
 

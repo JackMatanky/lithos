@@ -21,7 +21,7 @@ This documentation has been sharded into focused sections for better maintainabi
   - [Primary Technology Domain](./starter-template-evaluation.md#primary-technology-domain)
   - [Technical Preferences Confirmed](./starter-template-evaluation.md#technical-preferences-confirmed)
   - [Starter Options Evaluated](./starter-template-evaluation.md#starter-options-evaluated)
-  - [Selected Starter: Workspace-Based Hexagonal Architecture](./starter-template-evaluation.md#selected-starter-workspace-based-hexagonal-architecture)
+  - [Selected Starter: Single-Crate Architecture (Performance Pivot)](./starter-template-evaluation.md#selected-starter-single-crate-architecture-performance-pivot)
 - [Core Architectural Decisions](./core-architectural-decisions.md)
   - [Decision Priority Analysis](./core-architectural-decisions.md#decision-priority-analysis)
   - [Data Architecture](./core-architectural-decisions.md#data-architecture)

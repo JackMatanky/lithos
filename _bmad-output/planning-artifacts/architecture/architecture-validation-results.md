@@ -12,13 +12,15 @@ section: "Validation & Quality"
 ## Coherence Validation ✅
 
 **Decision Compatibility:**
-The stack is highly synergistic. `Redb` and `rkyv` provide the zero-copy foundation, `pulldown-cmark` provides the streaming event data, and `miette` consumes the resulting byte-offsets for high-fidelity diagnostics. All versions are verified for Jan 2026 compatibility.
+The stack is highly synergistic. `Redb` and `rkyv` provide the zero-copy foundation, with port traits enabling decoupling while preserving performance. GATs (Generic Associated Types) in port traits allow closure-based archived reads without leaking transaction lifetimes. `pulldown-cmark` provides the streaming event data, and `miette` consumes the resulting byte-offsets for high-fidelity diagnostics. All versions are verified for Jan 2026 compatibility.
 
 **Pattern Consistency:**
-The Hexagonal Ports & Adapters pattern is maintained logically via module visibility (`pub(crate)` vs `pub`). The **Minimal Event Foundation** replaces the complex Actor pattern to simplify the initial implementation.
+- **Port-Based CQRS:** CQRS types are generic over storage port traits, achieving key architectural benefits (testability, decoupling, swappable implementations) while enabling single-crate performance optimizations
+- **Minimal Event Foundation:** Following ADR 0007, Phase 1 uses synchronous event dispatch with domain methods returning `(Entity, Vec<Event>)`
+- **Storage Separation:** Following ADR 0009 Appendix A, `Stored*` types isolate rkyv coupling from domain ergonomics
 
 **Structure Alignment:**
-The **Single-Crate Architecture** aligns perfectly with the requirement for zero-copy performance, eliminating the friction of cross-crate serialization.
+The **Single-Crate Architecture** aligns perfectly with zero-copy performance requirements while port-based CQRS maintains logical boundaries and testability.
 
 ## Requirements Coverage Validation ✅
 
@@ -29,7 +31,30 @@ All 50 requirements are mapped to specific structural components in `lithos-core
 100% of FRs are mapped to specific modules.
 
 **Non-Functional Requirements Coverage:**
-Performance targets (<500ms for individual ops) are architecturally enforced by the **zero-copy data path** (inlining `rkyv` reads).
+Performance targets (<500ms for individual ops) are architecturally enforced by the **zero-copy data path** (inlining `rkyv` reads via GAT-based port traits).
+
+## Pattern Validation ✅
+
+**Port-Based CQRS:**
+- Each context defines storage port trait (e.g., `SchemaStore`, `NoteStore`)
+- Ports use GATs for zero-copy reads: `type Archived<'a> where Self: 'a`
+- CQRS types generic over port: `Query<S: SchemaStore>`, `Command<S: SchemaStore>`
+- Type aliases for ergonomics: `RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>`
+- Test substitution enabled via trait implementations (`FakeSchemaStore`)
+- Reference: [Design Doc 012: CQRS Concrete Over Port](../../docs/design/012-cqrs-concrete-over-port.md)
+
+**Storage DTO Pattern:**
+- `Stored*` types introduced selectively (per ADR 0009 Appendix A)
+- One per persisted aggregate (StoredNote, StoredSchema, StoredTemplate, StoredConfig)
+- Mechanical conversions at storage boundary
+- Domain remains ergonomic (no rkyv surface leakage)
+- Format changes are explicit migration decisions
+
+**Context Boundaries:**
+- Business contexts (note, schema, template) isolated
+- Cross-cutting infrastructure (config, db, fs, patterns) available to all
+- Enforcement via architecture tests + code review
+- Config is explicitly cross-cutting (not a business context)
 
 ## Implementation Readiness Validation ✅
 

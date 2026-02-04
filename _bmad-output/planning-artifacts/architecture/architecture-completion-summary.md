@@ -31,6 +31,8 @@ section: "Completion & Handoff"
 - 8 major architectural decisions (ADRs) made
 - Comprehensive naming, async, and error patterns defined
 - **Single-Crate Architecture** (`lithos-core`) specified for zero-copy performance
+- **Port-Based CQRS** pattern for decoupling without sacrificing performance
+- **Storage DTO Strategy** (ADR 0009 Appendix A) for domain/storage separation
 - 50 functional requirements fully supported
 
 **📚 AI Agent Implementation Guide**
@@ -51,10 +53,19 @@ Initialize the Workspace with `lithos-core` and `lithos-cli`. Implement `db.rs` 
 **Development Sequence:**
 
 1. Initialize project (Single-Crate Core + CLI)
-2. Set up development environment per architecture (`mise run setup`)
-3. Implement `db.rs` (Zero-Copy Redb Infrastructure)
-4. Migrate Domain Contexts (`note/`, `schema/`) to `lithos-core`
-5. Implement CLI commands using `lithos-core` static methods
+2. Set up development environment per architecture (`mise run dev-setup`)
+3. Implement `db/` infrastructure:
+   - Core `Database` type with zero-copy APIs
+   - First storage port implementation (e.g., `RedbSchemaStore`)
+   - Example `Stored*` type (e.g., `StoredSchema`)
+4. Implement first context with port-based CQRS (recommend: `schema`):
+   - Define `SchemaStore` port trait with GATs
+   - Implement `Query<S>` and `Command<S>` generic over port
+   - Create type aliases (`RedbSchemaQuery<'db>`)
+   - Implement `RedbSchemaStore` adapter
+5. Migrate remaining contexts following schema pattern
+6. Implement CLI commands using type aliases (hide generic complexity)
+7. Add architecture boundary tests
 
 ## Quality Assurance Checklist
 
