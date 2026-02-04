@@ -89,63 +89,63 @@ depends = ["test:unit", "test:integration", "test:e2e"]
 [tasks."test:unit:core"]
 description = "Run core crate unit tests"
 alias = "tucore"
-run = "mise run test:unit -- -p lithos-core"
+run = "mise run test:unit -p core"
 quiet = false
 
 [tasks."test:unit:cli"]
 description = "Run CLI crate unit tests"
 alias = "tucli"
-run = "mise run test:unit -- -p lithos"
+run = "mise run test:unit -p cli"
 quiet = false
 
 # Specific module unit tests within lithos-core for granular testing
 [tasks."test:unit:config"]
 description = "Run config module unit tests"
 alias = "tuconf"
-run = "mise run test:unit -- -p config"
+run = "mise run test:unit -p config"
 quiet = false
 
 [tasks."test:unit:note"]
 description = "Run note module unit tests"
 alias = "tunote"
-run = "mise run test:unit -- -p note"
+run = "mise run test:unit -p note"
 quiet = false
 
 [tasks."test:unit:schema"]
 description = "Run schema module unit tests"
 alias = "tusch"
-run = "mise run test:unit -- -p schema"
+run = "mise run test:unit -p schema"
 quiet = false
 
 [tasks."test:unit:template"]
 description = "Run template module unit tests"
 alias = "tutemp"
-run = "mise run test:unit -- -p template"
+run = "mise run test:unit -p template"
 quiet = false
 
 [tasks."test:unit:db"]
 description = "Run db module unit tests"
 alias = "tudb"
-run = "mise run test:unit -- -p db"
+run = "mise run test:unit -p db"
 quiet = false
 
 [tasks."test:unit:fs"]
 description = "Run fs module unit tests"
 alias = "tufs"
-run = "mise run test:unit -- -p fs"
+run = "mise run test:unit -p fs"
 quiet = false
 
 # Specific crate benchmarks for developer convenience
 [tasks."test:bench:core"]
 description = "Run core crate benchmarks"
 alias = "tbcore"
-run = "mise run test:bench -- -p lithos-core"
+run = "mise run test:bench -p core"
 quiet = false
 
 [tasks."test:bench:cli"]
 description = "Run CLI crate benchmarks"
 alias = "tbcli"
-run = "mise run test:bench -- -p lithos"
+run = "mise run test:bench -p cli"
 quiet = false
 
 # --------------------- CI/CD Simulation ---------------------- #

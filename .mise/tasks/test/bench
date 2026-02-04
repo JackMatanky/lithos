@@ -4,7 +4,7 @@
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #USAGE arg "[filter]" help="Filter benchmarks by name"
 #USAGE flag "-p --package <package>" help="Run benchmarks for a specific package" {
-#USAGE   choices "core" "lithos-core" "cli" "lithos"
+#USAGE   choices "core" "cli"
 #USAGE }
 
 #######################################
@@ -18,10 +18,10 @@
 #######################################
 map_package_name() {
   case "${usage_package:-}" in
-  core | lithos-core)
+  core)
     echo "lithos-core"
     ;;
-  cli | lithos)
+  cli)
     echo "lithos"
     ;;
   *)

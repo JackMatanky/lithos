@@ -7,7 +7,7 @@
 #MISE env={RUST_BACKTRACE="1"}
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE flag "-p --package <package>" help="Run tests for a specific package" {
-#USAGE   choices "core" "lithos-core" "cli" "lithos"
+#USAGE   choices "core" "cli"
 #USAGE }
 
 #######################################
@@ -21,10 +21,10 @@
 #######################################
 map_package_name() {
     case "${usage_package:-}" in
-    core | lithos-core)
+    core)
         echo "lithos-core"
         ;;
-    cli | lithos)
+    cli)
         echo "lithos"
         ;;
     *)
