@@ -116,86 +116,106 @@ mod tests {
     }
 
     #[rstest]
-    #[case::validation(
+    #[case::validation_field(
         ConfigError::ValidationFailed {
             field: "vault_path".to_owned().into(),
             message: "cannot be empty".to_owned().into()
         },
-        &["vault_path", "cannot be empty"]
+        "vault_path"
     )]
-    #[case::missing_field(
+    #[case::validation_message(
+        ConfigError::ValidationFailed {
+            field: "vault_path".to_owned().into(),
+            message: "cannot be empty".to_owned().into()
+        },
+        "cannot be empty"
+    )]
+    #[case::missing_field_name(
         ConfigError::MissingRequiredField {
             field: "templates_dir".to_owned().into()
         },
-        &["templates_dir", "missing"]
+        "templates_dir"
     )]
-    #[case::invalid_type(
+    #[case::missing_field_message(
+        ConfigError::MissingRequiredField {
+            field: "templates_dir".to_owned().into()
+        },
+        "missing"
+    )]
+    #[case::invalid_type_field(
         ConfigError::InvalidType {
             field: "log_level".to_owned().into(),
             expected: "String".to_owned().into(),
             actual: "Number".to_owned().into()
         },
-        &["log_level", "String", "Number"]
+        "log_level"
+    )]
+    #[case::invalid_type_expected(
+        ConfigError::InvalidType {
+            field: "log_level".to_owned().into(),
+            expected: "String".to_owned().into(),
+            actual: "Number".to_owned().into()
+        },
+        "String"
+    )]
+    #[case::invalid_type_actual(
+        ConfigError::InvalidType {
+            field: "log_level".to_owned().into(),
+            expected: "String".to_owned().into(),
+            actual: "Number".to_owned().into()
+        },
+        "Number"
     )]
     fn should_display_correct_error_messages(
         #[case] error: ConfigError,
-        #[case] expected_parts: &[&str],
+        #[case] expected_part: &str,
     ) {
         let message = error.to_string();
-        for part in expected_parts {
-            assert!(
-                message.contains(part),
-                "Error message '{message}' should contain '{part}'"
-            );
-        }
+        assert!(
+            message.contains(expected_part),
+            "Error message '{message}' should contain '{expected_part}'"
+        );
     }
 
-    #[test]
-    fn config_error_display_is_comprehensive() {
-        let errors: Vec<ConfigError> = vec![
-            ConfigError::DependencyViolation {
-                field: "f".into(),
-                depends_on: "d".into(),
-            },
-            ConfigError::EncryptionError {
-                field: "f".into(),
-                message: "m".into(),
-            },
-            ConfigError::InvalidEnumValue {
-                field: "f".into(),
-                value: "v".into(),
-                allowed: vec!["a".into()],
-            },
-            ConfigError::InvalidType {
-                field: "f".into(),
-                expected: "e".into(),
-                actual: "a".into(),
-            },
-            ConfigError::MergeConflict {
-                field: "f".into(),
-                path1: "p1".into(),
-                path2: "p2".into(),
-            },
-            ConfigError::MissingRequiredField {
-                field: "f".into(),
-            },
-            ConfigError::OutOfRange {
-                field: "f".into(),
-                value: 1.0f64,
-                min: Some(0.0f64),
-                max: Some(2.0f64),
-            },
-            ConfigError::ValidationFailed {
-                field: "f".into(),
-                message: "m".into(),
-            },
-        ];
-
-        for err in errors {
-            assert!(
-                !err.to_string().is_empty(),
-                "Error {err:?} should have non-empty display message"
-            );
-        }
+    #[rstest]
+    #[case(ConfigError::DependencyViolation {
+        field: "f".into(),
+        depends_on: "d".into(),
+    })]
+    #[case(ConfigError::EncryptionError {
+        field: "f".into(),
+        message: "m".into(),
+    })]
+    #[case(ConfigError::InvalidEnumValue {
+        field: "f".into(),
+        value: "v".into(),
+        allowed: vec!["a".into()],
+    })]
+    #[case(ConfigError::InvalidType {
+        field: "f".into(),
+        expected: "e".into(),
+        actual: "a".into(),
+    })]
+    #[case(ConfigError::MergeConflict {
+        field: "f".into(),
+        path1: "p1".into(),
+        path2: "p2".into(),
+    })]
+    #[case(ConfigError::MissingRequiredField { field: "f".into() })]
+    #[case(ConfigError::OutOfRange {
+        field: "f".into(),
+        value: 1.0f64,
+        min: Some(0.0f64),
+        max: Some(2.0f64),
+    })]
+    #[case(ConfigError::ValidationFailed {
+        field: "f".into(),
+        message: "m".into(),
+    })]
+    fn config_error_display_is_comprehensive(#[case] error: ConfigError) {
+        assert!(
+            !error.to_string().is_empty(),
+            "Error {error:?} should have non-empty display message"
+        );
     }
 }
