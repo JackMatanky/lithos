@@ -25,8 +25,8 @@ use uuid::Uuid;
 ///
 /// let id = Uuid::now_v7();
 /// let event = FrontmatterValidated::new(id, 5, 1234567890);
-/// assert_eq!(event.note_id, id);
-/// assert_eq!(event.field_count, 5);
+/// assert_eq!(event.note_id, id, "Note id should match");
+/// assert_eq!(event.field_count, 5, "Field count should match");
 /// ```
 #[derive(
     Debug,
@@ -63,8 +63,8 @@ pub struct FrontmatterValidated {
 /// let id = Uuid::now_v7();
 /// let event =
 ///     NoteCreated::new(id, "projects/lithos.md".to_string(), 1234567890);
-/// assert_eq!(event.id, id);
-/// assert_eq!(event.path, "projects/lithos.md");
+/// assert_eq!(event.id, id, "Note id should match");
+/// assert_eq!(event.path, "projects/lithos.md", "Path should match");
 /// ```
 #[derive(
     Debug,
