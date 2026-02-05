@@ -239,15 +239,19 @@ mod tests {
     }
 
     #[test]
-    fn global_defaults_have_expected_shape() {
-        // GIVEN: default global config
+    fn global_defaults_have_no_trusted_vaults() {
         let global = super::Global::default();
 
-        // THEN: default structures are populated
         assert!(
             global.trusted_vaults.is_none(),
             "Default trusted_vaults should be None"
         );
+    }
+
+    #[test]
+    fn global_defaults_use_info_log_level() {
+        let global = super::Global::default();
+
         assert_eq!(
             global.logging.log_level, "info",
             "Default log level should be 'info'"
