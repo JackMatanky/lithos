@@ -36,7 +36,11 @@ use super::{aggregate::Template, error::TemplateError};
 ///     includes: Vec::new(),
 ///     variable_overrides: HashMap::new(),
 /// };
-/// assert_eq!(composition.additional_sections.len(), 1);
+/// assert_eq!(
+///     composition.additional_sections.len(),
+///     1,
+///     "Composition should include one section"
+/// );
 /// # Ok(())
 /// # }
 /// # run()?;
