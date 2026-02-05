@@ -1281,6 +1281,17 @@ mod tests {
             fixtures::{fully_populated_wikilink, unresolved_target},
         };
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
+        )]
+        fn embed_with_type(embed_type: EmbedType) -> Link {
+            Link::new_embed(unresolved_target("file"), embed_type, None, 0)
+                .expect("Expected valid embed")
+        }
+
         /// 3.2-UNIT-028: `accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
@@ -1351,18 +1362,7 @@ mod tests {
         fn embed_type_accessor_returns_correct_type(
             #[case] embed_type: EmbedType,
         ) {
-            // GIVEN: an embed with a specific type
-            let embed_result =
-                Link::new_embed(unresolved_target("file"), embed_type, None, 0);
-            assert!(
-                embed_result.is_ok(),
-                "Expected valid embed, got: {embed_result:?}"
-            );
-            let Ok(embed) = embed_result else {
-                return;
-            };
-
-            // THEN: embed_type() should return the correct type
+            let embed = embed_with_type(embed_type);
             assert_eq!(
                 embed.embed_type(),
                 Some(embed_type),
