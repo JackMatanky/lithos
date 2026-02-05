@@ -7,7 +7,7 @@ date_decided: 2026-01-21
 date_implemented: 2026-01-21
 ---
 
-# ADR 0011: File Loading Port Boundary and Text-Only Domain Contract
+# ADR 0010: File Loading Port Boundary and Text-Only Domain Contract
 
 ## Context
 

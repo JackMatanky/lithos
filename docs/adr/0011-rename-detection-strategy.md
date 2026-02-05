@@ -7,7 +7,7 @@ date_decided: 2026-01-15
 date_implemented: TBD
 ---
 
-# ADR 0010: Metadata-First Rename Detection Strategy for Vault Indexing
+# ADR 0011: Metadata-First Rename Detection Strategy for Vault Indexing
 
 ## Context
 

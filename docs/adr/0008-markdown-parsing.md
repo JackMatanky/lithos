@@ -7,7 +7,7 @@ date_decided: 2026-01-11
 date_implemented: 2026-01-11
 ---
 
-# ADR 0004: High-Performance Markdown Parsing with pulldown-cmark
+# ADR 0008: High-Performance Markdown Parsing with pulldown-cmark
 
 ## Context
 

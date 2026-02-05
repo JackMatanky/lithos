@@ -9,7 +9,7 @@ date_superseded: 2026-02-01
 superseded_by: Course Correction Proposal 4 (Database Layer Design)
 ---
 
-# ADR 0012: Caching Strategy & Implementation Patterns
+# ADR 0013: Caching Strategy & Implementation Patterns
 
 ## Status: SUPERSEDED
 
