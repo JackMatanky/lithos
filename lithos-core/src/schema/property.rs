@@ -57,8 +57,11 @@ pub struct Property {
 /// # use lithos_core::schema::property::PropertyName;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let name = PropertyName::new("status".to_string())?;
-/// assert_eq!(&name.0, "status");
-/// assert!(PropertyName::new("".to_string()).is_err());
+/// assert_eq!(&name.0, "status", "Name should match input");
+/// assert!(
+///     PropertyName::new("".to_string()).is_err(),
+///     "Empty name should be rejected"
+/// );
 /// # Ok(())
 /// # }
 /// ```
