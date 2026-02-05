@@ -217,9 +217,19 @@ mod tests {
 
         use super::*;
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
+        )]
+        fn tag_with_project_path() -> Tag {
+            Tag::new("#work/project").expect("Tag should parse")
+        }
+
         #[test]
         fn full_path_returns_expected_value() {
-            let tag = Tag::new("#work/project").expect("Tag should parse");
+            let tag = tag_with_project_path();
             assert_eq!(
                 tag.full_path.as_str(),
                 "work/project",
@@ -229,13 +239,13 @@ mod tests {
 
         #[test]
         fn segments_length_matches_expected() {
-            let tag = Tag::new("#work/project").expect("Tag should parse");
+            let tag = tag_with_project_path();
             assert_eq!(tag.segments.len(), 2, "Segments length should match");
         }
 
         #[test]
         fn segments_match_expected_values() {
-            let tag = Tag::new("#work/project").expect("Tag should parse");
+            let tag = tag_with_project_path();
             assert_eq!(
                 &*tag.segments,
                 &["work".into(), "project".into()],
