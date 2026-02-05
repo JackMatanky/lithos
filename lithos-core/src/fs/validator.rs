@@ -520,10 +520,9 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            clippy::pattern_type_mismatch,
-            reason = "Pattern match on &Mode enum requires borrowing non-Copy \
-                      PathBuf field without explicit `ref` pattern (idiomatic \
-                      Rust 2021)."
+            reason = "Test uses expect for deterministic fixture setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
         )]
         fn creates_strict_validator_with_root() {
             // GIVEN an absolute root path
@@ -536,20 +535,14 @@ mod tests {
             // THEN it should be configured with Strict mode and an absolute
             // root
             assert!(
-                matches!(validator.mode, Mode::Strict { .. }),
-                "Expected Strict mode, found {:?}",
+                matches!(
+                    &validator.mode,
+                    Mode::Strict { root: validator_root }
+                        if validator_root.is_absolute()
+                ),
+                "Expected Strict mode with absolute root, found {:?}",
                 validator.mode
             );
-            if let Mode::Strict {
-                root: validator_root,
-            } = &validator.mode
-            {
-                assert!(
-                    validator_root.is_absolute(),
-                    "Expected absolute root, found {}",
-                    validator_root.display()
-                );
-            }
         }
     }
 
