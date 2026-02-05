@@ -120,6 +120,8 @@ pub enum TemplateError {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[test]
@@ -128,24 +130,19 @@ mod tests {
         is_send_sync::<TemplateError>();
     }
 
-    #[test]
-    fn template_error_display_is_comprehensive() {
-        let errors = vec![
-            TemplateError::NotFound("tpl".into()),
-            TemplateError::AlreadyExists("tpl".into()),
-            TemplateError::ValidationFailed("invalid".into()),
-            TemplateError::Composition("missing part".into()),
-            TemplateError::Syntax("invalid braces".into()),
-            TemplateError::Render("failed to render".into()),
-            TemplateError::Variable("undefined var".into()),
-            TemplateError::Storage("io error".into()),
-        ];
-
-        for err in errors {
-            assert!(
-                !err.to_string().is_empty(),
-                "Error {err:?} should have non-empty display message"
-            );
-        }
+    #[rstest]
+    #[case(TemplateError::NotFound("tpl".into()))]
+    #[case(TemplateError::AlreadyExists("tpl".into()))]
+    #[case(TemplateError::ValidationFailed("invalid".into()))]
+    #[case(TemplateError::Composition("missing part".into()))]
+    #[case(TemplateError::Syntax("invalid braces".into()))]
+    #[case(TemplateError::Render("failed to render".into()))]
+    #[case(TemplateError::Variable("undefined var".into()))]
+    #[case(TemplateError::Storage("io error".into()))]
+    fn template_error_display_is_non_empty(#[case] error: TemplateError) {
+        assert!(
+            !error.to_string().is_empty(),
+            "Error {error:?} should have non-empty display message"
+        );
     }
 }
