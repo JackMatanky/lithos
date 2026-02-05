@@ -208,7 +208,7 @@ lithos/
 
 **Internal Communication:**
 
-- **Hybrid Bus (ADR 0007):** Minimized for Phase 1. `src/db/` handles data persistence. Events are emitted via simple callbacks or staged in `UnitOfWork` for later dispatch if needed.
+- **Hybrid Bus (ADR 004):** Minimized for Phase 1. `src/db/` handles data persistence. Events are emitted via simple callbacks or staged in `UnitOfWork` for later dispatch if needed.
 - **Database:** `lithos-core/src/db/mod.rs` exposes a concrete `Database` struct with zero-copy methods (`get`, `put`).
 
 **External Integrations:**

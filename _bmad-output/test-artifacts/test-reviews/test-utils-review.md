@@ -96,7 +96,7 @@ No critical issues detected. ✅
 **Knowledge Base**: [traceability.md](../../../testarch/knowledge/traceability.md)
 
 **Issue Description**:
-Tests lack unique identifiers. Without IDs like `9.1-INT-001`, we cannot prove that ADR 0009 or PRD requirements are fully covered.
+Tests lack unique identifiers. Without IDs like `9.1-INT-001`, we cannot prove that ADR 003 or PRD requirements are fully covered.
 
 **Current Code**:
 
@@ -108,7 +108,7 @@ async fn command_handler_saves_entity_to_repository() {
 **Recommended Improvement**:
 
 ```rust
-// ✅ Requirement: ADR 0009 Decision 1
+// ✅ Requirement: ADR 003 Decision 1
 #[tokio::test]
 #[test_id("9.1-INT-001")] // Use a macro or comment
 async fn command_handler_saves_entity_to_repository() {
@@ -213,7 +213,7 @@ This review consulted the following knowledge base fragments:
 
 ### Immediate Actions (Before Merge)
 
-1. **Add Test IDs** - Map integration tests to ADR 0009.
+1. **Add Test IDs** - Map integration tests to ADR 003.
    - Priority: P1
    - Owner: Jack
    - Estimated Effort: 30m

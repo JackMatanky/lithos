@@ -14,13 +14,13 @@ section: "Architecture Decisions"
 **Critical Decisions (Block Implementation):**
 
 - **Single-Crate Architecture:** Pivot from multi-crate workspace to `lithos-core` + `lithos-cli` to enable zero-copy optimizations and reduce compilation overhead. (Proposal: `2026-01-30-rust-idiomatic-refactor`)
-- **Storage Engine:** Redb + rkyv (Zero-copy structured KV) with a concrete `Database` type (no traits). [ADR 0002](docs/adr/0002-persistence-cache-infrastructure.md)
-- **Serialization Strategy:** Controlled serde allowance in domain (feature-gated). [ADR 0009](docs/adr/0009-domain-serialization-strategy.md)
-- **Templating:** MiniJinja (Dynamic Jinja2). [ADR 0003](docs/adr/0003-template-engine.md)
-- **Markdown Parser:** pulldown-cmark (Event-streaming). [ADR 0004](docs/adr/0004-markdown-parsing.md)
-- **Configuration:** Figment (Provider-based hierarchy). [ADR 0005](docs/adr/0005-configuration-management.md)
-- **Error Handling:** miette + thiserror (Structured diagnostics with co-located errors). [ADR 0006](docs/adr/0006-error-handling-diagnostics.md)
-- **Event Orchestration:** Minimal Foundation (Phase 1). [ADR 0007](docs/adr/0007-event-orchestration.md)
+- **Storage Engine:** Redb + rkyv (Zero-copy structured KV) with a concrete `Database` type (no traits). [ADR 006](docs/adr/006-persistence-cache-infrastructure.md)
+- **Serialization Strategy:** Controlled serde allowance in domain (feature-gated). [ADR 003](docs/adr/003-domain-serialization.md)
+- **Templating:** MiniJinja (Dynamic Jinja2). [ADR 007](docs/adr/007-template-engine.md)
+- **Markdown Parser:** pulldown-cmark (Event-streaming). [ADR 008](docs/adr/008-markdown-parsing.md)
+- **Configuration:** Figment (Provider-based hierarchy). [ADR 009](docs/adr/009-configuration-management.md)
+- **Error Handling:** miette + thiserror (Structured diagnostics with co-located errors). [ADR 005](docs/adr/005-error-handling.md)
+- **Event Orchestration:** Minimal Foundation (Phase 1). [ADR 004](docs/adr/004-event-orchestration.md)
 
 **Important Decisions (Shape Architecture):**
 
@@ -46,7 +46,7 @@ section: "Architecture Decisions"
   - Type aliases hide generic complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>`
   - Enables test substitution via `FakeSchemaQueryPort` while maintaining zero-copy performance
   - **Port Split Benefits:** Read-only test fakes don't implement writes, prevents interface bloat, enables future flexibility (cache reads, DB writes)
-- **Three-Shape Serialization Model:** Following ADR 0009 Appendix A pattern:
+- **Three-Shape Serialization Model:** Following ADR 003 Appendix A pattern:
   - **Raw\* (serde derives):** Unvalidated input from filesystem (YAML/JSON), tolerant parsing with nullable fields for better error messages
   - **Domain (rkyv + serde feature-gated):** Validated entities with invariants, **has rkyv derives** for zero-copy database operations, used throughout application
   - **Stored\* (rkyv derives, optional):** Storage-optimized representation, only created when domain shape inefficient (wrapper newtypes, deep nesting, Arc sharing issues)
@@ -55,8 +55,8 @@ section: "Architecture Decisions"
   - Treat changes to `Stored*` as migration decisions (stable on-disk format)
 - **Identity:** UUID v7. Decouples identity from physical path to avoid the "directory trap."
 - **ADR References:**
-  - [ADR 0002: Persistence & Cache Infrastructure](../../docs/adr/0002-persistence-cache-infrastructure.md)
-  - [ADR 0009: Domain Serialization Strategy](../../docs/adr/0009-domain-serialization-strategy.md) (see Appendix A for three-shape model)
+  - [ADR 006: Persistence & Cache Infrastructure](../../docs/adr/006-persistence-cache-infrastructure.md)
+  - [ADR 003: Domain Serialization Strategy](../../docs/adr/003-domain-serialization.md) (see Appendix A for three-shape model)
   - [Design Doc 012: CQRS Concrete Over Port](../../docs/design/012-cqrs-concrete-over-port.md)
 
 ## Internal Communication
@@ -69,7 +69,7 @@ section: "Architecture Decisions"
   - **Control Plane:** Simple callbacks or deferred dispatch via `UnitOfWork` if needed.
   - **State Plane:** Deferred to LSP phase (async event bus, MPSC channels).
   - **Benefits:** Prevents god-object orchestrators while keeping Phase 1 simple
-- **ADR Reference:** [ADR 0007: Event Orchestration](../../docs/adr/0007-event-orchestration.md)
+- **ADR Reference:** [ADR 004: Event Orchestration](../../docs/adr/004-event-orchestration.md)
 
 ## CQRS Architecture Pattern
 
@@ -321,7 +321,7 @@ Only introduce `Stored*` when profiling reveals:
 
 ## Technical Preferences (Step 4 Refinement)
 
-- **Templating:** **MiniJinja**. Selected for "Mechanical Sympathy"—minimal dependencies and VM-based rendering for user-defined Markdown templates. [ADR 0003](docs/adr/0003-template-engine.md)
-- **Markdown:** **pulldown-cmark**. Enables high-speed link extraction via event streaming without building expensive ASTs. [ADR 0004](docs/adr/0004-markdown-parsing.md)
-- **Configuration:** **Figment**. Uses the Provider pattern to elegantly handle the 6-layer priority hierarchy. [ADR 0005](docs/adr/0005-configuration-management.md)
-- **Errors/Diagnostics:** **miette**. Provides high-fidelity terminal snippets and 1:1 mapping to LSP Diagnostic objects. [ADR 0006](docs/adr/0006-error-handling-diagnostics.md)
+- **Templating:** **MiniJinja**. Selected for "Mechanical Sympathy"—minimal dependencies and VM-based rendering for user-defined Markdown templates. [ADR 007](docs/adr/007-template-engine.md)
+- **Markdown:** **pulldown-cmark**. Enables high-speed link extraction via event streaming without building expensive ASTs. [ADR 008](docs/adr/008-markdown-parsing.md)
+- **Configuration:** **Figment**. Uses the Provider pattern to elegantly handle the 6-layer priority hierarchy. [ADR 009](docs/adr/009-configuration-management.md)
+- **Errors/Diagnostics:** **miette**. Provides high-fidelity terminal snippets and 1:1 mapping to LSP Diagnostic objects. [ADR 005](docs/adr/005-error-handling.md)

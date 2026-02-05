@@ -8,8 +8,8 @@ Users can execute lithos commands with intuitive CLI, comprehensive help, single
 
 ## Implementation Notes
 
-- **CLI Framework**: Clap v4 per ADR 0006 (declarative derive macros, performance <50μs parsing)
-- **Error Diagnostics**: Miette per ADR 0006 (structured error reporting with source spans)
+- **CLI Framework**: Clap v4 per ADR 005 (declarative derive macros, performance <50μs parsing)
+- **Error Diagnostics**: Miette per ADR 005 (structured error reporting with source spans)
 - **Terminal UI**: Dialoguer for interactive prompts, console for cross-platform detection
 - **Integration Points**:
   - Epic 6: ConfigCommand/ConfigQuery for configuration management
@@ -21,7 +21,7 @@ Users can execute lithos commands with intuitive CLI, comprehensive help, single
 - **Dependency Injection**: All services injected via constructor pattern (no global singletons in CLI layer)
 - **Cross-Platform**: Primary target macOS, tested on Linux, terminal capability detection via `console` crate
 - **Performance Targets**:
-  - CLI parsing: <50μs per ADR 0006
+  - CLI parsing: <50μs per ADR 005
   - Help display: <100ms for instant feedback (NFR4)
   - Command startup: <500ms for basic operations
   - Progress indicators for operations >2s (NFR2)
@@ -47,7 +47,7 @@ So that I can navigate and execute commands intuitively.
 
 **Acceptance Criteria:**
 
-**Given** Clap v4 provides derive macros per ADR 0006
+**Given** Clap v4 provides derive macros per ADR 005
 **When** I implement CLI structure in `crates/cli/src/app.rs`
 **Then** `LithosApp` struct uses `#[derive(Parser)]` with subcommands:
 - `Template(TemplateCommands)` - template operations
@@ -70,7 +70,7 @@ So that I can navigate and execute commands intuitively.
 - `#[arg(long)]` config: Option<PathBuf> - custom config file
 - `#[arg(short, long)]` version: bool - display version info
 
-**Given** Clap performance must meet ADR 0006 baseline
+**Given** Clap performance must meet ADR 005 baseline
 **When** I benchmark CLI parsing
 **Then** `LithosApp::parse()` completes in <50μs for simple commands
 **And** complex nested commands parse in <200μs
@@ -88,7 +88,7 @@ So that I can navigate and execute commands intuitively.
 **And** terminal capability detection adapts output formatting
 **And** color output is disabled on non-TTY environments
 
-**References:** FR41, FR42, NFR4, ADR 0006
+**References:** FR41, FR42, NFR4, ADR 005
 
 ## Story 14.2: Implement Template Execution CLI Commands
 
@@ -243,7 +243,7 @@ So that I can understand and resolve issues quickly.
 
 **Acceptance Criteria:**
 
-**Given** Miette provides structured diagnostics per ADR 0006
+**Given** Miette provides structured diagnostics per ADR 005
 **When** I implement error handling in `crates/cli/src/error.rs`
 **Then** `CliError` enum wraps all domain/adapter errors
 **And** `CliError` implements `miette::Diagnostic` trait for rich formatting
@@ -301,7 +301,7 @@ error: invalid property type
 **And** Unicode box-drawing characters fallback to ASCII on unsupported terminals
 **And** `console` crate detects terminal features (color depth, Unicode support)
 
-**References:** FR48, ADR 0006
+**References:** FR48, ADR 005
 
 ### Story 14.7: [Adapters/API] Comprehensive Help System
 

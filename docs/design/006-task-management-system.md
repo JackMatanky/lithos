@@ -49,7 +49,7 @@ Related specs:
 - Reports: Generate weekly task summaries
 
 **Related Decisions**:
-- [ADR 0004](../adr/0004-markdown-parsing.md): pulldown-cmark integration
+- [ADR 008](../adr/008-markdown-parsing.md): pulldown-cmark integration
 - [Epic 11](../../_bmad-output/planning-artifacts/epics/epic-11-query-service-knowledge-graph-mvp-core.md): Query service
 - [Epic 12](../../_bmad-output/planning-artifacts/epics/): Template system (TBD)
 

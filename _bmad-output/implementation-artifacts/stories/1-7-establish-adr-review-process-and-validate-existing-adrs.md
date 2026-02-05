@@ -109,7 +109,7 @@ So that we maintain architectural integrity and document important decisions.
 
 ### Completion Notes List
 
-- Established ADR review process recorded in `docs/adr/0001-adr-process.md`.
+- Established ADR review process recorded in `docs/adr/001-adr-process.md`.
 - Created ADR template in `docs/adr/template.md` with enhanced `Technical Validation` section.
 - Developed automated validation script `.mise/tasks/adr/validate.sh` and metrics script `.mise/tasks/adr/metrics.sh`.
 - Created ADR process guide and training material in `docs/adr/README.md`.
@@ -121,17 +121,17 @@ So that we maintain architectural integrity and document important decisions.
 
 - docs/adr/template.md
 - docs/adr/README.md
-- docs/adr/0001-adr-process.md
-- docs/adr/0002-storage-redb-rkyv.md
-- docs/adr/0003-template-engine.md
-- docs/adr/0004-markdown-parsing.md
-- docs/adr/0005-configuration-management.md
-- docs/adr/0006-error-handling-diagnostics.md
-- docs/adr/0007-event-orchestration.md
+- docs/adr/001-adr-process.md
+- docs/adr/006-persistence-cache-infrastructure.md
+- docs/adr/007-template-engine.md
+- docs/adr/008-markdown-parsing.md
+- docs/adr/009-configuration-management.md
+- docs/adr/005-error-handling.md
+- docs/adr/004-event-orchestration.md
 - docs/testing/event.md
 - docs/testing/cqrs.md
 - docs/testing/README.md
-- docs/adr/0007-event-orchestration.md
+- docs/adr/004-event-orchestration.md
 - docs/testing/event.md
 - .mise/tasks/adr/validate.sh
 - .mise/tasks/adr/metrics.sh

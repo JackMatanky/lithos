@@ -12,7 +12,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 
 ## Original Epic Acceptance Criteria
 
-**Given** benchmarking infrastructure exists per ADR 0012
+**Given** benchmarking infrastructure exists per ADR 013
 **When** I create `lithos-core/benches/cache_benchmarks.rs` in the adapters crate
 **Then** it includes benchmark suites for:
 
@@ -162,7 +162,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 ## Dev Notes
 
 ### Architecture Compliance
-- **Performance First**: Benchmarks are first-class citizens in Lithos, following [Source: ADR 0012: Benchmarking Strategy].
+- **Performance First**: Benchmarks are first-class citizens in Lithos, following [Source: ADR 013: Benchmarking Strategy].
 - **NFR Verification**: These benchmarks directly validate the Non-Functional Requirements specified in the PRD (under 500ms operations, scale to 1000+ files).
 - **Tooling parity**: Use `criterion` as the standard benchmarking tool for all Rust components.
 
@@ -191,7 +191,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 
 ### References
 - [Source: project-context.md#Performance-Benchmarking]
-- [Source: ADR 0012: Benchmarking Strategy]
+- [Source: ADR 013: Benchmarking Strategy]
 - [Source: PRD Performance Requirements]
 - [Source: Story 5.2, 5.3, 5.5 for implementation details]
 

@@ -384,7 +384,7 @@ So that schema resolution is fast, survives restarts, and supports high-frequenc
 - `timestamp: u64` - Unix timestamp of schema resolution
 - `source_hash: String` - SHA-256 of source .schema.json file content
 **And** SchemaMetadata derives `rkyv::Archive`, `rkyv::Serialize`, `rkyv::Deserialize`
-**And** metadata stored via Epic 5 `Entry<Schema>` wrapper for zero-copy deserialization per ADR 0002
+**And** metadata stored via Epic 5 `Entry<Schema>` wrapper for zero-copy deserialization per ADR 006
 
 **Given** cache invalidation is needed when source files change
 **When** schema loading checks cache

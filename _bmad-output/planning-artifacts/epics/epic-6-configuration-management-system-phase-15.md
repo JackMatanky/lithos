@@ -9,7 +9,7 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 ## Implementation Notes
 
 - **Schema-First Approach**: Defaults and Schema are defined first (Story 6.1) to guide adapter implementation
-- **Figment-based hierarchical config** per ADR 0005 using Epic 4 loading foundation
+- **Figment-based hierarchical config** per ADR 009 using Epic 4 loading foundation
 - **Config adapters** (Command/Query with embedded Loader/Writer) created in this epic
 - **Singleton Registry pattern** with `Arc<OnceLock<Config>>` for optimal CLI performance
 - **Sample config files** based on JSON schema (lithos-specific)
@@ -19,7 +19,7 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 - **CQRS Separation**: ConfigQueryAdapter (reads) and ConfigCommandAdapter (writes) enforce architectural boundaries per architecture.md
 - **Adapter Structure**: `crates/adapters/src/spi/config/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs, validator.rs, cache.rs (with ConfigQueryAdapter and ConfigCommandAdapter)
 - **No CLI Integration**: Epic 6 delivers tested adapters without CLI wiring (deferred to future epic)
-- **ADR References**: ADR 0005 (Figment hierarchical config)
+- **ADR References**: ADR 009 (Figment hierarchical config)
 
 ## Story 6.1: Create Default Configuration Files and Schema
 
@@ -64,7 +64,7 @@ So that I can override settings at different levels (global, user, project, vaul
 **Acceptance Criteria:**
 
 **Given** Epic 4 provides unified structured file loading (TOML, JSON, YAML) via FormatDispatcher
-**When** I implement hierarchical config using Figment per ADR 0005
+**When** I implement hierarchical config using Figment per ADR 009
 **Then** I create `crates/adapters/src/spi/config/figment_loader.rs` implementing the provider pattern
 
 **Given** Figment requires provider pattern
@@ -213,7 +213,7 @@ So that configurations survive process restarts, support rollback, and provide f
 **When** I implement ConfigQueryAdapter::get_latest()
 **Then** memory cache hit completes in <1μs (no disk I/O)
 **And** disk cache miss triggers async backfill to memory via Epic 5 coordinator
-**And** deserialization uses Epic 5 rkyv zero-copy per ADR 0002
+**And** deserialization uses Epic 5 rkyv zero-copy per ADR 006
 
 **Given** CQRS separation prevents mixing read/write concerns
 **When** I verify adapter boundaries

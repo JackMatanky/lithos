@@ -39,8 +39,8 @@ so that I can apply the approved patterns consistently and avoid ambiguity.
 
  - [x] Review and validate existing test documentation accuracy (AC: 1-3)
    - [x] Compare `docs/testing/async.md` section by section against Rust Book Ch.11, Tokio docs, and project context async rules; flag any outdated or missing patterns
-   - [x] Compare `docs/testing/event.md` against ADR 0008 (event patterns) and ADR 0009 (CQRS); note any gaps in timing, payload verification, or mock usage
-   - [x] Compare ADR 0010 (utilities) and ADR 0011 (integration) against reviewed sources; identify any misalignments with Rust testing best practices
+   - [x] Compare `docs/testing/event.md` against ADR 012 (event patterns) and ADR 003 (CQRS); note any gaps in timing, payload verification, or mock usage
+   - [x] Compare ADR 011 (utilities) and ADR 010 (integration) against reviewed sources; identify any misalignments with Rust testing best practices
    - [x] Document all misalignments in a gap analysis file at `_bmad-output/implementation-artifacts/reports/test-docs-gap-analysis.md` with specific references and required updates
 
  - [x] Update and align existing documentation (AC: 1-3)
@@ -53,8 +53,8 @@ so that I can apply the approved patterns consistently and avoid ambiguity.
    - [x] Write a 2-paragraph overview: define scope (Lithos testing standards), audience (developers onboarding or writing tests), and usage (quick reference for patterns and commands)
    - [x] Add "Testing Hierarchy" section: describe hexagonal layers (domain unit, integration public APIs, E2E CLI), with when to use each and file locations
    - [x] Add "Async Testing" section: summarize mandatory `#[tokio::test(flavor = "multi_thread")]` usage, blocking avoidance, timeouts; reference `docs/testing/async.md` for details
-   - [x] Add "Event & CQRS Testing" section: outline Given-When-Then for aggregates, mock event buses, payload verification; reference ADR 0008 and `docs/testing/event.md`
-   - [x] Add "Integration Testing" section: describe `tests/` structure, testcontainers usage, trait mocking; reference ADR 0011 for patterns
+   - [x] Add "Event & CQRS Testing" section: outline Given-When-Then for aggregates, mock event buses, payload verification; reference ADR 012 and `docs/testing/event.md`
+   - [x] Add "Integration Testing" section: describe `tests/` structure, testcontainers usage, trait mocking; reference ADR 010 for patterns
 
  - [x] Add precise "Running Tests" section (AC: 2)
    - [x] List exact `mise run` commands: `mise run test` (all), `mise run test:unit` (domain+app), `mise run test:integration` (external APIs), `mise run test:coverage` (tarpaulin HTML report), `mise run test:bench` (criterion)
@@ -102,7 +102,7 @@ so that I can apply the approved patterns consistently and avoid ambiguity.
 
 ## Dev Notes
 
-- **Primary Sources:** `docs/testing/async.md`, `docs/testing/event.md`, ADR 0008-0011, `_bmad-output/project-context.md`.
+- **Primary Sources:** `docs/testing/async.md`, `docs/testing/event.md`, ADR 012-0011, `_bmad-output/project-context.md`.
 - **Testing Rules:** Use `#[tokio::test(flavor = "multi_thread")]` for integration tests and enforce deterministic fixtures.
 - **Coverage:** Maintain 80%+ coverage via tarpaulin; focus on `app` and `domain`.
 

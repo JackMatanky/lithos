@@ -48,7 +48,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I measure performance
 **Then** test execution completes in <30 seconds for the full Epic 5 suite
 
-**Given** concurrency is critical per ADR 0012 (Caching - Superseded)
+**Given** concurrency is critical per ADR 013 (Caching - Superseded)
 **When** I test MokaCache and Coordinator
 **Then** tests include concurrent read/write scenarios with 100+ spawned tasks
 **And** tests verify no data races or deadlocks under load using `tokio::test` with multi-threaded runtime

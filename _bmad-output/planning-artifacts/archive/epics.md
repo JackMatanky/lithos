@@ -1056,7 +1056,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
 **FRs covered:** FR26, FR27, FR28
 **Implementation Notes:**
-- Figment-based hierarchical config per ADR 0005 using Epic 4 loading foundation
+- Figment-based hierarchical config per ADR 009 using Epic 4 loading foundation
 - ConfigPort and mocks created in this epic
 - Sample config files based on JSON schema (lithos-specific)
 - User documentation for configuration
@@ -1090,7 +1090,7 @@ So that I can override settings at different levels (global, user, project, vaul
 **Acceptance Criteria:**
 
 **Given** Epic 4 provides unified file loading for TOML, JSON, YAML
-**When** I implement hierarchical config using Figment per ADR 0005
+**When** I implement hierarchical config using Figment per ADR 009
 **Then** configuration loads with proper precedence: CLI > Environment > Config files > Defaults
 
 **Given** hierarchical loading is implemented
@@ -1425,7 +1425,7 @@ So that I can effectively define and use schemas in lithos.
 System has a robust event-driven architecture enabling loose coupling between services and supporting concurrent operations without god-objects.
 **FRs covered:** Architecture requirements (event-driven, CQRS foundation)
 **Implementation Notes:**
-- Hybrid Event Bus (MPSC/Broadcast/Watch per ADR 0007)
+- Hybrid Event Bus (MPSC/Broadcast/Watch per ADR 004)
 - Event payload schema design and validation
 - Event persistence for debugging and recovery
 - EventBusPort mocks for testing
@@ -1482,7 +1482,7 @@ So that events are delivered reliably without loss in the indexing pipeline.
 **Acceptance Criteria:**
 
 **Given** I need reliable event delivery
-**When** I implement MPSC data plane per ADR 0007
+**When** I implement MPSC data plane per ADR 004
 **Then** actor-based mailbox pattern handles indexing events
 
 **Given** MPSC data plane is implemented
@@ -1502,7 +1502,7 @@ So that shutdown and global notifications work across all components.
 **Acceptance Criteria:**
 
 **Given** I need global signaling
-**When** I implement broadcast control plane per ADR 0007
+**When** I implement broadcast control plane per ADR 004
 **Then** shutdown and system-wide notifications are supported
 
 **Given** broadcast control plane is implemented
@@ -1522,7 +1522,7 @@ So that real-time state changes are communicated to IDE integrations.
 **Acceptance Criteria:**
 
 **Given** I need state synchronization
-**When** I implement watch state plane per ADR 0007
+**When** I implement watch state plane per ADR 004
 **Then** LSP clients receive real-time vault state updates
 
 **Given** watch state plane is implemented
@@ -1679,9 +1679,9 @@ So that other epics can properly publish and subscribe to events.
 
 ## Epic 9: Storage Layer & Persistence **[MVP CORE]**
 System has zero-copy persistent storage with ACID transactions using Redb + rkyv that supports high-performance queries and maintains data consistency.
-**FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 0002)
+**FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 006)
 **Implementation Notes:**
-- Redb + rkyv per ADR 0002 (no SQLite - decision already made)
+- Redb + rkyv per ADR 006 (no SQLite - decision already made)
 - Storage schema design review against Epic 10-10 query requirements
 - Unit of Work pattern for transactional consistency
 - Storage performance benchmarking (NFR2, NFR9 validation)
@@ -1719,7 +1719,7 @@ So that data is stored efficiently with zero-copy deserialization and controlled
 **Acceptance Criteria:**
 
 **Given** I need persistent storage
-**When** I implement Redb + rkyv per ADR 0002
+**When** I implement Redb + rkyv per ADR 006
 **Then** ACID transactions and MVCC concurrency are supported
 
 **Given** rkyv serialization is implemented
@@ -1934,7 +1934,7 @@ Users can index large vaults (1000+ files) in <2 seconds with incremental update
 **FRs covered:** FR20, FR24, FR25
 **Implementation Notes:**
 - VaultReaderPort, VaultWriterPort, VaultScannerPort, MarkdownPort and mocks created
-- pulldown-cmark for markdown parsing (adapter layer per ADR 0004)
+- pulldown-cmark for markdown parsing (adapter layer per ADR 008)
 - Sample vault notes from docs/refs/obsidian/ as test fixtures
 - Performance benchmarking stories for NFR2 validation (<2s for 1000+ files)
 - Observability/metrics for indexing performance
@@ -2551,7 +2551,7 @@ Users can create and execute modular templates with schema-driven interactive pr
 **FRs covered:** FR1, FR2, FR9, FR15, FR16
 **Implementation Notes:**
 - TemplatePort, UIPort and mocks created in this epic
-- MiniJinja integration per ADR 0003
+- MiniJinja integration per ADR 007
 - Sample templates from docs/refs/obsidian/ converted as test fixtures
 - Schema-driven inputs (enums → suggesters)
 - User documentation for basic template creation
@@ -2645,7 +2645,7 @@ As a template author, I want access to date/time functions using the existing ch
 - **Then** templates can use `date_now()`, `date_format()`, and `date_add()` functions.
 - **And** functions follow chrono API patterns (not moment.js).
 - **And** all functions are documented with examples in the standard library reference.
-**References:** FR4, ADR 0003
+**References:** FR4, ADR 007
 
 #### Story 12.10: [Adapters/SPI] Convert Case String Function Integration
 As a template author, I want string case conversion functions using the convert_case crate, so that I can generate proper identifiers and titles without custom implementations.
@@ -2862,7 +2862,7 @@ As a user, I want clear instructions on how to use advanced template features li
 Users can execute lithos commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
 **FRs covered:** FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR30, FR31
 **Implementation Notes:**
-- Clap for CLI, miette for diagnostics per ADR 0006
+- Clap for CLI, miette for diagnostics per ADR 005
 - CommandPort, AuditPort created if needed
 - Dependency injection wiring for all ports
 - Cross-platform support (macOS primary, Linux)

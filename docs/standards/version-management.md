@@ -449,8 +449,8 @@ Is this a new dependency?
 - Version pinning strategy changes workspace-wide
 
 **Example ADRs:**
-- ADR 0002: Storage (redb + rkyv) - Documented technology choice
-- ADR 0003: Template Engine (minijinja) - Compared alternatives
+- ADR 006: Storage (redb + rkyv) - Documented technology choice
+- ADR 007: Template Engine (minijinja) - Compared alternatives
 
 ### 9.2 Review Schedule
 
@@ -508,7 +508,7 @@ Is this a new dependency?
 - [deny.toml Security Config](../../deny.toml)
 - [rust-toolchain.toml](../../rust-toolchain.toml)
 - [CI/CD Pipeline Documentation](../ci-cd.md)
-- [ADR 0001: ADR Process](../adr/0001-adr-process.md)
+- [ADR 001: ADR Process](../adr/001-adr-process.md)
 - [Story 1.1 Dev Notes](_bmad-output/implementation-artifacts/stories/1-1-initialize-cargo-workspace-structure.md)
 - [Story 1.5 Dev Notes](_bmad-output/implementation-artifacts/stories/1-5-configure-rustfmttoml-with-import-sorting.md)
 - [Story 1.6 Dev Notes](_bmad-output/implementation-artifacts/stories/1-6-set-up-denytoml-for-dependency-security-auditing.md)

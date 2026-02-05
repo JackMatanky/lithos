@@ -16,8 +16,8 @@ The stack is highly synergistic. `Redb` and `rkyv` provide the zero-copy foundat
 
 **Pattern Consistency:**
 - **Port-Based CQRS:** CQRS types are generic over storage port traits, achieving key architectural benefits (testability, decoupling, swappable implementations) while enabling single-crate performance optimizations
-- **Minimal Event Foundation:** Following ADR 0007, Phase 1 uses synchronous event dispatch with domain methods returning `(Entity, Vec<Event>)`
-- **Storage Separation:** Following ADR 0009 Appendix A, `Stored*` types isolate rkyv coupling from domain ergonomics
+- **Minimal Event Foundation:** Following ADR 004, Phase 1 uses synchronous event dispatch with domain methods returning `(Entity, Vec<Event>)`
+- **Storage Separation:** Following ADR 003 Appendix A, `Stored*` types isolate rkyv coupling from domain ergonomics
 
 **Structure Alignment:**
 The **Single-Crate Architecture** aligns perfectly with zero-copy performance requirements while port-based CQRS maintains logical boundaries and testability.
@@ -44,7 +44,7 @@ Performance targets (<500ms for individual ops) are architecturally enforced by 
 - Reference: [Design Doc 012: CQRS Concrete Over Port](../../docs/design/012-cqrs-concrete-over-port.md)
 
 **Storage DTO Pattern:**
-- `Stored*` types introduced selectively (per ADR 0009 Appendix A)
+- `Stored*` types introduced selectively (per ADR 003 Appendix A)
 - One per persisted aggregate (StoredNote, StoredSchema, StoredTemplate, StoredConfig)
 - Mechanical conversions at storage boundary
 - Domain remains ergonomic (no rkyv surface leakage)

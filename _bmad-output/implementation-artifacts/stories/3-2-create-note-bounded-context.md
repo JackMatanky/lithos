@@ -190,7 +190,7 @@ Following the adversarial audit and final remediation, the test suite now achiev
 - Use **UUID v7** for Note identity (NOT vault path as primary key)
 - UUID v7 provides time-ordered, sortable identifiers that are stable during file renames
 - Vault-relative path stored as separate field for filesystem correspondence
-- This prevents the "directory trap" per Architecture ADR 0002
+- This prevents the "directory trap" per Architecture ADR 006
 
 **Domain Purity Requirements - CRITICAL:**
 - Domain crate has ZERO required external dependencies (only std lib + optional serde)
@@ -434,7 +434,7 @@ pub enum NoteError {
 }
 ```
 
-**Serialization Strategy (ADR 0009 (Domain Serialization)):**
+**Serialization Strategy (ADR 003 (Domain Serialization)):**
 ```rust
 // Domain entities MUST derive serde traits for JSON/YAML APIs
 // Required for API responses, debugging, and external integrations

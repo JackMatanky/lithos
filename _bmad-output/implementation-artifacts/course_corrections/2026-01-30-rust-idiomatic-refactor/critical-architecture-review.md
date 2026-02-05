@@ -173,7 +173,7 @@ pub trait NoteRepository {  // ← Co-located with Note
 
 #### Zero-Copy Across Crate Boundaries
 
-From ADR 0002:
+From ADR 006:
 
 > Zero-copy reads are PRIMARY mechanism for sub-50ms LSP latency
 
@@ -326,7 +326,7 @@ After user requested proper course correction workflow, I invoked explore agent 
 #### Error Handling
 
 **Problem**: Recommends `anyhow` for app layer, `color-eyre` for CLI
-**Issue**: anyhow in library crate erases type information, conflicts with miette (ADR 0006)
+**Issue**: anyhow in library crate erases type information, conflicts with miette (ADR 005)
 **Impact**: Can't match on specific errors, two error display libraries
 **Rust Idiom**: thiserror everywhere except main.rs, miette for CLI display
 
@@ -347,7 +347,7 @@ After user requested proper course correction workflow, I invoked explore agent 
    - **Current**: 4 crates (domain, app, adapters, cli)
    - **Issue**: 5-10x performance loss on zero-copy reads due to cross-crate inlining limitations
    - **Recommendation**: Single lithos-core library + separate binary crates (cli, lsp)
-   - **Evidence**: Matklad research, Cargo Book profiles, ADR 0002 performance targets
+   - **Evidence**: Matklad research, Cargo Book profiles, ADR 006 performance targets
 
 2. **Domain Serialization**
    - **Current**: ADR 0013 allows serde in domain
@@ -357,9 +357,9 @@ After user requested proper course correction workflow, I invoked explore agent 
 
 3. **Error Handling Libraries**
    - **Current**: anyhow in app layer, color-eyre for CLI
-   - **Issue**: Type erasure in library crate, conflicts with miette (ADR 0006)
+   - **Issue**: Type erasure in library crate, conflicts with miette (ADR 005)
    - **Recommendation**: thiserror everywhere except main.rs, miette for CLI
-   - **Evidence**: Rust library best practices, existing ADR 0006
+   - **Evidence**: Rust library best practices, existing ADR 005
 
 4. **File Organization**
    - **Current**: 30+ files across domain (7-9 per bounded context)
@@ -496,7 +496,7 @@ AFTER:
 
 - Domain Errors: thiserror with #[from] conversions
 - Application Errors: thiserror (NEVER use anyhow in library crates!)
-- CLI Output: miette (see ADR 0006)
+- CLI Output: miette (see ADR 005)
 - Only in main.rs: Can use anyhow for prototyping
 ```
 
@@ -745,7 +745,7 @@ TOTAL: 35-40ms (COMFORTABLE - well under 50ms target)
 - Update 5 architecture documents with proposed changes
 - Create new rust-idiomatic-architecture.md reference
 - Update ADR 0013 (domain serialization)
-- Update ADR 0002 (performance approach)
+- Update ADR 006 (performance approach)
 
 **Risk**: None - documentation only
 
@@ -827,7 +827,7 @@ TOTAL: 35-40ms (COMFORTABLE - well under 50ms target)
    - Ensure internal consistency
 
 3. **Update ADRs**
-   - ADR 0002: Add single-crate zero-copy benefits
+   - ADR 006: Add single-crate zero-copy benefits
    - ADR 0013: Remove serde from domain, document DTO approach
    - New ADR: "Visibility-Based Hexagonal Architecture"
 

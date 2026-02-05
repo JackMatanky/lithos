@@ -27,7 +27,7 @@ Review all 17 ADRs in `docs/adr/` to determine:
 | 0005 | Configuration Management                      | accepted  | ✅ Keep  | Independent of architecture                                 |
 | 0006 | Error Handling & Diagnostics                  | accepted  | 📝 Update | Still valid, but references old structure                   |
 | 0007 | Event Orchestration                           | accepted  | 📝 Update | Proposal 6 says "defer events", needs alignment             |
-| 0008 | Event-Driven Testing Patterns                 | accepted  | 🔄 Review | Depends on ADR 0007 decision                                |
+| 0008 | Event-Driven Testing Patterns                 | accepted  | 🔄 Review | Depends on ADR 004 decision                                |
 | 0009 | CQRS Testing Patterns                         | accepted  | 📝 Update | Proposal 5 changes CQRS approach                            |
 | 0010 | Centralized Test Utilities                    | accepted  | ✅ Keep  | Testing patterns still valid                                |
 | 0011 | Integration Testing Patterns                  | accepted  | ✅ Keep  | Testing patterns still valid                                |
@@ -45,43 +45,43 @@ Review all 17 ADRs in `docs/adr/` to determine:
 
 ### ✅ Keep As-Is (No Changes Needed)
 
-#### **ADR 0001: ADR Process**
+#### **ADR 001: ADR Process**
 - **Why Keep**: Meta-process document
 - **Impact**: None - describes process, not architecture
 - **Action**: None
 
-#### **ADR 0002: Storage (redb + rkyv)**
+#### **ADR 006: Storage (redb + rkyv)**
 - **Why Keep**: Core technology decision remains valid
 - **Impact**: Enhanced by Proposal 4 (db.rs layer)
 - **Action**: None
 - **Note**: Consider adding note linking to new ADR 0017 for implementation pattern
 
-#### **ADR 0003: Template Engine**
+#### **ADR 007: Template Engine**
 - **Why Keep**: Technology choice independent of crate structure
 - **Impact**: None
 - **Action**: None
 
-#### **ADR 0004: Markdown Parsing**
+#### **ADR 008: Markdown Parsing**
 - **Why Keep**: Technology choice independent of crate structure
 - **Impact**: None
 - **Action**: None
 
-#### **ADR 0005: Configuration Management**
+#### **ADR 009: Configuration Management**
 - **Why Keep**: Technology choice independent of crate structure
 - **Impact**: None
 - **Action**: None
 
-#### **ADR 0010: Centralized Test Utilities**
+#### **ADR 011: Centralized Test Utilities**
 - **Why Keep**: Testing pattern still valid
 - **Impact**: Location changes (lithos-core/tests/) but concept valid
 - **Action**: None
 
-#### **ADR 0011: Integration Testing Patterns**
+#### **ADR 010: Integration Testing Patterns**
 - **Why Keep**: Testing pattern still valid
 - **Impact**: Simpler with single-crate (no cross-crate mocking)
 - **Action**: None
 
-#### **ADR 0012: Benchmarking Infrastructure**
+#### **ADR 013: Benchmarking Infrastructure**
 - **Why Keep**: Critical for validating Proposal 4 performance claims
 - **Impact**: None - needed to prove 5-10x improvement
 - **Action**: Promote from "proposed" to "accepted" during Phase 2
@@ -95,7 +95,7 @@ Review all 17 ADRs in `docs/adr/` to determine:
 
 ### 📝 Update (Needs Revision)
 
-#### **ADR 0006: Error Handling & Diagnostics**
+#### **ADR 005: Error Handling & Diagnostics**
 - **Why Update**: References old crate structure
 - **Current**: Mentions "domain errors", "adapter errors", "app errors"
 - **New**: Proposal 2 (co-located errors) and Proposal 8 (thiserror + miette)
@@ -105,7 +105,7 @@ Review all 17 ADRs in `docs/adr/` to determine:
   - Remove references to separate crates
 - **Effort**: Low (structural references only, decision still valid)
 
-#### **ADR 0007: Event Orchestration**
+#### **ADR 004: Event Orchestration**
 - **Why Update**: Proposal 6 says "defer events until needed"
 - **Current**: Prescribes 3-tier MPSC/Broadcast/Watch from day one
 - **New**: Start with direct function calls, add events when profiled
@@ -115,7 +115,7 @@ Review all 17 ADRs in `docs/adr/` to determine:
   - Measure-first approach (not "from day one")
 - **Effort**: Medium (changes recommendation timing)
 
-#### **ADR 0009: CQRS Testing Patterns**
+#### **ADR 003: CQRS Testing Patterns**
 - **Why Update**: Proposal 5 changes CQRS approach
 - **Current**: Assumes explicit CQRS traits (NoteCommands, NoteQueries)
 - **New**: Static methods with naming conventions (traits optional)
@@ -164,11 +164,11 @@ Review all 17 ADRs in `docs/adr/` to determine:
 
 ### 🔄 Review/Defer (Decision Depends on Other ADRs)
 
-#### **ADR 0008: Event-Driven Testing Patterns**
-- **Why Review**: Depends on ADR 0007 decision
-- **If ADR 0007 defers events**: This ADR should be marked "deferred to Phase 2"
-- **If ADR 0007 keeps events**: Update testing patterns for single-crate
-- **Action**: Wait for ADR 0007 decision
+#### **ADR 012: Event-Driven Testing Patterns**
+- **Why Review**: Depends on ADR 004 decision
+- **If ADR 004 defers events**: This ADR should be marked "deferred to Phase 2"
+- **If ADR 004 keeps events**: Update testing patterns for single-crate
+- **Action**: Wait for ADR 004 decision
 
 #### **ADR 0017: Cache Metrics & Observability**
 - **Why Defer**: Depends on ADR 0016 (which is superseded)
@@ -293,9 +293,9 @@ After superseding and creating new ADRs:
 - [ ] Create ADR 0018: Domain Serialization with Feature Gates
 
 ### Step 4: Update Existing ADRs
-- [ ] Update ADR 0006 (error handling references)
-- [ ] Update ADR 0007 (event timing)
-- [ ] Update ADR 0009 (CQRS patterns)
+- [ ] Update ADR 005 (error handling references)
+- [ ] Update ADR 004 (event timing)
+- [ ] Update ADR 003 (CQRS patterns)
 - [ ] Update ADR 0015 (port location)
 
 ### Step 5: Validate
@@ -309,7 +309,7 @@ After superseding and creating new ADRs:
 
 Before proceeding, please confirm:
 
-1. **ADR 0007 (Events)**: Do you want to update it to "defer until needed" or keep "implement from day one"?
+1. **ADR 004 (Events)**: Do you want to update it to "defer until needed" or keep "implement from day one"?
    - Proposal 6 recommends defer
    - Your preference?
 
@@ -321,8 +321,8 @@ Before proceeding, please confirm:
 3. **Update Order**: Which ADRs should I update first?
    - Suggestion: Create new ADRs first (0017, 0018), then update existing
 
-4. **ADR 0008 (Event Testing)**: If we defer events (ADR 0007), should we:
-   - Mark ADR 0008 as "deferred to Phase 2"
+4. **ADR 012 (Event Testing)**: If we defer events (ADR 004), should we:
+   - Mark ADR 012 as "deferred to Phase 2"
    - Keep it but note "not applicable in Phase 1"
 
 ---

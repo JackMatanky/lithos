@@ -195,7 +195,7 @@ Domain contexts (note/, schema/, etc.) depend on NOTHING internal except db.rs
 
 **Rationale**:
 
-1. Performance: Enables within-crate inlining -> 5-10x faster zero-copy reads (Critical for ADR 0002 sub-50ms LSP target)
+1. Performance: Enables within-crate inlining -> 5-10x faster zero-copy reads (Critical for ADR 006 sub-50ms LSP target)
 2. Compilation: Eliminates quadratic monomorphization across crates -> 1.5-2x faster builds
 3. File Organization: Module pattern: entity.rs (public API) + entity/ folder (private implementation)
 4. Rust Idioms: Aligns with ecosystem patterns (tokio, clap, rust-analyzer use single-crate cores)
@@ -709,7 +709,7 @@ impl Database {
             return Err(DbError::Misaligned);
         }
 
-        // Validate bytes ONCE (per ADR 0002 requirement)
+        // Validate bytes ONCE (per ADR 006 requirement)
         rkyv::check_archived_root::<V>(guard.value())?;
 
         Ok(ArchivedGuard { guard, _phantom: PhantomData })
@@ -728,7 +728,7 @@ impl Database {
         }
     }
 
-    /// Zero-copy write using insert_reserve (per ADR 0002)
+    /// Zero-copy write using insert_reserve (per ADR 006)
     pub fn put_reserve<K, V, F>(
         &self,
         table: &str,
@@ -767,7 +767,7 @@ impl Database {
         })
     }
 
-    /// MultimapTable for 1:N relations (per ADR 0002)
+    /// MultimapTable for 1:N relations (per ADR 006)
     pub fn multimap_insert<K, V>(
         &self,
         table: &str,
@@ -791,7 +791,7 @@ impl Database {
         Ok(())
     }
 
-    /// Bulk write with Durability::None (per ADR 0002)
+    /// Bulk write with Durability::None (per ADR 006)
     pub fn batch_write<F>(&self, batch_fn: F) -> Result<(), DbError>
     where
         F: FnOnce(&mut WriteTransaction) -> Result<(), DbError>,
@@ -906,7 +906,7 @@ The API remains the same; caching becomes transparent internal optimization.
   - ✅ Future-ready for LSP (add cache field internally)
 
 - **Cons**:
-  - ❌ Less polymorphic (but we only have one backend: redb per ADR 0002)
+  - ❌ Less polymorphic (but we only have one backend: redb per ADR 006)
   - ❌ Harder to mock in tests (but can use in-memory redb or wrap in trait for tests)
 
 **Why NOT traits?**
@@ -918,9 +918,9 @@ The API remains the same; caching becomes transparent internal optimization.
 | **IDE support**     | Trait objects hide implementations   | F12 goes directly to impl             | Concrete |
 | **Error messages**  | "trait bound not satisfied"          | Clear concrete type errors            | Concrete |
 | **Mocking**         | Easy with trait objects              | Wrap in trait or use in-memory redb   | Trait    |
-| **Future backends** | Easy to swap                         | Locked to redb (but ADR 0002 decided) | Trait    |
+| **Future backends** | Easy to swap                         | Locked to redb (but ADR 006 decided) | Trait    |
 
-**Decision**: Concrete type wins 5/6 criteria, and the "locked to redb" is already decided in ADR 0002.
+**Decision**: Concrete type wins 5/6 criteria, and the "locked to redb" is already decided in ADR 006.
 
 **Dependency Flow**:
 
@@ -1317,7 +1317,7 @@ This section provides a concrete execution roadmap aligned with the 10 detailed 
 
 - [x] Move non-decision ADRs to `docs/guides/`
 - [x] Archive outdated ADRs
-- [x] Create/Rename ADRs (ADR 0002, 0009, etc.)
+- [x] Create/Rename ADRs (ADR 006, 0009, etc.)
 - [x] Renumber remaining ADRs sequentially
 - [x] Update all ADR references in epics/docs
 
@@ -1641,7 +1641,7 @@ For each context:
 - [ ] Implement `Database` struct:
   - Wraps `redb::Database`
   - Constructor: `Database::open(path: &Path) -> Result<Self>`
-  - Configuration: `set_cache_size()`, `set_page_size()` per ADR 0002
+  - Configuration: `set_cache_size()`, `set_page_size()` per ADR 006
 - [ ] Implement `ArchivedGuard<'txn, V>` wrapper:
   - `Deref<Target = rkyv::Archived<V>>`
   - Lifetime tied to transaction
@@ -1650,7 +1650,7 @@ For each context:
 **6.2 Implement Zero-Copy Read Primitives**
 
 - [ ] `get_archived<K, V>() -> Result<ArchivedGuard<'_, V>>`
-  - Validates alignment (ADR 0002 requirement)
+  - Validates alignment (ADR 006 requirement)
   - Validates bytes with `rkyv::check_archived_root`
   - Returns guard with transaction lifetime
 - [ ] `get<K, V>() -> Result<Option<V>>`
@@ -1669,7 +1669,7 @@ For each context:
 
 - [ ] `multimap_insert<K, V>()`
   - For 1:N relations (tags → notes, backlinks)
-  - Uses `MultimapTable` per ADR 0002
+  - Uses `MultimapTable` per ADR 006
 - [ ] `multimap_get<K, V>() -> Iterator<ArchivedGuard>`
 
 **6.5 Implement Batch Operations**
