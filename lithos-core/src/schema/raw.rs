@@ -77,7 +77,7 @@ pub struct RawPropertyRef {
 ///         spec: PropertySpecDef::Bool(BoolSpecDef::default()),
 ///     })],
 /// );
-/// assert_eq!(schema.properties.len(), 1);
+/// assert_eq!(schema.properties.len(), 1, "Schema should contain one property");
 /// # Ok(())
 /// # }
 /// ```
