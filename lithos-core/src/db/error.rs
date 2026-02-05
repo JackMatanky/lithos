@@ -77,6 +77,9 @@ mod tests {
             "test",
         ));
         let result: DbError = db_err.into();
-        assert!(result.to_string().contains("database error"));
+        assert!(
+            result.to_string().contains("database error"),
+            "Expected database error conversion message, got: {result}"
+        );
     }
 }
