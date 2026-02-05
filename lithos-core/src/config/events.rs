@@ -96,14 +96,17 @@ mod tests {
     fn config_updated_event_deserializes_timestamp() {
         let event = deserialized_event();
 
-        assert_eq!(event.timestamp, 1_234_567_890);
+        assert_eq!(
+            event.timestamp, 1_234_567_890,
+            "Expected deserialized timestamp to match"
+        );
     }
 
     #[test]
     fn config_updated_event_deserializes_source() {
         let event = deserialized_event();
 
-        assert_eq!(event.source, "vault");
+        assert_eq!(event.source, "vault", "Expected source to be 'vault'");
     }
 
     #[test]
