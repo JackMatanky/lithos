@@ -891,6 +891,9 @@ mod tests {
         base.apply_sections(&mut content, &sections);
 
         // THEN: content remains unchanged
-        assert_eq!(content, "no var");
+        assert_eq!(
+            content, "no var",
+            "Content should remain unchanged when variable is missing"
+        );
     }
 }
