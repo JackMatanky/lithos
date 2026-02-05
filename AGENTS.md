@@ -35,7 +35,7 @@ To activate specialized agents, use: `"As [agent-name], ..."` (e.g., `"As dev, i
 
 ### Critical Coding Standards
 - **Zero-copy patterns** for performance-critical paths via GAT-based port traits
-- **Port-based CQRS**: CQRS types generic over storage ports (`Query<S: SchemaStore>`)
+- **Port-based CQRS**: CQRS types generic over split storage ports (`Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`)
 - **Context isolation**: Business contexts (note, schema, template) don't import each other
 - **Type-driven design**: Private fields by default, validation at construction, newtype wrappers
 - **Test-first development**: Red-green-refactor cycle required
@@ -60,11 +60,12 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 1. **Context isolation**: Business contexts (note, schema, template) MUST NOT import each other
    - Config is cross-cutting infrastructure (available to all contexts)
    - Only infrastructure (db, fs, patterns) and config may be imported by business contexts
-2. **Port-based CQRS**: CQRS types MUST be generic over storage port traits
-   - `Query<S: SchemaStore>`, `Command<S: SchemaStore>`
+2. **Port-based CQRS**: CQRS types MUST be generic over split storage port traits
+   - `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`
+   - Ports split into Query and Command to prevent interface bloat
    - Storage ports use GATs for zero-copy: `type Archived<'a> where Self: 'a`
 3. **Type safety**: Private fields by default, validation at construction, newtype wrappers for domain constraints
-4. **Zero-copy patterns**: Use rkyv via `Stored*` types in storage layer, avoid cloning in hot paths
+4. **Zero-copy patterns**: Domain types have rkyv derives; use `Stored*` types only when domain shape is inefficient for storage
 5. **Test-first**: Red-green-refactor cycle required - tests before implementation
 6. **ADRs required**: Document all architectural decisions in [docs/adr/](docs/adr/)
 7. **Dependency flow**: Infrastructure (db, fs, config, patterns) → Business Contexts (note, schema, template) → CLI
