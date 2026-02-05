@@ -49,7 +49,7 @@ use crate::patterns;
 /// let property = Property::new(id, name, true, false, spec)?;
 ///
 /// bank.register(property)?;
-/// assert!(bank.has_name("is_active"));
+/// assert!(bank.has_name("is_active"), "Bank should contain property name");
 /// # Ok(())
 /// # }
 /// ```
@@ -278,7 +278,7 @@ impl PropertyBank {
     ///
     /// let bank = PropertyBank::new();
     ///
-    /// assert!(bank.get("any").is_none());
+    /// assert!(bank.get("any").is_none(), "Missing property should be None");
     /// ```
     #[inline]
     #[must_use]
@@ -426,7 +426,10 @@ impl Schema {
     ///
     /// let name = SchemaName::new("test".into())?;
     /// let schema = Schema::new(Uuid::now_v7(), name, vec![])?;
-    /// assert!(schema.get("missing").is_none());
+    /// assert!(
+    ///     schema.get("missing").is_none(),
+    ///     "Missing property should return None"
+    /// );
     /// # Ok(())
     /// # }
     /// ```
