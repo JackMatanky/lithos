@@ -15,8 +15,8 @@ use uuid::Uuid;
 ///
 /// let id = Uuid::now_v7();
 /// let event = TemplateCreated::new(id, "daily-note".to_string(), 1234567890);
-/// assert_eq!(event.id, id);
-/// assert_eq!(event.name, "daily-note");
+/// assert_eq!(event.id, id, "Template id should match");
+/// assert_eq!(event.name, "daily-note", "Template name should match");
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
