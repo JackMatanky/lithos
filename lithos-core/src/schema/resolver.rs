@@ -36,7 +36,7 @@ use super::{
 /// );
 ///
 /// let schema = Resolver::resolve(raw, None, &bank)?;
-/// assert_eq!(&schema.name().0, "test");
+/// assert_eq!(&schema.name().0, "test", "Schema name should match");
 /// # Ok(())
 /// # }
 /// ```
