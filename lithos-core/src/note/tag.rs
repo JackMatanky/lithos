@@ -174,8 +174,12 @@ impl Tag {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let tag = Tag::new("#work/project/urgent")?;
-    /// assert_eq!(tag.full_path.as_str(), "work/project/urgent");
-    /// assert_eq!(tag.segments.len(), 3);
+    /// assert_eq!(
+    ///     tag.full_path.as_str(),
+    ///     "work/project/urgent",
+    ///     "Full path should omit leading #"
+    /// );
+    /// assert_eq!(tag.segments.len(), 3, "Segment count should match path");
     /// assert_eq!(&*tag.segments, &[
     ///     "work".into(),
     ///     "project".into(),
@@ -183,8 +187,16 @@ impl Tag {
     /// ]);
     ///
     /// let simple_tag = Tag::new("#personal")?;
-    /// assert_eq!(simple_tag.full_path.as_str(), "personal");
-    /// assert_eq!(&*simple_tag.segments, &["personal".into()]);
+    /// assert_eq!(
+    ///     simple_tag.full_path.as_str(),
+    ///     "personal",
+    ///     "Full path should match tag"
+    /// );
+    /// assert_eq!(
+    ///     &*simple_tag.segments,
+    ///     &["personal".into()],
+    ///     "Segments should contain the tag"
+    /// );
     /// # Ok(())
     /// # }
     /// ```
