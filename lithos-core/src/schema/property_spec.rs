@@ -1051,20 +1051,23 @@ mod tests {
             #[case] value: &str,
             #[case] expected: Result<(), SchemaError>,
         ) {
-            // GIVEN: a validated spec
-            let spec_result = StringSpec::try_new(
-                def.min_length,
-                def.max_length,
-                def.pattern,
-                def.enum_values,
-            );
-            assert!(
-                spec_result.is_ok(),
-                "Expected valid StringSpecDef, got: {spec_result:?}"
-            );
-            let Ok(spec) = spec_result else {
-                return;
-            };
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test fixture uses expect for deterministic spec \
+                          setup. Failure indicates invalid test data. Expect \
+                          is idiomatic in setup."
+            )]
+            fn validated_spec(def: StringSpecDef) -> StringSpec {
+                StringSpec::try_new(
+                    def.min_length,
+                    def.max_length,
+                    def.pattern,
+                    def.enum_values,
+                )
+                .expect("Expected valid StringSpecDef")
+            }
+
+            let spec = validated_spec(def);
 
             // WHEN: validating a string value
             let result = spec.validate_str(value);
@@ -1082,6 +1085,17 @@ mod tests {
         use rstest::rstest;
 
         use super::*;
+
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic spec setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
+        )]
+        fn validated_spec(def: &NumberSpecDef) -> NumberSpec {
+            NumberSpec::try_new(def.min, def.max, def.step)
+                .expect("Expected valid NumberSpecDef")
+        }
 
         /// 3.3-UNIT-012: Number Specification Validation Matrix.
         /// Priority: P1.
@@ -1134,15 +1148,7 @@ mod tests {
             #[case] value: f64,
             #[case] expected: Result<(), SchemaError>,
         ) {
-            // GIVEN: a validated spec
-            let spec_result = NumberSpec::try_new(def.min, def.max, def.step);
-            assert!(
-                spec_result.is_ok(),
-                "Expected valid NumberSpecDef, got: {spec_result:?}"
-            );
-            let Ok(spec) = spec_result else {
-                return;
-            };
+            let spec = validated_spec(&def);
 
             // WHEN: validating a numeric value
             let result = (|| {
@@ -1239,6 +1245,17 @@ mod tests {
 
         use super::*;
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic spec setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
+        )]
+        fn validated_spec_with_dir(dir: &str) -> FileSpec {
+            FileSpec::try_new(Some(dir.to_owned()), None)
+                .expect("Expected valid FileSpec")
+        }
+
         /// 3.3-UNIT-013: File Specification Validation Matrix.
         /// Priority: P1.
         #[rstest]
@@ -1255,15 +1272,7 @@ mod tests {
             #[case] dir: &str,
             #[case] expected: Result<(), SchemaError>,
         ) {
-            // GIVEN: a FileSpec with a directory restriction
-            let spec_result = FileSpec::try_new(Some(dir.to_owned()), None);
-            assert!(
-                spec_result.is_ok(),
-                "Expected valid FileSpec, got: {spec_result:?}"
-            );
-            let Ok(spec) = spec_result else {
-                return;
-            };
+            let spec = validated_spec_with_dir(dir);
 
             // WHEN: validating file paths
             let result = spec.validate_str(path);
@@ -1278,15 +1287,7 @@ mod tests {
 
         #[test]
         fn file_spec_rejects_prefix_bypass() {
-            let spec_result =
-                FileSpec::try_new(Some("notes/".to_owned()), None);
-            assert!(
-                spec_result.is_ok(),
-                "Expected valid FileSpec, got: {spec_result:?}"
-            );
-            let Ok(spec) = spec_result else {
-                return;
-            };
+            let spec = validated_spec_with_dir("notes/");
 
             let result = spec.validate_str("notes_evil/note.md");
             assert!(matches!(
@@ -1297,15 +1298,7 @@ mod tests {
 
         #[test]
         fn file_spec_rejects_parent_dir_traversal() {
-            let spec_result =
-                FileSpec::try_new(Some("notes/".to_owned()), None);
-            assert!(
-                spec_result.is_ok(),
-                "Expected valid FileSpec, got: {spec_result:?}"
-            );
-            let Ok(spec) = spec_result else {
-                return;
-            };
+            let spec = validated_spec_with_dir("notes/");
 
             let result = spec.validate_str("../notes/note.md");
             assert!(matches!(
@@ -1316,15 +1309,7 @@ mod tests {
 
         #[test]
         fn file_spec_rejects_absolute_paths() {
-            let spec_result =
-                FileSpec::try_new(Some("notes/".to_owned()), None);
-            assert!(
-                spec_result.is_ok(),
-                "Expected valid FileSpec, got: {spec_result:?}"
-            );
-            let Ok(spec) = spec_result else {
-                return;
-            };
+            let spec = validated_spec_with_dir("notes/");
 
             let result = spec.validate_str("/notes/note.md");
             assert!(matches!(
@@ -1335,15 +1320,7 @@ mod tests {
 
         #[test]
         fn file_spec_rejects_value_equal_to_directory() {
-            let spec_result =
-                FileSpec::try_new(Some("notes/".to_owned()), None);
-            assert!(
-                spec_result.is_ok(),
-                "Expected valid FileSpec, got: {spec_result:?}"
-            );
-            let Ok(spec) = spec_result else {
-                return;
-            };
+            let spec = validated_spec_with_dir("notes/");
 
             let result = spec.validate_str("notes/");
             assert!(matches!(
@@ -1380,21 +1357,24 @@ mod tests {
         use super::*;
 
         #[test]
-        fn bool_spec_validates_type() {
-            // GIVEN: a BoolSpec
-            let spec = BoolSpec::default();
+        fn bool_spec_accepts_true() {
+            let spec = PropertySpec::Bool(BoolSpec::default());
+            let result = spec.validate(&serde_json::Value::Bool(true));
 
-            // THEN: it accepts booleans
-            let p = PropertySpec::Bool(spec);
-            let true_result = p.validate(&serde_json::Value::Bool(true));
             assert!(
-                true_result.is_ok(),
-                "Expected bool validation to succeed, got: {true_result:?}"
+                result.is_ok(),
+                "Expected bool validation to succeed, got: {result:?}"
             );
-            let false_result = p.validate(&serde_json::Value::Bool(false));
+        }
+
+        #[test]
+        fn bool_spec_accepts_false() {
+            let spec = PropertySpec::Bool(BoolSpec::default());
+            let result = spec.validate(&serde_json::Value::Bool(false));
+
             assert!(
-                false_result.is_ok(),
-                "Expected bool validation to succeed, got: {false_result:?}"
+                result.is_ok(),
+                "Expected bool validation to succeed, got: {result:?}"
             );
         }
     }
