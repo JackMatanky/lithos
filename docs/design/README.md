@@ -14,7 +14,7 @@ We write specs to:
 
 ## Methodology & Best Practices
 
-The template is a thinking tool. Follow this order of operations to get the most out of it:
+The template is a thinking tool. Follow this order of operations to get the most out of it (also summarized in the template itself):
 
 ### 1. The "Box" (Section 1)
 
@@ -22,13 +22,13 @@ Define what success looks like _before_ you design.
 
 - **Constraint Check**: Do not start designing if you don't know the budget (latency, memory, time).
 
-### 2. The Interface (Section 2 & 3.2)
+### 2. The Interface & Types (Section 2, 3.2, 3.3)
 
-Write the "User Manual" (Section 2) and the "Component Interface" (Section 3.2) before any internals.
+Write the "User Manual" (Section 2), define the core types (Section 3.2), and specify component contracts (Section 3.3) before any internals.
 
 - **Rule**: If the API is hard to explain, the design is wrong.
 
-### 3. The Integration (Section 3.3)
+### 3. The Integration (Section 3.4)
 
 Systems fail at the edges. Explicitly map how your component talks to others.
 
@@ -58,8 +58,8 @@ Your goal is to help me "Work Backwards" from the user experience.
 
 1.  **Read**: `docs/design/template.md`.
 2.  **Interview Me**: Ask 3-5 sharp questions to clarify the "Problem Space" (Constraints, Non-Goals) and the "User Experience" (How should the API feel?).
-3.  **Draft**: Once I answer, draft the "Guide-Level Explanation" (Section 2) and "Component Specifications" (Section 3).
-4.  **Integration Check**: Explicitly model the "Integration & Data Flow" (Section 3.3). Who calls who? What events are emitted?
+3.  **Draft**: Once I answer, draft the "Guide-Level Explanation" (Section 2), "Data Models" (Section 3.2), and "Component & Interface Specifications" (Section 3.3).
+4.  **Integration Check**: Explicitly model the "Integration & Data Flow" (Section 3.4). Who calls who? What events are emitted?
 5.  **Critique**: After drafting, assume the persona of a hostile SRE. Identify 3 ways this design could fail in production (The "Pre-Mortem").
 6.  **Output**: Fill the template with our agreed design.
 
