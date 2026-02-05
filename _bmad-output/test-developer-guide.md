@@ -179,6 +179,7 @@ mod tests {
 | `defaults`    | `Default` impls and baseline config    |
 | `validation`  | field/rule validation failures/success |
 | `invariants`  | cross-field consistency rules          |
+| `integrity`   | structural consistency checks          |
 | `state`       | state transitions, lifecycle flags     |
 | `accessors`   | getters, derived values                |
 | `conversions` | `From`/`TryFrom`/`Into`                |
@@ -214,6 +215,7 @@ mod tests {
 | `find_by_name`   | lookup by name               |
 | `find_by_path`   | lookup by path               |
 | `find_by_tag`    | lookup by tag                |
+| `load`           | load/aggregate query results |
 | `list`           | list subset/default list     |
 | `list_all`       | list everything              |
 | `list_by_parent` | list by parent/owner         |
@@ -222,6 +224,12 @@ mod tests {
 | `resolve`        | derived/linked results       |
 | `indices`        | index-driven lookup behavior |
 | `pagination`     | limits/offsets/cursors       |
+
+**Naming Notes**
+
+- Prefer singular names: use `constructor`, `validation`, `builder` forms over plurals.
+- Normalize common variants: `validate`/`validators` → `validation`, `constructors` → `constructor`.
+- Keep unit-specific submodules (e.g., `property_bank`, `field_value`, `heading`, `section`) out of the canonical list.
 
 ### Behavioral Rules
 
