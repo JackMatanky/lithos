@@ -139,13 +139,13 @@ pub struct Schema {
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// let name = SchemaName::new("project-note".to_string())?;
-/// assert_eq!(&name.0, "project-note");
+/// assert_eq!(&name.0, "project-note", "Schema name should match");
 ///
 /// let name2 = SchemaName::new("daily_note".to_string())?;
-/// assert_eq!(&name2.0, "daily_note");
+/// assert_eq!(&name2.0, "daily_note", "Schema name should match");
 ///
 /// let name3 = SchemaName::new("MySchema".to_string())?;
-/// assert_eq!(&name3.0, "MySchema");
+/// assert_eq!(&name3.0, "MySchema", "Schema name should match");
 ///
 /// let invalid = SchemaName::new("".to_string());
 /// assert!(invalid.is_err(), "Empty name should be rejected");
@@ -358,7 +358,7 @@ impl PropertyBank {
     /// let property = Property::new(id, name, true, false, spec)?;
     ///
     /// bank.register(property)?;
-    /// assert_eq!(bank.all().count(), 1);
+    /// assert_eq!(bank.all().count(), 1, "Bank should contain one property");
     /// # Ok(())
     /// # }
     /// ```
@@ -468,7 +468,7 @@ impl Schema {
     ///
     /// let name = SchemaName::new("project-note".to_string())?;
     /// let schema = Schema::new(Uuid::now_v7(), name, vec![])?;
-    /// assert_eq!(&schema.name().0, "project-note");
+    /// assert_eq!(&schema.name().0, "project-note", "Schema name should match");
     /// # Ok(())
     /// # }
     /// ```
