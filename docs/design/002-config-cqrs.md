@@ -1,6 +1,6 @@
 ---
 feature: Config CQRS (Commands + Queries)
-status: Draft # Options: Draft, In Review, Approved, Implemented, Archived
+status: Draft
 author: Jack Matanky (drafted with GitHub Copilot)
 ticket: TBD
 date_created: 2026-02-04
@@ -8,8 +8,6 @@ tags: [config, cqrs, persistence, redb, rkyv, errors]
 ---
 
 # Tech Spec: Config CQRS (Commands + Queries)
-
-> **Note**: See `docs/design/README.md` for usage instructions.
 
 Related specs:
 
@@ -327,7 +325,7 @@ Error-handling rules (match existing contexts):
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                                   | Resolution                                         |
-| :--------- | :------------------------------------------------- | :------------------------------------------------- |
-| 2026-02-04 | "load() hard-codes vault identity."               | "Require explicit vault_id; see Decision 4.1."    |
-| 2026-02-04 | "Merged config should support rollback."          | "Add versioned merged-config read model; see 3.4."|
+| Date       | Critique / Issue                         | Resolution                                         |
+| :--------- | :--------------------------------------- | :------------------------------------------------- |
+| 2026-02-04 | "load() hard-codes vault identity."      | "Require explicit vault_id; see Decision 4.1."     |
+| 2026-02-04 | "Merged config should support rollback." | "Add versioned merged-config read model; see 3.4." |

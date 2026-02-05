@@ -1,6 +1,6 @@
 ---
 feature: Note Frontmatter (FieldValue + Frontmatter Access)
-status: Draft # Options: Draft, In Review, Approved, Implemented, Archived
+status: Draft
 author: Jack Matanky
 ticket: TBD
 date_created: 2026-02-02
@@ -8,8 +8,6 @@ tags: [note, frontmatter, schema, validation, ergonomics]
 ---
 
 # Tech Spec: Note Frontmatter (FieldValue + Frontmatter Access)
-
-> **Note**: See `docs/design/README.md` for usage instructions.
 
 ## 1. Problem Space (The "Why")
 
@@ -76,7 +74,7 @@ Additional persisted-format constraint:
 
 Frontmatter supports two primary usage patterns:
 
-1) **Unknown type (runtime inspection)**
+1. **Unknown type (runtime inspection)**
 
 ```rust
 use lithos_core::note::frontmatter::FieldValue;
@@ -88,7 +86,7 @@ if value.is_string() {
 }
 ```
 
-2) **Known type (schema-driven extraction)**
+2. **Known type (schema-driven extraction)**
 
 Today (strict extraction with errors):
 
@@ -185,7 +183,7 @@ This module remains sync, deterministic, and I/O-free.
 
 ##### Serialization (Phase 7) — Target Strategy
 
-We want `FieldValue` and `Frontmatter` to remain persistable via **rkyv** (with **bytecheck** validation) *without* redesigning away recursion.
+We want `FieldValue` and `Frontmatter` to remain persistable via **rkyv** (with **bytecheck** validation) _without_ redesigning away recursion.
 
 The target strategy is the documented rkyv approach for recursive types:
 
@@ -196,7 +194,7 @@ If this strategy ever becomes insufficient (e.g., due to format evolution needs)
 
 Conversion design note:
 
-This module uses *local* traits (`FromFieldValue` / `FromFieldValueRef`) instead of `TryFrom<&FieldValue>` to avoid Rust's orphan rules.
+This module uses _local_ traits (`FromFieldValue` / `FromFieldValueRef`) instead of `TryFrom<&FieldValue>` to avoid Rust's orphan rules.
 
 #### Component: `Frontmatter`
 
@@ -217,7 +215,7 @@ Planned improvements (strict APIs + borrowing):
 
 Borrowing stance:
 
-Prefer *generic* borrowed extraction via `try_get_ref` + `FromFieldValueRef` over adding many specialized `*_str` helpers. This keeps the API surface smaller and makes “borrow vs allocate” an explicit call-site choice.
+Prefer _generic_ borrowed extraction via `try_get_ref` + `FromFieldValueRef` over adding many specialized `*_str` helpers. This keeps the API surface smaller and makes “borrow vs allocate” an explicit call-site choice.
 
 #### Component: `FrontmatterError`
 
@@ -289,7 +287,7 @@ Design stance (best practice):
 
 #### Query semantics for `Date(i64)`
 
-Storing a date/time as `i64` (Unix timestamp) generally makes querying *easier* and more performant, because comparisons become numeric.
+Storing a date/time as `i64` (Unix timestamp) generally makes querying _easier_ and more performant, because comparisons become numeric.
 
 - **Instant/range queries** (recommended): convert the query inputs into a UTC timestamp range and filter numerically.
   - Example semantics: “created within [start, end)” becomes `start_ts <= created_ts && created_ts < end_ts`.
@@ -297,19 +295,19 @@ Storing a date/time as `i64` (Unix timestamp) generally makes querying *easier* 
 
 Limitations to be aware of:
 
-- If the original YAML value included a timezone offset or used a date-only textual form, that *format* is not queryable once normalized to an `i64` unless we store additional metadata.
+- If the original YAML value included a timezone offset or used a date-only textual form, that _format_ is not queryable once normalized to an `i64` unless we store additional metadata.
 - If we later decide users must be able to query “date-only values” distinctly from “datetime values”, we will need a richer representation (e.g., separate variants or a tagged wrapper).
 
 ### 3.5 Core Logic & Algorithms
 
 Key policy decisions to make explicit:
 
-1) **Lenient vs strict array extraction**
+1. **Lenient vs strict array extraction**
 
 - Lenient (`get_string_array`): keep Obsidian compatibility by supporting both a single string and an array; when an array includes mixed types, ignore non-string elements.
 - Strict (`try_get_string_vec_strict`): if the value is an array, require all elements to be strings; otherwise return an error.
 
-2) **Typed conversion strategy**
+2. **Typed conversion strategy**
 
 - Keep today’s `FromFieldValue` as a convenience trait for ergonomic `Option`-based extraction.
 - Keep strict conversions on the local traits (`FromFieldValue` / `FromFieldValueRef`).
@@ -319,7 +317,7 @@ Rationale:
 - Implementing `TryFrom<&FieldValue>` for common Rust types (`bool`, `f64`, `String`, `Vec<String>`, etc.) is blocked by Rust’s orphan rules.
 - Even if it were possible, value-level conversions still need `Frontmatter` to attach **key context** (`key`, array index) for actionable errors.
 
-3) **Construction validation**
+3. **Construction validation**
 
 - Either:
   - make `Frontmatter::new` actually validate invariants (e.g., forbid empty keys, optionally enforce key normalization), or
@@ -512,11 +510,11 @@ Frontmatter is pure; observability is primarily via surfaced errors.
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                                           | Resolution                                                                 |
-| :--------- | :---------------------------------------------------------- | :------------------------------------------------------------------------- |
-| 2026-02-02 | "Option-based getters lose why extraction failed."          | Add strict `Result`-based APIs with `FrontmatterError`.                    |
-| 2026-02-02 | "Lenient coercion can hide data-quality issues."            | Make strict vs lenient behavior explicit; keep both with clear naming.     |
-| 2026-02-02 | "Frontmatter::new returns Result but never errors."         | Specify staged plan: infallible constructor + explicit `validate()`.       |
+| Date       | Critique / Issue                                    | Resolution                                                             |
+| :--------- | :-------------------------------------------------- | :--------------------------------------------------------------------- |
+| 2026-02-02 | "Option-based getters lose why extraction failed."  | Add strict `Result`-based APIs with `FrontmatterError`.                |
+| 2026-02-02 | "Lenient coercion can hide data-quality issues."    | Make strict vs lenient behavior explicit; keep both with clear naming. |
+| 2026-02-02 | "Frontmatter::new returns Result but never errors." | Specify staged plan: infallible constructor + explicit `validate()`.   |
 
 ## 8. References
 

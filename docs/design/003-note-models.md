@@ -1,6 +1,6 @@
 ---
 feature: Note Models (Aggregate + Value Objects)
-status: Draft # Options: Draft, In Review, Approved, Implemented, Archived
+status: Draft
 author: Jack Matanky (drafted with GitHub Copilot)
 ticket: TBD
 date_created: 2026-02-03
@@ -8,8 +8,6 @@ tags: [note, domain-models, rkyv, performance, invariants]
 ---
 
 # Tech Spec: Note Models (Aggregate + Value Objects)
-
-> **Note**: See `docs/design/README.md` for usage instructions.
 
 ## 1. Problem Space (The "Why")
 
@@ -84,7 +82,7 @@ Practical guidance (subject to revisiting as the codebase evolves):
 
 ### 1.5 Raw → Domain boundary (critical for avoiding `Stored*` models)
 
-Lithos has *two* separate “raw” concepts in the note world, and keeping them explicit reduces long-term pressure to introduce `StoredNote` types:
+Lithos has _two_ separate “raw” concepts in the note world, and keeping them explicit reduces long-term pressure to introduce `StoredNote` types:
 
 - **Raw file inputs (serde / parsing)**: adapter-level parse outputs that may be incomplete or invalid.
   - Examples: raw YAML frontmatter key/value trees, parser-emitted strings and offsets, unchecked wiki-link tokens.
@@ -98,7 +96,7 @@ Lithos has *two* separate “raw” concepts in the note world, and keeping them
 Design rule:
 
 - Perform conversions **early** (at the adapter→domain boundary) so that persisted values can store domain types directly most of the time.
-- Reserve `Stored*` types for proven cases where the *domain* shape is inefficient to persist/query (profiling-driven), not as the default.
+- Reserve `Stored*` types for proven cases where the _domain_ shape is inefficient to persist/query (profiling-driven), not as the default.
 
 ## 2. Guide-Level Explanation (The "What")
 
@@ -106,7 +104,7 @@ Design rule:
 
 Common workflows:
 
-1) Create a note aggregate with a validated vault-relative path
+1. Create a note aggregate with a validated vault-relative path
 
 ```rust
 use lithos_core::note::aggregate::{Note, NotePath};
@@ -122,7 +120,7 @@ fn example() -> Result<(), lithos_core::note::error::NoteError> {
 }
 ```
 
-2) Add value objects in a controlled way (builder or narrow mutators)
+2. Add value objects in a controlled way (builder or narrow mutators)
 
 ```rust
 use lithos_core::note::link::{Link, Target};
@@ -143,7 +141,7 @@ fn example() -> Result<(), lithos_core::note::error::NoteError> {
 
 ```
 
-3) Read model state via borrowed getters (no clones)
+3. Read model state via borrowed getters (no clones)
 
 ```rust
 let tags = note.tags();      // &[Tag]
@@ -492,9 +490,9 @@ For breaking changes, use the repo’s "clean slate" protocol (rename DB + reind
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                                   | Resolution                                                     |
-| :--------- | :------------------------------------------------- | :------------------------------------------------------------- |
-| 2026-02-03 | "Are events persisted or transient?"              | Draft assumes transient; verify via DB usage inventory.         |
-| 2026-02-03 | "Do we require object-safe ports for query hotpath" | Draft suggests concrete read APIs for zero-copy hot paths.      |
+| Date       | Critique / Issue                                    | Resolution                                                 |
+| :--------- | :-------------------------------------------------- | :--------------------------------------------------------- |
+| 2026-02-03 | "Are events persisted or transient?"                | Draft assumes transient; verify via DB usage inventory.    |
+| 2026-02-03 | "Do we require object-safe ports for query hotpath" | Draft suggests concrete read APIs for zero-copy hot paths. |
 
-| 2026-02-03 | "Are offsets byte or char based?"                | Specify byte offsets (`SourceByteOffset`) and compute line/col at edges. |
+| 2026-02-03 | "Are offsets byte or char based?" | Specify byte offsets (`SourceByteOffset`) and compute line/col at edges. |
