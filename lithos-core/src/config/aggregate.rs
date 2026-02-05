@@ -101,7 +101,7 @@ impl Config {
     /// let global = Global::default();
     /// let vault = Vault::default();
     /// let config = Config::build(Some(&global), "/vault", vault)?;
-    /// assert_eq!(config.vault_metadata.path, "/vault");
+    /// assert_eq!(config.vault_metadata.path, "/vault", "Vault path should match");
     /// # Ok(())
     /// # }
     /// ```
