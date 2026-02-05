@@ -11,6 +11,16 @@ tags: [cache, refactor, performance]
 
 > **Note**: See `docs/design/README.md` for usage instructions.
 
+<!--
+How to use this template (keep it lightweight):
+
+1) Start with Section 1 (constraints + goals). If you can’t write 1.3, you’re not ready to design.
+2) Write Section 2 (guide-level UX) next. If it’s hard to explain, the design is wrong.
+3) Define the core types (3.2) and the component contracts (3.3) before any algorithms.
+4) Draw the integration/data flow (3.4). Systems fail at the edges.
+5) Use the critique log (7) and pre-mortem (6) to iterate before coding.
+-->
+
 ## 1. Problem Space (The "Why")
 
 <!--
