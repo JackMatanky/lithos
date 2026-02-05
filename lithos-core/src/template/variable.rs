@@ -421,279 +421,376 @@ mod tests {
         serde_json::Value::Number(num)
     }
 
-    #[test]
-    fn should_validate_boolean_constraints() {
-        // GIVEN: a boolean variable definition
-        let def = VariableDefinition::Boolean {
+    fn boolean_def() -> VariableDefinition {
+        VariableDefinition::Boolean {
             default: None,
-        };
-
-        // WHEN: validating boolean and non-boolean values
-        let valid_result = def.validate_value(&serde_json::Value::Bool(true));
-        let invalid_result = def.validate_value(&str_value("true"));
-
-        // THEN: only the boolean value is accepted
-        assert!(
-            valid_result.is_ok(),
-            "Boolean value should be accepted, but got: {valid_result:?}"
-        );
-        assert!(
-            invalid_result.is_err(),
-            "String value should be rejected for boolean field, got: \
-             {invalid_result:?}"
-        );
+        }
     }
 
-    #[test]
-    fn should_validate_number_constraints() {
-        // GIVEN: a numeric variable definition with range constraints
-        let def = VariableDefinition::Number {
+    fn number_def() -> VariableDefinition {
+        VariableDefinition::Number {
             default: None,
             max: Some(10.0f64),
             min: Some(1.0f64),
-        };
-
-        // WHEN: validating values within and outside the range
-        let valid_result = def.validate_value(&f64_value(5.0f64));
-        let too_low = def.validate_value(&f64_value(0.5f64));
-        let too_high = def.validate_value(&f64_value(10.5f64));
-
-        // THEN: range constraints are enforced
-        assert!(
-            valid_result.is_ok(),
-            "Number in range should be accepted, but got: {valid_result:?}"
-        );
-        assert!(
-            too_low.is_err(),
-            "Value below min should be rejected, got: {too_low:?}"
-        );
-        assert!(
-            too_high.is_err(),
-            "Value above max should be rejected, got: {too_high:?}"
-        );
+        }
     }
 
-    #[test]
-    fn accessors_expose_defaults() {
-        // GIVEN: a variable definition with a default value
-        let def = VariableDefinition::String {
+    fn string_def_with_default() -> VariableDefinition {
+        VariableDefinition::String {
             default: Some("Title".to_owned()),
             max_length: None,
             min_length: None,
             pattern: None,
-        };
+        }
+    }
 
-        // WHEN: checking for defaults
-        let has_default = def.has_default();
-        let default_val = def.get_default_value();
+    fn date_def_iso() -> VariableDefinition {
+        VariableDefinition::Date {
+            default: None,
+            format: None,
+        }
+    }
 
-        // THEN: the default value is correctly exposed
+    fn date_def_custom() -> VariableDefinition {
+        VariableDefinition::Date {
+            default: None,
+            format: Some("%Y-%m-%d".to_owned()),
+        }
+    }
+
+    fn file_def_md() -> VariableDefinition {
+        VariableDefinition::File {
+            default: None,
+            file_types: Some(vec!["md".to_owned()]),
+        }
+    }
+
+    fn file_def_any() -> VariableDefinition {
+        VariableDefinition::File {
+            default: None,
+            file_types: None,
+        }
+    }
+
+    fn file_def_multi() -> VariableDefinition {
+        VariableDefinition::File {
+            default: None,
+            file_types: Some(vec!["md".to_owned(), "txt".to_owned()]),
+        }
+    }
+
+    fn string_def_range(min: usize, max: usize) -> VariableDefinition {
+        VariableDefinition::String {
+            default: None,
+            max_length: Some(max),
+            min_length: Some(min),
+            pattern: None,
+        }
+    }
+
+    fn string_def_min_only(min: usize) -> VariableDefinition {
+        VariableDefinition::String {
+            default: None,
+            max_length: None,
+            min_length: Some(min),
+            pattern: None,
+        }
+    }
+
+    fn string_def_max_only(max: usize) -> VariableDefinition {
+        VariableDefinition::String {
+            default: None,
+            max_length: Some(max),
+            min_length: None,
+            pattern: None,
+        }
+    }
+
+    fn string_def_pattern() -> VariableDefinition {
+        VariableDefinition::String {
+            default: None,
+            max_length: None,
+            min_length: None,
+            pattern: Some(r"^\d+$".to_owned()),
+        }
+    }
+
+    #[test]
+    fn accepts_boolean_values() {
+        let def = boolean_def();
+        let result = def.validate_value(&serde_json::Value::Bool(true));
+
         assert!(
-            has_default,
+            result.is_ok(),
+            "Boolean value should be accepted, but got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_non_boolean_values() {
+        let def = boolean_def();
+        let result = def.validate_value(&str_value("true"));
+
+        assert!(
+            result.is_err(),
+            "String value should be rejected for boolean field, got: \
+             {result:?}"
+        );
+    }
+
+    #[test]
+    fn accepts_number_in_range() {
+        let def = number_def();
+        let result = def.validate_value(&f64_value(5.0f64));
+
+        assert!(
+            result.is_ok(),
+            "Number in range should be accepted, but got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_number_below_min() {
+        let def = number_def();
+        let result = def.validate_value(&f64_value(0.5f64));
+
+        assert!(
+            result.is_err(),
+            "Value below min should be rejected, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_number_above_max() {
+        let def = number_def();
+        let result = def.validate_value(&f64_value(10.5f64));
+
+        assert!(
+            result.is_err(),
+            "Value above max should be rejected, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn has_default_returns_true_when_default_present() {
+        let def = string_def_with_default();
+
+        assert!(
+            def.has_default(),
             "Variable definition should indicate that a default value is set"
         );
+    }
+
+    #[test]
+    fn get_default_value_returns_configured_value() {
+        let def = string_def_with_default();
+
         assert_eq!(
-            default_val,
+            def.get_default_value(),
             Some(str_value("Title")),
             "Default value should match the configured value"
         );
     }
 
     #[test]
-    fn should_validate_date_variable() {
-        // GIVEN: a date variable definition
-        let def = VariableDefinition::Date {
-            default: None,
-            format: None,
-        };
+    fn accepts_iso8601_date_values() {
+        let def = date_def_iso();
+        let result = def.validate_value(&str_value("2024-01-15T10:00:00Z"));
 
-        // THEN: it validates ISO8601 strings
-        let valid = def.validate_value(&str_value("2024-01-15T10:00:00Z"));
         assert!(
-            valid.is_ok(),
-            "Valid ISO8601 date should be accepted, got: {valid:?}"
+            result.is_ok(),
+            "Valid ISO8601 date should be accepted, got: {result:?}"
         );
+    }
 
-        let invalid = def.validate_value(&str_value("invalid"));
+    #[test]
+    fn rejects_invalid_iso8601_dates() {
+        let def = date_def_iso();
+        let result = def.validate_value(&str_value("invalid"));
+
         assert!(
-            invalid.is_err(),
-            "Invalid date string should be rejected, got: {invalid:?}"
+            result.is_err(),
+            "Invalid date string should be rejected, got: {result:?}"
         );
+    }
 
-        // AND: handles custom formats
-        let def_fmt = VariableDefinition::Date {
-            default: None,
-            format: Some("%Y-%m-%d".to_owned()),
-        };
-        let valid_fmt = def_fmt.validate_value(&str_value("2024-01-15"));
+    #[test]
+    fn accepts_custom_format_dates() {
+        let def = date_def_custom();
+        let result = def.validate_value(&str_value("2024-01-15"));
+
         assert!(
-            valid_fmt.is_ok(),
-            "Valid custom format date should be accepted, got: {valid_fmt:?}"
+            result.is_ok(),
+            "Valid custom format date should be accepted, got: {result:?}"
         );
+    }
 
-        let invalid_fmt = def_fmt.validate_value(&str_value("2024/01/15"));
+    #[test]
+    fn rejects_mismatched_custom_format_dates() {
+        let def = date_def_custom();
+        let result = def.validate_value(&str_value("2024/01/15"));
+
         assert!(
-            invalid_fmt.is_err(),
+            result.is_err(),
             "Date not matching custom format should be rejected, got: \
-             {invalid_fmt:?}"
+             {result:?}"
         );
     }
 
     #[test]
-    fn should_validate_file_variable() {
-        // GIVEN: a file variable definition
-        let def = VariableDefinition::File {
-            default: None,
-            file_types: Some(vec!["md".to_owned()]),
-        };
+    fn accepts_file_with_allowed_extension() {
+        let def = file_def_md();
+        let result = def.validate_value(&str_value("note.md"));
 
-        // THEN: it validates vault-relative paths and extensions
-        let valid = def.validate_value(&str_value("note.md"));
         assert!(
-            valid.is_ok(),
+            result.is_ok(),
             "Valid file with correct extension should be accepted, got: \
-             {valid:?}"
+             {result:?}"
         );
+    }
 
-        let wrong_ext = def.validate_value(&str_value("img.png"));
+    #[test]
+    fn rejects_file_with_disallowed_extension() {
+        let def = file_def_md();
+        let result = def.validate_value(&str_value("img.png"));
+
         assert!(
-            wrong_ext.is_err(),
-            "File with wrong extension should be rejected, got: {wrong_ext:?}"
+            result.is_err(),
+            "File with wrong extension should be rejected, got: {result:?}"
         );
+    }
 
-        let abs_path = def.validate_value(&str_value("/abs/path"));
+    #[test]
+    fn rejects_absolute_file_paths() {
+        let def = file_def_md();
+        let result = def.validate_value(&str_value("/abs/path"));
+
         assert!(
-            abs_path.is_err(),
-            "Absolute path should be rejected, got: {abs_path:?}"
+            result.is_err(),
+            "Absolute path should be rejected, got: {result:?}"
         );
+    }
 
-        // AND: handles no type restriction
-        let def_any = VariableDefinition::File {
-            default: None,
-            file_types: None,
-        };
-        let any_file = def_any.validate_value(&str_value("any.file"));
+    #[test]
+    fn accepts_files_when_no_type_restriction() {
+        let def = file_def_any();
+        let result = def.validate_value(&str_value("any.file"));
+
         assert!(
-            any_file.is_ok(),
+            result.is_ok(),
             "File with no type restriction should accept any extension, got: \
-             {any_file:?}"
+             {result:?}"
         );
     }
 
     #[test]
-    fn should_validate_file_variable_extensions() {
-        // GIVEN: a file variable with multiple allowed types
-        let def = VariableDefinition::File {
-            default: None,
-            file_types: Some(vec!["md".to_owned(), "txt".to_owned()]),
-        };
+    fn accepts_md_extension_when_allowed() {
+        let def = file_def_multi();
+        let result = def.validate_value(&str_value("test.md"));
 
-        // THEN: it accepts matching extensions
-        let md_file = def.validate_value(&str_value("test.md"));
         assert!(
-            md_file.is_ok(),
-            "File with .md extension should be accepted, got: {md_file:?}"
-        );
-
-        let txt_file = def.validate_value(&str_value("test.txt"));
-        assert!(
-            txt_file.is_ok(),
-            "File with .txt extension should be accepted, got: {txt_file:?}"
-        );
-
-        // AND: rejects others
-        let png_file = def.validate_value(&str_value("test.png"));
-        assert!(
-            png_file.is_err(),
-            "File with .png extension should be rejected, got: {png_file:?}"
+            result.is_ok(),
+            "File with .md extension should be accepted, got: {result:?}"
         );
     }
 
     #[test]
-    fn should_validate_string_variable_constraints() {
-        // GIVEN: a string variable with length constraints
-        let def = VariableDefinition::String {
-            default: None,
-            max_length: Some(5),
-            min_length: Some(2),
-            pattern: None,
-        };
+    fn accepts_txt_extension_when_allowed() {
+        let def = file_def_multi();
+        let result = def.validate_value(&str_value("test.txt"));
 
-        // THEN: it enforces length limits
-        let valid = def.validate_value(&str_value("abc"));
         assert!(
-            valid.is_ok(),
+            result.is_ok(),
+            "File with .txt extension should be accepted, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_unlisted_file_extensions() {
+        let def = file_def_multi();
+        let result = def.validate_value(&str_value("test.png"));
+
+        assert!(
+            result.is_err(),
+            "File with .png extension should be rejected, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn accepts_strings_within_length_constraints() {
+        let def = string_def_range(2, 5);
+        let result = def.validate_value(&str_value("abc"));
+
+        assert!(
+            result.is_ok(),
             "String within length constraints should be accepted, got: \
-             {valid:?}"
-        );
-
-        let too_short = def.validate_value(&str_value("a"));
-        assert!(
-            too_short.is_err(),
-            "String below min length should be rejected, got: {too_short:?}"
-        );
-
-        let too_long = def.validate_value(&str_value("abcdef"));
-        assert!(
-            too_long.is_err(),
-            "String above max length should be rejected, got: {too_long:?}"
-        );
-
-        // AND: handles min/max independently
-        let def_min = VariableDefinition::String {
-            default: None,
-            min_length: Some(3),
-            max_length: None,
-            pattern: None,
-        };
-        let below_min = def_min.validate_value(&str_value("ab"));
-        assert!(
-            below_min.is_err(),
-            "String below min_length should be rejected, got: {below_min:?}"
-        );
-
-        let def_max = VariableDefinition::String {
-            default: None,
-            min_length: None,
-            max_length: Some(3),
-            pattern: None,
-        };
-        let above_max = def_max.validate_value(&str_value("abcd"));
-        assert!(
-            above_max.is_err(),
-            "String above max_length should be rejected, got: {above_max:?}"
+             {result:?}"
         );
     }
 
     #[test]
-    fn should_validate_string_pattern_with_caching() {
-        // GIVEN: a string variable with a pattern
-        let def = VariableDefinition::String {
-            default: None,
-            max_length: None,
-            min_length: None,
-            pattern: Some(r"^\d+$".to_owned()),
-        };
+    fn rejects_strings_below_min_length() {
+        let def = string_def_range(2, 5);
+        let result = def.validate_value(&str_value("a"));
 
-        // THEN: it validates matching strings (multiple times to trigger cache)
-        let match1 = def.validate_value(&str_value("123"));
         assert!(
-            match1.is_ok(),
-            "String matching pattern should be accepted, got: {match1:?}"
+            result.is_err(),
+            "String below min length should be rejected, got: {result:?}"
         );
+    }
 
-        let match2 = def.validate_value(&str_value("456"));
+    #[test]
+    fn rejects_strings_above_max_length() {
+        let def = string_def_range(2, 5);
+        let result = def.validate_value(&str_value("abcdef"));
+
         assert!(
-            match2.is_ok(),
-            "Second matching string should be accepted (tests cache), got: \
-             {match2:?}"
+            result.is_err(),
+            "String above max length should be rejected, got: {result:?}"
         );
+    }
 
-        // AND: rejects non-matching strings
-        let no_match = def.validate_value(&str_value("abc"));
+    #[test]
+    fn rejects_strings_below_min_length_when_only_min_set() {
+        let def = string_def_min_only(3);
+        let result = def.validate_value(&str_value("ab"));
+
         assert!(
-            no_match.is_err(),
-            "String not matching pattern should be rejected, got: {no_match:?}"
+            result.is_err(),
+            "String below min_length should be rejected, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_strings_above_max_length_when_only_max_set() {
+        let def = string_def_max_only(3);
+        let result = def.validate_value(&str_value("abcd"));
+
+        assert!(
+            result.is_err(),
+            "String above max_length should be rejected, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn accepts_strings_matching_pattern() {
+        let def = string_def_pattern();
+        let result = def.validate_value(&str_value("123"));
+
+        assert!(
+            result.is_ok(),
+            "String matching pattern should be accepted, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_strings_not_matching_pattern() {
+        let def = string_def_pattern();
+        let result = def.validate_value(&str_value("abc"));
+
+        assert!(
+            result.is_err(),
+            "String not matching pattern should be rejected, got: {result:?}"
         );
     }
 }
