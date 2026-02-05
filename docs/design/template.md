@@ -160,3 +160,20 @@ Document the "Review & Fix" loop.
 | Date       | Critique / Issue   | Resolution                             |
 | :--------- | :----------------- | :------------------------------------- |
 | YYYY-MM-DD | "API is blocking." | "Intentional. See Constraints in 1.3." |
+
+## 8. References
+
+<!--
+External references used to justify design decisions.
+Examples:
+- Rust API Guidelines
+- OWASP guidance
+- Crate docs (rkyv/redb/regex/chrono)
+-->
+
+- [Title](https://example.com)
+
+<!--
+Optional: add appendices below when you have implementation snapshots,
+migration checklists, or other material you plan to delete later.
+-->
