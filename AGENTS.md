@@ -4,9 +4,12 @@
 
 **MUST** review these files before starting any work:
 
-- **Project Context**: [_bmad-output/project-context.md](_bmad-output/project-context.md) - Core rules and patterns
-- **Architecture**: [_bmad-output/planning-artifacts/architecture/](_bmad-output/planning-artifacts/architecture/) - System design decisions
-- **PRD**: [_bmad-output/planning-artifacts/prd.md](_bmad-output/planning-artifacts/prd.md) - Product requirements
+- **Project Context**: [Core rules and patterns](_bmad-output/project-context.md)
+- **PRD**: [Product requirements](_bmad-output/planning-artifacts/prd.md)
+- **Architecture**:
+  - [Core Architectural Decisions](_bmad-output/planning-artifacts/architecture/core-architectural-decisions.md)
+  - [Implementation Patterns & Consistency Rules](_bmad-output/planning-artifacts/architecture/implementation-patterns-consistency-rules.md)
+  - [Project Structure & Boundaries](_bmad-output/planning-artifacts/architecture/project-structure-boundaries.md)
 
 ## BMAD Agent Activation
 
