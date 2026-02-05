@@ -852,14 +852,22 @@ mod tests {
         fn converts_numeric_values_correctly() {
             let val = FieldValue::Number(42.0f64);
             let observed = val.as_number();
-            assert_eq!(observed, Some(42.0f64));
+            assert_eq!(
+                observed,
+                Some(42.0f64),
+                "Numeric field should convert to f64"
+            );
         }
 
         #[test]
         fn converts_boolean_values_correctly() {
             let val = FieldValue::Boolean(true);
             let observed = val.as_bool();
-            assert_eq!(observed, Some(true));
+            assert_eq!(
+                observed,
+                Some(true),
+                "Boolean field should convert to bool"
+            );
         }
     }
 
@@ -870,21 +878,33 @@ mod tests {
         fn title_uses_configured_key() {
             let config = fixtures::config_with_custom_frontmatter_keys();
             let fm = fixtures::frontmatter_with_custom_keys();
-            assert_eq!(fm.title(&config), "Subj");
+            assert_eq!(
+                fm.title(&config),
+                "Subj",
+                "Title should use configured key"
+            );
         }
 
         #[test]
         fn file_class_uses_configured_key() {
             let config = fixtures::config_with_custom_frontmatter_keys();
             let fm = fixtures::frontmatter_with_custom_keys();
-            assert_eq!(fm.file_class(&config), "Note");
+            assert_eq!(
+                fm.file_class(&config),
+                "Note",
+                "File class should use configured key"
+            );
         }
 
         #[test]
         fn aliases_use_configured_key() {
             let config = fixtures::config_with_custom_frontmatter_keys();
             let fm = fixtures::frontmatter_with_custom_keys();
-            assert_eq!(fm.aliases(&config), vec!["Alias".to_owned()]);
+            assert_eq!(
+                fm.aliases(&config),
+                vec!["Alias".to_owned()],
+                "Aliases should use configured key"
+            );
         }
 
         #[test]
@@ -922,7 +942,11 @@ mod tests {
         #[test]
         fn get_returns_boolean_value() {
             let fm = fixtures::frontmatter_with_scalar_values();
-            assert_eq!(fm.get("b").and_then(FieldValue::as_bool), Some(true));
+            assert_eq!(
+                fm.get("b").and_then(FieldValue::as_bool),
+                Some(true),
+                "Boolean field should be returned"
+            );
         }
 
         #[test]
@@ -930,14 +954,19 @@ mod tests {
             let fm = fixtures::frontmatter_with_scalar_values();
             assert_eq!(
                 fm.get("n").and_then(FieldValue::as_number),
-                Some(1.0f64)
+                Some(1.0f64),
+                "Number field should be returned"
             );
         }
 
         #[test]
         fn get_returns_string_value() {
             let fm = fixtures::frontmatter_with_scalar_values();
-            assert_eq!(fm.get("s").and_then(FieldValue::as_str), Some("s"));
+            assert_eq!(
+                fm.get("s").and_then(FieldValue::as_str),
+                Some("s"),
+                "String field should be returned"
+            );
         }
 
         #[test]
@@ -952,13 +981,19 @@ mod tests {
         #[test]
         fn get_returns_none_for_missing_field() {
             let fm = fixtures::frontmatter_with_scalar_values();
-            assert!(fm.get("missing").is_none());
+            assert!(
+                fm.get("missing").is_none(),
+                "Missing field should return None"
+            );
         }
 
         #[test]
         fn get_returns_none_for_type_mismatch() {
             let fm = fixtures::frontmatter_with_scalar_values();
-            assert!(fm.get("n").and_then(FieldValue::as_bool).is_none());
+            assert!(
+                fm.get("n").and_then(FieldValue::as_bool).is_none(),
+                "Type mismatch should return None"
+            );
         }
     }
 
