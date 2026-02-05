@@ -67,21 +67,43 @@ impl ConfigUpdated {
 mod tests {
     use super::*;
 
-    #[test]
-    fn config_updated_event_is_deserializable() {
-        // GIVEN: JSON for a configuration updated event
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test fixture uses expect for deterministic setup. Failure \
+                  indicates invalid test data. Expect is idiomatic in setup."
+    )]
+    fn deserialized_event() -> ConfigUpdated {
         let json = r#"{"source":"vault","timestamp":1234567890}"#;
+        serde_json::from_str(json)
+            .expect("ConfigUpdated should deserialize successfully")
+    }
 
-        // WHEN: deserializing into ConfigUpdated
-        let result: Result<ConfigUpdated, _> = serde_json::from_str(json);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test fixture uses expect for deterministic setup. Failure \
+                  indicates invalid test data. Expect is idiomatic in setup."
+    )]
+    fn serialized_event() -> String {
+        let event = ConfigUpdated {
+            source: "vault".to_owned(),
+            timestamp: 1_234_567_890,
+        };
+        serde_json::to_string(&event)
+            .expect("ConfigUpdated should serialize successfully")
+    }
 
-        // THEN: deserialization succeeds and preserves fields
-        assert!(result.is_ok(), "should deserialize successfully");
+    #[test]
+    fn config_updated_event_deserializes_timestamp() {
+        let event = deserialized_event();
 
-        if let Ok(event) = result {
-            assert_eq!(event.timestamp, 1_234_567_890);
-            assert_eq!(event.source, "vault");
-        }
+        assert_eq!(event.timestamp, 1_234_567_890);
+    }
+
+    #[test]
+    fn config_updated_event_deserializes_source() {
+        let event = deserialized_event();
+
+        assert_eq!(event.source, "vault");
     }
 
     #[test]
@@ -96,27 +118,19 @@ mod tests {
     }
 
     #[test]
-    fn config_updated_event_is_serializable() {
-        // GIVEN: a configuration updated event
-        let event = ConfigUpdated {
-            source: "vault".to_owned(),
-            timestamp: 1_234_567_890,
-        };
+    fn config_updated_event_serializes_source() {
+        let json = serialized_event();
 
-        // WHEN: serializing to JSON
-        let result = serde_json::to_string(&event);
+        assert!(json.contains("vault"), "JSON should contain vault_path field");
+    }
 
-        // THEN: serialization succeeds and includes expected fields
-        assert!(result.is_ok(), "should serialize successfully");
-        if let Ok(json) = result {
-            assert!(
-                json.contains("vault"),
-                "JSON should contain vault_path field"
-            );
-            assert!(
-                json.contains("1234567890"),
-                "JSON should contain timestamp value"
-            );
-        }
+    #[test]
+    fn config_updated_event_serializes_timestamp() {
+        let json = serialized_event();
+
+        assert!(
+            json.contains("1234567890"),
+            "JSON should contain timestamp value"
+        );
     }
 }
