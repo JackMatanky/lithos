@@ -17,11 +17,11 @@ tags: [note, frontmatter, schema, validation, ergonomics]
 
 The note bounded context supports YAML frontmatter (Obsidian-compatible) as a dynamic metadata container.
 
-The module `lithos-core/src/note/frontmatter.rs` provides:
+This component should provide:
 
 - `FieldValue`: a dynamically-typed value enum (mirrors `serde_json::Value` shape) with inspection helpers (`is_*`, `as_*`).
-- `Frontmatter`: a `HashMap<String, FieldValue>` wrapper with convenience accessors (`get`, typed getters, and configured-key helpers like `title`, `file_class`, `aliases`).
-- `FromFieldValue`: a conversion trait enabling `Frontmatter::get_as<T>() -> Option<T>`.
+- `Frontmatter`: a `HashMap<String, FieldValue>` wrapper with convenience accessors (`get`, strict typed getters like `try_get`/`try_get_ref`, and configured-key helpers like `title`, `file_class`, `aliases`).
+- `FromFieldValue` / `FromFieldValueRef`: local conversion traits used by strict accessors (kept local to avoid orphan rules).
 
 Integration points:
 
@@ -29,12 +29,12 @@ Integration points:
 - Configuration defines which keys represent special fields (title, aliases, file_class, etc.) via `crate::config::types::Frontmatter` and aggregated config.
 - A domain event `FrontmatterValidated` exists to represent app-layer schema validation having occurred.
 
-The current API is usable and well-documented, but it has a few design tensions that show up in production usage:
+The design must address a few tensions that show up in production usage:
 
-- **Error transparency**: `get_as`/typed accessors return `Option` which loses “why” (missing vs wrong type vs partially invalid array).
-- **Strict vs lenient conversions**: e.g., `Vec<String>` conversion filters non-string elements (lenient), which is convenient but can hide data-quality issues.
+- **Error transparency**: optional getters lose “why” (missing vs wrong type vs partially invalid array). The strict accessors must return `Result<_, FrontmatterError>`.
+- **Strict vs lenient conversions**: strict extraction should fail loudly for schema-driven pipelines, but user-facing flows may still want lenient behavior (e.g., string arrays with mixed types).
 - **Allocation signaling**: some accessors return owned values (`String`, `Vec<String>`) without making allocation explicit in naming.
-- **Construction invariants**: `Frontmatter::new` returns `Result` but currently never errors; this invites callers to assume validation exists when it does not.
+- **Construction invariants**: constructor/validation responsibilities must be explicit so callers don’t assume invariants that aren’t enforced.
 
 This spec proposes an idiomatic Rust alignment that preserves the ergonomic “dynamic value” model while making strictness and allocations explicit.
 
@@ -43,7 +43,7 @@ This spec proposes an idiomatic Rust alignment that preserves the ergonomic “d
 **Goals**
 
 - Preserve the dynamic frontmatter model while improving idiomatic Rust ergonomics:
-  - Prefer standard conversion traits (`TryFrom`/`TryInto`) for fallible conversions.
+  - Keep strict, typed access with structured errors.
   - Keep “borrowed view” getters allocation-free where possible.
 - Make strict vs lenient behavior explicit:
   - Keep lenient helpers where they are intentionally user-friendly.
@@ -90,7 +90,7 @@ if value.is_string() {
 
 2) **Known type (schema-driven extraction)**
 
-Today:
+Today (strict extraction with errors):
 
 ```rust
 use lithos_core::note::frontmatter::{Frontmatter, FieldValue};
@@ -100,7 +100,7 @@ let mut fields = HashMap::new();
 fields.insert("priority".to_owned(), FieldValue::Number(5.0));
 let fm = Frontmatter::new(fields).unwrap();
 
-let priority: Option<f64> = fm.get_as("priority");
+let priority: Option<f64> = fm.try_get("priority").unwrap();
 assert_eq!(priority, Some(5.0));
 ```
 
@@ -121,8 +121,8 @@ let fm = Frontmatter::new(fields).unwrap();
 let aliases = fm.try_get_string_vec_strict("aliases");
 assert!(matches!(aliases, Err(FrontmatterError::ArrayElementTypeMismatch { .. })));
 
-// Lenient: keeps today’s behavior.
-let aliases_lenient = fm.get_string_array("aliases");
+// Lenient: tolerant conversion (drops non-strings).
+let aliases_lenient = fm.get("aliases").and_then(FieldValue::as_string_array_lossy);
 assert_eq!(aliases_lenient, Some(vec!["ok".to_owned()]));
 ```
 
@@ -147,8 +147,8 @@ let config = Config::build(Some(&global), "/vault", vault).unwrap();
 let title = fm.title(&config);
 assert_eq!(title, "My Note");
 
-// Option B (new): borrow
-let title_ref = fm.title_str(&config);
+// Option B: borrow (generic borrowed accessor)
+let title_ref: Option<&str> = fm.try_get_ref(&config.frontmatter.title_key).unwrap();
 assert_eq!(title_ref, Some("My Note"));
 ```
 
@@ -194,21 +194,16 @@ The target strategy is the documented rkyv approach for recursive types:
 
 If this strategy ever becomes insufficient (e.g., due to format evolution needs), fall back to a separate-frontmatter storage format as an explicit migration (see Alternatives).
 
-Planned improvements (idiomatic conversions):
+Conversion design note:
 
-- Implement `TryFrom<&FieldValue>` for core extractions where it’s unambiguous:
-  - `bool`, `f64`, `chrono::DateTime<Utc>`
-- Keep `as_str(&self) -> Option<&str>` for borrowed string access.
-
-Note: `TryFrom<&FieldValue> for String` should remain possible (allocating), but we should be careful to make allocation explicit at call sites and in API naming.
+This module uses *local* traits (`FromFieldValue` / `FromFieldValueRef`) instead of `TryFrom<&FieldValue>` to avoid Rust's orphan rules.
 
 #### Component: `Frontmatter`
 
 - **Responsibility**: provide safe/ergonomic access to frontmatter fields.
 - **Public Interface (existing)**:
   - `get(&self, key: &str) -> Option<&FieldValue>`
-  - `get_as<T: FromFieldValue>(&self, key: &str) -> Option<T>`
-  - `get_bool/get_number/get_date/get_str/get_string_array`
+  - Strict accessors: `try_get`, `try_get_required`, `try_get_ref`, `try_get_required_ref`
   - Config-driven helpers: `title`, `file_class`, `aliases`
 - **State/Invariants**:
   - Map keys are case-sensitive.
@@ -219,11 +214,12 @@ Planned improvements (strict APIs + borrowing):
 - Add strict accessors that preserve error context:
   - `try_get<T>(&self, key: &str) -> Result<Option<T>, FrontmatterError>` where `T: TryFrom<&FieldValue, Error = FrontmatterError>` (or a dedicated conversion error type)
   - `try_get_required<T>(&self, key: &str) -> Result<T, FrontmatterError>`
-- Add borrowing variants for configured keys:
-  - `title_str(&self, config: &Config) -> Option<&str>`
-  - `file_class_str(&self, config: &Config) -> Option<&str>`
 
-#### Component: `FrontmatterError` (new)
+Borrowing stance:
+
+Prefer *generic* borrowed extraction via `try_get_ref` + `FromFieldValueRef` over adding many specialized `*_str` helpers. This keeps the API surface smaller and makes “borrow vs allocate” an explicit call-site choice.
+
+#### Component: `FrontmatterError`
 
 - **Responsibility**: communicate extraction and validation failures precisely.
 - **Public Interface**:
@@ -316,7 +312,12 @@ Key policy decisions to make explicit:
 2) **Typed conversion strategy**
 
 - Keep today’s `FromFieldValue` as a convenience trait for ergonomic `Option`-based extraction.
-- Introduce `TryFrom<&FieldValue>` for strict conversions so the standard library idioms apply.
+- Keep strict conversions on the local traits (`FromFieldValue` / `FromFieldValueRef`).
+
+Rationale:
+
+- Implementing `TryFrom<&FieldValue>` for common Rust types (`bool`, `f64`, `String`, `Vec<String>`, etc.) is blocked by Rust’s orphan rules.
+- Even if it were possible, value-level conversions still need `Frontmatter` to attach **key context** (`key`, array index) for actionable errors.
 
 3) **Construction validation**
 
@@ -345,7 +346,7 @@ This module can sit on a hot path (read per-note, potentially across large vault
 Concrete application to this module:
 
 - Keep `FieldValue::as_str(&self) -> Option<&str>` as the primary “cheap path”.
-- Add `Frontmatter::title_str(&self, config: &Config) -> Option<&str>` and `Frontmatter::file_class_str(&self, config: &Config) -> Option<&str>` so common fields don’t require `String` allocation.
+- Prefer `Frontmatter::try_get_ref::<&str>(key)` for allocation-free access (including configured keys).
 - Prefer exposing “structural borrows” so callers can iterate without allocations:
   - `Frontmatter::get_array(&self, key: &str) -> Option<&[FieldValue]>`
   - `Frontmatter::get_object(&self, key: &str) -> Option<&std::collections::HashMap<String, FieldValue>>`
@@ -361,15 +362,42 @@ Strict extraction should still avoid cloning:
 
 ### 3.7 Rust-Idiomatic Conversion Strategy (Research Hardened)
 
-This spec’s conversion approach follows standard library patterns:
+This module cannot directly use `TryFrom<&FieldValue>` for `bool`, `f64`, `String`, etc. due to Rust’s orphan rules.
 
-- Use `TryFrom<&FieldValue>` / `TryInto<T>` for fallible, typed conversions.
-- Keep `Option`-returning accessors for “presence checks” and deliberately lenient UX.
+Preferred strategy:
+
+- Keep the local traits (`FromFieldValue` / `FromFieldValueRef`) for strict typed extraction.
+- Keep `Option`-returning helpers for deliberately lenient UX.
 
 Key nuance: `TryFrom<&FieldValue>` conversions are value-level and cannot naturally include the map key. Therefore:
 
 - Conversions should report value mismatch (`expected` vs `actual`) and any local detail (like array index).
 - `Frontmatter` strict accessors should attach key context (wrapping the value-level error with `{ key, .. }`).
+
+### 3.8 Modularization Plan (Code Organization)
+
+Frontmatter is already growing into a large module (recursive rkyv derives, conversions, accessors, and tests). Plan for modularization early.
+
+Design stance (Rust-idiomatic + note-context-aware): avoid “nesting for its own sake”.
+
+Preferred (near-term):
+
+- Keep a single public module file: `lithos-core/src/note/frontmatter.rs`.
+- Keep `FrontmatterError` owned by the note context in `lithos-core/src/note/error.rs`.
+- Keep configured-key helpers (`title`, `file_class`, `aliases`) colocated with `Frontmatter` (they are note concerns and depend only on cross-cutting config).
+
+If/when the file becomes too large, split **flat** before splitting **deep**:
+
+- Option A (flat files, no directory nesting):
+  - `lithos-core/src/note/frontmatter.rs` (public API + `Frontmatter`)
+  - `lithos-core/src/note/frontmatter_value.rs` (`FieldValue` + inspection)
+  - `lithos-core/src/note/frontmatter_convert.rs` (local conversion traits + impls)
+
+- Option B (one-level directory) only if Option A becomes awkward:
+  - `lithos-core/src/note/frontmatter/mod.rs` re-exporting a small set of items
+  - `value.rs`, `convert.rs` as internal modules
+
+Both options keep module depth shallow and respect the existing note context layout (aggregate/error/events/task/etc.).
 
 ## 4. Alternatives & Decisions (The "Divergence")
 
@@ -386,10 +414,14 @@ Key nuance: `TryFrom<&FieldValue>` conversions are value-level and cannot natura
 #### Decision: Add strict extraction APIs using `TryFrom`
 
 - **Context**: schema-driven flows need actionable errors.
-- **Choice**: introduce strict helpers returning `Result` with a typed error.
+- **Choice**: keep strict helpers returning `Result` with a typed error, implemented via local conversion traits.
 - **Alternatives Considered**:
   - _Only `Option` everywhere_: too little debugging signal.
   - _Panics on mismatch_: prohibited by no-panic policy.
+
+Implementation note:
+
+- Use `FromFieldValue` / `FromFieldValueRef` (local traits) rather than `TryFrom` to avoid orphan-rule dead-ends.
 
 #### Decision: Preserve lenient helpers for Obsidian compatibility
 
@@ -456,8 +488,8 @@ Frontmatter is pure; observability is primarily via surfaced errors.
 ### 5.2 Migration Strategy
 
 - **Phase 1 (additive)**:
-  - Add strict APIs and `FrontmatterError`.
-  - Keep existing methods (`get_as`, `get_string_array`, `title`, etc.) unchanged.
+  - Keep strict APIs and `FrontmatterError`.
+  - Keep allocating helpers (`title`, `file_class`, `aliases`) and use `try_get_ref` for allocation-free access where needed.
 - **Phase 2 (optional cleanup)**:
   - Consider changing `Frontmatter::new` to be infallible and introducing explicit `validate()`.
   - Consider renaming allocating helpers (or adding borrowed variants) to match allocation transparency guidelines.
@@ -473,7 +505,7 @@ Frontmatter is pure; observability is primarily via surfaced errors.
   - _Mitigation_: keep strict APIs additive; keep lenient ones for user-facing paths.
 
 - **Risk**: Allocation-heavy APIs cause performance regressions when called per-note at scale.
-  - _Mitigation_: add borrowed variants (e.g., `title_str`), keep allocating methods but make allocation intent clear.
+  - _Mitigation_: prefer `try_get_ref` (borrowed extraction) and keep allocating methods for convenience with clear intent.
 
 - **Risk**: Introducing a new error type proliferates conversions and boilerplate.
   - _Mitigation_: keep the error small and focused; provide helper constructors and `Display` messages.
@@ -494,3 +526,20 @@ Frontmatter is pure; observability is primarily via surfaced errors.
 - `chrono` (DateTime types, parsing/formatting behavior): https://docs.rs/chrono/latest/chrono/
 - `rkyv` (zero-copy + validation, persisted-format constraints): https://docs.rs/rkyv/latest/rkyv/
 - Serde enum representations (background on tagged vs untagged tradeoffs): https://serde.rs/enum-representations.html
+
+## Appendix A: Current Implementation & Change List (Temporary)
+
+This appendix is intentionally implementation-specific. Remove it once the code matches the design.
+
+Current implementation snapshot:
+
+- Implementation is in `lithos-core/src/note/frontmatter.rs` (single file).
+- `Frontmatter::new` returns `Result<Self, NoteError>` but is currently infallible.
+- Strict accessors already exist: `try_get`, `try_get_required`, `try_get_ref`, `try_get_required_ref`.
+- Conversions are implemented via local traits `FromFieldValue` / `FromFieldValueRef`.
+- Config-driven helpers exist and allocate (`title`, `file_class`, `aliases`).
+
+Change list (if/when needed):
+
+- If we decide the constructor should be infallible, change `Frontmatter::new` to return `Self` and add an explicit `validate()` step.
+- If the module grows too large, apply the “flat split before deep split” modularization plan in section 3.8.

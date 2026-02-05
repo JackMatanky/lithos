@@ -88,6 +88,27 @@ Guidance:
 - Treat any change to archived layout, rkyv attributes, or format-control feature set as a migration decision.
 - Introduce projections for hot queries rather than forcing the primary persisted schema blob to satisfy every read shape.
 
+### 1.5 Raw → Domain boundary (designing to avoid `Stored*` models)
+
+The primary lever for avoiding `StoredSchema`/`StoredPropertyBank` is *not* introducing a storage DTO early; it is designing the **validated domain types** to be both:
+
+- ergonomic for business logic, and
+- reasonably rkyv-friendly for persistence and archived reads.
+
+Recommended boundary discipline:
+
+1) **Raw (wire/input)** types (`RawSchema`, `RawProperty*`) stay serde-friendly and error-reporting friendly.
+  - Use `String`, `Option`, and “tolerant shapes” to capture good diagnostics.
+  - Keep parsing/format concerns (like `$ref` syntax) in adapters or raw parsing helpers.
+
+2) **Domain** types (`Schema`, `Property`, `PropertySpec`, `SchemaName`, `PropertyName`, ids/newtypes) enforce invariants and choose lean representations.
+  - Prefer `Box<str>` identifiers and private fields.
+  - Prefer semantic enums over boolean flags.
+  - Avoid domain shapes that are known to create persistence friction (e.g., high-churn `HashMap<String, ...>` in the persisted aggregate) unless there is a demonstrated need.
+
+3) **Persistence** stores domain types directly by default.
+  - If the domain shape later proves inefficient (profiling/benchmarks), introduce `Stored*` types as an explicit optimization/migration decision.
+
 ## 2. Guide-Level Explanation (The "What")
 
 ### 2.1 User/Dev Experience

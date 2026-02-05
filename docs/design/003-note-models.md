@@ -82,6 +82,24 @@ Practical guidance (subject to revisiting as the codebase evolves):
 - **Use rkyv attributes intentionally**. For recursive/complex shapes, prefer the documented approaches (e.g. `#[rkyv(omit_bounds)]` on recursive fields) to avoid trait-solver blowups.
 - **Avoid “accidental persistence dependencies”**. Storage keys, projection encodings, and index tables should remain storage-layer concerns, not domain model concerns.
 
+### 1.5 Raw → Domain boundary (critical for avoiding `Stored*` models)
+
+Lithos has *two* separate “raw” concepts in the note world, and keeping them explicit reduces long-term pressure to introduce `StoredNote` types:
+
+- **Raw file inputs (serde / parsing)**: adapter-level parse outputs that may be incomplete or invalid.
+  - Examples: raw YAML frontmatter key/value trees, parser-emitted strings and offsets, unchecked wiki-link tokens.
+  - These types may use `String`, `Vec<String>`, and optional fields for better error messages.
+
+- **Domain note model (validated, rkyv-friendly)**: the note context’s runtime types (`Note`, `Link`, `Tag`, `Task`, `Heading`, `Frontmatter`, etc.).
+  - Invariants are enforced at construction.
+  - Prefer lean owned strings (`Box<str>`) and explicit offset newtypes.
+  - Avoid domain shapes that are commonly awkward for zero-copy persistence (e.g., deep `HashMap<String, ...>` in hot aggregates) unless the ergonomics win is clear.
+
+Design rule:
+
+- Perform conversions **early** (at the adapter→domain boundary) so that persisted values can store domain types directly most of the time.
+- Reserve `Stored*` types for proven cases where the *domain* shape is inefficient to persist/query (profiling-driven), not as the default.
+
 ## 2. Guide-Level Explanation (The "What")
 
 ### 2.1 User/Dev Experience

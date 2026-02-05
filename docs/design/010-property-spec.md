@@ -25,7 +25,7 @@ The schema subsystem defines properties with type-specific validation rules.
 
 The module [lithos-core/src/schema/property_spec.rs](../../lithos-core/src/schema/property_spec.rs) is the center of that validation:
 
-- It defines the schema representation for per-property constraints (the *persisted* `*SpecDef` types).
+- It defines the *validated* `*Spec` types that carry invariants and are used for runtime validation.
 - It defines the *validated* `*Spec` types that carry invariants and are used for runtime validation.
 - It validates runtime metadata values (`validate`) using `serde_json::Value` as a universal IR.
 
@@ -33,40 +33,32 @@ Primary consumers:
 
 - [lithos-core/src/schema/property.rs](../../lithos-core/src/schema/property.rs): `Property::validate()` compiles persisted `PropertySpecDef` into validated `PropertySpec`. `Property::validate_value()` calls `spec.validate()` (scalar) or loops and validates array items.
 
-Current implementation is functional, but has several correctness and clarity gaps that matter in production.
+Primary integration point (design intent):
 
-#### Observed issues / pain points
+- Raw schema inputs (Serde) should carry a raw spec type (see `RawPropertySpec` below), and schema/property construction compiles it into the validated `PropertySpec`.
 
-1) **FileSpec directory restriction is a string prefix check**
+Property specification validation is security- and correctness-sensitive. This design specifies behavior that must be true regardless of the implementation details.
 
-- Current behavior: if `directory = Some("notes/")`, validation uses `value.starts_with(dir)`.
-- This is not equivalent to *directory containment by path components*.
-- It is vulnerable to prefix confusion (e.g., `notes_evil/...`), and it does not define a traversal policy (e.g., `../`).
+#### Observed issues / pain points (design requirements)
 
-2) **NumberSpec does not explicitly reject non-finite values**
+The design must explicitly cover and enforce the following:
 
-- `f64` has `NaN` and ±∞; comparison operators and modulo arithmetic behave in ways that can silently bypass constraints.
-- If metadata comes from sources beyond strict JSON (or via conversions), non-finite values can show up.
+1) **FileSpec directory restriction uses path component semantics + traversal policy**
+- Reject empty paths, `.` / `..` components, absolute paths, and platform prefixes.
+- Apply containment checks using `Path` component semantics (not naive string prefix checks).
 
-3) **Regex caching compiles under a global mutex, and clones regex objects**
+2) **NumberSpec rejects non-finite values**
+- Reject `NaN`, `+∞`, `-∞` for both spec bounds and runtime values.
 
-- Current cache: `OnceLock<Mutex<HashMap<String, Regex>>>`.
-- It holds the mutex while compiling on cache miss (slow path).
-- It returns `Regex` by value, which clones the compiled regex.
+3) **Regex caching compiles without holding locks and shares compiled regexes**
+- Avoid compiling regexes while holding global locks.
+- Reuse compiled regexes across validations.
 
-4) **Hot-path allocations in PropertySpec::validate**
+4) **Validation avoids avoidable string allocations**
+- Prefer borrowed `&str` views from `serde_json::Value` on hot paths.
 
-- Date/File/String validation converts `&str` into owned `String` (`to_owned`) due to `PropertySpecTrait` using `type Value = String`.
-- This introduces per-validation allocations for common paths.
-
-Related (smaller but still hot-path):
-
-- `StringSpec::validate_enum` currently allocates (`value.to_owned()`) just to call `Vec<String>::contains`.
-
-5) **String length semantics are implicit**
-
-- `StringSpec::validate_length` uses `value.len()` (UTF-8 bytes), but the schema’s intent may be “characters”.
-- This is a correctness/UX issue if constraints are configured with human expectations.
+5) **String length semantics are explicit**
+- Specify whether length is measured in UTF-8 bytes or Unicode scalar values; this design standardizes that choice.
 
 ### 1.2 Goals & Non-Goals
 
@@ -115,7 +107,7 @@ This is how schema authors define property specs and how the system validates va
 
 #### Defining specs (Serde format)
 
-`PropertySpecDef` is internally tagged with `type` and lowercased variants.
+`RawPropertySpec` is internally tagged with `type` and lowercased variants.
 
 Example (YAML-like):
 
@@ -138,12 +130,12 @@ Example (YAML-like):
 
 #### Validating a spec
 
-Persisted specs (`*SpecDef`) are validated/compiled when building `Property` (and by extension when building schema definitions). This produces a validated `PropertySpec` that is safe to use on hot paths.
+Raw specs (`RawPropertySpec`) are validated/compiled when building `Property` (and by extension when building schema definitions). This produces a validated `PropertySpec` that is safe to use on hot paths.
 
 ```rust
-use lithos_core::schema::property_spec::{NumberSpecDef, PropertySpecDef};
+use lithos_core::schema::raw::{NumberSpecDef, RawPropertySpec};
 
-let def = PropertySpecDef::Number(NumberSpecDef {
+let def = RawPropertySpec::Number(NumberSpecDef {
   min: Some(0.0),
   max: Some(10.0),
   step: Some(0.5),
@@ -157,9 +149,10 @@ let spec = def.try_into_validated()?;
 Metadata values are validated using `serde_json::Value`.
 
 ```rust
-use lithos_core::schema::property_spec::{PropertySpec, PropertySpecDef, StringSpecDef};
+use lithos_core::schema::property_spec::PropertySpec;
+use lithos_core::schema::raw::{RawPropertySpec, StringSpecDef};
 
-let def = PropertySpecDef::String(StringSpecDef {
+let def = RawPropertySpec::String(StringSpecDef {
   min_length: Some(2),
   max_length: Some(8),
   pattern: Some("^[a-z]+$".to_owned()),
@@ -174,12 +167,38 @@ Array validation is handled one layer up, by `Property::validate_value`.
 
 ### 2.2 Mental Model
 
-- A `PropertySpecDef` is the *persisted contract definition* (deserialize/serialize).
+- A `RawPropertySpec` is the *raw spec input shape* (Serde-friendly) used by raw schema inputs.
 - A `PropertySpec` is the *validated contract* (invariants guaranteed).
 - `try_into_validated()` checks that the contract is coherent and produces the validated form.
 - `validate(value)` checks that a runtime value conforms.
 
-The contract is defined at schema time; validation happens at ingestion/query time.
+Design intent:
+
+- `RawPropertySpec` exists to validate/compile adapter input before `PropertySpec` invariants are relied upon.
+- `RawPropertySpec` is not intended as a hot-path runtime validator.
+
+The contract is defined at schema-build time (from raw schema inputs); validation happens at ingestion/query time.
+
+#### Naming note: `RawPropertySpec` vs `PropertySpec`
+
+`Raw*` naming is reserved for adapter-facing schema inputs (schema files being loaded via Serde). Validated spec types (`PropertySpec`) are domain/runtime types with invariants.
+
+Design stance:
+
+1) Define a raw spec type `RawPropertySpec` in `schema::raw` and use it from raw schema inputs (`RawPropertyInline.spec`).
+2) Compile/validate that raw spec into the validated `PropertySpec` during schema/property construction.
+
+### 2.3 Modularization Plan (Code Organization)
+
+To keep the schema context maintainable, organize the code so definition types, validated types, and shared helpers are separated:
+
+- `lithos-core/src/schema/property_spec/mod.rs`: public re-exports + module docs.
+- `schema/raw.rs`: `RawPropertySpec` and its per-variant `*SpecDef` structs (Serde-only input types).
+- `property_spec/validated.rs`: `PropertySpec` and `*Spec` structs + `validate`.
+- `property_spec/path.rs`: `VaultRelPath` + `validate_vault_rel_path`.
+- `property_spec/regex_cache.rs`: `get_cached_regex` and cache types.
+- `property_spec/invariants.rs`: `Bounds`, `FiniteF64`, `Step` and related errors.
+- `property_spec/tests.rs` (or keep per-module `#[cfg(test)]`): keep tests close to the relevant module.
 
 ## 3. Detailed Design (The "How")
 
@@ -187,9 +206,9 @@ The contract is defined at schema time; validation happens at ingestion/query ti
 
 `PropertySpec` is a leaf validator called by the schema domain model.
 
-`PropertySpecDef` is the persisted definition type, compiled at schema-build time into the validated `PropertySpec`.
+`RawPropertySpec` is the raw input spec type, compiled at schema-build time into the validated `PropertySpec`.
 
-- `Property::validate()` → compile persisted `PropertySpecDef` into validated `PropertySpec`
+- `Property::validate()` → compile raw `RawPropertySpec` into validated `PropertySpec`
 - `Property::validate_value()` → `PropertySpec::validate()` (or loop for arrays)
 
 `PropertySpec` itself depends on:
@@ -213,9 +232,11 @@ The contract is defined at schema time; validation happens at ingestion/query ti
 
 Spec coherence is guaranteed by construction (produced via compilation of `PropertySpecDef`).
 
-#### Component: PropertySpecDef
+#### Component: RawPropertySpec
 
-- **Responsibility**: Persisted schema representation (Serde) for per-property constraints.
+- **Responsibility**: Raw schema input representation (Serde) for per-property constraints.
+  - Used directly by raw property inputs (`RawPropertyInline.spec`).
+  - Compiled into the validated `PropertySpec` before runtime validation begins.
 - **Public Interface**:
   - `try_into_validated(self) -> Result<PropertySpec, SchemaError>`
     - _Behavior_: validates internal coherence and constructs the validated form.
@@ -312,12 +333,28 @@ sequenceDiagram
 
 Naming convention:
 
-- `*SpecDef` = persisted (Serde) schema definition type
+- `Raw*` = raw schema input type (Serde)
 - `*Spec` = validated runtime contract type (invariants guaranteed)
 
-#### Persisted spec representation (source-of-truth)
+#### Raw spec representation (schema inputs)
 
-These types are persisted via Serde (and are the schema’s source-of-truth representation):
+These types are the Serde-facing input shapes used in schema inputs. Their key role is: **validate/compile into `*Spec` before use**.
+
+## Appendix C: Current Implementation & Change List (Temporary)
+
+This appendix is intentionally implementation-specific. Remove it once the code matches the design.
+
+Current implementation snapshot:
+
+- Raw schema inputs are defined in `schema::raw`.
+- `RawPropertyInline` carries `spec: PropertySpecDef` (current code).
+- The main implementation lives in a single file: `lithos-core/src/schema/property_spec.rs`.
+
+Change list (if/when needed):
+
+- Rename/move `PropertySpecDef` → `RawPropertySpec` and relocate it into `schema::raw`.
+- Update `RawPropertyInline.spec` to use `RawPropertySpec`.
+- Update property/schema construction to compile `RawPropertySpec` → `PropertySpec`.
 
 - `PropertySpecDef` (internally tagged by `type`)
 - `BoolSpecDef`, `DateSpecDef`, `FileSpecDef`, `NumberSpecDef`, `StringSpecDef`

@@ -49,7 +49,9 @@ Terminology note:
 
 Clarification:
 
-- `SettingValue` is intended to be **config-specific** in Lithos (even if other contexts have similar types). It should not be treated as a shared cross-context primitive.
+- `SettingValue` is **owned by the config context** (it is part of the config domain model and persisted config surface).
+- Other contexts may *consume* `SettingValue` **only when interpreting config-defined dynamic values** (e.g., config-driven task metadata values), but should not treat it as a universal cross-context primitive.
+- If a bounded context needs its own dynamic value model for non-config concerns, prefer defining a context-local type (e.g., note frontmatter’s `FieldValue`) and converting at the boundary.
 
 Serialization boundary note (serde vs rkyv):
 

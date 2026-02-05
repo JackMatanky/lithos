@@ -20,7 +20,7 @@ Related specs:
 
 ### 1.1 Context & Background
 
-**Current State**: The existing `Task` entity ([crates/domain/src/note/task.rs](../../crates/domain/src/note/task.rs)) is too simplistic for real-world task management workflows:
+**Current State**: The existing task representation is too simplistic for real-world task management workflows:
 
 - Only tracks checkbox status (`[x]`, `[ ]`, `[-]`)
 - No inline metadata support (`[key:: value]` fields)
@@ -75,13 +75,17 @@ Related specs:
 
 ### 1.3 Constraints (The Hard Limits)
 
-**Hexagonal Architecture**:
-- Domain layer (`crates/domain/`) MUST have zero external dependencies
-- TaskConfig lives in domain, parser implementation in adapters
-- No pulldown-cmark types in domain entities
+**Architecture (current)**:
+- **Sync-first core**: all task parsing, promotion, and validation in `lithos-core` is synchronous.
+- **Context boundaries**:
+    - Task/list domain types live in the **note context** (they are note content semantics + structure).
+    - Task configuration lives in the **config context** (vault-config driven).
+    - Template exposure is owned by the **template context** + CLI/app boundary.
+    - Note/schema/template contexts must not import each other; importing config is allowed (config is cross-cutting).
+- **No parser types in domain**: pulldown-cmark is adapter/infrastructure; domain types store only validated values (strings, offsets, ids).
 
 **Zero-Copy Performance**:
-- Task metadata stored as `SettingValue` (reuses existing config enum)
+- Task metadata values use `SettingValue` (**config-owned**) because the task system is explicitly config-defined (field types, enums, bounds).
 - Parser must use `&str` slices, not allocate for every metadata field
 - Target: Parse 1000 tasks in <100ms (inline with Epic 10 indexing goals)
 
@@ -96,8 +100,8 @@ Related specs:
 - Task IDs must be UUID v7 for stable identity across file renames
 
 **Epic Integration**:
-- Must integrate with Epic 11 QueryService (tasks indexed in Redb)
-- Must integrate with Epic 12 template system (tasks accessible in MiniJinja context)
+- Must integrate with the core query surfaces (Epic 11 direction): tasks are indexed in redb and retrievable via note/query read models.
+- Must integrate with template rendering (Epic 12 direction): tasks are accessible via the template context.
 
 **No External State**:
 - Task status changes tracked via file modifications only
@@ -293,15 +297,16 @@ lithos tasks due --when today
 **Creating a Task from Config**
 
 ```rust
-use lithos_domain::{Task, CheckboxStatus, TaskConfig};
+use lithos_core::note::task::{Task, CheckboxStatus};
+use lithos_core::config::types::TaskConfig;
 
 // Config loaded from vault
-let config: TaskConfig = vault.config().task;
+let config: TaskConfig = vault_config.task;
 
 // Parse task from markdown checkbox
 let raw_text = "#task Implement feature [priority:: 1] [project:: lithos]";
 let task = Task::from_checkbox(
-    raw_text.to_owned(),
+    raw_text,
     CheckboxStatus::Incomplete,
     42, // position in document
     &config,
@@ -316,34 +321,16 @@ assert_eq!(task.metadata.get_string("project_name"), Some("lithos"));
 **Query Service Integration (Epic 11)**
 
 ```rust
-use lithos_app::QueryService;
+This spec does not prescribe an async application-layer `QueryService` API.
 
-// In application layer
-let query_service = QueryService::new(cache_reader, event_bus);
-
-// Find tasks by metadata
-let high_priority = query_service
-    .find_tasks_by_field("priority", &SettingValue::Number(1.0))
-    .await?;
-
-// Find overdue tasks
-let overdue = query_service.find_overdue_tasks().await?;
-
-// Complex query
-let filter = TaskFilter {
-    status: Some(CheckboxStatus::Incomplete),
-    field_filters: vec![
-        ("project_name", SettingValue::String("lithos".into())),
-    ],
-    due_before: Some(chrono::Utc::now()),
-};
-let results = query_service.find_tasks(filter).await?;
+The core requirement is that task projections/indexes support fast lookups by configured fields.
+Queries remain sync-first in `lithos-core`; any async orchestration belongs at the CLI/app edge.
 ```
 
 **List Entity (Structural Model)**
 
 ```rust
-use lithos_domain::{List, ListType, ListItem};
+use lithos_core::note::list::{List, ListType, ListItem};
 
 // Parser creates List entities for document structure
 let list = List {
@@ -398,6 +385,12 @@ note.add_task(task); // Promoted from checkbox
 │ - Temporal markers (due, reminder, completed)               │
 │ - Stored as: HashMap<String, SettingValue>                  │
 └─────────────────────────────────────────────────────────────┘
+
+Raw → Domain conversion (critical to avoid `Stored*` types):
+
+- **Raw (adapter/parser)**: extract inline metadata as `&str` slices and map symbols/keywords using `TaskConfig`.
+- **Domain (note context)**: store validated outputs in task/list types using lean owned strings (`Box<str>`) and config-owned `SettingValue` for typed metadata.
+- **Persistence (db adapters)**: store domain types directly by default; only introduce `StoredTask` / `StoredList` if profiling shows the domain shape is inefficient for rkyv/redb.
 ```
 
 **Key Concepts**:
@@ -528,7 +521,7 @@ graph LR
 #### Core Domain Entities
 
 ```rust
-// crates/domain/src/note/list.rs
+// lithos-core/src/note/list.rs
 
 /// Represents a markdown list (ordered, unordered, or checkbox).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -573,7 +566,7 @@ pub enum ListItem {
 ```
 
 ```rust
-// crates/domain/src/note/task.rs
+// lithos-core/src/note/task.rs
 
 /// Rich task entity with user-configured metadata.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -593,7 +586,7 @@ pub struct Task {
     metadata: TaskMetadata,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum CheckboxStatus {
     Complete,      // [x]
@@ -628,9 +621,9 @@ impl CheckboxStatus {
 ```
 
 ```rust
-// crates/domain/src/note/task.rs (continued)
+// lithos-core/src/note/task.rs (continued)
 
-use crate::config::SettingValue;
+use crate::config::types::SettingValue;
 
 /// Task metadata using config-defined schema.
 ///
@@ -640,7 +633,7 @@ use crate::config::SettingValue;
 pub struct TaskMetadata {
     /// All fields (temporal + custom) as SettingValue
     /// Field names come from TaskConfig definitions
-    fields: HashMap<String, SettingValue>,
+    fields: HashMap<Box<str>, SettingValue>,
 }
 
 impl TaskMetadata {
@@ -674,14 +667,14 @@ impl TaskMetadata {
     }
 
     /// Check if task is overdue (requires config to find due_date field).
-    pub fn is_overdue(&self, config: &TaskConfig) -> bool {
+    pub fn is_overdue(&self, config: &TaskConfig, now: chrono::DateTime<chrono::Utc>) -> bool {
         let due_field = config.temporal.values()
             .find(|t| t.keyword == "due")
             .map(|t| &t.field);
 
         if let Some(field_name) = due_field {
             if let Some(due) = self.get_date(field_name) {
-                return due < chrono::Utc::now();
+                return due < now;
             }
         }
         false
@@ -692,7 +685,7 @@ impl TaskMetadata {
 #### Configuration Schema
 
 ```rust
-// crates/domain/src/config/types.rs (additions)
+// lithos-core/src/config/types.rs (additions)
 
 /// User-defined task metadata schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -703,13 +696,13 @@ pub struct TaskConfig {
     /// Promotion rules
     pub promotion: PromotionRules,
     /// Status symbol mappings (symbol → semantic name)
-    pub status: HashMap<String, String>,
+    pub status: HashMap<Box<str>, Box<str>>,
     /// Temporal marker definitions
-    pub temporal: HashMap<String, TemporalMarkerDef>,
+    pub temporal: HashMap<Box<str>, TemporalMarkerDef>,
     /// Custom metadata field definitions
-    pub metadata: HashMap<String, MetadataFieldDef>,
+    pub metadata: HashMap<Box<str>, MetadataFieldDef>,
     /// Indexed fields for query optimization
-    pub indexed_fields: Vec<String>,
+    pub indexed_fields: Vec<Box<str>>,
 }
 
 impl Default for TaskConfig {
@@ -734,7 +727,7 @@ impl Default for TaskConfig {
 #[non_exhaustive]
 pub struct PromotionRules {
     /// Tags that trigger task promotion
-    pub tags: Vec<String>,
+    pub tags: Vec<Box<str>>,
     /// Auto-promote checkboxes with any metadata
     pub auto_promote_with_metadata: bool,
 }
@@ -752,13 +745,13 @@ impl Default for PromotionRules {
 #[non_exhaustive]
 pub struct TemporalMarkerDef {
     /// Display emoji (e.g., "⏰")
-    pub emoji: String,
+    pub emoji: Box<str>,
     /// Inline metadata keyword (e.g., "reminder")
-    pub keyword: String,
+    pub keyword: Box<str>,
     /// Internal field name
-    pub field: String,
+    pub field: Box<str>,
     /// Date/time format string
-    pub format: String,
+    pub format: Box<str>,
     /// Type: "date", "time", "datetime"
     #[serde(rename = "type")]
     pub value_type: TemporalType,
@@ -776,9 +769,9 @@ pub enum TemporalType {
 #[non_exhaustive]
 pub struct MetadataFieldDef {
     /// Inline metadata keyword (e.g., "priority")
-    pub keyword: String,
+    pub keyword: Box<str>,
     /// Internal field name
-    pub field: String,
+    pub field: Box<str>,
     /// Data type
     #[serde(rename = "type")]
     pub value_type: MetadataType,
@@ -806,9 +799,9 @@ pub struct ValidationRules {
     /// Max value (for numbers)
     pub max: Option<f64>,
     /// Regex pattern (for strings)
-    pub pattern: Option<String>,
+    pub pattern: Option<Box<str>>,
     /// Unit label (e.g., "minutes")
-    pub unit: Option<String>,
+    pub unit: Option<Box<str>>,
 }
 ```
 
