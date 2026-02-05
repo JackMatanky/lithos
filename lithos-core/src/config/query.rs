@@ -101,6 +101,24 @@ mod tests {
     mod load {
         use super::*;
 
+        fn merged_config() -> Result<Config, String> {
+            let (_dir, db) = fixtures::test_db()?;
+
+            let cmd = command::Command::new(&db);
+            let mut global = Global::default();
+            global.filesystem.template.templates_dir =
+                "global_templates".to_owned();
+            cmd.save_global(&global).map_err(|e| e.to_string())?;
+
+            let mut vault = Vault::default();
+            vault.filesystem.template.templates_dir =
+                "vault_templates".to_owned();
+            cmd.save_vault(&vault).map_err(|e| e.to_string())?;
+
+            let qry = Query::new(&db);
+            qry.load().map_err(|e| e.to_string())
+        }
+
         #[test]
         fn load_global_returns_none_when_missing() -> Result<(), String> {
             let (_dir, db) = fixtures::test_db()?;
@@ -130,26 +148,19 @@ mod tests {
         }
 
         #[test]
-        fn load_merges_global_and_vault_config() -> Result<(), String> {
-            let (_dir, db) = fixtures::test_db()?;
-
-            let cmd = command::Command::new(&db);
-            let mut global = Global::default();
-            global.filesystem.template.templates_dir =
-                "global_templates".to_owned();
-            cmd.save_global(&global).map_err(|e| e.to_string())?;
-
-            let mut vault = Vault::default();
-            vault.filesystem.template.templates_dir =
-                "vault_templates".to_owned();
-            cmd.save_vault(&vault).map_err(|e| e.to_string())?;
-
-            let qry = Query::new(&db);
-            let config = qry.load().map_err(|e| e.to_string())?;
+        fn load_uses_fixed_vault_path() -> Result<(), String> {
+            let config = merged_config()?;
 
             if config.vault_metadata.path != "vault" {
                 return Err("Query load should use fixed vault path".to_owned());
             }
+            Ok(())
+        }
+
+        #[test]
+        fn load_prefers_vault_templates_dir() -> Result<(), String> {
+            let config = merged_config()?;
+
             if config.vault_filesystem.template.templates_dir
                 != "vault_templates"
             {
@@ -157,6 +168,13 @@ mod tests {
                     "Vault templates_dir should take precedence".to_owned()
                 );
             }
+            Ok(())
+        }
+
+        #[test]
+        fn load_preserves_global_templates_dir() -> Result<(), String> {
+            let config = merged_config()?;
+
             if config.global_filesystem.template.templates_dir
                 != "global_templates"
             {
