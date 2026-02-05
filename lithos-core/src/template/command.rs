@@ -150,6 +150,37 @@ mod tests {
     mod persistence {
         use super::*;
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
+        )]
+        fn created_template() -> (TempDir, Database, Template, String) {
+            let (dir, db) =
+                fixtures::test_db().expect("Failed to create test db");
+            let cmd = Command::new(&db);
+            let template = fixtures::template_fixture("daily")
+                .expect("Failed to create template fixture");
+            cmd.create(&template).expect("Create should succeed");
+            let id_str = template.id().to_string();
+            (dir, db, template, id_str)
+        }
+
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
+        )]
+        fn updated_template_name() -> (TempDir, Database, String) {
+            let (dir, db, mut template, id_str) = created_template();
+            let cmd = Command::new(&db);
+            template.name = "weekly".to_owned();
+            cmd.update(&template).expect("Update should succeed");
+            (dir, db, id_str)
+        }
+
         #[test]
         #[expect(
             clippy::disallowed_methods,
@@ -157,16 +188,7 @@ mod tests {
                       value extraction."
         )]
         fn create_persists_template_and_name_index() {
-            let (_dir, db) =
-                fixtures::test_db().expect("Failed to create test db");
-            let cmd = Command::new(&db);
-
-            let template = fixtures::template_fixture("daily")
-                .expect("Failed to create template fixture");
-
-            cmd.create(&template).expect("Create should succeed");
-
-            let id_str = template.id().to_string();
+            let (_dir, db, _template, id_str) = created_template();
             let stored = db
                 .get_owned::<Template>("templates", &id_str)
                 .expect("Read after create should succeed");
@@ -176,6 +198,16 @@ mod tests {
                 "daily",
                 "Stored template name should match"
             );
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn create_persists_name_index() {
+            let (_dir, db, _template, id_str) = created_template();
 
             let ids = db
                 .multimap_get("template_name_to_id", "daily")
@@ -193,19 +225,7 @@ mod tests {
                       value extraction."
         )]
         fn update_refreshes_name_index_when_name_changes() {
-            let (_dir, db) =
-                fixtures::test_db().expect("Failed to create test db");
-            let cmd = Command::new(&db);
-
-            let mut template = fixtures::template_fixture("daily")
-                .expect("Failed to create template fixture");
-
-            cmd.create(&template).expect("Create should succeed");
-
-            let id_str = template.id().to_string();
-            template.name = "weekly".to_owned();
-            cmd.update(&template).expect("Update should succeed");
-
+            let (_dir, db, id_str) = updated_template_name();
             let old_ids = db
                 .multimap_get("template_name_to_id", "daily")
                 .expect("Old name index read should succeed");
@@ -213,6 +233,16 @@ mod tests {
                 !old_ids.contains(&id_str),
                 "Old name index should not contain template id"
             );
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn update_adds_new_name_index_entry() {
+            let (_dir, db, id_str) = updated_template_name();
 
             let new_ids = db
                 .multimap_get("template_name_to_id", "weekly")
@@ -230,22 +260,25 @@ mod tests {
                       value extraction."
         )]
         fn delete_removes_template_and_name_index() {
-            let (_dir, db) =
-                fixtures::test_db().expect("Failed to create test db");
+            let (_dir, db, template, id_str) = created_template();
             let cmd = Command::new(&db);
-
-            let template = fixtures::template_fixture("daily")
-                .expect("Failed to create template fixture");
-            let id = template.id();
-            let id_str = id.to_string();
-            cmd.create(&template).expect("Create should succeed");
-
-            cmd.delete(id).expect("Delete should succeed");
-
+            cmd.delete(template.id()).expect("Delete should succeed");
             let stored = db
                 .get_owned::<Template>("templates", &id_str)
                 .expect("Read after delete should succeed");
             assert!(stored.is_none(), "Deleted template should not exist");
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn delete_removes_name_index_entry() {
+            let (_dir, db, template, id_str) = created_template();
+            let cmd = Command::new(&db);
+            cmd.delete(template.id()).expect("Delete should succeed");
 
             let ids = db
                 .multimap_get("template_name_to_id", "daily")
