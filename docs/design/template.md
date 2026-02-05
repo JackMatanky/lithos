@@ -67,11 +67,100 @@ Now defines the implementation.
 
 <!-- Diagrams (Mermaid), Component relationships. -->
 
-### 3.2 Component & Interface Specifications
+### 3.2 Data Models
+
+<!--
+Define the types the design is built from.
+
+Put the key structs/enums/newtypes/traits here *before* the components that use them,
+so the reader knows what objects can be used in the component/interface contracts.
+
+Examples:
+- Struct and enum definitions (Rust-ish pseudocode is fine)
+- Database schemas / record layouts (if relevant)
+- Serialization shapes (Serde DTOs vs validated domain types)
+-->
+
+<!--
+"Show me your data structures, and I won't need your code."
+-->
+
+<!--
+DATA MODELS TEMPLATES (keep it lightweight)
+
+Use one of the templates below:
+- Use the **Large struct/enum template** when a type is central or non-trivial.
+- Use the **Type table template** when you have many small newtypes/IDs and you don’t want a lot of code blocks.
+
+
+Template 1 — Large Struct/Enum (designated place for important info)
+
+#### `[TypeName]` ([Domain | Raw/Input | Persistence])
+
+- Keep this short. Only include bullets that matter; delete the rest.
+- **Purpose**: One sentence.
+- **Key rules**: Invariants + validation rules (and where they’re enforced).
+- **Important notes (optional)**: Only if there’s a real footgun.
+  - ownership/borrowing expectations (allocates vs borrows)
+  - performance constraints (hot path, zero-copy expectations)
+  - stability constraints (persisted-bytes contract / migration notes)
+- **Shape** (Rust-ish pseudocode, optional):
+
+```rust
+pub struct TypeName {
+  // fields
+}
+
+pub enum TypeKind {
+  // variants
+}
+```
+
+
+Template 2 — Small Types (newtypes/IDs)
+
+Use one of the formats below. Prefer **Detailed** for 1–3 types; prefer **Compact** when there are many.
+
+Detailed format:
+- **Type**: `WidgetName` (Domain)
+  - Purpose: one sentence
+  - Backing: `Box<str>`
+  - Rules: non-empty, <= 64 bytes
+  - Notes (optional): allocates
+
+Compact format (one line per type):
+- `WidgetId` (Domain, `Uuid`): uniquely identifies a widget. Rules: always valid UUID.
+- `WidgetName` (Domain, `Box<str>`): display name shown to users. Rules: non-empty, <= 64 bytes. Notes: allocates.
+- `RawWidgetName` (Raw/Input, `String`): user input before validation. Notes: compiled into `WidgetName`.
+
+Table format (only for unit types or single-field newtypes):
+
+Use this table only when each type is effectively one attribute (or none), e.g.:
+- `WidgetId(Uuid)`
+- `WidgetName(Box<str>)`
+- `ArchivedWidgetName(Box<str>)`
+
+| Signature               | Purpose                      | Layer     | Rules                  | Notes                      |
+|-------------------------|------------------------------|-----------|------------------------|----------------------------|
+| `WidgetId(Uuid)`        | uniquely identifies a widget | Domain    | always valid UUID      | identifier                 |
+| `WidgetName(Box<str>)`  | display name shown to users  | Domain    | non-empty, <= 64 bytes | allocates                  |
+| `RawWidgetName(String)` | user input before validation | Raw/Input | none (may be invalid)  | compiled into `WidgetName` |
+
+-->
+
+### 3.3 Component & Interface Specifications
 
 <!--
 Define the "Contract" of new components (Interfaces/Traits), not just the code.
 Focus on Responsibility, Inputs, Outputs, and Invariants.
+
+This is also the canonical place to define the **types** that make the design real:
+- new structs/enums/newtypes and what they represent
+- traits/ports and their method contracts
+- validation rules at construction time (make invalid states unrepresentable)
+- ownership/borrowing expectations (what is borrowed vs owned)
+
+If a type is central to the design, define it here even if you repeat it later in 3.4.
 -->
 
 #### Component: [Name, e.g., `CacheEngine`]
@@ -83,7 +172,7 @@ Focus on Responsibility, Inputs, Outputs, and Invariants.
     - _Errors_: [What failures are expected?]
 - **State/Invariants**: [e.g., "Must always hold a file lock."]
 
-### 3.3 Integration & Data Flow
+### 3.4 Integration & Data Flow
 
 <!--
 How do components talk to each other?
@@ -92,13 +181,6 @@ How do components talk to each other?
 - **Sequence Diagram**: [Mermaid chart showing the call flow]
 - **Events/Messages**: [Schema of events emitted or consumed]
 - **Dependencies**: [External services or modules this relies on]
-
-### 3.4 Data Models
-
-<!--
-"Show me your data structures, and I won't need your code."
-Struct definitions, Database schemas, Protobufs.
--->
 
 ### 3.5 Core Logic & Algorithms
 
@@ -158,7 +240,7 @@ Document the "Review & Fix" loop.
 -->
 
 | Date       | Critique / Issue   | Resolution                             |
-| :--------- | :----------------- | :------------------------------------- |
+|:-----------|:-------------------|:---------------------------------------|
 | YYYY-MM-DD | "API is blocking." | "Intentional. See Constraints in 1.3." |
 
 ## 8. References
