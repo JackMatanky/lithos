@@ -170,7 +170,54 @@ Frontmatter is a note-context leaf component used by:
 
 This module remains sync, deterministic, and I/O-free.
 
-### 3.2 Component & Interface Specifications
+### 3.2 Data Models
+
+`FieldValue` is the persisted/frontmatter value model:
+
+- `Array(Vec<FieldValue>)`
+- `Boolean(bool)`
+- `Date(i64)`
+- `Number(f64)`
+- `Object(HashMap<String, FieldValue>)`
+- `String(String)`
+
+Note: Any changes to `FieldValue` variant set are a persisted-format concern due to `serde` + `rkyv`.
+
+Also note: recursion is persisted. The rkyv derives must continue to use the documented recursion strategy (`#[rkyv(omit_bounds)]` on recursive fields) unless/until a migration is performed.
+
+Note: for ergonomics, APIs may expose `DateTime<Utc>` (e.g., `FieldValue::as_datetime()`), but the persisted representation remains an integer timestamp to keep the stored format simple and rkyv-friendly.
+
+#### Date/time fidelity vs semantics
+
+Storing `Date(i64)` is optimized for **semantic operations** (sorting, filtering, comparisons) and rkyv friendliness, but it is not a lossless representation of YAML frontmatter date/time.
+
+- **Potential fidelity loss**:
+  - timezone offset / original zone (`-0500` vs `Z`)
+  - textual form (date-only `2026-02-02` vs datetime `2026-02-02T10:00:00Z`)
+  - sub-second precision
+- **Operational impact**:
+  - Parsing adapters must normalize input into the chosen domain representation.
+  - If we later need exact round-trip reproduction of frontmatter values (including original formatting), `Date(i64)` alone is insufficient.
+
+Design stance (best practice):
+
+- Default the domain model to **semantic** representation (`i64`) because it is cheap and predictable.
+- If/when exact round-trip fidelity is required, add an explicit lossless representation (e.g., an additional variant like `DateRaw(Box<str>)` or `DateString(Box<str>)`) and treat it as a persisted-format migration.
+
+#### Query semantics for `Date(i64)`
+
+Storing a date/time as `i64` (Unix timestamp) generally makes querying _easier_ and more performant, because comparisons become numeric.
+
+- **Instant/range queries** (recommended): convert the query inputs into a UTC timestamp range and filter numerically.
+  - Example semantics: “created within [start, end)” becomes `start_ts <= created_ts && created_ts < end_ts`.
+- **Local calendar date queries**: if users specify a local date (e.g., “2026-02-02” in a specific timezone), convert that to a UTC range first (start-of-day to next-start-of-day in that timezone), then apply the numeric range query.
+
+Limitations to be aware of:
+
+- If the original YAML value included a timezone offset or used a date-only textual form, that _format_ is not queryable once normalized to an `i64` unless we store additional metadata.
+- If we later decide users must be able to query “date-only values” distinctly from “datetime values”, we will need a richer representation (e.g., separate variants or a tagged wrapper).
+
+### 3.3 Component & Interface Specifications
 
 #### Component: `FieldValue`
 
@@ -225,7 +272,7 @@ Prefer _generic_ borrowed extraction via `try_get_ref` + `FromFieldValueRef` ove
 - **Integration**:
   - Either embed in `NoteError` as a structured variant, or convert into existing `NoteError::Frontmatter(String)` at note-context boundaries.
 
-### 3.3 Integration & Data Flow
+### 3.4 Integration & Data Flow
 
 - **Sequence Diagram**:
 
@@ -250,53 +297,6 @@ sequenceDiagram
 - **Dependencies**:
   - `chrono` for `DateTime<Utc>`
   - `serde` + `rkyv` for serialization
-
-### 3.4 Data Models
-
-`FieldValue` is the persisted/frontmatter value model:
-
-- `Array(Vec<FieldValue>)`
-- `Boolean(bool)`
-- `Date(i64)`
-- `Number(f64)`
-- `Object(HashMap<String, FieldValue>)`
-- `String(String)`
-
-Note: Any changes to `FieldValue` variant set are a persisted-format concern due to `serde` + `rkyv`.
-
-Also note: recursion is persisted. The rkyv derives must continue to use the documented recursion strategy (`#[rkyv(omit_bounds)]` on recursive fields) unless/until a migration is performed.
-
-Note: for ergonomics, APIs may expose `DateTime<Utc>` (e.g., `FieldValue::as_datetime()`), but the persisted representation remains an integer timestamp to keep the stored format simple and rkyv-friendly.
-
-#### Date/time fidelity vs semantics
-
-Storing `Date(i64)` is optimized for **semantic operations** (sorting, filtering, comparisons) and rkyv friendliness, but it is not a lossless representation of YAML frontmatter date/time.
-
-- **Potential fidelity loss**:
-  - timezone offset / original zone (`-0500` vs `Z`)
-  - textual form (date-only `2026-02-02` vs datetime `2026-02-02T10:00:00Z`)
-  - sub-second precision
-- **Operational impact**:
-  - Parsing adapters must normalize input into the chosen domain representation.
-  - If we later need exact round-trip reproduction of frontmatter values (including original formatting), `Date(i64)` alone is insufficient.
-
-Design stance (best practice):
-
-- Default the domain model to **semantic** representation (`i64`) because it is cheap and predictable.
-- If/when exact round-trip fidelity is required, add an explicit lossless representation (e.g., an additional variant like `DateRaw(Box<str>)` or `DateString(Box<str>)`) and treat it as a persisted-format migration.
-
-#### Query semantics for `Date(i64)`
-
-Storing a date/time as `i64` (Unix timestamp) generally makes querying _easier_ and more performant, because comparisons become numeric.
-
-- **Instant/range queries** (recommended): convert the query inputs into a UTC timestamp range and filter numerically.
-  - Example semantics: “created within [start, end)” becomes `start_ts <= created_ts && created_ts < end_ts`.
-- **Local calendar date queries**: if users specify a local date (e.g., “2026-02-02” in a specific timezone), convert that to a UTC range first (start-of-day to next-start-of-day in that timezone), then apply the numeric range query.
-
-Limitations to be aware of:
-
-- If the original YAML value included a timezone offset or used a date-only textual form, that _format_ is not queryable once normalized to an `i64` unless we store additional metadata.
-- If we later decide users must be able to query “date-only values” distinctly from “datetime values”, we will need a richer representation (e.g., separate variants or a tagged wrapper).
 
 ### 3.5 Core Logic & Algorithms
 

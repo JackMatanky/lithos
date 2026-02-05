@@ -146,69 +146,11 @@ flowchart LR
   Store -->|version history| Merged
 ```
 
-### 3.2 Component & Interface Specifications
-
-#### Component: `Global`
-
-- **Responsibility**: provide the global-level configuration layer.
-- **Invariants**:
-  - its sub-structures are valid (`Paths`, `Frontmatter`, `Logging`).
-  - optional `trusted_vaults` is either absent or valid.
-
-#### Component: `Vault`
-
-- **Responsibility**: provide the vault-level configuration layer (overrides).
-- **Invariants**:
-  - required vault identity is provided by `Metadata` during merge/build (not necessarily stored in `Vault` itself).
-  - override fields should be represented as `Option<T>` (preferred) rather than empty strings.
-
-Vault identity:
-
-- The unique, primary key for a vault is `VaultId` (see 3.4.2).
-- The vault root path is the vault’s **current location**; persistence may also keep a canonical `VaultPathKey` mapping to support lookups by path.
-
-#### Component: `Config` (aggregate)
-
-- **Responsibility**: represent the merged, validated runtime configuration.
-- **Public Interface**:
-  - `Config::build(global: Option<&Global>, vault_path: &str, vault: Vault) -> Result<Config, ConfigError>`
-  - `validate(&self) -> Result<(), ConfigError>` (redundant if `build` always validates; keep if useful as a defensive check)
-  - `pending_events() -> &[Events]` and `take_events()` for event staging.
-
-- **Invariants**:
-  - all required fields are non-empty and internally consistent.
-  - constrained values (e.g., log level) are valid.
-
-### 3.3 Integration & Data Flow
-
-Sequence: resolve config for a vault operation.
-
-```mermaid
-sequenceDiagram
-  participant Caller
-  participant Q as config::query::Query
-  participant Agg as Config::build
-  participant DB as Database
-
-  Caller->>Q: load_global()
-  Q->>DB: get_owned("config","global")
-  DB-->>Q: Option<Global>
-
-  Caller->>Q: load_vault()
-  Q->>DB: get_owned("config","vault")
-  DB-->>Q: Option<Vault>
-
-  Caller->>Agg: build(global, vault_path, vault)
-  Agg-->>Caller: Config (merged + validated)
-
-If a versioned merged read model is used (recommended for per-vault cache/rollback), the merged `Config` produced above becomes the value that is persisted as a new version.
-```
-
-### 3.4 Data Models
+### 3.2 Data Models
 
 This section records the important model decisions.
 
-#### 3.4.1 Type-driven upgrades (recommended)
+#### Type-driven upgrades (recommended)
 
 These changes are recommended because they reduce invalid states, simplify merging, and make the model easier to evolve.
 
@@ -235,7 +177,7 @@ These changes are recommended because they reduce invalid states, simplify mergi
   - `SchemaVersion(pub String)` currently implements `Deref<Target = str>`.
   - Prefer an explicit `as_str()` (and `Display`) so the type boundary stays visible.
 
-#### 3.4.2 Vault identity (required)
+#### Vault identity (required)
 
 - **Decision (project convention)**: introduce a stable `VaultId(Uuid)` and use it as the primary vault identifier.
 
@@ -266,7 +208,7 @@ Canonicalization rules (recommendation):
 - Normalize separators (platform default is fine as long as the encoding is stable).
 - Consider resolving symlinks only if you intentionally want “symlinked paths” to collapse to the same vault identity.
 
-#### 3.4.3 Versioned merged config read model (recommended)
+#### Versioned merged config read model (recommended)
 
 To support a single-vault cache and rollback, persist merged configs as immutable versions.
 
@@ -275,6 +217,64 @@ To support a single-vault cache and rollback, persist merged configs as immutabl
 - `ActiveMergedConfig { vault_id: VaultId, version: ConfigVersion }`
 
 Design rule: keep “exactly one active merged config per vault” as a storage invariant, not a global domain singleton.
+
+### 3.3 Component & Interface Specifications
+
+#### Component: `Global`
+
+- **Responsibility**: provide the global-level configuration layer.
+- **Invariants**:
+  - its sub-structures are valid (`Paths`, `Frontmatter`, `Logging`).
+  - optional `trusted_vaults` is either absent or valid.
+
+#### Component: `Vault`
+
+- **Responsibility**: provide the vault-level configuration layer (overrides).
+- **Invariants**:
+  - required vault identity is provided by `Metadata` during merge/build (not necessarily stored in `Vault` itself).
+  - override fields should be represented as `Option<T>` (preferred) rather than empty strings.
+
+Vault identity:
+
+- The unique, primary key for a vault is `VaultId` (see Vault identity in 3.2 Data Models).
+- The vault root path is the vault’s **current location**; persistence may also keep a canonical `VaultPathKey` mapping to support lookups by path.
+
+#### Component: `Config` (aggregate)
+
+- **Responsibility**: represent the merged, validated runtime configuration.
+- **Public Interface**:
+  - `Config::build(global: Option<&Global>, vault_path: &str, vault: Vault) -> Result<Config, ConfigError>`
+  - `validate(&self) -> Result<(), ConfigError>` (redundant if `build` always validates; keep if useful as a defensive check)
+  - `pending_events() -> &[Events]` and `take_events()` for event staging.
+
+- **Invariants**:
+  - all required fields are non-empty and internally consistent.
+  - constrained values (e.g., log level) are valid.
+
+### 3.4 Integration & Data Flow
+
+Sequence: resolve config for a vault operation.
+
+```mermaid
+sequenceDiagram
+  participant Caller
+  participant Q as config::query::Query
+  participant Agg as Config::build
+  participant DB as Database
+
+  Caller->>Q: load_global()
+  Q->>DB: get_owned("config","global")
+  DB-->>Q: Option<Global>
+
+  Caller->>Q: load_vault()
+  Q->>DB: get_owned("config","vault")
+  DB-->>Q: Option<Vault>
+
+  Caller->>Agg: build(global, vault_path, vault)
+  Agg-->>Caller: Config (merged + validated)
+```
+
+If a versioned merged read model is used (recommended for per-vault cache/rollback), the merged `Config` produced above becomes the value that is persisted as a new version.
 
 ### 3.5 Core Logic & Algorithms
 
@@ -415,7 +415,11 @@ rkyv patterns:
 | Date       | Critique / Issue                     | Resolution                                     |
 | :--------- | :----------------------------------- | :--------------------------------------------- |
 | 2026-02-04 | "Merge uses empty-string sentinels." | "Recommend Option overlays; see Decision 4.1." |
-| 2026-02-04 | "Paths are generic Strings."         | "Recommend PathBuf/newtypes; see 3.4.1."       |
+| 2026-02-04 | "Paths are generic Strings."         | "Recommend PathBuf/newtypes; see Type-driven upgrades in 3.2."       |
+
+## 8. References
+
+- (none yet)
 
 ## Appendix A: External Patterns (Figment + Layered Config) and What Lithos Should Steal
 

@@ -9,20 +9,6 @@ tags: [schema, domain-models, type-driven-design, rkyv, performance]
 
 # Tech Spec: Schema Models (Aggregates + Value Objects)
 
-## 0. Definition of Done
-
-- The schema bounded context has a clearly documented model boundary:
-  - persisted (serde-friendly) input types,
-  - validated runtime/domain types,
-  - archived/persistence representation (rkyv).
-- All model invariants are enforced by construction (type-driven), not by convention.
-- Model types are lean and idiomatic:
-  - borrowed inputs where possible,
-  - no hidden allocations in getters,
-  - minimal cloning in hot paths.
-- Zero-copy constraints are explicitly documented for redb + rkyv (validation, lifetime/guard scope).
-- Any proposed breaking changes include an explicit migration strategy.
-
 ## 1. Problem Space (The "Why")
 
 ### 1.1 Context & Background
@@ -75,7 +61,21 @@ Key constraints from the overall architecture:
 - **Lean models**: avoid “stringly typed” keys and avoid hidden allocations.
 - **API clarity**: prefer borrowed argument and accessor types (e.g. `&str` rather than `&String`) and keep allocation decisions explicit (see https://rust-analyzer.github.io/book/contributing/style.html).
 
-### 1.4 Minimizing “derive-everything” Blast Radius (rkyv)
+### 1.4 Definition of Done
+
+- The schema bounded context has a clearly documented model boundary:
+  - persisted (serde-friendly) input types,
+  - validated runtime/domain types,
+  - archived/persistence representation (rkyv).
+- All model invariants are enforced by construction (type-driven), not by convention.
+- Model types are lean and idiomatic:
+  - borrowed inputs where possible,
+  - no hidden allocations in getters,
+  - minimal cloning in hot paths.
+- Zero-copy constraints are explicitly documented for redb + rkyv (validation, lifetime/guard scope).
+- Any proposed breaking changes include an explicit migration strategy.
+
+### 1.5 Minimizing “derive-everything” Blast Radius (rkyv)
 
 Schemas and property banks are attractive to archive “as-is”, but large rkyv derive surfaces create a maintenance hazard: small model refactors can silently become **persisted-format changes**.
 
@@ -86,7 +86,7 @@ Guidance:
 - Treat any change to archived layout, rkyv attributes, or format-control feature set as a migration decision.
 - Introduce projections for hot queries rather than forcing the primary persisted schema blob to satisfy every read shape.
 
-### 1.5 Raw → Domain boundary (designing to avoid `Stored*` models)
+### 1.6 Raw → Domain boundary (designing to avoid `Stored*` models)
 
 The primary lever for avoiding `StoredSchema`/`StoredPropertyBank` is _not_ introducing a storage DTO early; it is designing the **validated domain types** to be both:
 
@@ -147,7 +147,40 @@ flowchart LR
   Domain --> Validate[validate metadata values]
 ```
 
-### 3.2 Component & Interface Specifications
+### 3.2 Data Models
+
+#### Wire/input layer
+
+- `RawSchema` / `RawPropertyInline` / `RawPropertyRef` are serde-friendly and may be invalid.
+- Rule: wire types may use `String` and “raw” options.
+- Rule: wire types must be converted into domain types as early as possible.
+
+#### Validated runtime/domain layer
+
+Target “core” types:
+
+```rust
+pub struct Schema {
+  id: SchemaId,
+  name: SchemaName,
+  properties: Vec<Property>,
+}
+
+pub struct Property {
+  id: PropertyId,
+  name: PropertyName,
+  cardinality: Cardinality,
+  multiplicity: Multiplicity,
+  spec: PropertySpec,
+}
+```
+
+#### Archived/persistence layer
+
+- Archived types are derived from the domain types via rkyv derives.
+- Rule: do not expose archived references outside a closure that is scoped to the redb transaction/guard.
+
+### 3.3 Component & Interface Specifications
 
 #### Component: `SchemaName` (validated identifier)
 
@@ -248,46 +281,13 @@ Design note:
 
 This spec recommends keeping embedded properties for now (simplicity), while designing IDs/newtypes so option (2) remains viable.
 
-### 3.3 Integration & Data Flow
+### 3.4 Integration & Data Flow
 
 - Raw types are produced by adapters (YAML/TOML/JSON loaders).
 - Domain compilation happens in the schema context.
 - Persistence is via `Database` (redb+rkyv). This spec defines model representations that are compatible with either:
   - storing validated runtime types, or
   - storing raw defs and compiling on load.
-
-### 3.4 Data Models
-
-#### Wire/input layer
-
-- `RawSchema` / `RawPropertyInline` / `RawPropertyRef` are serde-friendly and may be invalid.
-- Rule: wire types may use `String` and “raw” options.
-- Rule: wire types must be converted into domain types as early as possible.
-
-#### Validated runtime/domain layer
-
-Target “core” types:
-
-```rust
-pub struct Schema {
-  id: SchemaId,
-  name: SchemaName,
-  properties: Vec<Property>,
-}
-
-pub struct Property {
-  id: PropertyId,
-  name: PropertyName,
-  cardinality: Cardinality,
-  multiplicity: Multiplicity,
-  spec: PropertySpec,
-}
-```
-
-#### Archived/persistence layer
-
-- Archived types are derived from the domain types via rkyv derives.
-- Rule: do not expose archived references outside a closure that is scoped to the redb transaction/guard.
 
 ### 3.5 Core Logic & Algorithms
 
@@ -351,3 +351,7 @@ Incremental, low-risk migration path:
 | 2026-02-03 | Tuple struct identifiers are forgeable          | Require private fields; keep `try_from` and `as_str` accessors |
 | 2026-02-03 | Booleans for property shape are easy to misuse  | Recommend semantic enums `Cardinality`/`Multiplicity`          |
 | 2026-02-03 | Zero-copy lifetime risks not explicit in models | Document closure-based access and guard scoping                |
+
+## 8. References
+
+- (none yet)
