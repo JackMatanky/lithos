@@ -25,7 +25,7 @@ use super::{aggregate::SchemaName, error::SchemaError};
 /// graph.add_node("parent".try_into()?, None);
 ///
 /// let order = graph.resolve_order()?;
-/// assert_eq!(order.len(), 2);
+/// assert_eq!(order.len(), 2, "Graph should resolve two schemas");
 /// # Ok(())
 /// # }
 /// ```
