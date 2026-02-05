@@ -151,6 +151,8 @@ pub enum SchemaError {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[test]
@@ -159,23 +161,18 @@ mod tests {
         is_send_sync::<SchemaError>();
     }
 
-    #[test]
-    fn schema_error_display_is_comprehensive() {
-        let errors = vec![
-            SchemaError::NotFound("schema".into()),
-            SchemaError::AlreadyExists("schema".into()),
-            SchemaError::ValidationFailed("invalid".into()),
-            SchemaError::CircularInheritance("cycle".into()),
-            SchemaError::Property("invalid property".into()),
-            SchemaError::Resolver("missing reference".into()),
-            SchemaError::Storage("io error".into()),
-        ];
-
-        for err in errors {
-            assert!(
-                !err.to_string().is_empty(),
-                "Error {err:?} should have non-empty display message"
-            );
-        }
+    #[rstest]
+    #[case(SchemaError::NotFound("schema".into()))]
+    #[case(SchemaError::AlreadyExists("schema".into()))]
+    #[case(SchemaError::ValidationFailed("invalid".into()))]
+    #[case(SchemaError::CircularInheritance("cycle".into()))]
+    #[case(SchemaError::Property("invalid property".into()))]
+    #[case(SchemaError::Resolver("missing reference".into()))]
+    #[case(SchemaError::Storage("io error".into()))]
+    fn schema_error_display_is_comprehensive(#[case] error: SchemaError) {
+        assert!(
+            !error.to_string().is_empty(),
+            "Error {error:?} should have non-empty display message"
+        );
     }
 }
