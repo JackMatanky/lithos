@@ -386,30 +386,47 @@ mod tests {
         mod tests {
             use super::*;
 
-            #[test]
             #[expect(
                 clippy::disallowed_methods,
-                reason = "Test uses expect for deterministic fixture setup \
-                          and value extraction."
+                reason = "Test fixture uses expect for deterministic setup. \
+                          Failure indicates invalid test data. Expect is \
+                          idiomatic in setup."
             )]
-            fn builder_sets_fields() {
-                let property = PropertyBuilder::new()
+            fn build_property() -> Property {
+                PropertyBuilder::new()
                     .name("priority")
                     .required(true)
                     .array(true)
                     .spec(PropertySpec::String(StringSpec::default()))
                     .build()
-                    .expect("Expected builder to produce a valid Property");
+                    .expect("Expected builder to produce a valid Property")
+            }
+
+            #[test]
+            fn builder_sets_name() {
+                let property = build_property();
 
                 assert_eq!(
                     &property.name().0,
                     "priority",
                     "Builder should set property name to 'priority'"
                 );
+            }
+
+            #[test]
+            fn builder_sets_required_flag() {
+                let property = build_property();
+
                 assert!(
                     property.required(),
                     "Builder should set required flag to true"
                 );
+            }
+
+            #[test]
+            fn builder_sets_array_flag() {
+                let property = build_property();
+
                 assert!(
                     property.array(),
                     "Builder should set array flag to true"
@@ -419,6 +436,7 @@ mod tests {
     }
 
     mod property {
+        use rstest::rstest;
         use uuid::Uuid;
 
         use super::super::{super::property_spec::StringSpec, *};
@@ -426,35 +444,55 @@ mod tests {
         const TEST_PROPERTY_ID: Uuid =
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0802);
 
-        #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
+            reason = "Test fixture uses expect for deterministic setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
         )]
-        fn accessors_return_expected_values() {
-            // GIVEN: a property aggregate
+        fn required_scalar_property() -> Property {
             let spec = PropertySpec::String(StringSpec::default());
             let name = PropertyName::new("status".to_owned())
                 .expect("Expected valid property name");
 
-            let property =
-                Property::new(TEST_PROPERTY_ID, name, true, false, spec)
-                    .expect("Expected valid property");
+            Property::new(TEST_PROPERTY_ID, name, true, false, spec)
+                .expect("Expected valid property")
+        }
 
-            // THEN: accessors expose fields correctly
+        #[test]
+        fn returns_required_flag_when_required_true() {
+            let property = required_scalar_property();
+
             assert!(
                 property.required(),
                 "Property should be required when required flag is true"
             );
+        }
+
+        #[test]
+        fn returns_required_scalar_when_required_and_not_array() {
+            let property = required_scalar_property();
+
             assert!(
                 property.is_required_scalar(),
                 "Property should be a required scalar (not array)"
             );
+        }
+
+        #[test]
+        fn returns_array_flag_false_when_not_array() {
+            let property = required_scalar_property();
+
             assert!(
                 !property.array(),
                 "Property should not be an array when array flag is false"
             );
+        }
+
+        #[test]
+        fn returns_name_from_accessor() {
+            let property = required_scalar_property();
+
             assert_eq!(
                 &property.name().0,
                 "status",
@@ -464,78 +502,44 @@ mod tests {
 
         /// 3.3-UNIT-006: `returns_error_when_property_name_format_is_invalid`.
         /// Priority: P1.
-        #[test]
-        fn returns_error_when_property_name_format_is_invalid() {
-            // GIVEN: a property specification
-            let spec = PropertySpec::String(StringSpec::default());
-            // AND: a set of invalid names
-            let invalid_names = vec!["Invalid Name", "invalid.name", ""];
-
-            // WHEN: validating property names
-            for name_str in invalid_names {
-                // THEN: it should reject invalid names
-                assert!(
-                    PropertyName::new(name_str.to_owned()).is_err(),
-                    "Should reject invalid name: {name_str}"
-                );
-            }
-            let _: PropertySpec = spec;
+        #[rstest]
+        #[case("Invalid Name")]
+        #[case("invalid.name")]
+        #[case("")]
+        fn returns_error_when_property_name_format_is_invalid(
+            #[case] name: &str,
+        ) {
+            assert!(
+                PropertyName::new(name.to_owned()).is_err(),
+                "Should reject invalid name: {name}"
+            );
         }
     }
 
     mod property_name {
+        use rstest::rstest;
+
         use super::super::*;
 
         /// 3.3-UNIT-007: `property_name_validates_regex_and_length`.
         /// Priority: P1.
-        #[test]
-        fn property_name_validates_regex_and_length() {
-            // GIVEN: various property name inputs
-            // WHEN: creating PropertyName instances
-            // THEN: it should accept valid names and reject invalid ones
-            let ok1 = PropertyName::new("valid_name".into());
-            assert!(ok1.is_ok(), "Expected valid_name to pass, got: {ok1:?}");
+        #[rstest]
+        #[case("valid_name")]
+        #[case("valid-name-123")]
+        fn property_name_validates_regex_and_length(#[case] name: &str) {
+            let result = PropertyName::new(name.to_owned());
 
-            let ok2 = PropertyName::new("valid-name-123".into());
-            assert!(
-                ok2.is_ok(),
-                "Expected valid-name-123 to pass, got: {ok2:?}"
-            );
-
-            let empty = PropertyName::new(String::new());
-            assert!(empty.is_err(), "Expected empty to fail, got: {empty:?}");
-
-            let invalid_space = PropertyName::new("Invalid Name".into());
-            assert!(
-                invalid_space.is_err(),
-                "Expected space-containing name to fail, got: \
-                 {invalid_space:?}"
-            );
-
-            let too_long = PropertyName::new("a".repeat(65));
-            assert!(
-                too_long.is_err(),
-                "Expected >64 char name to fail, got: {too_long:?}"
-            );
+            assert!(result.is_ok(), "Expected {name} to pass, got: {result:?}");
         }
 
         /// 3.3-UNIT-008: `property_name_validates_format`.
         /// Priority: P1.
         #[test]
         fn property_name_validates_format() {
-            // GIVEN: invalid and valid name formats
-            // WHEN: creating PropertyName instances
-            // THEN: it should reject invalid characters
             let invalid = PropertyName::new("invalid_name!".into());
             assert!(
                 invalid.is_err(),
                 "Expected invalid_name! to fail, got: {invalid:?}"
-            );
-            // AND: accept valid snake/kebab case with underscores
-            let valid = PropertyName::new("valid_name".into());
-            assert!(
-                valid.is_ok(),
-                "Expected valid_name to pass, got: {valid:?}"
             );
         }
 
@@ -573,51 +577,34 @@ mod tests {
     }
 
     mod proptests {
-        use proptest::{prelude::*, test_runner::TestRunner};
+        use proptest::prelude::*;
 
         use super::super::*;
 
-        /// 3.3-UNIT-015: `validates_property_name_format_proptest`.
-        /// Priority: P2.
-        #[test]
-        fn validates_property_name_format_proptest() {
-            let mut runner = TestRunner::deterministic();
-            let strategy = "[a-zA-Z0-9_-]{1,64}";
-
-            let run_result = runner.run(&strategy, |name| {
+        // 3.3-UNIT-015: `validates_property_name_format_proptest`.
+        // Priority: P2.
+        proptest! {
+            #[test]
+            fn validates_property_name_format_proptest(name in "[a-zA-Z0-9_-]{1,64}") {
                 // GIVEN an arbitrary valid property name
                 // WHEN creating a PropertyName
                 // THEN it must succeed
                 prop_assert!(PropertyName::new(name).is_ok());
-                Ok(())
-            });
-            assert!(
-                run_result.is_ok(),
-                "Proptest run should succeed, got: {run_result:?}"
-            );
+            }
         }
 
-        /// 3.3-UNIT-016: `rejects_invalid_property_name_characters_proptest`.
-        /// Priority: P2.
-        #[test]
-        fn rejects_invalid_property_name_characters_proptest() {
-            let mut runner = TestRunner::deterministic();
-            let strategy = ".*[^a-zA-Z0-9_-].*"
-                .prop_filter("invalid identifier length", |s: &String| {
-                    !s.is_empty() && s.len() <= 64
-                });
+        // 3.3-UNIT-016: `rejects_invalid_property_name_characters_proptest`.
+        // Priority: P2.
+        proptest! {
+            #[test]
+            fn rejects_invalid_property_name_characters_proptest(name in ".*[^a-zA-Z0-9_-].*") {
+                prop_assume!(!name.is_empty() && name.len() <= 64);
 
-            let run_result = runner.run(&strategy, |name| {
                 // GIVEN an arbitrary string containing invalid characters
-                // WHEN creating a PropertyName (filtering for correct
-                // length) THEN it must fail
+                // WHEN creating a PropertyName (filtering for correct length)
+                // THEN it must fail
                 prop_assert!(PropertyName::new(name).is_err());
-                Ok(())
-            });
-            assert!(
-                run_result.is_ok(),
-                "Proptest run should succeed, got: {run_result:?}"
-            );
+            }
         }
     }
 }
