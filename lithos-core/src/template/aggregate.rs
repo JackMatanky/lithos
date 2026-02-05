@@ -288,7 +288,7 @@ impl Template {
     ///     Metadata::default(),
     /// )
     /// ?;
-    /// assert_eq!(template.name, "daily");
+    /// assert_eq!(template.name, "daily", "Template name should match");
     /// # Ok(())
     /// # }
     /// ```
