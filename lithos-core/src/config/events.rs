@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 /// use lithos_core::config::events::ConfigUpdated;
 ///
 /// let event = ConfigUpdated::new("vault".to_string(), 1234567890);
-/// assert_eq!(event.timestamp, 1234567890);
-/// assert_eq!(event.source, "vault");
+/// assert_eq!(event.timestamp, 1234567890, "Timestamp should match input");
+/// assert_eq!(event.source, "vault", "Source should match input");
 /// ```
 #[derive(
     Debug,
