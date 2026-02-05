@@ -416,3 +416,272 @@ rkyv patterns:
 | :--------- | :-------------------------------------------- | :---------------------------------------------- |
 | 2026-02-04 | "Merge uses empty-string sentinels."         | "Recommend Option overlays; see Decision 4.1." |
 | 2026-02-04 | "Paths are generic Strings."                 | "Recommend PathBuf/newtypes; see 3.4.1."      |
+
+## Appendix A: External Patterns (Figment + Layered Config) and What Lithos Should Steal
+
+This appendix summarizes real-world patterns from Rust projects using layered configuration (often via Figment), and translates them into actionable guidance for Lithos’ two-tier config model (Global + Vault → Merged Config).
+
+The point is not to copy any one project’s approach verbatim; it is to extract the repeatable, “battle-tested” ideas that reduce surprises:
+
+- deterministic precedence (“last write wins” with a documented order)
+- optional profile/context selection implemented consistently
+- clear “where did this value come from?” diagnostics
+- a clean separation between unvalidated input trees and validated runtime configs
+
+### A.1 Figment Capabilities Worth Designing Around
+
+Even if Lithos does not expose Figment directly as a public API, Figment’s model is a strong mental model:
+
+- **Providers**: each configuration source is a provider (defaults, files, env vars, CLI overrides, etc.).
+- **Merge**: configuration is composed by merging providers into a single tree.
+  - Rule of thumb: *later merges override earlier merges* (for scalars).
+  - Complex shapes (tables) are generally merged key-by-key.
+- **Profiles**: a single provider can contain multiple profiles (e.g., `debug`/`release`, `dev`/`prod`). The selected profile determines which values are active.
+- **`nested()` vs non-nested file providers**:
+  - `nested()` treats the file as containing profiles at the top-level.
+  - This matters when you want context-specific config from the same file.
+- **Error metadata**: Figment’s extraction errors can carry rich metadata (selected profile, key path, and sometimes source info).
+
+Design implication for Lithos:
+
+- Config should be representable as **multiple explicit sources** merged into an intermediate representation.
+- The “final product” for business logic should remain a **validated merged aggregate** (the `Config` aggregate), regardless of how many sources fed it.
+
+### A.2 Case Studies
+
+#### A.2.1 Rocket: canonical example of layered defaults + file + env
+
+Rocket’s configuration guide is one of the clearest, widely-used demonstrations of Figment layering.
+
+Key patterns:
+
+- **Document a strict order**: Rocket effectively composes `defaults → Rocket.toml → env vars`.
+- **Profiles**: Rocket supports named profiles (`debug`, `release`, etc.) and also uses two “meta-profiles”:
+  - `default`: inherited by all other profiles (base values)
+  - `global`: overrides all profiles
+
+What Lithos should steal:
+
+- **The concept of “default vs global” as semantics** is extremely useful.
+  - Lithos already has “system defaults” plus “global config”; Rocket shows a proven way to explain these.
+- **Be explicit about precedence**.
+  - Avoid “it depends” layering. Users interpret config systems as a predictable override chain.
+
+What Lithos should *not* steal:
+
+- Rocket’s profiles are “runtime context” (debug/release), not “per-vault identity.” Don’t model one profile per vault.
+
+#### A.2.2 apple-codesign (`rcodesign`): multiple config files + env + CLI, with profiles
+
+The `rcodesign` CLI builds config by merging multiple sources:
+
+- **Implicit config file search** (user config dir + current directory) or **explicit config file list**.
+- **Profile selection** (defaults to `default`, but supports selecting a named profile).
+- **Environment variables override everything**.
+- **CLI args can be merged** by serializing a config struct into the selected profile.
+
+Two details are particularly valuable:
+
+1) **Multiple config files are merged in order**.
+   - This pattern makes it easy to support: “corporate base config” + “user config” + “project config.”
+
+2) **User-facing error reporting prints**:
+   - selected profile
+   - problem key path
+   - source file path (when available)
+
+What Lithos should steal:
+
+- Supporting multiple config files (optional) is an easy “escape hatch” that plays well with your two-tier model.
+  - Example shape: global can itself be composed from multiple global sources.
+- When config extraction fails, printing **(vault id, profile/context, key path, source)** is a huge UX win.
+
+What Lithos should be careful about:
+
+- If you adopt “profiles inside TOML,” you must implement the “nested + select + profile everywhere” discipline described in A.3.3.
+
+#### A.2.3 cargo-lambda: a clean template for context/profile support
+
+cargo-lambda uses Figment to merge a small constellation of sources:
+
+- environment variables (prefixed)
+- a config file
+- defaults/metadata-derived settings
+- optional overrides
+
+It also supports an explicit **context** concept, and implements it consistently:
+
+- select the context/profile for the Figment instance
+- ensure the file provider is treated as nested when contexts are present
+- apply the same profile selection to env vars and serialized overlays
+
+What Lithos should steal:
+
+- If Lithos ever introduces “contexts” (e.g., per-user or per-environment), cargo-lambda provides the blueprint for correctness:
+  - `select(context)`
+  - `Toml::file(...).nested()`
+  - apply `.profile(context)` to every provider that needs it (env providers, serialized overlays)
+
+This avoids a common failure mode:
+
+- You “select a profile,” but only some sources honor it, so values silently come from a different profile than you think.
+
+#### A.2.4 Taplo LSP: incremental “defaults + update blob” without custom merge code
+
+Taplo’s LSP config update demonstrates a simple, robust pattern:
+
+- Start from the current config as defaults.
+- Merge in an incoming JSON blob.
+- Extract into the typed config.
+
+What Lithos should steal:
+
+- Use Figment-style composition for incremental updates (CLI overrides, “temporary session overrides,” etc.) rather than writing custom merge logic.
+- This pattern is especially attractive for the Command side: “apply override config, validate, persist new merged version.”
+
+#### A.2.5 Arti (`tor-config`): separate unvalidated input tree from validated runtime config
+
+Arti’s config system is not a Figment tutorial, but it is a great *domain-level* model for configuration correctness.
+
+Core flow:
+
+1) Load multiple sources into an **unvalidated, dynamically-typed configuration tree**.
+2) Resolve into **typed builders** via deserialization.
+3) Build/validate once for all consumers so unrecognized keys can be reported in one pass.
+
+What Lithos should steal:
+
+- Keep a clear separation between:
+  - unvalidated input configuration (best-effort parse tree)
+  - typed domain structures (Global/Vault)
+  - validated runtime aggregate (`Config`)
+- When reporting errors, do it from a unified resolution step so “unknown keys” and “invalid values” are coherent.
+
+### A.3 Recommendations for Lithos (Grounded in the Case Studies)
+
+This section converts the case studies into concrete, Lithos-specific guidance.
+
+#### A.3.1 Make precedence a first-class, versioned contract
+
+Observed pattern across Rocket + apple-codesign + cargo-lambda:
+
+- Users only trust layered config if the precedence is deterministic and documented.
+
+Recommended Lithos precedence order (suggested default):
+
+1) system defaults
+2) global config file(s)
+3) vault config file(s)
+4) environment variables (optional, if Lithos chooses to support them)
+5) command/CLI overrides (explicit user intent)
+
+Keep this order stable over time. If it changes, treat it as a breaking change.
+
+#### A.3.2 Use profiles/contexts only for “operational context,” not vault identity
+
+Profiles work well when:
+
+- you want to run the *same application* under different environments (`dev`, `test`, `prod`)
+
+Profiles do not work well when:
+
+- you want N independent configs for N vaults (vaults are not “environments”; they are domain instances)
+
+Guidance for Lithos:
+
+- Keep **Global vs Vault** as distinct layers.
+- If you add “context,” add it orthogonally:
+  - select one context at a time
+  - apply it consistently to all providers
+
+#### A.3.3 If contexts exist, adopt a strict rule: `nested + select + profile` everywhere
+
+If Lithos introduces a “context” concept, follow this discipline:
+
+- if a file is expected to contain contexts/profiles, treat it as nested
+- select the context in the Figment instance early
+- apply the same profile/context to env vars and serialized overlays
+
+This is a correctness rule, not a style preference.
+
+#### A.3.4 Provide an “explain config” query (UX win)
+
+Observed in apple-codesign and cargo-lambda:
+
+- Being able to show “what config is active” and “where it came from” is invaluable.
+
+Recommended query capability (read-model / debug view):
+
+- `explain_merged_config(vault_id, context?) -> { active_version, layers_present, merged_config }`
+
+Optionally include a “provenance mode”:
+
+- For each major section (`frontmatter`, `schema`, `template`, `logging`), record whether it came from `vault`, `global`, or `default`.
+
+This dovetails with the versioned merged-config read model and rollback story.
+
+#### A.3.5 Be explicit about list semantics (`merge` vs additive)
+
+Observed in cargo-lambda:
+
+- merging lists is contentious; some users want replacement, others want additive behavior.
+
+Guidance for Lithos:
+
+- Default to **replace** for arrays/lists in config overrides.
+- Only adopt additive merging for carefully chosen fields where it is obviously correct (and document it field-by-field).
+
+If Lithos needs both semantics, represent it in the model:
+
+- e.g., `TrustedVaultsPolicy::Replace(Vec<_>)` vs `TrustedVaultsPolicy::Extend(Vec<_>)`
+
+#### A.3.6 Separate “input config shapes” from “persisted config bytes”
+
+Tension present in Lithos today:
+
+- domain types derive both `serde` and `rkyv`, which can make the domain model awkward to evolve.
+
+Guidance (aligned with the patterns above):
+
+- Treat config as a pipeline:
+  1) parse/load (serde-focused, best-effort)
+  2) build domain objects (type-driven invariants)
+  3) build merged aggregate (validated)
+  4) persist read-model bytes (rkyv-focused)
+
+If a domain model change would force a persisted-format migration, prefer introducing explicit DTO boundaries rather than contorting core domain types.
+
+### A.4 Practical Design Additions (Compatible with the Rest of This Spec)
+
+These additions are recommended because they are high leverage and don’t require changing the fundamental “Global + Vault → merged aggregate” model.
+
+#### A.4.1 Add a domain-friendly “config resolution report” type
+
+Even without per-key provenance, a simple report object helps debugging and observability:
+
+- which sources were loaded successfully
+- which sources were absent
+- which vault identity was used
+- which merged version was activated (if using versioned merged configs)
+
+This can be emitted at the application boundary and/or persisted as part of the merged-config version metadata.
+
+#### A.4.2 Normalize unknown-key reporting behavior
+
+If Lithos uses Figment extraction for file/env inputs, decide and document:
+
+- whether unknown keys are hard errors or warnings
+- where the error is raised (Global/Vault build vs final merged `Config::build`)
+
+Arti’s guidance is strong here:
+
+- resolve once for all consumers so unrecognized keys are reported coherently
+
+#### A.4.3 Keep “VaultId is primary identity” consistent in user-facing messages
+
+Given the decision in 3.4.2, all user-facing config messages should prefer:
+
+- `VaultId` as the stable identifier
+- `VaultRoot` as a current location hint
+
+This matches the model’s intent (stable identity) and avoids confusing path-only errors after vault moves.
