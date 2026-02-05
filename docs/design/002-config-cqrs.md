@@ -116,7 +116,53 @@ flowchart LR
   DB --> Out[Merged Config (active)]
 ```
 
-### 3.2 Component & Interface Specifications
+### 3.2 Data Models
+
+#### Storage layout (target)
+
+- Table: "vault_id_by_path"
+  - Key: `(VaultPathKey)` → value: `VaultId`
+
+- Table: "vault_path_by_id"
+  - Key: `(VaultId)` → value: `VaultPathKey`
+
+- Table: "config"
+  - Key: "global" → value: `Global`
+  - Key: `(vault_id)` → value: `Vault`
+
+- Table: "merged_config_versions"
+  - Key: `(vault_id, version)` → value: `Config` (merged)
+
+- Table: "merged_config_active"
+  - Key: `(vault_id)` → value: `ConfigVersion` (current active)
+
+Where:
+
+- `vault_id` is the stable vault identity.
+- `VaultPathKey` is the canonical encoding of the vault root path (current location) used for reverse lookup.
+- `ConfigVersion` is a monotonic version identifier (recommend `u64`).
+
+#### Alternative storage layout (legacy): path-keyed vault identity
+
+If stable IDs are not yet available, a transitional layout may key vault-scoped tables by `VaultPathKey` instead of `VaultId`:
+
+- Table: "config"
+  - Key: "global" → value: `Global`
+  - Key: `(vault_key)` → value: `Vault`
+
+- Table: "merged_config_versions"
+  - Key: `(vault_key, version)` → value: `Config`
+
+- Table: "merged_config_active"
+  - Key: `(vault_key)` → value: `ConfigVersion`
+
+Where `vault_key: VaultPathKey` is the canonical encoding of the vault root path.
+
+Note: this layout makes moves/renames harder to model because identity is the path.
+
+With `VaultId` required by convention, prefer the target layout. It only helps with vault moves if the system can re-discover the same ID at the new location (typically by persisting the ID in or near the vault itself).
+
+### 3.3 Component & Interface Specifications
 
 #### Component: `config::command::Command`
 
@@ -166,7 +212,7 @@ Notes:
 - `get` is a read against the merged-config read model, not a “recompute merge” operation.
 - Layer reads (`load_global`/`load_vault`) are command-side concerns in this design so the query side stays merged-only.
 
-### 3.3 Integration & Data Flow
+### 3.4 Integration & Data Flow
 
 #### Persist global config
 
@@ -209,52 +255,6 @@ sequenceDiagram
   DB-->>Q: Option<Config>
   Q-->>Caller: Option<Config>
 ```
-
-### 3.4 Data Models
-
-#### Storage layout (target)
-
-- Table: `"vault_id_by_path"`
-  - Key: `(VaultPathKey)` → value: `VaultId`
-
-- Table: `"vault_path_by_id"`
-  - Key: `(VaultId)` → value: `VaultPathKey`
-
-- Table: `"config"`
-  - Key: `"global"` → value: `Global`
-  - Key: `(vault_id)` → value: `Vault`
-
-- Table: `"merged_config_versions"`
-  - Key: `(vault_id, version)` → value: `Config` (merged)
-
-- Table: `"merged_config_active"`
-  - Key: `(vault_id)` → value: `ConfigVersion` (current active)
-
-Where:
-
-- `vault_id` is the stable vault identity.
-- `VaultPathKey` is the canonical encoding of the vault root path (current location) used for reverse lookup.
-- `ConfigVersion` is a monotonic version identifier (recommend `u64`).
-
-#### Alternative storage layout (legacy): path-keyed vault identity
-
-If stable IDs are not yet available, a transitional layout may key vault-scoped tables by `VaultPathKey` instead of `VaultId`:
-
-- Table: `"config"`
-  - Key: `"global"` → value: `Global`
-  - Key: `(vault_key)` → value: `Vault`
-
-- Table: `"merged_config_versions"`
-  - Key: `(vault_key, version)` → value: `Config`
-
-- Table: `"merged_config_active"`
-  - Key: `(vault_key)` → value: `ConfigVersion`
-
-Where `vault_key: VaultPathKey` is the canonical encoding of the vault root path.
-
-Note: this layout makes moves/renames harder to model because identity is the path.
-
-With `VaultId` required by convention, prefer the target layout. It only helps with vault moves if the system can re-discover the same ID at the new location (typically by persisting the ID in or near the vault itself).
 
 ### 3.5 Core Logic & Algorithms
 
@@ -328,4 +328,8 @@ Error-handling rules (match existing contexts):
 | Date       | Critique / Issue                         | Resolution                                         |
 | :--------- | :--------------------------------------- | :------------------------------------------------- |
 | 2026-02-04 | "load() hard-codes vault identity."      | "Require explicit vault_id; see Decision 4.1."     |
-| 2026-02-04 | "Merged config should support rollback." | "Add versioned merged-config read model; see 3.4." |
+| 2026-02-04 | "Merged config should support rollback." | "Add versioned merged-config read model; see 3.2." |
+
+## 8. References
+
+- (none yet)

@@ -9,14 +9,6 @@ tags: [schema, inheritance, resolver, graph, type-driven-design, performance]
 
 # Tech Spec: Schema Graph + Resolver (Inheritance + $ref)
 
-## 0. Definition of Done
-
-- Inheritance resolution is specified as a deterministic, testable algorithm.
-- `$ref` semantics are precisely defined, including what is adapter-parsed vs domain-resolved.
-- Cycle detection and missing-parent behavior is specified and mapped to typed errors.
-- Resolver design aligns with type-driven models (no stringly-typed map keys in core).
-- The design accounts for performance (minimize cloning) and redb+rkyv zero-copy constraints.
-
 ## 1. Problem Space (The "Why")
 
 ### 1.1 Context & Background
@@ -65,6 +57,14 @@ The main risks in this area are:
 - `$ref` must not become a "mini parser" inside the domain; format-specific parsing belongs in adapters.
 - Type-driven preconditions: represent invariants and required normalization in types (e.g., typed `PropertyRef`), rather than relying on string conventions (see https://rust-analyzer.github.io/book/contributing/style.html).
 
+### 1.4 Definition of Done
+
+- Inheritance resolution is specified as a deterministic, testable algorithm.
+- `$ref` semantics are precisely defined, including what is adapter-parsed vs domain-resolved.
+- Cycle detection and missing-parent behavior is specified and mapped to typed errors.
+- Resolver design aligns with type-driven models (no stringly-typed map keys in core).
+- The design accounts for performance (minimize cloning) and redb+rkyv zero-copy constraints.
+
 ## 2. Guide-Level Explanation (The "What")
 
 ### 2.1 User/Dev Experience
@@ -107,7 +107,24 @@ flowchart TD
   D --> E[Resolved Schema]
 ```
 
-### 3.2 Component & Interface Specifications
+### 3.2 Data Models
+
+Minimal data for graph resolution:
+
+- Node key: `SchemaName`
+- Parent edge: `Option<SchemaName>`
+
+Resolver inputs:
+
+- `RawSchema` (wire)
+- `Option<&Schema>` (resolved parent)
+- `&PropertyBank`
+
+Resolver output:
+
+- `Schema` (resolved)
+
+### 3.3 Component & Interface Specifications
 
 #### Component: `Graph`
 
@@ -189,7 +206,7 @@ pub enum PropertyRef {
 
 This cleanly supports future expansions without leaking string parsing into the domain.
 
-### 3.3 Integration & Data Flow
+### 3.4 Integration & Data Flow
 
 Graph + Resolver integration points:
 
@@ -202,23 +219,6 @@ If a parent schema is missing:
 
 - Graph or the orchestration layer returns `ParentSchemaNotFound`.
 - Resolution stops (fail-fast), because partial resolution tends to hide errors.
-
-### 3.4 Data Models
-
-Minimal data for graph resolution:
-
-- Node key: `SchemaName`
-- Parent edge: `Option<SchemaName>`
-
-Resolver inputs:
-
-- `RawSchema` (wire)
-- `Option<&Schema>` (resolved parent)
-- `&PropertyBank`
-
-Resolver output:
-
-- `Schema` (resolved)
 
 ### 3.5 Core Logic & Algorithms
 
@@ -306,3 +306,7 @@ Avoid the “clone to satisfy the borrow checker” anti-pattern; if cloning bec
 | 2026-02-03 | Domain resolver keyed by `String` loses type safety         | Specify `HashMap<PropertyName, Property>` working set         |
 | 2026-02-03 | `$ref` parsing in domain mixes concerns and adds complexity | Move parsing to adapters; domain resolves typed `PropertyRef` |
 | 2026-02-03 | Inheritance behavior on override not explicit               | Specify "child overrides parent" precedence rule              |
+
+## 8. References
+
+- (none yet)

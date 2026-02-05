@@ -170,9 +170,23 @@ The note model is a domain component:
 
 Frontmatter is specified separately in `docs/design/005-note-frontmatter.md` and treated as a child value object.
 
-### 3.2 Component & Interface Specifications
+### 3.2 Data Models
 
-### 3.2.1 Type-Driven Design Improvements (Map)
+Canonical model set (persisted unless noted):
+
+- `Note { id: Uuid, path: NotePath, frontmatter: Option<Frontmatter>, links: Vec<Link>, tags: Vec<Tag>, headings: Vec<Heading>, tasks: Vec<Task>, sections: Vec<Section> }`
+- `StagedNote { note: Note, pending_events: Vec<NoteEvents> }` (in-memory only, not persisted)
+- `NotePath(Box<str>)`
+- `Link { target: Target, anchor: Option<Anchor>, position: usize, alias: Option<Box<str>>, style: Style, embed_type: Option<EmbedType> }`
+- `Target::{Resolved { id: Uuid, path: Box<str> }, Unresolved { raw: Box<str> }, External { url: Box<str> }}`
+- `Tag { full_path: Box<str>, segments: Vec<Box<str>> }` (internal wrappers are fine)
+- `Task { text: Box<str>, status: TaskStatus, position: usize }`
+- `Heading { level: u8, text: Box<str>, position: usize }`
+- `Section { heading: Option<Heading>, content: Box<str>, range: Range<usize> }`
+
+### 3.3 Component & Interface Specifications
+
+### 3.3.1 Type-Driven Design Improvements (Map)
 
 This section enumerates the intended type-driven design improvements for the note model. The goal is to prevent invalid states at compile time (or at construction time), reduce accidental misuse (especially mixing "same representation" primitives), and make APIs self-documenting.
 
@@ -369,7 +383,7 @@ Event staging rules:
 - Pending events MUST be staged in-memory and dispatched only after the successful DB transaction commit (Unit of Work).
 - Therefore, pending events MUST NOT be part of the persisted `Note` record. If needed, represent staged events outside the archived/persisted type (e.g., a wrapper used only in memory).
 
-### 3.3 Integration & Data Flow
+### 3.4 Integration & Data Flow
 
 - Notes are produced by parsing pipelines, stored in the DB, then read by query workflows.
 
@@ -384,20 +398,6 @@ sequenceDiagram
   Parser->>DB: put(note)
   DB-->>Parser: Ok
 ```
-
-### 3.4 Data Models
-
-Canonical model set (persisted unless noted):
-
-- `Note { id: Uuid, path: NotePath, frontmatter: Option<Frontmatter>, links: Vec<Link>, tags: Vec<Tag>, headings: Vec<Heading>, tasks: Vec<Task>, sections: Vec<Section> }`
-- `StagedNote { note: Note, pending_events: Vec<NoteEvents> }` (in-memory only, not persisted)
-- `NotePath(Box<str>)`
-- `Link { target: Target, anchor: Option<Anchor>, position: usize, alias: Option<Box<str>>, style: Style, embed_type: Option<EmbedType> }`
-- `Target::{Resolved { id: Uuid, path: Box<str> }, Unresolved { raw: Box<str> }, External { url: Box<str> }}`
-- `Tag { full_path: Box<str>, segments: Vec<Box<str>> }` (internal wrappers are fine)
-- `Task { text: Box<str>, status: TaskStatus, position: usize }`
-- `Heading { level: u8, text: Box<str>, position: usize }`
-- `Section { heading: Option<Heading>, content: Box<str>, range: Range<usize> }`
 
 ### 3.5 Core Logic & Algorithms
 
@@ -467,7 +467,7 @@ Type evolution rule:
 
 For breaking changes, use the repo’s "clean slate" protocol (rename DB + reindex) unless an explicit migration layer is introduced.
 
-### 5.4 Testing & Benchmarking
+### 5.3 Testing & Benchmarking
 
 - Unit tests: constructors enforce invariants for `NotePath`, `Tag`, `Link`, `Task`, `Heading`.
 - Unit tests: conversions into newtypes fail on invalid inputs (e.g., `SourceByteOffset` overflow).
@@ -475,7 +475,7 @@ For breaking changes, use the repo’s "clean slate" protocol (rename DB + reind
 - Property tests (where useful): tag segment validation and link target parsing invariants.
 - Benchmarks: criterion benchmarks for query hot paths comparing `get_owned` vs zero-copy access patterns.
 
-### 5.3 Security & Privacy
+### 5.4 Security & Privacy
 
 - `NotePath` validation relies on the security-critical path validator (`fs::validate_vault_path`).
 - Do not accept raw filesystem paths in models.
@@ -496,3 +496,7 @@ For breaking changes, use the repo’s "clean slate" protocol (rename DB + reind
 | 2026-02-03 | "Do we require object-safe ports for query hotpath" | Draft suggests concrete read APIs for zero-copy hot paths. |
 
 | 2026-02-03 | "Are offsets byte or char based?" | Specify byte offsets (`SourceByteOffset`) and compute line/col at edges. |
+
+## 8. References
+
+- (none yet)

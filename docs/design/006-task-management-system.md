@@ -466,56 +466,6 @@ graph TB
     TmplSvc -->|renders| Task
 ```
 
-#### Data Flow: Markdown → Task Entity
-
-```mermaid
-sequenceDiagram
-    participant MD as Markdown File
-    participant P as Parser (Adapter)
-    participant TC as TaskConfig
-    participant L as List Entity
-    participant T as Task Entity
-    participant N as Note Aggregate
-
-    MD->>P: "- [x] #task Do work [priority:: 1]"
-    P->>P: Parse pulldown-cmark events
-    P->>L: Create ListItem::Checkbox
-    P->>TC: Check promotion rules
-    TC->>P: Matches "#task" tag → Promote
-    P->>T: Task::from_checkbox(text, status, config)
-    T->>TC: Parse metadata fields
-    TC->>T: Validate priority (0-10)
-    T->>T: Extract name: "Do work"
-    T->>N: Add to tasks collection
-    L->>L: Store task_id reference
-    L->>N: Add to lists collection
-```
-
-#### Epic Integration Architecture
-
-```mermaid
-graph LR
-    subgraph "Epic 10: Indexing"
-        Parser[Parser] --> Note[Note + Lists + Tasks]
-        Note --> Redb[(Redb Storage)]
-    end
-
-    subgraph "Epic 11: Query"
-        Redb --> TaskIndex[Task Indexes]
-        TaskIndex --> Query[QueryService]
-        Query --> TaskAPI[Task Query API]
-    end
-
-    subgraph "Epic 12: Templates"
-        TaskAPI --> TmplCtx[Template Context]
-        TmplCtx --> MiniJinja[MiniJinja Engine]
-    end
-
-    subgraph "Epic 14: CLI"
-        TaskAPI --> TasksCLI[lithos tasks]
-    end
-```
-
 ### 3.2 Data Models
 
 #### Core Domain Entities
@@ -835,7 +785,73 @@ tasks_metadata: Table<(String, String), Vec<(Uuid, u64)>>  // (field, value) →
 // - Deleting note triggers cleanup of all tasks, list items, and index entries
 ```
 
-### 3.3 Core Logic & Algorithms
+### 3.3 Component & Interface Specifications
+
+#### Component: Markdown Parser (adapter)
+
+- **Responsibility**: parse markdown lists and checkbox items (via pulldown-cmark) and emit `List` + optional promoted `Task` entities.
+
+#### Component: `List` / `Task` / `TaskMetadata` (note context)
+
+- **Responsibility**: represent validated list structure + promoted rich task entities inside the note aggregate.
+
+#### Component: `TaskConfig` (config context)
+
+- **Responsibility**: define promotion rules, status mapping, metadata/temporal schemas, and which fields are indexed.
+
+### 3.4 Integration & Data Flow
+
+#### Data Flow: Markdown → Task Entity
+
+```mermaid
+sequenceDiagram
+    participant MD as Markdown File
+    participant P as Parser (Adapter)
+    participant TC as TaskConfig
+    participant L as List Entity
+    participant T as Task Entity
+    participant N as Note Aggregate
+
+    MD->>P: "- [x] #task Do work [priority:: 1]"
+    P->>P: Parse pulldown-cmark events
+    P->>L: Create ListItem::Checkbox
+    P->>TC: Check promotion rules
+    TC->>P: Matches "#task" tag → Promote
+    P->>T: Task::from_checkbox(text, status, config)
+    T->>TC: Parse metadata fields
+    TC->>T: Validate priority (0-10)
+    T->>T: Extract name: "Do work"
+    T->>N: Add to tasks collection
+    L->>L: Store task_id reference
+    L->>N: Add to lists collection
+```
+
+#### Epic Integration Architecture
+
+```mermaid
+graph LR
+    subgraph "Epic 10: Indexing"
+        Parser[Parser] --> Note[Note + Lists + Tasks]
+        Note --> Redb[(Redb Storage)]
+    end
+
+    subgraph "Epic 11: Query"
+        Redb --> TaskIndex[Task Indexes]
+        TaskIndex --> Query[QueryService]
+        Query --> TaskAPI[Task Query API]
+    end
+
+    subgraph "Epic 12: Templates"
+        TaskAPI --> TmplCtx[Template Context]
+        TmplCtx --> MiniJinja[MiniJinja Engine]
+    end
+
+    subgraph "Epic 14: CLI"
+        TaskAPI --> TasksCLI[lithos tasks]
+    end
+```
+
+### 3.5 Core Logic & Algorithms
 
 #### Algorithm: Task Promotion Decision
 
@@ -1698,17 +1714,19 @@ async fn find_tasks_by_field(field: &str, value: &SettingValue) -> Result<Vec<Ta
 
 ---
 
-## Appendices
+## 8. References
 
-### A. Config Example (Full)
+- (none yet)
+
+## Appendix A: Config Example (Full)
 
 See Section 2.1 for complete `lithos.toml` example.
 
-### B. Parser Event Flow
+## Appendix B: Parser Event Flow
 
 See Section 3.3 "Parser Integration Flow" for pseudocode.
 
-### C. Redb Schema DDL
+## Appendix C: Redb Schema DDL
 
 ```rust
 // Pseudocode for Redb table creation
@@ -1748,7 +1766,7 @@ fn create_task_tables(db: &Database, config: &TaskConfig) -> Result<()> {
 }
 ```
 
-### D. Related ADRs (To Be Created)
+## Appendix D: Related ADRs (To Be Created)
 
 - **ADR 00XX**: Task metadata schema validation strategy
 - **ADR 00XX**: Task query index selection algorithm

@@ -9,16 +9,6 @@ tags: [schema, cqrs, persistence, redb, rkyv, performance]
 
 # Tech Spec: Schema CQRS (Commands + Queries)
 
-## 0. Definition of Done
-
-- CQRS contracts for schema are documented as stable interfaces (inputs/outputs/errors/invariants).
-- The design explicitly supports both:
-  - cold-path owned reads (CLI workflows), and
-  - hot-path archived reads (closure-based; zero-deserialize; may require an alignment copy depending on storage).
-- Proposed DB tables / indexes are specified and compatible with redb constraints.
-- Error contracts avoid stringification in core paths and preserve structured errors.
-- The design respects rkyv validation requirements at trust boundaries.
-
 ## 1. Problem Space (The "Why")
 
 ### 1.1 Context & Background
@@ -67,6 +57,16 @@ From a performance and correctness perspective, CQRS is the boundary where we mu
 - **Lean**: avoid full deserialization and keep allocations minimal on hot read paths.
 - **Alignment is a real constraint**: if redb cannot guarantee alignment for returned byte slices, safe archived access may require copying into an aligned buffer before calling a closure.
 - **Errors**: library surfaces use structured `Result` errors (no `unwrap`/`expect`); reserve `anyhow` for binaries/CLI (see https://github.com/apollographql/rust-best-practices/tree/1c78fa64bb0d5df4a4d18d5923a7ced615f947d1).
+
+### 1.4 Definition of Done
+
+- CQRS contracts for schema are documented as stable interfaces (inputs/outputs/errors/invariants).
+- The design explicitly supports both:
+  - cold-path owned reads (CLI workflows), and
+  - hot-path archived reads (closure-based; zero-deserialize; may require an alignment copy depending on storage).
+- Proposed DB tables / indexes are specified and compatible with redb constraints.
+- Error contracts avoid stringification in core paths and preserve structured errors.
+- The design respects rkyv validation requirements at trust boundaries.
 
 ## 2. Guide-Level Explanation (The "What")
 
@@ -142,9 +142,25 @@ flowchart LR
   Cmd --> Idx[(Indexes)]
 ```
 
-### 3.2 Component & Interface Specifications
+### 3.2 Data Models
 
-### 3.2.1 Concrete-first CQRS surface (recommended)
+#### Storage key newtypes (adapter/storage layer)
+
+```rust
+pub struct SchemaNameKey(Box<str>);
+pub struct PropertyNameKey(Box<str>);
+```
+
+These represent the canonical serialized encoding for keys.
+
+#### Returned values
+
+- Owned tier returns `Schema` / `PropertyBank`.
+- Zero-copy tier returns computed owned values `R`.
+
+### 3.3 Component & Interface Specifications
+
+### 3.3.1 Concrete-first CQRS surface (recommended)
 
 This follows the same pattern as the Note CQRS spec: concrete types are the primary API (static dispatch, easiest to keep zero-copy), while port traits remain available for dependency inversion/testing.
 
@@ -220,7 +236,7 @@ Design rules (Rust API Guidelines + Lithos rules):
 - Error messages should be concise and stable.
 - For API and object-safety guidance when exposing trait objects, see the Rust API Guidelines checklist: https://rust-lang.github.io/api-guidelines/checklist.html
 
-### 3.3 Integration & Data Flow
+### 3.4 Integration & Data Flow
 
 #### Persistence strategy choice
 
@@ -268,22 +284,6 @@ Key encoding guidance:
 
 - prefer fixed-width keys where possible (`Uuid` as `[u8; 16]` or u128) for performance.
 - if using string keys, define a dedicated storage-layer newtype (`SchemaNameKey(Box<str>)`) and keep it out of domain models.
-
-### 3.4 Data Models
-
-#### Storage key newtypes (adapter/storage layer)
-
-```rust
-pub struct SchemaNameKey(Box<str>);
-pub struct PropertyNameKey(Box<str>);
-```
-
-These represent the canonical serialized encoding for keys.
-
-#### Returned values
-
-- Owned tier returns `Schema` / `PropertyBank`.
-- Zero-copy tier returns computed owned values `R`.
 
 ### 3.5 Core Logic & Algorithms
 
@@ -347,3 +347,7 @@ These represent the canonical serialized encoding for keys.
 | 2026-02-03 | Zero-copy queries conflict with dyn-compatibility | Put closure-based APIs on concrete query type                |
 | 2026-02-03 | Name-keyed storage makes renames hard             | Recommend `SchemaId` primary key + name→id index             |
 | 2026-02-03 | Persisted bytes are untrusted                     | Require rkyv validation at trust boundary; corrupt-data path |
+
+## 8. References
+
+- (none yet)

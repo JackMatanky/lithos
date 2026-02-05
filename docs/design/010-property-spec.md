@@ -9,12 +9,6 @@ tags: [schema, validation, refactor, security, performance]
 
 # Tech Spec: PropertySpec (Schema Property Specifications)
 
-## 0. Definition of Done
-
-- Safety/correctness fixes for validation edge cases are covered by unit tests.
-- Existing public APIs either remain compatible, or any breaking changes are explicitly called out in this design and implemented in one cohesive sweep.
-- Repo quality gates are green: `mise run fmt`, `mise run lint`, and `mise run test` (or `mise run verify`).
-
 ## 1. Problem Space (The "Why")
 
 ### 1.1 Context & Background
@@ -92,7 +86,13 @@ The design must explicitly cover and enforce the following:
 - **Schema compatibility**: compatibility is preferred, but early-stage breaking changes are acceptable when they reduce long-term complexity or bug surface area. If we break compatibility, we must document a migration strategy.
 - **Error type stability**: existing `SchemaError` variants are used in tests; new variants are allowed, but should be justified.
 
-### 1.4 Baseline Behavior Notes (Pre-Change Inventory)
+### 1.4 Definition of Done
+
+- Safety/correctness fixes for validation edge cases are covered by unit tests.
+- Existing public APIs either remain compatible, or any breaking changes are explicitly called out in this design and implemented in one cohesive sweep.
+- Repo quality gates are green: `mise run fmt`, `mise run lint`, and `mise run test` (or `mise run verify`).
+
+### 1.5 Baseline Behavior Notes (Pre-Change Inventory)
 
 Before implementing changes from this spec, capture/confirm current behavior so we can distinguish “intentional tightening” from accidental breakage:
 
@@ -220,7 +220,46 @@ To keep the schema context maintainable, organize the code so definition types, 
 - `regex` for pattern validation
 - `std::sync` for caching synchronization
 
-### 3.2 Component & Interface Specifications
+### 3.2 Data Models
+
+Naming convention:
+
+- `Raw*` = raw schema input type (Serde)
+- `*Spec` = validated runtime contract type (invariants guaranteed)
+
+#### Raw spec representation (schema inputs)
+
+These types are the Serde-facing input shapes used in schema inputs. Their key role is: **validate/compile into `*Spec` before use**.
+
+- `RawPropertySpec` (internally tagged by `type`)
+- `BoolSpecDef`, `DateSpecDef`, `FileSpecDef`, `NumberSpecDef`, `StringSpecDef`
+
+They are intentionally “dumb data”: they may be invalid until compiled.
+
+#### Validated spec representation (hot-path runtime)
+
+These types are used for runtime validation, and carry invariants so that invalid states are unrepresentable:
+
+- `PropertySpec`
+- `BoolSpec`, `DateSpec`, `FileSpec`, `NumberSpec`, `StringSpec`
+
+Construction happens via compilation/validation:
+
+- `RawPropertySpec::try_into_validated() -> Result<PropertySpec, SchemaError>`
+
+The validated types may use internal helper types (e.g., `Bounds<T>`, `VaultRelPath`, `FiniteF64`, compiled regex handles) and do not need to be Serde-compatible.
+
+#### Internal helper types (used by validated specs)
+
+To improve correctness and reduce repetition, introduce internal helper types used by the validated `*Spec` types:
+
+- `Bounds<T>`: reusable min/max validation (used by `NumberSpec` and `StringSpec` length)
+- `FiniteF64`: rejects `NaN` and ±∞ at construction time
+- `Step`: guarantees “positive + finite” step increments
+- `VaultRelPath`: validates “vault-relative path grammar” for directory and file path strings
+- `RegexPattern` / cached compiled regex handle (e.g., `Arc<regex::Regex>`)
+
+### 3.3 Component & Interface Specifications
 
 #### Component: PropertySpec
 
@@ -300,7 +339,7 @@ Length semantics are explicitly defined in this design (see 3.5.4).
 
 Implementation note (repo best practice): even though the persisted representation uses `String`, all internal path operations should be performed via `std::path::Path` / `PathBuf` (never ad-hoc string operations) to align with the project’s “Path Protocol”.
 
-### 3.3 Integration & Data Flow
+### 3.4 Integration & Data Flow
 
 #### Scalar validation flow
 
@@ -330,45 +369,6 @@ sequenceDiagram
     S-->>P: Ok | Err(SchemaError)
   end
 ```
-
-### 3.4 Data Models
-
-Naming convention:
-
-- `Raw*` = raw schema input type (Serde)
-- `*Spec` = validated runtime contract type (invariants guaranteed)
-
-#### Raw spec representation (schema inputs)
-
-These types are the Serde-facing input shapes used in schema inputs. Their key role is: **validate/compile into `*Spec` before use**.
-
-- `RawPropertySpec` (internally tagged by `type`)
-- `BoolSpecDef`, `DateSpecDef`, `FileSpecDef`, `NumberSpecDef`, `StringSpecDef`
-
-They are intentionally “dumb data”: they may be invalid until compiled.
-
-#### Validated spec representation (hot-path runtime)
-
-These types are used for runtime validation, and carry invariants so that invalid states are unrepresentable:
-
-- `PropertySpec`
-- `BoolSpec`, `DateSpec`, `FileSpec`, `NumberSpec`, `StringSpec`
-
-Construction happens via compilation/validation:
-
-- `RawPropertySpec::try_into_validated() -> Result<PropertySpec, SchemaError>`
-
-The validated types may use internal helper types (e.g., `Bounds<T>`, `VaultRelPath`, `FiniteF64`, compiled regex handles) and do not need to be Serde-compatible.
-
-#### Internal helper types (used by validated specs)
-
-To improve correctness and reduce repetition, introduce internal helper types used by the validated `*Spec` types:
-
-- `Bounds<T>`: reusable min/max validation (used by `NumberSpec` and `StringSpec` length)
-- `FiniteF64`: rejects `NaN` and ±∞ at construction time
-- `Step`: guarantees “positive + finite” step increments
-- `VaultRelPath`: validates “vault-relative path grammar” for directory and file path strings
-- `RegexPattern` / cached compiled regex handle (e.g., `Arc<regex::Regex>`)
 
 ### 3.5 Core Logic & Algorithms
 
@@ -554,7 +554,7 @@ Compatibility strategy (implementation choice):
 - **Additive (preferred)**: introduce stricter internal validation behavior while preserving public API shape; where behavior tightening is user-visible, document it and add targeted tests.
 - **Breaking-but-clean**: if tightening requires a public API behavior change, do it in one sweep and update call sites; only acceptable with explicit versioning/release notes.
 
-### 5.4 Test Plan
+### 5.3 Test Plan
 
 Tests live alongside the bounded context being validated. For this iteration, the test matrix should at minimum cover:
 
@@ -567,7 +567,7 @@ Avoid timing-based tests for caching; validate caching behavior indirectly (e.g.
 
 Also: keep tests scoped—avoid PropertySpec tests that indirectly test frontmatter extraction behavior (and vice versa).
 
-### 5.3 Security & Privacy
+### 5.4 Security & Privacy
 
 Improvements:
 

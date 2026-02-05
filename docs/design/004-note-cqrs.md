@@ -172,9 +172,37 @@ flowchart LR
   Cmd --> Indexes[Indexes: path->id, tag->id]
 ```
 
-### 3.2 Component & Interface Specifications
+### 3.2 Data Models
 
-### 3.2.0 Type-Driven Design Improvements (CQRS)
+Storage schema (logical):
+
+- `notes` table: `id -> Note`
+- `path_to_id` multimap: `note_path -> id`
+- `tags_to_notes` multimap: `tag_full_path -> id`
+
+Proposed projection indexes for instant queries:
+
+- `alias_to_id` multimap: `alias -> id`
+- `folder_to_id` multimap: `folder_path -> id`
+- `file_class_to_id` multimap: `file_class -> id`
+- `frontmatter_kv_to_id` multimap: `composite(frontmatter_key, value) -> id`
+
+Notes:
+
+- The dedicated `alias_to_id` / `file_class_to_id` indexes are conceptually special cases of `frontmatter_kv_to_id`.
+  - They exist because they are expected to be very hot and should remain obvious and easy to query.
+  - `aliases` commonly store an array; indexing should treat each string element as a separate value.
+- `title` can initially be served via `frontmatter_kv_to_id` using `Config.frontmatter.title_key`.
+  A dedicated `title_to_id` can be added later if profiling warrants it.
+
+Notes:
+
+- Indexes are stored as `String` ids today; the format should be treated as an internal adapter concern.
+- Future: prefer storing UUID bytes to avoid conversion overhead if profiling shows it matters.
+
+### 3.3 Component & Interface Specifications
+
+### 3.3.0 Type-Driven Design Improvements (CQRS)
 
 CQRS is a natural place to apply type-driven design because it defines boundaries and contracts.
 
@@ -290,7 +318,7 @@ Error mapping rules:
 - Avoid `to_string()` in core CQRS implementations; if a human-readable message is needed, format it at the CLI boundary.
 - If callers need stable branching on error cases, provide enums/variants rather than parsing error text.
 
-### 3.2.1 Concrete-first CQRS surface (recommended)
+### 3.3.1 Concrete-first CQRS surface (recommended)
 
 To align with repo conventions, the primary API should be concrete types, with traits as optional polymorphic wrappers.
 
@@ -306,7 +334,7 @@ Practical guidance:
 - If callers can accept generics, they may use richer helper methods that are excluded from `dyn` dispatch via `where Self: Sized`.
 - Prefer concrete types for hot paths; they give the most flexibility for evolving zero-copy APIs.
 
-### 3.3 Integration & Data Flow
+### 3.4 Integration & Data Flow
 
 #### Create note
 
@@ -358,34 +386,6 @@ The read model includes additional indexes for “instant” lookups.
 
 These are designed so a query can answer “what notes match?” without
 deserializing full `Note` aggregates.
-
-### 3.4 Data Models
-
-Storage schema (logical):
-
-- `notes` table: `id -> Note`
-- `path_to_id` multimap: `note_path -> id`
-- `tags_to_notes` multimap: `tag_full_path -> id`
-
-Proposed projection indexes for instant queries:
-
-- `alias_to_id` multimap: `alias -> id`
-- `folder_to_id` multimap: `folder_path -> id`
-- `file_class_to_id` multimap: `file_class -> id`
-- `frontmatter_kv_to_id` multimap: `composite(frontmatter_key, value) -> id`
-
-Notes:
-
-- The dedicated `alias_to_id` / `file_class_to_id` indexes are conceptually special cases of `frontmatter_kv_to_id`.
-  - They exist because they are expected to be very hot and should remain obvious and easy to query.
-  - `aliases` commonly store an array; indexing should treat each string element as a separate value.
-- `title` can initially be served via `frontmatter_kv_to_id` using `Config.frontmatter.title_key`.
-  A dedicated `title_to_id` can be added later if profiling warrants it.
-
-Notes:
-
-- Indexes are stored as `String` ids today; the format should be treated as an internal adapter concern.
-- Future: prefer storing UUID bytes to avoid conversion overhead if profiling shows it matters.
 
 ### 3.5 Core Logic & Algorithms
 
@@ -464,7 +464,11 @@ Validation & unchecked variants (dependability guidance):
 | 2026-02-03 | "Do we require `dyn Query` for the hot path?"         | Draft proposes concrete zero-copy methods; confirm call sites. |
 | 2026-02-03 | "Are note events staged after commit (Unit of Work)?" | Draft describes staging; implementation should align with UoW. |
 
-## 8. Implementation Plan
+## 8. References
+
+- (none yet)
+
+## Appendix A: Implementation Plan
 
 Phased plan (optimize for correctness first, then performance):
 
@@ -498,7 +502,7 @@ Acceptance criteria:
 - Zero-copy closure helpers never allow transaction-scoped borrows to escape.
 - Index invariants are covered by tests.
 
-## 9. Open Questions
+## Appendix B: Open Questions
 
 - **Hot-path scope**: which concrete reads must be zero-copy first (LSP hover, outline, backlinks, search, indexing scans)?
 - **Query helper surface**: do we want additional `with_archived_*` helpers beyond `by_id` (e.g., by path index lookup) or keep those as free functions?
