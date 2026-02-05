@@ -52,7 +52,11 @@ use crate::fs::validate_vault_path;
 /// // For new files (first-time indexing)
 /// let new_id = Uuid::now_v7();
 /// let note = Note::new(new_id, "projects/example.md".to_string())?;
-/// assert_eq!(note.path.as_str(), "projects/example.md");
+/// assert_eq!(
+///     note.path.as_str(),
+///     "projects/example.md",
+///     "Note path should match"
+/// );
 /// # Ok(())
 /// # }
 /// ```
@@ -188,7 +192,7 @@ impl Note {
     ///     0,
     /// )?;
     /// note.links.push(embed);
-    /// assert_eq!(note.embeds().count(), 1);
+    /// assert_eq!(note.embeds().count(), 1, "Expected one embed");
     /// # Ok(())
     /// # }
     /// ```
@@ -222,7 +226,7 @@ impl Note {
     ///     20,
     /// )?;
     /// note.links.push(link);
-    /// assert_eq!(note.markdown_links().count(), 1);
+    /// assert_eq!(note.markdown_links().count(), 1, "Expected one markdown link");
     /// # Ok(())
     /// # }
     /// ```
@@ -245,7 +249,7 @@ impl Note {
     /// # use uuid::Uuid;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let note = Note::new(Uuid::now_v7(), "notes/intro.md".to_string())?;
-    /// assert_eq!(note.path.as_str(), "notes/intro.md");
+    /// assert_eq!(note.path.as_str(), "notes/intro.md", "Note path should match");
     /// # Ok(())
     /// # }
     /// ```
@@ -341,7 +345,7 @@ impl Note {
     ///     0,
     /// )?;
     /// note.links.push(link);
-    /// assert_eq!(note.wikilinks().count(), 1);
+    /// assert_eq!(note.wikilinks().count(), 1, "Expected one wiki link");
     /// # Ok(())
     /// # }
     /// ```
