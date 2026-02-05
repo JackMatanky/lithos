@@ -1,6 +1,6 @@
 ---
 feature: [Feature Name]
-status: Draft # Options: Draft, In Review, Approved, Implemented, Archived
+status: [Draft, In Review, Approved, Implemented, Archived]
 author: [Name]
 ticket: [Link to Issue]
 date_created: YYYY-MM-DD
@@ -9,10 +9,10 @@ tags: [cache, refactor, performance]
 
 # Tech Spec: [Feature Name]
 
-> **Note**: See `docs/design/README.md` for usage instructions.
-
 <!--
 How to use this template (keep it lightweight):
+
+- For process details and the AI prompt, see `docs/design/README.md`.
 
 1) Start with Section 1 (constraints + goals). If you can’t write 1.3, you’re not ready to design.
 2) Write Section 2 (guide-level UX) next. If it’s hard to explain, the design is wrong.

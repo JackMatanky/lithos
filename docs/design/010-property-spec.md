@@ -1,6 +1,6 @@
 ---
 feature: PropertySpec (Schema Property Specifications)
-status: Draft # Options: Draft, In Review, Approved, Implemented, Archived
+status: Draft
 author: Jack Matanky
 ticket: TBD
 date_created: 2026-02-02
@@ -8,8 +8,6 @@ tags: [schema, validation, refactor, security, performance]
 ---
 
 # Tech Spec: PropertySpec (Schema Property Specifications)
-
-> **Note**: See `docs/design/README.md` for usage instructions.
 
 ## 0. Definition of Done
 
@@ -25,7 +23,7 @@ The schema subsystem defines properties with type-specific validation rules.
 
 The module [lithos-core/src/schema/property_spec.rs](../../lithos-core/src/schema/property_spec.rs) is the center of that validation:
 
-- It defines the *validated* `*Spec` types that carry invariants and are used for runtime validation.
+- It defines the _validated_ `*Spec` types that carry invariants and are used for runtime validation.
 - It validates runtime metadata values (`validate`) using `serde_json::Value` as a universal IR.
 
 Primary consumers:
@@ -42,21 +40,26 @@ Property specification validation is security- and correctness-sensitive. This d
 
 The design must explicitly cover and enforce the following:
 
-1) **FileSpec directory restriction uses path component semantics + traversal policy**
+1. **FileSpec directory restriction uses path component semantics + traversal policy**
+
 - Reject empty paths, `.` / `..` components, absolute paths, and platform prefixes.
 - Apply containment checks using `Path` component semantics (not naive string prefix checks).
 
-2) **NumberSpec rejects non-finite values**
+2. **NumberSpec rejects non-finite values**
+
 - Reject `NaN`, `+∞`, `-∞` for both spec bounds and runtime values.
 
-3) **Regex caching compiles without holding locks and shares compiled regexes**
+3. **Regex caching compiles without holding locks and shares compiled regexes**
+
 - Avoid compiling regexes while holding global locks.
 - Reuse compiled regexes across validations.
 
-4) **Validation avoids avoidable string allocations**
+4. **Validation avoids avoidable string allocations**
+
 - Prefer borrowed `&str` views from `serde_json::Value` on hot paths.
 
-5) **String length semantics are explicit**
+5. **String length semantics are explicit**
+
 - Specify whether length is measured in UTF-8 bytes or Unicode scalar values; this design standardizes that choice.
 
 ### 1.2 Goals & Non-Goals
@@ -166,8 +169,8 @@ Array validation is handled one layer up, by `Property::validate_value`.
 
 ### 2.2 Mental Model
 
-- A `RawPropertySpec` is the *raw spec input shape* (Serde-friendly) used by raw schema inputs.
-- A `PropertySpec` is the *validated contract* (invariants guaranteed).
+- A `RawPropertySpec` is the _raw spec input shape_ (Serde-friendly) used by raw schema inputs.
+- A `PropertySpec` is the _validated contract_ (invariants guaranteed).
 - `try_into_validated()` checks that the contract is coherent and produces the validated form.
 - `validate(value)` checks that a runtime value conforms.
 
@@ -184,8 +187,8 @@ The contract is defined at schema-build time (from raw schema inputs); validatio
 
 Design stance:
 
-1) Define a raw spec type `RawPropertySpec` in `schema::raw` and use it from raw schema inputs (`RawPropertyInline.spec`).
-2) Compile/validate that raw spec into the validated `PropertySpec` during schema/property construction.
+1. Define a raw spec type `RawPropertySpec` in `schema::raw` and use it from raw schema inputs (`RawPropertyInline.spec`).
+2. Compile/validate that raw spec into the validated `PropertySpec` during schema/property construction.
 
 ### 2.3 Modularization Plan (Code Organization)
 
@@ -375,9 +378,9 @@ Type-driven development would materially improve this module because the current
 
 Key opportunities:
 
-1) **Shared min/max invariants**
+1. **Shared min/max invariants**
 
-While NumberSpec uses `min/max` on values and StringSpec uses `min_length/max_length` on lengths, both follow the same *bounds invariants*:
+While NumberSpec uses `min/max` on values and StringSpec uses `min_length/max_length` on lengths, both follow the same _bounds invariants_:
 
 - If both present, `min <= max`.
 - Validation is “optional bounds” over an input value.
@@ -393,7 +396,7 @@ Used for:
 
 This consolidates the invariant and the error paths.
 
-2) **Make invalid states unrepresentable where possible**
+2. **Make invalid states unrepresentable where possible**
 
 Use validated helper types inside the validated `*Spec` structs:
 
@@ -403,7 +406,7 @@ Use validated helper types inside the validated `*Spec` structs:
 
 Persisted `*SpecDef` types can remain simple (`Option<f64>`, `Option<String>`) and are converted into validated types at schema-build time.
 
-3) **Enum values representation (list vs map)**
+3. **Enum values representation (list vs map)**
 
 Today `StringSpec.enum_values: Option<Vec<String>>` is a set-membership constraint.
 
@@ -413,7 +416,7 @@ A map (`BTreeMap<String, String>` or `HashMap<String, String>`) could support:
 - descriptions
 - migration aliases
 
-However, changing the schema format is a compatibility concern. This design treats it as a *future extension* (see Alternatives), not part of this iteration.
+However, changing the schema format is a compatibility concern. This design treats it as a _future extension_ (see Alternatives), not part of this iteration.
 
 #### 3.5.2 File directory containment (path semantics + traversal policy)
 
@@ -438,7 +441,7 @@ Containment rule:
 
 This keeps validation deterministic and avoids reliance on filesystem state.
 
-Cross-platform note: `std::path::Path` has platform-specific semantics. Vault-relative paths in Lithos should be treated as *syntactic* “vault paths” (not OS paths). The implementation should explicitly validate components (rejecting `Prefix`/`RootDir`/`ParentDir`) so behavior is consistent across OSes.
+Cross-platform note: `std::path::Path` has platform-specific semantics. Vault-relative paths in Lithos should be treated as _syntactic_ “vault paths” (not OS paths). The implementation should explicitly validate components (rejecting `Prefix`/`RootDir`/`ParentDir`) so behavior is consistent across OSes.
 
 #### 3.5.3 Regex caching
 
@@ -451,9 +454,9 @@ Cross-platform note: `std::path::Path` has platform-specific semantics. Vault-re
 
 Algorithm:
 
-1) Read lock: return cached `Arc<Regex>` if present.
-2) Miss: compile regex without locks.
-3) Write lock: insert if absent; return the stored `Arc`.
+1. Read lock: return cached `Arc<Regex>` if present.
+2. Miss: compile regex without locks.
+3. Write lock: insert if absent; return the stored `Arc`.
 
 This avoids compiling under lock and avoids cloning regex objects.
 
@@ -586,14 +589,14 @@ No PII, encryption, or access control concerns are introduced here.
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                                                   | Resolution                                                                 |
-| :--------- | :------------------------------------------------------------------ | :------------------------------------------------------------------------- |
-| 2026-02-02 | "This spec isn’t comprehensive enough."                            | Expanded with explicit contracts, data model, algorithms, and migration.   |
-| 2026-02-02 | "Directory restriction is a string prefix check."                   | Specify component-based containment + traversal policy.                    |
-| 2026-02-02 | "NumberSpec does not reject NaN/∞."                                 | Add explicit finite-first numeric validation policy.                        |
-| 2026-02-02 | "Regex cache compiles under a mutex and clones Regex."              | Specify `RwLock` + `Arc<Regex>` caching; compile outside locks.            |
-| 2026-02-02 | "Can type-driven development improve this?"                         | Add internal helper types (`Bounds`, `VaultRelPath`, `PositiveF64`) plan.  |
-| 2026-02-02 | "String enum_values could be list or key-value mapping."            | Record as future extension; preserve current schema format for now.        |
+| Date       | Critique / Issue                                         | Resolution                                                                |
+| :--------- | :------------------------------------------------------- | :------------------------------------------------------------------------ |
+| 2026-02-02 | "This spec isn’t comprehensive enough."                  | Expanded with explicit contracts, data model, algorithms, and migration.  |
+| 2026-02-02 | "Directory restriction is a string prefix check."        | Specify component-based containment + traversal policy.                   |
+| 2026-02-02 | "NumberSpec does not reject NaN/∞."                      | Add explicit finite-first numeric validation policy.                      |
+| 2026-02-02 | "Regex cache compiles under a mutex and clones Regex."   | Specify `RwLock` + `Arc<Regex>` caching; compile outside locks.           |
+| 2026-02-02 | "Can type-driven development improve this?"              | Add internal helper types (`Bounds`, `VaultRelPath`, `PositiveF64`) plan. |
+| 2026-02-02 | "String enum_values could be list or key-value mapping." | Record as future extension; preserve current schema format for now.       |
 
 ## 8. References
 
@@ -642,7 +645,7 @@ Plan:
 
 Guideline:
 
-- Frontmatter matching should remain *frontmatter-specific*: conversions should match on `FieldValue` variants and return frontmatter-domain errors (not schema errors).
+- Frontmatter matching should remain _frontmatter-specific_: conversions should match on `FieldValue` variants and return frontmatter-domain errors (not schema errors).
 
 ## Appendix C: Current Implementation & Change List (Temporary)
 

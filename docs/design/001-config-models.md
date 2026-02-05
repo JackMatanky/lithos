@@ -1,6 +1,6 @@
 ---
 feature: Config Models (Global + Vault + Merged Config)
-status: Draft # Options: Draft, In Review, Approved, Implemented, Archived
+status: Draft
 author: Jack Matanky (drafted with GitHub Copilot)
 ticket: TBD
 date_created: 2026-02-04
@@ -8,8 +8,6 @@ tags: [config, domain-models, cqrs, rkyv, invariants]
 ---
 
 # Tech Spec: Config Models (Global + Vault + Merged Config)
-
-> **Note**: See `docs/design/README.md` for usage instructions.
 
 Related specs:
 
@@ -50,7 +48,7 @@ Terminology note:
 Clarification:
 
 - `SettingValue` is **owned by the config context** (it is part of the config domain model and persisted config surface).
-- Other contexts may *consume* `SettingValue` **only when interpreting config-defined dynamic values** (e.g., config-driven task metadata values), but should not treat it as a universal cross-context primitive.
+- Other contexts may _consume_ `SettingValue` **only when interpreting config-defined dynamic values** (e.g., config-driven task metadata values), but should not treat it as a universal cross-context primitive.
 - If a bounded context needs its own dynamic value model for non-config concerns, prefer defining a context-local type (e.g., note frontmatter’s `FieldValue`) and converting at the boundary.
 
 Serialization boundary note (serde vs rkyv):
@@ -94,9 +92,9 @@ Serialization boundary note (serde vs rkyv):
 
 Most callers should not manually merge config fields. The normal workflow is:
 
-1) Load global and vault configs.
-2) Build a merged, validated `Config` aggregate.
-3) Use the merged config as immutable runtime input.
+1. Load global and vault configs.
+2. Build a merged, validated `Config` aggregate.
+3. Use the merged config as immutable runtime input.
 
 Sketch (current shape):
 
@@ -216,7 +214,7 @@ These changes are recommended because they reduce invalid states, simplify mergi
 
 - **Remove empty-string sentinels from the domain**
   - Today, merge uses empty-string checks (`choose_value`) and many structs allow empty strings.
-  - Prefer representing “unset/override not provided” as `Option<T>` in the *override* layers.
+  - Prefer representing “unset/override not provided” as `Option<T>` in the _override_ layers.
 
 - **Introduce validated newtypes for repeated invariants**
   - `NonEmptyString` (or more specific types like `FrontmatterKey`, `DirName`, `FileName`).
@@ -244,7 +242,7 @@ These changes are recommended because they reduce invalid states, simplify mergi
 Rationale:
 
 - Note and Schema use stable identifiers; config should follow the same convention.
-- A stable ID makes “vault moved/renamed” a *representable* case (even if not always automatically discoverable).
+- A stable ID makes “vault moved/renamed” a _representable_ case (even if not always automatically discoverable).
 
 Required types (recommended):
 
@@ -414,10 +412,10 @@ rkyv patterns:
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                              | Resolution                                      |
-| :--------- | :-------------------------------------------- | :---------------------------------------------- |
-| 2026-02-04 | "Merge uses empty-string sentinels."         | "Recommend Option overlays; see Decision 4.1." |
-| 2026-02-04 | "Paths are generic Strings."                 | "Recommend PathBuf/newtypes; see 3.4.1."      |
+| Date       | Critique / Issue                     | Resolution                                     |
+| :--------- | :----------------------------------- | :--------------------------------------------- |
+| 2026-02-04 | "Merge uses empty-string sentinels." | "Recommend Option overlays; see Decision 4.1." |
+| 2026-02-04 | "Paths are generic Strings."         | "Recommend PathBuf/newtypes; see 3.4.1."       |
 
 ## Appendix A: External Patterns (Figment + Layered Config) and What Lithos Should Steal
 
@@ -436,7 +434,7 @@ Even if Lithos does not expose Figment directly as a public API, Figment’s mod
 
 - **Providers**: each configuration source is a provider (defaults, files, env vars, CLI overrides, etc.).
 - **Merge**: configuration is composed by merging providers into a single tree.
-  - Rule of thumb: *later merges override earlier merges* (for scalars).
+  - Rule of thumb: _later merges override earlier merges_ (for scalars).
   - Complex shapes (tables) are generally merged key-by-key.
 - **Profiles**: a single provider can contain multiple profiles (e.g., `debug`/`release`, `dev`/`prod`). The selected profile determines which values are active.
 - **`nested()` vs non-nested file providers**:
@@ -469,7 +467,7 @@ What Lithos should steal:
 - **Be explicit about precedence**.
   - Avoid “it depends” layering. Users interpret config systems as a predictable override chain.
 
-What Lithos should *not* steal:
+What Lithos should _not_ steal:
 
 - Rocket’s profiles are “runtime context” (debug/release), not “per-vault identity.” Don’t model one profile per vault.
 
@@ -484,10 +482,10 @@ The `rcodesign` CLI builds config by merging multiple sources:
 
 Two details are particularly valuable:
 
-1) **Multiple config files are merged in order**.
+1. **Multiple config files are merged in order**.
    - This pattern makes it easy to support: “corporate base config” + “user config” + “project config.”
 
-2) **User-facing error reporting prints**:
+2. **User-facing error reporting prints**:
    - selected profile
    - problem key path
    - source file path (when available)
@@ -543,13 +541,13 @@ What Lithos should steal:
 
 #### A.2.5 Arti (`tor-config`): separate unvalidated input tree from validated runtime config
 
-Arti’s config system is not a Figment tutorial, but it is a great *domain-level* model for configuration correctness.
+Arti’s config system is not a Figment tutorial, but it is a great _domain-level_ model for configuration correctness.
 
 Core flow:
 
-1) Load multiple sources into an **unvalidated, dynamically-typed configuration tree**.
-2) Resolve into **typed builders** via deserialization.
-3) Build/validate once for all consumers so unrecognized keys can be reported in one pass.
+1. Load multiple sources into an **unvalidated, dynamically-typed configuration tree**.
+2. Resolve into **typed builders** via deserialization.
+3. Build/validate once for all consumers so unrecognized keys can be reported in one pass.
 
 What Lithos should steal:
 
@@ -571,11 +569,11 @@ Observed pattern across Rocket + apple-codesign + cargo-lambda:
 
 Recommended Lithos precedence order (suggested default):
 
-1) system defaults
-2) global config file(s)
-3) vault config file(s)
-4) environment variables (optional, if Lithos chooses to support them)
-5) command/CLI overrides (explicit user intent)
+1. system defaults
+2. global config file(s)
+3. vault config file(s)
+4. environment variables (optional, if Lithos chooses to support them)
+5. command/CLI overrides (explicit user intent)
 
 Keep this order stable over time. If it changes, treat it as a breaking change.
 
@@ -583,7 +581,7 @@ Keep this order stable over time. If it changes, treat it as a breaking change.
 
 Profiles work well when:
 
-- you want to run the *same application* under different environments (`dev`, `test`, `prod`)
+- you want to run the _same application_ under different environments (`dev`, `test`, `prod`)
 
 Profiles do not work well when:
 
@@ -646,10 +644,10 @@ Tension present in Lithos today:
 Guidance (aligned with the patterns above):
 
 - Treat config as a pipeline:
-  1) parse/load (serde-focused, best-effort)
-  2) build domain objects (type-driven invariants)
-  3) build merged aggregate (validated)
-  4) persist read-model bytes (rkyv-focused)
+  1. parse/load (serde-focused, best-effort)
+  2. build domain objects (type-driven invariants)
+  3. build merged aggregate (validated)
+  4. persist read-model bytes (rkyv-focused)
 
 If a domain model change would force a persisted-format migration, prefer introducing explicit DTO boundaries rather than contorting core domain types.
 

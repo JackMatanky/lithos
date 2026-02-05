@@ -1,6 +1,6 @@
 ---
 feature: Schema CQRS (Commands + Queries)
-status: Draft # Options: Draft, In Review, Approved, Implemented, Archived
+status: Draft
 author: Jack Matanky (drafted with GitHub Copilot)
 ticket: TBD
 date_created: 2026-02-03
@@ -8,8 +8,6 @@ tags: [schema, cqrs, persistence, redb, rkyv, performance]
 ---
 
 # Tech Spec: Schema CQRS (Commands + Queries)
-
-> **Note**: See `docs/design/README.md` for usage instructions.
 
 ## 0. Definition of Done
 
@@ -103,7 +101,7 @@ Notes:
 
 ### 2.2 Mental Model
 
-- Commands are the *only* writers and are responsible for maintaining all indexes.
+- Commands are the _only_ writers and are responsible for maintaining all indexes.
 - Queries can offer multiple tiers:
   - **owned**: deserialize to runtime model (simple, cold path)
   - **archived (zero-deserialize)**: compute small results without deserializing (may still require an alignment copy depending on storage)
@@ -188,15 +186,15 @@ Trait port (optional for polymorphism/testing):
 
 Two-tier query surface:
 
-1) Owned (cold path):
+1. Owned (cold path):
 
 - `find_owned_by_name(&self, name: &SchemaName) -> Result<Option<Schema>, SchemaQueryError>`
 - `list_owned(&self) -> Result<Vec<Schema>, SchemaQueryError>`
 
-2) Archived/zero-copy (hot path; concrete-only):
+2. Archived/zero-copy (hot path; concrete-only):
 
 - `with_archived_by_name<R>(&self, name: &SchemaName, f: impl FnOnce(&ArchivedSchema) -> R)
-   -> Result<Option<R>, SchemaQueryError>`
+ -> Result<Option<R>, SchemaQueryError>`
 
 Rules for `with_archived_*`:
 
@@ -343,9 +341,9 @@ These represent the canonical serialized encoding for keys.
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                                        | Resolution                                                  |
-| :--------- | :------------------------------------------------------ | :---------------------------------------------------------- |
-| 2026-02-03 | Traits and concrete CQRS signatures misaligned           | Define concrete-first API; keep trait ports minimal          |
-| 2026-02-03 | Zero-copy queries conflict with dyn-compatibility        | Put closure-based APIs on concrete query type                |
-| 2026-02-03 | Name-keyed storage makes renames hard                    | Recommend `SchemaId` primary key + name→id index            |
-| 2026-02-03 | Persisted bytes are untrusted                            | Require rkyv validation at trust boundary; corrupt-data path |
+| Date       | Critique / Issue                                  | Resolution                                                   |
+| :--------- | :------------------------------------------------ | :----------------------------------------------------------- |
+| 2026-02-03 | Traits and concrete CQRS signatures misaligned    | Define concrete-first API; keep trait ports minimal          |
+| 2026-02-03 | Zero-copy queries conflict with dyn-compatibility | Put closure-based APIs on concrete query type                |
+| 2026-02-03 | Name-keyed storage makes renames hard             | Recommend `SchemaId` primary key + name→id index             |
+| 2026-02-03 | Persisted bytes are untrusted                     | Require rkyv validation at trust boundary; corrupt-data path |

@@ -1,6 +1,6 @@
 ---
 feature: Note CQRS (Commands + Queries)
-status: Draft # Options: Draft, In Review, Approved, Implemented, Archived
+status: Draft
 author: Jack Matanky (drafted with GitHub Copilot)
 ticket: TBD
 date_created: 2026-02-03
@@ -8,8 +8,6 @@ tags: [note, cqrs, persistence, rkyv, performance]
 ---
 
 # Tech Spec: Note CQRS (Commands + Queries)
-
-> **Note**: See `docs/design/README.md` for usage instructions.
 
 ## 1. Problem Space (The "Why")
 
@@ -62,12 +60,12 @@ Additionally, error mapping currently converts DB errors into stringly note erro
 - **Sync-first core**: CQRS in core remains synchronous.
 - **rkyv is key**: prefer `Database::get` for read hot paths (archived access).
 - **Alignment is a real constraint**: archived references may require properly aligned buffers; if the storage engine cannot guarantee alignment for returned byte slices, the safe hot-path implementation may still need an allocation + memcpy into an aligned buffer.
-- **Dyn compatibility (trait objects)**: if `dyn Command`/`dyn Query` are used, trait methods must remain *dyn-compatible*.
+- **Dyn compatibility (trait objects)**: if `dyn Command`/`dyn Query` are used, trait methods must remain _dyn-compatible_.
   - No generic methods on the `dyn`-dispatched surface (type parameters require monomorphization and cannot be stored in a vtable).
   - No `async fn` on the `dyn`-dispatched surface (opaque `Future` return type).
   - No return-position `impl Trait` types on the `dyn`-dispatched surface.
   - No `Self` in arguments/returns except the receiver.
-  - If we need both `dyn` trait objects *and* generic/closure-based helpers, put those helpers on concrete types (preferred) or behind `where Self: Sized` so they are excluded from the `dyn` surface.
+  - If we need both `dyn` trait objects _and_ generic/closure-based helpers, put those helpers on concrete types (preferred) or behind `where Self: Sized` so they are excluded from the `dyn` surface.
 - **Persisted bytes contract**: do not change archived model layouts without explicit migration.
 
 Additional CQRS conventions for this repo:
@@ -105,7 +103,7 @@ fn example() -> Result<(), NoteCommandError> {
 Notes on trait usage (Rust best practices):
 
 - Using traits for ports is a good default for dependency inversion and testing.
-- Whether you *also* need `dyn Query`/`dyn Command` is a separate question:
+- Whether you _also_ need `dyn Query`/`dyn Command` is a separate question:
   - If you use **generics** (`fn f<Q: Query>(q: &Q)`), you can keep richer APIs (including methods that are `where Self: Sized`).
   - If you require **trait objects** (`&dyn Query`), the trait's callable surface is limited by dyn-compatibility rules.
 
@@ -234,7 +232,7 @@ These structs make commands extensible (future fields) without breaking call sit
 
 **Archived access strategy ("zero-deserialize")**
 
-Rust best-practice constraint: a method like `with_archived_by_id<R>(..., f: impl FnOnce(..) -> R)` is *not* callable on `dyn Query` because it is generic.
+Rust best-practice constraint: a method like `with_archived_by_id<R>(..., f: impl FnOnce(..) -> R)` is _not_ callable on `dyn Query` because it is generic.
 
 Therefore the zero-copy API is provided on a **concrete** query type (recommended), or as a non-port helper (free function / helper module) used directly by high-performance callers.
 
@@ -253,7 +251,7 @@ Practical reality note:
 Design rules for this method (derived from Rust API guidelines and dyn-compatibility constraints):
 
 - Keep the port trait (`Query`) dyn-compatible; keep generic/closure-based helpers off the `dyn` surface.
-- Prefer returning a *computed owned result* (`R`) rather than exposing archived references outside the closure.
+- Prefer returning a _computed owned result_ (`R`) rather than exposing archived references outside the closure.
 - Keep naming explicit: `with_archived_*` signals the zero-copy tier and discourages accidental use in non-hot paths.
 
 Validation rule:
@@ -461,33 +459,37 @@ Validation & unchecked variants (dependability guidance):
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                                           | Resolution                                                     |
-| :--------- | :--------------------------------------------------------- | :------------------------------------------------------------- |
-| 2026-02-03 | "Do we require `dyn Query` for the hot path?"             | Draft proposes concrete zero-copy methods; confirm call sites. |
-| 2026-02-03 | "Are note events staged after commit (Unit of Work)?"     | Draft describes staging; implementation should align with UoW. |
+| Date       | Critique / Issue                                      | Resolution                                                     |
+| :--------- | :---------------------------------------------------- | :------------------------------------------------------------- |
+| 2026-02-03 | "Do we require `dyn Query` for the hot path?"         | Draft proposes concrete zero-copy methods; confirm call sites. |
+| 2026-02-03 | "Are note events staged after commit (Unit of Work)?" | Draft describes staging; implementation should align with UoW. |
 
 ## 8. Implementation Plan
 
 Phased plan (optimize for correctness first, then performance):
 
 1. **Error contract cleanup**
-  - Introduce `NoteCommandError` and `NoteQueryError` as concrete enums.
-  - Convert dependency errors into these types at the CQRS boundary (no stringification).
-  - Ensure error variants preserve sources for debugging.
+
+- Introduce `NoteCommandError` and `NoteQueryError` as concrete enums.
+- Convert dependency errors into these types at the CQRS boundary (no stringification).
+- Ensure error variants preserve sources for debugging.
 
 2. **Query tiering + naming**
-  - Keep `note::ports::Query` owned-tier and dyn-compatible.
-  - Add concrete `NoteQuery::with_archived_by_id` (and similar helpers as needed) for hot paths.
-  - Update hot-path call sites (LSP/index scans) to use `with_archived_*` rather than `get_owned`.
+
+- Keep `note::ports::Query` owned-tier and dyn-compatible.
+- Add concrete `NoteQuery::with_archived_by_id` (and similar helpers as needed) for hot paths.
+- Update hot-path call sites (LSP/index scans) to use `with_archived_*` rather than `get_owned`.
 
 3. **Index maintenance hardening (commands)**
-  - Ensure create/update/delete maintain `path_to_id` and `tags_to_notes` consistently.
-  - Make index delta computation explicit on update (old vs new path/tags).
+
+- Ensure create/update/delete maintain `path_to_id` and `tags_to_notes` consistently.
+- Make index delta computation explicit on update (old vs new path/tags).
 
 4. **Tests + perf checks**
-  - Add integration tests asserting index round-trips for create/update/delete.
-  - Add corruption/validation tests: invalid archived bytes become a structured storage error.
-  - Add criterion benchmarks comparing `get_owned` vs `with_archived_*` for representative reads.
+
+- Add integration tests asserting index round-trips for create/update/delete.
+- Add corruption/validation tests: invalid archived bytes become a structured storage error.
+- Add criterion benchmarks comparing `get_owned` vs `with_archived_*` for representative reads.
 
 Acceptance criteria:
 

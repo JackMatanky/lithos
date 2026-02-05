@@ -32,7 +32,7 @@ Implication:
 
 - Hot-path reads are still valuable (no full deserialization), but they may pay
   an **alignment copy** cost.
-- Benchmarks must measure the *real* cost (including alignment staging), not an
+- Benchmarks must measure the _real_ cost (including alignment staging), not an
   idealized “pure zero-copy” path.
 
 ## 3. rkyv “unaligned” format-control lever
@@ -61,7 +61,7 @@ Therefore:
 
 The general query primitive for Obsidian-like metadata is:
 
-- “frontmatter field *K* contains value *V*”.
+- “frontmatter field _K_ contains value _V_”.
 
 Specializations (usually also frontmatter-driven):
 
@@ -103,11 +103,11 @@ Notes:
 
 For each query, measure the tiers you will actually ship:
 
-1) **Index-only**: multimap lookup returning ids/paths.
-2) **Index + materialize**: follow ids to load notes when a command needs full
+1. **Index-only**: multimap lookup returning ids/paths.
+2. **Index + materialize**: follow ids to load notes when a command needs full
    objects.
-3) **Archived compute**: closure-based archived reads computing a small `R`.
-4) **Owned**: `get_owned` (cold path baseline for mutations).
+3. **Archived compute**: closure-based archived reads computing a small `R`.
+4. **Owned**: `get_owned` (cold path baseline for mutations).
 
 ### 6.3 Suggested Criterion structure
 
@@ -125,9 +125,9 @@ Each suite should:
 
 ## 7. Maximize rkyv value without derive-everything
 
-- Keep `serde` primarily at *external boundaries* (configs, user-facing
+- Keep `serde` primarily at _external boundaries_ (configs, user-facing
   formats, import/export).
-- Use rkyv for *persistence* and *hot reads*.
+- Use rkyv for _persistence_ and _hot reads_.
 - Avoid coupling domain ergonomics to storage encoding by:
   - keeping projection/index tables storage-shaped (strings / byte keys), and
   - exposing “archived compute” helpers on concrete query types (not `dyn`

@@ -1,6 +1,6 @@
 ---
 feature: Schema Models (Aggregates + Value Objects)
-status: Draft # Options: Draft, In Review, Approved, Implemented, Archived
+status: Draft
 author: Jack Matanky (drafted with GitHub Copilot)
 ticket: TBD
 date_created: 2026-02-03
@@ -8,8 +8,6 @@ tags: [schema, domain-models, type-driven-design, rkyv, performance]
 ---
 
 # Tech Spec: Schema Models (Aggregates + Value Objects)
-
-> **Note**: See `docs/design/README.md` for usage instructions.
 
 ## 0. Definition of Done
 
@@ -90,24 +88,27 @@ Guidance:
 
 ### 1.5 Raw → Domain boundary (designing to avoid `Stored*` models)
 
-The primary lever for avoiding `StoredSchema`/`StoredPropertyBank` is *not* introducing a storage DTO early; it is designing the **validated domain types** to be both:
+The primary lever for avoiding `StoredSchema`/`StoredPropertyBank` is _not_ introducing a storage DTO early; it is designing the **validated domain types** to be both:
 
 - ergonomic for business logic, and
 - reasonably rkyv-friendly for persistence and archived reads.
 
 Recommended boundary discipline:
 
-1) **Raw (wire/input)** types (`RawSchema`, `RawProperty*`) stay serde-friendly and error-reporting friendly.
-  - Use `String`, `Option`, and “tolerant shapes” to capture good diagnostics.
-  - Keep parsing/format concerns (like `$ref` syntax) in adapters or raw parsing helpers.
+1. **Raw (wire/input)** types (`RawSchema`, `RawProperty*`) stay serde-friendly and error-reporting friendly.
 
-2) **Domain** types (`Schema`, `Property`, `PropertySpec`, `SchemaName`, `PropertyName`, ids/newtypes) enforce invariants and choose lean representations.
-  - Prefer `Box<str>` identifiers and private fields.
-  - Prefer semantic enums over boolean flags.
-  - Avoid domain shapes that are known to create persistence friction (e.g., high-churn `HashMap<String, ...>` in the persisted aggregate) unless there is a demonstrated need.
+- Use `String`, `Option`, and “tolerant shapes” to capture good diagnostics.
+- Keep parsing/format concerns (like `$ref` syntax) in adapters or raw parsing helpers.
 
-3) **Persistence** stores domain types directly by default.
-  - If the domain shape later proves inefficient (profiling/benchmarks), introduce `Stored*` types as an explicit optimization/migration decision.
+2. **Domain** types (`Schema`, `Property`, `PropertySpec`, `SchemaName`, `PropertyName`, ids/newtypes) enforce invariants and choose lean representations.
+
+- Prefer `Box<str>` identifiers and private fields.
+- Prefer semantic enums over boolean flags.
+- Avoid domain shapes that are known to create persistence friction (e.g., high-churn `HashMap<String, ...>` in the persisted aggregate) unless there is a demonstrated need.
+
+3. **Persistence** stores domain types directly by default.
+
+- If the domain shape later proves inefficient (profiling/benchmarks), introduce `Stored*` types as an explicit optimization/migration decision.
 
 ## 2. Guide-Level Explanation (The "What")
 
@@ -117,10 +118,10 @@ A schema author defines schemas and properties using serde-friendly definitions 
 
 Conceptually:
 
-1) Parse raw schema input into `RawSchema` / `RawProperty*` (wire types).
-2) Compile/validate into runtime types (`Schema`, `Property`, `PropertySpec`).
-3) Persist runtime types via rkyv (or persist defs and compile on load; decision in CQRS spec).
-4) Validate metadata values using `Property::validate_value(&serde_json::Value)`.
+1. Parse raw schema input into `RawSchema` / `RawProperty*` (wire types).
+2. Compile/validate into runtime types (`Schema`, `Property`, `PropertySpec`).
+3. Persist runtime types via rkyv (or persist defs and compile on load; decision in CQRS spec).
+4. Validate metadata values using `Property::validate_value(&serde_json::Value)`.
 
 ### 2.2 Mental Model
 
@@ -235,12 +236,12 @@ Design note:
 
 **Options for representing properties**:
 
-1) **Embedded properties** (current direction)
+1. **Embedded properties** (current direction)
    - `Schema { properties: Vec<Property> }`
    - Pros: simple; schema is self-contained for validation.
    - Cons: duplicates property defs across schemas; more bytes persisted.
 
-2) **Referential properties** (future)
+2. **Referential properties** (future)
    - `Schema { properties: Vec<PropertyId> }` with `PropertyBank` as dependency
    - Pros: better dedup; smaller persisted schema.
    - Cons: validation becomes a two-step lookup; need strong coherence rules.
@@ -322,10 +323,10 @@ pub struct Property {
 
 Incremental, low-risk migration path:
 
-1) Introduce newtypes (`SchemaId`, `PropertyId`) and private-field identifiers (`SchemaName`, `PropertyName`).
-2) Provide fallible conversions from existing strings (`TryFrom<&str>`, `TryFrom<String>`).
-3) Gradually replace `HashMap<String, …>` with typed keys.
-4) Update CQRS ports and storage keys (see CQRS spec).
+1. Introduce newtypes (`SchemaId`, `PropertyId`) and private-field identifiers (`SchemaName`, `PropertyName`).
+2. Provide fallible conversions from existing strings (`TryFrom<&str>`, `TryFrom<String>`).
+3. Gradually replace `HashMap<String, …>` with typed keys.
+4. Update CQRS ports and storage keys (see CQRS spec).
 
 ### 5.3 Security & Privacy
 
@@ -345,8 +346,8 @@ Incremental, low-risk migration path:
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                                  | Resolution                                                    |
-| :--------- | :------------------------------------------------ | :------------------------------------------------------------ |
-| 2026-02-03 | Tuple struct identifiers are forgeable             | Require private fields; keep `try_from` and `as_str` accessors |
-| 2026-02-03 | Booleans for property shape are easy to misuse     | Recommend semantic enums `Cardinality`/`Multiplicity`          |
-| 2026-02-03 | Zero-copy lifetime risks not explicit in models    | Document closure-based access and guard scoping               |
+| Date       | Critique / Issue                                | Resolution                                                     |
+| :--------- | :---------------------------------------------- | :------------------------------------------------------------- |
+| 2026-02-03 | Tuple struct identifiers are forgeable          | Require private fields; keep `try_from` and `as_str` accessors |
+| 2026-02-03 | Booleans for property shape are easy to misuse  | Recommend semantic enums `Cardinality`/`Multiplicity`          |
+| 2026-02-03 | Zero-copy lifetime risks not explicit in models | Document closure-based access and guard scoping                |

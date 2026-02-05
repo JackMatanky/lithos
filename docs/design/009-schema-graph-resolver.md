@@ -1,6 +1,6 @@
 ---
 feature: Schema Graph + Resolver (Inheritance + $ref)
-status: Draft # Options: Draft, In Review, Approved, Implemented, Archived
+status: Draft
 author: Jack Matanky (drafted with GitHub Copilot)
 ticket: TBD
 date_created: 2026-02-03
@@ -8,8 +8,6 @@ tags: [schema, inheritance, resolver, graph, type-driven-design, performance]
 ---
 
 # Tech Spec: Schema Graph + Resolver (Inheritance + $ref)
-
-> **Note**: See `docs/design/README.md` for usage instructions.
 
 ## 0. Definition of Done
 
@@ -73,8 +71,8 @@ The main risks in this area are:
 
 Schema resolution happens in two steps:
 
-1) Build/validate the inheritance order.
-2) Resolve each schema using its parent’s resolved form.
+1. Build/validate the inheritance order.
+2. Resolve each schema using its parent’s resolved form.
 
 At a high level:
 
@@ -303,8 +301,8 @@ Avoid the “clone to satisfy the borrow checker” anti-pattern; if cloning bec
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                                           | Resolution                                              |
-| :--------- | :--------------------------------------------------------- | :------------------------------------------------------ |
-| 2026-02-03 | Domain resolver keyed by `String` loses type safety         | Specify `HashMap<PropertyName, Property>` working set    |
+| Date       | Critique / Issue                                            | Resolution                                                    |
+| :--------- | :---------------------------------------------------------- | :------------------------------------------------------------ |
+| 2026-02-03 | Domain resolver keyed by `String` loses type safety         | Specify `HashMap<PropertyName, Property>` working set         |
 | 2026-02-03 | `$ref` parsing in domain mixes concerns and adds complexity | Move parsing to adapters; domain resolves typed `PropertyRef` |
-| 2026-02-03 | Inheritance behavior on override not explicit               | Specify "child overrides parent" precedence rule        |
+| 2026-02-03 | Inheritance behavior on override not explicit               | Specify "child overrides parent" precedence rule              |
