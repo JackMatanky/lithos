@@ -408,6 +408,20 @@ mod tests {
 
     use super::{Frontmatter, Logging, Schema, SettingValue, Template};
 
+    fn frontmatter_config() -> Frontmatter {
+        Frontmatter {
+            alias_key: "aliases".to_owned(),
+            date_created_key: "created".to_owned(),
+            date_modified_key: "modified".to_owned(),
+            file_class_key: "type".to_owned(),
+            title_key: "title".to_owned(),
+        }
+    }
+
+    fn encrypted_setting_value() -> SettingValue {
+        SettingValue::Encrypted(vec![1, 2, 3])
+    }
+
     /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
     /// Priority: P1.
     #[test]
@@ -600,17 +614,20 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn masks_encrypted_variant_in_debug_logs() {
-        // GIVEN an encrypted configuration value
-        let val = SettingValue::Encrypted(vec![1, 2, 3]);
-
-        // WHEN formatting for debug output
+        let val = encrypted_setting_value();
         let debug_str = format!("{val:?}");
 
-        // THEN the raw bytes are masked
         assert!(
             !debug_str.contains("1, 2, 3"),
             "Debug output must not contain raw encrypted bytes"
         );
+    }
+
+    #[test]
+    fn encrypted_debug_logs_include_mask() {
+        let val = encrypted_setting_value();
+        let debug_str = format!("{val:?}");
+
         assert!(
             debug_str.contains("***"),
             "Debug output must contain mask characters"
@@ -620,23 +637,20 @@ mod tests {
     /// 3.3-UNIT-035: `preserves_frontmatter_key_mappings`.
     /// Priority: P1.
     #[test]
-    fn preserves_frontmatter_key_mappings() {
-        // GIVEN explicit frontmatter mappings
-        let config = Frontmatter {
-            alias_key: "aliases".to_owned(),
-            date_created_key: "created".to_owned(),
-            date_modified_key: "modified".to_owned(),
-            file_class_key: "type".to_owned(),
-            title_key: "title".to_owned(),
-        };
+    fn preserves_frontmatter_file_class_key_mapping() {
+        let config = frontmatter_config();
 
-        // WHEN accessing the key mappings
-        let file_class = &config.file_class_key;
-        let title = &config.title_key;
+        assert_eq!(
+            config.file_class_key, "type",
+            "file_class_key mapping mismatch"
+        );
+    }
 
-        // THEN the mappings match the configured values
-        assert_eq!(file_class, "type", "file_class_key mapping mismatch");
-        assert_eq!(title, "title", "title_key mapping mismatch");
+    #[test]
+    fn preserves_frontmatter_title_key_mapping() {
+        let config = frontmatter_config();
+
+        assert_eq!(config.title_key, "title", "title_key mapping mismatch");
     }
 
     /// 3.3-UNIT-036: `rejects_empty_templates_dir`.
@@ -653,20 +667,13 @@ mod tests {
 
         // THEN the validation fails with the templates_dir field
         assert!(
-            result.is_err(),
-            "Expected validation failure for empty templates_dir"
+            matches!(
+                &result,
+                Err(super::ConfigError::ValidationFailed { field, .. })
+                    if field.as_ref() == "templates_dir"
+            ),
+            "Expected templates_dir validation failure, got: {result:?}"
         );
-        if let Err(super::ConfigError::ValidationFailed {
-            field,
-            ..
-        }) = result
-        {
-            assert_eq!(
-                field.as_ref(),
-                "templates_dir",
-                "Expected templates_dir validation failure"
-            );
-        }
     }
 
     /// 3.3-UNIT-028: `schema_validate_rejects_empty_paths`.
