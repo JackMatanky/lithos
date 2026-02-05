@@ -149,7 +149,7 @@ impl Metadata {
     /// # use lithos_core::config::vault::Metadata;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let metadata = Metadata::new("/vaults/work".to_string(), None, None)?;
-    /// assert_eq!(metadata.path, "/vaults/work");
+    /// assert_eq!(metadata.path, "/vaults/work", "Vault path should match");
     /// # Ok(())
     /// # }
     /// ```
