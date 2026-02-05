@@ -286,13 +286,19 @@ mod tests {
         #[test]
         fn includes_parent_properties() {
             let schema = fixtures::resolved_schema_with_parent_property();
-            assert!(schema.has("parent"));
+            assert!(
+                schema.has("parent"),
+                "Resolved schema should include parent property"
+            );
         }
 
         #[test]
         fn excludes_properties_listed_in_child() {
             let schema = fixtures::resolved_schema_with_excludes();
-            assert!(!schema.has("p"));
+            assert!(
+                !schema.has("p"),
+                "Resolved schema should exclude child-listed property"
+            );
         }
     }
 
@@ -302,7 +308,11 @@ mod tests {
         #[test]
         fn resolves_ref_property_by_plain_name() {
             let property = fixtures::resolved_ref_property();
-            assert_eq!(&property.name().0, "status");
+            assert_eq!(
+                &property.name().0,
+                "status",
+                "Resolved property name should match"
+            );
         }
 
         #[test]
