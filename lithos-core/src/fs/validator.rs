@@ -32,18 +32,28 @@
 //!
 //! ```
 //! use std::path::PathBuf;
+//!
 //! use lithos_core::fs::PathValidator; // Re-exported for ergonomics
 //!
 //! // Flexible validator for config files (allows dotfile symlinks)
 //! let validator = PathValidator::new_flexible();
-//! assert!(validator.validate("config/lithos.toml").is_ok());
-//! assert!(validator.validate("../../etc/passwd").is_err()); // Traversal blocked
+//! assert!(
+//!     validator.validate("config/lithos.toml").is_ok(),
+//!     "Expected config path to be accepted"
+//! );
+//! assert!(
+//!     validator.validate("../../etc/passwd").is_err(),
+//!     "Traversal should be blocked"
+//! );
 //!
 //! // Strict validator for vault files (enforces root boundary)
 //! // Note: Root must be absolute (provided by Figment config)
 //! let root = PathBuf::from("/absolute/path/to/vault");
 //! let validator = PathValidator::new_strict(root);
-//! assert!(validator.validate("notes/daily.md").is_ok());
+//! assert!(
+//!     validator.validate("notes/daily.md").is_ok(),
+//!     "Expected note path to be accepted"
+//! );
 //! ```
 //!
 //! # Architecture Context
@@ -217,7 +227,10 @@ impl Validator {
     /// use lithos_core::fs::validator::Validator;
     ///
     /// let validator = Validator::new_flexible();
-    /// assert!(validator.validate("config.toml").is_ok());
+    /// assert!(
+    ///     validator.validate("config.toml").is_ok(),
+    ///     "Expected config path to be accepted"
+    /// );
     /// ```
     ///
     /// # Use Cases
@@ -333,8 +346,14 @@ impl Validator {
     /// use lithos_core::fs::validator::Validator;
     ///
     /// let validator = Validator::new_flexible();
-    /// assert!(validator.validate("safe/path.txt").is_ok());
-    /// assert!(validator.validate("../../unsafe").is_err());
+    /// assert!(
+    ///     validator.validate("safe/path.txt").is_ok(),
+    ///     "Expected safe path to be accepted"
+    /// );
+    /// assert!(
+    ///     validator.validate("../../unsafe").is_err(),
+    ///     "Traversal should be blocked"
+    /// );
     /// ```
     ///
     /// # Checks Performed
