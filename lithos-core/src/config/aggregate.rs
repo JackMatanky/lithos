@@ -820,7 +820,7 @@ mod tests {
         // 3.3-UNIT-012: `merge_handles_various_path_lengths`.
         // Priority: P2.
         #[test]
-        fn merge_handles_various_path_lengths() {
+        fn merge_handles_various_path_lengths() -> Result<(), String> {
             let mut runner = TestRunner::deterministic();
             let strategy = ("[a-zA-Z0-9/_-]{1,200}", "[a-zA-Z0-9/_-]{0,100}");
 
@@ -845,15 +845,6 @@ mod tests {
                     let result =
                         Config::build(Some(&global), &vault_path, vault_config);
 
-                    // THEN empty paths fail and valid paths preserve metadata
-                    if vault_path.is_empty() {
-                        prop_assert!(
-                            result.is_err(),
-                            "Empty vault_path should fail"
-                        );
-                        return Ok(());
-                    }
-
                     let config = result.map_err(|error| {
                         proptest::test_runner::TestCaseError::fail(format!(
                             "Config::build should succeed for vault_path \
@@ -867,10 +858,11 @@ mod tests {
                     );
                     Ok(())
                 });
-            assert!(
-                run_result.is_ok(),
-                "Proptest run should succeed, got: {run_result:?}"
-            );
+            run_result.map_err(|e| {
+                format!("Proptest run should succeed, got: {e:?}")
+            })?;
+
+            Ok(())
         }
     }
 
