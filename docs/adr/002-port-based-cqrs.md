@@ -95,6 +95,28 @@ pub type RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>;
 pub type RedbSchemaCommand<'db> = Command<RedbSchemaCommandAdapter<'db>>;
 ```
 
+### 4. Error Handling Strategy
+
+To maintain decoupling while providing useful feedback, we adopt a layered error strategy:
+
+- **Port Error (`S::Error`)**: The port trait defines an associated `Error` type.
+- **CQRS Error (`QueryError<E>`)**: The CQRS layer wraps storage errors in a structured enum generic over the storage error.
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum QueryError<E> {
+    #[error("Storage error: {0}")]
+    Storage(E),
+    #[error("Data corruption: {0}")]
+    Corruption(String),
+    #[error("Validation failed: {0}")]
+    Validation(String),
+}
+```
+
+- **Concrete Type**: The adapter implementation defines the concrete error (e.g., `DbError`).
+- **Result**: The public API returns `Result<T, QueryError<DbError>>`.
+
 ## Alternatives Considered
 
 ### Alternative 1: Single "Store" Trait (Traditional Repository Pattern)
@@ -132,6 +154,27 @@ Initial benchmarks of this pattern (vs direct DB usage) show negligible overhead
   - **Boilerplate**: Requires defining traits, implementing generic structs, and type aliases.
   - **Complexity**: GATs and HRTBs are advanced Rust features that may be harder for new contributors to understand initially.
 
+## Appendix A: Operational & Security Guidelines
+
+### Observability
+- **Instrumentation**: CQRS entry points and adapter methods must be instrumented with `tracing` spans.
+- **Metrics**: Hot-path queries should capture hit/miss ratios and duration.
+- **Redaction**: Keys must be redacted in logs if they contain sensitive user data.
+
+### Data Integrity & Security
+- **Untrusted Input**: Archived data (rkyv bytes) must be treated as untrusted input at the adapter boundary.
+- **Validation**: Adapters must perform validation (bytecheck) before exposing `Archived<'a>` views.
+- **Recovery**: Corruption errors should be structured to allow upper layers to trigger recovery workflows (e.g., re-indexing).
+
+### Risks & Mitigations
+
+| Risk | Mitigation |
+| :--- | :--- |
+| **Port Bloat** | Keep ports capability-driven; only add methods for validated query shapes. |
+| **Generic Proliferation** | Use type aliases (`RedbSchemaQuery`) to hide generics from 99% of call sites. |
+| **Object Safety** | If `dyn` is truly needed, provide a separate `ObjectSafeStore` trait for the cold tier only. |
+
 ## References
 - [Core Architectural Decisions](../../_bmad-output/planning-artifacts/architecture/core-architectural-decisions.md)
 - [ADR 003: Domain Serialization Strategy](./0003-domain-serialization.md)
+- [Design Doc 012: Concrete CQRS Generic Over Port](../../docs/design/012-cqrs-concrete-over-port.md)
