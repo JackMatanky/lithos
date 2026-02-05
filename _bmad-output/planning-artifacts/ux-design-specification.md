@@ -56,6 +56,7 @@ Lithos is a Rust CLI tool that transforms Obsidian's GUI-centric plugin ecosyste
 **Modal Assembly Rationale:** Starting from blank templates/schemas intimidates users and leads to inconsistent structures. Modal builders provide scaffolding—users make meaningful choices (schema selection, content blocks) rather than facing empty complexity, reducing cognitive load while enabling sophisticated results.
 
 **Critical Perspective Challenges:**
+
 - CLI intimidation could limit adoption beyond power users
 - No visual feedback makes complex operations harder to debug
 - Error messages must be exceptionally clear without visual cues
@@ -65,11 +66,13 @@ Lithos is a Rust CLI tool that transforms Obsidian's GUI-centric plugin ecosyste
 ### Technical Feasibility Validation
 
 **Performance Benchmarks:**
+
 - Individual template operations: <500ms
 - Vault indexing (1000+ files): <2 seconds
 - Memory usage: <500MB for typical operations
 
 **Modal Enhancement Definition:**
+
 - Interactive command sequences with guided prompts
 - Schema-driven form builders with validation
 - Progressive complexity with optional advanced modes
@@ -110,13 +113,13 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 
 ### Comparative Experience Analysis
 
-| Criteria | Lithos CLI MVP | Obsidian GUI | Generic CLI Tools | LSP-Enhanced Editors |
-|----------|----------------|----------------|-------------------|----------------------|
-| Template Creation Speed | Effortlessly fast (<5 min first template) | Medium (visual but manual) | Slow (requires coding expertise) | Fast (intelligent but editor-bound) |
-| Error Recovery | Educational (teaches while fixing) | Good (visual feedback) | Poor (cryptic, unhelpful) | Good (contextual IDE help) |
-| Learning Curve | Gentle progression (from simple to expert) | Low (intuitive GUI) | Steep (memorization required) | Medium (IDE familiarity) |
-| Power/Flexibility | Unlimited (full scripting/automation) | Medium (plugin limitations) | High (but requires expertise) | High (language ecosystem) |
-| Context Awareness | Deeply intelligent (schema + vault relationships) | Good (visual link following) | Minimal (text-only) | Excellent (semantic understanding) |
+| Criteria                | Lithos CLI MVP                                    | Obsidian GUI                 | Generic CLI Tools                | LSP-Enhanced Editors                |
+| ----------------------- | ------------------------------------------------- | ---------------------------- | -------------------------------- | ----------------------------------- |
+| Template Creation Speed | Effortlessly fast (<5 min first template)         | Medium (visual but manual)   | Slow (requires coding expertise) | Fast (intelligent but editor-bound) |
+| Error Recovery          | Educational (teaches while fixing)                | Good (visual feedback)       | Poor (cryptic, unhelpful)        | Good (contextual IDE help)          |
+| Learning Curve          | Gentle progression (from simple to expert)        | Low (intuitive GUI)          | Steep (memorization required)    | Medium (IDE familiarity)            |
+| Power/Flexibility       | Unlimited (full scripting/automation)             | Medium (plugin limitations)  | High (but requires expertise)    | High (language ecosystem)           |
+| Context Awareness       | Deeply intelligent (schema + vault relationships) | Good (visual link following) | Minimal (text-only)              | Excellent (semantic understanding)  |
 
 **Recommended:** Lithos uniquely combines CLI's automation power with Obsidian's relationship intelligence and LSP's modern assistance—delivering what users need: reliable, scriptable knowledge management that scales from personal use to enterprise automation.
 
@@ -173,12 +176,14 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 ### Inspiring Products Analysis
 
 **CLI Powerhouses:**
+
 - **Git:** Progressive complexity with excellent discoverability and contextual help
 - **ripgrep:** Fast, intuitive search with smart defaults and powerful overrides
 - **GitHub CLI (gh):** Interactive prompts, auto-completion, and progressive disclosure
 - **Cargo:** Developer-focused CLI that feels like a knowledgeable assistant
 
 **Terminal-First Tools:**
+
 - **fzf:** Fuzzy finding that feels magical—transforms search from frustrating to delightful
 - **zoxide:** Smart directory navigation that learns user patterns and anticipates destinations
 - **lazygit:** Terminal UI that makes complex git operations accessible without sacrificing power
@@ -186,6 +191,7 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 - **neovim:** Modern text editing with LSP integration, showing sophisticated terminal-based development
 
 **What Makes Them Inspiring:**
+
 - **Git:** Progressive complexity—simple for beginners, powerful for experts
 - **ripgrep:** Performance feels instant, smart defaults "just work"
 - **GitHub CLI:** Interactive guidance and contextual help
@@ -199,6 +205,7 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 ### Transferable UX Patterns
 
 **Navigation & Discovery:**
+
 - fzf's fuzzy finding for template selection—users type fragments and get perfect matches, creating that magical "it read my mind" feeling
 - zoxide's pattern learning for contextual suggestions based on vault usage, learning user behavior over 30-day windows
 - lazygit's staged approach to complex operations—break down into manageable steps with clear progress indicators
@@ -206,18 +213,21 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 - neovim's discoverable commands with leader key patterns, creating muscle memory through consistent interactions
 
 **Interaction Design:**
+
 - GitHub CLI's interactive prompts that guide without assuming knowledge, adapting to user expertise levels
 - Cargo's clear progress indicators and error messages that teach, building user confidence through education
 - bat's enhanced output that provides value without changing core behavior, maintaining workflow familiarity
 - ripgrep's sensible defaults with powerful overrides for different user levels, supporting both quick wins and deep customization
 
 **Performance & Feedback:**
+
 - ripgrep's instant response that maintains workflow momentum, with operations completing in under 100ms
 - lazygit's visual progress in terminal environment, showing completion percentages for long-running tasks
 - Cargo's reliability messaging that builds trust through consistent behavior and clear status updates
 - neovim's responsive LSP completions that feel anticipatory, completing suggestions in under 50ms
 
 **Progressive Enhancement:**
+
 - Git's simple commands that unlock complexity, starting accessible and revealing power through usage
 - zoxide's learning that improves with usage, becoming more accurate over time with user patterns
 - bat's features that enhance existing workflows, adding value without disrupting habits
@@ -225,13 +235,13 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 
 ### Comparative Analysis of Inspiring Tools
 
-| Criteria | Lithos Needs | Git | ripgrep | fzf | neovim | Best Fit | Validation Metrics |
-|----------|--------------|-----|---------|-----|--------|----------|-------------------|
-| Fuzzy Search | Template discovery | Partial | No | Excellent | Good | fzf | 95% user satisfaction, <200ms response |
-| Progressive UX | Beginner to expert | Excellent | Good | Good | Excellent | Git/neovim | 80% feature adoption within 2 weeks |
-| Performance | Large vault ops | Good | Excellent | Good | Good | ripgrep | <2s for 1000+ files, <500ms typical |
-| Contextual Help | Error guidance | Good | Limited | Limited | Excellent | neovim | 90% error resolution without docs |
-| Learning Curve | Adoption ease | Medium | Low | Low | Medium | ripgrep/fzf | <30 min to first successful use |
+| Criteria        | Lithos Needs       | Git       | ripgrep   | fzf       | neovim    | Best Fit    | Validation Metrics                     |
+| --------------- | ------------------ | --------- | --------- | --------- | --------- | ----------- | -------------------------------------- |
+| Fuzzy Search    | Template discovery | Partial   | No        | Excellent | Good      | fzf         | 95% user satisfaction, <200ms response |
+| Progressive UX  | Beginner to expert | Excellent | Good      | Good      | Excellent | Git/neovim  | 80% feature adoption within 2 weeks    |
+| Performance     | Large vault ops    | Good      | Excellent | Good      | Good      | ripgrep     | <2s for 1000+ files, <500ms typical    |
+| Contextual Help | Error guidance     | Good      | Limited   | Limited   | Excellent | neovim      | 90% error resolution without docs      |
+| Learning Curve  | Adoption ease      | Medium    | Low       | Low       | Medium    | ripgrep/fzf | <30 min to first successful use        |
 
 **Key Insights:** fzf provides the core fuzzy finding Lithos needs, ripgrep shows performance expectations, Git demonstrates progressive complexity, neovim illustrates LSP integration potential. Validation through user interviews shows 85% of developers report increased productivity after adopting similar patterns.
 
@@ -246,6 +256,7 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 ### Design Inspiration Strategy
 
 **Adopt Directly (High Confidence, Proven Impact):**
+
 - fzf's fuzzy finding for core template selection and command discovery (validated by 95% user satisfaction in similar tools)
 - zoxide's learning patterns for intelligent schema and template suggestions (30-day learning windows, 80% accuracy improvement)
 - bat's enhanced output for template previews and validation feedback (maintains workflow familiarity)
@@ -253,6 +264,7 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 - neovim's LSP integration approach for future ecosystem expansion (90% error resolution without docs)
 
 **Adapt Creatively (Medium-High Confidence, Requires Customization):**
+
 - lazygit's staged complexity approach for Lithos' modal template creation (break complex operations into 3-5 clear steps)
 - GitHub CLI's interactive prompts for schema-driven form building (adaptive guidance based on user expertise)
 - Cargo's reliability messaging for large vault operation feedback (progress indicators with time estimates)
@@ -261,6 +273,7 @@ Lithos delivers a CLI-first knowledge management experience that makes sophistic
 - zoxide's usage-based ordering for fuzzy picker results (top 5-10 most used templates first, then alphabetical)
 
 **Avoid Completely (Low Confidence, High Risk):**
+
 - GUI-centric patterns that assume mouse or visual navigation (breaks CLI conventions, 70% user abandonment in studies)
 - Over-engineering that makes simple operations complex (increases cognitive load, reduces adoption)
 - Performance that disrupts terminal workflow momentum (creates frustration, damages trust)
@@ -309,6 +322,7 @@ Two primary design directions reflecting Lithos' dual nature:
 ### Chosen Direction
 
 Hybrid approach combining both directions:
+
 - Terminal CLI as primary interface with compact, efficient design
 - Modal IDE integration as secondary interface with richer interactions
 - Seamless experience that adapts to the environment while maintaining core functionality
@@ -330,12 +344,12 @@ Terminal CLI direction ensures usability in constrained terminal environments wh
 
 ### Comparative Analysis with Metrics
 
-| Criteria | Hybrid CLI | Pure Custom | Established Only | Metrics |
-|----------|------------|-------------|------------------|---------|
-| Adoption Ease | High | Low | High | <5 min first use |
-| Flexibility | High | High | Low | 90% needs covered |
-| Maintenance | Medium | High | Low | <20% maintenance |
-| Competitive Edge | High | High | Low | 3x faster schema ops |
+| Criteria         | Hybrid CLI | Pure Custom | Established Only | Metrics              |
+| ---------------- | ---------- | ----------- | ---------------- | -------------------- |
+| Adoption Ease    | High       | Low         | High             | <5 min first use     |
+| Flexibility      | High       | High        | Low              | 90% needs covered    |
+| Maintenance      | Medium     | High        | Low              | <20% maintenance     |
+| Competitive Edge | High       | High        | Low              | 3x faster schema ops |
 
 ### Critical Perspective Challenges
 
@@ -474,6 +488,7 @@ Terminal CLI direction ensures usability in constrained terminal environments wh
 ### Design System Components
 
 **Available from Hybrid CLI Conventions:**
+
 - Basic text formatting and semantic colors
 - Command structure and flag patterns
 - Standard help and error message formats
@@ -567,16 +582,19 @@ Based on user journeys and design direction, we need specialized terminal intera
 ### Implementation Roadmap
 
 **Phase 1 - Core Components (MVP - Weeks 1-4):**
+
 - Fuzzy Picker Component (critical for template selection)
 - Schema Integration Component (provides type-safe schema handling)
 - Basic Error Recovery Component (transforms failures to learning)
 
 **Phase 2 - Experience Enhancement (Weeks 5-8):**
+
 - Progress Indicator Component (improves long operation feedback)
 - Contextual Help Component (supports different user expertise levels)
 - Enhanced error recovery with empathetic messaging
 
 **Phase 3 - Advanced Features (Weeks 9-12):**
+
 - Interactive Template/Schema Builder Component (empowers template creators)
 - Performance optimizations and internationalization
 - Advanced help systems with examples and tutorials
@@ -584,6 +602,7 @@ Based on user journeys and design direction, we need specialized terminal intera
 ### Validation Approach
 
 **Solo Developer Considerations:**
+
 - Automated testing for accessibility and performance (no external user testing initially)
 - Self-review against success metrics and usability principles
 - Iterative self-testing with different usage scenarios
@@ -591,19 +610,20 @@ Based on user journeys and design direction, we need specialized terminal intera
 - Focus on measurable technical metrics over user feedback during development
 
 **Technical Validation:**
+
 - Unit and integration tests for all component interactions
 - Accessibility testing with automated tools and manual verification
 - Performance benchmarking against defined thresholds
 - Cross-terminal compatibility testing
 - Automated usability checks against defined success criteria
 
-
-
 **Phase 2 - Experience Enhancement:**
+
 - Progress Indicator Component (improves long operation feedback)
 - Contextual Help Component (supports different user expertise levels)
 
 **Phase 3 - Polish and Advanced Features:**
+
 - Interactive Template/Schema Builder Component (empowers template creators)
 - Advanced error recovery with suggestions
 - Enhanced help with examples and tutorials
@@ -614,6 +634,7 @@ Based on user journeys and design direction, we need specialized terminal intera
 ### Color System
 
 Lithos uses semantic color roles that inherit from the user's terminal/IDE theme, ensuring seamless integration:
+
 - Primary: Maps to terminal's primary/accent color
 - Success: Maps to terminal's green (typically #00FF00 or theme equivalent)
 - Warning: Maps to terminal's yellow/orange
@@ -625,6 +646,7 @@ No hardcoded RGB values—respects user-configured themes while providing consis
 ### Typography System
 
 Respects user's terminal/IDE font settings with monospaced fonts for code/template display:
+
 - Headers: Bold/bright terminal text with extra spacing
 - Body: Standard terminal text with 1.2 line spacing
 - Emphasis: Underlined or terminal bright colors
@@ -634,6 +656,7 @@ Respects user's terminal/IDE font settings with monospaced fonts for code/templa
 ### Spacing & Layout Foundation
 
 Adaptive terminal layout system:
+
 - Responsive width: Adapts to terminal size (80-120 characters optimal)
 - Indentation: 2-space consistent hierarchy
 - Section spacing: 2 blank lines between major sections
@@ -643,6 +666,7 @@ Adaptive terminal layout system:
 ### Accessibility Considerations
 
 Theme-agnostic design ensuring readability across all terminal configurations:
+
 - High contrast inheritance from user's theme
 - Semantic color usage maintains meaning regardless of color scheme
 - Clear visual hierarchy through spacing and formatting
@@ -673,11 +697,13 @@ This combines established fuzzy finding with novel schema intelligence. The fuzz
 ### Experience Mechanics
 
 **1. Initiation:**
+
 - User types `lithos new` (template) or `lithos schema` (schema creation/selection)
 - System immediately presents fuzzy picker with top 5-10 most used options, ordered by recent usage
 - Pre-indexed common templates ensure instant response, no typing required for 80% of use cases
 
 **2. Interaction:**
+
 - For selection: Fuzzy picker with real-time filtering, usage-based ordering, schema context hints (e.g., "matches current project schema")
 - For creation: Query fragments only when creating new templates/schemas from scratch (worst-case, minimized scenario)
 - Schema intelligence provides relationship suggestions without requiring user input
@@ -685,12 +711,14 @@ This combines established fuzzy finding with novel schema intelligence. The fuzz
 - Progressive disclosure: Simple list mode available for users who prefer traditional selection
 
 **3. Feedback:**
+
 - Live preview of selected template with schema validation status and compatibility indicators
 - Rich text descriptions show what data is available vs. required, with clear warnings for mismatches
 - Progress feedback for complex vault scanning (only when >500ms expected)
 - Clear error messages with actionable recovery: "Try different keywords" or "Switch to list view"
 
 **4. Completion:**
+
 - Selected template/schema executes with embedded functionality and schema-driven prompts
 - Success confirmation with clear outcomes and next step suggestions
 - Usage data automatically updates for future prioritization
