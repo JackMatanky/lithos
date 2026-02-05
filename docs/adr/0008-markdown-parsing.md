@@ -7,7 +7,7 @@ date_decided: 2026-01-11
 date_implemented: 2026-01-11
 ---
 
-# ADR 0008: High-Performance Markdown Parsing with pulldown-cmark
+# ADR 008: High-Performance Markdown Parsing with pulldown-cmark
 
 ## Context
 
@@ -31,7 +31,7 @@ Unlike AST-based parsers (Comrak, markdown-rs), `pulldown-cmark` uses a pull-bas
 
 ### 2. LSP and Mechanical Sympathy
 
-In alignment with **ADR 0002 (Redb/rkyv)** and **ADR 0003 (MiniJinja)**, `pulldown-cmark` is optimized for speed and low overhead. Its ability to render small snippets of Markdown to HTML in sub-millisecond time is essential for the fluid user experience required by the LSP.
+In alignment with **ADR 006 (Redb/rkyv)** and **ADR 007 (MiniJinja)**, `pulldown-cmark` is optimized for speed and low overhead. Its ability to render small snippets of Markdown to HTML in sub-millisecond time is essential for the fluid user experience required by the LSP.
 
 ### 3. Obsidian Compatibility Strategy
 

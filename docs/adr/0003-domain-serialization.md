@@ -8,7 +8,7 @@ date_implemented: pending
 date_updated: 2026-02-01
 ---
 
-# ADR 0003: Domain Serialization Strategy with Feature Gates
+# ADR 003: Domain Serialization Strategy with Feature Gates
 
 ## Context
 

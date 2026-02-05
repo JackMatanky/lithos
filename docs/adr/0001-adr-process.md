@@ -7,7 +7,7 @@ date_decided: 2026-01-11
 date_implemented: 2026-01-11
 ---
 
-# ADR 0001: ADR Review Process and Validation Tooling
+# ADR 001: ADR Review Process and Validation Tooling
 
 ## Context
 
