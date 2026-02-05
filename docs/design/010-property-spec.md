@@ -26,7 +26,6 @@ The schema subsystem defines properties with type-specific validation rules.
 The module [lithos-core/src/schema/property_spec.rs](../../lithos-core/src/schema/property_spec.rs) is the center of that validation:
 
 - It defines the *validated* `*Spec` types that carry invariants and are used for runtime validation.
-- It defines the *validated* `*Spec` types that carry invariants and are used for runtime validation.
 - It validates runtime metadata values (`validate`) using `serde_json::Value` as a universal IR.
 
 Primary consumers:
@@ -340,23 +339,7 @@ Naming convention:
 
 These types are the Serde-facing input shapes used in schema inputs. Their key role is: **validate/compile into `*Spec` before use**.
 
-## Appendix C: Current Implementation & Change List (Temporary)
-
-This appendix is intentionally implementation-specific. Remove it once the code matches the design.
-
-Current implementation snapshot:
-
-- Raw schema inputs are defined in `schema::raw`.
-- `RawPropertyInline` carries `spec: PropertySpecDef` (current code).
-- The main implementation lives in a single file: `lithos-core/src/schema/property_spec.rs`.
-
-Change list (if/when needed):
-
-- Rename/move `PropertySpecDef` → `RawPropertySpec` and relocate it into `schema::raw`.
-- Update `RawPropertyInline.spec` to use `RawPropertySpec`.
-- Update property/schema construction to compile `RawPropertySpec` → `PropertySpec`.
-
-- `PropertySpecDef` (internally tagged by `type`)
+- `RawPropertySpec` (internally tagged by `type`)
 - `BoolSpecDef`, `DateSpecDef`, `FileSpecDef`, `NumberSpecDef`, `StringSpecDef`
 
 They are intentionally “dumb data”: they may be invalid until compiled.
@@ -370,7 +353,7 @@ These types are used for runtime validation, and carry invariants so that invali
 
 Construction happens via compilation/validation:
 
-- `PropertySpecDef::try_into_validated() -> Result<PropertySpec, SchemaError>`
+- `RawPropertySpec::try_into_validated() -> Result<PropertySpec, SchemaError>`
 
 The validated types may use internal helper types (e.g., `Bounds<T>`, `VaultRelPath`, `FiniteF64`, compiled regex handles) and do not need to be Serde-compatible.
 
@@ -612,6 +595,18 @@ No PII, encryption, or access control concerns are introduced here.
 | 2026-02-02 | "Can type-driven development improve this?"                         | Add internal helper types (`Bounds`, `VaultRelPath`, `PositiveF64`) plan.  |
 | 2026-02-02 | "String enum_values could be list or key-value mapping."            | Record as future extension; preserve current schema format for now.        |
 
+## 8. References
+
+- Rust API Guidelines: https://rust-lang.github.io/api-guidelines/
+- `std::convert::TryFrom`: https://doc.rust-lang.org/std/convert/trait.TryFrom.html
+- Serde enum representations: https://serde.rs/enum-representations.html
+- Chrono docs: https://docs.rs/chrono/latest/chrono/
+- `regex` docs: https://docs.rs/regex/latest/regex/
+- `std::sync::RwLock`: https://doc.rust-lang.org/std/sync/struct.RwLock.html
+- `std::path::Path`: https://doc.rust-lang.org/std/path/struct.Path.html
+- `f64` docs: https://doc.rust-lang.org/std/primitive.f64.html
+- OWASP Path Traversal: https://owasp.org/www-community/attacks/Path_Traversal
+
 ## Appendix A: Idiomatic Rust Review Rubric (Ported From Earlier Plan)
 
 Use a consistent rubric so changes don’t devolve into “refactor by vibes”:
@@ -649,14 +644,18 @@ Guideline:
 
 - Frontmatter matching should remain *frontmatter-specific*: conversions should match on `FieldValue` variants and return frontmatter-domain errors (not schema errors).
 
-## References
+## Appendix C: Current Implementation & Change List (Temporary)
 
-- Rust API Guidelines: https://rust-lang.github.io/api-guidelines/
-- `std::convert::TryFrom`: https://doc.rust-lang.org/std/convert/trait.TryFrom.html
-- Serde enum representations: https://serde.rs/enum-representations.html
-- Chrono docs: https://docs.rs/chrono/latest/chrono/
-- `regex` docs: https://docs.rs/regex/latest/regex/
-- `std::sync::RwLock`: https://doc.rust-lang.org/std/sync/struct.RwLock.html
-- `std::path::Path`: https://doc.rust-lang.org/std/path/struct.Path.html
-- `f64` docs: https://doc.rust-lang.org/std/primitive.f64.html
-- OWASP Path Traversal: https://owasp.org/www-community/attacks/Path_Traversal
+This appendix is intentionally implementation-specific. Remove it once the code matches the design.
+
+Current implementation snapshot:
+
+- Raw schema inputs are defined in `schema::raw`.
+- `RawPropertyInline` carries `spec: PropertySpecDef` (current code).
+- The main implementation lives in a single file: `lithos-core/src/schema/property_spec.rs`.
+
+Change list (if/when needed):
+
+- Rename/move `PropertySpecDef` → `RawPropertySpec` and relocate it into `schema::raw`.
+- Update `RawPropertyInline.spec` to use `RawPropertySpec`.
+- Update property/schema construction to compile `RawPropertySpec` → `PropertySpec`.
