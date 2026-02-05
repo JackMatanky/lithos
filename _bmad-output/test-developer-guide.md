@@ -15,28 +15,28 @@ This guide provides a comprehensive reference for testing standards, patterns, a
 
 All testing tasks MUST be orchestrated via `mise`. This ensures the correct environment variables and toolchains are used.
 
-| Command                      | Action                                                                            |
-| :--------------------------- | :-------------------------------------------------------------------------------- |
-| `mise run test`              | Run all tests (unit, integration, e2e) (alias: `t`).                              |
-| `mise run test:unit`         | Run all unit tests using `nextest` (alias: `tu`).                                 |
-| `mise run test:unit:core`    | Run core crate unit tests (alias: `tucore`).                                      |
-| `mise run test:unit:cli`     | Run CLI crate unit tests (alias: `tucli`).                                        |
-| `mise run test:unit:config`  | Run config module unit tests (alias: `tuconf`).                                   |
-| `mise run test:unit:note`    | Run note module unit tests (alias: `tunote`).                                     |
-| `mise run test:unit:schema`  | Run schema module unit tests (alias: `tusch`).                                    |
-| `mise run test:unit:template`| Run template module unit tests (alias: `tutemp`).                                 |
-| `mise run test:unit:db`      | Run db module unit tests (alias: `tudb`).                                         |
-| `mise run test:unit:fs`      | Run fs module unit tests (alias: `tufs`).                                         |
-| `mise run test:integration`  | Run all integration tests across the workspace (alias: `ti`).                     |
-| `mise run test:e2e`          | Run end-to-end tests (alias: `te`).                                               |
-| `mise run test:coverage`     | Generate code coverage reports using `tarpaulin` (alias: `tc`).                   |
-| `mise run test:bench`        | Run all performance benchmarks using `criterion`.                                 |
-| `mise run test:bench:core`   | Run core crate benchmarks (alias: `tbcore`).                                      |
-| `mise run test:bench:cli`    | Run CLI crate benchmarks (alias: `tbcli`).                                        |
-| `mise run test:watch`        | Watch mode: automatically run tests on file changes (alias: `tw`).                |
-| `mise run test:burn-in`      | Run tests repeatedly to detect flaky failures (alias: `tb`).                      |
-| `mise run test:changed`      | Run tests only for crates affected by changes (alias: `tc`).                      |
-| `mise run verify`            | Full quality gate orchestration (fmt + lint + tests + adr:validate) (alias: `v`). |
+| Command                       | Action                                                                            |
+| :---------------------------- | :-------------------------------------------------------------------------------- |
+| `mise run test`               | Run all tests (unit, integration, e2e) (alias: `t`).                              |
+| `mise run test:unit`          | Run all unit tests using `nextest` (alias: `tu`).                                 |
+| `mise run test:unit:core`     | Run core crate unit tests (alias: `tucore`).                                      |
+| `mise run test:unit:cli`      | Run CLI crate unit tests (alias: `tucli`).                                        |
+| `mise run test:unit:config`   | Run config module unit tests (alias: `tuconf`).                                   |
+| `mise run test:unit:note`     | Run note module unit tests (alias: `tunote`).                                     |
+| `mise run test:unit:schema`   | Run schema module unit tests (alias: `tusch`).                                    |
+| `mise run test:unit:template` | Run template module unit tests (alias: `tutemp`).                                 |
+| `mise run test:unit:db`       | Run db module unit tests (alias: `tudb`).                                         |
+| `mise run test:unit:fs`       | Run fs module unit tests (alias: `tufs`).                                         |
+| `mise run test:integration`   | Run all integration tests across the workspace (alias: `ti`).                     |
+| `mise run test:e2e`           | Run end-to-end tests (alias: `te`).                                               |
+| `mise run test:coverage`      | Generate code coverage reports using `tarpaulin` (alias: `tc`).                   |
+| `mise run test:bench`         | Run all performance benchmarks using `criterion`.                                 |
+| `mise run test:bench:core`    | Run core crate benchmarks (alias: `tbcore`).                                      |
+| `mise run test:bench:cli`     | Run CLI crate benchmarks (alias: `tbcli`).                                        |
+| `mise run test:watch`         | Watch mode: automatically run tests on file changes (alias: `tw`).                |
+| `mise run test:burn-in`       | Run tests repeatedly to detect flaky failures (alias: `tb`).                      |
+| `mise run test:changed`       | Run tests only for crates affected by changes (alias: `tc`).                      |
+| `mise run verify`             | Full quality gate orchestration (fmt + lint + tests + adr:validate) (alias: `v`). |
 
 ## 2. Tools & Infrastructure
 
@@ -79,12 +79,12 @@ Executable examples within the source code using `///`.
 - **Focus**: Happy paths and general public API usage.
 - **Orchestration**: Run via `mise run test:unit`.
 
-| Layer                            | Focus                                                     | Location                        | Tools                |
-| :------------------------------- | :-------------------------------------------------------- | :------------------------------ | :------------------- |
-| **Domain (Unit)**                | Business logic, state transitions, conversions. Zero I/O. | `lithos-core/src/**/*.rs`       | `mise run test:unit` |
-| **Application (Integration)**    | Cross-module orchestration, port contracts, event flows.  | `lithos-core/src/**/*.rs`       | `nextest`            |
-| **Infrastructure (Integration)** | Adapters, persistence, external APIs.                     | `lithos-core/tests/`            | `nextest`            |
-| **CLI (E2E)**                    | End-to-end user flows, binary execution.                  | `lithos-cli/src/**/*.rs`        | `assert_cmd`         |
+| Layer                            | Focus                                                     | Location                  | Tools                |
+| :------------------------------- | :-------------------------------------------------------- | :------------------------ | :------------------- |
+| **Domain (Unit)**                | Business logic, state transitions, conversions. Zero I/O. | `lithos-core/src/**/*.rs` | `mise run test:unit` |
+| **Application (Integration)**    | Cross-module orchestration, port contracts, event flows.  | `lithos-core/src/**/*.rs` | `nextest`            |
+| **Infrastructure (Integration)** | Adapters, persistence, external APIs.                     | `lithos-core/tests/`      | `nextest`            |
+| **CLI (E2E)**                    | End-to-end user flows, binary execution.                  | `lithos-cli/src/**/*.rs`  | `assert_cmd`         |
 
 ## 4. Safety Invariants
 
@@ -114,6 +114,7 @@ Lithos follows a **sync-first architecture**. The core domain and business logic
 - **Avoid shared test infrastructure**: Each test module is independent and can be understood in isolation
 
 **Why inline fixtures?**
+
 1. **Locality**: Tests and fixtures remain close to the code they test
 2. **Simplicity**: No need to navigate multiple files to understand test setup
 3. **Independence**: No coupling between test modules through shared utilities
@@ -154,6 +155,74 @@ mod tests {
 }
 ```
 
+##### Module Organization Decision Tree
+
+1. Is this shared setup only? Use `fixtures`.
+2. Is this property-based? Use `proptests`.
+3. Is this a command (write path)? Use a command module name.
+4. Is this a query (read path)? Use a query module name.
+5. Otherwise, use the most specific core structure module name.
+
+**Fixtures + Property-Based**
+
+| Name        | Use when testing          |
+| :---------- | :------------------------ |
+| `fixtures`  | shared setup helpers only |
+| `proptests` | all proptest suites       |
+
+**Core Structure**
+
+| Name          | Use when testing                       |
+| :------------ | :------------------------------------- |
+| `constructor` | `new`, `try_new`, constructors         |
+| `builders`    | builder APIs, fluent construction      |
+| `defaults`    | `Default` impls and baseline config    |
+| `validation`  | field/rule validation failures/success |
+| `invariants`  | cross-field consistency rules          |
+| `state`       | state transitions, lifecycle flags     |
+| `accessors`   | getters, derived values                |
+| `conversions` | `From`/`TryFrom`/`Into`                |
+| `borrowing`   | zero-copy/borrowed accessors, guards   |
+| `formatting`  | `Display`/`Debug` output (combined)    |
+| `equality`    | `Eq`/`PartialEq` expectations          |
+| `ordering`    | `Ord`/`PartialOrd` behavior            |
+| `hashing`     | `Hash` behavior as map/set key         |
+| `cloning`     | `Clone` behavior                       |
+
+**Commands**
+
+| Name             | Use when testing                |
+| :--------------- | :------------------------------ |
+| `create`         | create command behavior         |
+| `update`         | update command behavior         |
+| `delete`         | delete command behavior         |
+| `upsert`         | insert/update semantics         |
+| `rename`         | rename/retitle flows            |
+| `link`           | link/relationship creation      |
+| `unlink`         | link/relationship removal       |
+| `assign`         | ownership/association addition  |
+| `unassign`       | ownership/association removal   |
+| `merge`          | merge command semantics         |
+| `event_emission` | events emitted by commands      |
+| `persistence`    | DB effects specific to commands |
+
+**Queries**
+
+| Name             | Use when testing             |
+| :--------------- | :--------------------------- |
+| `find_by_id`     | lookup by id                 |
+| `find_by_name`   | lookup by name               |
+| `find_by_path`   | lookup by path               |
+| `find_by_tag`    | lookup by tag                |
+| `list`           | list subset/default list     |
+| `list_all`       | list everything              |
+| `list_by_parent` | list by parent/owner         |
+| `search`         | general search               |
+| `search_text`    | free-text search             |
+| `resolve`        | derived/linked results       |
+| `indices`        | index-driven lookup behavior |
+| `pagination`     | limits/offsets/cursors       |
+
 ### Behavioral Rules
 
 1.  **One Behavior per Test**: Describe exactly one thing the unit does. If you find yourself using `and` in a test name, consider splitting it. This makes it easier to understand why a test is failing.
@@ -193,12 +262,14 @@ mod tests {
 **Note:** Lithos currently does NOT use snapshot testing. We prefer explicit assertions for all test verification.
 
 **Why no snapshots?**
+
 1. **Explicit assertions**: Tests using `assert!`, `assert_eq!`, and `matches!` are clearer and more maintainable
 2. **Debugging**: Explicit assertions show exactly what failed and why
 3. **Review friction**: Snapshot diffs in PRs require careful review to catch regressions
 4. **Determinism**: Snapshot tests can hide timing issues and non-deterministic output
 
 **If snapshot testing is added in the future:**
+
 - Use for structural correctness only (CLI output, complex JSON/YAML)
 - Always redact unstable fields (UUIDs, timestamps)
 - Prefer explicit assertions for critical path logic
@@ -332,6 +403,7 @@ fn test_complex_business_logic() {
 ```
 
 **Solutions:**
+
 - **Extract helper functions:** Break complex tests into smaller, focused tests
 - **Use table-driven tests:** Parameterize common logic
 - **Split test scenarios:** One behavior per test function
@@ -383,6 +455,7 @@ fn test_with_many_params() {
 ```
 
 **Solutions:**
+
 - **Use builder pattern:** Create a test builder struct
 - **Group related parameters:** Use tuples or small structs
 - **Extract fixture functions:** Pre-configure common parameter combinations
@@ -445,6 +518,7 @@ fn test_result() {
 ```
 
 **Solutions:**
+
 - **Use Result assertions:** `assert!(result.is_ok())` → specific Result assertions
 - **Use type-specific assertions:** Leverage `pretty_assertions` for better diffs
 
@@ -480,6 +554,7 @@ fn test_iteration() {
 ```
 
 **Solutions:**
+
 - **Use iterator methods:** Replace `collect()` with direct iteration
 - **Use `count()` for counting:** When only length matters
 
@@ -514,6 +589,7 @@ fn test_shadowing() {
 ```
 
 **Solutions:**
+
 - **Use different variable names:** Avoid shadowing entirely
 - **Use mut:** If modification is intended
 
@@ -547,6 +623,7 @@ fn test_error_case() {
 ```
 
 **Solutions:**
+
 - **Document error conditions:** Add error documentation to the tested function
 - **Use proper error assertions:** Make error expectations explicit
 
@@ -637,6 +714,7 @@ fn should_validate_successfully() {
 ```
 
 **Solutions:**
+
 - **Use `assert!(result.is_ok())`**: For simple success verification.
 - **Include error context**: Provide the error in the assertion message for easier debugging.
 - **Use `matches!` for variants**: When verifying specific error types.
@@ -700,11 +778,13 @@ fn processes_valid_note() {
 ## 10. Resources & Reference
 
 ### Official Rust Documentation
+
 - [The Rust Book - Chapter 11: Writing Automated Tests](https://doc.rust-lang.org/book/ch11-00-testing.html)
 - [Rust By Example - Testing](https://doc.rust-lang.org/rust-by-example/testing.html)
 - [The rustc Book - Tests](https://doc.rust-lang.org/rustc/tests/index.html)
 
 ### Testing Tools Documentation
+
 - [nextest Documentation](https://nexte.st/) - Fast, parallel test runner
 - [cargo-tarpaulin](https://github.com/xd009642/tarpaulin) - Code coverage
 - [proptest Book](https://proptest-rs.github.io/proptest/intro.html) - Property-based testing
@@ -712,5 +792,6 @@ fn processes_valid_note() {
 - [criterion.rs](https://bheisler.github.io/criterion.rs/book/) - Benchmarking
 
 ### Lithos-Specific Documentation
+
 - [System-Level Test Design](./test-design-system.md) - Overall testing strategy
 - [AGENTS.md](../AGENTS.md) - AI agent testing guidelines
