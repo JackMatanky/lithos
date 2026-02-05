@@ -128,30 +128,41 @@ mod tests {
     const TEST_PROPERTY_ID: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0602);
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test fixture uses expect for deterministic setup. Failure \
+                  indicates invalid test data. Expect is idiomatic in setup."
+    )]
+    fn schema_name() -> SchemaName {
+        SchemaName::new("note".to_owned()).expect("valid schema name")
+    }
+
     #[test]
-    fn raw_schema_initializes_fields() {
-        // GIVEN: a raw schema definition
-        let name_result = SchemaName::new("note".to_owned());
-        assert!(
-            name_result.is_ok(),
-            "valid schema name expected, got: {name_result:?}"
-        );
-        let Ok(name) = name_result else {
-            return;
-        };
+    fn raw_schema_defaults_to_empty_excludes() {
         let schema = RawSchema::new(
             TEST_SCHEMA_ID,
-            name,
+            schema_name(),
             None,
             HashSet::new(),
             Vec::new(),
         );
 
-        // THEN: fields are preserved
         assert!(
             schema.excludes.is_empty(),
             "RawSchema should have empty excludes by default"
         );
+    }
+
+    #[test]
+    fn raw_schema_defaults_to_no_extends() {
+        let schema = RawSchema::new(
+            TEST_SCHEMA_ID,
+            schema_name(),
+            None,
+            HashSet::new(),
+            Vec::new(),
+        );
+
         assert!(
             schema.extends.is_none(),
             "RawSchema should have no extends by default"
@@ -159,8 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn raw_property_variants_construct() {
-        // GIVEN: inline and reference properties
+    fn raw_property_inline_variant_constructs() {
         let inline = RawPropertyInline {
             id: TEST_PROPERTY_ID,
             name: "archived".to_owned(),
@@ -168,19 +178,21 @@ mod tests {
             array: false,
             spec: PropertySpecDef::Bool(BoolSpecDef::default()),
         };
-        let reference = RawPropertyRef {
-            ref_path: "status".to_owned(),
-        };
-
-        // WHEN: wrapping into enum variants
         let inline_variant = RawProperty::Inline(inline);
-        let reference_variant = RawProperty::Ref(reference);
 
-        // THEN: variants hold expected values
         assert!(
             matches!(inline_variant, RawProperty::Inline(_)),
             "RawProperty should be Inline variant"
         );
+    }
+
+    #[test]
+    fn raw_property_ref_variant_constructs() {
+        let reference = RawPropertyRef {
+            ref_path: "status".to_owned(),
+        };
+        let reference_variant = RawProperty::Ref(reference);
+
         assert!(
             matches!(reference_variant, RawProperty::Ref(_)),
             "RawProperty should be Ref variant"
