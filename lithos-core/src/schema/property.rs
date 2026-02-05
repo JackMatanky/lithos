@@ -592,7 +592,10 @@ mod tests {
                 // GIVEN an arbitrary valid property name
                 // WHEN creating a PropertyName
                 // THEN it must succeed
-                prop_assert!(PropertyName::new(name).is_ok());
+                prop_assert!(
+                    PropertyName::new(name).is_ok(),
+                    "Expected valid name, got error"
+                );
             }
         }
 
@@ -606,7 +609,10 @@ mod tests {
                 // GIVEN an arbitrary string containing invalid characters
                 // WHEN creating a PropertyName (filtering for correct length)
                 // THEN it must fail
-                prop_assert!(PropertyName::new(name).is_err());
+                prop_assert!(
+                    PropertyName::new(name).is_err(),
+                    "Expected invalid name to be rejected"
+                );
             }
         }
     }
