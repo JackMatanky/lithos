@@ -112,6 +112,21 @@ mod tests {
             )]))
             .map_err(|e| e.to_string())
         }
+
+        pub fn note_with_frontmatter() -> (TempDir, Database, Uuid, Frontmatter)
+        {
+            let (dir, db) = test_db().expect("Failed to create test DB");
+            let cmd = command::Command::new(&db);
+            let mut note = cmd
+                .create("notes/a.md".to_owned())
+                .expect("Create should succeed");
+            let fm = complex_frontmatter()
+                .expect("Frontmatter construction should succeed");
+            note.set_frontmatter(Some(fm.clone()));
+            let id = note.id;
+            cmd.update(note).expect("Update should succeed");
+            (dir, db, id, fm)
+        }
     }
 
     use super::*;
@@ -125,25 +140,8 @@ mod tests {
 
         #[test]
         fn find_by_id_returns_note_with_matching_id() {
-            let (_dir, db) =
-                fixtures::test_db().expect("Failed to create test DB");
-
-            let cmd = command::Command::new(&db);
+            let (_dir, db, id, _fm) = fixtures::note_with_frontmatter();
             let qry = Query::new(&db);
-
-            let mut note = cmd
-                .create("notes/a.md".to_owned())
-                .expect("Create should succeed");
-            let fm = fixtures::complex_frontmatter()
-                .expect("Frontmatter construction should succeed");
-            note.set_frontmatter(Some(fm));
-
-            let id = note.id;
-            let update_result = cmd.update(note);
-            assert!(
-                update_result.is_ok(),
-                "Update should succeed, got: {update_result:?}"
-            );
 
             let observed = qry
                 .find_by_id(id)
@@ -154,25 +152,8 @@ mod tests {
 
         #[test]
         fn find_by_id_preserves_frontmatter() {
-            let (_dir, db) =
-                fixtures::test_db().expect("Failed to create test DB");
-
-            let cmd = command::Command::new(&db);
+            let (_dir, db, id, fm) = fixtures::note_with_frontmatter();
             let qry = Query::new(&db);
-
-            let mut note = cmd
-                .create("notes/a.md".to_owned())
-                .expect("Create should succeed");
-            let fm = fixtures::complex_frontmatter()
-                .expect("Frontmatter construction should succeed");
-            note.set_frontmatter(Some(fm.clone()));
-
-            let id = note.id;
-            let update_result = cmd.update(note);
-            assert!(
-                update_result.is_ok(),
-                "Update should succeed, got: {update_result:?}"
-            );
 
             let observed = qry
                 .find_by_id(id)
