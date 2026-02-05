@@ -3,7 +3,7 @@ title: "Implementation Patterns & Consistency Rules"
 description: "Development patterns, naming conventions, and consistency rules for Lithos implementation"
 author: "Jack"
 date: "2026-01-23"
-last_updated: "2026-02-04"
+last_updated: "2026-02-05"
 section: "Implementation Standards"
 ---
 
@@ -533,6 +533,357 @@ When designing a type, ask:
 ✅ Use NonZero* types from std for positive numbers
 ✅ Expose collections via `&[T]` or iterators, not `&mut Vec<T>`
 ✅ Use `#[non_exhaustive]` on public enums
+
+## Port-Based CQRS Implementation Patterns
+
+**Core Principle:** Separate read and write capabilities via split port traits to prevent interface bloat, enable read-only test fakes, and support future backend flexibility.
+
+### Split Ports Pattern
+
+**Pattern:** Define separate `QueryPort` and `CommandPort` traits in single `<context>/ports.rs` file.
+
+**Why Split Ports:**
+- Read-only use cases don't implement writes
+- Test fakes only implement needed capabilities
+- Future flexibility (cache reads, DB writes independently)
+- Prevents "god interface" anti-pattern
+
+✅ **Prefer:**
+
+```rust
+// <context>/ports.rs - Single file, multiple focused traits
+pub trait SchemaQueryPort {
+    type Error: std::error::Error;
+    type Archived<'a> where Self: 'a;  // GAT for zero-copy
+
+    // COLD TIER: Owned reads for mutations/complex operations
+    fn find_owned_by_name(&self, name: &SchemaName)
+        -> Result<Option<Schema>, Self::Error>;
+
+    fn list_all_owned(&self) -> Result<Vec<Schema>, Self::Error>;
+
+    // HOT TIER: Zero-copy closure-scoped reads (LSP hot path)
+    fn with_archived_by_name<R>(
+        &self,
+        name: &SchemaName,
+        f: impl for<'a> FnOnce(Self::Archived<'a>) -> R,
+    ) -> Result<Option<R>, Self::Error>;
+}
+
+pub trait SchemaCommandPort {
+    type Error: std::error::Error;
+
+    fn save(&self, schema: &Schema) -> Result<(), Self::Error>;
+    fn delete(&self, name: &SchemaName) -> Result<bool, Self::Error>;
+    fn batch_save(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
+}
+```
+
+❌ **Avoid:**
+
+```rust
+// Single "Store" trait forces all implementers to provide everything
+pub trait SchemaStore {
+    // Read operations
+    fn find_owned_by_name(...) -> ...;
+    fn list_all_owned(...) -> ...;
+
+    // Write operations (read-only fakes forced to implement these!)
+    fn save(...) -> ...;
+    fn delete(...) -> ...;
+}
+```
+
+### Generic CQRS Types Pattern
+
+**Pattern:** CQRS types generic over respective ports, hide generics via type aliases.
+
+✅ **Prefer:**
+
+```rust
+// <context>/query.rs - Generic over QueryPort
+pub struct Query<Q> {
+    query_port: Q,
+}
+
+impl<Q: SchemaQueryPort> Query<Q> {
+    pub fn new(query_port: Q) -> Self {
+        Self { query_port }
+    }
+
+    pub fn find_owned_by_name(&self, name: &SchemaName)
+        -> Result<Option<Schema>, QueryError<Q::Error>>
+    {
+        self.query_port.find_owned_by_name(name)
+            .map_err(QueryError::Storage)
+    }
+
+    // Hot path helper
+    pub fn with_archived_by_name<R>(
+        &self,
+        name: &SchemaName,
+        f: impl for<'a> FnOnce(Q::Archived<'a>) -> R,
+    ) -> Result<Option<R>, QueryError<Q::Error>>
+    {
+        self.query_port.with_archived_by_name(name, f)
+            .map_err(QueryError::Storage)
+    }
+}
+
+// <context>/command.rs - Generic over CommandPort
+pub struct Command<C> {
+    command_port: C,
+}
+
+impl<C: SchemaCommandPort> Command<C> {
+    pub fn new(command_port: C) -> Self {
+        Self { command_port }
+    }
+
+    pub fn save(&self, schema: &Schema)
+        -> Result<(), CommandError<C::Error>>
+    {
+        self.command_port.save(schema)
+            .map_err(CommandError::Storage)
+    }
+}
+```
+
+### Adapter Implementation Pattern
+
+**Pattern:** Adapters live in `db/<context>_adapter.rs` and implement port traits.
+
+✅ **Prefer:**
+
+```rust
+// db/schema_adapter.rs - Infrastructure implements domain ports
+pub struct RedbSchemaQueryAdapter<'db> {
+    db: &'db Database,
+}
+
+impl SchemaQueryPort for RedbSchemaQueryAdapter<'_> {
+    type Error = DbError;
+    type Archived<'a> = &'a ArchivedSchema;  // Domain type or StoredSchema
+
+    fn find_owned_by_name(&self, name: &SchemaName)
+        -> Result<Option<Schema>, DbError>
+    {
+        // Default: Store domain type directly (has rkyv derives)
+        self.db.get_owned::<Schema>("schemas", name.as_ref())
+
+        // Optional: If Stored* exists for optimization
+        // let stored: Option<StoredSchema> = self.db.get_owned("schemas", name.as_ref())?;
+        // Ok(stored.map(Schema::from))
+    }
+
+    fn with_archived_by_name<R>(
+        &self,
+        name: &SchemaName,
+        f: impl for<'a> FnOnce(&'a ArchivedSchema) -> R,
+    ) -> Result<Option<R>, DbError> {
+        self.db.get::<Schema, _, _>("schemas", name.as_ref(), f)
+    }
+}
+
+pub struct RedbSchemaCommandAdapter<'db> {
+    db: &'db Database,
+}
+
+impl SchemaCommandPort for RedbSchemaCommandAdapter<'_> {
+    type Error = DbError;
+
+    fn save(&self, schema: &Schema) -> Result<(), DbError> {
+        // Default: Store domain type directly
+        self.db.put("schemas", schema.name().as_ref(), schema)
+    }
+}
+```
+
+❌ **Avoid:**
+
+```rust
+// Adapter in domain context (violates dependency flow)
+// <context>/redb_adapter.rs - WRONG LOCATION!
+pub struct RedbSchemaStore { /* ... */ }
+impl SchemaStore for RedbSchemaStore {
+    // Now domain depends on infrastructure!
+}
+```
+
+### Type Aliases for Ergonomics
+
+**Pattern:** Hide generic complexity from 99% of callers.
+
+✅ **Prefer:**
+
+```rust
+// <context>/mod.rs - Public API with convenient aliases
+pub type RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>;
+pub type RedbSchemaCommand<'db> = Command<RedbSchemaCommandAdapter<'db>>;
+
+impl<'db> RedbSchemaQuery<'db> {
+    pub fn new_redb(db: &'db Database) -> Self {
+        Self::new(RedbSchemaQueryAdapter::new(db))
+    }
+}
+
+impl<'db> RedbSchemaCommand<'db> {
+    pub fn new_redb(db: &'db Database) -> Self {
+        Self::new(RedbSchemaCommandAdapter::new(db))
+    }
+}
+
+// CLI code never sees generics:
+let query = RedbSchemaQuery::new_redb(&db);
+let schema = query.find_owned_by_name(name)?;
+```
+
+### Three-Shape Serialization Pattern
+
+**Core Principle:** Separate concerns of parsing, validation, and storage optimization.
+
+**Shapes:**
+
+1. **Raw\* (parsing boundary):**
+   - Location: `<context>/raw.rs`
+   - Derives: `serde::Serialize + Deserialize`
+   - Purpose: Tolerant parsing from files
+   - Nullable fields for better error messages
+
+2. **Domain (application core):**
+   - Location: `<context>/aggregate.rs`
+   - Derives: `rkyv::Archive + Serialize + Deserialize`, optionally `serde` (feature-gated)
+   - Purpose: Validated entities used throughout app
+   - **Has rkyv derives** for zero-copy database operations
+   - Private fields with smart constructors
+
+3. **Stored\* (storage optimization, optional):**
+   - Location: `db/stored/<context>.rs`
+   - Derives: `rkyv::Archive + Serialize + Deserialize`
+   - Purpose: Only when domain shape inefficient for storage
+   - Flattened newtypes, optimized layouts
+
+**Conversion Flow Pattern:**
+
+✅ **Prefer:**
+
+```rust
+// fs/parsers.rs - File → Raw → Domain
+fn parse_schema_yaml(path: &Path) -> Result<Schema, ParseError> {
+    let content = fs::read_to_string(path)?;
+    let raw: RawSchema = serde_yaml::from_str(&content)?;  // serde
+    Schema::try_from(raw)  // validation
+}
+
+// db/schema_adapter.rs - Domain → Storage
+impl SchemaCommandPort for RedbSchemaCommandAdapter<'_> {
+    fn save(&self, schema: &Schema) -> Result<(), DbError> {
+        // Option 1: Store domain directly (preferred, default)
+        self.db.put("schemas", schema.name().as_ref(), schema)
+
+        // Option 2: Convert to Stored* only if profiling shows need
+        // let stored = StoredSchema::from(schema);
+        // self.db.put("schemas", schema.name().as_ref(), &stored)
+    }
+}
+```
+
+**When to Create Stored\* Types:**
+
+Only introduce `Stored*` when profiling reveals:
+- ✅ Wrapper newtypes (SchemaName) complicate database indexing
+- ✅ Deep nesting causes excessive alignment copy overhead
+- ✅ Arc<T> sharing doesn't serialize efficiently
+- ✅ Storage layout differs significantly from domain representation
+
+**Default Strategy:** Store domain types directly (they have rkyv derives).
+
+❌ **Avoid:**
+
+```rust
+// Creating Stored* prematurely without performance justification
+// db/stored/schema.rs - DON'T CREATE until needed!
+pub struct StoredSchema { /* ... */ }
+
+// Domain without rkyv derives (wrong!)
+// <context>/aggregate.rs
+#[derive(Debug, Clone)]  // Missing rkyv derives!
+pub struct Schema { /* ... */ }
+```
+
+### Port-Based Testing Pattern
+
+**Pattern:** Different test fakes for read vs write, minimal implementation.
+
+✅ **Prefer:**
+
+```rust
+// <context>/query.rs tests - Read-only fake
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    struct FakeSchemaQueryPort {
+        schemas: HashMap<SchemaName, Schema>,
+    }
+
+    impl SchemaQueryPort for FakeSchemaQueryPort {
+        type Error = String;
+        type Archived<'a> = &'a Schema;  // Just borrow domain type
+
+        fn find_owned_by_name(&self, name: &SchemaName)
+            -> Result<Option<Schema>, String>
+        {
+            Ok(self.schemas.get(name).cloned())
+        }
+
+        fn with_archived_by_name<R>(
+            &self,
+            name: &SchemaName,
+            f: impl for<'a> FnOnce(&'a Schema) -> R,
+        ) -> Result<Option<R>, String> {
+            Ok(self.schemas.get(name).map(f))
+        }
+
+        // No need to implement list_all_owned if test doesn't use it!
+        fn list_all_owned(&self) -> Result<Vec<Schema>, String> {
+            unimplemented!("not needed for this test")
+        }
+    }
+
+    #[test]
+    fn finds_existing_schema() {
+        let mut store = FakeSchemaQueryPort {
+            schemas: HashMap::new()
+        };
+        let schema = Schema::new("test")?;
+        store.schemas.insert(schema.name().clone(), schema.clone());
+
+        let query = Query::new(store);  // Generic Query<FakeSchemaQueryPort>
+
+        let result = query.find_owned_by_name(schema.name())?;
+        assert_eq!(result, Some(schema));
+    }
+}
+```
+
+### Port Pattern Checklist
+
+When implementing port-based CQRS, verify:
+
+- [ ] Ports split into `QueryPort` and `CommandPort` (not single `Store`)
+- [ ] Both ports defined in single `<context>/ports.rs` file
+- [ ] Query uses GAT: `type Archived<'a> where Self: 'a`
+- [ ] Hot path uses HRTB: `impl for<'a> FnOnce(Self::Archived<'a>) -> R`
+- [ ] CQRS types generic: `Query<Q>`, `Command<C>`
+- [ ] Adapters in `db/<context>_adapter.rs` (not in domain context)
+- [ ] Type aliases hide generics: `RedbSchemaQuery<'db>`
+- [ ] Domain types have rkyv derives
+- [ ] `Stored*` only created when profiling shows need
+- [ ] Test fakes implement only needed port methods
+- [ ] No unsafe blocks in CQRS or port implementations
+- [ ] Context isolation maintained (domain doesn't import db/)
 
 ## Structure Patterns
 

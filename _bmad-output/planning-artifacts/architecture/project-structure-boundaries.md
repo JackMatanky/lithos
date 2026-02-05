@@ -3,7 +3,7 @@ title: "Project Structure & Boundaries"
 description: "Complete project directory structure and architectural boundaries for Lithos"
 author: "Jack"
 date: "2026-01-23"
-last_updated: "2026-01-23"
+last_updated: "2026-02-05"
 section: "Project Structure"
 ---
 
@@ -40,21 +40,22 @@ lithos/
 │       │   ├── mod.rs          # Database module entry, core Database type
 │       │   ├── batch.rs        # Atomic write batch implementation
 │       │   ├── error.rs        # Storage-specific error types
-│       │   ├── schema_store.rs # SchemaStore adapter (implements port)
-│       │   ├── note_store.rs   # NoteStore adapter (implements port)
-│       │   ├── template_store.rs # TemplateStore adapter (implements port)
-│       │   ├── config_store.rs # ConfigStore adapter (implements port)
-│       │   └── stored/         # Stored types (rkyv DTOs)
-│       │       ├── schema.rs   # StoredSchema and conversions
-│       │       ├── note.rs     # StoredNote and conversions
-│       │       ├── template.rs # StoredTemplate and conversions
-│       │       └── config.rs   # StoredConfig and conversions
+│       │   ├── schema_adapter.rs # Schema port adapters (implements QueryPort + CommandPort)
+│       │   ├── note_adapter.rs   # Note port adapters (implements QueryPort + CommandPort)
+│       │   ├── template_adapter.rs # Template port adapters (implements QueryPort + CommandPort)
+│       │   ├── config_adapter.rs # Config port adapters (implements QueryPort + CommandPort)
+│       │   └── stored/         # Stored types (rkyv DTOs, optional optimization)
+│       │       ├── schema.rs   # StoredSchema and conversions (only if domain shape inefficient)
+│       │       ├── note.rs     # StoredNote and conversions (only if domain shape inefficient)
+│       │       ├── template.rs # StoredTemplate and conversions (only if domain shape inefficient)
+│       │       └── config.rs   # StoredConfig and conversions (only if domain shape inefficient)
 │       ├── note/               # NOTE CONTEXT (Knowledge Graph) - BUSINESS
 │       │   ├── mod.rs          # Public API, re-exports, type aliases (RedbNoteQuery)
-│       │   ├── aggregate.rs    # Note aggregate root and invariants
-│       │   ├── command.rs      # Command<S: NoteStore> write operations
-│       │   ├── query.rs        # Query<S: NoteStore> read operations
-│       │   ├── ports.rs        # NoteStore port trait with GATs
+│       │   ├── aggregate.rs    # Note aggregate root (domain, has rkyv derives)
+│       │   ├── raw.rs          # RawNote (serde only, pre-validation, optional)
+│       │   ├── command.rs      # Command<C: NoteCommandPort> write operations
+│       │   ├── query.rs        # Query<Q: NoteQueryPort> read operations
+│       │   ├── ports.rs        # NoteQueryPort + NoteCommandPort traits with GATs
 │       │   ├── frontmatter.rs  # Metadata extraction and parsing
 │       │   ├── link.rs         # Wiki-link and embed logic
 │       │   ├── structure.rs    # Markdown structural analysis
@@ -64,10 +65,11 @@ lithos/
 │       │   └── events.rs       # Domain events
 │       ├── schema/             # SCHEMA CONTEXT (Validation) - BUSINESS
 │       │   ├── mod.rs          # Public API, re-exports, type aliases (RedbSchemaQuery)
-│       │   ├── aggregate.rs    # Schema aggregate root
-│       │   ├── command.rs      # Command<S: SchemaStore> lifecycle management
-│       │   ├── query.rs        # Query<S: SchemaStore> lookup and resolution
-│       │   ├── ports.rs        # SchemaStore port trait with GATs
+│       │   ├── aggregate.rs    # Schema aggregate root (domain, has rkyv derives)
+│       │   ├── raw.rs          # RawSchema (serde only, pre-validation)
+│       │   ├── command.rs      # Command<C: SchemaCommandPort> lifecycle management
+│       │   ├── query.rs        # Query<Q: SchemaQueryPort> lookup and resolution
+│       │   ├── ports.rs        # SchemaQueryPort + SchemaCommandPort traits with GATs
 │       │   ├── property.rs     # Individual property logic
 │       │   ├── property_spec.rs # Property specification types
 │       │   ├── resolver.rs     # Reference resolution
@@ -77,10 +79,11 @@ lithos/
 │       │   └── events.rs       # Domain events
 │       ├── template/           # TEMPLATE CONTEXT (Generation) - BUSINESS
 │       │   ├── mod.rs          # Public API, re-exports, type aliases
-│       │   ├── aggregate.rs    # Template aggregate root
-│       │   ├── command.rs      # Command<S: TemplateStore> rendering operations
-│       │   ├── query.rs        # Query<S: TemplateStore> lookup and resolution
-│       │   ├── ports.rs        # TemplateStore port trait with GATs
+│       │   ├── aggregate.rs    # Template aggregate root (domain, has rkyv derives)
+│       │   ├── raw.rs          # RawTemplate (serde only, pre-validation, optional)
+│       │   ├── command.rs      # Command<C: TemplateCommandPort> rendering operations
+│       │   ├── query.rs        # Query<Q: TemplateQueryPort> lookup and resolution
+│       │   ├── ports.rs        # TemplateQueryPort + TemplateCommandPort traits with GATs
 │       │   ├── variable.rs     # Variable injection logic
 │       │   ├── composition.rs  # Component/Partial logic
 │       │   ├── syntax.rs       # Syntax highlighting/parsing
@@ -89,10 +92,11 @@ lithos/
 │       │   └── events.rs       # Domain events
 │       ├── config/             # CONFIG CONTEXT (System Settings) - CROSS-CUTTING
 │       │   ├── mod.rs          # Public API, re-exports, type aliases
-│       │   ├── aggregate.rs    # Config aggregate root
-│       │   ├── command.rs      # Command<S: ConfigStore> settings updates
-│       │   ├── query.rs        # Query<S: ConfigStore> settings retrieval
-│       │   ├── ports.rs        # ConfigStore port trait with GATs
+│       │   ├── aggregate.rs    # Config aggregate root (domain, has rkyv derives)
+│       │   ├── raw.rs          # RawConfig (serde only, pre-validation, optional)
+│       │   ├── command.rs      # Command<C: ConfigCommandPort> settings updates
+│       │   ├── query.rs        # Query<Q: ConfigQueryPort> settings retrieval
+│       │   ├── ports.rs        # ConfigQueryPort + ConfigCommandPort traits with GATs
 │       │   ├── types.rs        # Shared config models
 │       │   ├── global.rs       # System-wide settings
 │       │   ├── vault.rs        # Vault-specific settings
@@ -135,10 +139,11 @@ lithos/
   - Business contexts depend on infrastructure but NOT on each other
 - **Dependency Flow:** Infrastructure (db/, fs/, config/, patterns/) → Business Contexts (note/, schema/, template/) → CLI
 - **Port-Based CQRS:**
-  - Each context defines storage port trait with GATs (e.g., `SchemaStore`)
-  - CQRS types generic over port: `Query<S: SchemaStore>`, `Command<S: SchemaStore>`
-  - Default adapters: `RedbSchemaStore<'db>` implements ports
-  - Type aliases hide complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>`
+  - Each context defines **split storage ports** with GATs (e.g., `SchemaQueryPort`, `SchemaCommandPort`)
+  - CQRS types generic over respective ports: `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`
+  - Default adapters: `RedbSchemaQueryAdapter<'db>` and `RedbSchemaCommandAdapter<'db>` implement ports
+  - Type aliases hide complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>`
+  - Port split prevents interface bloat and enables read-only test fakes
 
 **Component Boundaries:**
 
@@ -155,28 +160,31 @@ lithos/
 - **Identity (UUID v7):** We use UUID v7 (Time-ordered) instead of paths or numeric IDs.
   - **Performance:** Ensures new notes are appended to Redb B-Tree leaves sequentially, achieving O(1) insertion.
   - **Persistence:** Allows notes to be moved or renamed while preserving their logical relationships in the Knowledge Graph.
-- **Zero-Copy Serialization:** **rkyv** buffers are managed in `src/db/` and returned via closure-based APIs, allowing the CLI to read data without memory duplication.
-  - `Stored*` types with rkyv derives for persistence
-  - Domain types remain ergonomic (no rkyv in domain surface)
+- **Three-Shape Serialization Model:** **rkyv** buffers are managed in `src/db/` and returned via closure-based APIs, allowing the CLI to read data without memory duplication.
+  - **Raw\* (serde):** Unvalidated input from filesystem, nullable fields for better errors (e.g., `RawSchema`)
+  - **Domain (rkyv + serde feature-gated):** Validated entities with **rkyv derives** for zero-copy DB operations, used throughout application
+  - **Stored\* (rkyv, optional):** Storage-optimized representation, only created when domain shape inefficient for storage
   - Port traits with GATs enable closure-based archived reads
-- **Storage DTOs:**
-  - One `Stored*` per persisted aggregate (StoredNote, StoredSchema, StoredTemplate, StoredConfig)
-  - Mechanical conversions at storage boundary
-  - Treat `Stored*` changes as migration decisions
+  - **Default:** Store domain types directly (they have rkyv derives); only use `Stored*` for optimization
+- **Storage DTOs (Optional):**
+  - Create `Stored*` only when: wrapper newtypes complicate indexing, deep nesting causes performance issues, Arc sharing doesn't serialize well
+  - Mechanical conversions at storage boundary when `Stored*` exists
+  - Treat `Stored*` changes as migration decisions (persisted format contract)
 
 **File Organization Patterns:**
 
 - **Module Folder with mod.rs:** Use `<context>/mod.rs` as the entry point for all contexts.
 - **CQRS Structure:** Split logic into:
-  - `aggregate.rs` (invariants, domain entities)
-  - `command.rs` (Command<S> generic over port)
-  - `query.rs` (Query<S> generic over port)
-  - `ports.rs` (Storage port trait with GATs)
-- **Co-location:** Errors (`error.rs`), Events (`events.rs`), and Ports (`ports.rs`) are co-located within the context folder.
-- **Storage Adapters:** `Stored*` types and adapters can live in:
-  - `db/stored/<context>.rs` (for stored type definitions)
-  - `db/<context>_store.rs` (for port implementations like `RedbSchemaStore`)
-  - Or combined in one file if both are small
+  - `aggregate.rs` (invariants, domain entities with rkyv derives)
+  - `raw.rs` (unvalidated input with serde derives, optional per context)
+  - `command.rs` (Command<C: CommandPort> generic over command port)
+  - `query.rs` (Query<Q: QueryPort> generic over query port)
+  - `ports.rs` (QueryPort + CommandPort traits with GATs, single file per context)
+- **Co-location:** Errors (`error.rs`), Events (`events.rs`), Ports (`ports.rs`), and Raw types (`raw.rs`) are co-located within the context folder.
+- **Storage Adapters:** Adapters and optional `Stored*` types live in infrastructure:
+  - `db/<context>_adapter.rs` (port adapter implementations like `RedbSchemaQueryAdapter`, `RedbSchemaCommandAdapter`)
+  - `db/stored/<context>.rs` (optional: `Stored*` type definitions only when domain shape inefficient)
+  - Adapters implement split ports defined in business context
 
 ## Requirements to Structure Mapping
 

@@ -3,7 +3,7 @@ title: "Core Architectural Decisions"
 description: "Key architectural decisions and technology choices for Lithos implementation"
 author: "Jack"
 date: "2026-01-23"
-last_updated: "2026-02-04"
+last_updated: "2026-02-05"
 section: "Architecture Decisions"
 ---
 
@@ -40,20 +40,23 @@ section: "Architecture Decisions"
 
 - **Engine:** Redb (Pure-Rust, ACID KV) with **rkyv** zero-copy serialization.
 - **Access Pattern:** Port-based CQRS with GAT-enabled zero-copy reads
-  - Each context defines `<Context>Store` port trait (e.g., `SchemaStore`, `NoteStore`)
-  - Concrete CQRS types generic over port: `Query<S: SchemaStore>`, `Command<S: SchemaStore>`
-  - Default adapter: `RedbSchemaStore<'db>` implements port with zero-copy primitives
-  - Type aliases hide generic complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>`
-  - Enables test substitution via `FakeSchemaStore` while maintaining zero-copy performance
-- **Storage DTOs:** Following ADR 0009 Appendix A, introduce `Stored*` types selectively:
-  - One per persisted aggregate (StoredNote, StoredSchema, StoredTemplate, StoredConfig)
+  - Each context defines **split storage ports**: `<Context>QueryPort` and `<Context>CommandPort` (e.g., `SchemaQueryPort`, `SchemaCommandPort`)
+  - Concrete CQRS types generic over respective ports: `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`
+  - Default adapters: `RedbSchemaQueryAdapter<'db>` and `RedbSchemaCommandAdapter<'db>` implement ports with zero-copy primitives
+  - Type aliases hide generic complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>`
+  - Enables test substitution via `FakeSchemaQueryPort` while maintaining zero-copy performance
+  - **Port Split Benefits:** Read-only test fakes don't implement writes, prevents interface bloat, enables future flexibility (cache reads, DB writes)
+- **Three-Shape Serialization Model:** Following ADR 0009 Appendix A pattern:
+  - **Raw\* (serde derives):** Unvalidated input from filesystem (YAML/JSON), tolerant parsing with nullable fields for better error messages
+  - **Domain (rkyv + serde feature-gated):** Validated entities with invariants, **has rkyv derives** for zero-copy database operations, used throughout application
+  - **Stored\* (rkyv derives, optional):** Storage-optimized representation, only created when domain shape inefficient (wrapper newtypes, deep nesting, Arc sharing issues)
+  - **Default Strategy:** Store domain types directly (they already have rkyv derives); only introduce `Stored*` when performance profiling reveals inefficiency
   - Keep conversions mechanical and co-located in storage adapters
   - Treat changes to `Stored*` as migration decisions (stable on-disk format)
-  - Domain types remain ergonomic (no rkyv derives in domain surface)
 - **Identity:** UUID v7. Decouples identity from physical path to avoid the "directory trap."
 - **ADR References:**
   - [ADR 0002: Persistence & Cache Infrastructure](../../docs/adr/0002-persistence-cache-infrastructure.md)
-  - [ADR 0009: Domain Serialization Strategy](../../docs/adr/0009-domain-serialization-strategy.md) (see Appendix A)
+  - [ADR 0009: Domain Serialization Strategy](../../docs/adr/0009-domain-serialization-strategy.md) (see Appendix A for three-shape model)
   - [Design Doc 012: CQRS Concrete Over Port](../../docs/design/012-cqrs-concrete-over-port.md)
 
 ## Internal Communication
@@ -70,57 +73,71 @@ section: "Architecture Decisions"
 
 ## CQRS Architecture Pattern
 
-**Pattern:** Concrete CQRS Generic Over Storage Port
+**Pattern:** Concrete CQRS Generic Over Split Storage Ports
 
-Each bounded context (note, schema, template, config) implements CQRS using:
+Each bounded context (note, schema, template, config) implements CQRS using split query and command ports to prevent interface bloat and enable independent read/write backends.
 
-### Port Trait Pattern
+### Split Port Trait Pattern
 
-Storage capabilities defined via trait with GATs (Generic Associated Types) for zero-copy:
+Storage capabilities defined via **separate traits** with GATs (Generic Associated Types) for zero-copy:
+
+#### Query Port Pattern
 
 ```rust
-pub trait SchemaStore {
-    type Error;
+// Defined in <context>/ports.rs
+pub trait SchemaQueryPort {
+    type Error: std::error::Error;
     type Archived<'a> where Self: 'a;  // GAT for zero-copy archived view
 
-    // Cold tier: owned read
+    // COLD TIER: Owned reads for mutations/complex operations
     fn find_owned_by_name(&self, name: &SchemaName)
         -> Result<Option<Schema>, Self::Error>;
 
-    // Hot tier: zero-copy read with closure
+    fn list_all_owned(&self) -> Result<Vec<Schema>, Self::Error>;
+
+    // HOT TIER: Zero-copy closure-scoped reads (LSP hot path)
     fn with_archived_by_name<R>(
         &self,
         name: &SchemaName,
         f: impl for<'a> FnOnce(Self::Archived<'a>) -> R,
     ) -> Result<Option<R>, Self::Error>;
-
-    // Write operations
-    fn save(&self, schema: &Schema) -> Result<(), Self::Error>;
 }
 ```
 
-### CQRS Layer Pattern
-
-Concrete types generic over storage port:
+#### Command Port Pattern
 
 ```rust
-pub struct Query<S> {
-    store: S,
+// Defined in <context>/ports.rs
+pub trait SchemaCommandPort {
+    type Error: std::error::Error;
+
+    fn save(&self, schema: &Schema) -> Result<(), Self::Error>;
+    fn delete(&self, name: &SchemaName) -> Result<bool, Self::Error>;
+    fn batch_save(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
+}
+```
+
+**Port Organization:** Both traits defined in single `<context>/ports.rs` file (Rust's preferred flatter structure).
+
+### CQRS Layer Pattern
+
+Concrete types generic over respective storage ports:
+
+```rust
+// In <context>/query.rs
+pub struct Query<Q> {
+    query_port: Q,
 }
 
-pub struct Command<S> {
-    store: S,
-}
-
-impl<S: SchemaStore> Query<S> {
-    pub fn new(store: S) -> Self {
-        Self { store }
+impl<Q: SchemaQueryPort> Query<Q> {
+    pub fn new(query_port: Q) -> Self {
+        Self { query_port }
     }
 
     pub fn find_owned_by_name(&self, name: &SchemaName)
-        -> Result<Option<Schema>, QueryError<S::Error>>
+        -> Result<Option<Schema>, QueryError<Q::Error>>
     {
-        self.store.find_owned_by_name(name)
+        self.query_port.find_owned_by_name(name)
             .map_err(QueryError::Storage)
     }
 
@@ -128,11 +145,81 @@ impl<S: SchemaStore> Query<S> {
     pub fn with_archived_by_name<R>(
         &self,
         name: &SchemaName,
-        f: impl for<'a> FnOnce(S::Archived<'a>) -> R,
-    ) -> Result<Option<R>, QueryError<S::Error>>
+        f: impl for<'a> FnOnce(Q::Archived<'a>) -> R,
+    ) -> Result<Option<R>, QueryError<Q::Error>>
     {
-        self.store.with_archived_by_name(name, f)
+        self.query_port.with_archived_by_name(name, f)
             .map_err(QueryError::Storage)
+    }
+}
+
+// In <context>/command.rs
+pub struct Command<C> {
+    command_port: C,
+}
+
+impl<C: SchemaCommandPort> Command<C> {
+    pub fn new(command_port: C) -> Self {
+        Self { command_port }
+    }
+
+    pub fn save(&self, schema: &Schema)
+        -> Result<(), CommandError<C::Error>>
+    {
+        self.command_port.save(schema)
+            .map_err(CommandError::Storage)
+    }
+}
+```
+
+### Adapter Implementation Pattern
+
+Adapters live in `db/<context>_adapter.rs` and implement port traits:
+
+```rust
+// In db/schema_adapter.rs
+pub struct RedbSchemaQueryAdapter<'db> {
+    db: &'db Database,
+}
+
+impl SchemaQueryPort for RedbSchemaQueryAdapter<'_> {
+    type Error = DbError;
+    type Archived<'a> = &'a ArchivedSchema;  // Domain type directly, or ArchivedStoredSchema if Stored* exists
+
+    fn find_owned_by_name(&self, name: &SchemaName)
+        -> Result<Option<Schema>, DbError>
+    {
+        // Default: Store domain type directly (has rkyv derives)
+        self.db.get_owned::<Schema>("schemas", name.as_ref())
+
+        // Optional: If Stored* exists for optimization
+        // let stored: Option<StoredSchema> = self.db.get_owned("schemas", name.as_ref())?;
+        // Ok(stored.map(Schema::from))
+    }
+
+    fn with_archived_by_name<R>(
+        &self,
+        name: &SchemaName,
+        f: impl for<'a> FnOnce(&'a ArchivedSchema) -> R,
+    ) -> Result<Option<R>, DbError> {
+        self.db.get::<Schema, _, _>("schemas", name.as_ref(), f)
+    }
+}
+
+pub struct RedbSchemaCommandAdapter<'db> {
+    db: &'db Database,
+}
+
+impl SchemaCommandPort for RedbSchemaCommandAdapter<'_> {
+    type Error = DbError;
+
+    fn save(&self, schema: &Schema) -> Result<(), DbError> {
+        // Default: Store domain type directly
+        self.db.put("schemas", schema.name().as_ref(), schema)
+
+        // Optional: If Stored* exists for optimization
+        // let stored = StoredSchema::from(schema);
+        // self.db.put("schemas", schema.name().as_ref(), &stored)
     }
 }
 ```
@@ -142,13 +229,19 @@ impl<S: SchemaStore> Query<S> {
 Hide generic complexity from callers:
 
 ```rust
-// In context/mod.rs
-pub type RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>;
-pub type RedbSchemaCommand<'db> = Command<RedbSchemaStore<'db>>;
+// In <context>/mod.rs
+pub type RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>;
+pub type RedbSchemaCommand<'db> = Command<RedbSchemaCommandAdapter<'db>>;
 
 impl<'db> RedbSchemaQuery<'db> {
     pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(RedbSchemaStore::new(db))
+        Self::new(RedbSchemaQueryAdapter::new(db))
+    }
+}
+
+impl<'db> RedbSchemaCommand<'db> {
+    pub fn new_redb(db: &'db Database) -> Self {
+        Self::new(RedbSchemaCommandAdapter::new(db))
     }
 }
 ```
@@ -157,9 +250,61 @@ impl<'db> RedbSchemaQuery<'db> {
 
 - **Decoupling**: CQRS layer independent of concrete database implementation
 - **Zero-Copy Performance**: GATs enable `Archived<'a>` without leaking transaction lifetimes
-- **Testability**: Can substitute `FakeSchemaStore` implementing same port
-- **Static Dispatch**: Performance benefits when using concrete type aliases
-- **Future-Proof**: Can change storage backend by implementing new adapter
+- **Testability**: Can substitute `FakeSchemaQueryPort` or `FakeSchemaCommandPort` implementing respective ports
+- **Interface Segregation**: Read-only test fakes don't implement write operations
+- **Static Dispatch**: Performance benefits when using concrete type aliases (monomorphization)
+- **Future-Proof**: Can change storage backend by implementing new adapters, or use different backends for reads vs writes
+- **Lean Ports**: Each port trait contains only methods relevant to its responsibility
+
+### Three-Shape Serialization Flow
+
+```
+┌─────────────────────────────────────────┐
+│ File System (YAML/JSON)                 │
+│ - User-editable vault files             │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼ parse (serde)
+┌─────────────────────────────────────────┐
+│ Raw* (serde derives)                    │
+│ - Unvalidated input representation      │
+│ - Location: <context>/raw.rs            │
+│ - Nullable fields for better errors     │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼ validate & compile
+┌─────────────────────────────────────────┐
+│ Domain (rkyv + serde feature-gated)     │
+│ - Validated, invariant-preserving       │
+│ - Location: <context>/aggregate.rs      │
+│ - Used throughout application           │
+│ - Has rkyv derives for zero-copy DB     │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼ project/adapt (optional, only when needed)
+┌─────────────────────────────────────────┐
+│ Stored* (rkyv derives, optional)        │
+│ - Storage-optimized representation      │
+│ - Location: db/stored/<context>.rs      │
+│ - Only when domain shape inefficient    │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼ serialize (rkyv)
+┌─────────────────────────────────────────┐
+│ Database (redb)                         │
+│ - Zero-copy archived access             │
+└─────────────────────────────────────────┘
+```
+
+**When to Create Stored\* Types:**
+
+Only introduce `Stored*` when profiling reveals:
+- Wrapper newtypes (SchemaName) complicate database indexing
+- Deep nesting causes excessive alignment copy overhead
+- Arc<T> sharing doesn't serialize efficiently
+- Storage layout differs significantly from domain representation
+
+**Default Strategy:** Store domain types directly (they already have rkyv derives for zero-copy).
 
 **Reference:** [Design Doc 012: CQRS Concrete Over Port](../../docs/design/012-cqrs-concrete-over-port.md)
 

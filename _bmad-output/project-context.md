@@ -62,10 +62,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
     - **Context Isolation:** Business contexts (note, schema, template) MUST NOT import each other. They depend only on infrastructure and shared utilities.
     - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `lithos-cli`).
 - **Port-Based CQRS:**
-    - **Port Traits:** Each context defines storage capabilities via a `<Context>Store` trait (e.g., `SchemaStore`) with GATs for zero-copy reads.
-    - **Generic CQRS:** Command/Query types are generic over the port (e.g., `Query<S: SchemaStore>`).
-    - **Concrete Adapters:** Infrastructure provides concrete implementations (e.g., `RedbSchemaStore`).
-    - **Static Methods:** Use static methods or type aliases for ergonomics (e.g., `RedbNoteQuery::new(&db).find(...)`).
+    - **Port Traits:** Each context defines split storage capabilities via `<Context>QueryPort` and `<Context>CommandPort` traits (e.g., `SchemaQueryPort`, `SchemaCommandPort`) with GATs for zero-copy reads.
+    - **Generic CQRS:** Command/Query types are generic over respective ports (e.g., `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`).
+    - **Concrete Adapters:** Infrastructure provides concrete implementations (e.g., `RedbSchemaQueryAdapter`, `RedbSchemaCommandAdapter`).
+    - **Type Aliases:** Use type aliases for ergonomics (e.g., `RedbSchemaQuery::new_redb(&db).find(...)`).
+    - **Port Split Benefits:** Read-only test fakes don't implement writes, prevents interface bloat, enables future backend flexibility.
 - **Naming Convention:**
     - Queries: `find_*`, `get_*`, `list_*`, `count_*`
     - Commands: `save`, `delete`, `update`, `create`
@@ -97,8 +98,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Numeric Safety:** Prohibit 'as' casting; use .try_into().context("...") to prevent silent truncation and handle errors gracefully. Avoid .expect() in production—propagate errors instead.
 
 #### Persistence & Performance
-- **rkyv Requirements:** `Stored*` types for storage MUST derive `Archive`, `Serialize`, `Deserialize`, and `CheckBytes`.
-- **Storage Separation:** Isolate rkyv coupling to `Stored*` types (ADR 0009). Domain types remain ergonomic. Use mechanical conversions at the storage boundary.
+- **rkyv Requirements:** Domain types MUST derive `Archive`, `Serialize`, `Deserialize`, and `CheckBytes` for zero-copy database operations. `Stored*` types used only when domain shape inefficient.
+- **Three-Shape Model (ADR 0009):**
+  - **Raw\* (serde):** Unvalidated input from filesystem for tolerant parsing
+  - **Domain (rkyv + serde feature-gated):** Validated entities with rkyv derives, used throughout application
+  - **Stored\* (rkyv, optional):** Storage-optimized representation, only when domain shape causes performance issues
+  - **Default Strategy:** Store domain types directly; introduce `Stored*` only when profiling reveals inefficiency
 - **Zero-Copy Boundary:** Port traits use GATs (`type Archived<'a>`) to enable closure-based archived reads without leaking transaction lifetimes.
 - **Note Identity:** Use **UUID v7** for primary keys in Redb to ensure time-ordered insertion and logical stability during file renames.
 - **Memory Strategy:** Favor `Box<str>` or `SmolStr` for immutable identifiers. Use `Cow<'a, str>` for metadata frequently read from storage buffers.
