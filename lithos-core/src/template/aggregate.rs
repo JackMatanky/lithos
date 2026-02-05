@@ -554,19 +554,29 @@ mod tests {
     mod constructor {
         use super::*;
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
+        )]
+        fn base_template() -> Template {
+            fixtures::base_template().expect("Valid base template")
+        }
+
         /// 3.4-UNIT-022: `name_and_content_accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn name_and_content_accessors_return_expected_values() {
-            let template =
-                fixtures::base_template().expect("Valid base template");
+        fn name_accessor_returns_template_name() {
+            let template = base_template();
 
             assert_eq!(template.name, "base", "Template name should be 'base'");
+        }
+
+        #[test]
+        fn content_accessor_returns_template_content() {
+            let template = base_template();
+
             assert_eq!(
                 template.content, "Hello",
                 "Template content should be 'Hello'"
@@ -576,14 +586,8 @@ mod tests {
         /// 3.4-UNIT-022: `extends_is_none_for_base_template`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn extends_is_none_for_base_template() {
-            let template =
-                fixtures::base_template().expect("Valid base template");
+            let template = base_template();
 
             assert!(
                 template.extends().is_none(),
@@ -594,14 +598,8 @@ mod tests {
         /// 3.4-UNIT-022: `has_variables_false_for_base_template`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn has_variables_false_for_base_template() {
-            let template =
-                fixtures::base_template().expect("Valid base template");
+            let template = base_template();
 
             assert!(
                 !template.has_variables(),
@@ -612,14 +610,8 @@ mod tests {
         /// 3.4-UNIT-022: `pending_events_emitted_on_create`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
         fn pending_events_emitted_on_create() {
-            let template =
-                fixtures::base_template().expect("Valid base template");
+            let template = base_template();
 
             assert_eq!(
                 template.pending_events().len(),
@@ -631,20 +623,22 @@ mod tests {
         /// 3.4-UNIT-022: `take_events_drains_event_queue`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn take_events_drains_event_queue() {
-            let mut template =
-                fixtures::base_template().expect("Valid base template");
+        fn take_events_returns_pending_events() {
+            let mut template = base_template();
 
             assert_eq!(
                 template.take_events().len(),
                 1,
                 "Taking events should return 1 event"
             );
+        }
+
+        #[test]
+        fn take_events_clears_pending_events() {
+            let mut template = base_template();
+
+            let _events = template.take_events();
+
             assert!(
                 template.pending_events().is_empty(),
                 "Pending events should be empty after take_events"
@@ -654,24 +648,59 @@ mod tests {
         /// 3.4-UNIT-023: `should_reject_template_when_name_format_is_invalid`.
         /// Priority: P0.
         #[test]
-        fn should_reject_template_when_name_format_is_invalid() {
-            // GIVEN: invalid template names
+        fn should_reject_template_when_name_is_empty() {
+            let result = Template::new(
+                String::new(),
+                "content".to_owned(),
+                HashMap::new(),
+                None,
+                Metadata::default(),
+            );
+
+            assert!(result.is_err(), "Expected error for empty name");
+        }
+
+        #[test]
+        fn should_reject_template_when_name_contains_spaces() {
+            let result = Template::new(
+                "Invalid Name".to_owned(),
+                "content".to_owned(),
+                HashMap::new(),
+                None,
+                Metadata::default(),
+            );
+
+            assert!(result.is_err(), "Expected error for name with spaces");
+        }
+
+        #[test]
+        fn should_reject_template_when_name_contains_invalid_characters() {
+            let result = Template::new(
+                "name!".to_owned(),
+                "content".to_owned(),
+                HashMap::new(),
+                None,
+                Metadata::default(),
+            );
+
+            assert!(
+                result.is_err(),
+                "Expected error for name with invalid characters"
+            );
+        }
+
+        #[test]
+        fn should_reject_template_when_name_is_too_long() {
             let invalid_long_name = "a".repeat(65);
-            let names = vec!["", "Invalid Name", "name!", &invalid_long_name];
+            let result = Template::new(
+                invalid_long_name,
+                "content".to_owned(),
+                HashMap::new(),
+                None,
+                Metadata::default(),
+            );
 
-            // WHEN: creating templates with invalid names
-            for name in names {
-                let result = Template::new(
-                    name.to_owned(),
-                    "content".to_owned(),
-                    HashMap::new(),
-                    None,
-                    Metadata::default(),
-                );
-
-                // THEN: validation rejects the name
-                assert!(result.is_err(), "Expected error for name: {name}");
-            }
+            assert!(result.is_err(), "Expected error for overlong name");
         }
 
         /// 3.4-UNIT-024: `should_reject_template_when_unbalanced_placeholders`.
@@ -689,17 +718,23 @@ mod tests {
 
             // WHEN: validation runs during construction
             // THEN: a validation error describes the unbalanced syntax
-            let error =
-                result.expect_err("Expected unbalanced template to fail");
-            assert!(error.to_string().contains("Unbalanced"));
+            assert!(
+                matches!(
+                    &result,
+                    Err(TemplateError::ValidationFailed(message))
+                        if message.contains("Unbalanced")
+                ),
+                "Expected unbalanced template to fail, got: {result:?}"
+            );
         }
     }
 
     // 3.4-UNIT-025: `should_validate_template_name_format_across_edge_cases`.
     // Priority: P2.
     #[test]
-    fn should_validate_template_name_format_across_edge_cases() {
-        use proptest::{prelude::*, test_runner::TestRunner};
+    fn should_validate_template_name_format_across_edge_cases()
+    -> Result<(), String> {
+        use proptest::test_runner::TestRunner;
 
         let mut runner = TestRunner::deterministic();
         let strategy = "[a-zA-Z0-9_-]{1,64}";
@@ -723,22 +758,21 @@ mod tests {
             );
             Ok(())
         });
-        assert!(
-            run_result.is_ok(),
-            "Proptest run should succeed, got: {run_result:?}"
-        );
+        run_result
+            .map_err(|e| format!("Proptest run should succeed, got: {e:?}"))?;
+
+        Ok(())
     }
 
     /// 3.4-UNIT-026: `should_compose_templates_with_sections`.
     /// Priority: P1.
-    #[test]
     #[expect(
         clippy::disallowed_methods,
-        reason = "Test uses expect for deterministic fixture setup and value \
-                  extraction."
+        reason = "Test fixture uses expect for deterministic setup and value \
+                  extraction. Failure indicates invalid test data. Expect is \
+                  idiomatic in setup."
     )]
-    fn should_compose_templates_with_sections() {
-        // GIVEN: a base template and a composition
+    fn composed_template_with_sections() -> Template {
         let base = Template::new(
             "base".to_owned(),
             "Base: {{v}}".to_owned(),
@@ -783,15 +817,49 @@ mod tests {
         let templates =
             [("base".to_owned(), base.clone())].into_iter().collect();
 
-        // WHEN: composing the template
-        let composed = Template::compose(&base, &composition, &templates)
-            .expect("Expected compose to succeed");
+        Template::compose(&base, &composition, &templates)
+            .expect("Expected compose to succeed")
+    }
 
-        // THEN: content is correctly assembled
-        assert!(composed.content.starts_with("Header\n"));
-        assert!(composed.content.ends_with("\nFooter"));
-        assert!(composed.content.contains("Base: {{v}}\nInside"));
-        assert_eq!(composed.extends(), Some("base"));
+    #[test]
+    fn composed_template_inserts_header_at_start() {
+        let composed = composed_template_with_sections();
+
+        assert!(
+            composed.content.starts_with("Header\n"),
+            "Composed content should start with header"
+        );
+    }
+
+    #[test]
+    fn composed_template_inserts_footer_at_end() {
+        let composed = composed_template_with_sections();
+
+        assert!(
+            composed.content.ends_with("\nFooter"),
+            "Composed content should end with footer"
+        );
+    }
+
+    #[test]
+    fn composed_template_inserts_section_after_variable() {
+        let composed = composed_template_with_sections();
+
+        assert!(
+            composed.content.contains("Base: {{v}}\nInside"),
+            "Composed content should include inserted section"
+        );
+    }
+
+    #[test]
+    fn composed_template_extends_base_template() {
+        let composed = composed_template_with_sections();
+
+        assert_eq!(
+            composed.extends(),
+            Some("base"),
+            "Composed template should extend base"
+        );
     }
 
     /// 3.4-UNIT-027: `apply_sections_handles_missing_variable`.
