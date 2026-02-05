@@ -124,7 +124,7 @@ These requirements drive a port-based CQRS architecture with bounded contexts, s
 
 **Configuration Management:** TOML-based configuration with extensive settings for templates, schemas, validation rules, and CLI behavior.
 
-**Event-Driven Architecture:** Following ADR 0007, implement **Minimal Event Foundation** for Phase 1:
+**Event-Driven Architecture:** Following ADR 004, implement **Minimal Event Foundation** for Phase 1:
 - Domain methods return `(Entity, Vec<Event>)` - pure functions
 - Application layer (CLI) collects and dispatches events
 - Synchronous handlers for Phase 1 (logging, tracing)

@@ -73,7 +73,7 @@ so that I can understand configuration options and customize settings confidentl
 
 **Hexagonal Architecture**: Follow established patterns - domain models exist in `crates/domain/src/config/`, adapters will be created in `crates/adapters/src/spi/config/`
 **CQRS Pattern**: Separate Command/Query ports already defined in `crates/domain/src/ports/config.rs`
-**Figment Integration**: Per ADR 0005 for hierarchical configuration (not yet created, but referenced in epic)
+**Figment Integration**: Per ADR 009 for hierarchical configuration (not yet created, but referenced in epic)
 
 ### Epic Integration Dependencies
 
@@ -81,7 +81,7 @@ so that I can understand configuration options and customize settings confidentl
 - **Epic 4 FormatDispatcher**: Multi-format support (TOML/JSON/YAML) - needed for Story 6.2-6.6
 - **Epic 5 CacheCoordinator**: Configuration integration via CacheCoordinatorBuilder - needed for Story 6.4-6.6
 - **Epic 4 PathValidator**: Security validation before file operations - needed for all subsequent stories
-- **ADR 0005 Implementation**: Hierarchical configuration loading strategy - needed for Story 6.2 Figment integration
+- **ADR 009 Implementation**: Hierarchical configuration loading strategy - needed for Story 6.2 Figment integration
 
 **Implementation Impact**: Stories 6.2-6.6 cannot be implemented without these dependencies being addressed
 

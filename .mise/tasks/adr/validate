@@ -17,7 +17,8 @@ set -euo pipefail
 #   Modifies EXIT_CODE
 #######################################
 validate_adr_metadata() {
-    for adr in "$ADR_DIR"/[0-9][0-9][0-9][0-9]-*.md; do
+    # Check files matching the NNN-name.md pattern (3 digits)
+    for adr in "$ADR_DIR"/[0-9][0-9][0-9]-*.md; do
         [ -e "$adr" ] || continue
 
         filename=$(basename "$adr")
@@ -53,7 +54,8 @@ validate_adr_metadata() {
 #   Modifies EXIT_CODE
 #######################################
 validate_adr_sections() {
-    for adr in "$ADR_DIR"/[0-9][0-9][0-9][0-9]-*.md; do
+    # Check files matching the NNN-name.md pattern (3 digits)
+    for adr in "$ADR_DIR"/[0-9][0-9][0-9]-*.md; do
         [ -e "$adr" ] || continue
 
         filename=$(basename "$adr")
@@ -86,8 +88,9 @@ validate_adr_naming() {
         if [[ "$filename" == "adr-process.md" || "$filename" == "template.md" || "$filename" == "index.md" || "$filename" == "README.md" ]]; then
             continue
         fi
-        if [[ ! "$filename" =~ ^[0-9]{4}-.*\.md$ ]]; then
-            echo "    ❌ Invalid filename: $filename (Expected NNNN-name.md)"
+        # Enforce exactly 3 digits followed by a hyphen
+        if [[ ! "$filename" =~ ^[0-9]{3}-.*\.md$ ]]; then
+            echo "    ❌ Invalid filename: $filename (Expected NNN-name.md)"
             EXIT_CODE=1
         fi
     done

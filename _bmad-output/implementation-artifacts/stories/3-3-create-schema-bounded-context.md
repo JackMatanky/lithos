@@ -892,7 +892,7 @@ match spec {
 
 ### Domain Events - CRITICAL
 
-**Schema Domain Events (Architecture ADR 0007):**
+**Schema Domain Events (Architecture ADR 004):**
 
 ```rust
 #[derive(Debug, Clone, PartialEq)]

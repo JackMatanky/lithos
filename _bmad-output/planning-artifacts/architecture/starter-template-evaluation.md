@@ -76,7 +76,7 @@ resolver = "2"
 - **Port-Based CQRS:** Each context defines storage port trait, CQRS types generic over port.
 - **Sync-First:** Core logic is synchronous; async is restricted to CLI/LSP edges.
 - **Zero-Copy via GATs:** Port traits use GATs for closure-based archived reads without leaking transaction lifetimes.
-- **Storage DTOs:** `Stored*` types (per ADR 0009 Appendix A) isolate rkyv coupling from domain.
+- **Storage DTOs:** `Stored*` types (per ADR 003 Appendix A) isolate rkyv coupling from domain.
 
 **Port-Based Decoupling:**
 

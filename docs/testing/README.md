@@ -99,22 +99,22 @@ lithos-rust/
 
 **Note**: Prior to 2026-02-01, testing patterns were documented as ADRs (0008-0011). These have been **deleted and consolidated** into these tactical guides:
 
-- **ADR 0008** (Event Testing) → [event.md](event.md)
-- **ADR 0009** (CQRS Testing) → [cqrs.md](cqrs.md)
-- **ADR 0010** (Test Utilities) → Retired; use inline fixtures and tempfile patterns
-- **ADR 0011** (Integration Testing) → Cross-module patterns in guides
+- **ADR 012** (Event Testing) → [event.md](event.md)
+- **ADR 003** (CQRS Testing) → [cqrs.md](cqrs.md)
+- **ADR 011** (Test Utilities) → Retired; use inline fixtures and tempfile patterns
+- **ADR 010** (Integration Testing) → Cross-module patterns in guides
 
 **Rationale**: Testing patterns are tactical implementation details, not architectural decisions. ADRs should document "what" decisions were made (e.g., "use CQRS"), while these guides document "how" to implement them (e.g., "how to test CQRS patterns").
 
 For architectural testing decisions, see:
-- **ADR 0008** (Benchmarking Infrastructure) - Performance testing strategy
+- **ADR 012** (Benchmarking Infrastructure) - Performance testing strategy
 
 ## Related Documentation
 
 - [Test Guide (High-Level)](../test_guide.md) - Strategic testing approach
 - [Quality Tooling Reference](../refs/rust/quality-tooling.md) - Tool configuration and usage
 - [Rust Idioms](../refs/rust/idioms.md) - Rust testing idioms and patterns
-- [ADR 0008](../adr/0008-benchmarking-infrastructure.md) - Benchmarking strategy (architectural decision)
+- [ADR 012](../adr/012-benchmarking-infrastructure.md) - Benchmarking strategy (architectural decision)
 
 ## Contributing
 

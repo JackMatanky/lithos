@@ -8,7 +8,7 @@ Users can create and execute modular templates with schema-driven interactive pr
 
 ## Implementation Notes
 
-- **Template Engine**: MiniJinja per ADR 0003 (Rust-native Jinja2, sandboxed execution)
+- **Template Engine**: MiniJinja per ADR 007 (Rust-native Jinja2, sandboxed execution)
 - **Interactive UI**: Dialoguer for terminal prompts (text input, select, multi-select, confirm)
 - **Integration Points**:
   - Epic 7: Schema validation drives prompt generation (PropertySpec → suggester type)
@@ -223,7 +223,7 @@ As a template author, I want access to date/time functions using the existing ch
 - **Then** templates can use `date_now()`, `date_format()`, and `date_add()` functions.
 - **And** functions follow chrono API patterns (not moment.js).
 - **And** all functions are documented with examples in the standard library reference.
-  **References:** FR4, ADR 0003
+  **References:** FR4, ADR 007
 
 ### Story 12.10: [Adapters/SPI] Convert Case String Function Integration
 

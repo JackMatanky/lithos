@@ -21,7 +21,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
 - `BackendError(String)` for cache-specific errors (Moka eviction, Redb transaction failures)
 
 **And** all variants implement `Send + Sync` to support async contexts
-**And** error messages follow ADR 0006 (actionable diagnostics with context)
+**And** error messages follow ADR 005 (actionable diagnostics with context)
 
 **Given** cache consumers need standardized operations
 **When** I define `CacheReader<K, V>` and `CacheWriter<K, V>` traits in `spi/cache/mod.rs`
@@ -71,7 +71,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
 **When** I run `mise run test:unit:core cache_error`
 **Then** all tests pass with all public components tested
 **And** each `CacheError` variant demonstrates unique error propagation paths
-**And** error messages include actionable context following ADR 0006
+**And** error messages include actionable context following ADR 005
 **And** all error types implement `Send + Sync + Debug + Display`
 
 **Given** I need cache trait contract verification
@@ -114,7 +114,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 2.6: Add `BackendError(String)` variant to make test pass
   - [x] Subtask 2.7: Write failing test that verifies all variants implement `Send + Sync`
   - [x] Subtask 2.8: Add `Send + Sync` trait bounds to make test pass
-  - [x] Subtask 2.9: Write failing test that verifies error messages follow ADR 0006 format
+  - [x] Subtask 2.9: Write failing test that verifies error messages follow ADR 005 format
   - [x] Subtask 2.10: Add `thiserror::Error` derive and proper error messages to make test pass
   - [x] Subtask 2.11: Run `mise run test:unit:core cache_error` and verify 100% pass rate
   - [x] Subtask 2.12: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 3
@@ -315,8 +315,8 @@ This story follows strict Test-Driven Development (TDD) methodology aligned with
 - [Source: project-context.md#Testing-Rules] - Mockall usage and testing patterns
 - [Source: Epic 5 Implementation Notes] - Cache architecture pattern and library choices
 - [Source: architecture/core-architectural-decisions.md] - Storage engine and serialization strategy
-- [Source: ADR 0002] - Redb + rkyv storage foundation
-- [Source: ADR 0006] - Error handling and diagnostics strategy
+- [Source: ADR 006] - Redb + rkyv storage foundation
+- [Source: ADR 005] - Error handling and diagnostics strategy
 
 ## Dev Agent Record
 
@@ -331,7 +331,7 @@ None - Story implemented through systematic TDD following granular subtasks. Exh
 ### Completion Notes List
 
 - Implemented `CacheError` in `crates/adapters/src/spi/errors.rs` with `IoError`, `SerializationError`, and `BackendError` variants.
-- Refactored `CacheError` to include structured context (`backend` name for `BackendError` and `type_name` for `SerializationError`) with boxed messages for ADR 0006 compliance and memory efficiency.
+- Refactored `CacheError` to include structured context (`backend` name for `BackendError` and `type_name` for `SerializationError`) with boxed messages for ADR 005 compliance and memory efficiency.
 - Defined `Cache<K, V>` trait in `crates/adapters/src/spi/cache/mod.rs` with a complete async interface including `clear` and `has`.
 - Converted `has` into a default trait method using `get().is_some()`, allowing optimization by adapters.
 - Converted `invalidate` into a default trait method that aliases `delete`, ensuring consistent behavior across implementers and fulfilling AC requirements.

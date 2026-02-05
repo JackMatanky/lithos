@@ -222,13 +222,13 @@ impl DatabaseBuilder {
         }
     }
 
-    /// Set cache size in bytes (per ADR 0002)
+    /// Set cache size in bytes (per ADR 006)
     pub fn cache_size(mut self, bytes: usize) -> Self {
         self.builder.set_cache_size(bytes);
         self
     }
 
-    /// Set page size in bytes (per ADR 0002)
+    /// Set page size in bytes (per ADR 006)
     pub fn page_size(mut self, bytes: usize) -> Self {
         self.builder.set_page_size(bytes);
         self
@@ -737,14 +737,14 @@ fn multimap_remove_works() {
 
 ### 7.1 Implement batch_write()
 
-**Objective**: Bulk writes with single fsync per ADR 0002.
+**Objective**: Bulk writes with single fsync per ADR 006.
 **From `redb.md`**: Use `Durability::None` for batch, then final commit with `Durability::Immediate`.
 
 ```rust
 impl Database {
     /// Execute multiple writes in a single transaction with deferred fsync
     ///
-    /// Per ADR 0002: Use Durability::None for performance, then final fsync
+    /// Per ADR 006: Use Durability::None for performance, then final fsync
     pub fn batch_write<F>(&self, f: F) -> Result<(), DbError>
     where
         F: FnOnce(&mut WriteTransaction) -> Result<(), DbError>,

@@ -269,7 +269,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 ### References
 - [Source: project-context.md#Hexagonal-Boundary-Enforcement]
 - [Source: project-context.md#Async-Resource-Safety]
-- [Source: ADR 0012 (Caching - Superseded): Caching Strategy]
+- [Source: ADR 013 (Caching - Superseded): Caching Strategy]
 - [Source: Story 5.4: Refactor Cache for Modularity and CQRS]
 
 ## Dev Agent Record

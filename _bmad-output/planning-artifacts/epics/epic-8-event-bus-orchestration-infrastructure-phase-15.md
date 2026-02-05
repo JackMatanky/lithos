@@ -6,7 +6,7 @@ System has a robust event-driven architecture enabling loose coupling between se
 
 ## Implementation Notes
 
-- **Hybrid Event Bus**: Three planes per ADR 0007 (event-orchestration.md)
+- **Hybrid Event Bus**: Three planes per ADR 004 (event-orchestration.md)
   - **MPSC Data Plane**: Reliable indexing pipeline (bounded channels, FIFO ordering)
   - **Broadcast Control Plane**: Global signals (shutdown, system-wide notifications)
   - **Watch State Plane**: LSP state sync (latest-only, sub-50ms responsiveness)
@@ -17,7 +17,7 @@ System has a robust event-driven architecture enabling loose coupling between se
 - **Persistence**: Epic 5 CacheCommand integration for event history (debugging/replay)
 - **Zero-Copy**: Arc-wrapped payloads for broadcast/watch (prevent memory duplication)
 - **Testing**: MockEventBusPort with expectation API, concurrent subscription tests
-- **Prevents God Objects**: No central orchestrator (lesson from Go experience per ADR 0007)
+- **Prevents God Objects**: No central orchestrator (lesson from Go experience per ADR 004)
 
 ---
 
@@ -56,7 +56,7 @@ So that events can be published and subscribed to through well-defined contracts
 **When** I define EventError enum in `crates/adapters/src/spi/event/errors.rs`
 **Then** it includes variants: ChannelClosed, PublishTimeout, SubscriptionFailed, AlreadyShutdown, InvalidPayload
 **And** all variants are Send + Sync for async contexts
-**And** error messages follow ADR 0006 (actionable diagnostics)
+**And** error messages follow ADR 005 (actionable diagnostics)
 
 **Given** testing requires mocks
 **When** I annotate EventBusPort with mockall::automock
@@ -104,7 +104,7 @@ So that all events from Epics 3-7 are properly defined and coordinated.
 
 **Given** event serialization is needed for persistence
 **When** I choose serialization format
-**Then** use rkyv for zero-copy deserialization (per ADR 0002)
+**Then** use rkyv for zero-copy deserialization (per ADR 006)
 **And** add rkyv derives to DomainEvent enum
 
 **Given** testing is needed
@@ -412,7 +412,7 @@ So that event history can be inspected for troubleshooting and system analysis.
 **Given** I need persistent event storage
 **When** I integrate Epic 5 caching
 **Then** use CacheCommand trait for event writes
-**And** cache backend is RedbCache (persistent disk storage per ADR 0002)
+**And** cache backend is RedbCache (persistent disk storage per ADR 006)
 **And** table name is "event_history" (isolated from schema/config caches)
 
 **Given** event storage must be non-blocking

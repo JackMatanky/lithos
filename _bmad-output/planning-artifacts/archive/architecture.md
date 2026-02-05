@@ -224,7 +224,7 @@ lithos/
 - **Data Modeling:** Domain entities in domain crate, transport DTOs in adapters crate following Rust's ownership patterns for data integrity.
 - **Data Validation:** Three-phase pipeline (Syntactic -> Orchestration -> Semantic) with typed errors.
 - **Migration:** Schema versioning in the Redb tables with startup validation.
-- **Caching:** Event-driven invalidation using the state watch plane (ADR 0007).
+- **Caching:** Event-driven invalidation using the state watch plane (ADR 004).
 
 **Path as Identity Decision:** Use vault-relative string paths directly as Note identifiers (no NoteID wrapper) to maintain simplicity and direct filesystem correspondence. Immutable Note entities with embedded Frontmatter following Rust's ownership patterns for data integrity. This approach avoids abstraction complexity while maintaining data consistency and supports the 75% faster template performance target.
 
@@ -313,13 +313,13 @@ lithos/
 
 **Critical Decisions (Block Implementation):**
 
-- **Storage Engine:** Redb + rkyv (Zero-copy structured KV). [ADR 0002](docs/adr/0002-storage-redb-rkyv.md)
+- **Storage Engine:** Redb + rkyv (Zero-copy structured KV). [ADR 006](docs/adr/006-persistence-cache-infrastructure.md)
 - **Serialization Strategy:** Controlled serde allowance in domain. [ADR 0013](docs/adr/0013-domain-serialization-strategy.md)
-- **Templating:** MiniJinja (Dynamic Jinja2). [ADR 0003](docs/adr/0003-template-engine.md)
-- **Markdown Parser:** pulldown-cmark (Event-streaming). [ADR 0004](docs/adr/0004-markdown-parsing.md)
-- **Configuration:** Figment (Provider-based hierarchy). [ADR 0005](docs/adr/0005-configuration-management.md)
-- **Error Handling:** miette + thiserror (Structured diagnostics). [ADR 0006](docs/adr/0006-error-handling-diagnostics.md)
-- **Event Orchestration:** Hybrid MPSC/Broadcast/Watch. [ADR 0007](docs/adr/0007-event-orchestration.md)
+- **Templating:** MiniJinja (Dynamic Jinja2). [ADR 007](docs/adr/007-template-engine.md)
+- **Markdown Parser:** pulldown-cmark (Event-streaming). [ADR 008](docs/adr/008-markdown-parsing.md)
+- **Configuration:** Figment (Provider-based hierarchy). [ADR 009](docs/adr/009-configuration-management.md)
+- **Error Handling:** miette + thiserror (Structured diagnostics). [ADR 005](docs/adr/005-error-handling.md)
+- **Event Orchestration:** Hybrid MPSC/Broadcast/Watch. [ADR 004](docs/adr/004-event-orchestration.md)
 
 **Important Decisions (Shape Architecture):**
 
@@ -336,7 +336,7 @@ lithos/
 
 - **Engine:** Redb (Pure-Rust, ACID KV) with **rkyv** zero-copy serialization for high-frequency LSP lookups.
 - **Identity:** UUID v7. Decouples identity from physical path to avoid the "directory trap."
-- **ADR Reference:** [ADR 0002: Storage - Redb + rkyv](docs/adr/0002-storage-redb-rkyv.md)
+- **ADR Reference:** [ADR 006: Storage - Redb + rkyv](docs/adr/006-persistence-cache-infrastructure.md)
 
 ### Internal Communication
 
@@ -344,7 +344,7 @@ lithos/
   - **Data Plane (MPSC):** Reliable indexing via Actor pattern.
   - **Control Plane (Broadcast):** Global status and notifications.
   - **State Plane (Watch):** Zero-latency LSP state synchronization.
-- **ADR Reference:** [ADR 0007: Event Orchestration](docs/adr/0007-event-orchestration.md)
+- **ADR Reference:** [ADR 004: Event Orchestration](docs/adr/004-event-orchestration.md)
 
 ### Schema System Architecture
 
@@ -359,10 +359,10 @@ lithos/
 
 ### Technical Preferences (Step 4 Refinement)
 
-- **Templating:** **MiniJinja**. Selected for "Mechanical Sympathy"—minimal dependencies and VM-based rendering for user-defined Markdown templates. [ADR 0003](docs/adr/0003-template-engine.md)
-- **Markdown:** **pulldown-cmark**. Enables high-speed link extraction via event streaming without building expensive ASTs. [ADR 0004](docs/adr/0004-markdown-parsing.md)
-- **Configuration:** **Figment**. Uses the Provider pattern to elegantly handle the 6-layer priority hierarchy. [ADR 0005](docs/adr/0005-configuration-management.md)
-- **Errors/Diagnostics:** **miette**. Provides high-fidelity terminal snippets and 1:1 mapping to LSP Diagnostic objects. [ADR 0006](docs/adr/0006-error-handling-diagnostics.md)
+- **Templating:** **MiniJinja**. Selected for "Mechanical Sympathy"—minimal dependencies and VM-based rendering for user-defined Markdown templates. [ADR 007](docs/adr/007-template-engine.md)
+- **Markdown:** **pulldown-cmark**. Enables high-speed link extraction via event streaming without building expensive ASTs. [ADR 008](docs/adr/008-markdown-parsing.md)
+- **Configuration:** **Figment**. Uses the Provider pattern to elegantly handle the 6-layer priority hierarchy. [ADR 009](docs/adr/009-configuration-management.md)
+- **Errors/Diagnostics:** **miette**. Provides high-fidelity terminal snippets and 1:1 mapping to LSP Diagnostic objects. [ADR 005](docs/adr/005-error-handling.md)
 
 ## Implementation Patterns & Consistency Rules
 
@@ -724,7 +724,7 @@ lithos/
 │   │   │   │       ├── config.rs     # Config loading Port
 │   │   │   │       ├── audit.rs      # Audit logging Port (FR40)
 │   │   │   │       └── crypto.rs     # Secret management Port (FR39)
-│   │   │   ├── events/           # ADR 0007: Tiered Event Planes
+│   │   │   ├── events/           # ADR 004: Tiered Event Planes
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── data.rs       # Reliable (Indexing)
 │   │   │   │   ├── control.rs    # Signals (Shutdown)
@@ -823,7 +823,7 @@ lithos/
 
 **Internal Communication:**
 
-- **Hybrid Bus (ADR 0007):** Tiered channels (`mpsc`, `broadcast`, `watch`) prevent UI lag from blocking the indexing pipeline.
+- **Hybrid Bus (ADR 004):** Tiered channels (`mpsc`, `broadcast`, `watch`) prevent UI lag from blocking the indexing pipeline.
 - **DI Container:** The `lithos` crate wires concrete SPI implementations (e.g., `RedbWriter`) to Application services via Constructor Injection.
 
 **External Integrations:**
@@ -881,7 +881,7 @@ lithos/
 The stack is highly synergistic. `Redb` and `rkyv` provide the zero-copy foundation, `pulldown-cmark` provides the streaming event data, and `miette` consumes the resulting byte-offsets for high-fidelity diagnostics. All versions are verified for Jan 2026 compatibility.
 
 **Pattern Consistency:**
-The Hexagonal API/SPI split is strictly applied. The **Hybrid Bus** (ADR 0007) resolves the conflict between reliable indexing and reactive LSP performance.
+The Hexagonal API/SPI split is strictly applied. The **Hybrid Bus** (ADR 004) resolves the conflict between reliable indexing and reactive LSP performance.
 
 **Structure Alignment:**
 The 4-crate workspace enforces physical boundaries that prevent architectural drift.

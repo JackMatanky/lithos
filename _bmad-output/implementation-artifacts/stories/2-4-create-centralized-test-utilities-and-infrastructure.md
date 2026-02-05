@@ -91,11 +91,11 @@ So that tests are consistent, maintainable, and don't duplicate utility code.
 
 ## Dev Notes
 
-- **ADR 0010 Comprehensive Framework**: Implement complete test utilities framework from ADR 0010, covering temp management, fixtures, assertions, isolation, integration, and advanced capabilities.
+- **ADR 011 Comprehensive Framework**: Implement complete test utilities framework from ADR 011, covering temp management, fixtures, assertions, isolation, integration, and advanced capabilities.
 
-- **Architecture Compliance**: Align with hexagonal architecture ports/adapters, async-first tokio design, and CQRS patterns from ADR 0001/0006/0009.
+- **Architecture Compliance**: Align with hexagonal architecture ports/adapters, async-first tokio design, and CQRS patterns from ADR 001/0006/0009.
 
-- **Implementation Priority**: Follow ADR 0010 structure - temp utilities (1), fixtures (2), assertions (3), isolation (4), integration (5), output management (7), documentation (6), advanced (8).
+- **Implementation Priority**: Follow ADR 011 structure - temp utilities (1), fixtures (2), assertions (3), isolation (4), integration (5), output management (7), documentation (6), advanced (8).
 
 - **Source Tree Components**: Comprehensive utilities in crates/test-utils/src/ with specialized modules, domain-specific extensions, and extensive documentation.
 
@@ -109,7 +109,7 @@ So that tests are consistent, maintainable, and don't duplicate utility code.
 
 ### Technical Requirements
 
-**Temporary Directory and File Utilities (ADR 0010 Decision 1):**
+**Temporary Directory and File Utilities (ADR 011 Decision 1):**
 - tempdir/tempfile crates integration with OS-specific temp handling and automatic cleanup
 - Unique naming strategy with timestamp + random suffix for parallel test safety
 - RAII cleanup patterns ensuring cleanup even on test panics
@@ -117,34 +117,34 @@ So that tests are consistent, maintainable, and don't duplicate utility code.
 - Centralized test output with single directory and per-test subdirectories
 - Configurable permissions and cleanup verification mechanisms
 
-**Test Fixtures and Factory Framework (ADR 0010 Decision 2):**
+**Test Fixtures and Factory Framework (ADR 011 Decision 2):**
 - rstest integration with #[fixture] attributes and parameterized test matrices
 - Builder pattern implementation for fluent complex object construction
 - Fake data generation integration with configurable realistic scenarios
 - Serialization helpers for JSON/binary data in API and persistence testing
 - Fixture composition with mix-and-match combinators for edge cases
 
-**Custom Assertion Helpers (ADR 0010 Decision 3):**
+**Custom Assertion Helpers (ADR 011 Decision 3):**
 - Custom derive macros with #[derive(TestAssertions)] for automatic generation
 - Async assertion support with tokio timeout and cancellation handling
 - Structural comparison utilities for deep equality of nested structures
 - Context-rich error reporting with field-level diffs and test context information
 - Domain-specific matchers for business logic validation patterns
 
-**Test Isolation Infrastructure (ADR 0010 Decision 4):**
+**Test Isolation Infrastructure (ADR 011 Decision 4):**
 - Database transaction wrappers with automatic rollback for SQL/NoSQL databases
 - Process isolation utilities with separate process spawning for system tests
 - RAII resource management ensuring guaranteed cleanup of files/connections/memory
 - Shared state prevention with thread-local or test-scoped variable management
 - Environment isolation with separate config and service instances per test
 
-**Integration Testing Utilities (ADR 0010 Decision 5):**
+**Integration Testing Utilities (ADR 011 Decision 5):**
 - Shared test utilities providing common setup/teardown functions for service initialization
 - Environment configuration managing test database, cache, and external service mocking
 - Performance benchmarking with criterion integration for automated regression detection
 - CI/CD integration supporting automated execution, coverage reporting, and failure notifications
 
-**Test Output and Artifact Management (ADR 0010 Decision 7):**
+**Test Output and Artifact Management (ADR 011 Decision 7):**
 - Single configurable directory for all test artifacts (files, logs, dumps)
 - Automatic per-test subdirectory creation to prevent cross-test conflicts
 - Consistent artifact naming with timestamps and test identifiers for traceability
@@ -221,13 +221,13 @@ fn test_with_artifact_output() {
 
 ### Previous Story Intelligence
 
-- Story 2.3 established CQRS testing patterns - integrate utilities to support ADR 0009 testing framework with mock repositories and query stores
+- Story 2.3 established CQRS testing patterns - integrate utilities to support ADR 003 testing framework with mock repositories and query stores
 - Story 2.2 established event testing infrastructure - provide utilities that support event verification and async testing patterns
 - Story 2.1 established async testing infrastructure - build upon tokio integration for async utility functions
 
 ### Git Intelligence Summary
 
-- Recent commits show CQRS testing framework development - utilities support ADR 0009 implementation
+- Recent commits show CQRS testing framework development - utilities support ADR 003 implementation
 - Test infrastructure evolution follows established patterns - maintain consistency with existing test utilities
 
 ### References
@@ -363,7 +363,7 @@ fn test_with_artifact_output() {
   - Test fixtures and factory framework with builder patterns and fake data
   - Custom assertion helpers with async support and rich error reporting
   - Test isolation, integration utilities, and advanced testing capabilities
-  - Complete test infrastructure aligned with ADR 0010 framework
+  - Complete test infrastructure aligned with ADR 011 framework
 
 ### Story Completion Status
 
@@ -372,4 +372,4 @@ fn test_with_artifact_output() {
 - Technical requirements complete with detailed implementation specifications for each utility category
 - Integration points identified with existing test infrastructure and CQRS testing patterns
 - Risk assessment: Low risk, builds on established testing foundations with clear extension points
-- Execution Optimization: Follow ADR 0010's 8-decision framework for systematic implementation and maximum test infrastructure reliability
+- Execution Optimization: Follow ADR 011's 8-decision framework for systematic implementation and maximum test infrastructure reliability

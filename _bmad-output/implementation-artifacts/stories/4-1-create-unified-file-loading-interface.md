@@ -154,7 +154,7 @@ This story implements the foundational file loading infrastructure for the entir
 
 **Security Requirements:**
 - Path validation: Reject absolute paths, path traversal attempts via .. components
-- Symlink handling: Allow symlinks for dotfile flexibility (ADR 0011 (File Loading Port) - security via content validation)
+- Symlink handling: Allow symlinks for dotfile flexibility (ADR 010 (File Loading Port) - security via content validation)
 - Content validation: Reject binary files, enforce reasonable size limits
 - Error sanitization: No sensitive information in error messages
 
@@ -291,7 +291,7 @@ Reviewed Epic 3 story files (3-1, 3-5) to adopt proven TDD patterns:
 **Migration Considerations:**
 - No breaking changes required from current versions
 - serde integration provides consistent API across all formats
-- Error handling patterns established in architecture ADR 0006
+- Error handling patterns established in architecture ADR 005
 
 ### Project Structure Notes
 - Alignment with unified project structure (paths, modules, naming)

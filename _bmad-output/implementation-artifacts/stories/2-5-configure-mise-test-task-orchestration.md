@@ -38,7 +38,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
   - [x] Read the Mise Task Orchestration Guide for best practices
   - [x] Understand DAG-based dependency management and parallel execution
   - [x] Review existing .mise/tasks/ scripts and their purposes
-  - [x] Identify integration points with ADR 0010 test utilities
+  - [x] Identify integration points with ADR 011 test utilities
 - [x] Configure core test task orchestration **[Effort: 4-5 hours | Complexity: Medium]**
   - [x] Set up `test` meta-task with unit and integration dependencies (mise.toml orchestration)
   - [x] Implement file tasks with embedded #MISE metadata (unit, integration, coverage, watch, bench)
@@ -55,7 +55,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
   - [x] Enhance `ci` task for comprehensive CI/CD simulation (orchestration improvements)
   - [x] Remove .sh extensions from all mise task scripts for consistent naming
 - [x] Integrate with test utilities and validate **[Effort: 2-3 hours | Complexity: Low]**
-  - [x] Configure environment variables for ADR 0010 utility integration (mise.toml settings)
+  - [x] Configure environment variables for ADR 011 utility integration (mise.toml settings)
   - [x] Update task orchestration to leverage centralized test utilities (file task integration)
   - [x] Test parallel execution and dependency management (validate orchestration)
   - [x] Update project context with mise tasks reference for agent awareness
@@ -159,7 +159,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 - Variable templating system for configurable paths and settings
 - Task aliases, hiding, and environment-specific configurations
 - Comprehensive caching with sources/outputs for performance optimization
-- Environment variable integration for ADR 0010 test utilities
+- Environment variable integration for ADR 011 test utilities
 - Performance monitoring with timing capabilities and resource management
 
 ### File Structure Requirements
@@ -316,10 +316,10 @@ hide = true
 
 ### Previous Story Intelligence
 
-- Story 2.4 established test utilities - orchestrate mise tasks to leverage ADR 0010 framework for optimal test execution
-- Story 2.3 established CQRS testing patterns - configure tasks that support ADR 0009 command/query separation testing
-- Story 2.2 established event testing infrastructure - include ADR 0008 event flow testing in orchestration
-- Story 2.1 established async testing infrastructure - configure tasks with tokio compatibility and ADR 0009 patterns
+- Story 2.4 established test utilities - orchestrate mise tasks to leverage ADR 011 framework for optimal test execution
+- Story 2.3 established CQRS testing patterns - configure tasks that support ADR 003 command/query separation testing
+- Story 2.2 established event testing infrastructure - include ADR 012 event flow testing in orchestration
+- Story 2.1 established async testing infrastructure - configure tasks with tokio compatibility and ADR 003 patterns
 - Existing .mise/tasks/ file task infrastructure - leverage embedded metadata for automatic task registration
 
 ### Git Intelligence Summary
@@ -348,7 +348,7 @@ hide = true
 - Lithos uses mise for task orchestration with existing scripts in .mise/tasks/ and mise.toml configuration
 - Previous stories established test infrastructure - this story optimizes orchestration layer
 - Comprehensive test tasks enable efficient development workflows and quality maintenance
-- Integration with ADR 0010/0009 test utilities provides enhanced testing capabilities
+- Integration with ADR 011/0009 test utilities provides enhanced testing capabilities
 - Async-first and CQRS patterns require sophisticated task dependency management
 
 ### Story Completion Status
@@ -356,7 +356,7 @@ hide = true
 - Status: completed
 - All acceptance criteria fully implemented with enterprise-grade file tasks and orchestration
 - Technical requirements delivered with comprehensive mise task system featuring advanced variables and caching
-- Integration completed with ADR 0010 test utilities, project context updates, and performance optimizations
+- Integration completed with ADR 011 test utilities, project context updates, and performance optimizations
 - Risk assessment: Successfully mitigated, all 25+ tasks working correctly with full feature utilization
 - Execution Optimization: File tasks with embedded metadata, variable templating, and intelligent caching provide maximum performance and maintainability
 
@@ -376,7 +376,7 @@ hide = true
   - `coverage.sh`: Generates HTML coverage reports using tarpaulin, with optional browser opening
   - `watch.sh`: Implements TDD workflow with cargo-watch for automatic test re-execution on file changes
 
-- **ADR 0010 Integration Points**: Test utilities framework provides centralized infrastructure for temp directories, fixtures, assertions, and isolation. Mise tasks should leverage environment variables and centralized test output directories for artifact management. Test utilities support async-first and CQRS testing patterns established in previous stories.
+- **ADR 011 Integration Points**: Test utilities framework provides centralized infrastructure for temp directories, fixtures, assertions, and isolation. Mise tasks should leverage environment variables and centralized test output directories for artifact management. Test utilities support async-first and CQRS testing patterns established in previous stories.
 
 - **Orchestration Strategy**: Configure mise.toml with task references to existing scripts (no duplication). Implement meta-tasks for comprehensive workflows, aliases for developer convenience, and quality gate orchestration combining fmt/lint/test/deny.
 
@@ -411,14 +411,14 @@ hide = true
 
 **Test Utilities Integration:**
 
-- Environment variables configured for ADR 0010 test utilities:
+- Environment variables configured for ADR 011 test utilities:
   - `TEST_THREADS = "{{vars.test_threads}}"` (4 threads)
   - `CARGO_TEST_ARGS = "--lib --bins"`
   - `TEST_OUTPUT_DIR = "{{config_root}}/test-output"`
   - `CI = "${GITHUB_ACTIONS:-false}"`
 - Variable-based crate paths for flexible testing
 - Validated parallel execution and dependency management
-- Confirmed ADR 0010 integration with active test suite usage
+- Confirmed ADR 011 integration with active test suite usage
 
 **Quality Gate Orchestration:**
 
@@ -430,13 +430,13 @@ hide = true
 
 ### Completion Notes
 
-✅ **Task 1 Complete**: Reviewed Mise Task Orchestration Guide, analyzed existing scripts, identified ADR 0010 integration points
+✅ **Task 1 Complete**: Reviewed Mise Task Orchestration Guide, analyzed existing scripts, identified ADR 011 integration points
 
 ✅ **Task 2 Complete**: Implemented enterprise-grade file task orchestration with embedded #MISE metadata and mise.toml meta-tasks
 
 ✅ **Task 3 Complete**: Enhanced development workflows with organized task categories, convenience aliases, and CI/CD simulation
 
-✅ **Task 4 Complete**: Integrated with ADR 0010 test utilities, updated project context, and validated all task orchestration
+✅ **Task 4 Complete**: Integrated with ADR 011 test utilities, updated project context, and validated all task orchestration
 
 ✅ **Task 5 Complete**: Optimized quality gates with parallel execution, proper dependencies, and comprehensive task coverage
 

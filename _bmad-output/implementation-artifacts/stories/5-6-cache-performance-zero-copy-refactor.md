@@ -267,4 +267,4 @@ pub trait Codec<K, V>: Send + Sync {
 
 ### References
 - [Source: Epic 5 Story 5.6]
-- [Source: ADR 0002 Redb + rkyv]
+- [Source: ADR 006 Redb + rkyv]

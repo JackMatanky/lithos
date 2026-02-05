@@ -12,7 +12,7 @@ Establish a unified multi-layer caching architecture as a generic SPI utility fo
 - **Location**: `crates/adapters/src/spi/cache/` for cache implementations, `crates/adapters/src/spi/errors.rs` for shared errors
 - **Libraries**: `moka` (memory), `redb` (disk), `rkyv` (Serialization), `async-trait`, `mockall`, `tracing`, `thiserror`
 - **Pattern**: Read-through/Write-through caching with memory layer (fast access) + disk layer (persistent storage) coordination
-- **ADR References**: ADR 0016 (Caching Strategy - Moka + Redb), ADR 0002 (Redb + rkyv storage)
+- **ADR References**: ADR 0016 (Caching Strategy - Moka + Redb), ADR 006 (Redb + rkyv storage)
 
 ## Story 5.1: Define Cache Trait and Error Hierarchy
 
@@ -31,7 +31,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
 - `BackendError(String)` for cache-specific errors (Moka eviction, Redb transaction failures)
 
 **And** all variants implement `Send + Sync` to support async contexts
-**And** error messages follow ADR 0006 (actionable diagnostics with context)
+**And** error messages follow ADR 005 (actionable diagnostics with context)
 
 **Given** cache consumers need standardized operations
 **When** I define `trait Cache<K, V>` in `spi/cache/mod.rs`
@@ -147,7 +147,7 @@ So that data persists across application restarts and multiple cache consumers c
 - `metadata: HashMap<String, String>` - extensible key-value pairs for consumer-specific data (e.g., file hash, version)
 
 **And** `CachedEntry<V>` derives `rkyv::Archive`, `rkyv::Serialize`, `rkyv::Deserialize`
-**And** the entire struct is rkyv-serialized for zero-copy deserialization per ADR 0002
+**And** the entire struct is rkyv-serialized for zero-copy deserialization per ADR 006
 
 **Given** the trait must be implemented
 **When** I implement `Cache<K, V>` for `RedbCache<K, V>`
@@ -319,7 +319,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 
 **Acceptance Criteria:**
 
-**Given** benchmarking infrastructure exists per ADR 0012
+**Given** benchmarking infrastructure exists per ADR 013
 **When** I create `lithos-core/benches/cache_benchmarks.rs`
 **Then** it includes benchmark suites for:
 

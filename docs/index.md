@@ -22,18 +22,18 @@ The core architectural definition and decision records for the system.
 
 | ADR | Title |
 |---|---|
-| [ADR 0001](../docs/adr/0001-adr-process.md) | ADR Process |
-| [ADR 0002](../docs/adr/0002-persistence-cache-infrastructure.md) | Persistence & Cache Infrastructure |
-| [ADR 0003](../docs/adr/0003-template-engine.md) | Template Engine - MiniJinja |
-| [ADR 0004](../docs/adr/0004-markdown-parsing.md) | Markdown Parsing - pulldown-cmark |
-| [ADR 0005](../docs/adr/0005-configuration-management.md) | Configuration Management |
-| [ADR 0006](../docs/adr/0006-error-handling-diagnostics.md) | Error Handling & Diagnostics |
-| [ADR 0007](../docs/adr/0007-event-orchestration.md) | Event Orchestration (Minimal Foundation) |
-| [ADR 0008](../docs/adr/0008-benchmarking-infrastructure.md) | Benchmarking Infrastructure |
-| [ADR 0009](../docs/adr/0009-domain-serialization-strategy.md) | Domain Serialization (Feature-Gated) |
-| [ADR 0010](../docs/adr/0010-rename-detection-strategy.md) | Rename Detection Strategy |
-| [ADR 0011](../docs/adr/0011-file-loading-port-boundary.md) | File Loading Port Boundary |
-| [ADR 0012](../docs/adr/0012-caching-strategy.md) | Caching Strategy (Superseded) |
+| [ADR 001](../docs/adr/001-adr-process.md) | ADR Process |
+| [ADR 006](../docs/adr/006-persistence-cache-infrastructure.md) | Persistence & Cache Infrastructure |
+| [ADR 007](../docs/adr/007-template-engine.md) | Template Engine - MiniJinja |
+| [ADR 008](../docs/adr/008-markdown-parsing.md) | Markdown Parsing - pulldown-cmark |
+| [ADR 009](../docs/adr/009-configuration-management.md) | Configuration Management |
+| [ADR 005](../docs/adr/005-error-handling.md) | Error Handling & Diagnostics |
+| [ADR 004](../docs/adr/004-event-orchestration.md) | Event Orchestration (Minimal Foundation) |
+| [ADR 012](../docs/adr/012-benchmarking-infrastructure.md) | Benchmarking Infrastructure |
+| [ADR 003](../docs/adr/003-domain-serialization.md) | Domain Serialization (Feature-Gated) |
+| [ADR 011](../docs/adr/011-rename-detection.md) | Rename Detection Strategy |
+| [ADR 010](../docs/adr/010-file-loading-port-boundary.md) | File Loading Port Boundary |
+| [ADR 013](../docs/adr/013-caching-strategy.md) | Caching Strategy (Superseded) |
 
 ## Testing
 

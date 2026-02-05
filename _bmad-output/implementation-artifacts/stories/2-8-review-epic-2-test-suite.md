@@ -168,7 +168,7 @@ During the implementation of Story 2.8, a comprehensive "no-bounds" critique of 
 - `assertions.rs`: **High Value**. Essential for detailed diffs.
 - `async_utils.rs`: **High Value**. Centralized polling and timeout patterns.
 - `fixtures.rs`: **High Value**. Now provides type-safe macro-based builders.
-- `mocks/event_bus.rs`: **High Value**. Solid implementation of ADR 0007.
+- `mocks/event_bus.rs`: **High Value**. Solid implementation of ADR 004.
 - `cqrs/observability.rs & security.rs`: **High Value**. Essential for NFR testing.
 - `temp.rs`: **High Value**. Properly managed via Figment, follows project rules.
 - `bench.rs`: **Medium Value**. Minimal wrapper.

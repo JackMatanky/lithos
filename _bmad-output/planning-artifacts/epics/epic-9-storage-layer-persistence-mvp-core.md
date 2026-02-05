@@ -4,11 +4,11 @@
 
 System has zero-copy persistent storage with ACID transactions using Redb + rkyv that supports high-performance queries and maintains data consistency.
 
-**FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 0002), NFR2 (2s indexing), NFR9 (500MB memory)
+**FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 006), NFR2 (2s indexing), NFR9 (500MB memory)
 
 ## Implementation Notes
 
-- **Storage Technology**: Redb + rkyv per ADR 0002 (no SQLite - architectural decision already made)
+- **Storage Technology**: Redb + rkyv per ADR 006 (no SQLite - architectural decision already made)
 - **Zero-Copy Deserialization**: rkyv enables direct memory mapping without deserialization overhead via `Codec::access()`
 - **ACID Transactions**: Redb provides MVCC concurrency and transaction isolation
 - **CQRS Pattern**: Storage uses Epic 5 `CacheReader`/`CacheWriter` traits for read/write separation
@@ -112,7 +112,7 @@ So that data is stored efficiently with zero-copy deserialization and controlled
 **Then** it reuses same Redb database instance from Epic 5 with separate table namespaces
 **And** `notes` table uses `redb::TableDefinition<&str, &[u8]>` for path → serialized Note mapping
 
-**Given** I need ACID transaction support per ADR 0002
+**Given** I need ACID transaction support per ADR 006
 **When** I implement storage operations
 **Then** all writes occur within Redb transactions (`WriteTransaction`)
 **And** MVCC concurrency allows multiple readers with single writer

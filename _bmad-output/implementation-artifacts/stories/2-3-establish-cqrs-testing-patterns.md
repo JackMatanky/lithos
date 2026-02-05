@@ -103,9 +103,9 @@ So that command side and query side code are tested in isolation with proper ver
 
 ## Dev Notes
 
-- **ADR 0008 Analysis Integration**: Follow validated CQRS testing patterns for optimal command/query separation testing and eventual consistency verification.
+- **ADR 012 Analysis Integration**: Follow validated CQRS testing patterns for optimal command/query separation testing and eventual consistency verification.
 
-- **Architecture Compliance**: Builds on CQRS architecture (ADR 0002, ADR 0007) with comprehensive testing for write/read model separation.
+- **Architecture Compliance**: Builds on CQRS architecture (ADR 006, ADR 004) with comprehensive testing for write/read model separation.
 
 - **Implementation Priority**: Start with TestFramework infrastructure (Priority 1), then mock implementations (Priority 2), finally advanced patterns (Priority 3-4).
 
@@ -138,10 +138,10 @@ So that command side and query side code are tested in isolation with proper ver
 
 - [Testing Guide: Event-Driven Testing Patterns](docs/testing/event.md) - CQRS testing patterns and validation
 - [Source: epics/epic-2-test-architecture-patterns-utilities-mvp-core.md#Story 2.3]
-- [ADR 0002: Storage - Redb + rkyv](docs/adr/0002-storage-redb-rkyv.md) - CQRS foundation
+- [ADR 006: Storage - Redb + rkyv](docs/adr/006-persistence-cache-infrastructure.md) - CQRS foundation
 - [Testing Guide: CQRS Testing Patterns](docs/testing/cqrs.md) - Comprehensive CQRS testing framework and detailed implementation patterns
 - [Testing Guide: Event-Driven Testing Patterns](docs/testing/event.md) - Event testing foundation for CQRS validation
-- [ADR 0007: Hybrid Event Orchestration](docs/adr/0007-event-orchestration.md) - Event bus architecture for CQRS operations
+- [ADR 004: Hybrid Event Orchestration](docs/adr/004-event-orchestration.md) - Event bus architecture for CQRS operations
 - [Research: CQRS Testing Best Practices - https://reintech.io/blog/testing-strategies-cqrs-applications]
 - [Research: Mocks for Commands, Stubs for Queries - https://blog.ploeh.dk/2013/10/23/mocks-for-commands-stubs-for-queries/]
 
@@ -203,7 +203,7 @@ No blocking issues encountered
 
 ### Change Log
 
-- 2026-01-12 (Session 1): Established foundational CQRS testing infrastructure with command/query separation (MockRepository/StubQueryStore), event verification utilities, and Given-When-Then aggregate testing skeleton per ADR 0009.
+- 2026-01-12 (Session 1): Established foundational CQRS testing infrastructure with command/query separation (MockRepository/StubQueryStore), event verification utilities, and Given-When-Then aggregate testing skeleton per ADR 003.
 - 2026-01-12 (Code Review): Reverted story to in-progress. Removed duplicate work (performance benchmarking → Story 2.7, CI/CD orchestration → Story 2.5). Refocused story on CQRS-specific patterns: eventual consistency timing, cross-aggregate saga testing, CQRS security/observability patterns.
 - 2026-01-12 (Session 2): Implemented all remaining CQRS-specific patterns including EventualConsistencyTester (timing control, race condition prevention), SagaTester (cross-aggregate workflows, event flow verification), MockAuthorizationService (command/query access control, audit trails), InputSanitizer (malicious input detection), MockMetricsCollector (execution statistics), and MockTraceCollector (correlation tracking). All acceptance criteria now fully met.
 
@@ -237,9 +237,9 @@ No blocking issues encountered
 
 ## Dev Notes
 
-- **ADR 0009 Analysis Integration**: Follow the comprehensive CQRS testing framework from ADR 0009 for optimal command/query separation testing, including security, observability, and CI/CD integration.
+- **ADR 003 Analysis Integration**: Follow the comprehensive CQRS testing framework from ADR 003 for optimal command/query separation testing, including security, observability, and CI/CD integration.
 
-- **Architecture Compliance**: Implements all ADR 0009 testing patterns supporting hexagonal architecture, async operations, and hybrid event bus (ADR 0007) with full CQRS separation validation.
+- **Architecture Compliance**: Implements all ADR 003 testing patterns supporting hexagonal architecture, async operations, and hybrid event bus (ADR 004) with full CQRS separation validation.
 
 - **Implementation Priority**: Start with core TestFramework infrastructure (Priority 1), then command/query patterns (Priority 2-3), followed by advanced features (Priority 4-6).
 
@@ -255,37 +255,37 @@ No blocking issues encountered
 
 ### Technical Requirements
 
-**Command Handler Testing (ADR 0009 Decision 1):**
+**Command Handler Testing (ADR 003 Decision 1):**
 - Mock repositories using Arc<dyn RepositoryPort> that record interactions and return controlled data
 - Event verification with exact payload matching using serde comparison
 - Command validation testing with invalid inputs, boundary conditions, and business rule violations
 - Async testing with tokio integration for command execution and event publishing
 
-**Query Handler Testing (ADR 0009 Decision 2):**
+**Query Handler Testing (ADR 003 Decision 2):**
 - Stubbed data stores returning predefined datasets without external dependencies
 - Result transformation validation for sorting, filtering, aggregation, and pagination
 - Performance testing with execution time bounds and resource usage patterns
 - Caching verification with mock cache layers for hit/miss scenarios
 
-**Event Sourcing Testing (ADR 0009 Decision 3):**
+**Event Sourcing Testing (ADR 003 Decision 3):**
 - Given-When-Then framework with initial event history loading and proper ordering
 - Command execution with parameter validation and error handling
 - Event sequence verification with exact payload correctness and aggregate state reconstruction
 - Versioning support for event schema evolution and concurrent command testing
 
-**Eventual Consistency Testing (ADR 0009 Decision 4):**
+**Eventual Consistency Testing (ADR 003 Decision 4):**
 - Controlled timing simulation using tokio::time for write/read model synchronization
 - Cross-aggregate verification for event flows updating multiple read models
 - Failure recovery testing for read model rebuild scenarios and consistency after failures
 - Race condition prevention with deterministic testing for concurrent operations
 
-**Integration Testing (ADR 0009 Decision 5):**
+**Integration Testing (ADR 003 Decision 5):**
 - Command execution followed by query verification through real event bus implementations
 - Multi-aggregate saga testing for complex business transactions spanning aggregates
 - Security testing integration for authorization (command/query access control), input sanitization, and audit trails
 - Observability testing integration for event tracing, command/query metrics, and health indicators
 
-**Validation & Error Testing (ADR 0009 Decision 6):**
+**Validation & Error Testing (ADR 003 Decision 6):**
 - Comprehensive error scenario coverage for invalid commands, query failures, and event processing
 - Security testing patterns for CQRS-specific authorization (command execution rights, query access control)
 - Observability testing patterns for CQRS-specific tracing (event publishing, command/query execution metrics)
@@ -296,7 +296,7 @@ No blocking issues encountered
 - Mock repositories in crates/test-utils/src/mocks/repository.rs using Arc<dyn RepositoryPort> traits (✅ DONE)
 - Mock query stores in crates/test-utils/src/mocks/query_store.rs with configurable test data and pagination support (✅ DONE)
 - Event verification utilities in crates/test-utils/src/events/verification.rs with serde payload comparison (✅ DONE via EventVerifier)
-- CQRS testing examples in crates/*/tests/cqrs_*.rs demonstrating all ADR 0009 patterns (✅ PARTIAL - basic examples done)
+- CQRS testing examples in crates/*/tests/cqrs_*.rs demonstrating all ADR 003 patterns (✅ PARTIAL - basic examples done)
 - Security testing helpers in crates/test-utils/src/cqrs/security.rs with CQRS authorization patterns (command/query access control)
 - Observability testing helpers in crates/test-utils/src/cqrs/observability.rs with event tracing and command/query metrics validation
 - CQRS testing guidelines in docs/testing/cqrs.md with comprehensive examples and anti-patterns (✅ DONE)
@@ -364,9 +364,9 @@ async fn order_saga_updates_inventory_and_payment() {
 
 ### Previous Story Intelligence
 
-- Story 2.2 established event testing patterns (ADR 0008) - integrate with CQRS event verification, publishing validation, and hybrid event bus testing
+- Story 2.2 established event testing patterns (ADR 012) - integrate with CQRS event verification, publishing validation, and hybrid event bus testing
 - Story 2.1 established async testing infrastructure - leverage tokio runtime for all CQRS async operations, timing control, and concurrent testing
-- ADR 0008 provides event testing foundation - combine with ADR 0009 for complete CQRS and event testing coverage across all patterns
+- ADR 012 provides event testing foundation - combine with ADR 003 for complete CQRS and event testing coverage across all patterns
 
 ### Git Intelligence Summary
 
@@ -386,7 +386,7 @@ async fn order_saga_updates_inventory_and_payment() {
 ### Project Context Reference
 
 - Lithos implements CQRS with event sourcing for optimal read/write separation and scalability
-- Commands publish domain events that asynchronously update read models through the hybrid event bus (ADR 0007)
+- Commands publish domain events that asynchronously update read models through the hybrid event bus (ADR 004)
 - Testing requires complete isolation of command side (mocks) from query side (stubs) operations (✅ DONE)
 - Domain aggregates must be tested with event sourcing patterns for state reconstruction and business rule validation (❌ TODO - TestFramework skeleton only)
 - Eventual consistency between write and read models needs precise timing control and race condition prevention (❌ TODO)
@@ -425,8 +425,8 @@ async fn order_saga_updates_inventory_and_payment() {
 
 - Status: ready-for-dev
 - All acceptance criteria defined with comprehensive CQRS testing requirements including security and observability
-- Technical requirements complete with all ADR 0009 patterns: command/query testing, event sourcing, eventual consistency, integration, security, and CI/CD
-- Integration points identified with event testing (ADR 0008), async infrastructure (Story 2.1), and hybrid event bus (ADR 0007)
+- Technical requirements complete with all ADR 003 patterns: command/query testing, event sourcing, eventual consistency, integration, security, and CI/CD
+- Integration points identified with event testing (ADR 012), async infrastructure (Story 2.1), and hybrid event bus (ADR 004)
 - Migration path provided for teams with existing CQRS tests to transition smoothly
-- Risk assessment: Low risk, follows validated ADR 0009 patterns with extensive research and real-world case studies
-- Execution Optimization: Follow ADR 0009 comprehensive framework for maximum efficiency, security, and production readiness
+- Risk assessment: Low risk, follows validated ADR 003 patterns with extensive research and real-world case studies
+- Execution Optimization: Follow ADR 003 comprehensive framework for maximum efficiency, security, and production readiness

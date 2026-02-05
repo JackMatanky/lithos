@@ -1028,7 +1028,7 @@ pub type RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>;
 
 ## Storage Patterns
 
-Following **ADR 0009 Appendix A**, minimize coupling between domain and storage format:
+Following **ADR 003 Appendix A**, minimize coupling between domain and storage format:
 
 **When to Introduce Stored Types:**
 

@@ -13,7 +13,7 @@ So that I can override settings at different levels (global, user, project, vaul
 ## Acceptance Criteria
 
 **Given** Epic 4 provides unified structured file loading (TOML, JSON, YAML) via parsers
-**When** I implement hierarchical config using Figment per ADR 0005
+**When** I implement hierarchical config using Figment per ADR 009
 **Then** I create `crates/adapters/src/spi/config/loader.rs` implementing provider pattern
 
 **Given** Figment requires provider pattern

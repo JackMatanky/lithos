@@ -52,7 +52,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 **Then** the compiler strictly prevents access to write operations (put/delete/clear)
 **And** `RedbWriter` or `MokaWriter` handles expose the state-changing methods
 
-**Given** zero-copy requirements per ADR 0002
+**Given** zero-copy requirements per ADR 006
 **When** I use the refactored `RedbReader`
 **Then** `rkyv` zero-copy deserialization is verified via `EntryView` without heap allocation on the hot path
 
@@ -305,7 +305,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 ### References
 - [Source: project-context.md#Handle-Inner-Pattern]
-- [Source: ADR 0002: Redb + rkyv storage]
+- [Source: ADR 006: Redb + rkyv storage]
 - [Source: Story 5.1, 5.2, 5.3]
 
 ## Dev Agent Record

@@ -126,7 +126,7 @@ From proposal Section 5 (Implementation Handoff):
 
 ## Related Documents
 
-- **ADR 0002**: Storage (redb + rkyv) - Zero-copy requirements
+- **ADR 006**: Storage (redb + rkyv) - Zero-copy requirements
 - **ADR 0013**: Domain Serialization - Will be updated to remove serde
 - **ADR 0016**: Caching Strategy - Superseded by Proposals 4 & 5
 - **New ADR 0017**: Single-Crate Architecture & Database Layer (to be created in Phase 1)

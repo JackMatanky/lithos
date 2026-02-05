@@ -32,7 +32,7 @@ section: "Completion & Handoff"
 - Comprehensive naming, async, and error patterns defined
 - **Single-Crate Architecture** (`lithos-core`) specified for zero-copy performance
 - **Port-Based CQRS** pattern for decoupling without sacrificing performance
-- **Storage DTO Strategy** (ADR 0009 Appendix A) for domain/storage separation
+- **Storage DTO Strategy** (ADR 003 Appendix A) for domain/storage separation
 - 50 functional requirements fully supported
 
 **📚 AI Agent Implementation Guide**

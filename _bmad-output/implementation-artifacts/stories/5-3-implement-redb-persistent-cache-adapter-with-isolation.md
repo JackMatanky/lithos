@@ -37,7 +37,7 @@ So that data persists across application restarts and multiple cache consumers c
 - `metadata: HashMap<String, String>` - extensible key-value pairs for consumer-specific data (e.g., file hash, version)
 
 **And** `CachedEntry<V>` derives `rkyv::Archive`, `rkyv::Serialize`, `rkyv::Deserialize`
-**And** the entire struct is rkyv-serialized for zero-copy deserialization per ADR 0002
+**And** the entire struct is rkyv-serialized for zero-copy deserialization per ADR 006
 
 **Given** the trait must be implemented
 **When** I implement `CacheReader<K, V>` and `CacheWriter<K, V>` for `RedbCache<K, V>`
@@ -217,7 +217,7 @@ So that data persists across application restarts and multiple cache consumers c
 - **Module Visibility**: `pub(crate)` mod in `cache/mod.rs`.
 
 ### Project Structure Notes
-- **Alignment**: Consistent with ADR 0002 (Redb + rkyv foundation).
+- **Alignment**: Consistent with ADR 006 (Redb + rkyv foundation).
 - **Conflicts**: None detected. Complements Story 5.2 (Moka).
 
 ### TDD Methodology
@@ -228,8 +228,8 @@ So that data persists across application restarts and multiple cache consumers c
 ### References
 - [Source: project-context.md#Hexagonal-Boundary-Enforcement]
 - [Source: project-context.md#Async-Resource-Safety]
-- [Source: ADR 0002: Storage - Redb + rkyv]
-- [Source: ADR 0012 (Caching - Superseded): Caching Strategy]
+- [Source: ADR 006: Storage - Redb + rkyv]
+- [Source: ADR 013 (Caching - Superseded): Caching Strategy]
 - [Source: Story 5.1: Define Cache Trait and Error Hierarchy]
 
 ## Dev Agent Record

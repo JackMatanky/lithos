@@ -99,7 +99,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 #### Persistence & Performance
 - **rkyv Requirements:** Domain types MUST derive `Archive`, `Serialize`, `Deserialize`, and `CheckBytes` for zero-copy database operations. `Stored*` types used only when domain shape inefficient.
-- **Three-Shape Model (ADR 0009):**
+- **Three-Shape Model (ADR 003):**
   - **Raw\* (serde):** Unvalidated input from filesystem for tolerant parsing
   - **Domain (rkyv + serde feature-gated):** Validated entities with rkyv derives, used throughout application
   - **Stored\* (rkyv, optional):** Storage-optimized representation, only when domain shape causes performance issues

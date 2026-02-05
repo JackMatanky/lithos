@@ -17,15 +17,15 @@ This report identifies gaps and misalignments between existing testing documenta
 ## 2. Event & CQRS Testing (`docs/testing/event.md`)
 | Gap | Reference | Required Update |
 |---|---|---|
-| **CQRS Integration** | ADR 0009 | Add explicit section on Query Handler testing using stubs. |
-| **Eventual Consistency** | ADR 0009 | Document patterns for testing consistency windows and timing control. |
-| **Stub Usage** | ADR 0009 | Provide examples for `StubQueryStore` or similar read-model stubs. |
+| **CQRS Integration** | ADR 003 | Add explicit section on Query Handler testing using stubs. |
+| **Eventual Consistency** | ADR 003 | Document patterns for testing consistency windows and timing control. |
+| **Stub Usage** | ADR 003 | Provide examples for `StubQueryStore` or similar read-model stubs. |
 
-## 3. Infrastructure & Utilities (ADR 0010, 0011)
+## 3. Infrastructure & Utilities (ADR 011, 0011)
 | Gap | Reference | Required Update |
 |---|---|---|
-| **Testcontainers Status** | ADR 0011 | Clarify that `testcontainers` is currently deferred due to RUSTSEC-2025-0134 and suggest `mockall` as the primary alternative for now. |
-| **Fixture Patterns** | ADR 0010 | Add specific examples of `rstest` usage for domain fixtures. |
+| **Testcontainers Status** | ADR 010 | Clarify that `testcontainers` is currently deferred due to RUSTSEC-2025-0134 and suggest `mockall` as the primary alternative for now. |
+| **Fixture Patterns** | ADR 011 | Add specific examples of `rstest` usage for domain fixtures. |
 | **Snapshot Testing** | Story 2.9 AC 3 | Documentation on `insta` usage and redaction guidance is currently missing from ADRs. |
 
 ## 4. General Alignment
