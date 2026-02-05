@@ -306,10 +306,22 @@ mod tests {
         use std::collections::HashMap;
 
         use super::{
-            super::{Composition, TemplateError},
+            super::{Composition, Template, TemplateError},
             fixtures,
         };
         use crate::template::variable::VariableDefinition;
+
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
+        )]
+        fn build_template(builder: fixtures::TemplateTestBuilder) -> Template {
+            builder
+                .build()
+                .expect("Template should be built from valid test data")
+        }
 
         /// 3.4-UNIT-028: `should_detect_circular_composition`.
         /// Priority: P0.
@@ -319,17 +331,11 @@ mod tests {
 
             // GIVEN a template that extends itself
             let mut templates = HashMap::new();
-            let base_result = TemplateTestBuilder::new("A")
-                .with_content("content")
-                .extending("A")
-                .build();
-            assert!(
-                base_result.is_ok(),
-                "Valid template setup: {base_result:?}"
+            let base = build_template(
+                TemplateTestBuilder::new("A")
+                    .with_content("content")
+                    .extending("A"),
             );
-            let Ok(base) = base_result else {
-                return;
-            };
             templates.insert("A".to_owned(), base);
 
             let composition = Composition {
@@ -358,15 +364,9 @@ mod tests {
 
             // GIVEN a base template with a self-include
             let mut templates = HashMap::new();
-            let base_result =
-                TemplateTestBuilder::new("A").with_content("content").build();
-            assert!(
-                base_result.is_ok(),
-                "Valid template setup: {base_result:?}"
+            let base = build_template(
+                TemplateTestBuilder::new("A").with_content("content"),
             );
-            let Ok(base) = base_result else {
-                return;
-            };
             templates.insert("A".to_owned(), base);
 
             let composition = Composition {
@@ -394,19 +394,16 @@ mod tests {
             use fixtures::TemplateTestBuilder;
 
             // GIVEN: a base template with a string variable
-            let base = TemplateTestBuilder::new("base")
-                .with_content("Hello {{title}}")
-                .with_variable("title", VariableDefinition::String {
-                    default: None,
-                    max_length: None,
-                    min_length: None,
-                    pattern: None,
-                })
-                .build();
-            assert!(base.is_ok(), "Valid template setup: {base:?}");
-            let Ok(base) = base else {
-                return;
-            };
+            let base = build_template(
+                TemplateTestBuilder::new("base")
+                    .with_content("Hello {{title}}")
+                    .with_variable("title", VariableDefinition::String {
+                        default: None,
+                        max_length: None,
+                        min_length: None,
+                        pattern: None,
+                    }),
+            );
 
             // WHEN: overriding with an incompatible value
             let mut overrides = HashMap::new();
