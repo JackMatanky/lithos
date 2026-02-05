@@ -19,7 +19,7 @@ use uuid::Uuid;
 /// use lithos_core::schema::events::PropertyBankUpdated;
 ///
 /// let event = PropertyBankUpdated::new(12, 1234567890);
-/// assert_eq!(event.property_count, 12);
+/// assert_eq!(event.property_count, 12, "Property count should match");
 /// ```
 #[derive(
     Debug,
@@ -53,8 +53,8 @@ pub struct PropertyBankUpdated {
 ///
 /// let id = Uuid::now_v7();
 /// let event = SchemaCreated::new(id, "schema".to_string(), 1234567890);
-/// assert_eq!(event.id, id);
-/// assert_eq!(event.name, "schema");
+/// assert_eq!(event.id, id, "Schema id should match");
+/// assert_eq!(event.name, "schema", "Schema name should match");
 /// ```
 #[derive(
     Debug,
