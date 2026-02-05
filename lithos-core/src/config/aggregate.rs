@@ -464,7 +464,10 @@ mod tests {
             let config = Config::build(None, "/vault", vault)
                 .expect("Config build should succeed");
 
-            assert_eq!(config.vault_metadata.path, "/vault");
+            assert_eq!(
+                config.vault_metadata.path, "/vault",
+                "Vault path should match input"
+            );
         }
 
         /// 3.3-UNIT-020: `build_handles_missing_global`.
@@ -484,7 +487,10 @@ mod tests {
             let config = Config::build(None, "/vault", vault)
                 .expect("Config build should succeed");
 
-            assert_eq!(config.global_filesystem.schema.schemas_dir, "schemas");
+            assert_eq!(
+                config.global_filesystem.schema.schemas_dir, "schemas",
+                "Global schema dir should use defaults"
+            );
         }
 
         /// 3.3-UNIT-021: `config_manages_domain_events`.
