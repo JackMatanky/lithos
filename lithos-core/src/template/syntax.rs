@@ -9,7 +9,11 @@
 /// ```
 /// # use lithos_core::template::syntax::PlaceholderSyntax;
 /// let syntax = PlaceholderSyntax::new("{{", "}}");
-/// assert_eq!(syntax.wrap("title"), "{{title}}");
+/// assert_eq!(
+///     syntax.wrap("title"),
+///     "{{title}}",
+///     "Placeholder should wrap variable"
+/// );
 /// ```
 
 #[derive(
