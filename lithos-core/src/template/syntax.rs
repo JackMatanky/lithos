@@ -78,6 +78,9 @@ mod tests {
         let wrapped = syntax.wrap("name");
 
         // THEN: it uses the standard double-curly braces
-        assert_eq!(wrapped, "{{name}}");
+        assert_eq!(
+            wrapped, "{{name}}",
+            "Wrapped placeholder should use double-curly braces"
+        );
     }
 }
