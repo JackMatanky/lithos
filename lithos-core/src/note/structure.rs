@@ -47,9 +47,9 @@ impl Heading {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let heading = Heading::new(2, "Implementation".to_string(), 10)?;
-    /// assert_eq!(heading.level(), 2);
-    /// assert_eq!(heading.text(), "Implementation");
-    /// assert_eq!(heading.position(), 10);
+    /// assert_eq!(heading.level(), 2, "Heading level should match");
+    /// assert_eq!(heading.text(), "Implementation", "Heading text should match");
+    /// assert_eq!(heading.position(), 10, "Heading position should match");
     /// # Ok(())
     /// # }
     /// ```
@@ -151,7 +151,7 @@ impl Section {
     ///     "Content here...".to_string(),
     ///     range.clone(),
     /// );
-    /// assert_eq!(section.range(), range);
+    /// assert_eq!(section.range(), range, "Section range should match");
     /// # Ok(())
     /// # }
     /// ```
