@@ -507,7 +507,11 @@ mod tests {
         let value = SettingValue::Null;
 
         // THEN it debug formats correctly
-        assert_eq!(format!("{value:?}"), "Null");
+        assert_eq!(
+            format!("{value:?}"),
+            "Null",
+            "Null setting should debug format as 'Null'"
+        );
     }
 
     /// 3.3-UNIT-032: `converts_from_hashmap_of_values`.
