@@ -168,7 +168,7 @@ mod tests {
                       arithmetic for circular graph traversal. Index safety \
                       is guaranteed by loop bounds over `unique_names` length."
         )]
-        fn schema_graph_detects_arbitrary_cycles() {
+        fn schema_graph_detects_arbitrary_cycles() -> Result<(), String> {
             let mut runner = TestRunner::deterministic();
             let strategy = prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10);
 
@@ -189,9 +189,7 @@ mod tests {
                     .collect::<BTreeSet<_>>()
                     .into_iter()
                     .collect();
-                if unique_names.len() < 2 {
-                    return Ok(());
-                }
+                prop_assume!(unique_names.len() >= 2);
 
                 // WHEN: creating a circular inheritance graph
                 let mut graph = Graph::new();
@@ -204,17 +202,18 @@ mod tests {
 
                 // THEN: it must detect the circular inheritance
                 let res = graph.resolve_order();
-                assert!(
+                prop_assert!(
                     matches!(res, Err(SchemaError::CircularInheritance(_))),
                     "Proptest circular dependency should be detected, got: \
                      {res:?}"
                 );
                 Ok(())
             });
-            assert!(
-                run_result.is_ok(),
-                "Deterministic proptest should not fail: {run_result:?}"
-            );
+            run_result.map_err(|e| {
+                format!("Deterministic proptest should not fail: {e:?}")
+            })?;
+
+            Ok(())
         }
 
         /// 3.3-UNIT-019: `schema_graph_accepts_arbitrary_lineage`.
@@ -226,7 +225,7 @@ mod tests {
                       linear inheritance graphs. Index safety is guaranteed \
                       by loop bounds over `unique_names` length."
         )]
-        fn schema_graph_accepts_arbitrary_lineage() {
+        fn schema_graph_accepts_arbitrary_lineage() -> Result<(), String> {
             let mut runner = TestRunner::deterministic();
             let strategy = prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10);
 
@@ -260,34 +259,45 @@ mod tests {
                 }
 
                 // THEN: it must succeed and return the correct order
-                let res = graph.resolve_order();
-                prop_assert!(
-                    res.is_ok(),
-                    "Linear graph should resolve successfully, got: {res:?}"
-                );
-                let Ok(order) = res else {
-                    return Ok(());
-                };
-                assert_eq!(
+                let order = graph.resolve_order().map_err(|error| {
+                    TestCaseError::fail(format!(
+                        "Linear graph should resolve successfully: {error}"
+                    ))
+                })?;
+                prop_assert_eq!(
                     order.len(),
                     unique_names.len(),
                     "Resolution order should contain all schemas"
                 );
                 Ok(())
             });
-            assert!(
-                run_result.is_ok(),
-                "Deterministic proptest should not fail: {run_result:?}"
-            );
+            run_result.map_err(|e| {
+                format!("Deterministic proptest should not fail: {e:?}")
+            })?;
+
+            Ok(())
         }
     }
 
     use super::*;
 
-    fn schema_name_literal(lit: &str) -> Option<SchemaName> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test helper uses expect for deterministic setup. Failure \
+                  indicates invalid test data. Expect is idiomatic in setup."
+    )]
+    fn schema_name_literal(lit: &str) -> SchemaName {
         let result: Result<SchemaName, _> = lit.try_into();
-        assert!(result.is_ok(), "Valid schema name expected: {result:?}");
-        result.ok()
+        result.expect("Valid schema name expected")
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test helper uses expect for deterministic setup. Failure \
+                  indicates invalid test data. Expect is idiomatic in setup."
+    )]
+    fn resolve_order(graph: &Graph) -> Vec<SchemaName> {
+        graph.resolve_order().expect("Graph resolution should succeed")
     }
 
     /// 3.3-UNIT-021: `detects_circular_inheritance`.
@@ -296,13 +306,8 @@ mod tests {
     fn detects_circular_inheritance() {
         // GIVEN: a simple circular dependency between two schemas
         let mut graph = Graph::new();
-        let Some(a) = schema_name_literal("a") else {
-            return;
-        };
-
-        let Some(b) = schema_name_literal("b") else {
-            return;
-        };
+        let a = schema_name_literal("a");
+        let b = schema_name_literal("b");
 
         graph.add_node(a.clone(), Some(b.clone()));
         graph.add_node(b, Some(a));
@@ -326,14 +331,7 @@ mod tests {
         let graph = Graph::new();
 
         // WHEN: resolving the order
-        let order_result = graph.resolve_order();
-        assert!(
-            order_result.is_ok(),
-            "Empty graph should resolve successfully, got: {order_result:?}"
-        );
-        let Ok(order) = order_result else {
-            return;
-        };
+        let order = resolve_order(&graph);
 
         // THEN: it should return an empty order
         assert!(
@@ -348,27 +346,14 @@ mod tests {
     fn determines_topological_resolution_order() {
         // GIVEN: a linear inheritance: child -> parent
         let mut graph = Graph::new();
-        let Some(child) = schema_name_literal("child") else {
-            return;
-        };
-
-        let Some(parent) = schema_name_literal("parent") else {
-            return;
-        };
+        let child = schema_name_literal("child");
+        let parent = schema_name_literal("parent");
 
         graph.add_node(child.clone(), Some(parent.clone()));
         graph.add_node(parent.clone(), None);
 
         // WHEN: resolving the order
-        let order_result = graph.resolve_order();
-        assert!(
-            order_result.is_ok(),
-            "Valid linear graph should resolve successfully, got: \
-             {order_result:?}"
-        );
-        let Ok(order) = order_result else {
-            return;
-        };
+        let order = resolve_order(&graph);
 
         // THEN: it should return parent before child
         assert_eq!(
