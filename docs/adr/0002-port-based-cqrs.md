@@ -9,7 +9,7 @@ date_updated: 2026-02-05
 stakeholders: [Jack (Architect), Development Team]
 ---
 
-# ADR 0002: Port-Based CQRS Architecture with Split Ports
+# ADR 002: Port-Based CQRS Architecture with Split Ports
 
 ## Context
 
@@ -134,4 +134,4 @@ Initial benchmarks of this pattern (vs direct DB usage) show negligible overhead
 
 ## References
 - [Core Architectural Decisions](../../_bmad-output/planning-artifacts/architecture/core-architectural-decisions.md)
-- [ADR 0009: Domain Serialization Strategy](./0009-domain-serialization-strategy.md)
+- [ADR 003: Domain Serialization Strategy](./0003-domain-serialization.md)

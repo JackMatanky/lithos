@@ -7,7 +7,7 @@ date_decided: 2026-01-11
 date_implemented: 2026-01-11
 ---
 
-# ADR 0009: Hierarchical Configuration Management with Figment
+# ADR 009: Hierarchical Configuration Management with Figment
 
 ## Context
 
@@ -49,7 +49,7 @@ Requires significant boilerplate for every new field and is prone to errors in n
 
 ### Research Findings
 
-- **Provider Pattern**: Figment's provider pattern treats every source (file, env, flag) as a separate entity that "provides" data. This aligns with **ADR 0002** by reducing intermediate allocations.
+- **Provider Pattern**: Figment's provider pattern treats every source (file, env, flag) as a separate entity that "provides" data. This aligns with **ADR 006** by reducing intermediate allocations.
 - **Vault Discovery**: We can implement the `Provider` trait for a `VaultDiscovery` struct to walk up the tree and find the `.lithos/` directory dynamically.
 - **Error Diagnostics**: Preserves line and column information, which is critical for telling the user _exactly_ where their TOML is malformed.
 

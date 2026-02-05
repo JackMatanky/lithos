@@ -9,7 +9,7 @@ date_superseded: 2026-02-01
 superseded_by: Course Correction Proposal 4 (Database Layer Design)
 ---
 
-# ADR 0013: Caching Strategy & Implementation Patterns
+# ADR 013: Caching Strategy & Implementation Patterns
 
 ## Status: SUPERSEDED
 
@@ -64,7 +64,7 @@ We will use **Moka** (full feature) for L1 in-memory caching, with **Redb** for 
 ### Rationale
 
 1. **LSP-First Design**: While the MVP is CLI-focused, Phase 2b LSP requirements (per PRD) demand high-concurrency primitives that Moka provides natively. Designing for the future architecture now avoids costly migration.
-2. **Async Alignment**: Moka's first-class Tokio support integrates seamlessly with our async adapter architecture where all traits use `#[async_trait]` per ADR 0002.
+2. **Async Alignment**: Moka's first-class Tokio support integrates seamlessly with our async adapter architecture where all traits use `#[async_trait]` per ADR 006.
 3. **TinyLFU Scan Resistance**: Critical for vault indexing scenarios where we scan 1000+ files (NFR2) but only need to cache "hot" schemas/templates. TinyLFU prevents one-time reads from flushing valuable cached data.
 4. **Binary Size Acceptable**: Benchmarking shows <200KB binary overhead, negligible compared to the ~10MB base Rust binary. CLI cold start remains <1ms per NFR requirements.
 5. **Production Proven**: Used by high-traffic Rust services (e.g., crates.io), reducing implementation risk.

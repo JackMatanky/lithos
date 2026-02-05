@@ -7,7 +7,7 @@ date_decided: 2026-01-11
 date_implemented: 2026-01-11
 ---
 
-# ADR 0005: Error Handling and Diagnostics Framework
+# ADR 005: Error Handling and Diagnostics Framework
 
 ## Context
 
