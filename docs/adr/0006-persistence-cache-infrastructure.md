@@ -8,7 +8,7 @@ date_implemented: 2026-01-11
 date_updated: 2026-02-01
 ---
 
-# ADR 0002: Persistence and Cache Infrastructure with Redb and rkyv
+# ADR 0006: Persistence and Cache Infrastructure with Redb and rkyv
 
 ## Context
 

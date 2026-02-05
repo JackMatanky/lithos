@@ -8,7 +8,7 @@ date_implemented: pending
 date_updated: 2026-02-01
 ---
 
-# ADR 0007: Minimal Event Foundation with Deferred Orchestration
+# ADR 0004: Minimal Event Foundation with Deferred Orchestration
 
 ## Context
 

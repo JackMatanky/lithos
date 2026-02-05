@@ -7,7 +7,7 @@ date_decided: TBD
 date_implemented: TBD
 ---
 
-# ADR 0008: Benchmarking Infrastructure and Performance Testing Patterns
+# ADR 0012: Benchmarking Infrastructure and Performance Testing Patterns
 
 ## Context
 

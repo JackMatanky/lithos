@@ -7,7 +7,7 @@ date_decided: 2026-01-11
 date_implemented: 2026-01-11
 ---
 
-# ADR 0005: Hierarchical Configuration Management with Figment
+# ADR 0009: Hierarchical Configuration Management with Figment
 
 ## Context
 

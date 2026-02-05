@@ -1,13 +1,13 @@
 ---
-name: kebab-case-title
+name: short-kebab-case-name
 status: proposed | accepted | rejected | superseded | deprecated
-supersedes: [ADR-0000] # Optional: ID of the ADR this replaces
+supersedes: [0000] # Optional: Number of the ADR this replaces
 date_proposed: YYYY-MM-DD
 date_decided: YYYY-MM-DD
 stakeholders: [List Stakeholders]
 ---
 
-# ADR NNNN: [Title]
+# ADR NNN: [Title]
 
 ## Context
 <!--

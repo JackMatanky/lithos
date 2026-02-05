@@ -7,7 +7,7 @@ date_decided: 2026-01-11
 date_implemented: 2026-01-11
 ---
 
-# ADR 0003: Selection of Template Engine for Markdown-based Templates
+# ADR 0007: Selection of Template Engine for Markdown-based Templates
 
 ## Context
 
