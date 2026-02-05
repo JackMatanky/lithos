@@ -39,7 +39,11 @@ pub struct Task {
 /// # Examples
 /// ```
 /// # use lithos_core::note::task::TaskStatus;
-/// assert_eq!(TaskStatus::Complete as u8, TaskStatus::Complete as u8);
+/// assert_eq!(
+///     TaskStatus::Complete as u8,
+///     TaskStatus::Complete as u8,
+///     "Enum discriminant should be stable"
+/// );
 /// ```
 #[derive(
     Debug,
@@ -73,8 +77,12 @@ impl Task {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let task = Task::new("Buy milk".to_string(), TaskStatus::Incomplete, 50)?;
-    /// assert_eq!(task.text(), "Buy milk");
-    /// assert_eq!(task.status(), TaskStatus::Incomplete);
+    /// assert_eq!(task.text(), "Buy milk", "Task text should match");
+    /// assert_eq!(
+    ///     task.status(),
+    ///     TaskStatus::Incomplete,
+    ///     "Task status should match"
+    /// );
     /// # Ok(())
     /// # }
     /// ```
