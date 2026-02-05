@@ -289,7 +289,11 @@ impl Link {
     ///     None,
     ///     0,
     /// )?;
-    /// assert_eq!(link.alias(), Some("display text"));
+    /// assert_eq!(
+    ///     link.alias(),
+    ///     Some("display text"),
+    ///     "Alias should return display text"
+    /// );
     /// # Ok(())
     /// # }
     /// ```
@@ -428,8 +432,8 @@ impl Link {
     ///     Some(Anchor::Heading("install".into())),
     ///     75,
     /// )?;
-    /// assert_eq!(link.style(), Style::MdLink);
-    /// assert_eq!(link.alias(), Some("Rust"));
+    /// assert_eq!(link.style(), Style::MdLink, "Style should be Markdown");
+    /// assert_eq!(link.alias(), Some("Rust"), "Alias should be set");
     /// # Ok(())
     /// # }
     /// ```
