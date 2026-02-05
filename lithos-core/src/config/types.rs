@@ -347,7 +347,11 @@ impl Schema {
     /// # use lithos_core::config::types::Schema;
     /// let schema = Schema::default();
     ///
-    /// assert_eq!(schema.property_bank_path(), "schemas/property_bank.json");
+    /// assert_eq!(
+    ///     schema.property_bank_path(),
+    ///     "schemas/property_bank.json",
+    ///     "Property bank path should use schema directory"
+    /// );
     /// ```
     #[inline]
     #[must_use]
