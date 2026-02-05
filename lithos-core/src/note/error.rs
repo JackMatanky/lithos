@@ -105,6 +105,8 @@ pub enum FrontmatterError {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[test]
@@ -113,28 +115,23 @@ mod tests {
         is_send_sync::<NoteError>();
     }
 
-    #[test]
-    fn note_error_display_is_comprehensive() {
-        let errors = vec![
-            NoteError::InvalidPath("test.md".into()),
-            NoteError::NotFound("uuid".into()),
-            NoteError::AlreadyExists("test.md".into()),
-            NoteError::ValidationFailed("invalid".into()),
-            NoteError::Frontmatter("parse error".into()),
-            NoteError::FrontmatterAccess(FrontmatterError::Missing {
-                key: "title".into(),
-            }),
-            NoteError::Link("broken link".into()),
-            NoteError::Tag("invalid tag".into()),
-            NoteError::Task("invalid task".into()),
-            NoteError::Storage("io error".into()),
-        ];
-
-        for err in errors {
-            assert!(
-                !err.to_string().is_empty(),
-                "Error {err:?} should have non-empty display message"
-            );
-        }
+    #[rstest]
+    #[case(NoteError::InvalidPath("test.md".into()))]
+    #[case(NoteError::NotFound("uuid".into()))]
+    #[case(NoteError::AlreadyExists("test.md".into()))]
+    #[case(NoteError::ValidationFailed("invalid".into()))]
+    #[case(NoteError::Frontmatter("parse error".into()))]
+    #[case(NoteError::FrontmatterAccess(FrontmatterError::Missing {
+        key: "title".into(),
+    }))]
+    #[case(NoteError::Link("broken link".into()))]
+    #[case(NoteError::Tag("invalid tag".into()))]
+    #[case(NoteError::Task("invalid task".into()))]
+    #[case(NoteError::Storage("io error".into()))]
+    fn note_error_display_is_comprehensive(#[case] error: NoteError) {
+        assert!(
+            !error.to_string().is_empty(),
+            "Error {error:?} should have non-empty display message"
+        );
     }
 }
