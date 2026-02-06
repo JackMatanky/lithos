@@ -175,7 +175,7 @@ These changes are recommended because they reduce invalid states, simplify mergi
 
 - **Avoid `Deref` for semantic newtypes**
   - `SchemaVersion(pub String)` currently implements `Deref<Target = str>`.
-  - Prefer an explicit `as_str()` (and `Display`) so the type boundary stays visible.
+  - Prefer an explicit `as_str()` (and `Display`) so the type boundary stays visible. (Rationale: `Deref` participates in implicit deref coercions; implement it only when that implicit behavior is desirable and unsurprising.)
 
 #### Vault identity (required)
 
@@ -207,6 +207,10 @@ Canonicalization rules (recommendation):
 - Use an absolute path.
 - Normalize separators (platform default is fine as long as the encoding is stable).
 - Consider resolving symlinks only if you intentionally want “symlinked paths” to collapse to the same vault identity.
+
+Implementation note:
+
+- Prefer `Path::join` / `PathBuf::join` for composition. Be careful with `PathBuf::push`: pushing an absolute path replaces the existing path rather than appending.
 
 #### Versioned merged config read model (recommended)
 
@@ -419,7 +423,12 @@ rkyv patterns:
 
 ## 8. References
 
-- (none yet)
+- Figment crate docs (merge vs join semantics, eager source reads, profiles, metadata/provenance): https://docs.rs/figment/latest/figment/
+- Figment tips note on `#[serde(flatten)]` potentially breaking error attribution: https://docs.rs/figment/latest/figment/#tips
+- Rust standard library docs for `Deref` (implicit deref coercions; implement only when desirable): https://doc.rust-lang.org/std/ops/trait.Deref.html
+- Rust standard library docs for `PathBuf` (notably: `push` replaces when given an absolute path): https://doc.rust-lang.org/std/path/struct.PathBuf.html
+- Serde field attribute docs for `#[serde(flatten)]`: https://serde.rs/field-attrs.html#flatten
+- Serde container attribute docs for `#[serde(deny_unknown_fields)]` and its incompatibility note with flatten: https://serde.rs/container-attrs.html#deny_unknown_fields
 
 ## Appendix A: External Patterns (Figment + Layered Config) and What Lithos Should Steal
 
@@ -445,6 +454,10 @@ Even if Lithos does not expose Figment directly as a public API, Figment’s mod
   - `nested()` treats the file as containing profiles at the top-level.
   - This matters when you want context-specific config from the same file.
 - **Error metadata**: Figment’s extraction errors can carry rich metadata (selected profile, key path, and sometimes source info).
+
+Practical Figment-specific guidance:
+
+- Avoid `#[serde(flatten)]` in config structs extracted via Figment if you care about precise “which key in which file” error attribution; Figment’s own tips call out that flatten can break error attribution.
 
 Design implication for Lithos:
 
