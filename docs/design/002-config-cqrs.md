@@ -313,6 +313,11 @@ Error-handling rules (match existing contexts):
 - Treat all persisted bytes as untrusted; validation must happen at the storage boundary.
 - Never log decrypted secrets; any decrypted values should remain adapter-owned.
 
+Implementation guidance (rkyv + redb):
+
+- Prefer `rkyv::access` (validated) at trust boundaries, and reserve `rkyv::access_unchecked` for cases where the bytes are known to be valid and trusted.
+- Do not allow redb scoped guards (like `AccessGuard`) or archived references derived from them to escape the transaction/guard scope; compute owned results inside the scope instead.
+
 ## 6. Pre-Mortem (The "Inversion")
 
 - **Risk**: configuration load uses the wrong vault identity, leading to incorrect paths in runtime behavior.
@@ -332,4 +337,6 @@ Error-handling rules (match existing contexts):
 
 ## 8. References
 
-- (none yet)
+- rkyv `access` (validated, safe alternative): https://docs.rs/rkyv/latest/rkyv/fn.access.html
+- rkyv `access_unchecked` safety contract (bytes must represent a valid archived type): https://docs.rs/rkyv/latest/rkyv/fn.access_unchecked.html
+- redb `AccessGuard` docs (scoped accessor; data released when guard is dropped): https://docs.rs/redb/latest/redb/struct.AccessGuard.html
