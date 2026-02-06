@@ -297,7 +297,7 @@ lithos tasks due --when today
 **Creating a Task from Config**
 
 ```rust
-use lithos_core::note::task::{Task, CheckboxStatus};
+use lithos_core::note::task::{Task, StatusName};
 use lithos_core::config::types::TaskConfig;
 
 // Config loaded from vault
@@ -307,8 +307,8 @@ let config: TaskConfig = vault_config.task;
 let raw_text = "#task Implement feature [priority:: 1] [project:: lithos]";
 let task = Task::from_checkbox(
     raw_text,
-    CheckboxStatus::Incomplete,
-    42, // position in document
+    StatusName("incomplete".into()),
+    42, // source-byte offset (start of list item)
     &config,
 )?;
 
@@ -331,6 +331,7 @@ Queries remain sync-first in `lithos-core`; any async orchestration belongs at t
 
 ```rust
 use lithos_core::note::list::{List, ListType, ListItem};
+use lithos_core::note::task::StatusName;
 
 // Parser creates List entities for document structure
 let list = List {
@@ -342,12 +343,11 @@ let list = List {
         },
         ListItem::Checkbox {
             text: "#task Do work [priority:: 1]".into(),
-            status: CheckboxStatus::Incomplete,
+            status: StatusName("incomplete".into()),
             position: 30,
             task_id: Some(task_uuid), // Links to promoted Task
         },
     ],
-    position: 0,
     depth: 0,
 };
 
@@ -481,8 +481,6 @@ pub struct List {
     list_type: ListType,
     /// Items in this list
     items: Vec<ListItem>,
-    /// Start position in document
-    position: usize,
     /// Nesting depth (0 = top-level)
     depth: u8,
 }
@@ -507,7 +505,7 @@ pub enum ListItem {
     /// Checkbox item (may be promoted to Task)
     Checkbox {
         text: Box<str>,
-        status: CheckboxStatus,
+        status: StatusName,
         position: usize,
         /// If promoted to Task, stores task ID for linkage
         task_id: Option<Uuid>,
@@ -526,9 +524,17 @@ pub struct Task {
     id: Uuid,
     /// Clean task text (before first metadata marker)
     text: Box<str>,
-    /// Checkbox status (config-mapped symbol)
-    status: CheckboxStatus,
-    /// Position in source document
+    /// Status name (semantic), resolved from a single-character symbol via config.
+    status: StatusName,
+    /// First-class temporal attributes.
+    ///
+    /// These are *not* dynamic metadata: they have dedicated fields for simpler
+    /// query/index/template usage.
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+    due_at: Option<chrono::DateTime<chrono::Utc>>,
+    reminder_at: Option<chrono::DateTime<chrono::Utc>>,
+    completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Source-byte offset in document (start of list item)
     position: usize,
     /// Tags extracted from text
     tags: Vec<Tag>,
@@ -536,38 +542,15 @@ pub struct Task {
     metadata: TaskMetadata,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum CheckboxStatus {
-    Complete,      // [x]
-    Incomplete,    // [ ]
-    Cancelled,     // [-]
-    InProgress,    // [>]
-    Waiting,       // [?]
-    Delegated,     // [d]
-    Custom(Box<str>), // Fallback for user-defined symbols
-}
+/// Status name (semantic identifier).
+///
+/// Constraint: ASCII alphanumeric plus `_` and `-`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct StatusName(Box<str>);
 
-impl CheckboxStatus {
-    /// Parse from config symbol mapping.
-    pub fn from_symbol(symbol: &str, config: &TaskConfig) -> Self {
-        config.status.get(symbol)
-            .and_then(|name| Self::from_config_name(name))
-            .unwrap_or_else(|| Self::Custom(symbol.into()))
-    }
-
-    fn from_config_name(name: &str) -> Option<Self> {
-        match name {
-            "complete" => Some(Self::Complete),
-            "incomplete" => Some(Self::Incomplete),
-            "cancelled" => Some(Self::Cancelled),
-            "in_progress" => Some(Self::InProgress),
-            "waiting" => Some(Self::Waiting),
-            "delegated" => Some(Self::Delegated),
-            _ => None,
-        }
-    }
-}
+/// Status symbol (single character) as it appears in markdown `[<symbol>]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct StatusSymbol(char);
 ```
 
 ```rust
@@ -615,20 +598,6 @@ impl TaskMetadata {
             _ => None,
         }
     }
-
-    /// Check if task is overdue (requires config to find due_date field).
-    pub fn is_overdue(&self, config: &TaskConfig, now: chrono::DateTime<chrono::Utc>) -> bool {
-        let due_field = config.temporal.values()
-            .find(|t| t.keyword == "due")
-            .map(|t| &t.field);
-
-        if let Some(field_name) = due_field {
-            if let Some(due) = self.get_date(field_name) {
-                return due < now;
-            }
-        }
-        false
-    }
 }
 ```
 
@@ -645,31 +614,63 @@ pub struct TaskConfig {
     pub enabled: bool,
     /// Promotion rules
     pub promotion: PromotionRules,
-    /// Status symbol mappings (symbol → semantic name)
-    pub status: HashMap<Box<str>, Box<str>>,
-    /// Temporal marker definitions
-    pub temporal: HashMap<Box<str>, TemporalMarkerDef>,
-    /// Custom metadata field definitions
-    pub metadata: HashMap<Box<str>, MetadataFieldDef>,
+    /// Status mapping between semantic names and markdown checkbox symbols.
+    pub status: CheckboxStatus,
+    /// Unified field definitions (metadata + temporal markers).
+    ///
+    /// Map key is the canonical *field name* as stored in `TaskMetadata.fields`.
+    pub fields: HashMap<Box<str>, TaskFieldSpecDef>,
     /// Indexed fields for query optimization
     pub indexed_fields: Vec<Box<str>>,
 }
 
 impl Default for TaskConfig {
     fn default() -> Self {
-        let mut status = HashMap::new();
-        status.insert("x".to_owned(), "complete".to_owned());
-        status.insert(" ".to_owned(), "incomplete".to_owned());
-        status.insert("-".to_owned(), "cancelled".to_owned());
-
         Self {
             enabled: false,
             promotion: PromotionRules::default(),
-            status,
-            temporal: HashMap::new(),
-            metadata: HashMap::new(),
+            status: CheckboxStatus::default(),
+            fields: HashMap::new(),
             indexed_fields: vec![],
         }
+    }
+}
+
+/// Mapping between semantic status names (used throughout the domain) and the
+/// single-character symbol used in markdown `[<symbol>]`.
+///
+/// This replaces a hardcoded `CheckboxStatus` enum: status is vault-configurable,
+/// while queries/indexing/templates operate on stable semantic names.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct CheckboxStatus {
+    pub by_name: HashMap<StatusName, StatusSymbol>,
+    pub by_symbol: HashMap<StatusSymbol, StatusName>,
+}
+
+impl CheckboxStatus {
+    pub fn symbol_for_name(&self, name: &StatusName) -> Option<StatusSymbol> {
+        self.by_name.get(name).copied()
+    }
+
+    pub fn name_for_symbol(&self, symbol: StatusSymbol) -> Option<&StatusName> {
+        self.by_symbol.get(&symbol)
+    }
+}
+
+impl Default for CheckboxStatus {
+    fn default() -> Self {
+        let mut by_name = HashMap::new();
+        by_name.insert(StatusName("complete".into()), StatusSymbol('x'));
+        by_name.insert(StatusName("incomplete".into()), StatusSymbol(' '));
+        by_name.insert(StatusName("cancelled".into()), StatusSymbol('-'));
+
+        let by_symbol = by_name
+            .iter()
+            .map(|(name, symbol)| (*symbol, name.clone()))
+            .collect();
+
+        Self { by_name, by_symbol }
     }
 }
 
@@ -691,54 +692,67 @@ impl Default for PromotionRules {
     }
 }
 
+/// Unified field spec definition.
+///
+/// The `type` tag determines which additional fields are legal, mirroring the
+/// style of schema `PropertySpecDef`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 #[non_exhaustive]
-pub struct TemporalMarkerDef {
-    /// Display emoji (e.g., "⏰")
-    pub emoji: Box<str>,
-    /// Inline metadata keyword (e.g., "reminder")
-    pub keyword: Box<str>,
-    /// Internal field name
-    pub field: Box<str>,
-    /// Date/time format string
-    pub format: Box<str>,
-    /// Type: "date", "time", "datetime"
-    #[serde(rename = "type")]
-    pub value_type: TemporalType,
-}
+pub enum TaskFieldSpecDef {
+    // --- General metadata fields (inline: [keyword:: value]) ---
+    String {
+        keyword: Box<str>,
+        pattern: Option<Box<str>>,
+        unit: Option<Box<str>>,
+    },
+    Integer {
+        keyword: Box<str>,
+        min: Option<f64>,
+        max: Option<f64>,
+        unit: Option<Box<str>>,
+    },
+    Float {
+        keyword: Box<str>,
+        min: Option<f64>,
+        max: Option<f64>,
+        unit: Option<Box<str>>,
+    },
+    Boolean {
+        keyword: Box<str>,
+    },
+    Enum {
+        keyword: Box<str>,
+        values: Vec<String>,
+        unit: Option<Box<str>>,
+    },
+    Time {
+        keyword: Box<str>,
+        format: Box<str>,
+        unit: Option<Box<str>>,
+    },
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum TemporalType {
-    Date,      // YYYY-MM-DD
-    Time,      // HH:MM (stored as String in SettingValue)
-    DateTime,  // YYYY-MM-DD HH:MM
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct MetadataFieldDef {
-    /// Inline metadata keyword (e.g., "priority")
-    pub keyword: Box<str>,
-    /// Internal field name
-    pub field: Box<str>,
-    /// Data type
-    #[serde(rename = "type")]
-    pub value_type: MetadataType,
-    /// Optional validation rules
-    #[serde(flatten)]
-    pub validation: Option<ValidationRules>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum MetadataType {
-    String,
-    Integer,
-    Float,
-    Boolean,
-    Enum { values: Vec<String> },
-    Time, // HH:MM format
+    // --- First-class temporal fields (populate Task.*_at) ---
+    Created {
+        emoji: Box<str>,
+        keyword: Box<str>,
+        format: Box<str>,
+    },
+    Due {
+        emoji: Box<str>,
+        keyword: Box<str>,
+        format: Box<str>,
+    },
+    Reminder {
+        emoji: Box<str>,
+        keyword: Box<str>,
+        format: Box<str>,
+    },
+    Completed {
+        emoji: Box<str>,
+        keyword: Box<str>,
+        format: Box<str>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -762,7 +776,8 @@ pub struct ValidationRules {
 
 // Primary task storage (composite key: note UUID + position)
 // Foreign key relationship: Uuid references notes table
-// Position is line number or byte offset within the note
+// Position is a source-byte offset within the note (start of the list item)
+// (pulldown-cmark provides source byte ranges via Parser::into_offset_iter).
 // When note is deleted → cascade delete all tasks with that note_uuid
 tasks: Table<(Uuid, u64), ArchivedTask>
 //             ^^^^  ^^^-- Position in source file (stable within file)
@@ -773,7 +788,7 @@ tasks: Table<(Uuid, u64), ArchivedTask>
 tasks_by_due_date: Table<i64, Vec<(Uuid, u64)>>  // timestamp → task refs
 tasks_by_priority: Table<i64, Vec<(Uuid, u64)>>  // priority → task refs
 tasks_by_project: Table<String, Vec<(Uuid, u64)>> // project → task refs
-tasks_by_status: Table<u8, Vec<(Uuid, u64)>>     // status enum → task refs
+tasks_by_status: Table<String, Vec<(Uuid, u64)>> // StatusName → task refs
 
 // Generic metadata index (for non-indexed fields)
 tasks_metadata: Table<(String, String), Vec<(Uuid, u64)>>  // (field, value) → task refs
@@ -787,17 +802,81 @@ tasks_metadata: Table<(String, String), Vec<(Uuid, u64)>>  // (field, value) →
 
 ### 3.3 Component & Interface Specifications
 
-#### Component: Markdown Parser (adapter)
+This section is the canonical contract for the core components involved in parsing, modeling, indexing, and exposing tasks.
 
-- **Responsibility**: parse markdown lists and checkbox items (via pulldown-cmark) and emit `List` + optional promoted `Task` entities.
+#### Component: Markdown Parsing + Promotion (adapter)
 
-#### Component: `List` / `Task` / `TaskMetadata` (note context)
-
-- **Responsibility**: represent validated list structure + promoted rich task entities inside the note aggregate.
+- **Responsibility**: Convert pulldown-cmark events into note-domain `List` entities and (optionally) promoted `Task` entities.
+- **Public Interface** (pseudocode; exact types may vary by adapter boundary):
+    - `parse_note(markdown: &str, task_config: &TaskConfig) -> Result<Note, ParseError>`
+        - _Behavior_:
+            - builds `List` structures by handling balanced `Event::Start(Tag::List/Tag::Item)` and `Event::End(TagEnd::List/TagEnd::Item)` events.
+            - identifies checkbox items via:
+                - `Event::TaskListMarker(bool)` (only emitted when `Options::ENABLE_TASKLISTS` is enabled), and
+                - adapter-owned parsing for custom status symbols (e.g. `[>]`, `[-]`, `[?]`, `[d]`) because `TaskListMarker` only conveys checked/unchecked.
+            - computes positions as byte offsets from `Parser::into_offset_iter()` ranges (store `range.start` as the domain `position`).
+            - performs deterministic promotion checks based on `TaskConfig`.
+        - _Outputs_: always emits `List` entities; emits `Task` entities only when promotion rules match.
+        - _Errors_:
+            - task-specific validation failures (invalid metadata, invalid temporal format, unknown status symbol when strict)
+- **State/Invariants**:
+    - Domain types MUST NOT store pulldown-cmark types.
+    - Promotion MUST be deterministic and config-driven.
 
 #### Component: `TaskConfig` (config context)
 
-- **Responsibility**: define promotion rules, status mapping, metadata/temporal schemas, and which fields are indexed.
+- **Responsibility**: Define task promotion rules, status mapping (`CheckboxStatus`), field schema (`TaskFieldSpecDef`), and indexing policy.
+- **Public Interface**:
+    - `TaskConfig::default() -> TaskConfig`
+        - _Behavior_: provides backward-compatible defaults (e.g., `x/ /-` mapping).
+    - (Conceptual) `validate(&self) -> Result<(), ConfigError>`
+        - _Behavior_: rejects invalid schema definitions early (e.g., enum defs with empty allowed values, invalid bounds).
+        - _Errors_: schema invalid; inconsistent `indexed_fields`; duplicated keywords.
+- **State/Invariants**:
+    - Keyword → field mapping is the authority for `[keyword:: value]` parsing.
+    - Indexed fields are an explicit user trade-off (memory/speed).
+
+#### Component: `Task` (note context)
+
+- **Responsibility**: Represent a promoted, queryable task derived from a checkbox item.
+- **Public Interface**:
+    - `Task::from_checkbox(raw_text: &str, status: StatusName, position: usize, config: &TaskConfig) -> Result<Task, DomainError>`
+        - _Behavior_: extracts tags, computes clean display `text`, parses and validates metadata, assigns UUID v7.
+        - _Errors_: invalid metadata value/format; schema mismatch.
+    - `Task::should_promote(raw_text: &str, config: &TaskConfig) -> bool`
+        - _Behavior_: checks promotion tags and/or metadata/temporal markers depending on config.
+- **State/Invariants**:
+    - `id` is stable for a given derived task instance (see constraints + migration notes).
+    - `metadata` keys are field names from config (not raw keywords).
+
+#### Component: `List` / `ListItem` (note context)
+
+- **Responsibility**: Preserve markdown list structure (ordered/unordered/checkbox items) regardless of promotion.
+- **Public Interface**:
+    - `List::new(list_type: ListType) -> List`
+    - `List::add_item(&mut self, item: ListItem)`
+- **State/Invariants**:
+    - For checkbox items, `task_id` is set iff a `Task` was promoted from that checkbox.
+    - `depth` is structural nesting depth only (no semantic parent/child tasks in MVP).
+
+#### Component: Task Indexing + Query Projection (storage/query boundary)
+
+- **Responsibility**: Persist tasks in redb and optionally maintain field indexes as configured.
+- **Public Interface** (conceptual; Epic 11 decides final surface):
+    - `write_tasks(note_id: Uuid, tasks: &[Task], cfg: &TaskConfig) -> Result<(), StorageError>`
+    - `query_tasks_by_field(field: &str, value: &SettingValue) -> Result<Vec<TaskRef>, QueryError>`
+        - _Behavior_: uses field index when configured, otherwise falls back to scan.
+- **State/Invariants**:
+    - Tasks are derived; storage is a projection. Deleting a note deletes derived tasks.
+
+#### Component: Template Task Formatting (template context)
+
+- **Responsibility**: Provide an ergonomic, config-validated way to generate syntactically correct task checkboxes from templates.
+- **Public Interface**:
+    - `tasks.format_checkbox(text: String, status: &str, metadata: HashMap<String, SettingValue>) -> Result<String, TemplateError>`
+        - _Behavior_: validates status + metadata against current vault config and returns a formatted markdown checkbox line.
+        - _Errors_: invalid enum/format/out-of-bounds; invalid temporal format.
+        - _Notes_: full pseudocode is kept in Appendix A.
 
 ### 3.4 Integration & Data Flow
 
@@ -851,6 +930,27 @@ graph LR
     end
 ```
 
+#### Events/Messages
+
+This design is synchronous and in-process; “events” here refer to conceptual handoffs between components.
+
+- `ParsedList { list: List }`
+- `ParsedCheckboxItem { raw_text, status_symbol, position }`
+- `PromotedTask { task: Task, list_item_task_id: Uuid }`
+- `TaskValidationFailed { field, value, reason }`
+- `IndexedTask { note_id, task_id, indexed_fields }`
+
+#### Dependencies
+
+- Markdown parsing: `pulldown-cmark` (adapter layer)
+    - `Options::ENABLE_TASKLISTS` must be enabled to receive `Event::TaskListMarker(bool)`.
+    - `Parser::into_offset_iter()` yields `(Event, Range<usize>)` source byte ranges that can be used for stable in-note positions.
+    - `pulldown_cmark::utils::TextMergeWithOffset` can merge consecutive text events while preserving ranges.
+- Persistence/query: `redb` (projection storage)
+- Serialization: `rkyv` (persisted-bytes contract applies)
+- Dates/times: `chrono` (format parsing/validation)
+- Logging/metrics: `tracing`
+
 ### 3.5 Core Logic & Algorithms
 
 #### Algorithm: Task Promotion Decision
@@ -867,16 +967,23 @@ impl Task {
         // Check 2: Has inline metadata (if auto-promote enabled)?
         if config.promotion.auto_promote_with_metadata {
             // Check for any [keyword:: pattern
-            for field_def in config.metadata.values() {
-                if text.contains(&format!("[{}::", field_def.keyword)) {
-                    return true;
+            for (_field_name, spec) in &config.fields {
+                if let Some(keyword) = keyword_for_field_spec(spec) {
+                    if text.contains(&format!("[{}::", keyword)) {
+                        return true;
+                    }
                 }
-            }
 
-            // Check for any emoji marker
-            for temporal_def in config.temporal.values() {
-                if text.contains(&temporal_def.emoji) {
-                    return true;
+                match spec {
+                    TaskFieldSpecDef::Created { emoji, .. }
+                    | TaskFieldSpecDef::Due { emoji, .. }
+                    | TaskFieldSpecDef::Reminder { emoji, .. }
+                    | TaskFieldSpecDef::Completed { emoji, .. } => {
+                        if text.contains(emoji.as_ref()) {
+                            return true;
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -916,17 +1023,24 @@ impl Task {
         let mut positions = Vec::new();
 
         // Check for inline fields: [keyword::
-        for field_def in config.metadata.values() {
-            let pattern = format!("[{}::", field_def.keyword);
-            if let Some(pos) = text.find(&pattern) {
-                positions.push(pos);
+        for (_field_name, spec) in &config.fields {
+            if let Some(keyword) = keyword_for_field_spec(spec) {
+                let pattern = format!("[{}::", keyword);
+                if let Some(pos) = text.find(&pattern) {
+                    positions.push(pos);
+                }
             }
-        }
 
-        // Check for temporal emojis
-        for temporal_def in config.temporal.values() {
-            if let Some(pos) = text.find(&temporal_def.emoji) {
-                positions.push(pos);
+            match spec {
+                TaskFieldSpecDef::Created { emoji, .. }
+                | TaskFieldSpecDef::Due { emoji, .. }
+                | TaskFieldSpecDef::Reminder { emoji, .. }
+                | TaskFieldSpecDef::Completed { emoji, .. } => {
+                    if let Some(pos) = text.find(emoji.as_ref()) {
+                        positions.push(pos);
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -946,17 +1060,23 @@ impl Task {
     ) -> Result<TaskMetadata, DomainError> {
         let mut fields = HashMap::new();
 
-        // Parse temporal markers
-        for temporal_def in config.temporal.values() {
-            if let Some(value) = Self::extract_temporal(text, temporal_def)? {
-                fields.insert(temporal_def.field.clone(), value);
+        // Parse configured (non-temporal) metadata fields.
+        //
+        // Temporal fields (created/due/reminder/completed) are first-class on `Task`
+        // and are parsed separately into `Task.*_at`.
+        for (field_name, spec) in &config.fields {
+            if matches!(
+                spec,
+                TaskFieldSpecDef::Created { .. }
+                    | TaskFieldSpecDef::Due { .. }
+                    | TaskFieldSpecDef::Reminder { .. }
+                    | TaskFieldSpecDef::Completed { .. }
+            ) {
+                continue;
             }
-        }
 
-        // Parse custom metadata fields
-        for field_def in config.metadata.values() {
-            if let Some(value) = Self::extract_metadata_field(text, field_def)? {
-                fields.insert(field_def.field.clone(), value);
+            if let Some(value) = Self::extract_field_by_spec(text, spec)? {
+                fields.insert(field_name.clone(), value);
             }
         }
 
@@ -970,12 +1090,17 @@ impl Task {
         Ok(TaskMetadata { fields })
     }
 
-    fn extract_metadata_field(
+    fn extract_field_by_spec(
         text: &str,
-        def: &MetadataFieldDef,
+        def: &TaskFieldSpecDef,
     ) -> Result<Option<SettingValue>, DomainError> {
+        let keyword = keyword_for_field_spec(def).unwrap_or("");
+        if keyword.is_empty() {
+            return Ok(None);
+        }
+
         // Pattern: [keyword:: value]
-        let pattern = format!("[{}::", def.keyword);
+        let pattern = format!("[{}::", keyword);
         let Some(start) = text.find(&pattern) else {
             return Ok(None);
         };
@@ -991,54 +1116,48 @@ impl Task {
         let raw_value = text[value_start..value_end].trim();
 
         // Parse according to type
-        let value = match &def.value_type {
-            MetadataType::String => {
+        let value = match def {
+            TaskFieldSpecDef::String { .. } | TaskFieldSpecDef::Time { .. } => {
                 SettingValue::String(raw_value.to_owned())
             }
-            MetadataType::Integer => {
-                let num = raw_value.parse::<i64>()
-                    .map_err(|_| DomainError::ValidationFailed(
-                        format!("Invalid integer: {}", raw_value)
-                    ))?;
+            TaskFieldSpecDef::Integer { .. } => {
+                let num = raw_value.parse::<i64>().map_err(|_| {
+                    DomainError::ValidationFailed(format!("Invalid integer: {}", raw_value))
+                })?;
                 SettingValue::Number(num as f64)
             }
-            MetadataType::Float => {
-                let num = raw_value.parse::<f64>()
-                    .map_err(|_| DomainError::ValidationFailed(
-                        format!("Invalid float: {}", raw_value)
-                    ))?;
+            TaskFieldSpecDef::Float { .. } => {
+                let num = raw_value.parse::<f64>().map_err(|_| {
+                    DomainError::ValidationFailed(format!("Invalid float: {}", raw_value))
+                })?;
                 SettingValue::Number(num)
             }
-            MetadataType::Boolean => {
-                let b = raw_value.parse::<bool>()
-                    .map_err(|_| DomainError::ValidationFailed(
-                        format!("Invalid boolean: {}", raw_value)
-                    ))?;
+            TaskFieldSpecDef::Boolean { .. } => {
+                let b = raw_value.parse::<bool>().map_err(|_| {
+                    DomainError::ValidationFailed(format!("Invalid boolean: {}", raw_value))
+                })?;
                 SettingValue::Boolean(b)
             }
-            MetadataType::Enum { values } => {
+            TaskFieldSpecDef::Enum { values, .. } => {
                 if !values.contains(&raw_value.to_owned()) {
-                    return Err(DomainError::ValidationFailed(
-                        format!("Invalid enum value: {}. Allowed: {:?}", raw_value, values)
-                    ));
+                    return Err(DomainError::ValidationFailed(format!(
+                        "Invalid enum value: {}. Allowed: {:?}",
+                        raw_value, values
+                    )));
                 }
                 SettingValue::String(raw_value.to_owned())
             }
-            MetadataType::Time => {
-                // Validate HH:MM format
-                if !raw_value.matches(':').count() == 1 {
-                    return Err(DomainError::ValidationFailed(
-                        format!("Invalid time format: {}", raw_value)
-                    ));
-                }
-                SettingValue::String(raw_value.to_owned())
+            TaskFieldSpecDef::Created { .. }
+            | TaskFieldSpecDef::Due { .. }
+            | TaskFieldSpecDef::Reminder { .. }
+            | TaskFieldSpecDef::Completed { .. } => {
+                // Temporal is first-class on Task; not stored in TaskMetadata.
+                return Ok(None);
             }
         };
 
-        // Validate bounds
-        if let Some(validation) = &def.validation {
-            Self::validate_value(&value, validation)?;
-        }
+        // Spec-level note: validation (bounds/pattern/unit) is encoded per variant.
+        // This pseudocode omits full validation for brevity.
 
         Ok(Some(value))
     }
@@ -1070,275 +1189,11 @@ impl Task {
 
 #### Algorithm: Template Task Formatting (Config-Validated)
 
-```rust
-impl TaskTemplateContext {
-    /// Format task checkbox with config validation.
-    ///
-    /// Used in templates to generate syntactically correct task checkboxes
-    /// with guaranteed-valid metadata based on current vault config.
-    ///
-    /// Accepts standard template variables from any source:
-    /// - Static values: `text="My task"`
-    /// - Prompts: `text=prompt("Description?")`
-    /// - Suggesters: `metadata={"project": suggester("Pick", projects)}`
-    /// - Query results: `metadata={"priority": task.metadata.priority}`
-    fn format_checkbox(
-        &self,
-        text: String,
-        status: &str,
-        metadata: HashMap<String, SettingValue>,
-    ) -> Result<String, TemplateError> {
-        let config = self.vault_config.task();
-
-        // 1. Validate status symbol
-        let status_enum = CheckboxStatus::from_symbol(status, &config.status)
-            .ok_or_else(|| TemplateError::InvalidStatus {
-                symbol: status.to_owned(),
-                allowed: config.status.all_symbols(),
-            })?;
-
-        // 2. Validate all metadata fields against config
-        let mut validated_fields = HashMap::new();
-        let mut temporal_markers = Vec::new();
-
-        for (key, value) in metadata {
-            // Check if field is temporal marker
-            if let Some(temporal_def) = config.temporal.get_by_field(&key) {
-                // Validate temporal format
-                let formatted = validate_temporal_value(
-                    &value,
-                    temporal_def.value_type,
-                    &temporal_def.format,
-                )?;
-                temporal_markers.push((temporal_def.emoji.clone(), formatted));
-                validated_fields.insert(key, value);
-                continue;
-            }
-
-            // Check if field is custom metadata
-            if let Some(field_def) = config.metadata.get(&key) {
-                // Validate type and constraints
-                validate_metadata_field(&value, field_def)?;
-                validated_fields.insert(key, value);
-            } else {
-                // Unknown field - store as string (forward compat)
-                tracing::warn!(
-                    field = %key,
-                    "Template referenced unknown metadata field"
-                );
-                validated_fields.insert(key, value);
-            }
-        }
-
-        // 3. Build formatted checkbox
-        let mut parts = vec![];
-
-        // Checkbox symbol
-        parts.push(format!("- [{}]", status));
-
-        // Promotion tag (if configured)
-        if !config.promotion.tags.is_empty() {
-            parts.push(config.promotion.tags[0].clone());
-        }
-
-        // Task text
-        parts.push(text);
-
-        // Inline metadata fields (non-temporal)
-        for (key, value) in &validated_fields {
-            if !config.temporal.contains_field(key) {
-                let keyword = config.metadata.get(key)
-                    .map(|def| def.keyword.as_str())
-                    .unwrap_or(key.as_str());
-                parts.push(format!("[{}:: {}]", keyword, format_setting_value(value)));
-            }
-        }
-
-        // Temporal markers (emojis + dates at end)
-        for (emoji, date_str) in temporal_markers {
-            parts.push(format!("{} {}", emoji, date_str));
-        }
-
-        Ok(parts.join(" "))
-    }
-}
-
-fn validate_temporal_value(
-    value: &SettingValue,
-    temporal_type: TemporalType,
-    format: &str,
-) -> Result<String, TemplateError> {
-    match (temporal_type, value) {
-        (TemporalType::Date, SettingValue::String(s)) => {
-            // Parse date string with format
-            let parsed = chrono::NaiveDate::parse_from_str(s, format)
-                .map_err(|_| TemplateError::InvalidDateFormat {
-                    value: s.clone(),
-                    expected_format: format.to_owned(),
-                })?;
-            Ok(parsed.format(format).to_string())
-        }
-        (TemporalType::DateTime, SettingValue::String(s)) => {
-            // Parse datetime string with format
-            let parsed = chrono::NaiveDateTime::parse_from_str(s, format)
-                .map_err(|_| TemplateError::InvalidDateTimeFormat {
-                    value: s.clone(),
-                    expected_format: format.to_owned(),
-                })?;
-            Ok(parsed.format(format).to_string())
-        }
-        _ => Err(TemplateError::TypeMismatch {
-            field: "temporal".to_owned(),
-            expected: format!("string matching {}", format),
-            actual: format!("{:?}", value),
-        }),
-    }
-}
-
-fn validate_metadata_field(
-    value: &SettingValue,
-    field_def: &MetadataFieldDef,
-) -> Result<(), TemplateError> {
-    match field_def.value_type {
-        MetadataType::Enum => {
-            if let SettingValue::String(s) = value {
-                if !field_def.allowed_values.as_ref()
-                    .map(|vals| vals.contains(s))
-                    .unwrap_or(true)
-                {
-                    return Err(TemplateError::InvalidEnumValue {
-                        field: field_def.field.clone(),
-                        value: s.clone(),
-                        allowed: field_def.allowed_values.clone().unwrap_or_default(),
-                    });
-                }
-            } else {
-                return Err(TemplateError::TypeMismatch {
-                    field: field_def.field.clone(),
-                    expected: "string (enum)".to_owned(),
-                    actual: format!("{:?}", value),
-                });
-            }
-        }
-        MetadataType::Integer | MetadataType::Float => {
-            if let SettingValue::Number(n) = value {
-                if let Some(validation) = &field_def.validation {
-                    if let Some(min) = validation.min {
-                        if *n < min {
-                            return Err(TemplateError::OutOfBounds {
-                                field: field_def.field.clone(),
-                                value: *n,
-                                min: Some(min),
-                                max: validation.max,
-                            });
-                        }
-                    }
-                    if let Some(max) = validation.max {
-                        if *n > max {
-                            return Err(TemplateError::OutOfBounds {
-                                field: field_def.field.clone(),
-                                value: *n,
-                                min: validation.min,
-                                max: Some(max),
-                            });
-                        }
-                    }
-                }
-            } else {
-                return Err(TemplateError::TypeMismatch {
-                    field: field_def.field.clone(),
-                    expected: "number".to_owned(),
-                    actual: format!("{:?}", value),
-                });
-            }
-        }
-        _ => { /* Other types: basic type check only */ }
-    }
-    Ok(())
-}
-```
+The full formatting + validation pseudocode is in Appendix A to keep Section 3.5 focused on the note-domain logic.
 
 #### Parser Integration Flow
 
-```rust
-// Pseudocode for parser (adapters layer)
-
-impl MarkdownParser {
-    fn parse_note(&self, markdown: &str, config: &TaskConfig) -> Note {
-        let mut note = Note::new(uuid, path)?;
-        let mut current_list: Option<List> = None;
-        let mut list_text_buffer = String::new();
-
-        for event in Parser::new_ext(markdown, options) {
-            match event {
-                Event::Start(Tag::List(start_num)) => {
-                    current_list = Some(List::new(
-                        if start_num.is_some() {
-                            ListType::Ordered { start: start_num.unwrap() }
-                        } else {
-                            ListType::Unordered
-                        },
-                        current_position,
-                    ));
-                }
-
-                Event::TaskListMarker(checked) => {
-                    // Accumulate text for this item
-                    let item_text = consume_until_end_item(&mut parser);
-
-                    let status = if checked {
-                        CheckboxStatus::from_symbol("x", config)
-                    } else {
-                        CheckboxStatus::from_symbol(" ", config)
-                    };
-
-                    // Check promotion
-                    let (list_item, task) = if Task::should_promote(&item_text, config) {
-                        let task = Task::from_checkbox(
-                            item_text.clone(),
-                            status,
-                            current_position,
-                            config,
-                        )?;
-
-                        let item = ListItem::Checkbox {
-                            text: item_text.into(),
-                            status,
-                            position: current_position,
-                            task_id: Some(task.id()),
-                        };
-
-                        (item, Some(task))
-                    } else {
-                        let item = ListItem::Checkbox {
-                            text: item_text.into(),
-                            status,
-                            position: current_position,
-                            task_id: None,
-                        };
-                        (item, None)
-                    };
-
-                    current_list.as_mut().unwrap().add_item(list_item);
-                    if let Some(t) = task {
-                        note.add_task(t);
-                    }
-                }
-
-                Event::End(Tag::List(_)) => {
-                    if let Some(list) = current_list.take() {
-                        note.add_list(list);
-                    }
-                }
-
-                _ => {}
-            }
-        }
-
-        note
-    }
-}
-```
+The parser integration pseudocode is in Appendix B.
 
 ## 4. Alternatives & Decisions (The "Divergence")
 
@@ -1397,7 +1252,7 @@ impl MarkdownParser {
 
 **Rationale**:
 - **Flexibility**: Each vault defines its own symbol set
-- **Semantic Stability**: Queries use enum values (`CheckboxStatus::Complete`), not symbols
+- **Semantic Stability**: Queries/indexing use `StatusName` (semantic), not the raw symbol
 - **Backward Compat**: Default symbols match existing behavior
 
 **Trade-off**: Config must be loaded before parsing. Acceptable - config already needed for metadata schema.
@@ -1551,7 +1406,7 @@ tracing::warn!(
 
 // Query performance
 #[tracing::instrument(level = "debug")]
-async fn find_tasks_by_field(field: &str, value: &SettingValue) -> Result<Vec<Task>> {
+fn find_tasks_by_field(field: &str, value: &SettingValue) -> Result<Vec<Task>> {
     tracing::debug!(
         field = %field,
         cache_hit = is_indexed,
@@ -1716,15 +1571,364 @@ async fn find_tasks_by_field(field: &str, value: &SettingValue) -> Result<Vec<Ta
 
 ## 8. References
 
-- (none yet)
+- pulldown-cmark: https://docs.rs/pulldown-cmark/
+- redb: https://docs.rs/redb/
+- rkyv: https://docs.rs/rkyv/
+- tracing: https://docs.rs/tracing/
+- chrono: https://docs.rs/chrono/
 
-## Appendix A: Config Example (Full)
+## Appendix A: Template Task Formatting (Config-Validated)
 
-See Section 2.1 for complete `lithos.toml` example.
+```rust
+impl TaskTemplateContext {
+    /// Format task checkbox with config validation.
+    ///
+    /// Used in templates to generate syntactically correct task checkboxes
+    /// with guaranteed-valid metadata based on current vault config.
+    ///
+    /// Accepts standard template variables from any source:
+    /// - Static values: `text="My task"`
+    /// - Prompts: `text=prompt("Description?")`
+    /// - Suggesters: `metadata={"project": suggester("Pick", projects)}`
+    /// - Query results: `metadata={"priority": task.metadata.priority}`
+    fn format_checkbox(
+        &self,
+        text: String,
+        status: &str,
+        metadata: HashMap<String, SettingValue>,
+    ) -> Result<String, TemplateError> {
+        let config = self.vault_config.task();
 
-## Appendix B: Parser Event Flow
+        // 1. Validate status symbol
+        let symbol = status.chars().next().ok_or(TemplateError::InvalidStatus {
+            symbol: status.to_owned(),
+            allowed: config
+                .status
+                .by_symbol
+                .keys()
+                .map(|s| s.0.to_string())
+                .collect(),
+        })?;
 
-See Section 3.3 "Parser Integration Flow" for pseudocode.
+        if config.status.name_for_symbol(StatusSymbol(symbol)).is_none() {
+            return Err(TemplateError::InvalidStatus {
+                symbol: status.to_owned(),
+                allowed: config
+                    .status
+                    .by_symbol
+                    .keys()
+                    .map(|s| s.0.to_string())
+                    .collect(),
+            });
+        }
+
+        // 2. Validate all metadata fields against config
+        let mut validated_fields = HashMap::new();
+        let mut temporal_markers = Vec::new();
+
+        for (key, value) in metadata {
+            match config.fields.get(key.as_str()) {
+                Some(TaskFieldSpecDef::Created { emoji, format, .. })
+                | Some(TaskFieldSpecDef::Due { emoji, format, .. })
+                | Some(TaskFieldSpecDef::Reminder { emoji, format, .. })
+                | Some(TaskFieldSpecDef::Completed { emoji, format, .. }) => {
+                    let formatted = validate_temporal_value(&value, format)?;
+                    temporal_markers.push((emoji.clone(), formatted));
+                    validated_fields.insert(key, value);
+                }
+                Some(field_def) => {
+                    validate_metadata_field(&value, field_def)?;
+                    validated_fields.insert(key, value);
+                }
+                None => {
+                    // Unknown field - store as string (forward compat)
+                    tracing::warn!(field = %key, "Template referenced unknown metadata field");
+                    validated_fields.insert(key, value);
+                }
+            }
+        }
+
+        // 3. Build formatted checkbox
+        let mut parts = vec![];
+        parts.push(format!("- [{}]", status));
+        if !config.promotion.tags.is_empty() {
+            parts.push(config.promotion.tags[0].to_string());
+        }
+        parts.push(text);
+
+        // Inline metadata fields (non-temporal)
+        for (key, value) in &validated_fields {
+            match config.fields.get(key.as_str()) {
+                Some(TaskFieldSpecDef::Created { .. }
+                | TaskFieldSpecDef::Due { .. }
+                | TaskFieldSpecDef::Reminder { .. }
+                | TaskFieldSpecDef::Completed { .. }) => {
+                    // rendered as emoji marker
+                }
+                Some(spec) => {
+                    let keyword = keyword_for_field_spec(spec).unwrap_or(key.as_str());
+                    parts.push(format!("[{}:: {}]", keyword, format_setting_value(value)));
+                }
+                None => {
+                    parts.push(format!("[{}:: {}]", key, format_setting_value(value)));
+                }
+            }
+        }
+
+        // Temporal markers at end
+        for (emoji, date_str) in temporal_markers {
+            parts.push(format!("{} {}", emoji, date_str));
+        }
+
+        Ok(parts.join(" "))
+    }
+}
+
+fn validate_temporal_value(
+    value: &SettingValue,
+    format: &str,
+) -> Result<String, TemplateError> {
+    let SettingValue::String(s) = value else {
+        return Err(TemplateError::TypeMismatch {
+            field: "temporal".to_owned(),
+            expected: format!("string matching {}", format),
+            actual: format!("{:?}", value),
+        });
+    };
+
+    // Spec-level contract: formats are chrono-compatible, and parsing rules
+    // are defined by config per field.
+    if chrono::NaiveDateTime::parse_from_str(s, format).is_ok()
+        || chrono::NaiveDate::parse_from_str(s, format).is_ok()
+    {
+        return Ok(s.clone());
+    }
+
+    Err(TemplateError::InvalidDateTimeFormat {
+        value: s.clone(),
+        expected_format: format.to_owned(),
+    })
+}
+
+fn validate_metadata_field(
+    value: &SettingValue,
+    field_def: &TaskFieldSpecDef,
+) -> Result<(), TemplateError> {
+    match field_def {
+        TaskFieldSpecDef::Enum { .. } => {
+            if !matches!(value, SettingValue::String(_)) {
+                return Err(TemplateError::TypeMismatch {
+                    field: "enum".to_owned(),
+                    expected: "string (enum)".to_owned(),
+                    actual: format!("{:?}", value),
+                });
+            }
+        }
+        TaskFieldSpecDef::Integer { .. } | TaskFieldSpecDef::Float { .. } => {
+            if !matches!(value, SettingValue::Number(_)) {
+                return Err(TemplateError::TypeMismatch {
+                    field: "number".to_owned(),
+                    expected: "number".to_owned(),
+                    actual: format!("{:?}", value),
+                });
+            }
+        }
+        TaskFieldSpecDef::Boolean { .. } => {
+            if !matches!(value, SettingValue::Boolean(_)) {
+                return Err(TemplateError::TypeMismatch {
+                    field: "boolean".to_owned(),
+                    expected: "boolean".to_owned(),
+                    actual: format!("{:?}", value),
+                });
+            }
+        }
+        TaskFieldSpecDef::String { .. } | TaskFieldSpecDef::Time { .. } => {
+            if !matches!(value, SettingValue::String(_)) {
+                return Err(TemplateError::TypeMismatch {
+                    field: "string".to_owned(),
+                    expected: "string".to_owned(),
+                    actual: format!("{:?}", value),
+                });
+            }
+        }
+        TaskFieldSpecDef::Created { .. }
+        | TaskFieldSpecDef::Due { .. }
+        | TaskFieldSpecDef::Reminder { .. }
+        | TaskFieldSpecDef::Completed { .. } => {
+            // Temporal fields are validated via validate_temporal_value()
+        }
+    };
+    Ok(())
+}
+```
+
+## Appendix B: Parser Integration Flow
+
+```rust
+// Pseudocode for parser (adapters layer)
+
+impl MarkdownParser {
+    fn parse_note(&self, markdown: &str, config: &TaskConfig) -> Result<Note, ParseError> {
+        let mut note = Note::new(uuid, path)?;
+
+        // Task list markers are *opt-in* in pulldown-cmark.
+        // Even with ENABLE_TASKLISTS, Event::TaskListMarker(bool) only supports [ ] and [x].
+        // Custom status symbols (e.g. [>], [-], [?], [d]) must be parsed by the adapter.
+        let mut options = Options::empty();
+        options.insert(Options::ENABLE_TASKLISTS);
+
+        let iter = Parser::new_ext(markdown, options).into_offset_iter();
+        let iter = pulldown_cmark::utils::TextMergeWithOffset::new(iter);
+
+        let mut current_list: Option<List> = None;
+        let mut current_item: Option<ItemBuilder> = None;
+
+        for (event, range) in iter {
+            match event {
+                Event::Start(Tag::List(start_num)) => {
+                    current_list = Some(List::new(
+                        if let Some(start) = start_num {
+                            ListType::Ordered { start }
+                        } else {
+                            ListType::Unordered
+                        },
+                        range.start,
+                    ));
+                }
+
+                Event::Start(Tag::Item) => {
+                    current_item = Some(ItemBuilder {
+                        position: range.start,
+                        checked: None,
+                        text: String::new(),
+                    });
+                }
+
+                Event::TaskListMarker(checked) => {
+                    if let Some(item) = current_item.as_mut() {
+                        item.checked = Some(checked);
+                    }
+                }
+
+                Event::Text(t) | Event::Code(t) => {
+                    if let Some(item) = current_item.as_mut() {
+                        item.text.push_str(&t);
+                    }
+                }
+
+                Event::SoftBreak | Event::HardBreak => {
+                    if let Some(item) = current_item.as_mut() {
+                        item.text.push('\n');
+                    }
+                }
+
+                Event::End(TagEnd::Item) => {
+                    let Some(item) = current_item.take() else {
+                        continue;
+                    };
+
+                    // Adapter determines the status symbol:
+                    // - If pulldown-cmark emitted TaskListMarker, map checked/unchecked to config symbols.
+                    // - Otherwise, attempt to detect a configured custom symbol from the item text prefix.
+                    let status_symbol = match item.checked {
+                        Some(true) => Some('x'),
+                        Some(false) => Some(' '),
+                        None => detect_custom_status_symbol(&item.text, config),
+                    };
+
+                    if let Some(symbol) = status_symbol {
+                        let Some(status_name) = config
+                            .status
+                            .name_for_symbol(StatusSymbol(symbol))
+                            .cloned()
+                        else {
+                            // Unknown status symbol: treat as non-checkbox or error depending on strictness.
+                            continue;
+                        };
+
+                        let normalized_text = strip_checkbox_prefix(&item.text, symbol);
+
+                        let (list_item, promoted_task) = if Task::should_promote(&normalized_text, config) {
+                            let task = Task::from_checkbox(normalized_text.as_str(), status_name.clone(), item.position, config)?;
+                            (
+                                ListItem::Checkbox {
+                                    text: normalized_text.into(),
+                                    status: status_name,
+                                    position: item.position,
+                                    task_id: Some(task.id()),
+                                },
+                                Some(task),
+                            )
+                        } else {
+                            (
+                                ListItem::Checkbox {
+                                    text: normalized_text.into(),
+                                    status: status_name,
+                                    position: item.position,
+                                    task_id: None,
+                                },
+                                None,
+                            )
+                        };
+
+                        if let Some(list) = current_list.as_mut() {
+                            list.add_item(list_item);
+                        }
+                        if let Some(task) = promoted_task {
+                            note.add_task(task);
+                        }
+                    } else {
+                        // Not a checkbox item → plain list item.
+                        if let Some(list) = current_list.as_mut() {
+                            list.add_item(ListItem::Plain {
+                                text: item.text.into(),
+                                position: item.position,
+                            });
+                        }
+                    }
+                }
+
+                Event::End(TagEnd::List(_)) => {
+                    if let Some(list) = current_list.take() {
+                        note.add_list(list);
+                    }
+                }
+
+                _ => {}
+            }
+        }
+
+        Ok(note)
+    }
+}
+
+struct ItemBuilder {
+    position: usize,
+    checked: Option<bool>,
+    text: String,
+}
+
+fn detect_custom_status_symbol(text: &str, config: &TaskConfig) -> Option<char> {
+    // Pseudocode: detect "[<symbol>]" prefix based on configured symbols.
+    // (pulldown-cmark only recognizes [ ] and [x] as task list markers.)
+    for symbol in config.status.by_symbol.keys() {
+        let needle = format!("[{}]", symbol.0);
+        if text.trim_start().starts_with(&needle) {
+            return Some(symbol.0);
+        }
+    }
+    None
+}
+
+fn strip_checkbox_prefix(text: &str, symbol: char) -> String {
+    // Pseudocode: remove leading "[<symbol>]" from the human-visible text.
+    let needle = format!("[{}]", symbol);
+    text.trim_start()
+        .strip_prefix(&needle)
+        .map(|rest| rest.trim_start().to_owned())
+        .unwrap_or_else(|| text.to_owned())
+}
+```
 
 ## Appendix C: Redb Schema DDL
 
@@ -1738,27 +1942,31 @@ fn create_task_tables(db: &Database, config: &TaskConfig) -> Result<()> {
     let _ = txn.open_table::<(Uuid, u64), ArchivedTask>("tasks")?;
 
     // Status index (always created)
-    let _ = txn.open_table::<u8, Vec<(Uuid, u64)>>("tasks_by_status")?;
+    let _ = txn.open_table::<String, Vec<(Uuid, u64)>>("tasks_by_status")?;
 
     // Dynamic indexes based on config
     for field_name in &config.indexed_fields {
         let table_name = format!("tasks_by_{}", field_name);
 
         // Field type determines index key type
-        let field_def = config.metadata.get(field_name)
-            .or_else(|| config.temporal.get(field_name));
+        let field_def = config.fields.get(field_name.as_ref());
 
-        match field_def.map(|d| &d.value_type) {
-            Some(MetadataType::Integer | MetadataType::Float) => {
+        match field_def {
+            Some(TaskFieldSpecDef::Integer { .. } | TaskFieldSpecDef::Float { .. }) => {
                 let _ = txn.open_table::<i64, Vec<(Uuid, u64)>>(&table_name)?;
             }
-            Some(TemporalType::Date | TemporalType::DateTime) => {
+            Some(
+                TaskFieldSpecDef::Created { .. }
+                | TaskFieldSpecDef::Due { .. }
+                | TaskFieldSpecDef::Reminder { .. }
+                | TaskFieldSpecDef::Completed { .. },
+            ) => {
                 let _ = txn.open_table::<i64, Vec<(Uuid, u64)>>(&table_name)?; // timestamp
             }
             _ => {
                 let _ = txn.open_table::<String, Vec<(Uuid, u64)>>(&table_name)?;
             }
-        }
+        };
     }
 
     txn.commit()?;
@@ -1774,10 +1982,17 @@ fn create_task_tables(db: &Database, config: &TaskConfig) -> Result<()> {
 
 ---
 
+## Appendix E: Status & Next Steps
+
 **Status**: Draft (awaiting review)
+
 **Next Steps**:
 1. Review with architect (validate hexagonal boundaries)
 2. Performance engineer review (confirm <100ms parse target feasible)
 3. Epic 11/12 team review (confirm API contracts)
 4. Create implementation stories
 5. Update status to "Approved" after consensus
+
+## Appendix F: Config Example (Full)
+
+See Section 2.1 for complete `lithos.toml` example.
