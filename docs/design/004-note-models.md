@@ -365,6 +365,7 @@ Offset semantics:
 - All offsets/ranges in note models MUST be **byte offsets** into the original UTF-8 source.
 - Rationale: pulldown-cmark and most parser infrastructure naturally operate in byte offsets; byte offsets are stable and unambiguous for slicing.
 - If a caller needs line/column, compute it at the edges (CLI diagnostics / LSP) where the full source is available.
+- Use `Parser::into_offset_iter()` to obtain byte ranges; consider `utils::TextMergeWithOffset` to merge adjacent text events while preserving offsets.
 
 Additional type-driven opportunities:
 
@@ -398,6 +399,7 @@ Type-driven improvement:
 - **Persisted**: yes.
 - **Invariants**
   - text is non-empty after trim.
+  - TaskId is persisted as part of `Note.tasks` and does not require file edits.
 
 - **Public Interface (target)**
   - `Task::new(text: &str, status: TaskStatus, position: SourceOffset) -> Result<Task, NoteError>`

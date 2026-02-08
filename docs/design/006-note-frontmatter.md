@@ -26,6 +26,7 @@ Integration points:
 - `Note` aggregate stores `Option<Frontmatter>`.
 - Configuration defines which keys represent special fields (title, aliases, file_class, etc.) via `crate::config::types::Frontmatter` and aggregated config.
 - A domain event `FrontmatterValidated` exists to represent app-layer schema validation having occurred.
+- Frontmatter extraction should use pulldown-cmark metadata blocks (`Tag::MetadataBlock`) with `Options::ENABLE_YAML_STYLE_METADATA_BLOCKS` (and optionally `ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS`) to capture the exact frontmatter slice and byte offsets.
 
 The design must address a few tensions that show up in production usage:
 
@@ -255,11 +256,11 @@ fn convert_toml_to_field_values(
 
 **Location**: Conversion logic lives in `note/frontmatter.rs` (adapter boundary between serde and domain).
 
-Note: for ergonomics, APIs may expose `DateTime<Utc>` (e.g., `FieldValue::as_datetime()`), but the persisted representation remains an integer timestamp to keep the stored format simple and rkyv-friendly.
+Note: the current model stores `DateTime<Utc>` in `FieldValue::Date`. If a future change prefers `i64` timestamps for storage, that is a persisted-format migration and should be expressed as a new variant or a revised `FieldValue` shape.
 
-#### Date/time fidelity vs semantics
+#### Date/time fidelity vs semantics (if we later move to timestamps)
 
-Storing `Date(i64)` is optimized for **semantic operations** (sorting, filtering, comparisons) and rkyv friendliness, but it is not a lossless representation of YAML frontmatter date/time.
+If the model ever changes to store timestamps (e.g., `Date(i64)`), it becomes optimized for **semantic operations** (sorting, filtering, comparisons) and rkyv friendliness, but it is not a lossless representation of YAML frontmatter date/time.
 
 - **Potential fidelity loss**:
   - timezone offset / original zone (`-0500` vs `Z`)
@@ -271,21 +272,20 @@ Storing `Date(i64)` is optimized for **semantic operations** (sorting, filtering
 
 Design stance (best practice):
 
-- Default the domain model to **semantic** representation (`i64`) because it is cheap and predictable.
-- If/when exact round-trip fidelity is required, add an explicit lossless representation (e.g., an additional variant like `DateRaw(Box<str>)` or `DateString(Box<str>)`) and treat it as a persisted-format migration.
+- Keep the current `DateTime<Utc>` model unless profiling demands a timestamp change.
+- If/when a timestamp model is adopted, add an explicit lossless representation (e.g., `DateRaw(Box<str>)`) and treat it as a persisted-format migration.
 
-#### Query semantics for `Date(i64)`
+#### Query semantics for timestamps (if adopted)
 
-Storing a date/time as `i64` (Unix timestamp) generally makes querying _easier_ and more performant, because comparisons become numeric.
+If the model changes to `i64` timestamps, querying becomes numeric:
 
-- **Instant/range queries** (recommended): convert the query inputs into a UTC timestamp range and filter numerically.
-  - Example semantics: “created within [start, end)” becomes `start_ts <= created_ts && created_ts < end_ts`.
-- **Local calendar date queries**: if users specify a local date (e.g., “2026-02-02” in a specific timezone), convert that to a UTC range first (start-of-day to next-start-of-day in that timezone), then apply the numeric range query.
+- **Instant/range queries**: convert inputs into a UTC timestamp range and filter numerically (`start_ts <= created_ts && created_ts < end_ts`).
+- **Local calendar date queries**: convert local dates to UTC ranges before filtering.
 
 Limitations to be aware of:
 
-- If the original YAML value included a timezone offset or used a date-only textual form, that _format_ is not queryable once normalized to an `i64` unless we store additional metadata.
-- If we later decide users must be able to query “date-only values” distinctly from “datetime values”, we will need a richer representation (e.g., separate variants or a tagged wrapper).
+- Original timezone offsets and date-only vs datetime forms are not preserved without extra metadata.
+- Distinguishing date-only values from datetime values requires a richer representation.
 
 ### 3.3 Component & Interface Specifications
 
@@ -345,6 +345,11 @@ Prefer _generic_ borrowed extraction via `try_get_ref` + `FromFieldValueRef` ove
 ### 3.4 Integration & Data Flow
 
 - **Sequence Diagram**:
+
+Parsing guidance (adapter layer):
+
+- Prefer pulldown-cmark `Tag::MetadataBlock` events to detect frontmatter blocks.
+- Use `Parser::into_offset_iter()` to capture the exact byte range of the metadata block, and pass that slice into YAML/TOML parsing.
 
 ```mermaid
 sequenceDiagram

@@ -73,6 +73,7 @@ The Note bounded context currently lacks complete representation of markdown lis
 - Parse **1000 tasks in <100ms** (inline with Epic 10 indexing goals)
 - Use **`&str` slices during parsing** (no eager allocation)
 - **`FieldValue` uses `String`** (simplicity over premature optimization)
+ - Use pulldown-cmark offsets (`Parser::into_offset_iter`) for source byte positions
 
 **Zero-Copy Constraints**:
 
@@ -85,6 +86,7 @@ The Note bounded context currently lacks complete representation of markdown lis
 - Invalid metadata → parse error (fail-fast)
 - Unconfigured fields → stored as `FieldValue::String` (forward compatibility)
 - List items without promotion → List only (no Task entity)
+ - TaskId is persisted in `Note.tasks` and does not require writing back to the note file
 
 ## 2. Guide-Level Explanation (The "What")
 
@@ -104,14 +106,14 @@ let list = List::new(ListType::Unordered);
 // Add plain list item
 list.add_item(ListItem::Plain {
     text: "Buy milk".into(),
-    position: 42,
+    position: SourceByteOffset::try_from(42_u32)?,
 });
 
 // Add checkbox item (may be promoted to Task later)
 list.add_item(ListItem::Checkbox {
     text: "#task Review PR [priority:: 1]".into(),
     status: StatusSymbol(' '),
-    position: 78,
+    position: SourceByteOffset::try_from(78_u32)?,
     task_id: None, // Set if promoted
 });
 ```
@@ -131,7 +133,7 @@ assert!(should_promote); // Has #task tag
 let task = Task::from_checkbox(
     checkbox_text,
     StatusSymbol(' '),
-    78, // source position
+    SourceByteOffset::try_from(78_u32)?, // source position
     &task_config,
 )?;
 
@@ -266,7 +268,7 @@ graph TB
         TaskConfig[TaskConfig]
     end
 
-    Parser -->|emits list events| List
+    Parser -->|Tag::List, Tag::Item, Event::TaskListMarker| List
     Parser -->|checks promotion| Task
     List -.references.-> Task
 
@@ -353,6 +355,7 @@ impl FieldValue {
 | Signature                          | Purpose                     | Layer  | Rules                  | Notes                        |
 | ---------------------------------- | --------------------------- | ------ | ---------------------- | ---------------------------- |
 | `TaskId(Uuid)`                     | Uniquely identifies a task  | Domain | UUID v7 (time-ordered) | Stable across file renames   |
+| `SourceByteOffset(u32)`            | Source position in file     | Domain | byte offset            | See 004-note-models          |
 | `ListType::Ordered { start: u64 }` | Numbered list starting at N | Domain | start >= 1             | Preserves markdown numbering |
 | `ListType::Unordered`              | Bullet list                 | Domain | None                   | -, \*, + markers             |
 
@@ -369,20 +372,20 @@ impl FieldValue {
 #[non_exhaustive]
 pub enum ListItem {
     Plain {
-        text: String,
-        position: usize,
+        text: Box<str>,
+        position: SourceByteOffset,
     },
     Checkbox {
-        text: String,
+        text: Box<str>,
         status: config::task::StatusSymbol,
-        position: usize,
+        position: SourceByteOffset,
         /// Set if this checkbox was promoted to Task
         task_id: Option<TaskId>,
     },
 }
 
 impl ListItem {
-    pub fn position(&self) -> usize {
+    pub fn position(&self) -> SourceByteOffset {
         match self {
             ListItem::Plain { position, .. } => *position,
             ListItem::Checkbox { position, .. } => *position,
@@ -462,7 +465,7 @@ use super::value::FieldValue;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaskMetadata {
-    fields: HashMap<String, FieldValue>,
+    fields: HashMap<Box<str>, FieldValue>,
 }
 
 impl TaskMetadata {
@@ -472,7 +475,7 @@ impl TaskMetadata {
         }
     }
 
-    pub fn insert(&mut self, field: String, value: FieldValue) {
+    pub fn insert(&mut self, field: Box<str>, value: FieldValue) {
         self.fields.insert(field, value);
     }
 
@@ -514,7 +517,7 @@ use super::value::FieldValue;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Task {
     id: TaskId,
-    text: String,
+    text: Box<str>,
     status: config::task::StatusName,
 
     // First-class temporal fields (not in metadata)
@@ -524,8 +527,8 @@ pub struct Task {
     reminder_at: Option<chrono::DateTime<chrono::Utc>>,
     completed_at: Option<chrono::DateTime<chrono::Utc>>,
 
-    position: usize,
-    tags: Vec<String>,
+    position: SourceByteOffset,
+    tags: Vec<Box<str>>,
     metadata: TaskMetadata,
 }
 
@@ -534,7 +537,7 @@ impl Task {
     pub fn from_checkbox(
         raw_text: &str,
         status_symbol: StatusSymbol,
-        position: usize,
+        position: SourceByteOffset,
         config: &TaskConfig,
     ) -> Result<Self, NoteError> {
         // Map symbol to semantic name
@@ -544,10 +547,13 @@ impl Task {
             .clone();
 
         // Extract clean text (before metadata)
-        let text = Self::extract_clean_text(raw_text, config);
+        let text = Self::extract_clean_text(raw_text, config).into_boxed_str();
 
         // Extract tags
-        let tags = Self::extract_tags(raw_text);
+        let tags = Self::extract_tags(raw_text)
+            .into_iter()
+            .map(String::into_boxed_str)
+            .collect();
 
         // Parse temporal fields (first-class)
         let (created_at, due_at, reminder_at, completed_at) =
@@ -632,11 +638,11 @@ impl Task {
         self.completed_at
     }
 
-    pub fn position(&self) -> usize {
+    pub fn position(&self) -> SourceByteOffset {
         self.position
     }
 
-    pub fn tags(&self) -> &[String] {
+    pub fn tags(&self) -> &[Box<str>] {
         &self.tags
     }
 
@@ -683,7 +689,7 @@ impl Task {
 
 - **Responsibility**: Promoted task entity with validated metadata and first-class temporal fields
 - **Public Interface**:
-  - `Task::from_checkbox(raw_text: &str, status_symbol: StatusSymbol, position: usize, config: &TaskConfig) -> Result<Self, NoteError>`
+  - `Task::from_checkbox(raw_text: &str, status_symbol: StatusSymbol, position: SourceByteOffset, config: &TaskConfig) -> Result<Self, NoteError>`
     - _Behavior_: Creates task from checkbox text; validates metadata against config; extracts temporal fields
     - _Errors_: Unknown status symbol, invalid metadata, type mismatch, out of bounds, invalid date format
   - `Task::should_promote(text: &str, config: &TaskConfig) -> bool`
@@ -715,6 +721,12 @@ impl Task {
 
 #### Parsing Flow: Markdown → List + Task
 
+Pulldown-cmark integration notes (adapter layer):
+
+- Enable `Options::ENABLE_TASKLISTS` to receive `Event::TaskListMarker(bool)` for checkbox state.
+- Use `Parser::into_offset_iter()` to capture byte offsets, and `utils::TextMergeWithOffset` to merge adjacent `Event::Text` while preserving ranges.
+- Use `Tag::List` and `Tag::Item` to determine list type and nesting depth (ordered vs unordered, depth tracking).
+
 ```mermaid
 sequenceDiagram
     participant MD as Markdown File
@@ -731,8 +743,10 @@ sequenceDiagram
     Adapter->>Config: should_promote(text)
     Config->>Adapter: true (has #task tag)
     Adapter->>Task: from_checkbox(text, status, pos, config)
-    Task->>Config: parse_field_value("priority", json!(1))
-    Config->>Task: FieldValue::Number(1.0)
+    Task->>Config: field_spec("priority")
+    Config-->>Task: TaskFieldSpec
+    Task->>Task: spec.validate_raw_value(json!(1))
+    Task->>Task: FieldValue::from_json(json!(1))
     Task->>Adapter: Task created
     Adapter->>List: add_item(checkbox with task_id)
     Adapter->>Note: add_list(list)
@@ -755,9 +769,10 @@ sequenceDiagram
     Parser-->>Task: [("priority", "1"), ("project", "lithos")]
 
     loop For each field
-        Task->>Config: parse_field_value("priority", json!(1))
-        Config->>Config: Validate against spec
-        Config-->>Task: FieldValue::Number(1.0)
+        Task->>Config: field_spec("priority")
+        Config-->>Task: TaskFieldSpec
+        Task->>Task: spec.validate_raw_value(json!(1))
+        Task->>Task: FieldValue::from_json(json!(1))
         Task->>Meta: insert("priority", value)
     end
 
@@ -909,14 +924,20 @@ impl Task {
             // Convert to JSON for validation
             let json_value = serde_json::Value::String(raw_value.to_owned());
 
-            // Config validates and converts to FieldValue
-            let field_value = config.parse_field_value(keyword, &json_value)
+            let spec = config.field_spec(keyword)
+                .ok_or_else(|| NoteError::InvalidMetadata {
+                    field: keyword.to_owned(),
+                    source: ConfigError::UnknownField(keyword.to_owned()),
+                })?;
+
+            spec.validate_raw_value(&json_value)
                 .map_err(|e| NoteError::InvalidMetadata {
                     field: keyword.to_owned(),
                     source: e,
                 })?;
 
-            metadata.insert(keyword.to_owned(), field_value);
+            let field_value = FieldValue::from_json(&json_value);
+            metadata.insert(keyword.to_owned().into_boxed_str(), field_value);
         }
 
         Ok(metadata)
