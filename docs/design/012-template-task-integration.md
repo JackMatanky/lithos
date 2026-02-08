@@ -27,8 +27,8 @@ The template system (Epic 12) needs to expose tasks for template rendering and p
 - **User interaction**: Prompts/suggesters populate task metadata
 
 **Related Decisions**:
-- [006a: Task Configuration Schema](./006a-config-task-schema.md)
-- [006b: Note List and Task Entities](./006b-note-list-task.md)
+- [003: Task Configuration Schema](./003-config-task.md)
+- [007: Note List and Task Entities](./007-note-list-task.md)
 - [Epic 12: Template System](../../_bmad-output/planning-artifacts/epics/) (TBD)
 
 ### 1.2 Goals & Non-Goals
@@ -803,8 +803,8 @@ fn render_template(
 
 ## 8. References
 
-- [006a: Task Configuration Schema](./006a-config-task-schema.md)
-- [006b: Note List and Task Entities](./006b-note-list-task.md)
+- [003: Task Configuration Schema](./003-config-task.md)
+- [007: Note List and Task Entities](./007-note-list-task.md)
 - [MiniJinja Documentation](https://docs.rs/minijinja/latest/minijinja/)
 - [Jinja2 Template Designer Documentation](https://jinja.palletsprojects.com/en/3.1.x/templates/)
 - [Epic 12: Template System](../../_bmad-output/planning-artifacts/epics/) (TBD)

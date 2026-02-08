@@ -17,7 +17,7 @@ The note bounded context supports YAML frontmatter (Obsidian-compatible) as a dy
 
 This component should provide:
 
-- `FieldValue`: a dynamically-typed value enum (defined in `note/value.rs`, shared with task metadata - see [003-note-models.md](003-note-models.md#321-fieldvalue-shared-primitive)) with inspection helpers (`is_*`, `as_*`).
+- `FieldValue`: a dynamically-typed value enum (defined in `note/value.rs`, shared with task metadata - see [004-note-models.md](004-note-models.md#321-fieldvalue-shared-primitive)) with inspection helpers (`is_*`, `as_*`).
 - `Frontmatter`: a `HashMap<String, FieldValue>` wrapper with convenience accessors (`get`, strict typed getters like `try_get`/`try_get_ref`, and configured-key helpers like `title`, `file_class`, `aliases`).
 - `FromFieldValue` / `FromFieldValueRef`: local conversion traits used by strict accessors (kept local to avoid orphan rules).
 
@@ -177,7 +177,7 @@ This module remains sync, deterministic, and I/O-free.
 
 #### FieldValue (Shared Primitive)
 
-`FieldValue` is defined in `note/value.rs` and shared between frontmatter and task metadata (see [003-note-models.md](003-note-models.md#321-fieldvalue-shared-primitive)).
+`FieldValue` is defined in `note/value.rs` and shared between frontmatter and task metadata (see [004-note-models.md](004-note-models.md#321-fieldvalue-shared-primitive)).
 
 **Shape**:
 ```rust
@@ -194,7 +194,7 @@ pub enum FieldValue {
 
 **Used by**:
 - `Frontmatter` (YAML/TOML parsed values) - this spec
-- `TaskMetadata` (inline `[key:: value]` fields) - see [006b-note-list-task.md](006b-note-list-task.md)
+- `TaskMetadata` (inline `[key:: value]` fields) - see [007-note-list-task.md](007-note-list-task.md)
 
 Note: Any changes to `FieldValue` variant set are a persisted-format concern due to `serde` + `rkyv`.
 

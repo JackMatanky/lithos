@@ -1165,7 +1165,7 @@ fn load_task_config(raw: RawTaskConfig) -> Result<TaskConfig, ConfigError> {
 
 **Phase 3: Note Context Integration**
 - Note context imports `TaskConfig`
-- Use for task parsing (see 006b spec)
+- Use for task parsing (see 007 spec)
 
 **Backward Compatibility**:
 - Old vaults without `[task]` section use defaults

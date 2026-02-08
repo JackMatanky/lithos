@@ -12,7 +12,7 @@ tags: [config, domain-models, cqrs, rkyv, invariants]
 Related specs:
 
 - [docs/design/002-config-cqrs.md](002-config-cqrs.md) (how config models are persisted and retrieved)
-- [docs/design/006a-config-task-schema.md](006a-config-task-schema.md) (task configuration schema; config context exports TaskConfig as cross-cutting infrastructure)
+- [docs/design/003-config-task.md](003-config-task.md) (task configuration schema; config context exports TaskConfig as cross-cutting infrastructure)
 
 ## 1. Problem Space (The "Why")
 
@@ -47,7 +47,7 @@ Terminology note:
 
 Clarification:
 
-- `SettingValue` is **owned by the config context** and used for task metadata configuration (see [006a-config-task-schema.md](006a-config-task-schema.md)).
+- `SettingValue` is **owned by the config context** and used for task metadata configuration (see [003-config-task.md](003-config-task.md)).
 - Other contexts define their own value types for domain-specific needs (e.g., note context's `FieldValue` for frontmatter and task metadata).
 
 Serialization boundary note (serde vs rkyv):
@@ -183,7 +183,6 @@ Config values use newtypes to enforce invariants at construction time:
 | Type           | Backing   | Purpose                  | Rules                       |
 | -------------- | --------- | ------------------------ | --------------------------- |
 | `LogLevel`     | enum      | Logging verbosity        | Error/Warn/Info/Debug/Trace |
-| `NotesDir`     | `PathBuf` | Notes directory path     | Vault-relative, non-empty   |
 | `SchemasDir`   | `PathBuf` | Schemas directory path   | Vault-relative, non-empty   |
 | `TemplatesDir` | `PathBuf` | Templates directory path | Vault-relative, non-empty   |
 

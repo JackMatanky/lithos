@@ -4,13 +4,13 @@
 
 These specs are ready for immediate implementation with no changes needed:
 
-1. **006a-config-task.md** - Task configuration (Config context)
+1. **003-config-task.md** - Task configuration (Config context)
    - ✅ Type inference via `#[serde(untagged)]`
    - ✅ First-class date fields with emoji support
    - ✅ TaskFieldKeyword newtype validation
    - ✅ Unified DateTime type
-2. **006b-note-list-task.md** - List and Task entities (Note context)
-3. **006c-template-task-integration.md** - Template task integration
+2. **007-note-list-task.md** - List and Task entities (Note context)
+3. **012-template-task-integration.md** - Template task integration
 4. **docs/operations/clean-slate-protocol.md** - Reindex procedures
 
 ---
@@ -29,25 +29,25 @@ The following specs have been identified for updates but are **not yet complete*
    - Status: Not started
    - Remaining: Update port names, split errors, fix cross-references
 
-3. **003-note-models.md**
+3. **004-note-models.md**
    - Status: Not started
    - Remaining: Add FieldValue section, update Frontmatter, add NotePath examples, fix cross-references
 
-4. **004-note-cqrs.md**
+4. **005-note-cqrs.md**
    - Status: Not started
    - Remaining: Update port names, split errors, add clean-slate reference
 
-5. **005-note-frontmatter.md**
+5. **006-note-frontmatter.md**
    - Status: Not started
    - Remaining: Use FieldValue from value.rs, add conversion section
 
-6. **008-schema-cqrs.md**
+6. **009-schema-cqrs.md**
    - Status: Not started
    - Remaining: Rename port traits, split errors, add clean-slate reference
 
 ### Medium Priority
 
-7. **010-property-spec.md**
+7. **011-property-spec.md**
    - Status: Not started
    - Remaining: Add VaultRelPath validation examples, regex cache pseudocode, string length semantics
 
@@ -70,29 +70,29 @@ Run these updates in sequence:
 #    - Add split error types section (after line 60)
 #    - Fix cross-reference (line 16)
 
-# 3. Update 003-note-models.md
+# 3. Update 004-note-models.md
 #    - Add FieldValue section (after line 50)
 #    - Update Frontmatter to use FieldValue
 #    - Add NotePath examples
 #    - Update file structure diagram
 #    - Fix cross-references
 
-# 4. Update 004-note-cqrs.md
+# 4. Update 005-note-cqrs.md
 #    - Update port imports (line 88-89)
 #    - Add split error types (after line 50)
 #    - Add clean-slate reference (Section 5.2)
 
-# 5. Update 005-note-frontmatter.md
+# 5. Update 006-note-frontmatter.md
 #    - Replace local types with note::value::FieldValue
 #    - Add YAML/TOML conversion section
 #    - Reference value.rs location
 
-# 6. Update 008-schema-cqrs.md
+# 6. Update 009-schema-cqrs.md
 #    - Rename port traits (line 78-79)
 #    - Add split error types (after line 60)
 #    - Add clean-slate reference
 
-# 7. Update 010-property-spec.md
+# 7. Update 011-property-spec.md
 #    - Add VaultRelPath examples (Section 3.5.2)
 #    - Add regex cache pseudocode (Section 3.5.3)
 #    - Document string length semantics
@@ -105,22 +105,22 @@ After all updates:
 ```bash
 # Check all cross-references are valid
 grep -r "006-task-management-system" docs/design/*.md
-# Should return: 0 results (all updated to 006a/b/c)
+# Should return: 0 results (all updated to 003/007/012)
 
 # Check SettingValue removed from config specs
 grep "SettingValue" docs/design/001-config-models.md docs/design/002-config-cqrs.md
 # Should return: 0 results in context of "universal type"
 
 # Check FieldValue added to note specs
-grep "FieldValue" docs/design/003-note-models.md docs/design/005-note-frontmatter.md
+grep "FieldValue" docs/design/004-note-models.md docs/design/006-note-frontmatter.md
 # Should return: Multiple results showing usage
 
 # Check port naming consistency
-grep "ports::{Query, Command}" docs/design/002-config-cqrs.md docs/design/004-note-cqrs.md docs/design/008-schema-cqrs.md
+grep "ports::{Query, Command}" docs/design/002-config-cqrs.md docs/design/005-note-cqrs.md docs/design/009-schema-cqrs.md
 # Should return: Consistent qualified imports
 
 # Check error splits
-grep "CommandError\\|QueryError" docs/design/002-config-cqrs.md docs/design/004-note-cqrs.md docs/design/008-schema-cqrs.md
+grep "CommandError\\|QueryError" docs/design/002-config-cqrs.md docs/design/005-note-cqrs.md docs/design/009-schema-cqrs.md
 # Should return: Split error types in all CQRS specs
 ```
 
@@ -229,7 +229,7 @@ All specs updated when:
 - [ ] All CQRS specs have split Command/Query error types
 - [ ] FieldValue documented in note context (003, 005)
 - [ ] NotePath examples in 003, VaultRelPath examples in 010
-- [ ] All cross-references point to 006a/b/c (not 006)
+- [ ] All cross-references point to 003/007/012 (not 006)
 - [ ] Clean-slate protocol referenced in all CQRS migration sections
 - [ ] All code examples use correct newtype patterns
 
@@ -238,7 +238,7 @@ All specs updated when:
 ## 📚 Reference Documents
 
 - **UPDATES-REQUIRED.md** - Full detail of all required changes
-- **006a/b/c specs** - Template for correct patterns
+- **003/007/012 specs** - Template for correct patterns
 - **clean-slate-protocol.md** - Migration procedures
 
 ---

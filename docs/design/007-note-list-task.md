@@ -37,7 +37,7 @@ The Note bounded context currently lacks complete representation of markdown lis
 **Related Decisions**:
 
 - [ADR 008: Markdown Parsing](../adr/008-markdown-parsing.md)
-- [006a: Task Configuration Schema](./006a-config-task-schema.md)
+- [003: Task Configuration Schema](./003-config-task.md)
 - [Epic 11: Query Service](../../_bmad-output/planning-artifacts/epics/epic-11-query-service-knowledge-graph-mvp-core.md)
 
 ### 1.2 Goals & Non-Goals
@@ -1103,7 +1103,7 @@ fn parse_tasks(markdown: &str, config: &TaskConfig) -> (Vec<List>, Vec<Task>) {
 ## 8. References
 
 - [ADR 008: Markdown Parsing](../adr/008-markdown-parsing.md)
-- [006a: Task Configuration Schema](./006a-config-task-schema.md)
+- [003: Task Configuration Schema](./003-config-task.md)
 - [pulldown-cmark Documentation](https://docs.rs/pulldown-cmark/latest/pulldown_cmark/)
 - [UUID v7 Specification](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-7)
 - [Rust API Guidelines: Newtype Pattern](https://rust-lang.github.io/api-guidelines/type-safety.html)

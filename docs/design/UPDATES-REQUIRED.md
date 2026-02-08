@@ -8,9 +8,9 @@ This document tracks all required updates to design specs following the task man
 
 ## ✅ Completed
 
-- [x] **006a-config-task-schema.md** - Created (new)
-- [x] **006b-note-list-task.md** - Created (new)
-- [x] **006c-template-task-integration.md** - Created (new)
+- [x] **003-config-task.md** - Created (new)
+- [x] **007-note-list-task.md** - Created (new)
+- [x] **012-template-task-integration.md** - Created (new)
 - [x] **docs/operations/clean-slate-protocol.md** - Created (new)
 
 ---
@@ -53,7 +53,7 @@ This document tracks all required updates to design specs following the task man
    ```
 
 4. **Update cross-references**:
-   - Line 15: Change `006-task-management-system.md` → `006a-config-task-schema.md`
+   - Line 15: Change `006-task-management-system.md` → `003-config-task.md`
    - Add reference to clean-slate protocol in Section 5.2
 
 **Priority**: Critical (blocks config implementation)
@@ -103,14 +103,14 @@ This document tracks all required updates to design specs following the task man
    ```
 
 3. **Update cross-references**:
-   - Line 16: Change `006-task-management-system.md` → `006a-config-task-schema.md`
+   - Line 16: Change `006-task-management-system.md` → `003-config-task.md`
    - Add reference to clean-slate protocol in Section 5.2
 
 **Priority**: Critical (blocks CQRS implementation)
 
 ---
 
-### **003-note-models.md**
+### **004-note-models.md**
 
 **Changes**:
 1. **Add FieldValue section** (insert after line 50):
@@ -173,13 +173,13 @@ This document tracks all required updates to design specs following the task man
    ├── aggregate.rs      // Note
    ├── value.rs          // FieldValue (NEW - shared primitive)
    ├── frontmatter.rs    // Frontmatter (uses FieldValue)
-   ├── task.rs           // Task, TaskMetadata (uses FieldValue) - added by 006b
-   ├── list.rs           // List, ListItem - added by 006b
+   ├── task.rs           // Task, TaskMetadata (uses FieldValue) - added by 007
+   ├── list.rs           // List, ListItem - added by 007
    └── ports.rs          // Query, Command traits
    ```
 
 5. **Update cross-references**:
-   - Add reference to `006b-note-list-task.md` for Task/List integration
+   - Add reference to `007-note-list-task.md` for Task/List integration
    - Add reference to clean-slate protocol
 
 **Priority**: Critical (blocks note implementation)
@@ -188,7 +188,7 @@ This document tracks all required updates to design specs following the task man
 
 ---
 
-### **004-note-cqrs.md**
+### **005-note-cqrs.md**
 
 **Changes**:
 1. **Update port trait names** (lines 88-89):
@@ -237,7 +237,7 @@ This document tracks all required updates to design specs following the task man
 
 ---
 
-### **005-note-frontmatter.md**
+### **006-note-frontmatter.md**
 
 **Changes**:
 1. **Update to use FieldValue** (throughout):
@@ -275,7 +275,7 @@ This document tracks all required updates to design specs following the task man
 
 ---
 
-### **008-schema-cqrs.md**
+### **009-schema-cqrs.md**
 
 **Changes**:
 1. **Rename port traits** (lines 78-79):
@@ -323,7 +323,7 @@ This document tracks all required updates to design specs following the task man
 
 ## 🟡 Medium Priority (Before Implementation Start)
 
-### **010-property-spec.md**
+### **011-property-spec.md**
 
 **Changes**:
 1. **Add validation examples for VaultRelPath** (Section 3.5.2):
@@ -345,7 +345,7 @@ This document tracks all required updates to design specs following the task man
    VaultRelPath::try_from("C:\\Windows\\")?;     // Windows prefix → Err(AbsolutePath)
    ```
 
-   **Note**: `NotePath` (note file paths) is defined in note context (003-note-models.md), not schema context.
+**Note**: `NotePath` (note file paths) is defined in note context (004-note-models.md), not schema context.
 
 2. **Add regex cache pseudocode** (Section 3.5.3):
    ```rust
@@ -406,9 +406,9 @@ This document tracks all required updates to design specs following the task man
 
 **Changes**:
 - Update all references from `006-task-management-system.md` to split specs:
-  - `006a-config-task-schema.md` (config aspects)
-  - `006b-note-list-task.md` (domain models)
-  - `006c-template-task-integration.md` (template integration)
+  - `003-config-task.md` (config aspects)
+  - `007-note-list-task.md` (domain models)
+  - `012-template-task-integration.md` (template integration)
 
 **Files Affected**:
 - 001, 002, 003, 004, 005 (any that reference task spec)
@@ -423,7 +423,7 @@ This document tracks all required updates to design specs following the task man
 - `template-models.md` - Core template domain types
 - `template-cqrs.md` - Template persistence (if needed)
 
-**Note**: 006c covers task integration, but not core template system
+**Note**: 012 covers task integration, but not core template system
 
 **Priority**: Defer (Epic 12 not started)
 
@@ -435,13 +435,13 @@ This document tracks all required updates to design specs following the task man
 1. ✅ Create clean-slate protocol
 2. ⏳ Update 001-config-models (remove SettingValue, add newtypes)
 3. ⏳ Update 002-config-cqrs (split errors, fix ports)
-4. ⏳ Update 003-note-models (add FieldValue)
-5. ⏳ Update 004-note-cqrs (split errors, fix ports)
-6. ⏳ Update 005-note-frontmatter (use FieldValue)
-7. ⏳ Update 008-schema-cqrs (split errors, fix ports)
+4. ⏳ Update 004-note-models (add FieldValue)
+5. ⏳ Update 005-note-cqrs (split errors, fix ports)
+6. ⏳ Update 006-note-frontmatter (use FieldValue)
+7. ⏳ Update 009-schema-cqrs (split errors, fix ports)
 
 ### Phase 2: Medium Priority (Next Session)
-8. Update 010-property-spec (add examples)
+8. Update 011-property-spec (add examples)
 
 ### Phase 3: Polish (Ongoing)
 9. Fix all cross-references
@@ -467,5 +467,5 @@ Before marking spec as "Ready for Implementation":
 ## Notes
 
 - **006-task-management-system.md**: Preserved as-is (historical reference)
-- **All new specs (006a/b/c)**: Already compliant with standards
+- **All new specs (003/007/012)**: Already compliant with standards
 - **Clean-slate protocol**: Created and ready for Epic 10/11 integration

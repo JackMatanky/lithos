@@ -23,7 +23,7 @@ Current implementation lives in:
 - `lithos-core/src/note/task.rs` (`Task`, `TaskStatus`)
 - `lithos-core/src/note/structure.rs` (`Heading`, `Section`)
 - `lithos-core/src/note/events.rs` (`NoteCreated`, `FrontmatterValidated`, `NoteEvents`)
-- `lithos-core/src/note/frontmatter.rs` (covered by `docs/design/005-note-frontmatter.md`)
+- `lithos-core/src/note/frontmatter.rs` (covered by `docs/design/006-note-frontmatter.md`)
 
 System constraints:
 
@@ -168,7 +168,7 @@ The note model is a domain component:
 - Persisted in the DB.
 - Queried by CQRS read operations.
 
-Frontmatter is specified separately in `docs/design/005-note-frontmatter.md` and treated as a child value object.
+Frontmatter is specified separately in `docs/design/006-note-frontmatter.md` and treated as a child value object.
 
 ### 3.2 Data Models
 
@@ -205,8 +205,8 @@ pub enum FieldValue {
 ```
 
 **Used by**:
-- `Frontmatter` (YAML/TOML parsed values) - see [005-note-frontmatter.md](005-note-frontmatter.md)
-- `TaskMetadata` (inline `[key:: value]` fields) - see [006b-note-list-task.md](006b-note-list-task.md)
+- `Frontmatter` (YAML/TOML parsed values) - see [006-note-frontmatter.md](006-note-frontmatter.md)
+- `TaskMetadata` (inline `[key:: value]` fields) - see [007-note-list-task.md](007-note-list-task.md)
 
 **Rationale**: Single value primitive for all note metadata avoids duplication between frontmatter and task metadata. Both need to represent structured values (strings, numbers, dates, arrays, objects) in a uniform way.
 
@@ -486,8 +486,8 @@ note/
 ├── aggregate.rs      // Note
 ├── value.rs          // FieldValue (NEW - shared primitive)
 ├── frontmatter.rs    // Frontmatter (uses FieldValue)
-├── task.rs           // Task, TaskMetadata (uses FieldValue) - added by 006b
-├── list.rs           // List, ListItem - added by 006b
+├── task.rs           // Task, TaskMetadata (uses FieldValue) - added by 007
+├── list.rs           // List, ListItem - added by 007
 ├── link.rs           // Link, Target, Anchor, Style, EmbedType
 ├── tag.rs            // Tag, TagPath
 ├── structure.rs      // Heading, Section
@@ -497,13 +497,13 @@ note/
 
 **New modules**:
 - `value.rs` - Shared `FieldValue` primitive for frontmatter and task metadata
-- `task.rs` - Task entities (from [006b-note-list-task.md](006b-note-list-task.md))
-- `list.rs` - List entities (from [006b-note-list-task.md](006b-note-list-task.md))
+- `task.rs` - Task entities (from [007-note-list-task.md](007-note-list-task.md))
+- `list.rs` - List entities (from [007-note-list-task.md](007-note-list-task.md))
 
 **Cross-references**:
-- Task/List integration: [006b-note-list-task.md](006b-note-list-task.md)
-- Frontmatter spec: [005-note-frontmatter.md](005-note-frontmatter.md)
-- Note CQRS: [004-note-cqrs.md](004-note-cqrs.md)
+- Task/List integration: [007-note-list-task.md](007-note-list-task.md)
+- Frontmatter spec: [006-note-frontmatter.md](006-note-frontmatter.md)
+- Note CQRS: [005-note-cqrs.md](005-note-cqrs.md)
 
 ## 4. Alternatives & Decisions (The "Divergence")
 
