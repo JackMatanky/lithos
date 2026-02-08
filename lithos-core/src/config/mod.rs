@@ -12,10 +12,14 @@ pub mod command;
 pub mod error;
 /// Configuration domain events.
 pub mod events;
+/// Frontmatter configuration types.
+pub mod frontmatter;
 /// Global configuration types and validation.
 pub mod global;
 /// Figment ingestion boundary for raw config.
 pub mod ingest;
+/// Path configuration types.
+pub mod paths;
 /// Configuration ports for CQRS.
 pub mod ports;
 /// Configuration query implementations (CQRS read operations).
