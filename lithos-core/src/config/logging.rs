@@ -1,7 +1,7 @@
-//! Shared configuration types used across the config context.
+//! Logging configuration types.
 //!
-//! This module contains basic newtypes and enums that are used
-//! across different parts of the configuration system.
+//! This module contains types related to logging configuration,
+//! including log levels and logging settings.
 
 #![expect(
     clippy::exhaustive_enums,
@@ -158,7 +158,7 @@ impl Logging {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::config::types::Logging;
+    /// # use lithos_core::config::logging::Logging;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let logging = Logging::default();
     /// logging.validate()?;

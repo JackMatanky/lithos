@@ -18,6 +18,8 @@ pub mod frontmatter;
 pub mod global;
 /// Figment ingestion boundary for raw config.
 pub mod ingest;
+/// Logging configuration types.
+pub mod logging;
 /// Path configuration types.
 pub mod paths;
 /// Configuration ports for CQRS.
@@ -28,8 +30,6 @@ pub mod query;
 pub mod raw;
 /// Task configuration schema and validation.
 pub mod task;
-/// Shared configuration value types.
-pub mod types;
 /// Vault-scoped configuration types.
 pub mod vault;
 

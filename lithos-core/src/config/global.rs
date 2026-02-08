@@ -19,10 +19,10 @@ use std::{collections::HashMap, path::PathBuf};
 use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
+    logging::Logging,
     paths::{Schema, Template},
     raw::{RawGlobal, RawGlobalPaths, RawTrustedVaults},
     task::TaskConfig,
-    types::Logging,
     vault::VaultRoot,
 };
 

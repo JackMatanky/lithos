@@ -37,7 +37,7 @@
 //! | Raw Type | Validated Type | Location | Validates |
 //! |----------|---------------|----------|-----------|
 //! | `RawFrontmatter` | `Frontmatter` | `frontmatter.rs` ← co-located | Non-empty keys |
-//! | `RawLogging` | `Logging` | `types.rs` ← co-located | Log level enum |
+//! | `RawLogging` | `Logging` | `logging.rs` ← co-located | Log level enum |
 //! | `RawSchemaPaths` | `Schema` | `paths.rs` ← co-located | Path validity |
 //! | `RawTemplatePaths` | `Template` | `paths.rs` ← co-located | Path validity |
 //! | `RawGlobal` | `Global` | `global.rs` | Aggregation |
@@ -70,8 +70,8 @@ use std::collections::HashMap;
 
 use super::{
     frontmatter::RawFrontmatter,
+    logging::RawLogging,
     paths::{RawSchemaPaths, RawTemplatePaths},
-    types::RawLogging,
 };
 
 /// Raw global configuration input.

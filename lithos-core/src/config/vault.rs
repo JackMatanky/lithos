@@ -10,10 +10,10 @@ use uuid::Uuid;
 use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
+    logging::Logging,
     paths::{FileName, SchemasDir, TemplatesDir},
     raw::{RawVault, RawVaultPaths},
     task::TaskConfig,
-    types::Logging,
 };
 
 /// Stable vault identity.
