@@ -3,6 +3,8 @@
 //! This module defines configuration-specific errors using thiserror for
 //! structured error handling.
 
+use crate::db::DbError;
+
 /// Configuration-related errors.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
@@ -82,11 +84,11 @@ pub enum ConfigError {
         /// Field with out-of-range value.
         field: Box<str>,
         /// Actual value provided.
-        value: f64,
+        value: Box<str>,
         /// Minimum allowed value (if any).
-        min: Option<f64>,
+        min: Option<Box<str>>,
         /// Maximum allowed value (if any).
-        max: Option<f64>,
+        max: Option<Box<str>>,
     },
 
     /// Configuration validation failed for a specific field.
@@ -101,6 +103,56 @@ pub enum ConfigError {
     /// Storage operation failed.
     #[error("Storage error: {0}")]
     Storage(Box<str>),
+}
+
+/// Errors returned by config command operations.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ConfigCommandError {
+    /// Domain-level validation or merge error.
+    #[error("Domain error: {0}")]
+    Domain(#[from] ConfigError),
+    /// Storage-layer error.
+    #[error("Storage error: {0}")]
+    Storage(#[from] DbError),
+    /// Config ingestion error.
+    #[error("Ingest error: {0}")]
+    Ingest(#[from] Box<ConfigIngestError>),
+}
+
+impl From<ConfigIngestError> for ConfigCommandError {
+    #[inline]
+    fn from(error: ConfigIngestError) -> Self {
+        Self::Ingest(Box::new(error))
+    }
+}
+
+/// Errors returned by config query operations.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ConfigQueryError {
+    /// Storage-layer error.
+    #[error("Storage error: {0}")]
+    Storage(#[from] DbError),
+    /// Data corruption or missing read model.
+    #[error("Data corruption: {0}")]
+    Corruption(Box<str>),
+}
+
+/// Errors returned while ingesting raw configuration sources.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum ConfigIngestError {
+    /// Figment provider or extraction error.
+    #[error("Config ingestion failed: {0}")]
+    Figment(Box<figment::Error>),
+}
+
+impl From<figment::Error> for ConfigIngestError {
+    #[inline]
+    fn from(error: figment::Error) -> Self {
+        Self::Figment(Box::new(error))
+    }
 }
 
 #[cfg(test)]
@@ -204,9 +256,9 @@ mod tests {
     #[case(ConfigError::MissingRequiredField { field: "f".into() })]
     #[case(ConfigError::OutOfRange {
         field: "f".into(),
-        value: 1.0f64,
-        min: Some(0.0f64),
-        max: Some(2.0f64),
+        value: "1".into(),
+        min: Some("0".into()),
+        max: Some("2".into()),
     })]
     #[case(ConfigError::ValidationFailed {
         field: "f".into(),

@@ -34,6 +34,7 @@
 )]
 
 mod batch;
+pub mod config_adapter;
 mod error;
 
 use std::path::Path;

@@ -23,9 +23,151 @@ use super::{
     error::ConfigError,
     events::{ConfigUpdated, Events},
     global::{Global, Paths as GlobalPaths},
+    task::TaskConfig,
     types::{Frontmatter, Logging, Schema, Template},
-    vault::{Metadata, Paths as VaultPaths, Vault},
+    vault::{CacheDir, Metadata, Vault, VaultId, VaultRoot},
 };
+
+/// Resolved vault filesystem configuration (merged).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct ResolvedVaultPaths {
+    /// Cache directory for vault.
+    pub cache_dir: CacheDir,
+    /// Schema configuration for vault.
+    pub schema: Schema,
+    /// Template configuration for vault.
+    pub template: Template,
+}
+
+/// Monotonic version identifier for merged configs.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct ConfigVersion(u64);
+
+impl ConfigVersion {
+    #[inline]
+    #[must_use]
+    /// Return the initial version value.
+    pub const fn initial() -> Self {
+        Self(1)
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the numeric version value.
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+
+    #[inline]
+    /// Return the next version, or an overflow error.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` on overflow.
+    pub fn next(self) -> Result<Self, ConfigError> {
+        self.0.checked_add(1).map(Self).ok_or_else(|| {
+            ConfigError::ValidationFailed {
+                field: "config_version".to_owned().into(),
+                message: "config version overflow".to_owned().into(),
+            }
+        })
+    }
+}
+
+impl TryFrom<u64> for ConfigVersion {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        if value == 0 {
+            return Err(ConfigError::ValidationFailed {
+                field: "config_version".to_owned().into(),
+                message: "version must be >= 1".to_owned().into(),
+            });
+        }
+        Ok(Self(value))
+    }
+}
+
+/// Persisted merged configuration record with version metadata.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[non_exhaustive]
+pub struct MergedConfigRecord {
+    /// Vault identifier.
+    pub vault_id: VaultId,
+    /// Merged config version.
+    pub version: ConfigVersion,
+    /// Unix timestamp for creation.
+    pub created_at: i64,
+    /// Merged configuration snapshot.
+    pub config: Config,
+}
+
+/// Active merged config pointer for a vault.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct ActiveMergedConfig {
+    /// Vault identifier.
+    pub vault_id: VaultId,
+    /// Active merged version.
+    pub version: ConfigVersion,
+}
+
+impl ResolvedVaultPaths {
+    #[inline]
+    /// Validate resolved vault filesystem paths.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if schema or template validation fails.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.schema.validate()?;
+        self.template.validate()?;
+        Ok(())
+    }
+}
 
 /// Merged configuration result from global and vault configurations.
 ///
@@ -34,9 +176,15 @@ use super::{
 /// configuration is immutable once created and represents the complete runtime
 /// configuration for a vault operation.
 #[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Config {
     /// Vault metadata with versioning and naming.
@@ -46,24 +194,14 @@ pub struct Config {
     /// Global filesystem configuration.
     pub global_filesystem: GlobalPaths,
     /// Vault filesystem configuration.
-    pub vault_filesystem: VaultPaths,
+    pub vault_filesystem: ResolvedVaultPaths,
     /// Merged frontmatter configuration.
     pub frontmatter: Frontmatter,
+    /// Merged task configuration.
+    pub task: TaskConfig,
     /// Domain events pending emission (not persisted).
+    #[serde(skip)]
     pending_events: Vec<Events>,
-}
-
-/// Choose value with precedence: vault > global > default.
-#[inline]
-#[must_use]
-fn choose_value(vault: &str, global: &str, default: &str) -> String {
-    if !vault.is_empty() {
-        vault.to_owned()
-    } else if !global.is_empty() {
-        global.to_owned()
-    } else {
-        default.to_owned()
-    }
 }
 
 impl Default for Config {
@@ -74,7 +212,12 @@ impl Default for Config {
             global_filesystem: GlobalPaths::default(),
             logging: Logging::default(),
             pending_events: vec![],
-            vault_filesystem: VaultPaths::default(),
+            task: TaskConfig::default(),
+            vault_filesystem: ResolvedVaultPaths {
+                cache_dir: CacheDir::default(),
+                schema: Schema::default(),
+                template: Template::default(),
+            },
             vault_metadata: Metadata::default(),
         }
     }
@@ -92,116 +235,112 @@ impl Config {
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
-    /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
+    /// Returns `ConfigError::ValidationFailed` if metadata is invalid.
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::config::{aggregate::Config, global::Global, vault::Vault};
+    /// # use std::path::PathBuf;
+    /// # use lithos_core::config::{
+    /// #   aggregate::Config,
+    /// #   global::Global,
+    /// #   vault::{Vault, VaultId, VaultRoot}
+    /// # };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let global = Global::default();
     /// let vault = Vault::default();
-    /// let config = Config::build(Some(&global), "/vault", vault)?;
-    /// assert_eq!(config.vault_metadata.path, "/vault", "Vault path should match");
+    /// let config = Config::build(
+    ///     Some(&global),
+    ///     VaultId::new(),
+    ///     VaultRoot::try_new(PathBuf::from("/vault"))?,
+    ///     vault,
+    /// )?;
+    /// assert_eq!(
+    ///     config.vault_metadata.root().as_path(),
+    ///     PathBuf::from("/vault").as_path(),
+    ///     "Vault root should match"
+    /// );
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     pub fn build(
         global: Option<&Global>,
-        vault_path: &str,
-        vault: Vault,
+        vault_id: VaultId,
+        vault_root: VaultRoot,
+        vault: &Vault,
     ) -> Result<Self, ConfigError> {
-        // Step 2: Set vault metadata defaults (includes path validation)
-        let vault_metadata = Metadata::new(vault_path.to_owned(), None, None)?;
+        let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
 
-        // Step 3: Set filesystem configurations with defaults applied
-        let global_filesystem = global
-            .map(|g| GlobalPaths {
-                schema: Schema {
-                    schemas_dir: if g.filesystem.schema.schemas_dir.is_empty() {
-                        "schemas".to_owned()
-                    } else {
-                        g.filesystem.schema.schemas_dir.clone()
-                    },
-                    property_bank_filename: if g
-                        .filesystem
-                        .schema
-                        .property_bank_filename
-                        .is_empty()
-                    {
-                        "property_bank.json".to_owned()
-                    } else {
-                        g.filesystem.schema.property_bank_filename.clone()
-                    },
-                },
-                template: Template {
-                    templates_dir: if g
-                        .filesystem
-                        .template
-                        .templates_dir
-                        .is_empty()
-                    {
-                        "templates".to_owned()
-                    } else {
-                        g.filesystem.template.templates_dir.clone()
-                    },
-                },
+        let global_filesystem =
+            global.map(|g| g.filesystem().clone()).unwrap_or_default();
+
+        let schema_defaults = Schema::default();
+        let template_defaults = Template::default();
+
+        let schemas_dir = vault
+            .filesystem()
+            .schema()
+            .schemas_dir()
+            .cloned()
+            .or_else(|| {
+                global.map(|g| g.filesystem().schema().schemas_dir().clone())
             })
-            .unwrap_or_default();
+            .unwrap_or_else(|| schema_defaults.schemas_dir().clone());
 
-        let vault_filesystem = VaultPaths {
-            schema: Schema {
-                schemas_dir: if vault.filesystem.schema.schemas_dir.is_empty() {
-                    "schemas".to_owned()
-                } else {
-                    vault.filesystem.schema.schemas_dir
-                },
-                property_bank_filename: if vault
-                    .filesystem
-                    .schema
-                    .property_bank_filename
-                    .is_empty()
-                {
-                    "property_bank.json".to_owned()
-                } else {
-                    vault.filesystem.schema.property_bank_filename
-                },
-            },
-            template: Template {
-                templates_dir: if vault
-                    .filesystem
-                    .template
-                    .templates_dir
-                    .is_empty()
-                {
-                    "templates".to_owned()
-                } else {
-                    vault.filesystem.template.templates_dir
-                },
-            },
-            cache_dir: if vault.filesystem.cache_dir.is_empty() {
-                ".cache".to_owned()
-            } else {
-                vault.filesystem.cache_dir
-            },
+        let property_bank_filename = vault
+            .filesystem()
+            .schema()
+            .property_bank_filename()
+            .cloned()
+            .or_else(|| {
+                global.map(|g| {
+                    g.filesystem().schema().property_bank_filename().clone()
+                })
+            })
+            .unwrap_or_else(|| {
+                schema_defaults.property_bank_filename().clone()
+            });
+
+        let templates_dir = vault
+            .filesystem()
+            .template()
+            .templates_dir()
+            .cloned()
+            .or_else(|| {
+                global
+                    .map(|g| g.filesystem().template().templates_dir().clone())
+            })
+            .unwrap_or_else(|| template_defaults.templates_dir().clone());
+
+        let cache_dir = vault
+            .filesystem()
+            .cache_dir()
+            .cloned()
+            .unwrap_or_else(CacheDir::default);
+
+        let vault_filesystem = ResolvedVaultPaths {
+            cache_dir,
+            schema: Schema::new(schemas_dir, property_bank_filename),
+            template: Template::new(templates_dir),
         };
 
-        // Step 4: Merge other values with precedence
         let frontmatter = Config::merge_frontmatter(
-            global.map(|g| &g.frontmatter),
-            vault.frontmatter.as_ref(),
+            global.map(Global::frontmatter),
+            vault.frontmatter(),
         );
 
-        let logging = Config::merge_logging(
-            global.map(|g| &g.logging),
-            vault.logging.as_ref(),
-        );
+        let logging =
+            Config::merge_logging(global.map(Global::logging), vault.logging());
+
+        let task =
+            Config::merge_task(global.and_then(Global::task), vault.task());
 
         // Step 5: Construct the final strictly-validated aggregate
         let mut config = Self {
             frontmatter,
             global_filesystem,
             logging,
+            task,
             vault_filesystem,
             vault_metadata,
             pending_events: vec![],
@@ -223,35 +362,7 @@ impl Config {
         global: Option<&Frontmatter>,
         vault: Option<&Frontmatter>,
     ) -> Frontmatter {
-        let defaults = Frontmatter::default();
-
-        Frontmatter {
-            alias_key: choose_value(
-                vault.map_or("", |v| &v.alias_key),
-                global.map_or("", |g| &g.alias_key),
-                &defaults.alias_key,
-            ),
-            date_created_key: choose_value(
-                vault.map_or("", |v| &v.date_created_key),
-                global.map_or("", |g| &g.date_created_key),
-                &defaults.date_created_key,
-            ),
-            date_modified_key: choose_value(
-                vault.map_or("", |v| &v.date_modified_key),
-                global.map_or("", |g| &g.date_modified_key),
-                &defaults.date_modified_key,
-            ),
-            file_class_key: choose_value(
-                vault.map_or("", |v| &v.file_class_key),
-                global.map_or("", |g| &g.file_class_key),
-                &defaults.file_class_key,
-            ),
-            title_key: choose_value(
-                vault.map_or("", |v| &v.title_key),
-                global.map_or("", |g| &g.title_key),
-                &defaults.title_key,
-            ),
-        }
+        vault.cloned().or_else(|| global.cloned()).unwrap_or_default()
     }
 
     /// Merge logging configurations applying defaults where needed.
@@ -259,14 +370,15 @@ impl Config {
         global: Option<&Logging>,
         vault: Option<&Logging>,
     ) -> Logging {
-        let log_level = choose_value(
-            vault.map_or("", |v| &v.log_level),
-            global.map_or("", |g| &g.log_level),
-            "info",
-        );
-        Logging {
-            log_level,
-        }
+        vault.cloned().or_else(|| global.cloned()).unwrap_or_default()
+    }
+
+    /// Merge task configurations applying defaults where needed.
+    pub(crate) fn merge_task(
+        global: Option<&TaskConfig>,
+        vault: Option<&TaskConfig>,
+    ) -> TaskConfig {
+        vault.cloned().or_else(|| global.cloned()).unwrap_or_default()
     }
 
     /// Returns a reference to pending domain events.
@@ -287,15 +399,25 @@ impl Config {
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if any required field is empty.
-    /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
+    /// Returns `ConfigError::ValidationFailed` if metadata is invalid.
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::config::{aggregate::Config, global::Global, vault::Vault};
+    /// # use std::path::PathBuf;
+    /// # use lithos_core::config::{
+    /// #   aggregate::Config,
+    /// #   global::Global,
+    /// #   vault::{Vault, VaultId, VaultRoot}
+    /// # };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let global = Global::default();
     /// let vault = Vault::default();
-    /// let config = Config::build(Some(&global), "/vault", vault)?;
+    /// let config = Config::build(
+    ///     Some(&global),
+    ///     VaultId::new(),
+    ///     VaultRoot::try_new(PathBuf::from("/vault"))?,
+    ///     vault,
+    /// )?;
     /// config.validate()?;
     /// # Ok(())
     /// # }
@@ -326,109 +448,129 @@ mod tests {
         reason = "Fixture helpers use expect for deterministic setup."
     )]
     mod fixtures {
+        use std::path::PathBuf;
+
         use super::*;
+        use crate::config::{
+            types::{
+                FileName, FrontmatterKey, LogLevel, SchemasDir, TemplatesDir,
+            },
+            vault::{SchemaOverrides, TemplateOverrides},
+        };
+
+        pub fn vault_id() -> VaultId {
+            VaultId::new()
+        }
+
+        pub fn vault_root(path: &str) -> VaultRoot {
+            VaultRoot::try_new(PathBuf::from(path)).expect("vault_root")
+        }
+
+        fn schema(dir: &str, file: &str) -> Schema {
+            let schemas_dir =
+                SchemasDir::try_new(PathBuf::from(dir)).expect("schemas_dir");
+            let file_name = FileName::try_new(file).expect("file_name");
+            Schema::new(schemas_dir, file_name)
+        }
+
+        fn template(dir: &str) -> Template {
+            let templates_dir = TemplatesDir::try_new(PathBuf::from(dir))
+                .expect("templates_dir");
+            Template::new(templates_dir)
+        }
+
+        pub fn frontmatter(
+            alias_key: &str,
+            date_created_key: &str,
+            date_modified_key: &str,
+            file_class_key: &str,
+            title_key: &str,
+        ) -> Frontmatter {
+            Frontmatter::new(
+                FrontmatterKey::try_new(alias_key).expect("alias_key"),
+                FrontmatterKey::try_new(date_created_key)
+                    .expect("date_created_key"),
+                FrontmatterKey::try_new(date_modified_key)
+                    .expect("date_modified_key"),
+                FrontmatterKey::try_new(file_class_key)
+                    .expect("file_class_key"),
+                FrontmatterKey::try_new(title_key).expect("title_key"),
+            )
+        }
 
         /// Test fixture: Create sample global configuration with system
         /// defaults.
         pub fn sample_global_config() -> Global {
-            Global {
-                filesystem: GlobalPaths {
-                    schema: Schema {
-                        schemas_dir: "schemas".to_owned(),
-                        property_bank_filename: "property_bank.json".to_owned(),
-                    },
-                    template: Template {
-                        templates_dir: "templates".to_owned(),
-                    },
-                },
-                frontmatter: Frontmatter {
-                    alias_key: "aliases".to_owned(),
-                    date_created_key: "date_created".to_owned(),
-                    date_modified_key: "date_modified".to_owned(),
-                    file_class_key: "file_class".to_owned(),
-                    title_key: "title".to_owned(),
-                },
-                logging: Logging {
-                    log_level: "info".to_owned(),
-                },
-                trusted_vaults: None,
-            }
+            Global::new(
+                GlobalPaths::new(
+                    schema("schemas", "property_bank.json"),
+                    template("templates"),
+                ),
+                frontmatter(
+                    "aliases",
+                    "date_created",
+                    "date_modified",
+                    "file_class",
+                    "title",
+                ),
+                Logging::new(LogLevel::Info),
+                None,
+                None,
+            )
         }
 
         /// Test fixture: Create sample vault configuration with user overrides.
         pub fn sample_vault_config() -> Vault {
-            Vault {
-                filesystem: VaultPaths {
-                    schema: Schema {
-                        schemas_dir: "schemas".to_owned(),
-                        property_bank_filename: "property_bank.json".to_owned(),
-                    },
-                    template: Template {
-                        templates_dir: "custom_templates".to_owned(), /* vault override */
-                    },
-                    cache_dir: ".cache".to_owned(),
-                },
-                frontmatter: Some(Frontmatter {
-                    alias_key: "aliases".to_owned(),
-                    date_created_key: "created".to_owned(), // vault override
-                    date_modified_key: "modified".to_owned(), // vault override
-                    file_class_key: "type".to_owned(),      // vault override
-                    title_key: "title".to_owned(),
-                }),
-                logging: Some(Logging {
-                    log_level: "debug".to_owned(), // vault override
-                }),
-            }
+            Vault::new(
+                VaultPaths::new(
+                    None,
+                    SchemaOverrides::new(
+                        Some(
+                            schema("schemas", "property_bank.json")
+                                .schemas_dir()
+                                .clone(),
+                        ),
+                        Some(
+                            schema("schemas", "property_bank.json")
+                                .property_bank_filename()
+                                .clone(),
+                        ),
+                    ),
+                    TemplateOverrides::new(Some(
+                        template("custom_templates").templates_dir().clone(),
+                    )),
+                ),
+                Some(frontmatter(
+                    "aliases", "created", "modified", "type", "title",
+                )),
+                Some(Logging::new(LogLevel::Debug)),
+                None,
+            )
         }
 
         pub fn merged_config_with_sample_overrides() -> Config {
             let global = sample_global_config();
             let vault = sample_vault_config();
-            Config::build(Some(&global), "/vault", vault)
-                .expect("Config build should succeed with sample data")
+            Config::build(
+                Some(&global),
+                vault_id(),
+                vault_root("/vault"),
+                &vault,
+            )
+            .expect("Config build should succeed with sample data")
         }
 
         pub fn merged_config_with_empty_inputs() -> Config {
-            let global = Global {
-                filesystem: GlobalPaths {
-                    schema: Schema {
-                        schemas_dir: String::new(),
-                        property_bank_filename: String::new(),
-                    },
-                    template: Template {
-                        templates_dir: String::new(),
-                    },
-                },
-                frontmatter: Frontmatter {
-                    alias_key: String::new(),
-                    date_created_key: String::new(),
-                    date_modified_key: String::new(),
-                    file_class_key: String::new(),
-                    title_key: String::new(),
-                },
-                logging: Logging {
-                    log_level: String::new(),
-                },
-                trusted_vaults: None,
-            };
+            let global = Global::default();
+            let vault = Vault::default();
 
-            let vault = Vault {
-                filesystem: VaultPaths {
-                    schema: Schema {
-                        schemas_dir: String::new(),
-                        property_bank_filename: String::new(),
-                    },
-                    template: Template {
-                        templates_dir: String::new(),
-                    },
-                    cache_dir: String::new(),
-                },
-                frontmatter: None,
-                logging: None,
-            };
-
-            Config::build(Some(&global), "/vault", vault)
-                .expect("Merge with empty values should succeed")
+            Config::build(
+                Some(&global),
+                vault_id(),
+                vault_root("/vault"),
+                &vault,
+            )
+            .expect("Merge with empty values should succeed")
         }
 
         pub fn config_with_cleared_events() -> Config {
@@ -455,17 +597,19 @@ mod tests {
             reason = "Test uses expect for deterministic config construction."
         )]
         fn build_handles_missing_global_sets_vault_path() {
-            let vault = Vault {
-                filesystem: VaultPaths::default(),
-                frontmatter: None,
-                logging: None,
-            };
+            let vault = Vault::default();
 
-            let config = Config::build(None, "/vault", vault)
-                .expect("Config build should succeed");
+            let config = Config::build(
+                None,
+                fixtures::vault_id(),
+                fixtures::vault_root("/vault"),
+                &vault,
+            )
+            .expect("Config build should succeed");
 
             assert_eq!(
-                config.vault_metadata.path, "/vault",
+                config.vault_metadata.root().as_path(),
+                fixtures::vault_root("/vault").as_path(),
                 "Vault path should match input"
             );
         }
@@ -478,17 +622,19 @@ mod tests {
             reason = "Test uses expect for deterministic config construction."
         )]
         fn build_handles_missing_global_applies_global_defaults() {
-            let vault = Vault {
-                filesystem: VaultPaths::default(),
-                frontmatter: None,
-                logging: None,
-            };
+            let vault = Vault::default();
 
-            let config = Config::build(None, "/vault", vault)
-                .expect("Config build should succeed");
+            let config = Config::build(
+                None,
+                fixtures::vault_id(),
+                fixtures::vault_root("/vault"),
+                &vault,
+            )
+            .expect("Config build should succeed");
 
             assert_eq!(
-                config.global_filesystem.schema.schemas_dir, "schemas",
+                config.global_filesystem.schema().schemas_dir().as_path(),
+                std::path::Path::new("schemas"),
                 "Global schema dir should use defaults"
             );
         }
@@ -544,7 +690,7 @@ mod tests {
             let event =
                 Events::ConfigUpdated(ConfigUpdated::new("test".to_owned(), 0));
             config.add_event(event);
-            let _events = config.take_events();
+            let _events_first = config.take_events();
 
             assert!(
                 config.pending_events().is_empty(),
@@ -557,18 +703,26 @@ mod tests {
         /// Priority: P1.
         #[test]
         fn merge_frontmatter_prefers_vault_values() {
-            let g = Frontmatter {
-                title_key: "gt".to_owned(),
-                ..Frontmatter::default()
-            };
-            let v = Frontmatter {
-                title_key: "vt".to_owned(),
-                ..Frontmatter::default()
-            };
+            let g = fixtures::frontmatter(
+                "aliases",
+                "date_created",
+                "date_modified",
+                "file_class",
+                "gt",
+            );
+            let v = fixtures::frontmatter(
+                "aliases",
+                "date_created",
+                "date_modified",
+                "file_class",
+                "vt",
+            );
 
             assert_eq!(
-                Config::merge_frontmatter(Some(&g), Some(&v)).title_key,
-                "vt"
+                Config::merge_frontmatter(Some(&g), Some(&v))
+                    .title_key()
+                    .as_str(),
+                "vt",
             );
         }
 
@@ -577,14 +731,17 @@ mod tests {
         /// Priority: P1.
         #[test]
         fn merge_frontmatter_uses_global_when_vault_missing() {
-            let g = Frontmatter {
-                title_key: "gt".to_owned(),
-                ..Frontmatter::default()
-            };
+            let g = fixtures::frontmatter(
+                "aliases",
+                "date_created",
+                "date_modified",
+                "file_class",
+                "gt",
+            );
 
             assert_eq!(
-                Config::merge_frontmatter(Some(&g), None).title_key,
-                "gt"
+                Config::merge_frontmatter(Some(&g), None).title_key().as_str(),
+                "gt",
             );
         }
 
@@ -594,8 +751,8 @@ mod tests {
         #[test]
         fn merge_frontmatter_uses_defaults_when_all_missing() {
             assert_eq!(
-                Config::merge_frontmatter(None, None).title_key,
-                "title"
+                Config::merge_frontmatter(None, None).title_key().as_str(),
+                "title",
             );
         }
 
@@ -633,10 +790,25 @@ mod tests {
         fn merge_is_equivalent_for_identical_inputs() {
             let global = fixtures::sample_global_config();
             let vault = fixtures::sample_vault_config();
-            let config = Config::build(Some(&global), "/vault", vault.clone())
-                .expect("First merge for trait verification failed");
-            let config2 = Config::build(Some(&global), "/vault", vault)
-                .expect("Second merge for trait verification failed");
+            let vault_id = fixtures::vault_id();
+            let config = Config::build(
+                Some(&global),
+                vault_id,
+                fixtures::vault_root("/vault"),
+                &vault.clone(),
+            )
+            .expect("First merge for trait verification failed");
+            let mut config = config;
+            let _events = config.take_events();
+            let config2 = Config::build(
+                Some(&global),
+                vault_id,
+                fixtures::vault_root("/vault"),
+                &vault,
+            )
+            .expect("Second merge for trait verification failed");
+            let mut config2 = config2;
+            let _events_second = config2.take_events();
             assert_eq!(
                 config, config2,
                 "Merged configs with identical input must be equal (PartialEq)"
@@ -646,6 +818,7 @@ mod tests {
 
     mod merge {
         use super::*;
+        use crate::config::types::LogLevel;
 
         /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
         /// Priority: P1.
@@ -653,7 +826,8 @@ mod tests {
         fn defaults_apply_to_cache_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
-                config.vault_filesystem.cache_dir, ".cache",
+                config.vault_filesystem.cache_dir.as_path(),
+                CacheDir::default().as_path(),
                 "Should fall back to default cache_dir"
             );
         }
@@ -663,10 +837,10 @@ mod tests {
         #[test]
         fn defaults_apply_to_templates_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
-            let default_filesystem = VaultPaths::default();
+            let default_template = Template::default();
             assert_eq!(
-                config.vault_filesystem.template.templates_dir,
-                default_filesystem.template.templates_dir,
+                config.vault_filesystem.template.templates_dir().as_path(),
+                default_template.templates_dir().as_path(),
                 "Should fall back to default templates_dir"
             );
         }
@@ -676,10 +850,10 @@ mod tests {
         #[test]
         fn defaults_apply_to_schemas_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
-            let default_filesystem = VaultPaths::default();
+            let default_schema = Schema::default();
             assert_eq!(
-                config.vault_filesystem.schema.schemas_dir,
-                default_filesystem.schema.schemas_dir,
+                config.vault_filesystem.schema.schemas_dir().as_path(),
+                default_schema.schemas_dir().as_path(),
                 "Should fall back to default schemas_dir"
             );
         }
@@ -689,10 +863,14 @@ mod tests {
         #[test]
         fn defaults_apply_to_property_bank_filename() {
             let config = fixtures::merged_config_with_empty_inputs();
-            let default_filesystem = VaultPaths::default();
+            let default_schema = Schema::default();
             assert_eq!(
-                config.vault_filesystem.schema.property_bank_filename,
-                default_filesystem.schema.property_bank_filename,
+                config
+                    .vault_filesystem
+                    .schema
+                    .property_bank_filename()
+                    .as_str(),
+                default_schema.property_bank_filename().as_str(),
                 "Should fall back to default property_bank_filename"
             );
         }
@@ -704,7 +882,8 @@ mod tests {
             let config = fixtures::merged_config_with_empty_inputs();
             let default_logging = Logging::default();
             assert_eq!(
-                config.logging.log_level, default_logging.log_level,
+                config.logging.log_level(),
+                default_logging.log_level(),
                 "Should fall back to default log_level"
             );
         }
@@ -716,8 +895,8 @@ mod tests {
             let config = fixtures::merged_config_with_empty_inputs();
             let default_frontmatter = Frontmatter::default();
             assert_eq!(
-                config.frontmatter.file_class_key,
-                default_frontmatter.file_class_key,
+                config.frontmatter.file_class_key().as_str(),
+                default_frontmatter.file_class_key().as_str(),
                 "Should fall back to default file_class_key"
             );
         }
@@ -729,7 +908,8 @@ mod tests {
             let config = fixtures::merged_config_with_empty_inputs();
             let default_frontmatter = Frontmatter::default();
             assert_eq!(
-                config.frontmatter.title_key, default_frontmatter.title_key,
+                config.frontmatter.title_key().as_str(),
+                default_frontmatter.title_key().as_str(),
                 "Should fall back to default title_key"
             );
         }
@@ -741,7 +921,8 @@ mod tests {
             let config = fixtures::merged_config_with_empty_inputs();
             let default_frontmatter = Frontmatter::default();
             assert_eq!(
-                config.frontmatter.alias_key, default_frontmatter.alias_key,
+                config.frontmatter.alias_key().as_str(),
+                default_frontmatter.alias_key().as_str(),
                 "Should fall back to default alias_key"
             );
         }
@@ -757,13 +938,28 @@ mod tests {
             // GIVEN: the same global and vault configs
             let global = fixtures::sample_global_config();
             let vault = fixtures::sample_vault_config();
+            let vault_id = fixtures::vault_id();
 
             // WHEN: merging the same inputs multiple times
-            let merged1 = Config::build(Some(&global), "/vault", vault.clone())
-                .expect("First merge should succeed");
+            let merged1 = Config::build(
+                Some(&global),
+                vault_id,
+                fixtures::vault_root("/vault"),
+                &vault.clone(),
+            )
+            .expect("First merge should succeed");
+            let mut merged1 = merged1;
+            let _events_first = merged1.take_events();
 
-            let merged2 = Config::build(Some(&global), "/vault", vault)
-                .expect("Second merge should succeed");
+            let merged2 = Config::build(
+                Some(&global),
+                vault_id,
+                fixtures::vault_root("/vault"),
+                &vault,
+            )
+            .expect("Second merge should succeed");
+            let mut merged2 = merged2;
+            let _events_second = merged2.take_events();
 
             // THEN: results should be identical
             assert_eq!(
@@ -778,8 +974,8 @@ mod tests {
         fn vault_templates_dir_overrides_global() {
             let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
-                merged.vault_filesystem.template.templates_dir,
-                "custom_templates",
+                merged.vault_filesystem.template.templates_dir().as_path(),
+                std::path::Path::new("custom_templates"),
                 "Vault filesystem should have custom templates"
             );
         }
@@ -790,7 +986,8 @@ mod tests {
         fn vault_log_level_overrides_global() {
             let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
-                merged.logging.log_level, "debug",
+                merged.logging.log_level(),
+                LogLevel::Debug,
                 "Log level should override global"
             );
         }
@@ -801,7 +998,8 @@ mod tests {
         fn vault_frontmatter_file_class_overrides_global() {
             let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
-                merged.frontmatter.file_class_key, "type",
+                merged.frontmatter.file_class_key().as_str(),
+                "type",
                 "File class key should override global"
             );
         }
@@ -812,44 +1010,75 @@ mod tests {
         fn vault_frontmatter_date_created_overrides_global() {
             let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
-                merged.frontmatter.date_created_key, "created",
+                merged.frontmatter.date_created_key().as_str(),
+                "created",
                 "Date created key should override global"
             );
         }
     }
 
     mod proptests {
+        use std::path::PathBuf;
+
         use proptest::{prelude::*, test_runner::TestRunner};
 
         use super::*;
+        use crate::config::{
+            types::TemplatesDir,
+            vault::{SchemaOverrides, TemplateOverrides, VaultRoot},
+        };
 
         // 3.3-UNIT-012: `merge_handles_various_path_lengths`.
         // Priority: P2.
         #[test]
         fn merge_handles_various_path_lengths() -> Result<(), String> {
             let mut runner = TestRunner::deterministic();
-            let strategy = ("[a-zA-Z0-9/_-]{1,200}", "[a-zA-Z0-9/_-]{0,100}");
+            let strategy = (
+                "[a-zA-Z0-9][a-zA-Z0-9/_-]{0,199}",
+                "[a-zA-Z0-9][a-zA-Z0-9/_-]{0,99}",
+            );
 
             let run_result =
                 runner.run(&strategy, |(vault_path, templates_dir)| {
                     // GIVEN a global config and generated vault path/template
                     // overrides
                     let global = fixtures::sample_global_config();
-                    let vault_config = Vault {
-                        filesystem: VaultPaths {
-                            schema: Schema::default(),
-                            template: Template {
-                                templates_dir: templates_dir.clone(),
-                            },
-                            cache_dir: ".cache".to_owned(),
-                        },
-                        frontmatter: None,
-                        logging: None,
-                    };
+                    let templates_dir = TemplatesDir::try_new(PathBuf::from(
+                        templates_dir.clone(),
+                    ))
+                    .map_err(|error| {
+                        proptest::test_runner::TestCaseError::fail(format!(
+                            "templates_dir should be valid, got: {error:?}"
+                        ))
+                    })?;
+                    let vault_config = Vault::new(
+                        VaultPaths::new(
+                            None,
+                            SchemaOverrides::new(None, None),
+                            TemplateOverrides::new(Some(templates_dir)),
+                        ),
+                        None,
+                        None,
+                        None,
+                    );
 
                     // WHEN building a config from the generated inputs
-                    let result =
-                        Config::build(Some(&global), &vault_path, vault_config);
+                    let root = VaultRoot::try_new(
+                        PathBuf::from("/").join(&vault_path),
+                    )
+                    .map_err(|error| {
+                        proptest::test_runner::TestCaseError::fail(format!(
+                            "VaultRoot::try_new should succeed for \
+                             '{vault_path}', got: {error:?}"
+                        ))
+                    })?;
+                    let root_clone = root.clone();
+                    let result = Config::build(
+                        Some(&global),
+                        fixtures::vault_id(),
+                        root,
+                        &vault_config,
+                    );
 
                     let config = result.map_err(|error| {
                         proptest::test_runner::TestCaseError::fail(format!(
@@ -858,8 +1087,8 @@ mod tests {
                         ))
                     })?;
                     prop_assert_eq!(
-                        config.vault_metadata.path.as_str(),
-                        vault_path,
+                        config.vault_metadata.root().as_path(),
+                        root_clone.as_path(),
                         "Valid paths should preserve vault_path"
                     );
                     Ok(())
@@ -873,7 +1102,10 @@ mod tests {
     }
 
     mod validate {
+        use std::path::PathBuf;
+
         use super::*;
+        use crate::config::{types::LogLevel, vault::VaultRoot};
 
         /// 3.3-UNIT-016: `enforces_required_fields_and_enum_constraints`.
         /// Priority: P0.
@@ -881,20 +1113,20 @@ mod tests {
         fn valid_config_passes_validation() {
             // GIVEN: a vault config with specific field values
             let global = fixtures::sample_global_config();
-            let vault = Vault {
-                filesystem: VaultPaths {
-                    schema: Schema::default(),
-                    template: Template::default(),
-                    cache_dir: ".cache".to_owned(),
-                },
-                frontmatter: None,
-                logging: Some(Logging {
-                    log_level: "info".to_owned(),
-                }),
-            };
+            let vault = Vault::new(
+                VaultPaths::default(),
+                None,
+                Some(Logging::new(LogLevel::Info)),
+                None,
+            );
 
             // WHEN: attempting to merge the configs
-            let result = Config::build(Some(&global), "/vault", vault);
+            let result = Config::build(
+                Some(&global),
+                fixtures::vault_id(),
+                fixtures::vault_root("/vault"),
+                &vault,
+            );
 
             assert!(
                 matches!(&result, Ok(config) if config.validate().is_ok()),
@@ -906,28 +1138,15 @@ mod tests {
         /// Priority: P0.
         #[test]
         fn empty_path_reports_validation_failed() {
-            let global = fixtures::sample_global_config();
-            let vault = Vault {
-                filesystem: VaultPaths {
-                    schema: Schema::default(),
-                    template: Template::default(),
-                    cache_dir: ".cache".to_owned(),
-                },
-                frontmatter: None,
-                logging: Some(Logging {
-                    log_level: "info".to_owned(),
-                }),
-            };
-
-            let result = Config::build(Some(&global), "", vault);
+            let result = VaultRoot::try_new(PathBuf::from(""));
 
             assert!(
                 matches!(
                     &result,
                     Err(ConfigError::ValidationFailed { field, .. })
-                        if field.as_ref() == "vault_path"
+                        if field.as_ref() == "vault_root"
                 ),
-                "Expected ValidationFailed for vault_path, got: {result:?}"
+                "Expected ValidationFailed for vault_root, got: {result:?}"
             );
         }
 
@@ -935,20 +1154,7 @@ mod tests {
         /// Priority: P0.
         #[test]
         fn invalid_log_level_reports_invalid_enum() {
-            let global = fixtures::sample_global_config();
-            let vault = Vault {
-                filesystem: VaultPaths {
-                    schema: Schema::default(),
-                    template: Template::default(),
-                    cache_dir: ".cache".to_owned(),
-                },
-                frontmatter: None,
-                logging: Some(Logging {
-                    log_level: "invalid".to_owned(),
-                }),
-            };
-
-            let result = Config::build(Some(&global), "/vault", vault);
+            let result = LogLevel::try_from("invalid".to_owned());
 
             assert!(
                 matches!(

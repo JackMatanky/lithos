@@ -1,9 +1,4 @@
 //! Configuration domain events.
-#![allow(
-    clippy::exhaustive_structs,
-    clippy::exhaustive_enums,
-    reason = "rkyv generates Archived types with public fields/variants"
-)]
 
 use serde::{Deserialize, Serialize};
 
