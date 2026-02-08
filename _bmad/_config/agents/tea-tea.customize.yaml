@@ -1,41 +1,120 @@
-# Agent Customization
-# Customize any section below - all are optional
+# TEA Agent Customization for Lithos Project
+# Location: _bmad/_config/agents/tea-tea.customize.yaml
+# Purpose: Provide Rust/Lithos-specific testing knowledge to TEA agent
 
-# Override agent name
+# Override agent name for Lithos context
 agent:
   metadata:
-    name: ""
+    name: "TEA-Lithos"
 
-# Replace entire persona (not merged)
-persona:
-  role: ""
-  identity: ""
-  communication_style: ""
-  principles: []
+# Add persistent memories for context-aware operation
+memories:
+  # Knowledge Base Location
+  - "Rust testing knowledge is modularized in _bmad/tea/knowledge/rust/"
+  - "Always reference README.md in that directory for module selection guidance"
 
-# Add custom critical actions (appended after standard config loading)
-critical_actions: []
+  # Context-Aware Loading Instructions
+  - "When reviewing unit tests: load testing-anti-patterns.md, testing-naming.md, testing-assertions.md, testing-unit.md"
+  - "When reviewing integration tests: load testing-anti-patterns.md, testing-naming.md, testing-assertions.md, testing-integration.md"
+  - "When reviewing E2E tests: load testing-anti-patterns.md, testing-naming.md, testing-assertions.md, testing-e2e.md"
+  - "When generating tests: load ALL rust/*.md knowledge modules"
+  - "When checking naming: load testing-naming.md and testing-anti-patterns.md"
+  - "When checking assertions: load testing-assertions.md and testing-anti-patterns.md"
 
-# Add persistent memories for the agent
-memories: []
-# Example:
-# memories:
-#   - "User prefers detailed technical explanations"
-#   - "Current project uses React and TypeScript"
+  # Core Architecture Rules (Always in memory)
+  - "Lithos follows sync-first architecture: NO async in lithos-core domain logic"
+  - "Hexagonal architecture: Domain -> Ports -> Adapters testing layers"
+  - "CQRS split ports: SchemaCommandPort vs SchemaQueryPort"
+  - "Unit tests MUST be in #[cfg(test)] mod tests blocks in same file as implementation"
+  - "Integration tests MUST be in lithos-core/tests/ directory"
+  - "E2E tests MUST be in lithos-cli/ crate"
 
-# Add custom menu items (appended to base menu)
-# Don't include * prefix or help/exit - auto-injected
-menu: []
-# Example:
-# menu:
-#   - trigger: my-workflow
-#     workflow: "{project-root}/custom/my.yaml"
-#     description: My custom workflow
+  # Naming Rules (Always in memory)
+  - "Test names MUST follow action_expected_condition pattern (e.g., returns_error_when_invalid)"
+  - "NO test_ prefix (redundant with #[test])"
+  - "NO generic names like test_foo, test_basic, test_1"
+  - "Use submodules named after function being tested"
 
-# Add custom prompts (for action="#id" handlers)
-prompts: []
-# Example:
-# prompts:
-# - id: my-prompt
-#   content: |
-#     Prompt instructions here
+  # Assertion Rules (Always in memory)
+  - "NEVER use unwrap() or expect() in Act/Assert phases (only in Arrange)"
+  - "ALWAYS include explicit error messages in assertions with context"
+  - "Use matches! for enum variant checking (not equality)"
+  - "Use assert!(result.is_ok(), \"...\", result.err()) pattern"
+
+  # Tool Preferences (Always in memory)
+  - "Primary test runner: nextest (not cargo test)"
+  - "Use rstest for parameterized tests with #[case::descriptive_name(...)]"
+  - "Use proptest for property-based testing edge cases"
+  - "Use tempfile::TempDir for filesystem operations"
+
+  # Critical Anti-Patterns (Always flag these)
+  - "CRITICAL: result.unwrap() in assertions hides error information"
+  - "CRITICAL: Shared mutable state between tests causes flakiness"
+  - "CRITICAL: Non-deterministic tests (no fixed seeds)"
+  - "CRITICAL: Tests in wrong location (unit in tests/, integration in src/)"
+
+  # Coverage Targets
+  - "Unit test coverage target: >= 70%"
+  - "Integration test coverage target: >= 20%"
+  - "Overall coverage target: >= 80%"
+  - "Critical path coverage target: 100%"
+
+  # Mise Commands Reference
+  - "Run unit tests: mise run test:unit (alias: tu)"
+  - "Run integration tests: mise run test:integration (alias: ti)"
+  - "Run E2E tests: mise run test:e2e (alias: te)"
+  - "Run all tests: mise run test (alias: t)"
+  - "Run coverage: mise run test:coverage (alias: tc)"
+  - "Burn-in testing: mise run test:burn-in (alias: tb)"
+  - "Full verification: mise run verify (alias: v)"
+
+# Project-specific test locations
+project_context:
+  test_directories:
+    unit: "lithos-core/src/**/*.rs (in #[cfg(test)] mod tests)"
+    integration: "lithos-core/tests/"
+    e2e: "lithos-cli/tests/"
+    fixtures: "tests/fixtures/"
+    reference_vault: "docs/refs/obsidian/"
+
+  configuration_files:
+    nextest: ".config/nextest.toml"
+    mise: "mise.toml"
+
+  coverage_tools:
+    primary: "cargo-llvm-cov"
+    alternative: "cargo-tarpaulin"
+
+  key_traits:
+    storage_ports:
+      - "SchemaCommandPort"
+      - "SchemaQueryPort"
+      - "NoteCommandPort"
+      - "NoteQueryPort"
+    test_doubles:
+      - "mockall for mocking"
+      - "InMemory* adapters for testing"
+
+# Quality Gates (Scoring Rubric)
+quality_gates:
+  test_review:
+    critical_issues:
+      - "Test in wrong location (-20 points)"
+      - "result.unwrap() in assertions (-20 points)"
+      - "Shared mutable state (-20 points)"
+      - "Non-descriptive test name (-20 points)"
+    warnings:
+      - "Missing assertion message (-10 points)"
+      - "Hardcoded paths (-10 points)"
+      - "Manual cleanup instead of RAII (-10 points)"
+      - "Missing doc tests for public API (-10 points)"
+    info:
+      - "Could use rstest (-5 points)"
+      - "Could use better assertion (-5 points)"
+      - "Missing submodule organization (-5 points)"
+
+  coverage_targets:
+    unit: 70
+    integration: 20
+    overall: 80
+    critical_path: 100

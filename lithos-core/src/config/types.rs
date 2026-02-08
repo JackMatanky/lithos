@@ -2,14 +2,523 @@
 //!
 //! This module contains the fundamental configuration types that are used
 //! by both vault and global configuration contexts.
-#![allow(
-    clippy::exhaustive_structs,
-    reason = "rkyv generates Archived types with public fields"
+
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+
+use super::{
+    error::ConfigError,
+    raw::{RawFrontmatter, RawLogging, RawSchemaPaths, RawTemplatePaths},
+};
+
+/// Validated frontmatter key (non-empty).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct FrontmatterKey(
+    /// Internal key storage.
+    Box<str>,
+);
 
-use std::collections::HashMap;
+/// Logging verbosity level.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum LogLevel {
+    /// Error-level logging only.
+    Error,
+    /// Warning and error logging.
+    Warn,
+    /// Informational logging.
+    #[default]
+    Info,
+    /// Debug logging.
+    Debug,
+    /// Trace-level logging.
+    Trace,
+}
 
-use super::error::ConfigError;
+/// Vault-relative schemas directory.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct SchemasDir(
+    /// Internal path storage.
+    #[rkyv(with = rkyv::with::AsString)]
+    PathBuf,
+);
+
+/// Vault-relative templates directory.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct TemplatesDir(
+    /// Internal path storage.
+    #[rkyv(with = rkyv::with::AsString)]
+    PathBuf,
+);
+
+/// File name without path separators.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct FileName(
+    /// Internal filename storage.
+    Box<str>,
+);
+
+fn validate_non_empty(
+    field: &'static str,
+    value: &str,
+) -> Result<(), ConfigError> {
+    if value.is_empty() {
+        return Err(ConfigError::ValidationFailed {
+            field: field.to_owned().into(),
+            message: format!("{field} cannot be empty").into(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_relative_path(
+    field: &'static str,
+    path: &Path,
+) -> Result<(), ConfigError> {
+    if path.as_os_str().is_empty() {
+        return Err(ConfigError::ValidationFailed {
+            field: field.to_owned().into(),
+            message: format!("{field} cannot be empty").into(),
+        });
+    }
+    if path.is_absolute() {
+        return Err(ConfigError::ValidationFailed {
+            field: field.to_owned().into(),
+            message: format!("{field} must be vault-relative").into(),
+        });
+    }
+    if path
+        .components()
+        .any(|component| component == std::path::Component::ParentDir)
+    {
+        return Err(ConfigError::ValidationFailed {
+            field: field.to_owned().into(),
+            message: format!("{field} must not contain parent components")
+                .into(),
+        });
+    }
+    Ok(())
+}
+
+impl FrontmatterKey {
+    /// Create a validated frontmatter key.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the key is empty.
+    #[inline]
+    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
+        let value = value.into();
+        validate_non_empty("frontmatter_key", &value)?;
+        Ok(Self(value))
+    }
+
+    pub(crate) fn try_new_with_field(
+        field: &'static str,
+        value: impl Into<Box<str>>,
+    ) -> Result<Self, ConfigError> {
+        let value = value.into();
+        validate_non_empty(field, &value)?;
+        Ok(Self(value))
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the key as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<RawFrontmatter> for Frontmatter {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(raw: RawFrontmatter) -> Result<Self, Self::Error> {
+        let defaults = Frontmatter::default();
+        let alias_key = match raw.alias_key {
+            Some(value) => {
+                FrontmatterKey::try_new_with_field("alias_key", value)?
+            }
+            None => defaults.alias_key,
+        };
+        let date_created_key = match raw.date_created_key {
+            Some(value) => {
+                FrontmatterKey::try_new_with_field("date_created_key", value)?
+            }
+            None => defaults.date_created_key,
+        };
+        let date_modified_key = match raw.date_modified_key {
+            Some(value) => {
+                FrontmatterKey::try_new_with_field("date_modified_key", value)?
+            }
+            None => defaults.date_modified_key,
+        };
+        let file_class_key = match raw.file_class_key {
+            Some(value) => {
+                FrontmatterKey::try_new_with_field("file_class_key", value)?
+            }
+            None => defaults.file_class_key,
+        };
+        let title_key = match raw.title_key {
+            Some(value) => {
+                FrontmatterKey::try_new_with_field("title_key", value)?
+            }
+            None => defaults.title_key,
+        };
+
+        Ok(Frontmatter::new(
+            alias_key,
+            date_created_key,
+            date_modified_key,
+            file_class_key,
+            title_key,
+        ))
+    }
+}
+
+impl TryFrom<String> for FrontmatterKey {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, ConfigError> {
+        Self::try_new(value)
+    }
+}
+
+impl From<FrontmatterKey> for String {
+    #[inline]
+    fn from(value: FrontmatterKey) -> Self {
+        value.0.into()
+    }
+}
+
+impl LogLevel {
+    #[inline]
+    #[must_use]
+    /// Return the lowercase string form.
+    pub fn as_str(&self) -> &'static str {
+        match *self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
+        }
+    }
+}
+
+impl TryFrom<RawLogging> for Logging {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(raw: RawLogging) -> Result<Self, Self::Error> {
+        match raw.log_level {
+            Some(value) => Ok(Logging::new(LogLevel::try_from(value)?)),
+            None => Ok(Logging::default()),
+        }
+    }
+}
+
+impl TryFrom<String> for LogLevel {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, ConfigError> {
+        match value.as_str() {
+            "error" => Ok(Self::Error),
+            "warn" => Ok(Self::Warn),
+            "info" => Ok(Self::Info),
+            "debug" => Ok(Self::Debug),
+            "trace" => Ok(Self::Trace),
+            _ => Err(ConfigError::InvalidEnumValue {
+                field: "log_level".to_owned().into(),
+                value: value.into(),
+                allowed: ["error", "warn", "info", "debug", "trace"]
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect(),
+            }),
+        }
+    }
+}
+
+impl From<LogLevel> for String {
+    #[inline]
+    fn from(value: LogLevel) -> Self {
+        value.as_str().to_owned()
+    }
+}
+
+impl SchemasDir {
+    /// Create a validated schemas directory path.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the path is invalid.
+    #[inline]
+    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+        validate_relative_path("schemas_dir", &path)?;
+        Ok(Self(path))
+    }
+
+    pub(crate) fn try_new_with_field(
+        field: &'static str,
+        path: PathBuf,
+    ) -> Result<Self, ConfigError> {
+        validate_relative_path(field, &path)?;
+        Ok(Self(path))
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the directory path.
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Default for SchemasDir {
+    #[inline]
+    fn default() -> Self {
+        Self(PathBuf::from("schemas"))
+    }
+}
+
+impl TryFrom<String> for SchemasDir {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, ConfigError> {
+        Self::try_new(PathBuf::from(value))
+    }
+}
+
+impl From<SchemasDir> for String {
+    #[inline]
+    fn from(value: SchemasDir) -> Self {
+        value.0.to_string_lossy().into_owned()
+    }
+}
+
+impl TemplatesDir {
+    /// Create a validated templates directory path.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the path is invalid.
+    #[inline]
+    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+        validate_relative_path("templates_dir", &path)?;
+        Ok(Self(path))
+    }
+
+    pub(crate) fn try_new_with_field(
+        field: &'static str,
+        path: PathBuf,
+    ) -> Result<Self, ConfigError> {
+        validate_relative_path(field, &path)?;
+        Ok(Self(path))
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the directory path.
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Default for TemplatesDir {
+    #[inline]
+    fn default() -> Self {
+        Self(PathBuf::from("templates"))
+    }
+}
+
+impl TryFrom<String> for TemplatesDir {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(PathBuf::from(value))
+    }
+}
+
+impl From<TemplatesDir> for String {
+    #[inline]
+    fn from(value: TemplatesDir) -> Self {
+        value.0.to_string_lossy().into_owned()
+    }
+}
+
+impl FileName {
+    #[inline]
+    /// Create a validated file name.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the name is empty or contains
+    /// path separators.
+    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
+        let value = value.into();
+        validate_non_empty("file_name", &value)?;
+        if value.contains('/') || value.contains('\\') {
+            return Err(ConfigError::ValidationFailed {
+                field: "file_name".to_owned().into(),
+                message: "file name must not contain path separators"
+                    .to_owned()
+                    .into(),
+            });
+        }
+        Ok(Self(value))
+    }
+
+    pub(crate) fn try_new_with_field(
+        field: &'static str,
+        value: impl Into<Box<str>>,
+    ) -> Result<Self, ConfigError> {
+        let value = value.into();
+        validate_non_empty(field, &value)?;
+        if value.contains('/') || value.contains('\\') {
+            return Err(ConfigError::ValidationFailed {
+                field: field.to_owned().into(),
+                message: format!("{field} must not contain path separators")
+                    .into(),
+            });
+        }
+        Ok(Self(value))
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the file name as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<RawSchemaPaths> for Schema {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(raw: RawSchemaPaths) -> Result<Self, Self::Error> {
+        let defaults = Schema::default();
+        let schemas_dir = match raw.schemas_dir {
+            Some(value) => SchemasDir::try_new_with_field(
+                "schemas_dir",
+                PathBuf::from(value),
+            )?,
+            None => defaults.schemas_dir,
+        };
+        let property_bank_filename = match raw.property_bank_filename {
+            Some(value) => {
+                FileName::try_new_with_field("property_bank_filename", value)?
+            }
+            None => defaults.property_bank_filename,
+        };
+        Ok(Schema::new(schemas_dir, property_bank_filename))
+    }
+}
+
+impl TryFrom<RawTemplatePaths> for Template {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(raw: RawTemplatePaths) -> Result<Self, Self::Error> {
+        let defaults = Template::default();
+        let templates_dir = match raw.templates_dir {
+            Some(value) => TemplatesDir::try_new_with_field(
+                "templates_dir",
+                PathBuf::from(value),
+            )?,
+            None => defaults.templates_dir,
+        };
+        Ok(Template::new(templates_dir))
+    }
+}
+
+impl TryFrom<String> for FileName {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+impl From<FileName> for String {
+    #[inline]
+    fn from(value: FileName) -> Self {
+        value.0.into()
+    }
+}
 
 /// Frontmatter configuration for Markdown file metadata.
 ///
@@ -27,18 +536,22 @@ use super::error::ConfigError;
     rkyv::Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
+#[expect(
+    clippy::struct_field_names,
+    reason = "Frontmatter keys intentionally share the 'key' suffix."
+)]
 #[non_exhaustive]
 pub struct Frontmatter {
     /// Key for aliases in frontmatter.
-    pub alias_key: String,
+    alias_key: FrontmatterKey,
     /// Key for creation date in frontmatter.
-    pub date_created_key: String,
+    date_created_key: FrontmatterKey,
     /// Key for modification date in frontmatter.
-    pub date_modified_key: String,
+    date_modified_key: FrontmatterKey,
     /// Key for file classification in frontmatter.
-    pub file_class_key: String,
+    file_class_key: FrontmatterKey,
     /// Key for title field in frontmatter.
-    pub title_key: String,
+    title_key: FrontmatterKey,
 }
 
 /// Logging configuration with validation.
@@ -56,7 +569,7 @@ pub struct Frontmatter {
 #[non_exhaustive]
 pub struct Logging {
     /// Log level (debug, info, warn, error).
-    pub log_level: String,
+    log_level: LogLevel,
 }
 
 /// Schema configuration (schemas directory).
@@ -74,9 +587,9 @@ pub struct Logging {
 #[non_exhaustive]
 pub struct Schema {
     /// Directory containing schema files.
-    pub schemas_dir: String,
+    schemas_dir: SchemasDir,
     /// Property bank filename (stored in `schemas_dir`).
-    pub property_bank_filename: String,
+    property_bank_filename: FileName,
 }
 
 /// Configuration value types supporting multiple data types and encryption.
@@ -144,18 +657,23 @@ pub enum SettingValue {
 #[non_exhaustive]
 pub struct Template {
     /// Directory containing template files.
-    pub templates_dir: String,
+    templates_dir: TemplatesDir,
 }
 
 impl Default for Frontmatter {
     #[inline]
     fn default() -> Self {
         Self {
-            alias_key: "aliases".to_owned(),
-            date_created_key: "date_created".to_owned(),
-            date_modified_key: "date_modified".to_owned(),
-            file_class_key: "file_class".to_owned(),
-            title_key: "title".to_owned(),
+            alias_key: FrontmatterKey::try_new("aliases")
+                .unwrap_or_else(|_| FrontmatterKey("aliases".into())),
+            date_created_key: FrontmatterKey::try_new("date_created")
+                .unwrap_or_else(|_| FrontmatterKey("date_created".into())),
+            date_modified_key: FrontmatterKey::try_new("date_modified")
+                .unwrap_or_else(|_| FrontmatterKey("date_modified".into())),
+            file_class_key: FrontmatterKey::try_new("file_class")
+                .unwrap_or_else(|_| FrontmatterKey("file_class".into())),
+            title_key: FrontmatterKey::try_new("title")
+                .unwrap_or_else(|_| FrontmatterKey("title".into())),
         }
     }
 }
@@ -164,7 +682,7 @@ impl Default for Logging {
     #[inline]
     fn default() -> Self {
         Self {
-            log_level: "info".to_owned(),
+            log_level: LogLevel::Info,
         }
     }
 }
@@ -173,21 +691,15 @@ impl Default for Schema {
     #[inline]
     fn default() -> Self {
         Self {
-            schemas_dir: "schemas".to_owned(),
-            property_bank_filename: "property_bank.json".to_owned(),
+            schemas_dir: SchemasDir::default(),
+            property_bank_filename: FileName::try_new("property_bank.json")
+                .unwrap_or_else(|_| FileName("property_bank.json".into())),
         }
     }
 }
 
 impl std::fmt::Debug for SettingValue {
     #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Matching on &SettingValue enum with mixed Copy (Boolean, \
-                  Number) and non-Copy (Array, Map, String) fields. Pattern \
-                  binding on &self is the idiomatic way to implement Debug \
-                  without moving non-Copy variants."
-    )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Array(arr) => f.debug_tuple("Array").field(arr).finish(),
@@ -200,6 +712,15 @@ impl std::fmt::Debug for SettingValue {
             Self::Number(n) => f.debug_tuple("Number").field(n).finish(),
             Self::Object(map) => f.debug_tuple("Object").field(map).finish(),
             Self::String(s) => f.debug_tuple("String").field(s).finish(),
+        }
+    }
+}
+            Self::Null => f.debug_tuple("Null").finish(),
+            Self::Number(n) => f.debug_tuple("Number").field(&n).finish(),
+            Self::Object(ref map) => {
+                f.debug_tuple("Object").field(map).finish()
+            }
+            Self::String(ref s) => f.debug_tuple("String").field(s).finish(),
         }
     }
 }
@@ -256,12 +777,66 @@ impl Default for Template {
     #[inline]
     fn default() -> Self {
         Self {
-            templates_dir: "templates".to_owned(),
+            templates_dir: TemplatesDir::default(),
         }
     }
 }
 
 impl Frontmatter {
+    #[inline]
+    #[must_use]
+    /// Create frontmatter configuration.
+    pub fn new(
+        alias_key: FrontmatterKey,
+        date_created_key: FrontmatterKey,
+        date_modified_key: FrontmatterKey,
+        file_class_key: FrontmatterKey,
+        title_key: FrontmatterKey,
+    ) -> Self {
+        Self {
+            alias_key,
+            date_created_key,
+            date_modified_key,
+            file_class_key,
+            title_key,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the alias key.
+    pub fn alias_key(&self) -> &FrontmatterKey {
+        &self.alias_key
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the created date key.
+    pub fn date_created_key(&self) -> &FrontmatterKey {
+        &self.date_created_key
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the modified date key.
+    pub fn date_modified_key(&self) -> &FrontmatterKey {
+        &self.date_modified_key
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the file classification key.
+    pub fn file_class_key(&self) -> &FrontmatterKey {
+        &self.file_class_key
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the title key.
+    pub fn title_key(&self) -> &FrontmatterKey {
+        &self.title_key
+    }
+
     /// Validate frontmatter configuration.
     ///
     /// # Errors
@@ -280,28 +855,34 @@ impl Frontmatter {
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
-        let fields = [
-            ("alias_key", &self.alias_key),
-            ("date_created_key", &self.date_created_key),
-            ("date_modified_key", &self.date_modified_key),
-            ("file_class_key", &self.file_class_key),
-            ("title_key", &self.title_key),
-        ];
-
-        for (name, value) in fields {
-            if value.is_empty() {
-                return Err(ConfigError::ValidationFailed {
-                    field: name.to_owned().into(),
-                    message: format!("{name} cannot be empty").into(),
-                });
-            }
-        }
-
         Ok(())
     }
 }
 
 impl Logging {
+    #[inline]
+    #[must_use]
+    /// Create logging configuration.
+    pub fn new(log_level: LogLevel) -> Self {
+        Self {
+            log_level,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the log level.
+    pub fn log_level(&self) -> LogLevel {
+        self.log_level
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the log level as a string.
+    pub fn log_level_str(&self) -> &'static str {
+        self.log_level.as_str()
+    }
+
     /// Validate logging configuration.
     ///
     /// # Errors
@@ -320,22 +901,38 @@ impl Logging {
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
-        let valid_levels = ["debug", "info", "warn", "error"];
-        if !valid_levels.contains(&self.log_level.as_str()) {
-            return Err(ConfigError::InvalidEnumValue {
-                field: "log_level".to_owned().into(),
-                value: self.log_level.clone().into(),
-                allowed: valid_levels
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect(),
-            });
-        }
         Ok(())
     }
 }
 
 impl Schema {
+    #[inline]
+    #[must_use]
+    /// Create schema configuration.
+    pub fn new(
+        schemas_dir: SchemasDir,
+        property_bank_filename: FileName,
+    ) -> Self {
+        Self {
+            schemas_dir,
+            property_bank_filename,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the schemas directory.
+    pub fn schemas_dir(&self) -> &SchemasDir {
+        &self.schemas_dir
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the property bank file name.
+    pub fn property_bank_filename(&self) -> &FileName {
+        &self.property_bank_filename
+    }
+
     /// Get the full path to the property bank file
     /// (`schemas_dir/property_bank_filename`).
     ///
@@ -349,14 +946,14 @@ impl Schema {
     ///
     /// assert_eq!(
     ///     schema.property_bank_path(),
-    ///     "schemas/property_bank.json",
+    ///     std::path::PathBuf::from("schemas").join("property_bank.json"),
     ///     "Property bank path should use schema directory"
     /// );
     /// ```
     #[inline]
     #[must_use]
-    pub fn property_bank_path(&self) -> String {
-        format!("{}/{}", self.schemas_dir, self.property_bank_filename)
+    pub fn property_bank_path(&self) -> PathBuf {
+        self.schemas_dir.as_path().join(self.property_bank_filename.as_str())
     }
 
     /// Validate schema configuration.
@@ -367,25 +964,27 @@ impl Schema {
     /// `property_bank_filename` is empty.
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.schemas_dir.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "schemas_dir".to_owned().into(),
-                message: "schemas directory cannot be empty".to_owned().into(),
-            });
-        }
-        if self.property_bank_filename.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "property_bank_filename".to_owned().into(),
-                message: "property bank filename cannot be empty"
-                    .to_owned()
-                    .into(),
-            });
-        }
         Ok(())
     }
 }
 
 impl Template {
+    #[inline]
+    #[must_use]
+    /// Create template configuration.
+    pub fn new(templates_dir: TemplatesDir) -> Self {
+        Self {
+            templates_dir,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the templates directory.
+    pub fn templates_dir(&self) -> &TemplatesDir {
+        &self.templates_dir
+    }
+
     /// Validate template configuration.
     ///
     /// # Errors
@@ -394,14 +993,6 @@ impl Template {
     /// empty.
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.templates_dir.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "templates_dir".to_owned().into(),
-                message: "templates directory cannot be empty"
-                    .to_owned()
-                    .into(),
-            });
-        }
         Ok(())
     }
 }
@@ -410,17 +1001,10 @@ impl Template {
 mod tests {
     use chrono::TimeZone as _;
 
-    use super::{Frontmatter, Logging, Schema, SettingValue, Template};
-
-    fn frontmatter_config() -> Frontmatter {
-        Frontmatter {
-            alias_key: "aliases".to_owned(),
-            date_created_key: "created".to_owned(),
-            date_modified_key: "modified".to_owned(),
-            file_class_key: "type".to_owned(),
-            title_key: "title".to_owned(),
-        }
-    }
+    use super::{
+        FileName, FrontmatterKey, LogLevel, SchemasDir, SettingValue,
+        TemplatesDir,
+    };
 
     fn encrypted_setting_value() -> SettingValue {
         SettingValue::Encrypted(vec![1, 2, 3])
@@ -429,34 +1013,33 @@ mod tests {
     /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
     /// Priority: P1.
     #[test]
-    fn constructs_valid_property_bank_path() {
-        // GIVEN schema configuration with explicit paths
-        let schema = Schema {
-            schemas_dir: "schemas".to_owned(),
-            property_bank_filename: "props.json".to_owned(),
-        };
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Test uses assert_eq which can panic."
+    )]
+    fn constructs_valid_property_bank_path() -> Result<(), super::ConfigError> {
+        let schema = super::Schema::new(
+            SchemasDir::try_new(std::path::PathBuf::from("schemas"))?,
+            FileName::try_new("props.json")?,
+        );
 
-        // WHEN deriving the property bank path
         let path = schema.property_bank_path();
 
-        // THEN the path is composed from schema settings
         assert_eq!(
-            path, "schemas/props.json",
+            path,
+            std::path::PathBuf::from("schemas").join("props.json"),
             "property_bank_path logic works"
         );
+        Ok(())
     }
 
     /// 3.3-UNIT-024: `converts_from_bool`.
     /// Priority: P3.
     #[test]
     fn converts_from_bool() {
-        // GIVEN a boolean configuration value
         let input = true;
-
-        // WHEN converting into a SettingValue
         let value = SettingValue::from(input);
 
-        // THEN the boolean variant is produced
         assert_eq!(
             value,
             SettingValue::Boolean(true),
@@ -468,13 +1051,9 @@ mod tests {
     /// Priority: P3.
     #[test]
     fn converts_from_f64() {
-        // GIVEN a floating point value for configuration
         let input = 42.5f64;
-
-        // WHEN converting into a SettingValue
         let value = SettingValue::from(input);
 
-        // THEN the number variant is produced
         assert_eq!(
             value,
             SettingValue::Number(42.5f64),
@@ -485,32 +1064,32 @@ mod tests {
     /// 3.3-UNIT-037: `converts_from_datetime`.
     /// Priority: P3.
     #[test]
-    fn converts_from_datetime() {
-        // GIVEN a datetime value
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Test uses assert_eq which can panic."
+    )]
+    fn converts_from_datetime() -> Result<(), Box<dyn std::error::Error>> {
         let input = chrono::Utc
             .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
             .single()
-            .expect("Valid test datetime");
+            .ok_or("valid test datetime")?;
 
-        // WHEN converting into a SettingValue
         let value = SettingValue::from(input);
 
-        // THEN the date variant is produced
         assert_eq!(
             value,
             SettingValue::Date(input),
             "Conversion from DateTime to SettingValue failed"
         );
+        Ok(())
     }
 
     /// 3.3-UNIT-038: `stores_null_value`.
     /// Priority: P3.
     #[test]
     fn stores_null_value() {
-        // GIVEN a null variant
         let value = SettingValue::Null;
 
-        // THEN it debug formats correctly
         assert_eq!(
             format!("{value:?}"),
             "Null",
@@ -522,17 +1101,14 @@ mod tests {
     /// Priority: P3.
     #[test]
     fn converts_from_hashmap_of_values() {
-        // GIVEN a hashmap of configuration values
         let mut map = std::collections::HashMap::new();
         map.insert(
             "key1".to_owned(),
             SettingValue::String("value1".to_owned()),
         );
 
-        // WHEN converting into a SettingValue
         let value = SettingValue::from(map.clone());
 
-        // THEN the object variant is produced
         assert_eq!(
             value,
             SettingValue::Object(map),
@@ -544,13 +1120,9 @@ mod tests {
     /// Priority: P3.
     #[test]
     fn converts_from_string() {
-        // GIVEN a string value for configuration
         let input = "test".to_owned();
-
-        // WHEN converting into a SettingValue
         let value = SettingValue::from(input.clone());
 
-        // THEN the string variant is produced
         assert_eq!(
             value,
             SettingValue::String(input),
@@ -562,16 +1134,12 @@ mod tests {
     /// Priority: P3.
     #[test]
     fn converts_from_vector_of_values() {
-        // GIVEN a vector of configuration values
         let array = vec![
             SettingValue::String("item1".to_owned()),
             SettingValue::Number(42.0),
         ];
-
-        // WHEN converting into a SettingValue
         let value = SettingValue::from(array.clone());
 
-        // THEN the array variant is produced
         assert_eq!(
             value,
             SettingValue::Array(array),
@@ -582,40 +1150,17 @@ mod tests {
     /// 3.3-UNIT-026: `frontmatter_validate_rejects_empty_keys`.
     /// Priority: P0.
     #[test]
-    fn frontmatter_validate_rejects_empty_keys() {
-        // GIVEN frontmatter with empty key
-        let frontmatter = Frontmatter {
-            title_key: String::new(),
-            ..Frontmatter::default()
-        };
-
-        // WHEN validating
-        let result = frontmatter.validate();
-
-        // THEN it fails
-        assert!(
-            result.is_err(),
-            "Frontmatter with empty required fields should fail validation"
-        );
+    fn frontmatter_key_rejects_empty() {
+        let result = FrontmatterKey::try_new("");
+        assert!(result.is_err(), "Expected validation error");
     }
 
     /// 3.3-UNIT-027: `logging_rejects_invalid_levels`.
     /// Priority: P0.
     #[test]
     fn logging_rejects_invalid_levels() {
-        // GIVEN an invalid log level
-        let logging = Logging {
-            log_level: "verbose".to_owned(),
-        };
-
-        // WHEN validating
-        let result = logging.validate();
-
-        // THEN it fails with invalid enum
-        assert!(
-            matches!(result, Err(super::ConfigError::InvalidEnumValue { .. })),
-            "Invalid log level 'verbose' should be rejected, got: {result:?}"
-        );
+        let result = LogLevel::try_from("verbose".to_owned());
+        assert!(result.is_err(), "Expected validation error");
     }
 
     /// 3.3-UNIT-033: `masks_encrypted_variant_in_debug_logs`.
@@ -642,82 +1187,35 @@ mod tests {
         );
     }
 
-    /// 3.3-UNIT-035: `preserves_frontmatter_key_mappings`.
-    /// Priority: P1.
-    #[test]
-    fn preserves_frontmatter_file_class_key_mapping() {
-        let config = frontmatter_config();
-
-        assert_eq!(
-            config.file_class_key, "type",
-            "file_class_key mapping mismatch"
-        );
-    }
-
-    #[test]
-    fn preserves_frontmatter_title_key_mapping() {
-        let config = frontmatter_config();
-
-        assert_eq!(config.title_key, "title", "title_key mapping mismatch");
-    }
-
     /// 3.3-UNIT-036: `rejects_empty_templates_dir`.
     /// Priority: P0.
     #[test]
     fn rejects_empty_templates_dir() {
-        // GIVEN a template config with an empty templates_dir
-        let template = Template {
-            templates_dir: String::new(),
-        };
-
-        // WHEN validating the template configuration
-        let result = template.validate();
-
-        // THEN the validation fails with the templates_dir field
-        assert!(
-            matches!(
-                &result,
-                Err(super::ConfigError::ValidationFailed { field, .. })
-                    if field.as_ref() == "templates_dir"
-            ),
-            "Expected templates_dir validation failure, got: {result:?}"
-        );
+        let result = TemplatesDir::try_new(std::path::PathBuf::from(""));
+        assert!(result.is_err(), "Expected validation error");
     }
 
     /// 3.3-UNIT-028: `schema_validate_rejects_empty_paths`.
     /// Priority: P0.
     #[test]
-    fn schema_validate_rejects_empty_paths() {
-        // GIVEN schema config with empty fields
-        let schema = Schema {
-            schemas_dir: String::new(),
-            property_bank_filename: String::new(),
-        };
-
-        // WHEN validating
-        let result = schema.validate();
-
-        // THEN validation fails
-        assert!(
-            result.is_err(),
-            "Schema with empty directories should fail validation"
-        );
+    fn schema_rejects_empty_paths() {
+        let schemas_dir = SchemasDir::try_new(std::path::PathBuf::from(""));
+        let file_name = FileName::try_new("");
+        assert!(schemas_dir.is_err(), "Expected invalid schemas_dir");
+        assert!(file_name.is_err(), "Expected invalid file name");
     }
 
     /// 3.3-UNIT-029: `stores_nested_arrays`.
     /// Priority: P2.
     #[test]
     fn stores_nested_arrays() {
-        // GIVEN nested configuration values
         let array = vec![
             SettingValue::String("item1".to_owned()),
             SettingValue::String("item2".to_owned()),
         ];
 
-        // WHEN storing them in an array variant
         let value = SettingValue::Array(array.clone());
 
-        // THEN the array preserves the nested values
         assert_eq!(
             value,
             SettingValue::Array(array),
@@ -729,17 +1227,14 @@ mod tests {
     /// Priority: P2.
     #[test]
     fn stores_nested_objects() {
-        // GIVEN nested configuration values in a map
         let mut map = std::collections::HashMap::new();
         map.insert(
             "key1".to_owned(),
             SettingValue::String("value1".to_owned()),
         );
 
-        // WHEN storing them in an object variant
         let value = SettingValue::Object(map.clone());
 
-        // THEN the map preserves the nested values
         assert_eq!(
             value,
             SettingValue::Object(map),
@@ -751,13 +1246,9 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn stores_opaque_encrypted_bytes() {
-        // GIVEN encrypted data
         let raw = vec![1, 2, 3, 4];
-
-        // WHEN creating an encrypted config value
         let value = SettingValue::Encrypted(raw.clone());
 
-        // THEN debug output must not reveal raw bytes
         let debug = format!("{value:?}");
         assert!(debug.contains("***"), "Expected masked debug output");
     }

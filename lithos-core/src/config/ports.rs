@@ -4,100 +4,115 @@
 //! management. Note: Per proposal, async is removed - sync-first approach.
 
 use super::{
-    aggregate::Config, error::ConfigError, global::Global, vault::Vault,
+    aggregate::{Config, ConfigVersion},
+    global::Global,
+    vault::{Vault, VaultId, VaultRoot},
 };
 
 /// Command port for configuration write operations.
-///
-/// # Constraints
-/// - All operations return Result for error handling
-/// - Commands may modify state (write operations)
-///
-/// # Note on Sync-First
-/// This trait is synchronous per the architecture proposal (Phase 3).
-/// Async wrappers should be added at the CLI/LSP boundary if needed.
-pub trait Command: Send + Sync {
-    /// Save global configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if save operation fails.
-    fn save_global(&self, config: &Global) -> Result<(), ConfigError>;
+pub trait ConfigCommandPort: Send + Sync {
+    /// Storage error type for command operations.
+    type Error: std::error::Error;
 
-    /// Save vault-specific configuration.
+    /// Load active merged config version for a vault.
     ///
     /// # Errors
-    /// Returns `ConfigError` if save operation fails.
-    fn save_vault(&self, config: &Vault) -> Result<(), ConfigError>;
+    /// Returns a storage error on failure.
+    fn load_active_version(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Option<ConfigVersion>, Self::Error>;
+    /// Load persisted global config, if present.
+    ///
+    /// # Errors
+    /// Returns a storage error on failure.
+    fn load_global(&self) -> Result<Option<Global>, Self::Error>;
+    /// Load persisted vault config, if present.
+    ///
+    /// # Errors
+    /// Returns a storage error on failure.
+    fn load_vault(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Option<Vault>, Self::Error>;
+    /// Persist global config.
+    ///
+    /// # Errors
+    /// Returns a storage error on failure.
+    fn save_global(&self, config: &Global) -> Result<(), Self::Error>;
+    /// Persist a merged config snapshot.
+    ///
+    /// # Errors
+    /// Returns a storage error on failure.
+    fn save_merged(
+        &self,
+        vault_id: VaultId,
+        version: ConfigVersion,
+        config: &Config,
+    ) -> Result<(), Self::Error>;
+    /// Persist vault-specific config.
+    ///
+    /// # Errors
+    /// Returns a storage error on failure.
+    fn save_vault(
+        &self,
+        vault_id: VaultId,
+        config: &Vault,
+    ) -> Result<(), Self::Error>;
+    /// Persist vault id/root mapping.
+    ///
+    /// # Errors
+    /// Returns a storage error on failure.
+    fn save_vault_path_mapping(
+        &self,
+        vault_id: VaultId,
+        vault_root: &VaultRoot,
+    ) -> Result<(), Self::Error>;
+    /// Set active merged config version for a vault.
+    ///
+    /// # Errors
+    /// Returns a storage error on failure.
+    fn set_active_version(
+        &self,
+        vault_id: VaultId,
+        version: ConfigVersion,
+    ) -> Result<(), Self::Error>;
 }
 
 /// Query port for configuration read operations.
-///
-/// # Constraints
-/// - All operations return Result for error handling
-/// - Queries must NOT modify state (read-only operations)
-///
-/// # Note on Sync-First
-/// This trait is synchronous per the architecture proposal (Phase 3).
-/// Async wrappers should be added at the CLI/LSP boundary if needed.
-pub trait Query: Send + Sync {
-    /// Load configuration (Global + Vault merged).
-    ///
-    /// # Constraints
-    /// - Loads both Global and Vault configurations
-    /// - Merges using `Config::build` with Vault precedence
-    /// - Validates merged result
+pub trait ConfigQueryPort: Send + Sync {
+    /// Archived merged config type for zero-copy reads.
+    type Archived<'archived>;
+    /// Storage error type for query operations.
+    type Error: std::error::Error;
+
+    /// Fetch active merged config version for a vault.
     ///
     /// # Errors
-    /// Returns `ConfigError` if:
-    /// - Load operation fails
-    /// - Merge operation fails
-    /// - Validation fails
-    fn load(&self) -> Result<Config, ConfigError>;
-
-    /// Load global configuration.
+    /// Returns a storage error on failure.
+    fn get_active_version(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Option<ConfigVersion>, Self::Error>;
+    /// Fetch merged config snapshot as owned data.
     ///
     /// # Errors
-    /// Returns `ConfigError` if load operation fails or config is invalid.
-    fn load_global(&self) -> Result<Option<Global>, ConfigError>;
-
-    /// Load vault-specific configuration.
+    /// Returns a storage error on failure.
+    fn get_merged_owned(
+        &self,
+        vault_id: VaultId,
+        version: ConfigVersion,
+    ) -> Result<Option<Config>, Self::Error>;
+    /// Fetch merged config snapshot as archived data.
     ///
     /// # Errors
-    /// Returns `ConfigError` if load operation fails or config is invalid.
-    fn load_vault(&self) -> Result<Option<Vault>, ConfigError>;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn command_trait_is_object_safe() {
-        // GIVEN the Command trait
-        fn _assert_object_safe(_: &dyn Command) {}
-
-        // WHEN using it as a trait object
-        // THEN it remains object-safe
-    }
-
-    #[test]
-    fn query_trait_is_object_safe() {
-        // GIVEN the Query trait
-        fn _assert_object_safe(_: &dyn Query) {}
-
-        // WHEN using it as a trait object
-        // THEN it remains object-safe
-    }
-
-    #[test]
-    fn traits_are_send_and_sync() {
-        // GIVEN Command and Query trait objects
-        fn is_send_sync<T: Send + Sync>() {}
-
-        // WHEN checking Send + Sync bounds
-        is_send_sync::<Box<dyn Command>>();
-        is_send_sync::<Box<dyn Query>>();
-
-        // THEN trait objects satisfy Send + Sync
-    }
+    /// Returns a storage error on failure.
+    fn with_archived_merged<F, R>(
+        &self,
+        vault_id: VaultId,
+        version: ConfigVersion,
+        f: F,
+    ) -> Result<Option<R>, Self::Error>
+    where
+        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R;
 }

@@ -2,15 +2,141 @@
 //!
 //! This module contains configuration types that are specific to vault-level
 //! configuration, including filesystem settings, metadata, and vault overrides.
-#![allow(
-    clippy::exhaustive_structs,
-    reason = "rkyv generates Archived types with public fields"
-)]
+
+use std::path::{Path, PathBuf};
+
+use uuid::Uuid;
 
 use super::{
     error::ConfigError,
-    types::{Frontmatter, Logging, Schema, Template},
+    raw::{RawVault, RawVaultPaths},
+    task::TaskConfig,
+    types::{FileName, Frontmatter, Logging, SchemasDir, TemplatesDir},
 };
+
+/// Stable vault identity.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct VaultId(
+    /// Internal UUID storage.
+    Uuid,
+);
+
+/// Validated vault root path (absolute).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct VaultRoot(
+    /// Internal path storage.
+    #[rkyv(with = rkyv::with::AsString)]
+    PathBuf,
+);
+
+/// Canonical path key for lookup.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct VaultPathKey(
+    /// Internal key storage.
+    Box<str>,
+);
+
+/// Vault-relative cache directory.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct CacheDir(
+    /// Internal path storage.
+    #[rkyv(with = rkyv::with::AsString)]
+    PathBuf,
+);
+
+/// Schema path overrides at the vault layer.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct SchemaOverrides {
+    /// Overridden schemas directory.
+    schemas_dir: Option<SchemasDir>,
+    /// Overridden property bank filename.
+    property_bank_filename: Option<FileName>,
+}
+
+/// Template path overrides at the vault layer.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct TemplateOverrides {
+    /// Overridden templates directory.
+    templates_dir: Option<TemplatesDir>,
+}
 
 /// Vault metadata with versioning and naming.
 #[derive(
@@ -26,12 +152,14 @@ use super::{
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Metadata {
+    /// Stable vault identity.
+    id: VaultId,
     /// Human-readable name for the vault.
-    pub name: String,
+    name: Box<str>,
     /// Root path to the vault (absolute path required).
-    pub path: String,
+    root: VaultRoot,
     /// Schema version for the vault.
-    pub version: SchemaVersion,
+    version: SchemaVersion,
 }
 
 /// Vault filesystem configuration (vault-scoped).
@@ -49,11 +177,11 @@ pub struct Metadata {
 #[non_exhaustive]
 pub struct Paths {
     /// Cache directory for vault.
-    pub cache_dir: String,
+    cache_dir: Option<CacheDir>,
     /// Schema configuration for vault.
-    pub schema: Schema,
+    schema: SchemaOverrides,
     /// Template configuration for vault.
-    pub template: Template,
+    template: TemplateOverrides,
 }
 
 /// Schema version for the vault.
@@ -69,15 +197,12 @@ pub struct Paths {
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
-pub struct SchemaVersion(pub String);
+pub struct SchemaVersion(
+    /// Internal version storage.
+    String,
+);
 
 /// Vault-specific configuration.
-///
-/// # Constraints
-/// - Vault configuration overrides Global configuration.
-/// - Loaded from vault-specific lithos.toml.
-/// - The vault configuration has the highest precedence in the configuration
-///   hierarchy.
 #[derive(
     Debug,
     Default,
@@ -89,23 +214,25 @@ pub struct SchemaVersion(pub String);
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Vault {
     /// Filesystem configuration for vault.
-    pub filesystem: Paths,
+    filesystem: Paths,
     /// Frontmatter configuration for vault (optional overrides).
-    pub frontmatter: Option<Frontmatter>,
+    frontmatter: Option<Frontmatter>,
     /// Logging configuration for vault (optional overrides).
-    pub logging: Option<Logging>,
+    logging: Option<Logging>,
+    /// Task configuration overrides.
+    task: Option<TaskConfig>,
 }
 
 impl Default for Metadata {
     #[inline]
     fn default() -> Self {
         Self {
-            name: String::new(),
-            path: String::new(),
+            id: VaultId::nil(),
+            name: Box::from(""),
+            root: VaultRoot(PathBuf::from("/")),
             version: SchemaVersion::default(),
         }
     }
@@ -115,53 +242,103 @@ impl Default for Paths {
     #[inline]
     fn default() -> Self {
         Self {
-            cache_dir: ".cache".to_owned(),
-            schema: Schema::default(),
-            template: Template::default(),
+            cache_dir: None,
+            schema: SchemaOverrides::default(),
+            template: TemplateOverrides::default(),
         }
     }
 }
 
-impl Default for SchemaVersion {
+impl SchemaOverrides {
     #[inline]
-    fn default() -> Self {
-        Self::new(None)
+    #[must_use]
+    /// Create schema override values.
+    pub fn new(
+        schemas_dir: Option<SchemasDir>,
+        property_bank_filename: Option<FileName>,
+    ) -> Self {
+        Self {
+            schemas_dir,
+            property_bank_filename,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the overridden schemas directory, if set.
+    pub fn schemas_dir(&self) -> Option<&SchemasDir> {
+        self.schemas_dir.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the overridden property bank filename, if set.
+    pub fn property_bank_filename(&self) -> Option<&FileName> {
+        self.property_bank_filename.as_ref()
     }
 }
 
-impl std::ops::Deref for SchemaVersion {
-    type Target = str;
+impl TemplateOverrides {
+    #[inline]
+    #[must_use]
+    /// Create template override values.
+    pub fn new(templates_dir: Option<TemplatesDir>) -> Self {
+        Self {
+            templates_dir,
+        }
+    }
 
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    #[must_use]
+    /// Return the overridden templates directory, if set.
+    pub fn templates_dir(&self) -> Option<&TemplatesDir> {
+        self.templates_dir.as_ref()
     }
 }
 
 impl Metadata {
+    #[inline]
+    #[must_use]
+    /// Return the vault identifier.
+    pub fn id(&self) -> VaultId {
+        self.id
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the vault display name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the vault root path.
+    pub fn root(&self) -> &VaultRoot {
+        &self.root
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the schema version.
+    pub fn version(&self) -> &SchemaVersion {
+        &self.version
+    }
+
     /// Create new vault metadata, deriving name from path if not provided.
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if path is empty.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::config::vault::Metadata;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let metadata = Metadata::new("/vaults/work".to_string(), None, None)?;
-    /// assert_eq!(metadata.path, "/vaults/work", "Vault path should match");
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
     pub fn new(
-        path: String,
+        id: VaultId,
+        root: VaultRoot,
         name: Option<String>,
         version: Option<String>,
     ) -> Result<Self, ConfigError> {
         let derived_name = name
             .or_else(|| {
-                std::path::Path::new(&path)
+                root.as_path()
                     .file_name()
                     .and_then(|n| n.to_str())
                     .map(std::borrow::ToOwned::to_owned)
@@ -169,8 +346,9 @@ impl Metadata {
             .unwrap_or_default();
 
         let metadata = Self {
-            path,
-            name: derived_name,
+            id,
+            root,
+            name: derived_name.into(),
             version: SchemaVersion::new(version),
         };
         metadata.validate()?;
@@ -183,23 +361,40 @@ impl Metadata {
     /// Returns `ConfigError::ValidationFailed` if path is empty.
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.path.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "vault_path".to_owned().into(),
-                message: "vault path cannot be empty (required field)"
-                    .to_owned()
-                    .into(),
-            });
-        }
         Ok(())
     }
 }
 
 impl Paths {
+    #[inline]
+    #[must_use]
+    /// Return the cache directory, if set.
+    pub fn cache_dir(&self) -> Option<&CacheDir> {
+        self.cache_dir.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return schema override settings.
+    pub fn schema(&self) -> &SchemaOverrides {
+        &self.schema
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return template override settings.
+    pub fn template(&self) -> &TemplateOverrides {
+        &self.template
+    }
+
     /// Create a new vault filesystem configuration.
     #[inline]
     #[must_use]
-    pub fn new(cache_dir: String, schema: Schema, template: Template) -> Self {
+    pub fn new(
+        cache_dir: Option<CacheDir>,
+        schema: SchemaOverrides,
+        template: TemplateOverrides,
+    ) -> Self {
         Self {
             cache_dir,
             schema,
@@ -210,20 +405,276 @@ impl Paths {
     /// Validate vault filesystem configuration.
     ///
     /// # Errors
-    ///
-    /// Returns `ConfigConfigError::ValidationFailed` if `cache_dir` is empty or
-    /// if schema/template validation fails.
+    /// Returns `ConfigError::ValidationFailed` if `cache_dir` is empty or if
+    /// schema/template validation fails.
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
-        self.schema.validate()?;
-        self.template.validate()?;
-        if self.cache_dir.is_empty() {
+        Ok(())
+    }
+}
+
+impl Vault {
+    #[inline]
+    #[must_use]
+    /// Return vault filesystem settings.
+    pub fn filesystem(&self) -> &Paths {
+        &self.filesystem
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return frontmatter overrides, if set.
+    pub fn frontmatter(&self) -> Option<&Frontmatter> {
+        self.frontmatter.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return logging overrides, if set.
+    pub fn logging(&self) -> Option<&Logging> {
+        self.logging.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return task configuration overrides, if set.
+    pub fn task(&self) -> Option<&TaskConfig> {
+        self.task.as_ref()
+    }
+
+    /// Create new vault configuration.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        filesystem: Paths,
+        frontmatter: Option<Frontmatter>,
+        logging: Option<Logging>,
+        task: Option<TaskConfig>,
+    ) -> Self {
+        Self {
+            filesystem,
+            frontmatter,
+            logging,
+            task,
+        }
+    }
+}
+
+impl Default for SchemaVersion {
+    #[inline]
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
+impl std::fmt::Display for SchemaVersion {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+fn validate_relative_path(
+    field: &'static str,
+    path: &Path,
+) -> Result<(), ConfigError> {
+    if path.as_os_str().is_empty() {
+        return Err(ConfigError::ValidationFailed {
+            field: field.to_owned().into(),
+            message: format!("{field} cannot be empty").into(),
+        });
+    }
+    if path.is_absolute() {
+        return Err(ConfigError::ValidationFailed {
+            field: field.to_owned().into(),
+            message: format!("{field} must be vault-relative").into(),
+        });
+    }
+    if path
+        .components()
+        .any(|component| component == std::path::Component::ParentDir)
+    {
+        return Err(ConfigError::ValidationFailed {
+            field: field.to_owned().into(),
+            message: format!("{field} must not contain parent components")
+                .into(),
+        });
+    }
+    Ok(())
+}
+
+impl VaultId {
+    #[inline]
+    #[must_use]
+    /// Create a new vault identifier.
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the nil vault identifier.
+    pub fn nil() -> Self {
+        Self(Uuid::nil())
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the underlying UUID.
+    pub fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+}
+
+impl Default for VaultId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for VaultId {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl VaultRoot {
+    #[inline]
+    /// Create a validated vault root path.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the path is empty or not
+    /// absolute.
+    pub fn try_new(root: PathBuf) -> Result<Self, ConfigError> {
+        if root.as_os_str().is_empty() {
             return Err(ConfigError::ValidationFailed {
-                field: "cache_dir".to_owned().into(),
-                message: "cache directory cannot be empty".to_owned().into(),
+                field: "vault_root".to_owned().into(),
+                message: "vault root cannot be empty".to_owned().into(),
             });
         }
-        Ok(())
+        if !root.is_absolute() {
+            return Err(ConfigError::ValidationFailed {
+                field: "vault_root".to_owned().into(),
+                message: "vault root must be absolute".to_owned().into(),
+            });
+        }
+        Ok(Self(root))
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the root path.
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for VaultRoot {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(PathBuf::from(value))
+    }
+}
+
+impl From<VaultRoot> for String {
+    #[inline]
+    fn from(value: VaultRoot) -> Self {
+        value.0.to_string_lossy().into_owned()
+    }
+}
+
+impl From<VaultId> for String {
+    #[inline]
+    fn from(value: VaultId) -> Self {
+        value.0.to_string()
+    }
+}
+
+impl VaultPathKey {
+    #[inline]
+    #[must_use]
+    /// Create a vault path key from a root.
+    pub fn from_root(root: &VaultRoot) -> Self {
+        Self(root.as_path().to_string_lossy().into())
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the path key as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for VaultPathKey {
+    type Error = ConfigError;
+
+    #[inline]
+    /// Create a vault path key from a string.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the key is empty.
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: "vault_path_key".to_owned().into(),
+                message: "vault path key cannot be empty".to_owned().into(),
+            });
+        }
+        Ok(Self(value.into()))
+    }
+}
+
+impl From<VaultPathKey> for String {
+    #[inline]
+    fn from(value: VaultPathKey) -> Self {
+        value.0.into()
+    }
+}
+
+impl CacheDir {
+    #[inline]
+    /// Create a validated cache directory path.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the path is invalid.
+    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+        validate_relative_path("cache_dir", &path)?;
+        Ok(Self(path))
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the cache directory path.
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Default for CacheDir {
+    #[inline]
+    fn default() -> Self {
+        Self(PathBuf::from(".cache"))
+    }
+}
+
+impl TryFrom<String> for CacheDir {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(PathBuf::from(value))
+    }
+}
+
+impl From<CacheDir> for String {
+    #[inline]
+    fn from(value: CacheDir) -> Self {
+        value.0.to_string_lossy().into_owned()
     }
 }
 
@@ -234,47 +685,119 @@ impl SchemaVersion {
     pub fn new(version: Option<String>) -> Self {
         Self(version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned()))
     }
-}
 
-impl Vault {
-    /// Create new vault configuration.
     #[inline]
     #[must_use]
-    pub fn new(
-        filesystem: Paths,
-        frontmatter: Option<Frontmatter>,
-        logging: Option<Logging>,
-    ) -> Self {
-        Self {
-            filesystem,
-            frontmatter,
-            logging,
-        }
+    /// Return the schema version as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<RawVaultPaths> for Paths {
+    type Error = ConfigError;
+
+    #[inline]
+    /// Build vault filesystem paths from raw input.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if any path validation fails.
+    fn try_from(raw: RawVaultPaths) -> Result<Self, Self::Error> {
+        let cache_dir = raw
+            .cache_dir
+            .map(|value| CacheDir::try_new(PathBuf::from(value)))
+            .transpose()?;
+        let schema = match raw.schema {
+            Some(schema) => SchemaOverrides::new(
+                schema
+                    .schemas_dir
+                    .map(|value| {
+                        SchemasDir::try_new_with_field(
+                            "schemas_dir",
+                            PathBuf::from(value),
+                        )
+                    })
+                    .transpose()?,
+                schema
+                    .property_bank_filename
+                    .map(|value| {
+                        FileName::try_new_with_field(
+                            "property_bank_filename",
+                            value,
+                        )
+                    })
+                    .transpose()?,
+            ),
+            None => SchemaOverrides::default(),
+        };
+        let template = match raw.template {
+            Some(template) => TemplateOverrides::new(
+                template
+                    .templates_dir
+                    .map(|value| {
+                        TemplatesDir::try_new_with_field(
+                            "templates_dir",
+                            PathBuf::from(value),
+                        )
+                    })
+                    .transpose()?,
+            ),
+            None => TemplateOverrides::default(),
+        };
+
+        Ok(Paths::new(cache_dir, schema, template))
+    }
+}
+
+impl TryFrom<RawVault> for Vault {
+    type Error = ConfigError;
+
+    #[inline]
+    /// Build vault configuration from raw input.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if configuration validation fails.
+    fn try_from(raw: RawVault) -> Result<Self, Self::Error> {
+        let filesystem = raw
+            .filesystem
+            .map(Paths::try_from)
+            .transpose()?
+            .unwrap_or_default();
+        let frontmatter =
+            raw.frontmatter.map(Frontmatter::try_from).transpose()?;
+        let logging = raw.logging.map(Logging::try_from).transpose()?;
+        let task = raw.task.map(TaskConfig::try_from).transpose()?;
+
+        Ok(Vault::new(filesystem, frontmatter, logging, task))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Metadata, Paths};
+    use std::path::PathBuf;
+
+    use super::{CacheDir, Metadata, Paths, TemplatesDir, VaultId, VaultRoot};
 
     #[test]
     fn derives_metadata_from_vault_path() -> Result<(), String> {
         // GIVEN: a vault path
-        let vault_path = "/vaults/work".to_owned();
+        let vault_root = VaultRoot::try_new(PathBuf::from("/vaults/work"))
+            .map_err(|err| format!("VaultRoot::try_new failed: {err:?}"))?;
 
         // WHEN: building metadata from the path
-        let metadata = Metadata::new(vault_path.clone(), None, None)
-            .map_err(|err| format!("Metadata::new failed: {err:?}"))?;
+        let metadata =
+            Metadata::new(VaultId::new(), vault_root.clone(), None, None)
+                .map_err(|err| format!("Metadata::new failed: {err:?}"))?;
 
         // THEN: version and name defaults are applied
-        if &*metadata.version != env!("CARGO_PKG_VERSION") {
+        if metadata.version().as_str() != env!("CARGO_PKG_VERSION") {
             return Err("Expected version default to be set".to_owned());
         }
-        if metadata.name != "work" {
+        if metadata.name() != "work" {
             return Err("Expected vault name to default to directory basename"
                 .to_owned());
         }
-        if metadata.path != vault_path {
+        if metadata.root().as_path() != vault_root.as_path() {
             return Err("Expected path to match input".to_owned());
         }
 
@@ -299,37 +822,20 @@ mod tests {
 
     #[test]
     fn filesystem_validate_rejects_invalid_template() {
-        // GIVEN: a vault filesystem with invalid template config
-        let mut filesystem = Paths::default();
-        filesystem.template.templates_dir = String::new();
-
-        // WHEN: validating
-        let result = filesystem.validate();
+        // GIVEN: invalid template dir (absolute)
+        let result = TemplatesDir::try_new(PathBuf::from("/abs"));
 
         // THEN: it fails
-        assert!(
-            result.is_err(),
-            "Filesystem with empty paths should fail validation"
-        );
+        assert!(result.is_err(), "TemplatesDir should reject absolute paths");
     }
 
     #[test]
     fn rejects_empty_cache_dir() {
-        // GIVEN: a filesystem with empty cache_dir
-        let filesystem = Paths {
-            cache_dir: String::new(),
-            schema: super::Schema::default(),
-            template: super::Template::default(),
-        };
-
-        // WHEN: validating the filesystem configuration
-        let result = filesystem.validate();
+        // GIVEN: empty cache_dir
+        let result = CacheDir::try_new(PathBuf::from(""));
 
         // THEN: validation fails for cache_dir
-        assert!(
-            result.is_err(),
-            "Expected validation failure for empty cache_dir"
-        );
+        assert!(result.is_err(), "Expected validation failure for cache_dir");
     }
 
     #[test]
@@ -338,7 +844,7 @@ mod tests {
         let vault_path = "";
 
         // WHEN: building metadata from the empty path
-        let result = Metadata::new(vault_path.to_owned(), None, None);
+        let result = VaultRoot::try_new(PathBuf::from(vault_path));
 
         // THEN: validation fails with a required field error
         assert!(

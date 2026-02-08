@@ -1,188 +1,162 @@
 //! Config query implementations (CQRS read operations).
 //!
-//! This module implements the Query port trait for Config read operations,
-//! using the Database layer for zero-copy reads.
+//! Generic over a query port for storage access.
 
 use super::{
-    aggregate::Config, error::ConfigError, global::Global, vault::Vault,
+    aggregate::Config, error::ConfigQueryError, ports::ConfigQueryPort,
+    vault::VaultId,
 };
-use crate::db::Database;
 
 /// Query implementation for Config read operations.
-///
-/// Implements the Query port trait using the Database layer.
-pub struct Query<'db> {
-    db: &'db Database,
+pub struct Query<Q> {
+    query_port: Q,
 }
 
-impl<'db> Query<'db> {
-    /// Create a new `Query` with a database reference.
+impl<Q> Query<Q> {
+    /// Create a new `Query` with the given port.
     #[inline]
     #[must_use]
-    pub const fn new(db: &'db Database) -> Self {
+    pub const fn new(query_port: Q) -> Self {
         Self {
-            db,
+            query_port,
         }
     }
 }
 
-impl super::ports::Query for Query<'_> {
-    /// Load configuration (Global + Vault merged).
-    ///
-    /// # Constraints
-    /// - Loads both Global and Vault configurations
-    /// - Merges using `Config::build` with Vault precedence
-    /// - Validates merged result
+impl<Q> Query<Q>
+where
+    Q: ConfigQueryPort,
+    Q::Error: Into<crate::db::DbError>,
+{
+    /// Get the active merged config for a vault.
     ///
     /// # Errors
-    /// Returns `ConfigError` if:
-    /// - Load operation fails
-    /// - Merge operation fails
-    /// - Validation fails
+    /// Returns `ConfigQueryError` if storage fails or the read model is
+    /// missing.
     #[inline]
-    fn load(&self) -> Result<Config, ConfigError> {
-        let global = self.load_global()?;
-        let vault = self.load_vault()?.unwrap_or_default();
+    pub fn get(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Option<Config>, ConfigQueryError> {
+        let active = self
+            .query_port
+            .get_active_version(vault_id)
+            .map_err(|error| ConfigQueryError::Storage(error.into()))?;
 
-        Config::build(global.as_ref(), "vault", vault)
+        let Some(version) = active else {
+            return Ok(None);
+        };
+
+        self.query_port
+            .get_merged_owned(vault_id, version)
+            .map_err(|error| ConfigQueryError::Storage(error.into()))
     }
 
-    /// Load global configuration.
+    /// Execute a zero-copy read against the merged config.
     ///
     /// # Errors
-    /// Returns `ConfigError` if load operation fails or config is invalid.
+    /// Returns `ConfigQueryError` if the active version lookup or archived
+    /// access fails.
     #[inline]
-    fn load_global(&self) -> Result<Option<Global>, ConfigError> {
-        self.db.get_owned("config", "global").map_err(
-            |e: crate::db::DbError| ConfigError::Storage(e.to_string().into()),
-        )
-    }
+    pub fn with_archived<R, F>(
+        &self,
+        vault_id: VaultId,
+        f: F,
+    ) -> Result<Option<R>, ConfigQueryError>
+    where
+        F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
+    {
+        let active = self
+            .query_port
+            .get_active_version(vault_id)
+            .map_err(|error| ConfigQueryError::Storage(error.into()))?;
+        let Some(version) = active else {
+            return Ok(None);
+        };
 
-    /// Load vault-specific configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if load operation fails or config is invalid.
-    #[inline]
-    fn load_vault(&self) -> Result<Option<Vault>, ConfigError> {
-        self.db.get_owned("config", "vault").map_err(|e: crate::db::DbError| {
-            ConfigError::Storage(e.to_string().into())
-        })
+        self.query_port
+            .with_archived_merged(vault_id, version, f)
+            .map_err(|error| ConfigQueryError::Storage(error.into()))
     }
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Test module groups fixtures and submodules for readability."
-)]
 mod tests {
-    mod fixtures {
-        use super::*;
-
-        pub fn test_db() -> Result<(TempDir, Database), String> {
-            let dir = tempdir().map_err(|e| e.to_string())?;
-            let path = dir.path().join("config.redb");
-            let db = Database::open(&path).map_err(|e| e.to_string())?;
-
-            // Initialize config table (without writing unrelated data)
-            let dummy = Global::default();
-            db.put("config", "_init", &dummy).map_err(|e| e.to_string())?;
-            db.delete("config", "_init").map_err(|e| e.to_string())?;
-
-            Ok((dir, db))
-        }
-    }
-
     use tempfile::{TempDir, tempdir};
 
     use super::*;
-    use crate::config::{command, ports::Query as _};
+    use crate::{
+        config::{
+            aggregate::ConfigVersion, global::Global, ports::ConfigQueryPort,
+            vault::VaultId,
+        },
+        db::{Database, DbError},
+    };
 
-    mod load {
-        use super::*;
+    struct DbPort<'db> {
+        db: &'db Database,
+    }
 
-        fn merged_config() -> Result<Config, String> {
-            let (_dir, db) = fixtures::test_db()?;
-
-            let cmd = command::Command::new(&db);
-            let mut global = Global::default();
-            global.filesystem.template.templates_dir =
-                "global_templates".to_owned();
-            cmd.save_global(&global).map_err(|e| e.to_string())?;
-
-            let mut vault = Vault::default();
-            vault.filesystem.template.templates_dir =
-                "vault_templates".to_owned();
-            cmd.save_vault(&vault).map_err(|e| e.to_string())?;
-
-            let qry = Query::new(&db);
-            qry.load().map_err(|e| e.to_string())
-        }
-
-        #[test]
-        fn load_global_returns_none_when_missing() -> Result<(), String> {
-            let (_dir, db) = fixtures::test_db()?;
-            let qry = Query::new(&db);
-
-            let global = qry.load_global().map_err(|e| e.to_string())?;
-            if global.is_some() {
-                return Err(
-                    "Missing global config should return None".to_owned()
-                );
+    impl<'db> DbPort<'db> {
+        fn new(db: &'db Database) -> Self {
+            Self {
+                db,
             }
-            Ok(())
+        }
+    }
+
+    impl ConfigQueryPort for DbPort<'_> {
+        type Archived<'archived> = &'archived rkyv::Archived<Config>;
+        type Error = DbError;
+
+        fn get_active_version(
+            &self,
+            vault_id: VaultId,
+        ) -> Result<Option<ConfigVersion>, Self::Error> {
+            self.db.get_owned("merged_config_active", &vault_id.to_string())
         }
 
-        #[test]
-        fn load_vault_returns_none_when_missing() -> Result<(), String> {
-            let (_dir, db) = fixtures::test_db()?;
-            let qry = Query::new(&db);
-
-            let vault = qry.load_vault().map_err(|e| e.to_string())?;
-            if vault.is_some() {
-                return Err(
-                    "Missing vault config should return None".to_owned()
-                );
-            }
-            Ok(())
+        fn get_merged_owned(
+            &self,
+            vault_id: VaultId,
+            version: ConfigVersion,
+        ) -> Result<Option<Config>, Self::Error> {
+            let key = format!("{}:{}", vault_id, version.value());
+            self.db.get_owned("merged_config_versions", &key)
         }
 
-        #[test]
-        fn load_uses_fixed_vault_path() -> Result<(), String> {
-            let config = merged_config()?;
-
-            if config.vault_metadata.path != "vault" {
-                return Err("Query load should use fixed vault path".to_owned());
-            }
-            Ok(())
+        fn with_archived_merged<F, R>(
+            &self,
+            vault_id: VaultId,
+            version: ConfigVersion,
+            f: F,
+        ) -> Result<Option<R>, Self::Error>
+        where
+            F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
+        {
+            let key = format!("{}:{}", vault_id, version.value());
+            self.db.get::<Config, _, _>("merged_config_versions", &key, f)
         }
+    }
 
-        #[test]
-        fn load_prefers_vault_templates_dir() -> Result<(), String> {
-            let config = merged_config()?;
+    fn test_db() -> Result<(TempDir, Database), String> {
+        let dir = tempdir().map_err(|e| e.to_string())?;
+        let path = dir.path().join("config.redb");
+        let db = Database::open(&path).map_err(|e| e.to_string())?;
+        Ok((dir, db))
+    }
 
-            if config.vault_filesystem.template.templates_dir
-                != "vault_templates"
-            {
-                return Err(
-                    "Vault templates_dir should take precedence".to_owned()
-                );
-            }
-            Ok(())
+    #[test]
+    fn get_returns_none_when_active_missing() -> Result<(), String> {
+        let (_dir, db) = test_db()?;
+        db.put("config", "global", &Global::default())
+            .map_err(|e| e.to_string())?;
+        let qry = Query::new(DbPort::new(&db));
+
+        let result = qry.get(VaultId::new()).map_err(|e| e.to_string())?;
+        if result.is_some() {
+            return Err("Expected None when active version missing".to_owned());
         }
-
-        #[test]
-        fn load_preserves_global_templates_dir() -> Result<(), String> {
-            let config = merged_config()?;
-
-            if config.global_filesystem.template.templates_dir
-                != "global_templates"
-            {
-                return Err(
-                    "Global templates_dir should be preserved".to_owned()
-                );
-            }
-            Ok(())
-        }
+        Ok(())
     }
 }
