@@ -257,8 +257,9 @@ Status: ✅ Build logic uses `VaultId` and proper merge precedence.
 
 ---
 
-## Phase 7: Integration Touchpoints (Note/CLI) - NOT STARTED
+## Phase 7: Integration Touchpoints (Note/CLI) - IN PROGRESS
 
+- [x] **Core API Integration**: Validated end-to-end CQRS flow with Redb integration test (`lithos-core/tests/config_integration.rs`).
 - [ ] Wire TaskConfig into config loading and note parsing interfaces (no context cross-imports).
 - [ ] Update any CLI or adapter boundaries that depend on old config APIs.
 - [ ] Add integration tests (if applicable) under `lithos-core/tests/`.
