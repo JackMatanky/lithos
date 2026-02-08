@@ -17,7 +17,7 @@ The note bounded context supports YAML frontmatter (Obsidian-compatible) as a dy
 
 This component should provide:
 
-- `FieldValue`: a dynamically-typed value enum (mirrors `serde_json::Value` shape) with inspection helpers (`is_*`, `as_*`).
+- `FieldValue`: a dynamically-typed value enum (defined in `note/value.rs`, shared with task metadata - see [003-note-models.md](003-note-models.md#321-fieldvalue-shared-primitive)) with inspection helpers (`is_*`, `as_*`).
 - `Frontmatter`: a `HashMap<String, FieldValue>` wrapper with convenience accessors (`get`, strict typed getters like `try_get`/`try_get_ref`, and configured-key helpers like `title`, `file_class`, `aliases`).
 - `FromFieldValue` / `FromFieldValueRef`: local conversion traits used by strict accessors (kept local to avoid orphan rules).
 
@@ -77,7 +77,7 @@ Frontmatter supports two primary usage patterns:
 1. **Unknown type (runtime inspection)**
 
 ```rust
-use lithos_core::note::frontmatter::FieldValue;
+use lithos_core::note::value::FieldValue;
 
 let value = FieldValue::String("hello".to_owned());
 
@@ -91,7 +91,8 @@ if value.is_string() {
 Today (strict extraction with errors):
 
 ```rust
-use lithos_core::note::frontmatter::{Frontmatter, FieldValue};
+use lithos_core::note::frontmatter::Frontmatter;
+use lithos_core::note::value::FieldValue;
 use std::collections::HashMap;
 
 let mut fields = HashMap::new();
@@ -105,7 +106,8 @@ assert_eq!(priority, Some(5.0));
 Proposed additions (strict extraction, with errors):
 
 ```rust
-use lithos_core::note::frontmatter::{Frontmatter, FieldValue, FrontmatterError};
+use lithos_core::note::frontmatter::{Frontmatter, FrontmatterError};
+use lithos_core::note::value::FieldValue;
 use std::collections::HashMap;
 
 let mut fields = HashMap::new();
@@ -130,7 +132,8 @@ Configured keys remain supported:
 use lithos_core::config::aggregate::Config;
 use lithos_core::config::global::Global;
 use lithos_core::config::vault::Vault;
-use lithos_core::note::frontmatter::{Frontmatter, FieldValue};
+use lithos_core::note::frontmatter::Frontmatter;
+use lithos_core::note::value::FieldValue;
 use std::collections::HashMap;
 
 let mut fields = HashMap::new();
@@ -172,18 +175,85 @@ This module remains sync, deterministic, and I/O-free.
 
 ### 3.2 Data Models
 
-`FieldValue` is the persisted/frontmatter value model:
+#### FieldValue (Shared Primitive)
 
-- `Array(Vec<FieldValue>)`
-- `Boolean(bool)`
-- `Date(i64)`
-- `Number(f64)`
-- `Object(HashMap<String, FieldValue>)`
-- `String(String)`
+`FieldValue` is defined in `note/value.rs` and shared between frontmatter and task metadata (see [003-note-models.md](003-note-models.md#321-fieldvalue-shared-primitive)).
+
+**Shape**:
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldValue {
+    String(String),
+    Number(f64),
+    Boolean(bool),
+    Date(chrono::DateTime<chrono::Utc>),
+    Array(Vec<FieldValue>),
+    Object(HashMap<String, FieldValue>),
+}
+```
+
+**Used by**:
+- `Frontmatter` (YAML/TOML parsed values) - this spec
+- `TaskMetadata` (inline `[key:: value]` fields) - see [006b-note-list-task.md](006b-note-list-task.md)
 
 Note: Any changes to `FieldValue` variant set are a persisted-format concern due to `serde` + `rkyv`.
 
 Also note: recursion is persisted. The rkyv derives must continue to use the documented recursion strategy (`#[rkyv(omit_bounds)]` on recursive fields) unless/until a migration is performed.
+
+#### YAML/TOML Conversion to FieldValue
+
+Frontmatter parsing converts YAML/TOML values into the `FieldValue` enum at the adapter boundary:
+
+```rust
+impl Frontmatter {
+    pub fn from_yaml(yaml: &str) -> Result<Self, FrontmatterError> {
+        let yaml_value: serde_yaml::Value = serde_yaml::from_str(yaml)?;
+        let fields = convert_yaml_to_field_values(yaml_value)?;
+        Ok(Frontmatter { fields })
+    }
+
+    pub fn from_toml(toml: &str) -> Result<Self, FrontmatterError> {
+        let toml_value: toml::Value = toml::from_str(toml)?;
+        let fields = convert_toml_to_field_values(toml_value)?;
+        Ok(Frontmatter { fields })
+    }
+}
+
+fn convert_yaml_to_field_values(
+    yaml: serde_yaml::Value
+) -> Result<HashMap<String, FieldValue>, FrontmatterError> {
+    // Convert serde_yaml::Value → FieldValue
+    // Maps:
+    // - serde_yaml::Value::String → FieldValue::String
+    // - serde_yaml::Value::Number → FieldValue::Number
+    // - serde_yaml::Value::Bool → FieldValue::Boolean
+    // - serde_yaml::Value::Sequence → FieldValue::Array (recursive)
+    // - serde_yaml::Value::Mapping → FieldValue::Object (recursive)
+    // - Tagged values with date/time → FieldValue::Date (parsed via chrono)
+}
+
+fn convert_toml_to_field_values(
+    toml: toml::Value
+) -> Result<HashMap<String, FieldValue>, FrontmatterError> {
+    // Similar conversion for TOML
+    // Uses toml::Value → FieldValue mapping
+}
+```
+
+**Conversion Rules**:
+- **Strings**: Direct mapping (`String` → `FieldValue::String`)
+- **Numbers**: All numbers convert to `f64` (`FieldValue::Number`)
+- **Booleans**: Direct mapping (`Bool` → `FieldValue::Boolean`)
+- **Arrays/Sequences**: Recursive conversion (`Vec<Value>` → `FieldValue::Array(Vec<FieldValue>)`)
+- **Objects/Mappings**: Recursive conversion (`Map<String, Value>` → `FieldValue::Object(HashMap<String, FieldValue>)`)
+- **Dates**: YAML tagged dates and TOML datetime values parse to `chrono::DateTime<Utc>` then store as `FieldValue::Date`
+
+**Error Handling**:
+- Invalid date/time strings → `FrontmatterError::InvalidDate`
+- Unsupported YAML/TOML types (e.g., binary) → `FrontmatterError::UnsupportedType`
+- Malformed frontmatter → `FrontmatterError::ParseError`
+
+**Location**: Conversion logic lives in `note/frontmatter.rs` (adapter boundary between serde and domain).
 
 Note: for ergonomics, APIs may expose `DateTime<Utc>` (e.g., `FieldValue::as_datetime()`), but the persisted representation remains an integer timestamp to keep the stored format simple and rkyv-friendly.
 
