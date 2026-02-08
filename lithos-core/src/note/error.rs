@@ -3,7 +3,7 @@
 //! This module defines note-specific errors using thiserror for
 //! structured error handling.
 
-use super::frontmatter::FieldValueType;
+use super::value::FieldValueType;
 
 /// Note-related errors.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
