@@ -11,10 +11,7 @@ use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::{
-        CacheDir, FileName, SchemaOverrides, SchemasDir, TemplateOverrides,
-        TemplatesDir,
-    },
+    paths::{CacheDir, SchemaOverrides, TemplateOverrides},
     raw::{RawVault, RawVaultPaths},
     task::TaskConfig,
 };
@@ -529,47 +526,9 @@ impl TryFrom<RawVaultPaths> for Paths {
     /// # Errors
     /// Returns `ConfigError` if any path validation fails.
     fn try_from(raw: RawVaultPaths) -> Result<Self, Self::Error> {
-        let cache_dir = raw
-            .cache_dir
-            .map(|value| CacheDir::try_new(PathBuf::from(value)))
-            .transpose()?;
-        let schema = match raw.schema {
-            Some(schema) => SchemaOverrides::new(
-                schema
-                    .schemas_dir
-                    .map(|value| {
-                        SchemasDir::try_new_with_field(
-                            "schemas_dir",
-                            PathBuf::from(value),
-                        )
-                    })
-                    .transpose()?,
-                schema
-                    .property_bank_filename
-                    .map(|value| {
-                        FileName::try_new_with_field(
-                            "property_bank_filename",
-                            value,
-                        )
-                    })
-                    .transpose()?,
-            ),
-            None => SchemaOverrides::default(),
-        };
-        let template = match raw.template {
-            Some(template) => TemplateOverrides::new(
-                template
-                    .templates_dir
-                    .map(|value| {
-                        TemplatesDir::try_new_with_field(
-                            "templates_dir",
-                            PathBuf::from(value),
-                        )
-                    })
-                    .transpose()?,
-            ),
-            None => TemplateOverrides::default(),
-        };
+        let cache_dir = raw.cache_dir;
+        let schema = raw.schema.unwrap_or_default();
+        let template = raw.template.unwrap_or_default();
 
         Ok(Paths::new(cache_dir, schema, template))
     }
@@ -602,7 +561,8 @@ impl TryFrom<RawVault> for Vault {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{CacheDir, Metadata, Paths, TemplatesDir, VaultId, VaultRoot};
+    use super::{CacheDir, Metadata, Paths, VaultId, VaultRoot};
+    use crate::config::paths::TemplatesDir;
 
     #[test]
     fn derives_metadata_from_vault_path() -> Result<(), String> {
