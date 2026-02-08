@@ -93,27 +93,47 @@ cancelled = "-"
 in_progress = ">"
 waiting = "?"
 
-# Custom metadata fields
+# First-class temporal fields (Obsidian plugin compatibility)
+[task.dates.due]
+keyword = "due"
+emoji = "📅"
+format = "%Y-%m-%d"
+
+[task.dates.created]
+keyword = "created"
+format = "%Y-%m-%d"
+
+[task.dates.reminder]
+keyword = "reminder"
+emoji = "⏰"
+format = "%Y-%m-%d %H:%M"
+
+[task.dates.completed]
+keyword = "completed"
+emoji = "✅"
+format = "%Y-%m-%d"
+
+# Type-inferred custom fields (no explicit type= key needed)
 [task.fields.priority]
-type = "integer"
 keyword = "priority"
 min = 0
-max = 10
+max = 10  # Integer inferred from min/max
 
 [task.fields.project_name]
-type = "string"
 keyword = "project"
-pattern = "^[a-z_]+$"
+pattern = "^[a-z_]+$"  # String inferred from pattern
 
 [task.fields.task_type]
-type = "enum"
 keyword = "type"
-values = ["action_item", "reminder", "meeting", "research"]
+values = ["action_item", "reminder", "meeting", "research"]  # Enum inferred from values
 
-[task.fields.due_date]
-type = "date"
-keyword = "due"
-format = "%Y-%m-%d"
+[task.fields.estimate_hours]
+keyword = "estimate"
+min = 0.5
+max = 40.0  # Float inferred from min/max
+
+[task.fields.reviewed]
+keyword = "reviewed"  # Boolean inferred (no constraints)
 
 # Query optimization
 [task.indexing]
@@ -143,6 +163,8 @@ $ lithos index --vault my-vault/
   - task.fields.priority: min (0) cannot be greater than max (-1)
   - task.fields.task_type: enum values cannot be empty
   - task.status: duplicate symbol 'x' mapped to both 'complete' and 'done'
+  - task.dates.due: invalid chrono format string '%Y-%m-%d-%H' (unexpected literal)
+  - task.fields.project: keyword must be alphanumeric + '_-' (found: 'project.name')
 ```
 
 #### Developer Perspective: Using TaskConfig
@@ -178,6 +200,35 @@ assert_eq!(field_value.as_number(), Some(5.0));
 let invalid = json!(15);
 let err = task_config.parse_field_value("priority", &invalid);
 assert!(err.is_err()); // Error: Value 15 exceeds max 10
+
+// Pattern validation (project field has regex)
+let project_json = json!("my_project");
+let field_value = task_config.parse_field_value("project", &project_json)?;
+assert_eq!(field_value.as_str(), Some("my_project"));
+
+let invalid_project = json!("My-Project"); // Capital letter breaks pattern
+let err = task_config.parse_field_value("project", &invalid_project);
+assert!(err.is_err()); // Error: Pattern mismatch
+```
+
+**Parsing Date Fields (First-Class Temporal Support)**
+
+```rust
+// Parse due date with inline syntax
+if let Some(due_spec) = task_config.due_field() {
+    let date_text = "2026-02-10";
+    let parsed = task_config.parse_date_value(date_text, due_spec)?;
+    assert_eq!(parsed.format("%Y-%m-%d").to_string(), "2026-02-10");
+}
+
+// Emoji syntax (Obsidian compatibility)
+if let Some(due_spec) = task_config.due_field() {
+    if due_spec.emoji() == Some('📅') {
+        let emoji_text = "📅 2026-02-10";
+        let parsed = task_config.parse_date_value(emoji_text.trim_start_matches("📅 "), due_spec)?;
+        assert_eq!(parsed.format("%Y-%m-%d").to_string(), "2026-02-10");
+    }
+}
 ```
 
 **Status Symbol Mapping**
@@ -300,6 +351,33 @@ impl TaskTag {
 }
 ```
 
+#### `TaskFieldKeyword` (Domain)
+
+- **Purpose**: Validated keyword for inline task metadata (e.g., `priority`, `due`, `project`)
+- **Backing**: `Box<str>`
+- **Rules**: Non-empty, alphanumeric + `_-`, <= 64 chars
+- **Notes**: Used in inline syntax `[keyword:: value]`
+
+```rust
+pub struct TaskFieldKeyword(Box<str>);
+
+impl TaskFieldKeyword {
+    pub fn try_from(s: &str) -> Result<Self, ConfigError> {
+        if s.is_empty() || s.len() > 64 {
+            return Err(ConfigError::InvalidFieldKeyword("Must be 1-64 chars"));
+        }
+        if !s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+            return Err(ConfigError::InvalidFieldKeyword("Only alphanumeric, _, - allowed"));
+        }
+        Ok(TaskFieldKeyword(s.into()))
+    }
+
+    pub fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+```
+
 #### `StatusSymbol` (Domain)
 
 - **Purpose**: Single-character checkbox symbol as written in markdown `[<char>]`
@@ -345,6 +423,22 @@ impl StatusName {
 }
 ```
 
+#### `DateFieldSpec` (Domain)
+
+- **Purpose**: Validated specification for first-class temporal fields (due, created, reminder, completed)
+- **Key rules**: Valid chrono format string, optional emoji
+- **Important notes**: Emoji enables Obsidian plugin compatibility (e.g., `📅 2026-02-10`)
+- **Shape**:
+
+```rust
+#[derive(Debug, Clone)]
+pub struct DateFieldSpec {
+    keyword: TaskFieldKeyword,
+    emoji: Option<char>,
+    format: Box<str>,  // chrono format string
+}
+```
+
 #### `TaskFieldSpec` (Domain)
 
 - **Purpose**: Validated field specification with type constraints
@@ -356,29 +450,30 @@ impl StatusName {
 #[derive(Debug, Clone)]
 pub enum TaskFieldSpec {
     String {
-        keyword: Box<str>,
+        keyword: TaskFieldKeyword,
         pattern: Option<Arc<regex::Regex>>,
     },
     Integer {
-        keyword: Box<str>,
+        keyword: TaskFieldKeyword,
         min: Option<i64>,
         max: Option<i64>,
     },
     Float {
-        keyword: Box<str>,
+        keyword: TaskFieldKeyword,
         min: Option<f64>,
         max: Option<f64>,
     },
     Boolean {
-        keyword: Box<str>,
+        keyword: TaskFieldKeyword,
     },
     Enum {
-        keyword: Box<str>,
+        keyword: TaskFieldKeyword,
         values: Vec<Box<str>>,
     },
-    Date {
-        keyword: Box<str>,
+    DateTime {
+        keyword: TaskFieldKeyword,
         format: Box<str>,
+        emoji: Option<char>,
     },
 }
 ```
@@ -420,6 +515,14 @@ pub struct TaskConfig {
     enabled: bool,
     task_tags: Vec<TaskTag>,
     status: CheckboxStatus,
+
+    // First-class temporal fields (Obsidian compatibility)
+    due_field: Option<DateFieldSpec>,
+    created_field: Option<DateFieldSpec>,
+    reminder_field: Option<DateFieldSpec>,
+    completed_field: Option<DateFieldSpec>,
+
+    // Custom metadata fields (type-inferred)
     fields: HashMap<Box<str>, TaskFieldSpec>,
     indexed_fields: Vec<Box<str>>,
 }
@@ -436,37 +539,66 @@ pub struct RawTaskConfig {
     pub enabled: Option<bool>,
     pub task_tags: Option<Vec<String>>,
     pub status: Option<HashMap<String, char>>,
+    pub dates: Option<RawTaskDates>,
     pub fields: Option<HashMap<String, RawTaskFieldSpec>>,
     pub indexing: Option<RawIndexingConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+pub struct RawTaskDates {
+    pub due: Option<RawDateFieldSpec>,
+    pub created: Option<RawDateFieldSpec>,
+    pub reminder: Option<RawDateFieldSpec>,
+    pub completed: Option<RawDateFieldSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RawDateFieldSpec {
+    pub keyword: String,
+    pub emoji: Option<char>,
+    pub format: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]  // Type inferred from structure
 pub enum RawTaskFieldSpec {
-    String {
-        keyword: String,
-        pattern: Option<String>,
-    },
-    Integer {
-        keyword: String,
-        min: Option<i64>,
-        max: Option<i64>,
-    },
-    Float {
-        keyword: String,
-        min: Option<f64>,
-        max: Option<f64>,
-    },
-    Boolean {
-        keyword: String,
-    },
+    // Enum: has `values` array
     Enum {
         keyword: String,
         values: Vec<String>,
     },
-    Date {
+    // Integer: has integer min/max
+    Integer {
+        keyword: String,
+        #[serde(default)]
+        min: Option<i64>,
+        #[serde(default)]
+        max: Option<i64>,
+    },
+    // Float: has floating-point min/max
+    Float {
+        keyword: String,
+        #[serde(default)]
+        min: Option<f64>,
+        #[serde(default)]
+        max: Option<f64>,
+    },
+    // DateTime: has format string and optional emoji
+    DateTime {
         keyword: String,
         format: String,
+        #[serde(default)]
+        emoji: Option<char>,
+    },
+    // String: has regex pattern
+    String {
+        keyword: String,
+        #[serde(default)]
+        pattern: Option<String>,
+    },
+    // Boolean: no constraints (inferred if only keyword present)
+    Boolean {
+        keyword: String,
     },
 }
 ```
@@ -478,25 +610,56 @@ pub enum RawTaskFieldSpec {
 - **Responsibility**: Validated task configuration aggregate; provides field validation and status mapping for Note context
 - **Public Interface**:
   - `TaskConfig::from_raw(raw: RawTaskConfig) -> Result<Self, ConfigError>`
-    - _Behavior_: Validates raw config, compiles regex patterns, builds bidirectional status map
-    - _Errors_: Invalid field specs, duplicate mappings, empty required fields
+    - _Behavior_: Validates raw config, compiles regex patterns, builds bidirectional status map, constructs first-class date fields
+    - _Errors_: Invalid field specs, duplicate mappings, empty required fields, invalid date format strings
   - `task_tags(&self) -> &[TaskTag]`
     - _Behavior_: Returns configured task tags
   - `has_task_tag(&self, text: &str) -> bool`
     - _Behavior_: Checks if text contains any configured task tag
   - `status(&self) -> &CheckboxStatus`
     - _Behavior_: Returns status symbol ↔ name mapping
+  - `due_field(&self) -> Option<&DateFieldSpec>`
+    - _Behavior_: Returns configured due date field spec (with keyword, emoji, format)
+  - `created_field(&self) -> Option<&DateFieldSpec>`
+    - _Behavior_: Returns configured created date field spec
+  - `reminder_field(&self) -> Option<&DateFieldSpec>`
+    - _Behavior_: Returns configured reminder date field spec
+  - `completed_field(&self) -> Option<&DateFieldSpec>`
+    - _Behavior_: Returns configured completed date field spec
   - `parse_field_value(&self, field_name: &str, json: &serde_json::Value) -> Result<note::value::FieldValue, ConfigError>`
     - _Behavior_: Validates JSON value against field spec and converts to note-owned `FieldValue`
     - _Errors_: Unknown field, type mismatch, out of bounds, pattern mismatch
+  - `parse_date_value(&self, text: &str, spec: &DateFieldSpec) -> Result<chrono::NaiveDateTime, ConfigError>`
+    - _Behavior_: Parses date text using spec's format string; supports both inline `[due:: 2026-02-10]` and emoji `📅 2026-02-10` formats
+    - _Errors_: Parse failure, invalid format
   - `indexed_fields(&self) -> &[Box<str>]`
     - _Behavior_: Returns fields marked for indexing
 - **State/Invariants**:
   - All regex patterns successfully compiled
+  - All date format strings validated with chrono
   - Status mapping is bijective (1:1)
   - Indexed fields reference valid field names
   - Min <= max for numeric fields
   - Enum values non-empty
+  - Date field keywords unique (no collision with custom fields)
+
+#### Component: `DateFieldSpec`
+
+- **Responsibility**: Validated specification for first-class temporal fields
+- **Public Interface** (internal to config context):
+  - `DateFieldSpec::from_raw(raw: RawDateFieldSpec) -> Result<Self, ConfigError>`
+    - _Behavior_: Validates keyword, emoji, and chrono format string
+    - _Errors_: Invalid keyword, invalid format string, emoji not single char
+  - `keyword(&self) -> &TaskFieldKeyword`
+    - _Behavior_: Returns validated keyword
+  - `emoji(&self) -> Option<char>`
+    - _Behavior_: Returns optional emoji for Obsidian compatibility
+  - `format(&self) -> &str`
+    - _Behavior_: Returns chrono format string
+- **State/Invariants**:
+  - Keyword is valid (non-empty, alphanumeric + `_-`, <= 64 chars)
+  - Format string is valid chrono format (validated at construction)
+  - Emoji (if present) is single char
 
 #### Component: `TaskFieldSpec`
 
@@ -506,10 +669,11 @@ pub enum RawTaskFieldSpec {
     - _Behavior_: Validates JSON value against type and constraints (private helper)
     - _Errors_: Type mismatch, out of bounds, pattern mismatch, invalid enum value
 - **State/Invariants**:
-  - Keyword is non-empty
+  - Keyword is valid (non-empty, alphanumeric + `_-`, <= 64 chars)
   - Regex pattern (if present) is compiled
   - Numeric bounds satisfy min <= max
   - Enum values are non-empty
+  - DateTime format string is valid chrono format
 
 #### Component: `CheckboxStatus`
 
@@ -591,14 +755,14 @@ impl TaskFieldSpec {
             TaskFieldSpec::Integer { keyword, min, max } => {
                 let n = value.as_i64()
                     .ok_or(ConfigError::TypeMismatch {
-                        field: keyword.clone(),
+                        field: keyword.as_ref().into(),
                         expected: "integer"
                     })?;
 
                 if let Some(min) = min {
                     if n < *min {
                         return Err(ConfigError::OutOfBounds {
-                            field: keyword.clone(),
+                            field: keyword.as_ref().into(),
                             value: n,
                             min: Some(*min),
                             max: *max,
@@ -609,7 +773,7 @@ impl TaskFieldSpec {
                 if let Some(max) = max {
                     if n > *max {
                         return Err(ConfigError::OutOfBounds {
-                            field: keyword.clone(),
+                            field: keyword.as_ref().into(),
                             value: n,
                             min: *min,
                             max: Some(*max),
@@ -623,14 +787,14 @@ impl TaskFieldSpec {
             TaskFieldSpec::String { keyword, pattern } => {
                 let s = value.as_str()
                     .ok_or(ConfigError::TypeMismatch {
-                        field: keyword.clone(),
+                        field: keyword.as_ref().into(),
                         expected: "string",
                     })?;
 
                 if let Some(re) = pattern {
                     if !re.is_match(s) {
                         return Err(ConfigError::PatternMismatch {
-                            field: keyword.clone(),
+                            field: keyword.as_ref().into(),
                             value: s.to_owned(),
                             pattern: re.as_str().to_owned(),
                         });
@@ -643,17 +807,41 @@ impl TaskFieldSpec {
             TaskFieldSpec::Enum { keyword, values } => {
                 let s = value.as_str()
                     .ok_or(ConfigError::TypeMismatch {
-                        field: keyword.clone(),
+                        field: keyword.as_ref().into(),
                         expected: "string (enum)",
                     })?;
 
                 if !values.iter().any(|v| v.as_ref() == s) {
                     return Err(ConfigError::InvalidEnumValue {
-                        field: keyword.clone(),
+                        field: keyword.as_ref().into(),
                         value: s.to_owned(),
                         allowed: values.iter().map(|v| v.to_string()).collect(),
                     });
                 }
+
+                Ok(())
+            }
+
+            TaskFieldSpec::DateTime { keyword, format, .. } => {
+                let s = value.as_str()
+                    .ok_or(ConfigError::TypeMismatch {
+                        field: keyword.as_ref().into(),
+                        expected: "string (datetime)",
+                    })?;
+
+                // Validate against chrono format
+                chrono::NaiveDateTime::parse_from_str(s, format)
+                    .or_else(|_| {
+                        // Try date-only parse
+                        chrono::NaiveDate::parse_from_str(s, format)
+                            .map(|d| d.and_hms_opt(0, 0, 0).unwrap())
+                    })
+                    .map_err(|e| ConfigError::DateParseError {
+                        field: keyword.as_ref().into(),
+                        value: s.to_owned(),
+                        format: format.clone(),
+                        error: e.to_string(),
+                    })?;
 
                 Ok(())
             }
@@ -777,6 +965,61 @@ impl Default for TaskConfig {
   - _BTreeSet_: Sorted unique fields. **Rejected** - user-specified order is meaningful
 - **Rationale**: User controls index priority (first = most important for queries).
 
+#### Decision: Type Inference via #[serde(untagged)] (Not Explicit type= Key)
+
+- **Context**: Should users explicitly specify field types in config?
+- **Choice**: Infer type from structure using `#[serde(untagged)]` (e.g., `min`/`max` present → Integer)
+- **Alternatives Considered**:
+  - _Explicit type key_: `type = "integer"` required. **Rejected** - verbose, redundant (structure implies type)
+  - _Separate tables per type_: `[task.fields.integer.priority]`. **Rejected** - excessive nesting, breaks ergonomics
+  - _Auto-detect from values_: Parse example values to guess type. **Rejected** - fragile, error-prone
+- **Rationale**:
+  - **User experience**: Cleaner config (no redundant `type =` when constraints already signal intent)
+  - **Serde support**: Untagged enums naturally match structure-based discrimination
+  - **Validation**: Ambiguous cases caught at config load (e.g., `{keyword = "foo"}` → defaults to Boolean)
+  - **Trade-off**: Order matters in untagged enum variants (most specific first: Enum, Integer, Float, DateTime, String, Boolean)
+
+#### Decision: First-Class Date Fields with Emoji Support (Not Generic Custom Fields)
+
+- **Context**: Temporal fields (due, created, reminder, completed) are critical for task management; how to model?
+- **Choice**: Dedicated `task.dates.*` config section with `DateFieldSpec` domain type
+- **Alternatives Considered**:
+  - _Generic DateTime fields_: Treat like any custom field. **Rejected** - loses semantic meaning (queries can't optimize for "due dates")
+  - _Hardcoded date fields_: No user configuration. **Rejected** - breaks Obsidian plugin compatibility (users need custom keywords/emojis)
+  - _Separate temporal context_: Dedicated bounded context for dates. **Rejected** - overengineering (dates are task vocabulary)
+- **Rationale**:
+  - **Obsidian compatibility**: Users migrating from Dataview/Tasks/Reminder plugins need emoji support (`📅 2026-02-10`)
+  - **Query optimization**: First-class fields enable specialized indexing (temporal range queries)
+  - **Validation**: Format strings validated at config load (catches invalid chrono patterns early)
+  - **Flexibility**: Users can disable date fields (all `Option<DateFieldSpec>`)
+
+#### Decision: Unified DateTime Type (Not Separate Date/Time/DateTime)
+
+- **Context**: Should date-only, time-only, and datetime be separate types?
+- **Choice**: Single `DateTime` variant with format string determining precision
+- **Alternatives Considered**:
+  - _Separate variants_: `Date`, `Time`, `DateTime` enum variants. **Rejected** - format string already encodes precision
+  - _Chrono types directly_: Store `NaiveDate` vs `NaiveDateTime`. **Rejected** - config is TOML strings (parsing happens in Note context)
+  - _ISO8601 only_: Hardcode date formats. **Rejected** - breaks user flexibility (some prefer `%m/%d/%Y`)
+- **Rationale**:
+  - **Chrono alignment**: `chrono::NaiveDateTime::parse_from_str` handles both date-only and datetime formats
+  - **Simplicity**: One code path for validation/parsing (format string = source of truth)
+  - **User control**: Format string lets users choose precision (`"%Y-%m-%d"` = date-only, `"%Y-%m-%d %H:%M"` = datetime)
+
+#### Decision: TaskFieldKeyword Newtype (Not Bare Box<str>)
+
+- **Context**: Field keywords appear throughout system (configs, queries, templates); should they be validated?
+- **Choice**: Newtype `TaskFieldKeyword(Box<str>)` with construction-time validation
+- **Alternatives Considered**:
+  - _Bare Box<str>_: No validation. **Rejected** - allows invalid keywords (empty, too long, special chars)
+  - _Validate at use site_: Check validity every time keyword is used. **Rejected** - duplicates validation logic, runtime overhead
+  - _Compile-time validation_: Proc macro. **Rejected** - overkill for user config (not code)
+- **Rationale**:
+  - **Type safety**: Invalid keywords rejected at config load (not during task parsing)
+  - **Performance**: Validation happens once (construction), no runtime checks
+  - **Consistency**: Same pattern as `TaskTag`, `StatusName`, `StatusSymbol` (validated newtypes)
+  - **Bounds**: 64-char limit prevents abuse (e.g., malicious 10KB keywords)
+
 ## 5. Operational Readiness (The "Reality Check")
 
 ### 5.1 Observability
@@ -863,12 +1106,16 @@ fn load_task_config(raw: RawTaskConfig) -> Result<TaskConfig, ConfigError> {
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                                      | Resolution                                                  |
-|:-----------|:------------------------------------------------------|:------------------------------------------------------------|
-| 2026-02-08 | "Should TaskConfig own promotion logic?"              | No - promotion logic in Note context; config provides tags  |
-| 2026-02-08 | "Should validation be public API?"                    | No - newtype pattern means validation at construction only  |
-| 2026-02-08 | "How does Note context get FieldValue?"               | Config converts serde_json::Value → note::value::FieldValue |
-| 2026-02-08 | "What if user config has typos in field names?"       | Unknown fields trigger warnings; indexed_fields validated   |
+| Date       | Critique / Issue                                      | Resolution                                                                         |
+|:-----------|:------------------------------------------------------|:-----------------------------------------------------------------------------------|
+| 2026-02-08 | "Should TaskConfig own promotion logic?"              | No - promotion logic in Note context; config provides tags                         |
+| 2026-02-08 | "Should validation be public API?"                    | No - newtype pattern means validation at construction only                         |
+| 2026-02-08 | "How does Note context get FieldValue?"               | Config converts serde_json::Value → note::value::FieldValue                        |
+| 2026-02-08 | "What if user config has typos in field names?"       | Unknown fields trigger warnings; indexed_fields validated                          |
+| 2026-02-08 | "Type inference: Remove explicit `type=` key"         | Use `#[serde(untagged)]` - structure implies type (min/max → Integer)              |
+| 2026-02-08 | "First-class date fields for Obsidian compatibility"  | Add `task.dates.*` section with emoji support, dedicated `DateFieldSpec` type      |
+| 2026-02-08 | "TaskFieldKeyword newtype for type safety"            | Add validated newtype: alphanumeric + `_-`, non-empty, <= 64 chars                 |
+| 2026-02-08 | "Unified DateTime type vs separate Date/Time/DateTime"| Single `DateTime` variant - format string determines precision (aligns with chrono)|
 
 ## 8. References
 
