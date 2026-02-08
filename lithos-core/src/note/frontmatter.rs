@@ -624,7 +624,7 @@ mod tests {
             use crate::config::{
                 frontmatter::{Frontmatter, FrontmatterKey},
                 global::{Global, Paths as GlobalPaths},
-                types::Logging,
+                logging::Logging,
                 vault::{Vault, VaultId, VaultRoot},
             };
 

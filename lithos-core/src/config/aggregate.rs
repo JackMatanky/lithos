@@ -28,9 +28,9 @@ use super::{
     events::{ConfigUpdated, Events},
     frontmatter::Frontmatter,
     global::{Global, Paths as GlobalPaths},
+    logging::Logging,
     paths::{Schema, Template},
     task::TaskConfig,
-    types::Logging,
     vault::{CacheDir, Metadata, Vault, VaultId, VaultRoot},
 };
 
@@ -459,8 +459,8 @@ mod tests {
         use super::*;
         use crate::config::{
             frontmatter::FrontmatterKey,
+            logging::LogLevel,
             paths::{FileName, SchemasDir, TemplatesDir},
-            types::LogLevel,
             vault::{SchemaOverrides, TemplateOverrides},
         };
 
@@ -824,7 +824,7 @@ mod tests {
 
     mod merge {
         use super::*;
-        use crate::config::types::LogLevel;
+        use crate::config::logging::LogLevel;
 
         /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
         /// Priority: P1.
@@ -1111,7 +1111,7 @@ mod tests {
         use std::path::PathBuf;
 
         use super::*;
-        use crate::config::{types::LogLevel, vault::VaultRoot};
+        use crate::config::{logging::LogLevel, vault::VaultRoot};
 
         /// 3.3-UNIT-016: `enforces_required_fields_and_enum_constraints`.
         /// Priority: P0.
