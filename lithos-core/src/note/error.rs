@@ -45,6 +45,10 @@ pub enum NoteError {
     #[error("task error: {0}")]
     Task(String),
 
+    /// Structural error within a note.
+    #[error("note structure error: {0}")]
+    Structure(String),
+
     /// Note validation failed.
     #[error("note validation failed: {0}")]
     ValidationFailed(String),

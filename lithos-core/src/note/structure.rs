@@ -5,6 +5,7 @@
 //! sections group content between headings.
 
 use super::error::NoteError;
+use crate::note::types::{HeadingLevel, SourceByteOffset, SourceByteRange};
 
 /// Represents a heading within a note.
 ///
@@ -24,18 +25,18 @@ use super::error::NoteError;
 #[non_exhaustive]
 pub struct Heading {
     /// Heading level (1-6, corresponding to # through ######).
-    level: u8,
+    level: HeadingLevel,
     /// Heading text content.
     text: Box<str>,
     /// Character position in the source document.
-    position: usize,
+    position: SourceByteOffset,
 }
 
 impl Heading {
     /// Returns the heading level.
     #[inline]
     #[must_use]
-    pub const fn level(&self) -> u8 {
+    pub const fn level(&self) -> HeadingLevel {
         self.level
     }
 
@@ -43,32 +44,30 @@ impl Heading {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::structure::Heading;
+    /// use lithos_core::note::{
+    ///     structure::Heading,
+    ///     types::{HeadingLevel, SourceByteOffset},
+    /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let heading = Heading::new(2, "Implementation".to_string(), 10)?;
-    /// assert_eq!(heading.level(), 2, "Heading level should match");
+    /// let level = HeadingLevel::try_new(2)?;
+    /// let pos = SourceByteOffset::from(10u32);
+    /// let heading = Heading::new(level, "Implementation".to_string(), pos)?;
+    /// assert_eq!(heading.level().as_u8(), 2, "Heading level should match");
     /// assert_eq!(heading.text(), "Implementation", "Heading text should match");
-    /// assert_eq!(heading.position(), 10, "Heading position should match");
+    /// assert_eq!(heading.position(), pos, "Heading position should match");
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
-    /// Returns `NoteError::ValidationFailed` if `level` is not between 1
-    /// and 6.
+    /// Returns `NoteError::ValidationFailed` if heading text is empty.
     #[inline]
     pub fn new(
-        level: u8,
+        level: HeadingLevel,
         text: String,
-        position: usize,
+        position: SourceByteOffset,
     ) -> Result<Self, NoteError> {
-        if !(1..=6).contains(&level) {
-            return Err(NoteError::ValidationFailed(format!(
-                "Invalid heading level: {level} (must be 1-6)"
-            )));
-        }
-
         if text.trim().is_empty() {
             return Err(NoteError::ValidationFailed(
                 "Heading text cannot be empty".to_owned(),
@@ -85,7 +84,7 @@ impl Heading {
     /// Returns the character position in the source document.
     #[inline]
     #[must_use]
-    pub const fn position(&self) -> usize {
+    pub const fn position(&self) -> SourceByteOffset {
         self.position
     }
 
@@ -120,7 +119,7 @@ pub struct Section {
     /// Section content text.
     content: Box<str>,
     /// Character range in the source document.
-    range: std::ops::Range<usize>,
+    range: SourceByteRange,
 }
 
 impl Section {
@@ -142,14 +141,19 @@ impl Section {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::structure::{Heading, Section};
+    /// use lithos_core::note::{
+    ///     structure::{Heading, Section},
+    ///     types::{HeadingLevel, SourceByteOffset, SourceByteRange},
+    /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let range = 10..50;
+    /// let level = HeadingLevel::try_new(1)?;
+    /// let pos = SourceByteOffset::from(10u32);
+    /// let range = SourceByteRange::new(pos, SourceByteOffset::from(50u32));
     /// let section = Section::new(
-    ///     Some(Heading::new(1, "Title".to_string(), 10)?),
+    ///     Some(Heading::new(level, "Title".to_string(), pos)?),
     ///     "Content here...".to_string(),
-    ///     range.clone(),
+    ///     range,
     /// );
     /// assert_eq!(section.range(), range, "Section range should match");
     /// # Ok(())
@@ -160,7 +164,7 @@ impl Section {
     pub fn new(
         heading: Option<Heading>,
         content: String,
-        range: std::ops::Range<usize>,
+        range: SourceByteRange,
     ) -> Self {
         Self {
             heading,
@@ -172,54 +176,79 @@ impl Section {
     /// Returns the character range in the source document.
     #[inline]
     #[must_use]
-    pub fn range(&self) -> std::ops::Range<usize> {
-        self.range.clone()
+    pub const fn range(&self) -> SourceByteRange {
+        self.range
     }
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "Tests use assertions in Result-returning functions."
+)]
 mod tests {
     use super::*;
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Fixture helpers use expect for deterministic setup."
-    )]
     mod fixtures {
         use super::*;
 
-        pub fn summary_heading() -> Heading {
-            Heading::new(3, "Summary".to_owned(), 22)
-                .expect("Failed to create heading fixture")
+        pub fn summary_heading() -> Result<Heading, NoteError> {
+            Heading::new(
+                HeadingLevel::try_new(3)?,
+                "Summary".to_owned(),
+                SourceByteOffset::from(22u32),
+            )
         }
 
-        pub fn implementation_heading() -> Heading {
-            Heading::new(2, "Implementation".to_owned(), 10)
-                .expect("Valid heading should be created")
+        pub fn implementation_heading() -> Result<Heading, NoteError> {
+            Heading::new(
+                HeadingLevel::try_new(2)?,
+                "Implementation".to_owned(),
+                SourceByteOffset::from(10u32),
+            )
         }
 
-        pub fn intro_heading() -> Heading {
-            Heading::new(1, "Intro".to_owned(), 0)
-                .expect("Failed to create heading fixture")
+        pub fn intro_heading() -> Result<Heading, NoteError> {
+            Heading::new(
+                HeadingLevel::try_new(1)?,
+                "Intro".to_owned(),
+                SourceByteOffset::from(0u32),
+            )
         }
 
-        pub fn section_with_intro() -> Section {
-            Section::new(Some(intro_heading()), "Body".to_owned(), 0..4)
+        pub fn section_with_intro() -> Result<Section, NoteError> {
+            let start = SourceByteOffset::from(0u32);
+            let end = SourceByteOffset::from(4u32);
+            Ok(Section::new(
+                Some(intro_heading()?),
+                "Body".to_owned(),
+                SourceByteRange::new(start, end),
+            ))
         }
 
+        #[expect(
+            clippy::type_complexity,
+            reason = "Fixture returns a complex tuple for test setup \
+                      convenience."
+        )]
         pub fn section_with_title()
-        -> (Section, Option<Heading>, std::ops::Range<usize>) {
-            let heading = Some(
-                Heading::new(1, "Title".into(), 0)
-                    .expect("Failed to create heading fixture"),
+        -> Result<(Section, Option<Heading>, SourceByteRange), NoteError>
+        {
+            let heading = Some(Heading::new(
+                HeadingLevel::try_new(1)?,
+                "Title".into(),
+                SourceByteOffset::from(0u32),
+            )?);
+            let range = SourceByteRange::new(
+                SourceByteOffset::from(0u32),
+                SourceByteOffset::from(15u32),
             );
-            let range = 0..15;
             let section = Section::new(
                 heading.clone(),
                 "Section content".to_owned(),
-                range.clone(),
+                range,
             );
-            (section, heading, range)
+            Ok((section, heading, range))
         }
     }
 
@@ -227,79 +256,95 @@ mod tests {
         use super::*;
 
         #[test]
-        fn heading_level_accessor_returns_level() {
-            let heading = fixtures::summary_heading();
-            assert_eq!(heading.level(), 3, "Heading level should be 3");
+        fn heading_level_accessor_returns_level() -> Result<(), NoteError> {
+            let heading = fixtures::summary_heading()?;
+            assert_eq!(heading.level().as_u8(), 3, "Heading level should be 3");
+            Ok(())
         }
 
         #[test]
-        fn heading_text_accessor_returns_text() {
-            let heading = fixtures::summary_heading();
+        fn heading_text_accessor_returns_text() -> Result<(), NoteError> {
+            let heading = fixtures::summary_heading()?;
             assert_eq!(
                 heading.text(),
                 "Summary",
                 "Heading text should be 'Summary'"
             );
+            Ok(())
         }
 
         #[test]
-        fn heading_position_accessor_returns_position() {
-            let heading = fixtures::summary_heading();
-            assert_eq!(heading.position(), 22, "Heading position should be 22");
+        fn heading_position_accessor_returns_position() -> Result<(), NoteError>
+        {
+            let heading = fixtures::summary_heading()?;
+            assert_eq!(
+                heading.position(),
+                SourceByteOffset::from(22u32),
+                "Heading position should be 22"
+            );
+            Ok(())
         }
 
         #[test]
-        fn new_heading_sets_level() {
-            let heading = fixtures::implementation_heading();
-            assert_eq!(heading.level(), 2, "Heading level should be 2");
+        fn new_heading_sets_level() -> Result<(), NoteError> {
+            let heading = fixtures::implementation_heading()?;
+            assert_eq!(heading.level().as_u8(), 2, "Heading level should be 2");
+            Ok(())
         }
 
         #[test]
-        fn new_heading_sets_text() {
-            let heading = fixtures::implementation_heading();
+        fn new_heading_sets_text() -> Result<(), NoteError> {
+            let heading = fixtures::implementation_heading()?;
             assert_eq!(
                 heading.text(),
                 "Implementation",
                 "Heading text should be 'Implementation'"
             );
+            Ok(())
         }
 
         #[test]
-        fn new_heading_sets_position() {
-            let heading = fixtures::implementation_heading();
-            assert_eq!(heading.position(), 10, "Heading position should be 10");
+        fn new_heading_sets_position() -> Result<(), NoteError> {
+            let heading = fixtures::implementation_heading()?;
+            assert_eq!(
+                heading.position(),
+                SourceByteOffset::from(10u32),
+                "Heading position should be 10"
+            );
+            Ok(())
         }
 
         #[test]
-        fn new_returns_error_for_invalid_level() {
+        fn heading_level_validation_rejects_invalid_values() {
             // GIVEN: an invalid heading level
             let level = 7;
-            let text = "Invalid".to_owned();
 
-            // WHEN: creating a new heading
-            let result = Heading::new(level, text, 0);
+            // WHEN: creating a heading level
+            let result = HeadingLevel::try_new(level);
 
-            // THEN: it returns InvalidHeadingLevel
+            // THEN: it returns an error
             assert!(
-                matches!(result, Err(NoteError::ValidationFailed(_))),
-                "Invalid heading level (7) should be rejected, got: {result:?}"
+                result.is_err(),
+                "Invalid heading level (7) should be rejected"
             );
         }
 
         #[test]
-        fn new_returns_error_for_empty_text() {
+        fn new_returns_error_for_empty_text() -> Result<(), NoteError> {
             // GIVEN: empty heading text
-            let level = 1;
+            let level = HeadingLevel::try_new(1)?;
             let text = "   ".to_owned();
+            let pos = SourceByteOffset::from(0u32);
 
             // WHEN: creating a new heading
-            let result = Heading::new(level, text, 0);
+            let result = Heading::new(level, text, pos);
 
             // THEN: it returns ValidationFailed
             assert!(
                 matches!(result, Err(NoteError::ValidationFailed(_))),
                 "Empty heading text should be rejected, got: {result:?}"
             );
+            Ok(())
         }
     }
 
@@ -307,58 +352,72 @@ mod tests {
         use super::*;
 
         #[test]
-        fn section_content_accessor_returns_content() {
-            let section = fixtures::section_with_intro();
+        fn section_content_accessor_returns_content() -> Result<(), NoteError> {
+            let section = fixtures::section_with_intro()?;
             assert_eq!(
                 section.content(),
                 "Body",
                 "Section content should be 'Body'"
             );
+            Ok(())
         }
 
         #[test]
-        fn section_heading_accessor_returns_heading() {
-            let section = fixtures::section_with_intro();
+        fn section_heading_accessor_returns_heading() -> Result<(), NoteError> {
+            let section = fixtures::section_with_intro()?;
             assert!(
                 matches!(section.heading(), Some(heading) if heading.text() == "Intro"),
                 "Section heading text should be 'Intro'"
             );
+            Ok(())
         }
 
         #[test]
-        fn section_range_accessor_returns_range() {
-            let section = fixtures::section_with_intro();
-            assert_eq!(section.range(), 0..4, "Section range should be 0..4");
+        fn section_range_accessor_returns_range() -> Result<(), NoteError> {
+            let section = fixtures::section_with_intro()?;
+            let expected_range = SourceByteRange::new(
+                SourceByteOffset::from(0u32),
+                SourceByteOffset::from(4u32),
+            );
+            assert_eq!(
+                section.range(),
+                expected_range,
+                "Section range should be 0..4"
+            );
+            Ok(())
         }
 
         #[test]
-        fn new_section_sets_heading() {
-            let (section, heading, _range) = fixtures::section_with_title();
+        fn new_section_sets_heading() -> Result<(), NoteError> {
+            let (section, heading, _range) = fixtures::section_with_title()?;
             assert_eq!(
                 section.heading(),
                 heading.as_ref(),
                 "Section heading should match input"
             );
+            Ok(())
         }
 
         #[test]
-        fn new_section_sets_content() {
-            let (section, _heading, _range) = fixtures::section_with_title();
+        fn new_section_sets_content() -> Result<(), NoteError> {
+            let (section, _heading, _range) = fixtures::section_with_title()?;
             assert_eq!(
                 section.content(),
                 "Section content",
                 "Section content should match input"
             );
+            Ok(())
         }
 
         #[test]
-        fn new_section_sets_range() {
-            let (section, _heading, range) = fixtures::section_with_title();
+        fn new_section_sets_range() -> Result<(), NoteError> {
+            let (section, _heading, range) = fixtures::section_with_title()?;
             assert_eq!(
                 section.range(),
                 range,
                 "Section range should match input"
             );
+            Ok(())
         }
     }
 }

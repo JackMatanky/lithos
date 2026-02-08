@@ -27,7 +27,7 @@ pub mod structure;
 pub mod tag;
 /// Task subentity for Note aggregate.
 pub mod task;
-/// Domain-specific types for the Note context.
+/// Shared domain types for the Note context.
 pub mod types;
 /// Shared primitive for dynamic note values.
 pub mod value;
