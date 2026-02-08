@@ -2,6 +2,20 @@
 //!
 //! Task configuration is cross-cutting infrastructure used by the note context.
 
+#![expect(
+    missing_docs,
+    reason = "rkyv generates archived structs that are missing docs"
+)]
+#![expect(
+    clippy::exhaustive_enums,
+    reason = "rkyv generates exhaustive archived enums"
+)]
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Matching on &self with TaskFieldSpec enum - rust auto-borrows \
+              fields"
+)]
+
 use std::collections::{HashMap, HashSet};
 
 use regex::Regex;
@@ -662,24 +676,6 @@ impl TaskFieldSpec {
             } => keyword,
         }
     }
-            | Self::Integer {
-                keyword,
-                ..
-            }
-            | Self::Float {
-                keyword,
-                ..
-            }
-            | Self::Enum {
-                keyword,
-                ..
-            }
-            | Self::DateTime {
-                keyword,
-                ..
-            } => keyword,
-        }
-    }
 
     #[inline]
     /// Validate a raw JSON value against this spec.
@@ -712,7 +708,6 @@ impl TaskFieldSpec {
                 format,
             } => Self::validate_datetime(value, keyword, format),
         }
-    }
     }
 
     fn validate_integer(

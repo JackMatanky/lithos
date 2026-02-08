@@ -3,6 +3,21 @@
 //! This module contains the fundamental configuration types that are used
 //! by both vault and global configuration contexts.
 
+#![expect(
+    clippy::exhaustive_enums,
+    reason = "rkyv::Archive derive generates exhaustive archived enums"
+)]
+#![expect(
+    clippy::struct_field_names,
+    reason = "Frontmatter struct fields intentionally share '_key' suffix \
+              (flagged by rkyv::Archive derive)"
+)]
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Matching on &self with SettingValue enum - rust auto-borrows \
+              fields"
+)]
+
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -536,10 +551,6 @@ impl From<FileName> for String {
     rkyv::Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
-#[expect(
-    clippy::struct_field_names,
-    reason = "Frontmatter keys intentionally share the 'key' suffix."
-)]
 #[non_exhaustive]
 pub struct Frontmatter {
     /// Key for aliases in frontmatter.
@@ -712,15 +723,6 @@ impl std::fmt::Debug for SettingValue {
             Self::Number(n) => f.debug_tuple("Number").field(n).finish(),
             Self::Object(map) => f.debug_tuple("Object").field(map).finish(),
             Self::String(s) => f.debug_tuple("String").field(s).finish(),
-        }
-    }
-}
-            Self::Null => f.debug_tuple("Null").finish(),
-            Self::Number(n) => f.debug_tuple("Number").field(&n).finish(),
-            Self::Object(ref map) => {
-                f.debug_tuple("Object").field(map).finish()
-            }
-            Self::String(ref s) => f.debug_tuple("String").field(s).finish(),
         }
     }
 }
@@ -1015,7 +1017,7 @@ mod tests {
     #[test]
     #[expect(
         clippy::panic_in_result_fn,
-        reason = "Test uses assert_eq which can panic."
+        reason = "Test uses assert_eq! which can panic."
     )]
     fn constructs_valid_property_bank_path() -> Result<(), super::ConfigError> {
         let schema = super::Schema::new(
@@ -1066,7 +1068,7 @@ mod tests {
     #[test]
     #[expect(
         clippy::panic_in_result_fn,
-        reason = "Test uses assert_eq which can panic."
+        reason = "Test uses assert_eq! which can panic."
     )]
     fn converts_from_datetime() -> Result<(), Box<dyn std::error::Error>> {
         let input = chrono::Utc

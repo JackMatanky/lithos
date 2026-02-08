@@ -78,6 +78,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Test uses assert! which can panic."
+    )]
     fn ingest_vault_uses_defaults_when_file_missing()
     -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempdir()?;
@@ -87,6 +91,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Test uses assert! which can panic."
+    )]
     fn ingest_vault_reads_lithos_toml_when_present()
     -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempdir()?;

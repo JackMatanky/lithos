@@ -1,5 +1,11 @@
 //! Configuration domain events.
 
+#![expect(
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums,
+    reason = "rkyv generates exhaustive archived structs and enums"
+)]
+
 use serde::{Deserialize, Serialize};
 
 /// Configuration updated domain event.
