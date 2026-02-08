@@ -58,7 +58,40 @@ From a performance and correctness perspective, CQRS is the boundary where we mu
 - **Alignment is a real constraint**: if redb cannot guarantee alignment for returned byte slices, safe archived access may require copying into an aligned buffer before calling a closure.
 - **Errors**: library surfaces use structured `Result` errors (no `unwrap`/`expect`); reserve `anyhow` for binaries/CLI (see https://github.com/apollographql/rust-best-practices/tree/1c78fa64bb0d5df4a4d18d5923a7ced615f947d1).
 
-### 1.4 Definition of Done
+## 1.4 Error Type Strategy
+
+CQRS operations use split error types for clearer domain/storage error separation:
+
+**SchemaCommandError**:
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum SchemaCommandError {
+    #[error("Domain error: {0}")]
+    Domain(#[from] SchemaError),
+
+    #[error("Storage error: {0}")]
+    Storage(#[from] DbError),
+}
+```
+
+**SchemaQueryError**:
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum SchemaQueryError {
+    #[error("Storage error: {0}")]
+    Storage(#[from] DbError),
+
+    #[error("Data corruption: {0}")]
+    Corruption(String),
+}
+```
+
+**Rationale**: Split error types allow:
+- Commands to distinguish domain validation failures from storage failures
+- Queries to surface data corruption separately from transient storage errors
+- Better error handling at call sites (pattern match on error kind)
+
+### 1.5 Definition of Done
 
 - CQRS contracts for schema are documented as stable interfaces (inputs/outputs/errors/invariants).
 - The design explicitly supports both:
@@ -76,6 +109,7 @@ Concrete-first usage pattern (preferred for performance + ergonomics):
 
 ```rust
 use lithos_core::schema::{command, query};
+use lithos_core::schema::ports::{Command, Query};
 
 let cmd = command::Command::new(&db);
 let qry = query::Query::new(&db);
@@ -322,6 +356,7 @@ Key encoding guidance:
 - Implement dual-read during transition:
   - if `schema_by_id` is missing, fall back to legacy `schemas_by_name`.
 - After full reindex/upgrade, remove legacy tables.
+- See [Clean-Slate Protocol](../operations/clean-slate-protocol.md) for schema revalidation and reindex procedures when storage schema changes.
 
 ### 5.3 Security & Privacy
 
