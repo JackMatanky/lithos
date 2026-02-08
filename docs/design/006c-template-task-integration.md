@@ -808,3 +808,329 @@ fn render_template(
 - [MiniJinja Documentation](https://docs.rs/minijinja/latest/minijinja/)
 - [Jinja2 Template Designer Documentation](https://jinja.palletsprojects.com/en/3.1.x/templates/)
 - [Epic 12: Template System](../../_bmad-output/planning-artifacts/epics/) (TBD)
+
+---
+
+## Appendix A: Full Template Formatting Algorithm
+
+This appendix provides the complete pseudocode for `tasks.format_checkbox()` with all validation steps.
+
+```rust
+// template/functions/format.rs
+
+pub fn format_checkbox(
+    text: String,
+    status: String,
+    metadata: HashMap<String, TemplateValue>,
+    config: &TaskConfig,
+) -> Result<String, TemplateError> {
+    // Step 1: Validate status and map to symbol
+    let status_name = config::task::StatusName::try_from(status.as_str())
+        .map_err(|_| TemplateError::InvalidStatusName {
+            value: status.clone(),
+            reason: "Status name must be alphanumeric + '_' and <= 32 chars".into(),
+        })?;
+
+    let status_symbol = config.status()
+        .symbol_for_name(&status_name)
+        .ok_or_else(|| TemplateError::UnknownStatus {
+            status: status.clone(),
+            configured: config.status()
+                .by_name
+                .keys()
+                .map(|n| n.as_ref().to_owned())
+                .collect(),
+        })?;
+
+    // Step 2: Get task tag (use first configured tag)
+    let task_tag = config.task_tags().first()
+        .ok_or(TemplateError::NoTaskTagsConfigured {
+            reason: "TaskConfig.task_tags is empty; cannot format task checkbox".into(),
+        })?;
+
+    // Step 3: Build base checkbox string
+    let mut output = format!(
+        "- [{}] {} {}",
+        status_symbol.as_char(),
+        task_tag.as_ref(),
+        text.trim()
+    );
+
+    // Step 4: Sort metadata keys for deterministic output
+    let mut sorted_fields: Vec<_> = metadata.into_iter().collect();
+    sorted_fields.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // Step 5: Validate and format each metadata field
+    for (field_name, value) in sorted_fields {
+        // Step 5a: Check if field is configured
+        let field_spec = config.fields()
+            .get(&field_name)
+            .ok_or_else(|| TemplateError::UnknownField {
+                field: field_name.clone(),
+                configured: config.fields()
+                    .keys()
+                    .map(|k| k.to_string())
+                    .collect(),
+            })?;
+
+        // Step 5b: Convert TemplateValue → serde_json::Value
+        let json_value = value.to_json();
+
+        // Step 5c: Validate against field spec
+        let field_value = config.parse_field_value(&field_name, &json_value)
+            .map_err(|e| TemplateError::ValidationFailed {
+                field: field_name.clone(),
+                source: e,
+            })?;
+
+        // Step 5d: Format field value for inline metadata
+        let formatted = match &field_value {
+            note::value::FieldValue::String(s) => s.clone(),
+            note::value::FieldValue::Number(n) => {
+                // Format numbers without trailing .0 for integers
+                if n.fract() == 0.0 {
+                    format!("{:.0}", n)
+                } else {
+                    n.to_string()
+                }
+            }
+            note::value::FieldValue::Boolean(b) => b.to_string(),
+            note::value::FieldValue::Date(d) => d.format("%Y-%m-%d").to_string(),
+            note::value::FieldValue::Array(_) => {
+                return Err(TemplateError::UnsupportedFieldType {
+                    field: field_name.clone(),
+                    type_name: "array".into(),
+                    reason: "Array fields not supported in inline task metadata".into(),
+                });
+            }
+            note::value::FieldValue::Object(_) => {
+                return Err(TemplateError::UnsupportedFieldType {
+                    field: field_name.clone(),
+                    type_name: "object".into(),
+                    reason: "Object fields not supported in inline task metadata".into(),
+                });
+            }
+        };
+
+        // Step 5e: Get keyword from spec and append to output
+        let keyword = field_spec.keyword();
+        output.push_str(&format!(" [{}:: {}]", keyword.as_ref(), formatted));
+    }
+
+    // Step 6: Handle first-class temporal fields (if present in metadata)
+    // Note: These use emoji syntax if configured
+    if let Some(due_spec) = config.due_field() {
+        if let Some(due_value) = metadata.get("due_date") {
+            if let Some(emoji) = due_spec.emoji() {
+                let date_str = match due_value {
+                    TemplateValue::String(s) => s.clone(),
+                    _ => return Err(TemplateError::InvalidDateFormat {
+                        field: "due_date".into(),
+                        value: format!("{:?}", due_value),
+                    }),
+                };
+                output.push_str(&format!(" {} {}", emoji, date_str));
+            }
+        }
+    }
+
+    // (Repeat for created, reminder, completed if needed)
+
+    Ok(output)
+}
+```
+
+**Error Handling Matrix**:
+
+| Error Scenario                         | TemplateError Variant         | User-Facing Message Example                                     |
+| -------------------------------------- | ----------------------------- | --------------------------------------------------------------- |
+| Invalid status name format             | `InvalidStatusName`           | "Status name 'in-progress!' must be alphanumeric + '_'"         |
+| Status not in config                   | `UnknownStatus`               | "Unknown status 'foo'. Configured: complete, incomplete, ..."   |
+| No task tags configured                | `NoTaskTagsConfigured`        | "Cannot format task: no task tags in vault config"              |
+| Field not in config                    | `UnknownField`                | "Unknown field 'urgency'. Configured: priority, project, ..."   |
+| Field value out of bounds              | `ValidationFailed`            | "Field 'priority': value 15 exceeds max 10"                     |
+| Field value wrong type                 | `ValidationFailed`            | "Field 'priority': expected integer, got string"                |
+| Field value fails pattern              | `ValidationFailed`            | "Field 'project': value 'My-Project' doesn't match '^[a-z_]+$'" |
+| Unsupported complex type (array/object)| `UnsupportedFieldType`        | "Field 'tags': array fields not supported in inline metadata"   |
+| Invalid date format                    | `InvalidDateFormat`           | "Field 'due_date': invalid format '2026-13-45'"                 |
+
+**Validation Order** (fail-fast):
+
+1. Status name format → Status exists → Get symbol
+2. Task tags configured → Get first tag
+3. For each metadata field:
+   - Field exists in config
+   - Type matches
+   - Value satisfies constraints (bounds/pattern/enum)
+   - Format for inline syntax
+4. Return formatted string
+
+---
+
+## Appendix B: Parser Integration Pseudocode
+
+This appendix shows how the markdown parser integrates with List/Task entities and TaskConfig.
+
+```rust
+// Conceptual parser integration (adapter layer)
+
+use pulldown_cmark::{Parser, Event, Tag, TagEnd, Options};
+use lithos_core::note::list::{List, ListItem, ListType};
+use lithos_core::note::task::Task;
+use lithos_core::config::task::{TaskConfig, StatusSymbol};
+
+pub struct NoteParser<'a> {
+    markdown: &'a str,
+    config: &'a TaskConfig,
+    lists: Vec<List>,
+    tasks: Vec<Task>,
+}
+
+impl<'a> NoteParser<'a> {
+    pub fn parse(markdown: &'a str, config: &'a TaskConfig) -> Result<(Vec<List>, Vec<Task>), ParseError> {
+        let mut parser = Self {
+            markdown,
+            config,
+            lists: Vec::new(),
+            tasks: Vec::new(),
+        };
+
+        // Enable task list markers in pulldown-cmark
+        let options = Options::ENABLE_TASKLISTS;
+        let md_parser = Parser::new_ext(markdown, options);
+
+        // Track parser state
+        let mut current_list: Option<List> = None;
+        let mut current_item_text = String::new();
+        let mut current_item_position: usize = 0;
+        let mut current_status: Option<StatusSymbol> = None;
+
+        // Use into_offset_iter to get source positions
+        for (event, range) in md_parser.into_offset_iter() {
+            match event {
+                Event::Start(Tag::List(start_num)) => {
+                    // Begin new list
+                    let list_type = if let Some(num) = start_num {
+                        ListType::Ordered { start: num }
+                    } else {
+                        ListType::Unordered
+                    };
+                    current_list = Some(List::new(list_type));
+                }
+
+                Event::End(TagEnd::List(_)) => {
+                    // Finalize current list
+                    if let Some(list) = current_list.take() {
+                        parser.lists.push(list);
+                    }
+                }
+
+                Event::Start(Tag::Item) => {
+                    // Begin new list item
+                    current_item_text.clear();
+                    current_item_position = range.start;
+                    current_status = None;
+                }
+
+                Event::TaskListMarker(checked) => {
+                    // This is a checkbox item
+                    // Note: TaskListMarker only tells us checked (true) vs unchecked (false)
+                    // For custom status symbols, we need additional parsing
+                    let symbol = if checked {
+                        StatusSymbol('x')
+                    } else {
+                        StatusSymbol(' ')
+                    };
+                    current_status = Some(symbol);
+                }
+
+                Event::Text(text) => {
+                    // Accumulate text for current item
+                    current_item_text.push_str(&text);
+                }
+
+                Event::End(TagEnd::Item) => {
+                    // Finalize current list item
+                    if let Some(ref mut list) = current_list {
+                        if let Some(status) = current_status {
+                            // Checkbox item - check for promotion
+                            let text = current_item_text.trim().to_owned();
+                            let should_promote = Task::should_promote(&text, config);
+
+                            let task_id = if should_promote {
+                                // Promote to Task
+                                match Task::from_checkbox(
+                                    &text,
+                                    status,
+                                    current_item_position,
+                                    config,
+                                ) {
+                                    Ok(task) => {
+                                        let id = task.id();
+                                        parser.tasks.push(task);
+                                        Some(id)
+                                    }
+                                    Err(e) => {
+                                        // Log error but continue parsing
+                                        tracing::warn!(
+                                            position = current_item_position,
+                                            error = %e,
+                                            "Failed to create task from checkbox"
+                                        );
+                                        None
+                                    }
+                                }
+                            } else {
+                                None
+                            };
+
+                            // Add to list regardless of promotion
+                            list.add_item(ListItem::Checkbox {
+                                text,
+                                status,
+                                position: current_item_position,
+                                task_id,
+                            });
+                        } else {
+                            // Plain list item
+                            list.add_item(ListItem::Plain {
+                                text: current_item_text.trim().to_owned(),
+                                position: current_item_position,
+                            });
+                        }
+                    }
+
+                    // Reset item state
+                    current_item_text.clear();
+                    current_status = None;
+                }
+
+                _ => {
+                    // Ignore other events for list parsing
+                }
+            }
+        }
+
+        Ok((parser.lists, parser.tasks))
+    }
+}
+```
+
+**Parser Integration Notes**:
+
+1. **Source Positions**: `Parser::into_offset_iter()` provides byte offsets for stable positions
+2. **Checkbox Detection**: `Event::TaskListMarker(bool)` signals checkbox items
+3. **Custom Status Symbols**: For symbols beyond `x` and ` `, additional parsing is needed
+   - Check raw markdown at position for `[>]`, `[-]`, `[?]`, etc.
+   - Map symbol to `StatusName` via `TaskConfig.status()`
+4. **Promotion Decision**: Call `Task::should_promote()` before creating Task entity
+5. **Error Handling**: Log parse errors but continue (graceful degradation)
+6. **Dual Storage**: Both List (structural) and Task (semantic) entities created
+7. **Linkage**: `ListItem::Checkbox.task_id` links to promoted Task
+
+**Performance Considerations**:
+
+- Parser makes single pass over markdown
+- Promotion check is fast (hash lookup for task tags)
+- Metadata parsing happens only for promoted tasks
+- Source positions are cheap (byte offsets from parser)

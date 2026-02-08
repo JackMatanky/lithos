@@ -516,6 +516,14 @@ pub struct Task {
     id: TaskId,
     text: String,
     status: config::task::StatusName,
+
+    // First-class temporal fields (not in metadata)
+    // These are promoted for query optimization and template access
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+    due_at: Option<chrono::DateTime<chrono::Utc>>,
+    reminder_at: Option<chrono::DateTime<chrono::Utc>>,
+    completed_at: Option<chrono::DateTime<chrono::Utc>>,
+
     position: usize,
     tags: Vec<String>,
     metadata: TaskMetadata,
@@ -541,20 +549,57 @@ impl Task {
         // Extract tags
         let tags = Self::extract_tags(raw_text);
 
-        // Parse and validate metadata
+        // Parse temporal fields (first-class)
+        let (created_at, due_at, reminder_at, completed_at) =
+            Self::parse_temporal_fields(raw_text, config)?;
+
+        // Parse and validate metadata (excluding temporal fields)
         let metadata = Self::parse_metadata(raw_text, config)?;
 
         Ok(Task {
             id: TaskId(uuid::Uuid::now_v7()),
             text,
             status,
+            created_at,
+            due_at,
+            reminder_at,
+            completed_at,
             position,
             tags,
             metadata,
         })
     }
 
-    /// Check if checkbox should be promoted to Task (based on task tags)
+    /// Check if checkbox should be promoted to Task (based on task tags only)
+    ///
+    /// # Promotion Rules
+    ///
+    /// A checkbox is promoted to a Task entity if and only if it contains
+    /// at least one configured task tag (from `TaskConfig.task_tags`).
+    ///
+    /// **Tag-based promotion only**: The presence of metadata fields does NOT
+    /// automatically promote a checkbox. This keeps promotion explicit and
+    /// prevents simple checklists from becoming tasks unintentionally.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// // Promoted (has #task tag)
+    /// let text = "- [ ] #task Review PR [priority:: 1]";
+    /// assert!(Task::should_promote(text, &config));
+    ///
+    /// // Promoted (has #todo tag, if configured)
+    /// let text = "- [ ] #todo Buy milk";
+    /// assert!(Task::should_promote(text, &config));
+    ///
+    /// // NOT promoted (has metadata but no task tag)
+    /// let text = "- [ ] Call mom [priority:: 1]";
+    /// assert!(!Task::should_promote(text, &config));
+    ///
+    /// // NOT promoted (plain checkbox)
+    /// let text = "- [ ] Water plants";
+    /// assert!(!Task::should_promote(text, &config));
+    /// ```
     pub fn should_promote(text: &str, config: &TaskConfig) -> bool {
         config.has_task_tag(text)
     }
@@ -569,6 +614,22 @@ impl Task {
 
     pub fn status(&self) -> &config::task::StatusName {
         &self.status
+    }
+
+    pub fn created_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.created_at
+    }
+
+    pub fn due_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.due_at
+    }
+
+    pub fn reminder_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.reminder_at
+    }
+
+    pub fn completed_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.completed_at
     }
 
     pub fn position(&self) -> usize {
@@ -620,19 +681,22 @@ impl Task {
 
 #### Component: `Task`
 
-- **Responsibility**: Promoted task entity with validated metadata
+- **Responsibility**: Promoted task entity with validated metadata and first-class temporal fields
 - **Public Interface**:
   - `Task::from_checkbox(raw_text: &str, status_symbol: StatusSymbol, position: usize, config: &TaskConfig) -> Result<Self, NoteError>`
-    - _Behavior_: Creates task from checkbox text; validates metadata against config
-    - _Errors_: Unknown status symbol, invalid metadata, type mismatch, out of bounds
+    - _Behavior_: Creates task from checkbox text; validates metadata against config; extracts temporal fields
+    - _Errors_: Unknown status symbol, invalid metadata, type mismatch, out of bounds, invalid date format
   - `Task::should_promote(text: &str, config: &TaskConfig) -> bool`
-    - _Behavior_: Checks if text contains any configured task tag
-  - Accessor methods (id, text, status, position, tags, metadata)
+    - _Behavior_: Checks if text contains any configured task tag (tag-based promotion only)
+    - _Note_: Presence of metadata does NOT auto-promote (explicit is better than implicit)
+  - Accessor methods: `id()`, `text()`, `status()`, `created_at()`, `due_at()`, `reminder_at()`, `completed_at()`, `position()`, `tags()`, `metadata()`
 - **State/Invariants**:
   - ID is UUID v7 (time-ordered)
   - Status is semantic name (not symbol)
   - Text is clean (no tags/metadata markers)
-  - Metadata validated against TaskConfig
+  - Temporal fields are first-class (not in metadata) for query optimization
+  - Metadata validated against TaskConfig (excluding temporal fields)
+  - Promotion requires task tag (config-driven, explicit)
 
 #### Component: `TaskMetadata`
 
@@ -743,6 +807,83 @@ impl Task {
 }
 ```
 
+#### Algorithm: Temporal Field Parsing
+
+```rust
+impl Task {
+    fn parse_temporal_fields(
+        text: &str,
+        config: &TaskConfig,
+    ) -> Result<(Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<DateTime<Utc>>), NoteError> {
+        let mut created_at = None;
+        let mut due_at = None;
+        let mut reminder_at = None;
+        let mut completed_at = None;
+
+        // Parse created date (if configured)
+        if let Some(spec) = config.created_field() {
+            created_at = Self::parse_date_field(text, spec)?;
+        }
+
+        // Parse due date (if configured)
+        if let Some(spec) = config.due_field() {
+            due_at = Self::parse_date_field(text, spec)?;
+        }
+
+        // Parse reminder date (if configured)
+        if let Some(spec) = config.reminder_field() {
+            reminder_at = Self::parse_date_field(text, spec)?;
+        }
+
+        // Parse completed date (if configured)
+        if let Some(spec) = config.completed_field() {
+            completed_at = Self::parse_date_field(text, spec)?;
+        }
+
+        Ok((created_at, due_at, reminder_at, completed_at))
+    }
+
+    fn parse_date_field(
+        text: &str,
+        spec: &config::task::DateFieldSpec,
+    ) -> Result<Option<DateTime<Utc>>, NoteError> {
+        // Try inline syntax: [keyword:: date]
+        let inline_pattern = format!("[{}::", spec.keyword().as_ref());
+        if let Some(start) = text.find(&inline_pattern) {
+            let value_start = start + inline_pattern.len();
+            let value_end = text[value_start..]
+                .find(']')
+                .map(|i| value_start + i)
+                .ok_or_else(|| NoteError::InvalidDateFormat {
+                    field: spec.keyword().as_ref().into(),
+                })?;
+
+            let date_text = text[value_start..value_end].trim();
+            return Ok(Some(config.parse_date_value(date_text, spec)?));
+        }
+
+        // Try emoji syntax (if configured): 📅 2026-02-10
+        if let Some(emoji) = spec.emoji() {
+            let emoji_str = emoji.to_string();
+            if let Some(start) = text.find(&emoji_str) {
+                let value_start = start + emoji_str.len();
+                // Extract until next space or end of line
+                let date_text = text[value_start..]
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("");
+
+                if !date_text.is_empty() {
+                    return Ok(Some(config.parse_date_value(date_text, spec)?));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+}
+```
+
 #### Algorithm: Inline Metadata Parsing
 
 ```rust
@@ -760,6 +901,11 @@ impl Task {
             let keyword = &cap[1];
             let raw_value = &cap[2];
 
+            // Skip temporal fields (handled separately as first-class fields)
+            if Self::is_temporal_keyword(keyword, config) {
+                continue;
+            }
+
             // Convert to JSON for validation
             let json_value = serde_json::Value::String(raw_value.to_owned());
 
@@ -774,6 +920,30 @@ impl Task {
         }
 
         Ok(metadata)
+    }
+
+    fn is_temporal_keyword(keyword: &str, config: &TaskConfig) -> bool {
+        if let Some(spec) = config.created_field() {
+            if keyword == spec.keyword().as_ref() {
+                return true;
+            }
+        }
+        if let Some(spec) = config.due_field() {
+            if keyword == spec.keyword().as_ref() {
+                return true;
+            }
+        }
+        if let Some(spec) = config.reminder_field() {
+            if keyword == spec.keyword().as_ref() {
+                return true;
+            }
+        }
+        if let Some(spec) = config.completed_field() {
+            if keyword == spec.keyword().as_ref() {
+                return true;
+            }
+        }
+        false
     }
 }
 ```
