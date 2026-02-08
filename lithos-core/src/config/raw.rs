@@ -1,7 +1,57 @@
 //! Raw (serde) configuration input types.
 //!
-//! These types represent unvalidated configuration shapes loaded from files.
-//! They are converted into validated domain types via `TryFrom`.
+//! ## Purpose
+//!
+//! These types are **serde-only Data Transfer Objects (DTOs)** that serve as
+//! the deserialization boundary between configuration files (TOML/YAML/JSON)
+//! and validated domain models.
+//!
+//! ## Architecture Pattern
+//!
+//! ```text
+//! Config File (TOML)
+//!     ↓ serde::Deserialize
+//! Raw* Types (unvalidated, optional fields)
+//!     ↓ TryFrom<Raw*> (validation happens here)
+//! Domain Types (validated invariants, typed enums)
+//!     ↓ rkyv::Archive
+//! Database (redb, zero-copy bytes)
+//! ```
+//!
+//! ## Key Characteristics
+//!
+//! - **No Implementation**: Raw types have zero methods by design
+//! - **All Optional Fields**: Accept flexible/partial configuration input
+//! - **No Validation**: Can contain empty strings, invalid values,
+//!   contradictions
+//! - **String Enums**: Accept any string, validation happens in `TryFrom`
+//! - **Not Persisted**: Only validated domain types are stored in the database
+//!
+//! ## Validation Boundary
+//!
+//! Validation occurs in `TryFrom<Raw*>` implementations located in domain
+//! modules:
+//!
+//! | Raw Type | Validated Type | Location | Validates |
+//! |----------|---------------|----------|-----------|
+//! | `RawFrontmatter` | `Frontmatter` | `frontmatter.rs` | Non-empty keys |
+//! | `RawLogging` | `Logging` | `types.rs` | Log level enum |
+//! | `RawSchemaPaths` | `Schema` | `paths.rs` | Path validity |
+//! | `RawTemplatePaths` | `Template` | `paths.rs` | Path validity |
+//! | `RawGlobal` | `Global` | `global.rs` | Aggregation |
+//! | `RawVault` | `Vault` | `vault.rs` | Aggregation |
+//! | `RawTaskConfig` | `TaskConfig` | `task.rs` | Complex rules |
+//!
+//! ## Design Rationale
+//!
+//! Separating Raw types from validated domain types enables:
+//!
+//! - **Flexible Parsing**: Accept typos, wrong types, partial configs
+//! - **Clear Error Messages**: Report which file field failed validation
+//! - **Default Handling**: `None` fields trigger default value logic
+//! - **Independent Evolution**: File format can change without breaking domain
+//!
+//! See `docs/design/001-config-models.md` Section 3.2.1 for full rationale.
 
 #![allow(
     missing_docs,
