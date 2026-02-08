@@ -4,7 +4,11 @@
 
 These specs are ready for immediate implementation with no changes needed:
 
-1. **006a-config-task-schema.md** - Task configuration (Config context)
+1. **006a-config-task.md** - Task configuration (Config context)
+   - ✅ Type inference via `#[serde(untagged)]`
+   - ✅ First-class date fields with emoji support
+   - ✅ TaskFieldKeyword newtype validation
+   - ✅ Unified DateTime type
 2. **006b-note-list-task.md** - List and Task entities (Note context)
 3. **006c-template-task-integration.md** - Template task integration
 4. **docs/operations/clean-slate-protocol.md** - Reindex procedures
