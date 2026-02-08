@@ -189,29 +189,33 @@ assert_eq!(task_config.task_tags().len(), 3);
 assert!(task_config.has_task_tag("#task"));
 ```
 
-**Validating Task Metadata (Note Context Uses This)**
+**Validating Task Metadata (Note Context Uses Config Specs)**
 
 ```rust
 use serde_json::json;
 
-// Note context calls this during task parsing
+// Note context validates against config specs
 let priority_json = json!(5);
-let field_value = task_config.parse_field_value("priority", &priority_json)?;
+let spec = task_config.field_spec("priority").ok_or(NoteError::UnknownField)?;
+spec.validate_raw_value(&priority_json)?;
 
+// Note context converts to FieldValue locally
+let field_value = FieldValue::from_json(&priority_json);
 assert_eq!(field_value.as_number(), Some(5.0));
 
 // Validation catches out-of-bounds
 let invalid = json!(15);
-let err = task_config.parse_field_value("priority", &invalid);
+let err = spec.validate_raw_value(&invalid);
 assert!(err.is_err()); // Error: Value 15 exceeds max 10
 
 // Pattern validation (project field has regex)
 let project_json = json!("my_project");
-let field_value = task_config.parse_field_value("project", &project_json)?;
+spec.validate_raw_value(&project_json)?;
+let field_value = FieldValue::from_json(&project_json);
 assert_eq!(field_value.as_str(), Some("my_project"));
 
 let invalid_project = json!("My-Project"); // Capital letter breaks pattern
-let err = task_config.parse_field_value("project", &invalid_project);
+let err = spec.validate_raw_value(&invalid_project);
 assert!(err.is_err()); // Error: Pattern mismatch
 ```
 
@@ -322,7 +326,7 @@ graph TB
     VaultTOML --> RawTaskConfig
 
     TaskConfig -.read-only.-> TaskParsing
-    TaskConfig -.validates via.-> MetadataValidation
+    TaskConfig -.exposes specs to.-> MetadataValidation
 
     style TaskConfig fill:#e1f5ff
     style TaskParsing fill:#fff4e1
@@ -573,6 +577,7 @@ pub struct TaskConfig {
 
 - **Purpose**: Serde-friendly input shape before validation
 - **Notes**: May be invalid; compiled into `TaskConfig`
+  - **Location**: `config/raw.rs`
 
 ```rust
 #[derive(Debug, Clone, Deserialize)]
@@ -661,9 +666,8 @@ pub enum RawTaskFieldSpec {
     - _Behavior_: Returns configured reminder date field spec
   - `completed_field(&self) -> Option<&DateFieldSpec>`
     - _Behavior_: Returns configured completed date field spec
-  - `parse_field_value(&self, field_name: &str, json: &serde_json::Value) -> Result<note::value::FieldValue, ConfigError>`
-    - _Behavior_: Validates JSON value against field spec and converts to note-owned `FieldValue`
-    - _Errors_: Unknown field, type mismatch, out of bounds, pattern mismatch
+  - `field_spec(&self, field_name: &str) -> Option<&TaskFieldSpec>`
+    - _Behavior_: Returns configured field spec for validation
   - `parse_date_value(&self, text: &str, spec: &DateFieldSpec) -> Result<chrono::NaiveDateTime, ConfigError>`
     - _Behavior_: Parses date text using spec's format string; supports both inline `[due:: 2026-02-10]` and emoji `📅 2026-02-10` formats
     - _Errors_: Parse failure, invalid format
@@ -749,8 +753,8 @@ sequenceDiagram
     participant Domain as TaskConfig
     participant Note as Note Context
 
-    User->>Serde: Read lithos.toml
-    Serde->>Raw: Deserialize
+    User->>Ingest: Read sources (Figment providers)
+    Ingest->>Raw: Extract RawTaskConfig
     Raw->>Raw: May be invalid
     Raw->>Domain: TaskConfig::from_raw()
     Domain->>Domain: Validate fields
@@ -773,23 +777,22 @@ sequenceDiagram
     participant Spec as TaskFieldSpec
 
     Parser->>Task: Parse [priority:: 5]
-    Task->>Config: parse_field_value("priority", json!(5))
-    Config->>Config: Lookup field spec
-    Config->>Spec: validate_raw_value(json!(5))
+    Task->>Config: field_spec("priority")
+    Config-->>Task: TaskFieldSpec
+    Task->>Spec: validate_raw_value(json!(5))
     Spec->>Spec: Check type (integer)
     Spec->>Spec: Check bounds (0 <= 5 <= 10)
     Spec-->>Config: Valid
-    Config->>Config: Convert to FieldValue
-    Config-->>Task: Ok(FieldValue::Number(5.0))
+    Task->>Task: Convert to FieldValue
     Task->>Task: Store in TaskMetadata
 ```
 
 #### Dependencies
 
-- **Serde**: TOML/YAML deserialization (`serde`, `toml`, `serde_yaml`)
+- **Serde**: TOML/YAML deserialization (`serde`, `toml`, `serde_yaml`) via `config::ingest`
 - **Regex**: Pattern validation (`regex` crate, compiled at config load)
 - **Chrono**: Date format validation (`chrono::format::strftime`)
-- **Note Context**: Exports `FieldValue` type (config converts to this)
+- **Note Context**: Owns `FieldValue` and performs conversion after validation
 
 ### 3.5 Core Logic & Algorithms
 
@@ -1205,7 +1208,7 @@ fn load_task_config(raw: RawTaskConfig) -> Result<TaskConfig, ConfigError> {
 |:-----------|:------------------------------------------------------|:-----------------------------------------------------------------------------------|
 | 2026-02-08 | "Should TaskConfig own promotion logic?"              | No - promotion logic in Note context; config provides tags                         |
 | 2026-02-08 | "Should validation be public API?"                    | No - newtype pattern means validation at construction only                         |
-| 2026-02-08 | "How does Note context get FieldValue?"               | Config converts serde_json::Value → note::value::FieldValue                        |
+| 2026-02-08 | "How does Note context get FieldValue?"               | Note converts serde_json::Value → note::value::FieldValue after config validation  |
 | 2026-02-08 | "What if user config has typos in field names?"       | Unknown fields trigger warnings; indexed_fields validated                          |
 | 2026-02-08 | "Type inference: Remove explicit `type=` key"         | Use `#[serde(untagged)]` - structure implies type (min/max → Integer)              |
 | 2026-02-08 | "First-class date fields for Obsidian compatibility"  | Add `task.dates.*` section with emoji support, dedicated `DateFieldSpec` type      |
