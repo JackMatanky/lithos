@@ -4,6 +4,16 @@
 //! configuration, including filesystem settings, trusted vaults, and global
 //! defaults.
 
+#![expect(
+    clippy::exhaustive_enums,
+    reason = "rkyv generates exhaustive archived enums"
+)]
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Matching on &self with TrustedVaults enum - rust auto-borrows \
+              fields"
+)]
+
 use std::{collections::HashMap, path::PathBuf};
 
 use super::{
@@ -290,30 +300,23 @@ impl TrustedVaults {
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
-        match self {
-            TrustedVaults::List(values) => {
-                if values.is_empty() {
-                    return Err(ConfigError::ValidationFailed {
-                        field: "trusted_vaults".to_owned().into(),
-                        message: "trusted vault list cannot be empty"
-                            .to_owned()
-                            .into(),
-                    });
-                }
-                Ok(())
-            }
-            TrustedVaults::Map(values) => {
-                if values.is_empty() {
-                    return Err(ConfigError::ValidationFailed {
-                        field: "trusted_vaults".to_owned().into(),
-                        message: "trusted vault map cannot be empty"
-                            .to_owned()
-                            .into(),
-                    });
-                }
-                Ok(())
-            }
+        let is_empty = match self {
+            TrustedVaults::List(values) => values.is_empty(),
+            TrustedVaults::Map(values) => values.is_empty(),
+        };
+
+        if is_empty {
+            let vault_type = match self {
+                TrustedVaults::List(_) => "list",
+                TrustedVaults::Map(_) => "map",
+            };
+            return Err(ConfigError::ValidationFailed {
+                field: "trusted_vaults".to_owned().into(),
+                message: format!("trusted vault {vault_type} cannot be empty")
+                    .into(),
+            });
         }
+        Ok(())
     }
 }
 

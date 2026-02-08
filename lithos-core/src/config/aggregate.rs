@@ -18,6 +18,10 @@
     clippy::partial_pub_fields,
     reason = "Aggregate root requires mixed visibility for domain events"
 )]
+#![expect(
+    clippy::exhaustive_structs,
+    reason = "rkyv generates exhaustive archived structs"
+)]
 
 use super::{
     error::ConfigError,
@@ -252,7 +256,7 @@ impl Config {
     ///     Some(&global),
     ///     VaultId::new(),
     ///     VaultRoot::try_new(PathBuf::from("/vault"))?,
-    ///     vault,
+    ///     &vault,
     /// )?;
     /// assert_eq!(
     ///     config.vault_metadata.root().as_path(),
@@ -416,7 +420,7 @@ impl Config {
     ///     Some(&global),
     ///     VaultId::new(),
     ///     VaultRoot::try_new(PathBuf::from("/vault"))?,
-    ///     vault,
+    ///     &vault,
     /// )?;
     /// config.validate()?;
     /// # Ok(())
