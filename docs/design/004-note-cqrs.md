@@ -174,6 +174,8 @@ flowchart LR
 
 ### 3.2 Data Models
 
+#### Core Note Storage Schema
+
 Storage schema (logical):
 
 - `notes` table: `id -> Note`
@@ -199,6 +201,63 @@ Notes:
 
 - Indexes are stored as `String` ids today; the format should be treated as an internal adapter concern.
 - Future: prefer storing UUID bytes to avoid conversion overhead if profiling shows it matters.
+
+#### Task Storage Schema (from 006b-note-list-task.md)
+
+Tasks are derived from note content during parsing and stored as part of the note read model.
+
+Storage schema (redb tables):
+
+```rust
+// Primary task storage (composite key: note UUID + position)
+// Foreign key relationship: note_id references notes table
+// Position is source-byte offset within the note (stable within file)
+// When note is deleted → cascade delete all tasks with that note_id
+tasks: Table<(Uuid, u64), ArchivedTask>
+//             ^^^^  ^^^-- Position in source file (stable within file)
+//             +--------- Note UUID (foreign key to notes:Table<Uuid, Note>)
+
+// Query indexes (configured via TaskConfig.indexed_fields)
+// All indexes store task references as (note_id, position) tuples
+tasks_by_due_date: Table<i64, Vec<(Uuid, u64)>>       // timestamp → task refs
+tasks_by_created_date: Table<i64, Vec<(Uuid, u64)>>   // timestamp → task refs
+tasks_by_reminder_date: Table<i64, Vec<(Uuid, u64)>>  // timestamp → task refs
+tasks_by_completed_date: Table<i64, Vec<(Uuid, u64)>> // timestamp → task refs
+tasks_by_priority: Table<i64, Vec<(Uuid, u64)>>       // priority → task refs
+tasks_by_project: Table<String, Vec<(Uuid, u64)>>     // project_name → task refs
+tasks_by_status: Table<String, Vec<(Uuid, u64)>>      // StatusName → task refs
+
+// Generic metadata index (for non-indexed custom fields)
+tasks_metadata: Table<(String, String), Vec<(Uuid, u64)>> // (field, value) → task refs
+```
+
+**Referential Integrity**:
+
+- Tasks are derived from markdown during indexing (source of truth = markdown)
+- Note UUID is stable across file renames (moving `tasks.md` preserves task IDs)
+- Query "all tasks in note X" = scan tasks table where key.0 == note_id
+- Deleting note triggers cleanup of all tasks, list items, and index entries
+- Position is byte offset from `pulldown-cmark::Parser::into_offset_iter()` (stable within file)
+
+**Indexed vs Non-Indexed Fields**:
+
+- Indexed fields (from `TaskConfig.indexed_fields`): Fast lookups via dedicated tables
+- Non-indexed fields: Stored in task but require full scan or `tasks_metadata` fallback
+- First-class temporal fields (`*_at`) are **always indexed** (query optimization)
+
+**Task Lifecycle**:
+
+1. **Create**: Parser emits Task entities during note indexing → `tasks` table insert + index updates
+2. **Update**: Note re-indexed → old task deleted, new task inserted (position may change)
+3. **Delete**: Note deleted → cascade delete all `(note_id, *)` task entries + index cleanup
+4. **Query**: Index lookup → fetch task by `(note_id, position)` composite key
+
+**Storage Format**:
+
+- Tasks serialized using rkyv (zero-copy reads)
+- Temporal fields stored as Unix timestamps (i64) for range queries
+- Metadata fields stored as `FieldValue` (from `note::value`)
+- Position ensures stable reference within file (survives content edits above the task)
 
 ### 3.3 Component & Interface Specifications
 

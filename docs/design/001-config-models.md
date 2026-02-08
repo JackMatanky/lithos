@@ -47,9 +47,8 @@ Terminology note:
 
 Clarification:
 
-- `SettingValue` is **owned by the config context** (it is part of the config domain model and persisted config surface).
-- Other contexts may _consume_ `SettingValue` **only when interpreting config-defined dynamic values** (e.g., config-driven task metadata values), but should not treat it as a universal cross-context primitive.
-- If a bounded context needs its own dynamic value model for non-config concerns, prefer defining a context-local type (e.g., note frontmatter’s `FieldValue`) and converting at the boundary.
+- `SettingValue` is **owned by the config context** and used for task metadata configuration (see [006a-config-task-schema.md](006a-config-task-schema.md)).
+- Other contexts define their own value types for domain-specific needs (e.g., note context's `FieldValue` for frontmatter and task metadata).
 
 Serialization boundary note (serde vs rkyv):
 
@@ -176,6 +175,43 @@ These changes are recommended because they reduce invalid states, simplify mergi
 - **Avoid `Deref` for semantic newtypes**
   - `SchemaVersion(pub String)` currently implements `Deref<Target = str>`.
   - Prefer an explicit `as_str()` (and `Display`) so the type boundary stays visible. (Rationale: `Deref` participates in implicit deref coercions; implement it only when that implicit behavior is desirable and unsurprising.)
+
+#### Config Value Newtypes (Type-Driven Design)
+
+Config values use newtypes to enforce invariants at construction time:
+
+| Type | Backing | Purpose | Rules |
+|------|---------|---------|-------|
+| `LogLevel` | enum | Logging verbosity | Error/Warn/Info/Debug/Trace |
+| `NotesDir` | `PathBuf` | Notes directory path | Vault-relative, non-empty |
+| `SchemasDir` | `PathBuf` | Schemas directory path | Vault-relative, non-empty |
+| `TemplatesDir` | `PathBuf` | Templates directory path | Vault-relative, non-empty |
+
+**Rationale**: Using newtypes prevents invalid states (empty paths, invalid log levels) and makes validation explicit at construction rather than scattered throughout the codebase.
+
+#### Raw Input Types (Serde-Friendly)
+
+Config files are deserialized into Raw types before validation:
+
+- `RawGlobal` - Global config file shape (TOML deserialization target)
+- `RawVault` - Vault config file shape (TOML deserialization target)
+- `RawPaths` - Path configuration (tolerant to missing values, uses `Option<String>`)
+- `RawLogging` - Logging configuration (string log level before enum conversion)
+
+**Conversion Flow**:
+```rust
+// Deserialize from TOML
+let raw: RawGlobal = toml::from_str(content)?;
+
+// Validate and convert to domain type
+let global: Global = raw.try_into()
+    .map_err(|e| ConfigError::InvalidGlobal(e))?;
+```
+
+**Rationale**: Separating Raw types from validated domain types allows:
+- Flexible TOML parsing (optional fields, string enums)
+- Clear validation boundaries (`TryFrom` conversion)
+- Better error messages (know exactly what failed to validate)
 
 #### Vault identity (required)
 
@@ -397,6 +433,7 @@ rkyv patterns:
 
 - Any rkyv layout change for persisted config models should be treated as a migration event.
 - Prefer introducing persisted DTOs if the model churn becomes frequent.
+- See [Clean-Slate Protocol](../operations/clean-slate-protocol.md) for config revalidation and reindex procedures when config schema changes.
 
 ### 5.3 Security & Privacy
 
