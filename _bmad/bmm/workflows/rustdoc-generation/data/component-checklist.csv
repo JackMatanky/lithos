@@ -1,0 +1,42 @@
+component,element,required,description,example
+Crate,//! syntax,yes,Use inner doc comments for crate level,//! Crate summary
+Crate,summary line,yes,One-line summary without jargon,//! Fast HTTP client
+Crate,features section,no,List of crate features,# Features
+Crate,usage example,yes,Copy-paste ready example,# Usage with ```
+Crate,layout section,no,Module structure overview,# Layout
+Module,//! syntax,yes,Inner docs at file top only,//! Module summary
+Module,summary line,yes,One-line summary,//! File utilities
+Module,high-level overview,yes,Broad summary only,Not detailed
+Module,inside mod blocks,no,Never use //! inside mod {},Use /// instead
+Struct,/// syntax,yes,Outer doc comments,/// Struct docs
+Struct,summary line,yes,What it represents not fields,/// Configuration builder
+Struct,field docs,yes,All public fields documented,/// Field description
+Struct,examples section,yes,Required for all structs,# Examples
+Struct,panics section,conditional,If methods can panic,# Panics
+Struct,errors section,conditional,If methods return Result,# Errors
+Enum,/// syntax,yes,Outer doc comments,/// Enum docs
+Enum,summary line,yes,What it represents,/// Error conditions
+Enum,variant docs,yes,All variants documented,/// Variant description
+Enum,data variant docs,conditional,Explain what data represents,/// The path string
+Enum,examples section,yes,Required with match patterns,# Examples
+Enum,edge cases,yes,Show both common and edge,None variant example
+Function,/// syntax,yes,Outer doc comments,/// Function docs
+Function,third person,yes,Returns not Return,/// Returns the count
+Function,parameters section,no,Never use Parameters,Let types speak
+Function,returns section,no,Never use Returns,Let return type speak
+Function,examples section,yes,Always required,# Examples
+Function,panics section,conditional,Document known panics,# Panics
+Function,errors section,conditional,Required for Result,# Errors
+Function,safety section,conditional,Required for unsafe fn,# Safety
+Function,use statement,yes,Examples include use,use crate::module::Fn
+Function,question mark,yes,Prefer ? over unwrap,let x = func()?
+Trait,/// syntax,yes,Outer doc comments,/// Trait docs
+Trait,summary line,yes,What behavior is enabled,/// Serializable types
+Trait,contract docs,yes,Document implementor contract,Uphold invariants
+Trait,method docs,yes,All methods documented,/// Method description
+Trait,examples section,yes,Show complete implementation,# Examples
+Trait,provided methods,yes,Document default behavior,Default impl docs
+All,intra-doc links,yes,Use [`Type`] format,[`String`]
+All,reference links,yes,Use reference style,[text]: url
+All,markdown compliant,yes,CommonMark specification,Proper syntax
+All,code blocks,yes,Language identifier,```rust
