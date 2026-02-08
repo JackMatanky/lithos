@@ -23,7 +23,6 @@ use super::{
     paths::{Schema, Template},
     raw::{RawGlobal, RawGlobalPaths, RawTrustedVaults},
     task::TaskConfig,
-    vault::VaultRoot,
 };
 
 /// Global default configuration.
@@ -94,10 +93,67 @@ pub struct Paths {
 #[non_exhaustive]
 pub enum TrustedVaults {
     /// List format for trusted vault paths.
-    List(Vec<VaultRoot>),
+    List(TrustedVaultList),
     /// Map format for trusted vault paths with aliases.
-    Map(HashMap<Box<str>, VaultRoot>),
+    Map(TrustedVaultMap),
 }
+
+/// List of trusted vault paths.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct TrustedVaultList(
+    /// Internal storage for vault list.
+    Vec<TrustedVaultPath>,
+);
+
+/// Map of trusted vault aliases to paths.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct TrustedVaultMap(
+    /// Internal storage for vault map.
+    HashMap<Box<str>, TrustedVaultPath>,
+);
+
+/// Validated path to a trusted vault (absolute).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct TrustedVaultPath(
+    /// Internal path storage.
+    #[rkyv(with = rkyv::with::AsString)]
+    PathBuf,
+);
 
 impl Default for Global {
     #[inline]
@@ -229,25 +285,26 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
     fn try_from(raw: RawTrustedVaults) -> Result<Self, Self::Error> {
         match raw {
             RawTrustedVaults::List(values) => {
-                let mut roots = Vec::with_capacity(values.len());
+                let mut paths = Vec::with_capacity(values.len());
                 for value in values {
-                    roots.push(VaultRoot::try_new(PathBuf::from(value))?);
+                    paths
+                        .push(TrustedVaultPath::try_new(PathBuf::from(value))?);
                 }
-                let trusted = TrustedVaults::List(roots);
+                let trusted = TrustedVaults::List(TrustedVaultList(paths));
                 trusted.validate()?;
                 Ok(trusted)
             }
             RawTrustedVaults::Map(values) => {
-                let mut roots = HashMap::new();
+                let mut paths = HashMap::new();
                 let mut entries: Vec<_> = values.into_iter().collect();
                 entries.sort_by(|left, right| left.0.cmp(&right.0));
                 for (key, value) in entries {
-                    roots.insert(
+                    paths.insert(
                         key.into_boxed_str(),
-                        VaultRoot::try_new(PathBuf::from(value))?,
+                        TrustedVaultPath::try_new(PathBuf::from(value))?,
                     );
                 }
-                let trusted = TrustedVaults::Map(roots);
+                let trusted = TrustedVaults::Map(TrustedVaultMap(paths));
                 trusted.validate()?;
                 Ok(trusted)
             }
@@ -303,8 +360,8 @@ impl TrustedVaults {
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
         let is_empty = match self {
-            TrustedVaults::List(values) => values.is_empty(),
-            TrustedVaults::Map(values) => values.is_empty(),
+            TrustedVaults::List(list) => list.0.is_empty(),
+            TrustedVaults::Map(map) => map.0.is_empty(),
         };
 
         if is_empty {
@@ -322,12 +379,63 @@ impl TrustedVaults {
     }
 }
 
+impl TrustedVaultPath {
+    #[inline]
+    /// Create a validated trusted vault path.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the path is empty or not
+    /// absolute.
+    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+        if path.as_os_str().is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: "trusted_vault_path".to_owned().into(),
+                message: "trusted vault path cannot be empty".to_owned().into(),
+            });
+        }
+        if !path.is_absolute() {
+            return Err(ConfigError::ValidationFailed {
+                field: "trusted_vault_path".to_owned().into(),
+                message: "trusted vault path must be absolute"
+                    .to_owned()
+                    .into(),
+            });
+        }
+        Ok(Self(path))
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the trusted vault path.
+    pub fn as_path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for TrustedVaultPath {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(PathBuf::from(value))
+    }
+}
+
+impl From<TrustedVaultPath> for String {
+    #[inline]
+    fn from(value: TrustedVaultPath) -> Self {
+        value.0.to_string_lossy().into_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::HashMap, path::PathBuf};
 
-    use super::TrustedVaults;
-    use crate::config::{paths::SchemasDir, vault::VaultRoot};
+    use super::{
+        TrustedVaultList, TrustedVaultMap, TrustedVaultPath, TrustedVaults,
+    };
+    use crate::config::paths::SchemasDir;
 
     #[test]
     #[expect(
@@ -337,9 +445,9 @@ mod tests {
     fn accepts_trusted_vaults_with_list_only() -> Result<(), super::ConfigError>
     {
         // GIVEN: trusted vaults configured with list format
-        let trusted = TrustedVaults::List(vec![VaultRoot::try_new(
-            PathBuf::from("/vaults/alpha"),
-        )?]);
+        let trusted = TrustedVaults::List(TrustedVaultList(vec![
+            TrustedVaultPath::try_new(PathBuf::from("/vaults/alpha"))?,
+        ]));
 
         // WHEN: validating the trusted vault configuration
         let result = trusted.validate();
@@ -361,14 +469,14 @@ mod tests {
     fn accepts_trusted_vaults_with_map_only() -> Result<(), super::ConfigError>
     {
         // GIVEN: trusted vaults configured with map format
-        let trusted = TrustedVaults::Map(
+        let trusted = TrustedVaults::Map(TrustedVaultMap(
             [(
                 Box::from("alpha"),
-                VaultRoot::try_new(PathBuf::from("/vaults/alpha"))?,
+                TrustedVaultPath::try_new(PathBuf::from("/vaults/alpha"))?,
             )]
             .into_iter()
             .collect(),
-        );
+        ));
 
         // WHEN: validating the trusted vault configuration
         let result = trusted.validate();
@@ -435,7 +543,7 @@ mod tests {
     #[test]
     fn rejects_trusted_vaults_with_empty_map() {
         // GIVEN: trusted vaults configured with empty map format
-        let trusted = TrustedVaults::Map(HashMap::new());
+        let trusted = TrustedVaults::Map(TrustedVaultMap(HashMap::new()));
 
         // WHEN: validating the trusted vault configuration
         let result = trusted.validate();
@@ -450,7 +558,7 @@ mod tests {
     #[test]
     fn rejects_trusted_vaults_with_no_entries() {
         // GIVEN: trusted vaults configured with no list or map
-        let trusted = TrustedVaults::List(Vec::new());
+        let trusted = TrustedVaults::List(TrustedVaultList(Vec::new()));
 
         // WHEN: validating the trusted vault configuration
         let result = trusted.validate();
