@@ -29,9 +29,9 @@ use super::{
     frontmatter::Frontmatter,
     global::{Global, Paths as GlobalPaths},
     logging::Logging,
-    paths::{Schema, Template},
+    paths::{CacheDir, Schema, Template},
     task::TaskConfig,
-    vault::{CacheDir, Metadata, Vault, VaultId, VaultRoot},
+    vault::{Metadata, Vault, VaultId, VaultRoot},
 };
 
 /// Resolved vault filesystem configuration (merged).
@@ -460,8 +460,10 @@ mod tests {
         use crate::config::{
             frontmatter::FrontmatterKey,
             logging::LogLevel,
-            paths::{FileName, SchemasDir, TemplatesDir},
-            vault::{SchemaOverrides, TemplateOverrides},
+            paths::{
+                FileName, SchemaOverrides, SchemasDir, TemplateOverrides,
+                TemplatesDir,
+            },
         };
 
         pub fn vault_id() -> VaultId {
@@ -527,6 +529,7 @@ mod tests {
 
         /// Test fixture: Create sample vault configuration with user overrides.
         pub fn sample_vault_config() -> Vault {
+            use crate::config::vault::Paths as VaultPaths;
             Vault::new(
                 VaultPaths::new(
                     None,
@@ -588,9 +591,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::config::{
-        global::Paths as GlobalPaths, vault::Paths as VaultPaths,
-    };
+    use crate::config::{global::Paths as GlobalPaths, paths::CacheDir};
 
     mod integrity {
         use super::*;
@@ -1030,8 +1031,8 @@ mod tests {
 
         use super::*;
         use crate::config::{
-            paths::TemplatesDir,
-            vault::{SchemaOverrides, TemplateOverrides, VaultRoot},
+            paths::{SchemaOverrides, TemplateOverrides, TemplatesDir},
+            vault::{Paths as VaultPaths, VaultRoot},
         };
 
         // 3.3-UNIT-012: `merge_handles_various_path_lengths`.
@@ -1111,7 +1112,10 @@ mod tests {
         use std::path::PathBuf;
 
         use super::*;
-        use crate::config::{logging::LogLevel, vault::VaultRoot};
+        use crate::config::{
+            logging::LogLevel,
+            vault::{Paths as VaultPaths, VaultRoot},
+        };
 
         /// 3.3-UNIT-016: `enforces_required_fields_and_enum_constraints`.
         /// Priority: P0.

@@ -11,7 +11,10 @@ use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::{FileName, SchemasDir, TemplatesDir},
+    paths::{
+        CacheDir, FileName, SchemaOverrides, SchemasDir, TemplateOverrides,
+        TemplatesDir,
+    },
     raw::{RawVault, RawVaultPaths},
     task::TaskConfig,
 };
@@ -78,67 +81,6 @@ pub struct VaultPathKey(
     /// Internal key storage.
     Box<str>,
 );
-
-/// Vault-relative cache directory.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
-#[non_exhaustive]
-pub struct CacheDir(
-    /// Internal path storage.
-    #[rkyv(with = rkyv::with::AsString)]
-    PathBuf,
-);
-
-/// Schema path overrides at the vault layer.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct SchemaOverrides {
-    /// Overridden schemas directory.
-    schemas_dir: Option<SchemasDir>,
-    /// Overridden property bank filename.
-    property_bank_filename: Option<FileName>,
-}
-
-/// Template path overrides at the vault layer.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct TemplateOverrides {
-    /// Overridden templates directory.
-    templates_dir: Option<TemplatesDir>,
-}
 
 /// Vault metadata with versioning and naming.
 #[derive(
@@ -248,53 +190,6 @@ impl Default for Paths {
             schema: SchemaOverrides::default(),
             template: TemplateOverrides::default(),
         }
-    }
-}
-
-impl SchemaOverrides {
-    #[inline]
-    #[must_use]
-    /// Create schema override values.
-    pub fn new(
-        schemas_dir: Option<SchemasDir>,
-        property_bank_filename: Option<FileName>,
-    ) -> Self {
-        Self {
-            schemas_dir,
-            property_bank_filename,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the overridden schemas directory, if set.
-    pub fn schemas_dir(&self) -> Option<&SchemasDir> {
-        self.schemas_dir.as_ref()
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the overridden property bank filename, if set.
-    pub fn property_bank_filename(&self) -> Option<&FileName> {
-        self.property_bank_filename.as_ref()
-    }
-}
-
-impl TemplateOverrides {
-    #[inline]
-    #[must_use]
-    /// Create template override values.
-    pub fn new(templates_dir: Option<TemplatesDir>) -> Self {
-        Self {
-            templates_dir,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the overridden templates directory, if set.
-    pub fn templates_dir(&self) -> Option<&TemplatesDir> {
-        self.templates_dir.as_ref()
     }
 }
 
@@ -476,35 +371,6 @@ impl std::fmt::Display for SchemaVersion {
     }
 }
 
-fn validate_relative_path(
-    field: &'static str,
-    path: &Path,
-) -> Result<(), ConfigError> {
-    if path.as_os_str().is_empty() {
-        return Err(ConfigError::ValidationFailed {
-            field: field.to_owned().into(),
-            message: format!("{field} cannot be empty").into(),
-        });
-    }
-    if path.is_absolute() {
-        return Err(ConfigError::ValidationFailed {
-            field: field.to_owned().into(),
-            message: format!("{field} must be vault-relative").into(),
-        });
-    }
-    if path
-        .components()
-        .any(|component| component == std::path::Component::ParentDir)
-    {
-        return Err(ConfigError::ValidationFailed {
-            field: field.to_owned().into(),
-            message: format!("{field} must not contain parent components")
-                .into(),
-        });
-    }
-    Ok(())
-}
-
 impl VaultId {
     #[inline]
     #[must_use]
@@ -635,48 +501,6 @@ impl From<VaultPathKey> for String {
     #[inline]
     fn from(value: VaultPathKey) -> Self {
         value.0.into()
-    }
-}
-
-impl CacheDir {
-    #[inline]
-    /// Create a validated cache directory path.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the path is invalid.
-    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
-        validate_relative_path("cache_dir", &path)?;
-        Ok(Self(path))
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the cache directory path.
-    pub fn as_path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Default for CacheDir {
-    #[inline]
-    fn default() -> Self {
-        Self(PathBuf::from(".cache"))
-    }
-}
-
-impl TryFrom<String> for CacheDir {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(PathBuf::from(value))
-    }
-}
-
-impl From<CacheDir> for String {
-    #[inline]
-    fn from(value: CacheDir) -> Self {
-        value.0.to_string_lossy().into_owned()
     }
 }
 

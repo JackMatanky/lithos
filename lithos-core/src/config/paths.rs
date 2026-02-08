@@ -166,6 +166,97 @@ impl Default for Template {
     }
 }
 
+/// Schema path overrides (optional configuration).
+///
+/// Used for vault-specific overrides of global schema settings.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct SchemaOverrides {
+    /// Overridden schemas directory.
+    schemas_dir: Option<SchemasDir>,
+    /// Overridden property bank filename.
+    property_bank_filename: Option<FileName>,
+}
+
+impl SchemaOverrides {
+    /// Create schema override values.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        schemas_dir: Option<SchemasDir>,
+        property_bank_filename: Option<FileName>,
+    ) -> Self {
+        Self {
+            schemas_dir,
+            property_bank_filename,
+        }
+    }
+
+    /// Return the overridden schemas directory, if set.
+    #[inline]
+    #[must_use]
+    pub fn schemas_dir(&self) -> Option<&SchemasDir> {
+        self.schemas_dir.as_ref()
+    }
+
+    /// Return the overridden property bank filename, if set.
+    #[inline]
+    #[must_use]
+    pub fn property_bank_filename(&self) -> Option<&FileName> {
+        self.property_bank_filename.as_ref()
+    }
+}
+
+/// Template path overrides (optional configuration).
+///
+/// Used for vault-specific overrides of global template settings.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct TemplateOverrides {
+    /// Overridden templates directory.
+    templates_dir: Option<TemplatesDir>,
+}
+
+impl TemplateOverrides {
+    /// Create template override values.
+    #[inline]
+    #[must_use]
+    pub fn new(templates_dir: Option<TemplatesDir>) -> Self {
+        Self {
+            templates_dir,
+        }
+    }
+
+    /// Return the overridden templates directory, if set.
+    #[inline]
+    #[must_use]
+    pub fn templates_dir(&self) -> Option<&TemplatesDir> {
+        self.templates_dir.as_ref()
+    }
+}
+
 // ============================================================================
 // Building Block Types (Path Components)
 // ============================================================================
@@ -290,6 +381,58 @@ impl Default for TemplatesDir {
     }
 }
 
+/// Vault-relative cache directory.
+///
+/// Validated path that must be:
+/// - Non-empty
+/// - Vault-relative (not absolute)
+/// - No parent directory traversal (`..`)
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct CacheDir(
+    /// Internal path storage.
+    #[rkyv(with = rkyv::with::AsString)]
+    PathBuf,
+);
+
+impl CacheDir {
+    /// Create a validated cache directory path.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the path is invalid.
+    #[inline]
+    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+        validate_relative_path("cache_dir", &path)?;
+        Ok(Self(path))
+    }
+
+    /// Return the cache directory path.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Default for CacheDir {
+    #[inline]
+    fn default() -> Self {
+        Self(PathBuf::from(".cache"))
+    }
+}
+
 /// File name without path separators.
 ///
 /// Validated filename that must be:
@@ -393,6 +536,22 @@ impl TryFrom<String> for TemplatesDir {
 impl From<TemplatesDir> for String {
     #[inline]
     fn from(value: TemplatesDir) -> Self {
+        value.0.to_string_lossy().into_owned()
+    }
+}
+
+impl TryFrom<String> for CacheDir {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(PathBuf::from(value))
+    }
+}
+
+impl From<CacheDir> for String {
+    #[inline]
+    fn from(value: CacheDir) -> Self {
         value.0.to_string_lossy().into_owned()
     }
 }
@@ -535,7 +694,7 @@ fn validate_relative_path(
 
 #[cfg(test)]
 mod tests {
-    use super::{FileName, SchemasDir, TemplatesDir};
+    use super::{CacheDir, FileName, SchemasDir, TemplatesDir};
 
     /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
     /// Priority: P1.
@@ -565,6 +724,14 @@ mod tests {
     #[test]
     fn rejects_empty_templates_dir() {
         let result = TemplatesDir::try_new(std::path::PathBuf::from(""));
+        assert!(result.is_err(), "Expected validation error");
+    }
+
+    /// 3.3-UNIT-036: `rejects_empty_cache_dir`.
+    /// Priority: P0.
+    #[test]
+    fn rejects_empty_cache_dir() {
+        let result = CacheDir::try_new(std::path::PathBuf::from(""));
         assert!(result.is_err(), "Expected validation error");
     }
 
