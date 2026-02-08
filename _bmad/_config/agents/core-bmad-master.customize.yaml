@@ -17,11 +17,27 @@ persona:
 critical_actions: []
 
 # Add persistent memories for the agent
-memories: []
-# Example:
-# memories:
-#   - "User prefers detailed technical explanations"
-#   - "Current project uses React and TypeScript"
+memories:
+  # ============================================
+  # GIT WORKFLOW RULES (CRITICAL - NEVER VIOLATE)
+  # ============================================
+
+  - "CRITICAL: NEVER use 'git add -A', 'git add .', or 'git add --all' unless user explicitly instructs"
+  - "CRITICAL: ALWAYS stage files explicitly with 'git add <specific-file-path>'"
+  - "CRITICAL: ONLY commit files that were actually worked on for the current task"
+  - "CRITICAL: ALWAYS verify staged files with 'git diff --cached --stat' before committing"
+  - "CRITICAL: When user says 'stage and commit only X', ONLY stage X, never other files"
+  - "CRITICAL: If unsure which files to stage, ASK user, don't guess with -A"
+
+  # ============================================
+  # STAGING WORKFLOW
+  # ============================================
+
+  - "Staging workflow: 1) Identify files worked on, 2) git add <each-file>, 3) git diff --cached --stat, 4) git commit"
+  - "If git status shows modified files outside task scope, DO NOT stage them"
+  - "Pre-commit hooks will run, but that doesn't mean all files should be staged"
+  - "When committing documentation updates, only stage the doc files, not code changes"
+  - "When committing code changes, only stage the relevant source files"
 
 # Add custom menu items (appended to base menu)
 # Don't include * prefix or help/exit - auto-injected

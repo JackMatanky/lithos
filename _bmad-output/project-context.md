@@ -217,6 +217,17 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Mise-First Formatting:** Formatting and linting MUST be run through `mise run verify` to ensure the exact toolchain versions from `mise.toml` are used.
 - **Pre-commit Integrity:** The `pre-commit` hook is the final authority. Agents must fix the code to pass the hook, never bypass it.
 
+#### Git Workflow Standards
+- **Explicit Staging Only:** Use `git add <file-path>` for specific files. **NEVER use `git add -A`, `git add .`, or `git add --all`** unless explicitly instructed by the user.
+- **Scope Enforcement:** Only stage files directly related to the current task. If `git status` shows modified files outside the task scope, do not stage them.
+- **Verification Required:** Always run `git diff --cached --stat` before committing to verify exactly what will be committed.
+- **Single Task per Commit:** Each commit should address one concern. Do not bundle unrelated changes.
+- **Correct Workflow:**
+  1. Identify files modified for the current task
+  2. Stage explicitly: `git add path/to/specific-file.md`
+  3. Verify: `git diff --cached --stat`
+  4. Commit only those files with a descriptive message
+
 ### Conflicts and Exceptions
 - Rules are designed to be non-conflicting, but if a conflict arises (e.g., between performance needs and safety invariants), prioritize safety. Document any project-specific exceptions in this section.
 
