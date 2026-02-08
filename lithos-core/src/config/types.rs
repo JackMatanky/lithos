@@ -8,7 +8,19 @@
     reason = "rkyv::Archive derive generates exhaustive archived enums"
 )]
 
-use super::{error::ConfigError, raw::RawLogging};
+use super::error::ConfigError;
+
+/// Raw logging configuration (unvalidated input from config files).
+///
+/// This is a serde-only DTO that accepts flexible input from TOML/YAML/JSON.
+/// The log level is a string that will be validated during conversion to
+/// [`Logging`].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[non_exhaustive]
+pub struct RawLogging {
+    /// Logging verbosity level.
+    pub log_level: Option<String>,
+}
 
 /// Logging verbosity level.
 #[derive(

@@ -27,20 +27,28 @@
 //! - **String Enums**: Accept any string, validation happens in `TryFrom`
 //! - **Not Persisted**: Only validated domain types are stored in the database
 //!
-//! ## Validation Boundary
+//! ## Validation Boundary & Co-location
 //!
-//! Validation occurs in `TryFrom<Raw*>` implementations located in domain
-//! modules:
+//! **Domain-specific Raw types are co-located** with their validated types for
+//! better readability. The aggregate Raw types remain in this module.
+//!
+//! Validation occurs in `TryFrom<Raw*>` implementations in the same file:
 //!
 //! | Raw Type | Validated Type | Location | Validates |
 //! |----------|---------------|----------|-----------|
-//! | `RawFrontmatter` | `Frontmatter` | `frontmatter.rs` | Non-empty keys |
-//! | `RawLogging` | `Logging` | `types.rs` | Log level enum |
-//! | `RawSchemaPaths` | `Schema` | `paths.rs` | Path validity |
-//! | `RawTemplatePaths` | `Template` | `paths.rs` | Path validity |
+//! | `RawFrontmatter` | `Frontmatter` | `frontmatter.rs` ← co-located | Non-empty keys |
+//! | `RawLogging` | `Logging` | `types.rs` ← co-located | Log level enum |
+//! | `RawSchemaPaths` | `Schema` | `paths.rs` ← co-located | Path validity |
+//! | `RawTemplatePaths` | `Template` | `paths.rs` ← co-located | Path validity |
 //! | `RawGlobal` | `Global` | `global.rs` | Aggregation |
 //! | `RawVault` | `Vault` | `vault.rs` | Aggregation |
+//! | `RawGlobalPaths` | `Paths` | `global.rs` | Path aggregation |
+//! | `RawVaultPaths` | `Paths` | `vault.rs` | Path aggregation |
 //! | `RawTaskConfig` | `TaskConfig` | `task.rs` | Complex rules |
+//! | `RawTrustedVaults` | `TrustedVaults` | `global.rs` | List/map format |
+//!
+//! The domain-specific Raw types are imported by this module (for use in the
+//! aggregate structs) but defined alongside their validated types.
 //!
 //! ## Design Rationale
 //!
@@ -59,6 +67,12 @@
 )]
 
 use std::collections::HashMap;
+
+use super::{
+    frontmatter::RawFrontmatter,
+    paths::{RawSchemaPaths, RawTemplatePaths},
+    types::RawLogging,
+};
 
 /// Raw global configuration input.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -110,48 +124,6 @@ pub struct RawVaultPaths {
     pub schema: Option<RawSchemaPaths>,
     /// Template-related filesystem config.
     pub template: Option<RawTemplatePaths>,
-}
-
-/// Raw schema filesystem configuration.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[non_exhaustive]
-pub struct RawSchemaPaths {
-    /// Directory containing schema files.
-    pub schemas_dir: Option<String>,
-    /// Property bank filename.
-    pub property_bank_filename: Option<String>,
-}
-
-/// Raw template filesystem configuration.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[non_exhaustive]
-pub struct RawTemplatePaths {
-    /// Directory containing template files.
-    pub templates_dir: Option<String>,
-}
-
-/// Raw frontmatter configuration.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[non_exhaustive]
-pub struct RawFrontmatter {
-    /// Frontmatter key for aliases.
-    pub alias_key: Option<String>,
-    /// Frontmatter key for created date.
-    pub date_created_key: Option<String>,
-    /// Frontmatter key for modified date.
-    pub date_modified_key: Option<String>,
-    /// Frontmatter key for file classification.
-    pub file_class_key: Option<String>,
-    /// Frontmatter key for title.
-    pub title_key: Option<String>,
-}
-
-/// Raw logging configuration.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[non_exhaustive]
-pub struct RawLogging {
-    /// Logging verbosity level.
-    pub log_level: Option<String>,
 }
 
 /// Raw trusted vaults configuration.

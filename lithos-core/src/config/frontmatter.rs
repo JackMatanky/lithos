@@ -9,7 +9,27 @@
               (flagged by rkyv::Archive derive)"
 )]
 
-use super::{error::ConfigError, raw::RawFrontmatter};
+use super::error::ConfigError;
+
+/// Raw frontmatter configuration (unvalidated input from config files).
+///
+/// This is a serde-only DTO that accepts flexible input from TOML/YAML/JSON.
+/// All fields are optional to support partial configuration and defaults.
+/// Validation happens during conversion to [`Frontmatter`] via [`TryFrom`].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[non_exhaustive]
+pub struct RawFrontmatter {
+    /// Frontmatter key for aliases.
+    pub alias_key: Option<String>,
+    /// Frontmatter key for created date.
+    pub date_created_key: Option<String>,
+    /// Frontmatter key for modified date.
+    pub date_modified_key: Option<String>,
+    /// Frontmatter key for file classification.
+    pub file_class_key: Option<String>,
+    /// Frontmatter key for title.
+    pub title_key: Option<String>,
+}
 
 /// Validated frontmatter key (non-empty).
 #[derive(
