@@ -1177,6 +1177,48 @@ fn parse_datetime_value(
 mod tests {
     use super::*;
 
+    mod fixtures {
+        use super::*;
+
+        pub fn sample_raw_task_config() -> RawTaskConfig {
+            let mut fields = HashMap::new();
+            fields.insert("priority".to_owned(), RawTaskFieldSpec::Integer {
+                keyword: "priority".to_owned(),
+                min: Some(0),
+                max: Some(5),
+            });
+            fields.insert("tags".to_owned(), RawTaskFieldSpec::Enum {
+                keyword: "tags".to_owned(),
+                values: vec!["work".to_owned(), "personal".to_owned()],
+            });
+
+            RawTaskConfig {
+                enabled: Some(true),
+                task_tags: Some(vec!["#task".to_owned(), "#todo".to_owned()]),
+                status: Some(
+                    [
+                        ("complete".to_owned(), 'x'),
+                        ("incomplete".to_owned(), ' '),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+                dates: Some(RawTaskDates {
+                    due: Some(RawDateFieldSpec {
+                        keyword: "due".to_owned(),
+                        emoji: Some('\u{1f4c5}'),
+                        format: "%Y-%m-%d".to_owned(),
+                    }),
+                    ..Default::default()
+                }),
+                fields: Some(fields),
+                indexing: Some(RawIndexingConfig {
+                    indexed_fields: Some(vec!["priority".to_owned()]),
+                }),
+            }
+        }
+    }
+
     #[test]
     fn task_tag_requires_hash_prefix() {
         let result = TaskTag::try_new("task");
@@ -1214,5 +1256,49 @@ mod tests {
 
         let result = TaskConfig::from_raw(raw);
         assert!(result.is_err(), "Expected validation error");
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Test uses assert! and try_new which can panic/error."
+    )]
+    fn task_config_from_raw_full_valid()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let raw = fixtures::sample_raw_task_config();
+
+        let config = TaskConfig::from_raw(raw)?;
+
+        assert!(config.enabled());
+        assert_eq!(config.task_tags().len(), 2);
+        assert!(config.has_task_tag("#task"));
+        assert!(config.has_task_tag("#todo"));
+        assert_eq!(
+            config.status().name_for_symbol(StatusSymbol('x')),
+            Some(&StatusName::try_new("complete")?)
+        );
+        assert!(config.due_field().is_some());
+        assert!(config.field_spec("priority").is_some());
+        assert_eq!(config.indexed_fields().len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn task_config_from_raw_invalid_bounds() {
+        let mut fields = HashMap::new();
+        fields.insert("priority".to_owned(), RawTaskFieldSpec::Integer {
+            keyword: "priority".to_owned(),
+            min: Some(10),
+            max: Some(5),
+        });
+
+        let raw = RawTaskConfig {
+            fields: Some(fields),
+            ..Default::default()
+        };
+
+        let result = TaskConfig::from_raw(raw);
+        assert!(result.is_err(), "Should reject invalid bounds");
     }
 }

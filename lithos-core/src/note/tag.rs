@@ -217,10 +217,6 @@ impl Tag {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test setup uses expect for deterministic fixtures."
-)]
 mod tests {
     use super::*;
 
@@ -229,40 +225,37 @@ mod tests {
 
         use super::*;
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic setup. \
-                      Failure indicates invalid test data. Expect is \
-                      idiomatic in setup."
-        )]
-        fn tag_with_project_path() -> Tag {
-            Tag::new("#work/project").expect("Tag should parse")
+        fn tag_with_project_path() -> Result<Tag, NoteError> {
+            Tag::new("#work/project")
         }
 
         #[test]
-        fn full_path_returns_expected_value() {
-            let tag = tag_with_project_path();
+        fn full_path_returns_expected_value() -> Result<(), NoteError> {
+            let tag = tag_with_project_path()?;
             assert_eq!(
                 tag.full_path.as_str(),
                 "work/project",
                 "Full path should omit leading #"
             );
+            Ok(())
         }
 
         #[test]
-        fn segments_length_matches_expected() {
-            let tag = tag_with_project_path();
+        fn segments_length_matches_expected() -> Result<(), NoteError> {
+            let tag = tag_with_project_path()?;
             assert_eq!(tag.segments.len(), 2, "Segments length should match");
+            Ok(())
         }
 
         #[test]
-        fn segments_match_expected_values() {
-            let tag = tag_with_project_path();
+        fn segments_match_expected_values() -> Result<(), NoteError> {
+            let tag = tag_with_project_path()?;
             assert_eq!(
                 &*tag.segments,
                 &["work".into(), "project".into()],
                 "Segments should match expected values"
             );
+            Ok(())
         }
 
         #[rstest]
@@ -274,14 +267,15 @@ mod tests {
         fn tag_parsing_accepts_valid_inputs(
             #[case] input: &str,
             #[case] expected: Vec<&str>,
-        ) {
-            let tag = Tag::new(input).expect("Tag should parse");
+        ) -> Result<(), NoteError> {
+            let tag = Tag::new(input)?;
             let actual_segments: Vec<&str> =
                 tag.segments.iter().map(AsRef::as_ref).collect();
             assert_eq!(
                 actual_segments, expected,
                 "Tag segments should match expected for input: {input}"
             );
+            Ok(())
         }
 
         #[rstest]

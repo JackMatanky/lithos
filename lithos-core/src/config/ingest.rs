@@ -65,11 +65,27 @@ pub fn ingest_vault(vault_root: &Path) -> Result<RawVault, ConfigIngestError> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use tempfile::tempdir;
 
     use super::*;
+
+    mod fixtures {
+        use std::fs;
+
+        use tempfile::{TempDir, tempdir};
+
+        pub fn setup_vault_with_config(
+            content: &str,
+        ) -> Result<(TempDir, std::path::PathBuf), Box<dyn std::error::Error>>
+        {
+            let dir = tempdir()?;
+            let config_dir = dir.path().join(".lithos");
+            fs::create_dir_all(&config_dir)?;
+            let config_path = config_dir.join("lithos.toml");
+            fs::write(&config_path, content)?;
+            Ok((dir, config_path))
+        }
+    }
 
     #[test]
     fn ingest_global_returns_defaults_when_env_unset() {
@@ -97,14 +113,11 @@ mod tests {
     )]
     fn ingest_vault_reads_lithos_toml_when_present()
     -> Result<(), Box<dyn std::error::Error>> {
-        let dir = tempdir()?;
-        let config_dir = dir.path().join(".lithos");
-        fs::create_dir_all(&config_dir)?;
-        let config_path = config_dir.join("lithos.toml");
+        let (_dir, _path) = fixtures::setup_vault_with_config(
+            "[logging]\nlog_level = \"debug\"\n",
+        )?;
 
-        fs::write(&config_path, "[logging]\nlog_level = \"debug\"\n")?;
-
-        let raw = ingest_vault(dir.path())?;
+        let raw = ingest_vault(_dir.path())?;
         let logging = raw.logging.ok_or("logging section missing")?;
         assert_eq!(logging.log_level.as_deref(), Some("debug"));
         Ok(())

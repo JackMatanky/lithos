@@ -161,6 +161,17 @@ mod tests {
 
     use super::*;
 
+    mod fixtures {
+        use super::*;
+
+        pub fn validation_error() -> ConfigError {
+            ConfigError::ValidationFailed {
+                field: "f".into(),
+                message: "m".into(),
+            }
+        }
+    }
+
     #[test]
     fn config_invalid_is_send_and_sync() {
         fn is_send_sync<T: Send + Sync>() {}

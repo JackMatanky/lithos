@@ -27,4 +27,6 @@ pub mod structure;
 pub mod tag;
 /// Task subentity for Note aggregate.
 pub mod task;
+/// Domain-specific types for the Note context.
+pub mod types;
 // --- Public API ---

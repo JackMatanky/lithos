@@ -313,7 +313,15 @@ fn validate_non_empty(
 
 #[cfg(test)]
 mod tests {
-    use super::FrontmatterKey;
+    use super::*;
+
+    mod fixtures {
+        use super::*;
+
+        pub fn sample_key() -> FrontmatterKey {
+            FrontmatterKey::try_new("author").unwrap()
+        }
+    }
 
     /// 3.3-UNIT-026: `frontmatter_validate_rejects_empty_keys`.
     /// Priority: P0.
@@ -321,5 +329,11 @@ mod tests {
     fn frontmatter_key_rejects_empty() {
         let result = FrontmatterKey::try_new("");
         assert!(result.is_err(), "Expected validation error");
+    }
+
+    #[test]
+    fn frontmatter_key_accepts_valid() {
+        let key = fixtures::sample_key();
+        assert_eq!(key.as_str(), "author");
     }
 }

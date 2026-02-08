@@ -245,6 +245,22 @@ mod tests {
     use super::*;
     use crate::config::global::Global;
 
+    mod fixtures {
+        use super::*;
+
+        pub fn raw_global_invalid_logging() -> RawGlobal {
+            RawGlobal {
+                filesystem: None,
+                frontmatter: None,
+                logging: Some(RawLogging {
+                    log_level: Some("verbose".to_owned()),
+                }),
+                trusted_vaults: None,
+                task: None,
+            }
+        }
+    }
+
     #[test]
     fn deserializes_unknown_keys_without_error() {
         let toml = r#"
@@ -260,15 +276,7 @@ log_level = "info"
 
     #[test]
     fn conversion_rejects_invalid_log_level() {
-        let raw = RawGlobal {
-            filesystem: None,
-            frontmatter: None,
-            logging: Some(RawLogging {
-                log_level: Some("verbose".to_owned()),
-            }),
-            trusted_vaults: None,
-            task: None,
-        };
+        let raw = fixtures::raw_global_invalid_logging();
 
         let result = Global::try_from(raw);
         assert!(result.is_err(), "Invalid log level should be rejected");

@@ -185,7 +185,15 @@ impl TryFrom<RawLogging> for Logging {
 
 #[cfg(test)]
 mod tests {
-    use super::LogLevel;
+    use super::*;
+
+    mod fixtures {
+        use super::*;
+
+        pub fn sample_logging() -> Logging {
+            Logging::new(LogLevel::Debug)
+        }
+    }
 
     /// 3.3-UNIT-027: `logging_rejects_invalid_levels`.
     /// Priority: P0.
@@ -193,5 +201,11 @@ mod tests {
     fn logging_rejects_invalid_levels() {
         let result = LogLevel::try_from("verbose".to_owned());
         assert!(result.is_err(), "Expected validation error");
+    }
+
+    #[test]
+    fn logging_accepts_valid_levels() {
+        let logging = fixtures::sample_logging();
+        assert_eq!(logging.log_level_str(), "debug");
     }
 }

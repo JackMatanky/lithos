@@ -561,33 +561,75 @@ impl TryFrom<RawVault> for Vault {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{CacheDir, Metadata, Paths, VaultId, VaultRoot};
-    use crate::config::paths::TemplatesDir;
+    use super::{
+        CacheDir, Metadata, Paths, Vault, VaultId, VaultPathKey, VaultRoot,
+    };
+    use crate::config::{
+        logging::{LogLevel, Logging},
+        paths::TemplatesDir,
+    };
+
+    mod fixtures {
+        use std::path::PathBuf;
+
+        use super::*;
+
+        pub fn vault_root(path: &str) -> VaultRoot {
+            VaultRoot::try_new(PathBuf::from(path)).unwrap()
+        }
+
+        pub fn vault_id() -> VaultId {
+            VaultId::new()
+        }
+    }
 
     #[test]
-    fn derives_metadata_from_vault_path() -> Result<(), String> {
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Test uses assert_eq! which can panic."
+    )]
+    fn derives_metadata_from_vault_path()
+    -> Result<(), Box<dyn std::error::Error>> {
         // GIVEN: a vault path
-        let vault_root = VaultRoot::try_new(PathBuf::from("/vaults/work"))
-            .map_err(|err| format!("VaultRoot::try_new failed: {err:?}"))?;
+        let vault_root = fixtures::vault_root("/vaults/work");
 
         // WHEN: building metadata from the path
-        let metadata =
-            Metadata::new(VaultId::new(), vault_root.clone(), None, None)
-                .map_err(|err| format!("Metadata::new failed: {err:?}"))?;
+        let metadata = Metadata::new(
+            fixtures::vault_id(),
+            vault_root.clone(),
+            None,
+            None,
+        )?;
 
         // THEN: version and name defaults are applied
-        if metadata.version().as_str() != env!("CARGO_PKG_VERSION") {
-            return Err("Expected version default to be set".to_owned());
-        }
-        if metadata.name() != "work" {
-            return Err("Expected vault name to default to directory basename"
-                .to_owned());
-        }
-        if metadata.root().as_path() != vault_root.as_path() {
-            return Err("Expected path to match input".to_owned());
-        }
+        assert_eq!(
+            metadata.version().as_str(),
+            env!("CARGO_PKG_VERSION"),
+            "Expected version default to be set"
+        );
+        assert_eq!(
+            metadata.name(),
+            "work",
+            "Expected vault name to default to directory basename"
+        );
+        assert_eq!(
+            metadata.root().as_path(),
+            vault_root.as_path(),
+            "Expected path to match input"
+        );
 
         Ok(())
+    }
+
+    #[test]
+    fn vault_new_constructs_with_given_values() {
+        let paths = Paths::default();
+        let logging = Logging::new(LogLevel::Debug);
+        let vault =
+            Vault::new(paths.clone(), None, Some(logging.clone()), None);
+
+        assert_eq!(vault.filesystem(), &paths);
+        assert_eq!(vault.logging(), Some(&logging));
     }
 
     #[test]
@@ -637,5 +679,28 @@ mod tests {
             result.is_err(),
             "Expected validation failure for empty vault_path"
         );
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Test uses assert_eq! which can panic."
+    )]
+    fn vault_path_key_from_root_preserves_path()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = VaultRoot::try_new(PathBuf::from("/vault/alpha"))?;
+        let key = VaultPathKey::from_root(&root);
+        assert_eq!(key.as_str(), "/vault/alpha");
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Test uses unwrap_err which can panic."
+    )]
+    fn vault_path_key_try_from_rejects_empty() {
+        let result = VaultPathKey::try_from(String::new());
+        result.unwrap_err();
     }
 }

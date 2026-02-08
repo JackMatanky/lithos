@@ -430,7 +430,16 @@ mod tests {
     use super::{
         TrustedVaultList, TrustedVaultMap, TrustedVaultPath, TrustedVaults,
     };
-    use crate::config::paths::SchemasDir;
+
+    mod fixtures {
+        use std::path::PathBuf;
+
+        use super::*;
+
+        pub fn trusted_vault_path(path: &str) -> TrustedVaultPath {
+            TrustedVaultPath::try_new(PathBuf::from(path)).unwrap()
+        }
+    }
 
     #[test]
     #[expect(
@@ -441,7 +450,7 @@ mod tests {
     {
         // GIVEN: trusted vaults configured with list format
         let trusted = TrustedVaults::List(TrustedVaultList(vec![
-            TrustedVaultPath::try_new(PathBuf::from("/vaults/alpha"))?,
+            fixtures::trusted_vault_path("/vaults/alpha"),
         ]));
 
         // WHEN: validating the trusted vault configuration
@@ -467,7 +476,7 @@ mod tests {
         let trusted = TrustedVaults::Map(TrustedVaultMap(
             [(
                 Box::from("alpha"),
-                TrustedVaultPath::try_new(PathBuf::from("/vaults/alpha"))?,
+                fixtures::trusted_vault_path("/vaults/alpha"),
             )]
             .into_iter()
             .collect(),
@@ -486,25 +495,31 @@ mod tests {
     }
 
     #[test]
-    fn filesystem_validate_passes_with_defaults() {
-        // GIVEN: a default filesystem config
-        let filesystem = super::Paths::default();
+    fn trusted_vault_path_rejects_empty() {
+        let result = TrustedVaultPath::try_new(PathBuf::from(""));
+        assert!(result.is_err(), "TrustedVaultPath should reject empty path");
+    }
 
-        // WHEN: validating
-        let result = filesystem.validate();
-
-        // THEN: it succeeds
+    #[test]
+    fn trusted_vault_path_rejects_relative() {
+        let result = TrustedVaultPath::try_new(PathBuf::from("relative/path"));
         assert!(
-            result.is_ok(),
-            "Validation should succeed, but got: {:?}",
-            result.err()
+            result.is_err(),
+            "TrustedVaultPath should reject relative path"
         );
     }
 
     #[test]
-    fn schemas_dir_rejects_empty_path() {
-        let result = SchemasDir::try_new(PathBuf::from(""));
-        assert!(result.is_err(), "SchemasDir should reject empty path");
+    fn trusted_vault_path_accepts_absolute()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let path = if cfg!(windows) {
+            "C:\\vault"
+        } else {
+            "/vault"
+        };
+        let result = TrustedVaultPath::try_new(PathBuf::from(path))?;
+        assert_eq!(result.as_path().to_string_lossy(), path);
+        Ok(())
     }
 
     #[test]

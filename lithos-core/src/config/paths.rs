@@ -621,7 +621,22 @@ fn validate_relative_path(
 
 #[cfg(test)]
 mod tests {
-    use super::{CacheDir, FileName, SchemasDir, TemplatesDir};
+    use std::path::PathBuf;
+
+    use super::*;
+
+    mod fixtures {
+        use std::path::PathBuf;
+
+        use super::*;
+
+        pub fn sample_schema() -> Schema {
+            Schema::new(
+                SchemasDir::try_new(PathBuf::from("schemas")).unwrap(),
+                FileName::try_new("props.json").unwrap(),
+            )
+        }
+    }
 
     /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
     /// Priority: P1.
@@ -631,16 +646,13 @@ mod tests {
         reason = "Test uses assert_eq! which can panic."
     )]
     fn constructs_valid_property_bank_path() -> Result<(), super::ConfigError> {
-        let schema = super::Schema::new(
-            SchemasDir::try_new(std::path::PathBuf::from("schemas"))?,
-            FileName::try_new("props.json")?,
-        );
+        let schema = fixtures::sample_schema();
 
         let path = schema.property_bank_path();
 
         assert_eq!(
             path,
-            std::path::PathBuf::from("schemas").join("props.json"),
+            PathBuf::from("schemas").join("props.json"),
             "property_bank_path logic works"
         );
         Ok(())

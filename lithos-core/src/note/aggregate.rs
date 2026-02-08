@@ -180,6 +180,7 @@ impl Note {
     /// ```
     /// # use lithos_core::note::aggregate::Note;
     /// # use lithos_core::note::link::{Link, Target, EmbedType};
+    /// # use lithos_core::note::types::SourceByteOffset;
     /// # use uuid::Uuid;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string())?;
@@ -189,7 +190,7 @@ impl Note {
     ///     },
     ///     EmbedType::Image,
     ///     None,
-    ///     0,
+    ///     SourceByteOffset::new(0),
     /// )?;
     /// note.links.push(embed);
     /// assert_eq!(note.embeds().count(), 1, "Expected one embed");
@@ -214,6 +215,7 @@ impl Note {
     /// ```
     /// # use lithos_core::note::aggregate::Note;
     /// # use lithos_core::note::link::{Link, Target};
+    /// # use lithos_core::note::types::SourceByteOffset;
     /// # use uuid::Uuid;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string())?;
@@ -223,7 +225,7 @@ impl Note {
     ///     },
     ///     None,
     ///     None,
-    ///     20,
+    ///     SourceByteOffset::new(20),
     /// )?;
     /// note.links.push(link);
     /// assert_eq!(note.markdown_links().count(), 1, "Expected one markdown link");
@@ -333,17 +335,19 @@ impl Note {
     /// ```
     /// # use lithos_core::note::aggregate::Note;
     /// # use lithos_core::note::link::{Link, Target};
+    /// # use lithos_core::note::types::SourceByteOffset;
     /// # use uuid::Uuid;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string())?;
     /// let link = Link::new_wikilink(
     ///     Target::Unresolved {
-    ///         raw: "other-note".into(),
+    ///         raw: "target".into(),
     ///     },
     ///     None,
     ///     None,
-    ///     0,
+    ///     SourceByteOffset::new(0),
     /// )?;
+
     /// note.links.push(link);
     /// assert_eq!(note.wikilinks().count(), 1, "Expected one wiki link");
     /// # Ok(())
@@ -417,43 +421,49 @@ mod tests {
             Note::new(TEST_NOTE_ID, "note.md".to_owned())
         }
 
-        pub fn wikilink(raw: &str, pos: usize) -> Result<Link, NoteError> {
+        pub fn wikilink(
+            raw: &str,
+            pos: impl Into<crate::note::types::SourceByteOffset>,
+        ) -> Result<Link, NoteError> {
             Link::new_wikilink(
                 Target::Unresolved {
                     raw: raw.into(),
                 },
                 None,
                 None,
-                pos,
+                pos.into(),
             )
         }
 
-        pub fn embed(raw: &str, pos: usize) -> Result<Link, NoteError> {
+        pub fn embed(
+            raw: &str,
+            pos: impl Into<crate::note::types::SourceByteOffset>,
+        ) -> Result<Link, NoteError> {
             Link::new_embed(
                 Target::Unresolved {
                     raw: raw.into(),
                 },
                 EmbedType::Image,
                 None,
-                pos,
+                pos.into(),
             )
         }
 
         pub fn note_with_link_mix() -> Result<Note, NoteError> {
             let mut note = base_note()?;
 
-            note.links.push(wikilink("wiki1.md", 0)?);
-            note.links.push(wikilink("wiki2.md", 10)?);
+            note.links.push(wikilink("wiki1.md", 0_u32)?);
+            note.links.push(wikilink("wiki2.md", 10_u32)?);
             let md = Link::new_markdown_link(
                 Target::External {
                     url: "https://example.com".into(),
                 },
                 None,
                 None,
-                20,
+                crate::note::types::SourceByteOffset::new(20),
             )?;
             note.links.push(md);
-            note.links.push(embed("img.png", 30)?);
+            note.links.push(embed("img.png", 30_u32)?);
 
             Ok(note)
         }
@@ -694,7 +704,7 @@ mod tests {
                 },
                 None,
                 None,
-                0,
+                0_u32.into(),
             )
             .expect("Valid link expected");
 
