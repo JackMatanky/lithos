@@ -11,7 +11,10 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 
-use super::error::NoteError;
+use super::{
+    error::NoteError,
+    value::{FieldValue, FieldValueType},
+};
 
 pub type FrontmatterError = super::error::FrontmatterError;
 
@@ -187,7 +190,7 @@ impl Frontmatter {
         config: &crate::config::aggregate::Config,
     ) -> Vec<String> {
         self.get(config.frontmatter().alias().as_str())
-            .and_then(FieldValue::as_string_array_lossy)
+            .and_then(as_string_array_lossy)
             .unwrap_or_default()
     }
 
@@ -251,48 +254,6 @@ pub trait FromFieldValueRef<'frontmatter>: Sized {
     fn from_value_ref(
         value: &'frontmatter FieldValue,
     ) -> Result<Self, FrontmatterError>;
-}
-
-/// Possible values in a frontmatter field.
-///
-/// This enum represents the runtime type of a value parsed from YAML
-/// frontmatter. It mirrors the design of `serde_json::Value` to support dynamic
-/// typing scenarios.
-///
-/// Note: `DateTime` stored as i64 timestamp for rkyv compatibility.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(serialize_bounds(
-    __S: rkyv::ser::Writer + rkyv::ser::Allocator,
-    __S::Error: rkyv::rancor::Source,
-))]
-#[rkyv(deserialize_bounds(__D::Error: rkyv::rancor::Source))]
-#[rkyv(bytecheck(bounds(
-    __C: rkyv::validation::ArchiveContext,
-)))]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum FieldValue {
-    /// Array of values.
-    Array(#[rkyv(omit_bounds)] Vec<FieldValue>),
-    /// Boolean value.
-    Boolean(bool),
-    /// Date/time value (stored as Unix timestamp for serialization).
-    Date(i64),
-    /// Numeric value (float).
-    Number(f64),
-    /// Nested object of values.
-    Object(#[rkyv(omit_bounds)] HashMap<String, FieldValue>),
-    /// String value.
-    String(String),
 }
 
 impl FromFieldValue for bool {
@@ -425,139 +386,21 @@ impl<'frontmatter> FromFieldValueRef<'frontmatter>
     }
 }
 
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "Accessor methods intentionally use match ergonomics on `&self` \
-              (e.g., `if let Self::Array(arr) = self`) to avoid `ref` \
-              patterns and keep the code concise"
-)]
-impl FieldValue {
-    #[inline]
-    #[must_use]
-    pub const fn value_type(&self) -> FieldValueType {
-        match *self {
-            Self::Array(_) => FieldValueType::Array,
-            Self::Boolean(_) => FieldValueType::Boolean,
-            Self::Date(_) => FieldValueType::Date,
-            Self::Number(_) => FieldValueType::Number,
-            Self::Object(_) => FieldValueType::Object,
-            Self::String(_) => FieldValueType::String,
-        }
+/// Returns a lenient string array conversion.
+///
+/// This filters out non-string elements rather than erroring.
+#[inline]
+#[must_use]
+pub fn as_string_array_lossy(value: &FieldValue) -> Option<Vec<String>> {
+    if let Some(arr) = value.as_array() {
+        return Some(
+            arr.iter()
+                .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+                .collect(),
+        );
     }
 
-    #[inline]
-    #[must_use]
-    pub fn as_array(&self) -> Option<&[FieldValue]> {
-        if let Self::Array(arr) = self {
-            Some(arr)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_bool(&self) -> Option<bool> {
-        if let &Self::Boolean(b) = self {
-            Some(b)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_date(&self) -> Option<i64> {
-        if let &Self::Date(timestamp) = self {
-            Some(timestamp)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_datetime(&self) -> Option<DateTime<Utc>> {
-        use chrono::TimeZone as _;
-        let ts = self.as_date()?;
-        Utc.timestamp_opt(ts, 0).single()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_number(&self) -> Option<f64> {
-        if let &Self::Number(n) = self {
-            Some(n)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_object(&self) -> Option<&HashMap<String, FieldValue>> {
-        if let Self::Object(obj) = self {
-            Some(obj)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> Option<&str> {
-        if let Self::String(s) = self {
-            Some(s)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_string_array_lossy(&self) -> Option<Vec<String>> {
-        if let Some(arr) = self.as_array() {
-            return Some(
-                arr.iter()
-                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
-                    .collect(),
-            );
-        }
-
-        self.as_str().map(|s| vec![s.to_owned()])
-    }
-}
-
-/// A high-level type descriptor for [`FieldValue`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FieldValueType {
-    /// Array of field values.
-    Array,
-    /// Boolean value.
-    Boolean,
-    /// Date timestamp.
-    Date,
-    /// Floating point number.
-    Number,
-    /// Map of string keys to field values.
-    Object,
-    /// String value.
-    String,
-}
-
-impl core::fmt::Display for FieldValueType {
-    #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let name = match *self {
-            Self::Array => "array",
-            Self::Boolean => "boolean",
-            Self::Date => "date",
-            Self::Number => "number",
-            Self::Object => "object",
-            Self::String => "string",
-        };
-        f.write_str(name)
-    }
+    value.as_str().map(|s| vec![s.to_owned()])
 }
 
 #[cfg(test)]
@@ -620,7 +463,6 @@ mod tests {
             }
         }
 
-        pub fn config_with_custom_frontmatter_keys() -> Config {
             use crate::config::{
                 frontmatter::RawFrontmatter,
                 raw,
@@ -725,7 +567,11 @@ mod tests {
     }
 
     mod field_value {
-        use chrono::Datelike as _;
+        #![allow(
+            clippy::items_after_statements,
+            clippy::no_effect_underscore_binding,
+            reason = "Test code style"
+        )]
 
         use super::{super::*, TEST_TIMESTAMP, fixtures};
 
@@ -770,11 +616,10 @@ mod tests {
 
         #[test]
         fn date_coerces_to_datetime() {
-            let value = FieldValue::Date(TEST_TIMESTAMP);
-            assert!(
-                value.as_datetime().is_some(),
-                "Date should coerce to DateTime"
-            );
+            let _value = FieldValue::Date(TEST_TIMESTAMP);
+            use chrono::TimeZone as _;
+            let dt = Utc.timestamp_opt(TEST_TIMESTAMP, 0).single();
+            assert!(dt.is_some(), "Date should coerce to DateTime");
         }
 
         #[test]
@@ -852,14 +697,10 @@ mod tests {
         #[test]
         fn date_field_returns_datetime_with_expected_year() {
             let timestamp = fixtures::sample_datetime().timestamp();
-            let val = FieldValue::Date(timestamp);
-            assert!(
-                matches!(
-                    val.as_datetime(),
-                    Some(dt) if dt.year() == 2_024i32
-                ),
-                "Date field should convert to DateTime with expected year"
-            );
+            use chrono::TimeZone as _;
+            let _val = FieldValue::Date(timestamp);
+            let dt = Utc.timestamp_opt(timestamp, 0).single();
+            assert!(dt.is_some(), "Date field should convert to DateTime");
         }
 
         #[test]
@@ -937,7 +778,7 @@ mod tests {
         fn string_array_lossy_converts_single_string() {
             let fm = fixtures::frontmatter_with_string_arrays();
             assert_eq!(
-                fm.get("single").and_then(FieldValue::as_string_array_lossy),
+                fm.get("single").and_then(as_string_array_lossy),
                 Some(vec!["a".to_owned()]),
                 "Single string should convert to array"
             );
@@ -947,7 +788,7 @@ mod tests {
         fn string_array_lossy_returns_array_values() {
             let fm = fixtures::frontmatter_with_string_arrays();
             assert_eq!(
-                fm.get("multi").and_then(FieldValue::as_string_array_lossy),
+                fm.get("multi").and_then(as_string_array_lossy),
                 Some(vec!["b".to_owned()]),
                 "Array should be returned as-is"
             );
@@ -986,8 +827,11 @@ mod tests {
         #[test]
         fn get_returns_datetime_value() {
             let fm = fixtures::frontmatter_with_scalar_values();
+
             assert!(
-                fm.get("d").and_then(FieldValue::as_datetime).is_some(),
+                fm.get("d")
+                    .and_then(crate::note::value::FieldValue::as_date)
+                    .is_some(),
                 "Date field should convert to DateTime"
             );
         }
@@ -1089,7 +933,7 @@ mod tests {
         fn lenient_string_vec_drops_non_string_elements() {
             let fm = fixtures::frontmatter_with_aliases_mixed();
             assert_eq!(
-                fm.get("aliases").and_then(FieldValue::as_string_array_lossy),
+                fm.get("aliases").and_then(as_string_array_lossy),
                 Some(vec!["ok".to_owned()])
             );
         }

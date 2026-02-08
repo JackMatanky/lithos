@@ -475,9 +475,9 @@ mod tests {
 
     use super::*;
     use crate::note::{
-        frontmatter::FieldValue,
         link::{EmbedType, Target},
         task::TaskStatus,
+        value::FieldValue,
     };
 
     mod accessors {

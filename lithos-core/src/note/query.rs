@@ -87,7 +87,7 @@ mod tests {
         use uuid::Uuid;
 
         use super::*;
-        use crate::note::frontmatter::{FieldValue, Frontmatter};
+        use crate::note::{frontmatter::Frontmatter, value::FieldValue};
 
         pub const TEST_MISSING_ID: Uuid =
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0901);

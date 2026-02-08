@@ -29,4 +29,6 @@ pub mod tag;
 pub mod task;
 /// Domain-specific types for the Note context.
 pub mod types;
+/// Shared primitive for dynamic note values.
+pub mod value;
 // --- Public API ---
