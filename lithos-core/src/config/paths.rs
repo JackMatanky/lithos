@@ -5,10 +5,33 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{
-    error::ConfigError,
-    raw::{RawSchemaPaths, RawTemplatePaths},
-};
+use super::error::ConfigError;
+
+/// Raw schema filesystem configuration (unvalidated input from config files).
+///
+/// This is a serde-only DTO that accepts flexible input from TOML/YAML/JSON.
+/// All fields are optional to support partial configuration and defaults.
+/// Validation happens during conversion to [`Schema`] via [`TryFrom`].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[non_exhaustive]
+pub struct RawSchemaPaths {
+    /// Directory containing schema files.
+    pub schemas_dir: Option<String>,
+    /// Property bank filename.
+    pub property_bank_filename: Option<String>,
+}
+
+/// Raw template filesystem configuration (unvalidated input from config files).
+///
+/// This is a serde-only DTO that accepts flexible input from TOML/YAML/JSON.
+/// All fields are optional to support partial configuration and defaults.
+/// Validation happens during conversion to [`Template`] via [`TryFrom`].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[non_exhaustive]
+pub struct RawTemplatePaths {
+    /// Directory containing template files.
+    pub templates_dir: Option<String>,
+}
 
 /// Vault-relative schemas directory.
 #[derive(
