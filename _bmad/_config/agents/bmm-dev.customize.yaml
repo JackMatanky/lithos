@@ -1,41 +1,36 @@
-# Agent Customization
-# Customize any section below - all are optional
+# Dev Agent Customization for Lithos Project
+# Location: _bmad/_config/agents/bmm-dev.customize.yaml
 
-# Override agent name
+# Add persistent memories for the agent
+memories:
+  # --- Rust Reference Documentation ---
+  - "When writing or reviewing Rust code, reference docs/refs/rust/ for canonical patterns"
+  - "For code style and formatting: see docs/refs/rust/style.md"
+  - "For module organization and visibility: see docs/refs/rust/module-system.md"
+  - "For Lithos-specific Rust idioms: see docs/refs/rust/idioms.md"
+  - "For overall Rust best practices: see docs/refs/rust/canonical-best-practices.md"
+
+  # --- Crate-Specific Knowledge ---
+  - "When working with caching (moka): see docs/refs/crates/moka.md"
+  - "When working with markdown parsing (pulldown-cmark): see docs/refs/crates/pulldown-cmark.md"
+  - "When working with database operations (redb): see docs/refs/crates/redb.md"
+  - "When working with serialization (rkyv): see docs/refs/crates/rkyv.md"
+
+  # --- Context Loading Triggers ---
+  - "If task involves caching → load docs/refs/crates/moka.md"
+  - "If task involves markdown → load docs/refs/crates/pulldown-cmark.md"
+  - "If task involves persistence → load docs/refs/crates/redb.md"
+  - "If task involves zero-copy serialization → load docs/refs/crates/rkyv.md"
+
+# Other sections remain standard
 agent:
   metadata:
-    name: ""
-
-# Replace entire persona (not merged)
+    name: "Dev-Lithos"
 persona:
   role: ""
   identity: ""
   communication_style: ""
   principles: []
-
-# Add custom critical actions (appended after standard config loading)
-critical_actions: []
-
-# Add persistent memories for the agent
-memories: []
-# Example:
-# memories:
-#   - "User prefers detailed technical explanations"
-#   - "Current project uses React and TypeScript"
-
-# Add custom menu items (appended to base menu)
-# Don't include * prefix or help/exit - auto-injected
 menu: []
-# Example:
-# menu:
-#   - trigger: my-workflow
-#     workflow: "{project-root}/custom/my.yaml"
-#     description: My custom workflow
-
-# Add custom prompts (for action="#id" handlers)
 prompts: []
-# Example:
-# prompts:
-# - id: my-prompt
-#   content: |
-#     Prompt instructions here
+critical_actions: []

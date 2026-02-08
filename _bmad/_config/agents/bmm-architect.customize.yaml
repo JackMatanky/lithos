@@ -1,41 +1,26 @@
-# Agent Customization
-# Customize any section below - all are optional
+# Architect Agent Customization for Lithos Project
+# Location: _bmad/_config/agents/bmm-architect.customize.yaml
 
-# Override agent name
+# Add persistent memories for the agent
+memories:
+  # --- Architectural Reference Documentation ---
+  - "When making architectural decisions, reference docs/refs/rust/canonical-best-practices.md"
+  - "When designing the module hierarchy, see docs/refs/rust/module-system.md"
+
+  # --- Technology Footguns & Patterns ---
+  - "Review docs/refs/crates/ for known patterns and performance footguns when selecting or auditing crate usage"
+  - "Ensure rkyv zero-copy patterns adhere to docs/refs/crates/rkyv.md"
+  - "Ensure database transaction patterns adhere to docs/refs/crates/redb.md"
+
+# Other sections remain standard
 agent:
   metadata:
-    name: ""
-
-# Replace entire persona (not merged)
+    name: "Architect-Lithos"
 persona:
   role: ""
   identity: ""
   communication_style: ""
   principles: []
-
-# Add custom critical actions (appended after standard config loading)
-critical_actions: []
-
-# Add persistent memories for the agent
-memories: []
-# Example:
-# memories:
-#   - "User prefers detailed technical explanations"
-#   - "Current project uses React and TypeScript"
-
-# Add custom menu items (appended to base menu)
-# Don't include * prefix or help/exit - auto-injected
 menu: []
-# Example:
-# menu:
-#   - trigger: my-workflow
-#     workflow: "{project-root}/custom/my.yaml"
-#     description: My custom workflow
-
-# Add custom prompts (for action="#id" handlers)
 prompts: []
-# Example:
-# prompts:
-# - id: my-prompt
-#   content: |
-#     Prompt instructions here
+critical_actions: []
