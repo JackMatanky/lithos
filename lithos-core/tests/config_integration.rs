@@ -11,14 +11,10 @@
 
 use lithos_core::{
     config::{
-        command::Command,
-        query::Query,
+        RedbConfigCommand, RedbConfigQuery,
         vault::{VaultId, VaultRoot},
     },
-    db::{
-        Database,
-        config_adapter::{RedbConfigCommandAdapter, RedbConfigQueryAdapter},
-    },
+    db::Database,
 };
 use tempfile::tempdir;
 
@@ -29,12 +25,9 @@ fn config_cqrs_integration_flow() -> Result<(), Box<dyn std::error::Error>> {
     let db_path = dir.path().join("lithos.redb");
     let db = Database::open(&db_path)?;
 
-    // 2. Setup Adapters & Services
-    let cmd_adapter = RedbConfigCommandAdapter::new(&db);
-    let qry_adapter = RedbConfigQueryAdapter::new(&db);
-
-    let command = Command::new(cmd_adapter);
-    let query = Query::new(qry_adapter);
+    // 2. Setup Services using convenience wrappers
+    let command = RedbConfigCommand::new_redb(&db);
+    let query = RedbConfigQuery::new_redb(&db);
 
     // 3. Define Inputs
     let vault_id = VaultId::new();

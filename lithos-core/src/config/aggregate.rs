@@ -596,6 +596,42 @@ mod tests {
     mod integrity {
         use super::*;
 
+        #[test]
+        fn config_version_initial_is_one() {
+            assert_eq!(ConfigVersion::initial().value(), 1);
+        }
+
+        #[test]
+        #[expect(
+            clippy::panic_in_result_fn,
+            reason = "Test uses assert_eq! which can panic."
+        )]
+        fn config_version_next_increments_value()
+        -> Result<(), Box<dyn std::error::Error>> {
+            let v1 = ConfigVersion::initial();
+            let v2 = v1.next()?;
+            assert_eq!(v2.value(), 2);
+            Ok(())
+        }
+
+        #[test]
+        fn config_version_try_from_rejects_zero() {
+            let result = ConfigVersion::try_from(0);
+            result.unwrap_err();
+        }
+
+        #[test]
+        #[expect(
+            clippy::panic_in_result_fn,
+            reason = "Test uses assert_eq! which can panic."
+        )]
+        fn config_version_try_from_accepts_positive()
+        -> Result<(), Box<dyn std::error::Error>> {
+            let v = ConfigVersion::try_from(42)?;
+            assert_eq!(v.value(), 42);
+            Ok(())
+        }
+
         /// 3.3-UNIT-020: `build_handles_missing_global`.
         /// Priority: P1.
         #[test]
@@ -1038,7 +1074,8 @@ mod tests {
         // 3.3-UNIT-012: `merge_handles_various_path_lengths`.
         // Priority: P2.
         #[test]
-        fn merge_handles_various_path_lengths() -> Result<(), String> {
+        fn merge_handles_various_path_lengths()
+        -> Result<(), Box<dyn std::error::Error>> {
             let mut runner = TestRunner::deterministic();
             let strategy = (
                 "[a-zA-Z0-9][a-zA-Z0-9/_-]{0,199}",

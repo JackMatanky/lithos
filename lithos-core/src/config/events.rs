@@ -68,34 +68,40 @@ impl ConfigUpdated {
 mod tests {
     use super::*;
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture uses expect for deterministic setup. Failure \
-                  indicates invalid test data. Expect is idiomatic in setup."
-    )]
-    fn deserialized_event() -> ConfigUpdated {
-        let json = r#"{"source":"vault","timestamp":1234567890}"#;
-        serde_json::from_str(json)
-            .expect("ConfigUpdated should deserialize successfully")
-    }
+    mod fixtures {
+        use super::*;
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture uses expect for deterministic setup. Failure \
-                  indicates invalid test data. Expect is idiomatic in setup."
-    )]
-    fn serialized_event() -> String {
-        let event = ConfigUpdated {
-            source: "vault".to_owned(),
-            timestamp: 1_234_567_890,
-        };
-        serde_json::to_string(&event)
-            .expect("ConfigUpdated should serialize successfully")
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
+        )]
+        pub fn deserialized_event() -> ConfigUpdated {
+            let json = r#"{"source":"vault","timestamp":1234567890}"#;
+            serde_json::from_str(json)
+                .expect("ConfigUpdated should deserialize successfully")
+        }
+
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic setup. \
+                      Failure indicates invalid test data. Expect is \
+                      idiomatic in setup."
+        )]
+        pub fn serialized_event() -> String {
+            let event = ConfigUpdated {
+                source: "vault".to_owned(),
+                timestamp: 1_234_567_890,
+            };
+            serde_json::to_string(&event)
+                .expect("ConfigUpdated should serialize successfully")
+        }
     }
 
     #[test]
     fn config_updated_event_deserializes_timestamp() {
-        let event = deserialized_event();
+        let event = fixtures::deserialized_event();
 
         assert_eq!(
             event.timestamp, 1_234_567_890,
@@ -105,7 +111,7 @@ mod tests {
 
     #[test]
     fn config_updated_event_deserializes_source() {
-        let event = deserialized_event();
+        let event = fixtures::deserialized_event();
 
         assert_eq!(event.source, "vault", "Expected source to be 'vault'");
     }
@@ -123,14 +129,14 @@ mod tests {
 
     #[test]
     fn config_updated_event_serializes_source() {
-        let json = serialized_event();
+        let json = fixtures::serialized_event();
 
         assert!(json.contains("vault"), "JSON should contain vault_path field");
     }
 
     #[test]
     fn config_updated_event_serializes_timestamp() {
-        let json = serialized_event();
+        let json = fixtures::serialized_event();
 
         assert!(
             json.contains("1234567890"),

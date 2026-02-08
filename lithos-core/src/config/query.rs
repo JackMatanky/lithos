@@ -87,11 +87,25 @@ mod tests {
     use super::*;
     use crate::{
         config::{
-            aggregate::ConfigVersion, global::Global, ports::ConfigQueryPort,
+            aggregate::{Config, ConfigVersion},
+            global::Global,
+            ports::ConfigQueryPort,
             vault::VaultId,
         },
         db::{Database, DbError},
     };
+
+    mod fixtures {
+        use super::*;
+
+        pub fn test_db()
+        -> Result<(TempDir, Database), Box<dyn std::error::Error>> {
+            let dir = tempdir()?;
+            let path = dir.path().join("config.redb");
+            let db = Database::open(&path)?;
+            Ok((dir, db))
+        }
+    }
 
     struct DbPort<'db> {
         db: &'db Database,
@@ -139,24 +153,43 @@ mod tests {
         }
     }
 
-    fn test_db() -> Result<(TempDir, Database), String> {
-        let dir = tempdir().map_err(|e| e.to_string())?;
-        let path = dir.path().join("config.redb");
-        let db = Database::open(&path).map_err(|e| e.to_string())?;
-        Ok((dir, db))
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Test uses assert! which can panic."
+    )]
+    fn get_returns_none_when_active_missing()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_dir, db) = fixtures::test_db()?;
+        db.put("config", "global", &Global::default())?;
+        let qry = Query::new(DbPort::new(&db));
+
+        let result = qry.get(VaultId::new())?;
+        assert!(result.is_none(), "Expected None when active version missing");
+        Ok(())
     }
 
     #[test]
-    fn get_returns_none_when_active_missing() -> Result<(), String> {
-        let (_dir, db) = test_db()?;
-        db.put("config", "global", &Global::default())
-            .map_err(|e| e.to_string())?;
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Test uses assert_eq! which can panic."
+    )]
+    fn with_archived_executes_closure_on_archived_data()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_dir, db) = fixtures::test_db()?;
+        let vault_id = VaultId::new();
+        let version = ConfigVersion::try_from(1)?;
+        let config = Config::default();
+
+        // Setup: version 1 active with default config
+        db.put("merged_config_versions", &format!("{vault_id}:1"), &config)?;
+        db.put("merged_config_active", &vault_id.to_string(), &version)?;
+
         let qry = Query::new(DbPort::new(&db));
 
-        let result = qry.get(VaultId::new()).map_err(|e| e.to_string())?;
-        if result.is_some() {
-            return Err("Expected None when active version missing".to_owned());
-        }
+        let result = qry.with_archived(vault_id, |_archived| true)?;
+
+        assert_eq!(result, Some(true));
         Ok(())
     }
 }
