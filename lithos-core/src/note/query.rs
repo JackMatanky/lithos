@@ -73,11 +73,8 @@ impl super::ports::Query for Query<'_> {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
+    clippy::panic_in_result_fn,
     reason = "Test module groups fixtures and submodules for readability."
-)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test setup uses expect for deterministic fixtures."
 )]
 mod tests {
     mod fixtures {
@@ -113,19 +110,23 @@ mod tests {
             .map_err(|e| e.to_string())
         }
 
-        pub fn note_with_frontmatter() -> (TempDir, Database, Uuid, Frontmatter)
-        {
-            let (dir, db) = test_db().expect("Failed to create test DB");
+        #[expect(
+            clippy::type_complexity,
+            reason = "Fixture returns a complex tuple for test setup \
+                      convenience."
+        )]
+        pub fn note_with_frontmatter()
+        -> Result<(TempDir, Database, Uuid, Frontmatter), String> {
+            let (dir, db) = test_db()?;
             let cmd = command::Command::new(&db);
             let mut note = cmd
                 .create("notes/a.md".to_owned())
-                .expect("Create should succeed");
-            let fm = complex_frontmatter()
-                .expect("Frontmatter construction should succeed");
+                .map_err(|e| e.to_string())?;
+            let fm = complex_frontmatter()?;
             note.set_frontmatter(Some(fm.clone()));
-            let id = note.id;
-            cmd.update(note).expect("Update should succeed");
-            (dir, db, id, fm)
+            let id = Uuid::from(note.id());
+            cmd.update(note).map_err(|e| e.to_string())?;
+            Ok((dir, db, id, fm))
         }
     }
 
@@ -139,45 +140,51 @@ mod tests {
         use super::*;
 
         #[test]
-        fn find_by_id_returns_note_with_matching_id() {
-            let (_dir, db, id, _fm) = fixtures::note_with_frontmatter();
+        fn find_by_id_returns_note_with_matching_id() -> Result<(), String> {
+            let (_dir, db, id, _fm) = fixtures::note_with_frontmatter()?;
             let qry = Query::new(&db);
 
             let observed = qry
                 .find_by_id(id)
-                .expect("Query by id should succeed")
-                .expect("Query by id should return Some(note)");
-            assert_eq!(observed.id, id, "Observed id should match");
-        }
-
-        #[test]
-        fn find_by_id_preserves_frontmatter() {
-            let (_dir, db, id, fm) = fixtures::note_with_frontmatter();
-            let qry = Query::new(&db);
-
-            let observed = qry
-                .find_by_id(id)
-                .expect("Query by id should succeed")
+                .map_err(|e| e.to_string())?
                 .expect("Query by id should return Some(note)");
             assert_eq!(
-                observed.frontmatter,
-                Some(fm),
-                "Frontmatter should roundtrip"
+                Uuid::from(observed.id()),
+                id,
+                "Observed id should match"
             );
+            Ok(())
         }
 
         #[test]
-        fn find_by_id_returns_none_for_missing_id() {
-            let (_dir, db) =
-                fixtures::test_db().expect("Failed to create test DB");
+        fn find_by_id_preserves_frontmatter() -> Result<(), String> {
+            let (_dir, db, id, fm) = fixtures::note_with_frontmatter()?;
+            let qry = Query::new(&db);
+
+            let observed = qry
+                .find_by_id(id)
+                .map_err(|e| e.to_string())?
+                .expect("Query by id should return Some(note)");
+            assert_eq!(
+                observed.frontmatter(),
+                Some(&fm),
+                "Frontmatter should roundtrip"
+            );
+            Ok(())
+        }
+
+        #[test]
+        fn find_by_id_returns_none_for_missing_id() -> Result<(), String> {
+            let (_dir, db) = fixtures::test_db()?;
             let cmd = command::Command::new(&db);
             let qry = Query::new(&db);
 
-            cmd.create("notes/a.md".to_owned()).expect("Create should succeed");
+            cmd.create("notes/a.md".to_owned()).map_err(|e| e.to_string())?;
             let miss = qry
                 .find_by_id(fixtures::TEST_MISSING_ID)
-                .expect("Query by id should succeed");
+                .map_err(|e| e.to_string())?;
             assert!(miss.is_none(), "Non-existent ID should return None");
+            Ok(())
         }
     }
 }

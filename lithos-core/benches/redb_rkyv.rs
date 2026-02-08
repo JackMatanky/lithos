@@ -23,6 +23,9 @@
 //!   - `read_zero_copy/*` gets close to `read_deserialize/*`
 //!   - `transaction_overhead/batch_txn` approaches `individual_txns`
 //!   - `write_batch/*` stops scaling roughly linearly with batch size
+//!
+//! # Safety
+//! Benchmark code uses unwrap/expect for simplicity.
 
 #![allow(
     missing_docs,
@@ -53,7 +56,7 @@ use lithos_core::{
         structure::{Heading, Section},
         tag::Tag,
         task::{Task, TaskStatus},
-        types::SourceByteOffset,
+        types::{HeadingLevel, NoteId, SourceByteOffset, SourceByteRange},
     },
 };
 use tempfile::TempDir;
@@ -70,12 +73,12 @@ use uuid::Uuid;
 /// - Archived reads should generally degrade less than full deserialization as
 ///   fields are added, since they avoid constructing owned structures.
 fn create_test_note(index: usize) -> Note {
-    let id = Uuid::now_v7();
+    let id = NoteId::new();
     let path = format!("notes/test-{index:04}.md");
 
     let mut note = Note::new(id, path).expect("valid path");
 
-    note.links = vec![
+    note.add_link(
         Link::new_wikilink(
             Target::Unresolved {
                 raw: "other-note.md".into(),
@@ -85,6 +88,8 @@ fn create_test_note(index: usize) -> Note {
             SourceByteOffset::new(0),
         )
         .expect("valid link"),
+    );
+    note.add_link(
         Link::new_markdown_link(
             Target::External {
                 url: "https://example.com".into(),
@@ -94,31 +99,50 @@ fn create_test_note(index: usize) -> Note {
             SourceByteOffset::new(50),
         )
         .expect("valid link"),
-    ];
+    );
 
-    note.tags = vec![
-        Tag::new("#rust").expect("valid tag"),
-        Tag::new("#performance").expect("valid tag"),
-        Tag::new("#database/benchmarks").expect("valid tag"),
-    ];
+    note.add_tag(Tag::new("#rust").expect("valid tag"));
+    note.add_tag(Tag::new("#performance").expect("valid tag"));
+    note.add_tag(Tag::new("#database/benchmarks").expect("valid tag"));
 
-    note.headings = vec![
-        Heading::new(1, "Main Title".to_owned(), 0).expect("valid heading"),
-        Heading::new(2, "Subsection".to_owned(), 10).expect("valid heading"),
-    ];
+    note.add_heading(
+        Heading::new(
+            HeadingLevel::try_new(1).expect("valid level"),
+            "Main Title".to_owned(),
+            SourceByteOffset::new(0),
+        )
+        .expect("valid heading"),
+    );
+    note.add_heading(
+        Heading::new(
+            HeadingLevel::try_new(2).expect("valid level"),
+            "Subsection".to_owned(),
+            SourceByteOffset::new(10),
+        )
+        .expect("valid heading"),
+    );
 
-    note.tasks = vec![
+    note.add_task(
         Task::new("Do something".to_owned(), TaskStatus::Incomplete, 15)
             .expect("valid task"),
+    );
+    note.add_task(
         Task::new("Already done".to_owned(), TaskStatus::Complete, 16)
             .expect("valid task"),
-    ];
+    );
 
-    note.sections =
-        vec![Section::new(None, "Test section content".to_owned(), 0..100)];
+    note.add_section(Section::new(
+        None,
+        "Test section content".to_owned(),
+        SourceByteRange::new(
+            SourceByteOffset::new(0),
+            SourceByteOffset::new(100),
+        ),
+    ));
 
-    note.frontmatter =
-        Some(Frontmatter::new(HashMap::new()).expect("valid frontmatter"));
+    note.set_frontmatter(Some(
+        Frontmatter::new(HashMap::new()).expect("valid frontmatter"),
+    ));
 
     note
 }
@@ -132,7 +156,7 @@ fn create_test_note(index: usize) -> Note {
 /// Expected results:
 /// - This function should not dominate benchmark time, because it runs outside
 ///   the timed loops.
-fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<Uuid>) {
+fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("bench.db");
     let db = Database::open(&db_path).expect("open database");
@@ -142,8 +166,8 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<Uuid>) {
     db.batch_write(|batch_db| {
         for i in 0..count {
             let note = create_test_note(i);
-            let id_str = note.id.to_string();
-            note_ids.push(note.id);
+            let id_str = Uuid::from(note.id()).to_string();
+            note_ids.push(note.id());
             batch_db.put("notes", &id_str, &note).expect("insert note");
         }
         Ok(())
@@ -166,7 +190,7 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<Uuid>) {
 fn bench_zero_copy_read(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
-    let id_str = test_id.to_string();
+    let id_str = Uuid::from(test_id).to_string();
 
     let mut group = c.benchmark_group("read_zero_copy");
     group.throughput(Throughput::Elements(1));
@@ -174,9 +198,7 @@ fn bench_zero_copy_read(c: &mut Criterion) {
     group.bench_function("get_zero_copy", |b| {
         b.iter(|| {
             db.get::<Note, _, _>("notes", &id_str, |archived| {
-                black_box(archived.id);
-                black_box(&archived.path);
-                black_box(&archived.links);
+                black_box(archived);
             })
             .expect("get note")
         });
@@ -199,7 +221,7 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 fn bench_full_deserialize(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
-    let id_str = test_id.to_string();
+    let id_str = Uuid::from(test_id).to_string();
 
     let mut group = c.benchmark_group("read_deserialize");
     group.throughput(Throughput::Elements(1));
@@ -236,7 +258,7 @@ fn bench_single_write(c: &mut Criterion) {
     group.bench_function("put_single", |b| {
         b.iter(|| {
             let note = create_test_note(counter);
-            let id_str = note.id.to_string();
+            let id_str = Uuid::from(note.id()).to_string();
             counter = counter.wrapping_add(1);
             db.put("notes", &id_str, &note).expect("put note");
         });
@@ -282,7 +304,7 @@ fn bench_batch_write(c: &mut Criterion) {
                     db.batch_write(|batch_db| {
                         for i in 0..size {
                             let note = create_test_note(i as usize);
-                            let id_str = note.id.to_string();
+                            let id_str = Uuid::from(note.id()).to_string();
                             batch_db
                                 .put("notes", &id_str, &note)
                                 .expect("put note");
@@ -317,7 +339,7 @@ fn bench_delete(c: &mut Criterion) {
     group.bench_function("delete_single", |b| {
         b.iter(|| {
             let id = note_ids[index % note_ids.len()];
-            let id_str = id.to_string();
+            let id_str = Uuid::from(id).to_string();
             index = index.wrapping_add(1);
 
             let existed = db.delete("notes", &id_str).expect("delete note");
@@ -345,11 +367,11 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_effectiveness");
     group.throughput(Throughput::Elements(1));
 
-    let hot_id = note_ids[0].to_string();
+    let hot_id = Uuid::from(note_ids[0]).to_string();
     group.bench_function("hot_read", |b| {
         b.iter(|| {
             db.get::<Note, _, _>("notes", &hot_id, |archived| {
-                black_box(archived.id);
+                black_box(archived);
             })
             .expect("get note")
         });
@@ -358,11 +380,12 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     let mut cold_index = 0;
     group.bench_function("cold_read", |b| {
         b.iter(|| {
-            let cold_id = note_ids[cold_index % note_ids.len()].to_string();
+            let cold_id =
+                Uuid::from(note_ids[cold_index % note_ids.len()]).to_string();
             cold_index = cold_index.wrapping_add(1);
 
             db.get::<Note, _, _>("notes", &cold_id, |archived| {
-                black_box(archived.id);
+                black_box(archived);
             })
             .expect("get note")
         });
@@ -401,7 +424,7 @@ fn bench_transaction_overhead(c: &mut Criterion) {
 
             for i in 0..batch_size {
                 let note = create_test_note(i as usize);
-                let id_str = note.id.to_string();
+                let id_str = Uuid::from(note.id()).to_string();
                 db.put("notes", &id_str, &note).expect("put note");
             }
         });
@@ -419,7 +442,7 @@ fn bench_transaction_overhead(c: &mut Criterion) {
             db.batch_write(|batch_db| {
                 for i in 0..batch_size {
                     let note = create_test_note(i as usize);
-                    let id_str = note.id.to_string();
+                    let id_str = Uuid::from(note.id()).to_string();
                     batch_db.put("notes", &id_str, &note).expect("put note");
                 }
                 Ok(())
