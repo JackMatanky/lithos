@@ -267,13 +267,8 @@ impl TryFrom<RawGlobalPaths> for Paths {
 
     #[inline]
     fn try_from(raw: RawGlobalPaths) -> Result<Self, Self::Error> {
-        let schema =
-            raw.schema.map(Schema::try_from).transpose()?.unwrap_or_default();
-        let template = raw
-            .template
-            .map(Template::try_from)
-            .transpose()?
-            .unwrap_or_default();
+        let schema = raw.schema.map(Schema::from).unwrap_or_default();
+        let template = raw.template.map(Template::from).unwrap_or_default();
         Ok(Paths::new(schema, template))
     }
 }

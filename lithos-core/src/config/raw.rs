@@ -71,7 +71,7 @@ use std::collections::HashMap;
 use super::{
     frontmatter::RawFrontmatter,
     logging::RawLogging,
-    paths::{RawSchemaPaths, RawTemplatePaths},
+    paths::{CacheDir, SchemaOverrides, TemplateOverrides},
 };
 
 /// Raw global configuration input.
@@ -109,9 +109,9 @@ pub struct RawVault {
 #[non_exhaustive]
 pub struct RawGlobalPaths {
     /// Schema-related filesystem config.
-    pub schema: Option<RawSchemaPaths>,
+    pub schema: Option<SchemaOverrides>,
     /// Template-related filesystem config.
-    pub template: Option<RawTemplatePaths>,
+    pub template: Option<TemplateOverrides>,
 }
 
 /// Raw vault filesystem configuration.
@@ -119,11 +119,11 @@ pub struct RawGlobalPaths {
 #[non_exhaustive]
 pub struct RawVaultPaths {
     /// Cache directory override.
-    pub cache_dir: Option<String>,
+    pub cache_dir: Option<CacheDir>,
     /// Schema-related filesystem config.
-    pub schema: Option<RawSchemaPaths>,
+    pub schema: Option<SchemaOverrides>,
     /// Template-related filesystem config.
-    pub template: Option<RawTemplatePaths>,
+    pub template: Option<TemplateOverrides>,
 }
 
 /// Raw trusted vaults configuration.
@@ -243,7 +243,7 @@ pub enum RawTaskFieldSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{global::Global, vault::Vault};
+    use crate::config::global::Global;
 
     #[test]
     fn deserializes_unknown_keys_without_error() {
@@ -276,20 +276,18 @@ log_level = "info"
 
     #[test]
     fn conversion_rejects_absolute_template_dir_in_vault() {
-        let raw = RawVault {
-            filesystem: Some(RawVaultPaths {
-                cache_dir: None,
-                schema: None,
-                template: Some(RawTemplatePaths {
-                    templates_dir: Some("/abs".to_owned()),
-                }),
-            }),
-            frontmatter: None,
-            logging: None,
-            task: None,
-        };
-
-        let result = Vault::try_from(raw);
-        assert!(result.is_err(), "Absolute templates_dir should be rejected");
+        // Validation now happens at deserialization time for Overrides.
+        // We simulate deserialization failure by checking if we can construct
+        // it invalidly. But since we can't construct an invalid
+        // TemplatesDir via safe API, we test deserialization directly.
+        let toml = r#"
+[filesystem.template]
+templates_dir = "/abs"
+"#;
+        let parsed: Result<RawVault, _> = toml::from_str(toml);
+        assert!(
+            parsed.is_err(),
+            "Absolute templates_dir should be rejected during deserialization"
+        );
     }
 }

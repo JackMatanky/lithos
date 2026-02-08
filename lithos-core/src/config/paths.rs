@@ -3,6 +3,11 @@
 //! This module contains types for validated configuration paths,
 //! including schemas directory, templates directory, and file names.
 
+#![expect(
+    clippy::exhaustive_structs,
+    reason = "rkyv generates exhaustive archived structs"
+)]
+
 use std::path::{Path, PathBuf};
 
 use super::error::ConfigError;
@@ -184,9 +189,9 @@ impl Default for Template {
 #[non_exhaustive]
 pub struct SchemaOverrides {
     /// Overridden schemas directory.
-    schemas_dir: Option<SchemasDir>,
+    pub schemas_dir: Option<SchemasDir>,
     /// Overridden property bank filename.
-    property_bank_filename: Option<FileName>,
+    pub property_bank_filename: Option<FileName>,
 }
 
 impl SchemaOverrides {
@@ -236,7 +241,7 @@ impl SchemaOverrides {
 #[non_exhaustive]
 pub struct TemplateOverrides {
     /// Overridden templates directory.
-    templates_dir: Option<TemplatesDir>,
+    pub templates_dir: Option<TemplatesDir>,
 }
 
 impl TemplateOverrides {
@@ -298,14 +303,6 @@ impl SchemasDir {
         Ok(Self(path))
     }
 
-    pub(crate) fn try_new_with_field(
-        field: &'static str,
-        path: PathBuf,
-    ) -> Result<Self, ConfigError> {
-        validate_relative_path(field, &path)?;
-        Ok(Self(path))
-    }
-
     /// Return the directory path.
     #[inline]
     #[must_use]
@@ -355,14 +352,6 @@ impl TemplatesDir {
     #[inline]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         validate_relative_path("templates_dir", &path)?;
-        Ok(Self(path))
-    }
-
-    pub(crate) fn try_new_with_field(
-        field: &'static str,
-        path: PathBuf,
-    ) -> Result<Self, ConfigError> {
-        validate_relative_path(field, &path)?;
         Ok(Self(path))
     }
 
@@ -480,22 +469,6 @@ impl FileName {
         Ok(Self(value))
     }
 
-    pub(crate) fn try_new_with_field(
-        field: &'static str,
-        value: impl Into<Box<str>>,
-    ) -> Result<Self, ConfigError> {
-        let value = value.into();
-        validate_non_empty(field, &value)?;
-        if value.contains('/') || value.contains('\\') {
-            return Err(ConfigError::ValidationFailed {
-                field: field.to_owned().into(),
-                message: format!("{field} must not contain path separators")
-                    .into(),
-            });
-        }
-        Ok(Self(value))
-    }
-
     /// Return the file name as a string slice.
     #[inline]
     #[must_use]
@@ -572,76 +545,30 @@ impl From<FileName> for String {
     }
 }
 
+impl From<SchemaOverrides> for Schema {
+    #[inline]
+    fn from(overrides: SchemaOverrides) -> Self {
+        let defaults = Schema::default();
+        let schemas_dir = overrides.schemas_dir.unwrap_or(defaults.schemas_dir);
+        let property_bank_filename = overrides
+            .property_bank_filename
+            .unwrap_or(defaults.property_bank_filename);
+        Self::new(schemas_dir, property_bank_filename)
+    }
+}
+
+impl From<TemplateOverrides> for Template {
+    #[inline]
+    fn from(overrides: TemplateOverrides) -> Self {
+        let defaults = Template::default();
+        let templates_dir =
+            overrides.templates_dir.unwrap_or(defaults.templates_dir);
+        Self::new(templates_dir)
+    }
+}
+
 // ============================================================================
 // Raw DTOs (Deserialization Boundary - Internal)
-// ============================================================================
-
-/// Raw schema filesystem configuration (unvalidated input from config files).
-///
-/// This is a serde-only DTO that accepts flexible input from TOML/YAML/JSON.
-/// All fields are optional to support partial configuration and defaults.
-/// Validation happens during conversion to [`Schema`] via [`TryFrom`].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[non_exhaustive]
-pub struct RawSchemaPaths {
-    /// Directory containing schema files.
-    pub schemas_dir: Option<String>,
-    /// Property bank filename.
-    pub property_bank_filename: Option<String>,
-}
-
-impl TryFrom<RawSchemaPaths> for Schema {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(raw: RawSchemaPaths) -> Result<Self, Self::Error> {
-        let defaults = Schema::default();
-        let schemas_dir = match raw.schemas_dir {
-            Some(value) => SchemasDir::try_new_with_field(
-                "schemas_dir",
-                PathBuf::from(value),
-            )?,
-            None => defaults.schemas_dir,
-        };
-        let property_bank_filename = match raw.property_bank_filename {
-            Some(value) => {
-                FileName::try_new_with_field("property_bank_filename", value)?
-            }
-            None => defaults.property_bank_filename,
-        };
-        Ok(Schema::new(schemas_dir, property_bank_filename))
-    }
-}
-
-/// Raw template filesystem configuration (unvalidated input from config files).
-///
-/// This is a serde-only DTO that accepts flexible input from TOML/YAML/JSON.
-/// All fields are optional to support partial configuration and defaults.
-/// Validation happens during conversion to [`Template`] via [`TryFrom`].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[non_exhaustive]
-pub struct RawTemplatePaths {
-    /// Directory containing template files.
-    pub templates_dir: Option<String>,
-}
-
-impl TryFrom<RawTemplatePaths> for Template {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(raw: RawTemplatePaths) -> Result<Self, Self::Error> {
-        let defaults = Template::default();
-        let templates_dir = match raw.templates_dir {
-            Some(value) => TemplatesDir::try_new_with_field(
-                "templates_dir",
-                PathBuf::from(value),
-            )?,
-            None => defaults.templates_dir,
-        };
-        Ok(Template::new(templates_dir))
-    }
-}
-
 // ============================================================================
 // Private Validation Helpers (Implementation Details)
 // ============================================================================
