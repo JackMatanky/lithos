@@ -134,10 +134,13 @@ Additional runtime/persistence mental model (for caching + rollback):
 
 ```mermaid
 flowchart LR
-  Caller[App/CLI] --> Qry[config::query::Query]
-  Caller --> Cmd[config::command::Command]
-  Qry --> Agg[Config::build]
+  Caller[App/CLI] --> Ingest[config::ingest]
+  Ingest --> Raw[RawGlobal/RawVault]
+  Raw --> Domain[TryFrom<Raw*>]
+  Domain --> Agg[Config::build]
   Agg --> Merged[Merged Config]
+  Caller --> Cmd[config::command::Command]
+  Caller --> Qry[config::query::Query]
   Cmd --> Store[(Database)]
   Qry --> Store
 
@@ -213,8 +216,8 @@ Config files are deserialized into Raw types before validation:
 **Conversion Flow**:
 
 ```rust
-// Deserialize from TOML
-let raw: RawGlobal = toml::from_str(content)?;
+// Extract from Figment providers
+let raw: RawGlobal = config::ingest::ingest_global()?;
 
 // Validate and convert to domain type
 let global: Global = raw.try_into()
@@ -232,6 +235,11 @@ let global: Global = raw.try_into()
 - `config/raw.rs` houses all `Raw*` types (serde-only input shapes).
 - `config/ingest.rs` owns Figment provider wiring and extraction into `Raw*` types.
 - Domain modules only depend on `Raw*` types and `TryFrom` conversions, not Figment itself.
+
+**Figment boundary**:
+
+- Figment is confined to `config::ingest` (adapter boundary).
+- The config domain remains Figment-agnostic and operates on validated types only.
 
 #### Vault identity (required)
 
@@ -311,6 +319,11 @@ Vault identity:
   - all required fields are non-empty and internally consistent.
   - constrained values (e.g., log level) are valid.
 
+**Boundary rule**:
+
+- `Config::build` accepts **validated** `Global`/`Vault` types.
+- `config::ingest` extracts `Raw*` types via Figment; `TryFrom<Raw*>` produces validated domain types before calling `Config::build`.
+
 ### 3.4 Integration & Data Flow
 
 Sequence: resolve config for a vault operation.
@@ -318,7 +331,6 @@ Sequence: resolve config for a vault operation.
 ```mermaid
 sequenceDiagram
   participant Caller
-  participant Q as config::query::Query
   participant Agg as Config::build
   participant DB as Database
 
@@ -326,7 +338,10 @@ sequenceDiagram
   Ingest->>Ingest: extract RawGlobal/RawVault
   Ingest-->>Caller: RawGlobal/RawVault
 
-  Caller->>Agg: build(global_raw, vault_path, vault_raw)
+  Caller->>Domain: TryFrom<RawGlobal/RawVault>
+  Domain-->>Caller: Global/Vault (validated)
+
+  Caller->>Agg: build(global, vault_path, vault)
   Agg-->>Caller: Config (merged + validated)
 ```
 

@@ -200,28 +200,28 @@ With `VaultId` required by convention, prefer the target layout. It only helps w
 #### Component: `config::command::Command`
 
 - **Responsibility**: persist config layers and manage the merged-config read model.
-- **Current Interface**:
+- **Legacy interface (pre-split errors; for context only)**:
   - `save_global(&self, config: &Global) -> Result<(), ConfigError>`
   - `save_vault(&self, config: &Vault) -> Result<(), ConfigError>`
 
 Target interface (matches clarified requirements):
 
 - Layer persistence
-  - `save_global(&self, global: &Global) -> Result<(), ConfigError>`
-  - `save_vault(&self, vault_id: VaultId, vault: &Vault) -> Result<(), ConfigError>`
+  - `save_global(&self, global: &Global) -> Result<(), ConfigCommandError>`
+  - `save_vault(&self, vault_id: VaultId, vault: &Vault) -> Result<(), ConfigCommandError>`
 
 - Layer retrieval (kept on command side to keep query focused on merged config)
-  - `load_global(&self) -> Result<Option<Global>, ConfigError>`
-  - `load_vault(&self, vault_id: VaultId) -> Result<Option<Vault>, ConfigError>`
+  - `load_global(&self) -> Result<Option<Global>, ConfigCommandError>`
+  - `load_vault(&self, vault_id: VaultId) -> Result<Option<Vault>, ConfigCommandError>`
 
 - Merged read model management
-  - `rebuild_merged(&self, vault_id: VaultId, vault_root: &Path) -> Result<ConfigVersion, ConfigError>`
+  - `rebuild_merged(&self, vault_id: VaultId, vault_root: &Path) -> Result<ConfigVersion, ConfigCommandError>`
     - loads global+vault layers,
     - builds merged `Config`,
     - persists a new merged-config version for the vault,
     - marks it active.
-  - `activate_version(&self, vault_id: VaultId, version: ConfigVersion) -> Result<(), ConfigError>`
-  - `rollback(&self, vault_id: VaultId, steps: u32) -> Result<ConfigVersion, ConfigError>` (optional convenience)
+  - `activate_version(&self, vault_id: VaultId, version: ConfigVersion) -> Result<(), ConfigCommandError>`
+  - `rollback(&self, vault_id: VaultId, steps: u32) -> Result<ConfigVersion, ConfigCommandError>` (optional convenience)
 
 Errors:
 
@@ -231,14 +231,14 @@ Errors:
 #### Component: `config::query::Query`
 
 - **Responsibility**: retrieve the active merged config for a vault.
-- **Current Interface**:
+- **Legacy interface (pre-split errors; for context only)**:
   - `load(&self) -> Result<Config, ConfigError>`
   - `load_global(&self) -> Result<Option<Global>, ConfigError>`
   - `load_vault(&self) -> Result<Option<Vault>, ConfigError>`
 
 Target interface (query is intentionally small):
 
-- `get(&self, vault_id: VaultId) -> Result<Option<Config>, ConfigError>`
+  - `get(&self, vault_id: VaultId) -> Result<Option<Config>, ConfigQueryError>`
 
 Notes:
 
@@ -260,6 +260,10 @@ sequenceDiagram
   DB-->>Cmd: Ok
 ```
 
+#### Config Ingest (adapter boundary)
+
+`config::ingest` builds Figment providers and extracts `Raw*` types. The domain converts `Raw*` into validated types via `TryFrom`.
+
 #### Load merged config (recommended shape)
 
 ```mermaid
@@ -271,10 +275,12 @@ sequenceDiagram
   participant Agg as Config::build
 
   Caller->>Cmd: rebuild_merged(vault_id, vault_root)
-  Cmd->>DB: get_owned("config","global")
-  DB-->>Cmd: Option<Global>
-  Cmd->>DB: get_owned("config", vault_id)
-  DB-->>Cmd: Option<Vault>
+  Cmd->>Ingest: ingest_global()
+  Ingest-->>Cmd: RawGlobal
+  Cmd->>Ingest: ingest_vault(vault_root)
+  Ingest-->>Cmd: RawVault
+  Cmd->>Domain: TryFrom<RawGlobal/RawVault>
+  Domain-->>Cmd: Global/Vault (validated)
   Cmd->>Agg: build(global, vault_root, vault)
   Agg-->>Cmd: Config
   Cmd->>DB: put("merged_config_versions", (vault_id, version), &Config)
@@ -305,7 +311,7 @@ Core algorithm is split:
 
 Figment integration (merge pipeline):
 
-- Build a Figment instance from providers (defaults, global, vault, env, CLI).
+- Build a Figment instance from providers (defaults, global, vault, env, CLI) in `config::ingest`.
 - Use `merge` to apply higher-precedence layers (incoming wins).
 - Use `Serialized::default` for per-key defaults instead of custom fallback logic.
 - Extract `RawGlobal`/`RawVault` (or a merged raw config) and then validate into domain types.
@@ -362,7 +368,7 @@ Implementation guidance (rkyv + redb):
 ## 6. Pre-Mortem (The "Inversion")
 
 - **Risk**: configuration load uses the wrong vault identity, leading to incorrect paths in runtime behavior.
-  - _Mitigation_: require `vault_root` as an explicit argument.
+  - _Mitigation_: require `vault_id` for vault-scoped operations; require `vault_root` only for rebuild/ingest steps.
 
 - **Risk**: storage errors lose structure and become hard to branch on.
   - _Mitigation_: keep `ConfigCommandError`/`ConfigQueryError` with structured storage variants and format diagnostics at the CLI/app boundary.
@@ -376,11 +382,6 @@ Implementation guidance (rkyv + redb):
 | 2026-02-04 | "load() hard-codes vault identity."      | "Require explicit vault_id; see Decision 4.1."     |
 | 2026-02-04 | "Merged config should support rollback." | "Add versioned merged-config read model; see 3.2." |
 
-## 8. References
-
-- rkyv `access` (validated, safe alternative): https://docs.rs/rkyv/latest/rkyv/fn.access.html
-- rkyv `access_unchecked` safety contract (bytes must represent a valid archived type): https://docs.rs/rkyv/latest/rkyv/fn.access_unchecked.html
-- redb `AccessGuard` docs (scoped accessor; data released when guard is dropped): https://docs.rs/redb/latest/redb/struct.AccessGuard.html
 #### Component: `config::ingest`
 
 - **Responsibility**: build Figment providers, extract `Raw*` types, and keep Figment out of domain modules.
@@ -390,3 +391,9 @@ Implementation guidance (rkyv + redb):
 - **Notes**:
   - CQRS uses `Raw*` outputs to build validated domain types.
   - Ingest errors are mapped at the application boundary, not inside the domain.
+
+## 8. References
+
+- rkyv `access` (validated, safe alternative): https://docs.rs/rkyv/latest/rkyv/fn.access.html
+- rkyv `access_unchecked` safety contract (bytes must represent a valid archived type): https://docs.rs/rkyv/latest/rkyv/fn.access_unchecked.html
+- redb `AccessGuard` docs (scoped accessor; data released when guard is dropped): https://docs.rs/redb/latest/redb/struct.AccessGuard.html
