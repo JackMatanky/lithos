@@ -175,6 +175,7 @@ Frontmatter is specified separately in `docs/design/005-note-frontmatter.md` and
 Canonical model set (persisted unless noted):
 
 - `Note { id: Uuid, path: NotePath, frontmatter: Option<Frontmatter>, links: Vec<Link>, tags: Vec<Tag>, headings: Vec<Heading>, tasks: Vec<Task>, sections: Vec<Section> }`
+  - `Frontmatter { fields: HashMap<String, FieldValue> }` (uses shared FieldValue - see 3.2.1)
 - `StagedNote { note: Note, pending_events: Vec<NoteEvents> }` (in-memory only, not persisted)
 - `NotePath(Box<str>)`
 - `Link { target: Target, anchor: Option<Anchor>, position: usize, alias: Option<Box<str>>, style: Style, embed_type: Option<EmbedType> }`
@@ -183,6 +184,53 @@ Canonical model set (persisted unless noted):
 - `Task { text: Box<str>, status: TaskStatus, position: usize }`
 - `Heading { level: u8, text: Box<str>, position: usize }`
 - `Section { heading: Option<Heading>, content: Box<str>, range: Range<usize> }`
+
+#### 3.2.1 FieldValue (Shared Primitive)
+
+**Purpose**: Runtime representation of note metadata values (shared by frontmatter and task metadata).
+
+**Location**: `note/value.rs` (NEW - extracted from frontmatter for shared use)
+
+**Shape**:
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldValue {
+    String(String),
+    Number(f64),
+    Boolean(bool),
+    Date(chrono::DateTime<chrono::Utc>),
+    Array(Vec<FieldValue>),
+    Object(HashMap<String, FieldValue>),
+}
+```
+
+**Used by**:
+- `Frontmatter` (YAML/TOML parsed values) - see [005-note-frontmatter.md](005-note-frontmatter.md)
+- `TaskMetadata` (inline `[key:: value]` fields) - see [006b-note-list-task.md](006b-note-list-task.md)
+
+**Rationale**: Single value primitive for all note metadata avoids duplication between frontmatter and task metadata. Both need to represent structured values (strings, numbers, dates, arrays, objects) in a uniform way.
+
+**Context Boundary Note**: `FieldValue` is owned by the note context. Other contexts (e.g., config) define their own value types for domain-specific needs (e.g., `SettingValue` for task metadata configuration).
+
+#### 3.2.2 NotePath Validation Examples
+
+`NotePath` represents validated markdown file paths in the vault.
+
+**Valid NotePath Examples**:
+```rust
+// ✅ Valid note paths
+NotePath::try_from("notes/foo.md")?;
+NotePath::try_from("a.md")?;  // root-level
+NotePath::try_from("deep/nested/path.md")?;
+
+// ❌ Invalid
+NotePath::try_from("/notes/foo.md")?;  // Absolute → Err(AbsolutePath)
+NotePath::try_from("../foo.md")?;       // Traversal → Err(PathTraversal)
+NotePath::try_from("notes//foo.md")?;   // Double slash → normalize first
+NotePath::try_from("notes/foo.txt")?;   // Wrong extension → Err(NotMarkdown)
+```
+
+**Context Boundary Note**: `NotePath` is note-domain specific (actual note file paths). Do NOT confuse with `VaultRelPath` (schema context, used in FileSpec validation for directory restrictions).
 
 ### 3.3 Component & Interface Specifications
 
@@ -427,6 +475,35 @@ Validation:
 Type evolution rule:
 
 - Newtypes are encouraged, but changing an existing persisted field from `T` to `Newtype(T)` may still be a breaking archived-layout change depending on rkyv representation and derives. Treat it as a migration decision unless verified safe.
+
+### 3.7 File Structure & Module Organization
+
+Recommended module layout for the note context:
+
+```
+note/
+├── mod.rs
+├── aggregate.rs      // Note
+├── value.rs          // FieldValue (NEW - shared primitive)
+├── frontmatter.rs    // Frontmatter (uses FieldValue)
+├── task.rs           // Task, TaskMetadata (uses FieldValue) - added by 006b
+├── list.rs           // List, ListItem - added by 006b
+├── link.rs           // Link, Target, Anchor, Style, EmbedType
+├── tag.rs            // Tag, TagPath
+├── structure.rs      // Heading, Section
+├── events.rs         // Domain events
+└── ports.rs          // Query, Command traits
+```
+
+**New modules**:
+- `value.rs` - Shared `FieldValue` primitive for frontmatter and task metadata
+- `task.rs` - Task entities (from [006b-note-list-task.md](006b-note-list-task.md))
+- `list.rs` - List entities (from [006b-note-list-task.md](006b-note-list-task.md))
+
+**Cross-references**:
+- Task/List integration: [006b-note-list-task.md](006b-note-list-task.md)
+- Frontmatter spec: [005-note-frontmatter.md](005-note-frontmatter.md)
+- Note CQRS: [004-note-cqrs.md](004-note-cqrs.md)
 
 ## 4. Alternatives & Decisions (The "Divergence")
 

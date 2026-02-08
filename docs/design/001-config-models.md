@@ -180,12 +180,12 @@ These changes are recommended because they reduce invalid states, simplify mergi
 
 Config values use newtypes to enforce invariants at construction time:
 
-| Type | Backing | Purpose | Rules |
-|------|---------|---------|-------|
-| `LogLevel` | enum | Logging verbosity | Error/Warn/Info/Debug/Trace |
-| `NotesDir` | `PathBuf` | Notes directory path | Vault-relative, non-empty |
-| `SchemasDir` | `PathBuf` | Schemas directory path | Vault-relative, non-empty |
-| `TemplatesDir` | `PathBuf` | Templates directory path | Vault-relative, non-empty |
+| Type           | Backing   | Purpose                  | Rules                       |
+| -------------- | --------- | ------------------------ | --------------------------- |
+| `LogLevel`     | enum      | Logging verbosity        | Error/Warn/Info/Debug/Trace |
+| `NotesDir`     | `PathBuf` | Notes directory path     | Vault-relative, non-empty   |
+| `SchemasDir`   | `PathBuf` | Schemas directory path   | Vault-relative, non-empty   |
+| `TemplatesDir` | `PathBuf` | Templates directory path | Vault-relative, non-empty   |
 
 **Rationale**: Using newtypes prevents invalid states (empty paths, invalid log levels) and makes validation explicit at construction rather than scattered throughout the codebase.
 
@@ -199,6 +199,7 @@ Config files are deserialized into Raw types before validation:
 - `RawLogging` - Logging configuration (string log level before enum conversion)
 
 **Conversion Flow**:
+
 ```rust
 // Deserialize from TOML
 let raw: RawGlobal = toml::from_str(content)?;
@@ -209,6 +210,7 @@ let global: Global = raw.try_into()
 ```
 
 **Rationale**: Separating Raw types from validated domain types allows:
+
 - Flexible TOML parsing (optional fields, string enums)
 - Clear validation boundaries (`TryFrom` conversion)
 - Better error messages (know exactly what failed to validate)
@@ -453,10 +455,10 @@ rkyv patterns:
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                     | Resolution                                     |
-| :--------- | :----------------------------------- | :--------------------------------------------- |
-| 2026-02-04 | "Merge uses empty-string sentinels." | "Recommend Option overlays; see Decision 4.1." |
-| 2026-02-04 | "Paths are generic Strings."         | "Recommend PathBuf/newtypes; see Type-driven upgrades in 3.2."       |
+| Date       | Critique / Issue                     | Resolution                                                     |
+| :--------- | :----------------------------------- | :------------------------------------------------------------- |
+| 2026-02-04 | "Merge uses empty-string sentinels." | "Recommend Option overlays; see Decision 4.1."                 |
+| 2026-02-04 | "Paths are generic Strings."         | "Recommend PathBuf/newtypes; see Type-driven upgrades in 3.2." |
 
 ## 8. References
 
