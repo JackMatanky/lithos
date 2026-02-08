@@ -47,8 +47,8 @@ Terminology note:
 
 Clarification:
 
-- `SettingValue` is **owned by the config context** and used for task metadata configuration (see [003-config-task.md](003-config-task.md)).
-- Other contexts define their own value types for domain-specific needs (e.g., note context's `FieldValue` for frontmatter and task metadata).
+- The config context exports **validated specs and newtypes**, not a universal value type.
+- Other contexts define their own value types for domain-specific needs (e.g., note context's `FieldValue`).
 
 Serialization boundary note (serde vs rkyv):
 
@@ -149,7 +149,7 @@ flowchart LR
 
 This section records the important model decisions.
 
-#### Type-driven upgrades (recommended)
+#### Type-Driven Design & Config Newtypes (Recommended)
 
 These changes are recommended because they reduce invalid states, simplify merging, and make the model easier to evolve.
 
@@ -158,7 +158,7 @@ These changes are recommended because they reduce invalid states, simplify mergi
   - Prefer representing “unset/override not provided” as `Option<T>` in the _override_ layers.
 
 - **Introduce validated newtypes for repeated invariants**
-  - `NonEmptyString` (or more specific types like `FrontmatterKey`, `DirName`, `FileName`).
+  - `FrontmatterKey`, `DirName`, `FileName` instead of raw strings.
   - `VaultRoot(PathBuf)` with validation rules.
   - `CacheDir(RelPath)` vs a generic string.
 
@@ -176,8 +176,6 @@ These changes are recommended because they reduce invalid states, simplify mergi
   - `SchemaVersion(pub String)` currently implements `Deref<Target = str>`.
   - Prefer an explicit `as_str()` (and `Display`) so the type boundary stays visible. (Rationale: `Deref` participates in implicit deref coercions; implement it only when that implicit behavior is desirable and unsurprising.)
 
-#### Config Value Newtypes (Type-Driven Design)
-
 Config values use newtypes to enforce invariants at construction time:
 
 | Type           | Backing   | Purpose                  | Rules                       |
@@ -187,6 +185,21 @@ Config values use newtypes to enforce invariants at construction time:
 | `TemplatesDir` | `PathBuf` | Templates directory path | Vault-relative, non-empty   |
 
 **Rationale**: Using newtypes prevents invalid states (empty paths, invalid log levels) and makes validation explicit at construction rather than scattered throughout the codebase.
+
+#### Figment Usage (Layering + Defaults)
+
+Config layering should use Figment providers to avoid custom merge logic:
+
+- **Merge precedence**: `Figment::merge(provider)` gives the incoming provider higher precedence.
+- **Join precedence**: `Figment::join(provider)` keeps existing values and only fills missing keys.
+- **Arrays/lists**: treated as replace-on-merge (incoming list replaces existing list).
+- **Defaults**: prefer `Serialized::default("key", value)` for per-key defaults.
+- **Env vars (if supported)**: `Env::prefixed("LITHOS_").split("_")` maps `LITHOS_LOGGING_LEVEL` → `logging.level`.
+
+Design contract:
+
+- Use `merge` for overrides (global → vault → env → CLI).
+- Use `join` only for fallback defaults.
 
 #### Raw Input Types (Serde-Friendly)
 
@@ -213,6 +226,12 @@ let global: Global = raw.try_into()
 - Flexible TOML parsing (optional fields, string enums)
 - Clear validation boundaries (`TryFrom` conversion)
 - Better error messages (know exactly what failed to validate)
+
+**Placement**:
+
+- `config/raw.rs` houses all `Raw*` types (serde-only input shapes).
+- `config/ingest.rs` owns Figment provider wiring and extraction into `Raw*` types.
+- Domain modules only depend on `Raw*` types and `TryFrom` conversions, not Figment itself.
 
 #### Vault identity (required)
 
@@ -303,15 +322,11 @@ sequenceDiagram
   participant Agg as Config::build
   participant DB as Database
 
-  Caller->>Q: load_global()
-  Q->>DB: get_owned("config","global")
-  DB-->>Q: Option<Global>
+  Caller->>Ingest: read sources (Figment providers)
+  Ingest->>Ingest: extract RawGlobal/RawVault
+  Ingest-->>Caller: RawGlobal/RawVault
 
-  Caller->>Q: load_vault()
-  Q->>DB: get_owned("config","vault")
-  DB-->>Q: Option<Vault>
-
-  Caller->>Agg: build(global, vault_path, vault)
+  Caller->>Agg: build(global_raw, vault_path, vault_raw)
   Agg-->>Caller: Config (merged + validated)
 ```
 
@@ -373,8 +388,14 @@ Target layout (flat, file-per-module):
 - `lithos-core/src/config/template.rs`
   - `Template` + template-related validated value types
 
-- `lithos-core/src/config/setting_value.rs`
-  - `SettingValue` (config-specific) and any focused value newtypes/enums it decomposes into
+- `lithos-core/src/config/raw.rs`
+  - `Raw*` types used for serde/Figment extraction
+
+- `lithos-core/src/config/ingest.rs`
+  - Figment provider wiring and extraction into `Raw*` types
+  - Keeps Figment out of the domain modules
+
+  (No universal config value type; value conversion happens in the consuming context.)
 
 Notes:
 
@@ -438,7 +459,6 @@ rkyv patterns:
 
 ### 5.3 Security & Privacy
 
-- `SettingValue::Encrypted` must never reveal raw bytes in debug output (current behavior masks bytes).
 - Encryption/decryption belongs at the adapter boundary; core stores opaque bytes.
 
 ## 6. Pre-Mortem (The "Inversion")

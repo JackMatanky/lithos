@@ -51,7 +51,7 @@ See `docs/design/001-config-models.md` for the vault-identity discussion and the
   - explicit vault identity (`VaultId`),
   - explicit versioning/rollback semantics for the merged-config read model,
   - a query API that primarily provides a `get` for the active merged config.
-- Match the error pattern used in other contexts: keep `ConfigError` as the surfaced error type and map storage failures into `ConfigError::Storage`.
+- Match the error pattern used in other contexts: split command/query error types and keep storage errors structured.
 
 **Non-Goals**
 
@@ -225,8 +225,8 @@ Target interface (matches clarified requirements):
 
 Errors:
 
-- Use `ConfigError` end-to-end.
-- Map storage failures into `ConfigError::Storage(...)` (stringified) to match Note/Schema behavior.
+- Use split error types (`ConfigCommandError`, `ConfigQueryError`).
+- Map storage failures into the appropriate CQRS error type (no eager stringification in core).
 
 #### Component: `config::query::Query`
 
@@ -294,7 +294,7 @@ sequenceDiagram
 Core algorithm is split:
 
 - Command-side `rebuild_merged(vault_id, vault_root)`
-  - loads global/vault layers,
+  - ingests global/vault layers via `config::ingest`,
   - delegates to `Config::build`,
   - persists a new immutable merged-config version,
   - updates the active pointer.
@@ -303,11 +303,18 @@ Core algorithm is split:
   - reads active version for the vault,
   - returns the merged config stored under that version.
 
+Figment integration (merge pipeline):
+
+- Build a Figment instance from providers (defaults, global, vault, env, CLI).
+- Use `merge` to apply higher-precedence layers (incoming wins).
+- Use `Serialized::default` for per-key defaults instead of custom fallback logic.
+- Extract `RawGlobal`/`RawVault` (or a merged raw config) and then validate into domain types.
+
 Error-handling rules (match existing contexts):
 
-- Use `ConfigError` end-to-end.
-- Map DB failures into `ConfigError::Storage(...)` at the CQRS boundary.
-- If we later want structured DB errors, introduce separate CQRS error types as an additive API; don’t change the baseline pattern.
+- Use split CQRS error types as the baseline pattern.
+- Avoid eager stringification at the CQRS boundary; preserve structured errors.
+- If additional context is needed for CLI output, format it at the application boundary.
 
 ## 4. Alternatives & Decisions (The "Divergence")
 
@@ -357,8 +364,8 @@ Implementation guidance (rkyv + redb):
 - **Risk**: configuration load uses the wrong vault identity, leading to incorrect paths in runtime behavior.
   - _Mitigation_: require `vault_root` as an explicit argument.
 
-- **Risk**: storage errors are stringified, which can make debugging harder.
-  - _Mitigation_: include stable operation/key context in `ConfigError::Storage(...)`, and attach richer diagnostics at the CLI/app boundary; if needed, introduce additive CQRS error wrappers later.
+- **Risk**: storage errors lose structure and become hard to branch on.
+  - _Mitigation_: keep `ConfigCommandError`/`ConfigQueryError` with structured storage variants and format diagnostics at the CLI/app boundary.
 - **Risk**: version history grows without bound.
   - _Mitigation_: define a retention policy per vault (e.g., keep last N versions) and prune on rebuild.
 
@@ -374,3 +381,12 @@ Implementation guidance (rkyv + redb):
 - rkyv `access` (validated, safe alternative): https://docs.rs/rkyv/latest/rkyv/fn.access.html
 - rkyv `access_unchecked` safety contract (bytes must represent a valid archived type): https://docs.rs/rkyv/latest/rkyv/fn.access_unchecked.html
 - redb `AccessGuard` docs (scoped accessor; data released when guard is dropped): https://docs.rs/redb/latest/redb/struct.AccessGuard.html
+#### Component: `config::ingest`
+
+- **Responsibility**: build Figment providers, extract `Raw*` types, and keep Figment out of domain modules.
+- **Public Interface (adapter-facing)**:
+  - `ingest_global() -> Result<RawGlobal, ConfigIngestError>`
+  - `ingest_vault(vault_root: &Path) -> Result<RawVault, ConfigIngestError>`
+- **Notes**:
+  - CQRS uses `Raw*` outputs to build validated domain types.
+  - Ingest errors are mapped at the application boundary, not inside the domain.
