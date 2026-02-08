@@ -12,7 +12,7 @@ tags: [config, cqrs, persistence, redb, rkyv, errors]
 Related specs:
 
 - [docs/design/001-config-models.md](001-config-models.md)
-- [docs/design/006a-config-task-schema.md](006a-config-task-schema.md) (task schema is config-driven; CQRS/storage decisions here should support that direction)
+- [docs/design/003-config-task.md](003-config-task.md) (task schema is config-driven; CQRS/storage decisions here should support that direction)
 
 ## 1. Problem Space (The "Why")
 

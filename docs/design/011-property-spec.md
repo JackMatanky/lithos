@@ -427,6 +427,25 @@ However, changing the schema format is a compatibility concern. This design trea
 - Treat both `FileSpec.directory` and runtime `value` as vault-relative paths.
 - Parse using `std::path::Path` and compare using component semantics (`Path::starts_with`).
 
+**Valid VaultRelPath Examples (FileSpec Validation)**:
+
+`VaultRelPath` is used **only** for schema FileSpec directory restrictions.
+
+```rust
+// ✅ Valid vault-relative directory paths
+VaultRelPath::try_from("notes/")?;
+VaultRelPath::try_from("attachments/images/")?;
+VaultRelPath::try_from(".")?;  // Root vault directory
+
+// ❌ Invalid
+VaultRelPath::try_from("/absolute/path/")?;   // Absolute → Err(AbsolutePath)
+VaultRelPath::try_from("../parent/")?;        // Traversal → Err(PathTraversal)
+VaultRelPath::try_from("")?;                  // Empty → Err(EmptyPath)
+VaultRelPath::try_from("C:\\Windows\\")?;     // Windows prefix → Err(AbsolutePath)
+```
+
+**Context Boundary Note**: `VaultRelPath` is schema-domain specific (FileSpec validation). Do NOT confuse with `NotePath` (note context, actual note file paths - see [004-note-models.md](004-note-models.md#322-notepath-validation-examples)).
+
 Traversal policy (I/O-free, conservative):
 
 - Reject absolute paths.
@@ -452,7 +471,35 @@ Cross-platform note: `std::path::Path` has platform-specific semantics. Vault-re
 - Use `OnceLock` (or `std::sync::LazyLock`) + `RwLock`.
 - Store `Arc<regex::Regex>` in the map.
 
-Algorithm:
+**Pseudocode**:
+
+```rust
+fn get_cached_regex(pattern: &str) -> Result<Arc<Regex>, SchemaError> {
+    static CACHE: OnceLock<RwLock<HashMap<String, Arc<Regex>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| RwLock::new(HashMap::new()));
+
+    // Fast path: read lock
+    {
+        let lock = cache.read().unwrap_or_else(PoisonError::into_inner);
+        if let Some(regex) = lock.get(pattern) {
+            return Ok(Arc::clone(regex));
+        }
+    }
+
+    // Slow path: compile without holding lock
+    let compiled = Regex::new(pattern)
+        .map_err(|e| SchemaError::InvalidRegex(pattern.to_owned(), e))?;
+    let arc = Arc::new(compiled);
+
+    // Insert with write lock (check-before-insert)
+    {
+        let mut lock = cache.write().unwrap_or_else(PoisonError::into_inner);
+        Ok(Arc::clone(lock.entry(pattern.to_owned()).or_insert(arc)))
+    }
+}
+```
+
+**Algorithm**:
 
 1. Read lock: return cached `Arc<Regex>` if present.
 2. Miss: compile regex without locks.
@@ -474,11 +521,26 @@ This must be explicit. Options:
 
 Constraint: no new dependencies.
 
-Decision for this iteration:
+**String Length Semantics**:
+
+**Current**: Length measured in **UTF-8 bytes** (`value.len()`)
+
+**Rationale**: Simple, fast, matches Rust native string API
+
+**Limitation**: Multi-byte Unicode characters count as multiple "units"
+
+**Example**:
+```rust
+let text = "café";  // é is 2 bytes
+assert_eq!(text.len(), 5);  // bytes: c a f é(2)
+assert_eq!(text.chars().count(), 4);  // chars: c a f é
+```
+
+**Decision for this iteration**:
 
 - Keep **bytes** semantics to avoid breaking changes.
 - Document it explicitly in rustdoc and in schema docs.
-- Add a follow-up design item to consider `chars().count()` if user expectations demand it.
+- **Future Consideration**: Add `chars().count()` option if user expectations demand it.
 
 #### 3.5.5 Allocation-free validation dispatch
 

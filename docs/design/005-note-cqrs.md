@@ -202,7 +202,7 @@ Notes:
 - Indexes are stored as `String` ids today; the format should be treated as an internal adapter concern.
 - Future: prefer storing UUID bytes to avoid conversion overhead if profiling shows it matters.
 
-#### Task Storage Schema (from 006b-note-list-task.md)
+#### Task Storage Schema (from 007-note-list-task.md)
 
 Tasks are derived from note content during parsing and stored as part of the note read model.
 

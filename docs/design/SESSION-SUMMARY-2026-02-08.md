@@ -2,9 +2,9 @@
 
 ## What We Accomplished
 
-### 1. ✅ Design Spec 006a Refinement (COMPLETED)
+### 1. ✅ Design Spec 003 Refinement (COMPLETED)
 
-We successfully applied **4 major improvements** to `docs/design/006a-config-task.md`:
+We successfully applied **4 major improvements** to `docs/design/003-config-task.md`:
 
 #### Improvement 1: Type Inference via `#[serde(untagged)]`
 - **Before**: Users had to write `type = "integer"` explicitly
@@ -73,9 +73,9 @@ format = "%Y-%m-%d %H:%M"
 docs(design): split task spec and add architectural documentation
 
 - Split 006-task-management-system.md into:
-  - 006a-config-task.md (Config context)
-  - 006b-note-list-task.md (Note context)
-  - 006c-template-task-integration.md (Template context)
+  - 003-config-task.md (Config context)
+  - 007-note-list-task.md (Note context)
+  - 012-template-task-integration.md (Template context)
 - Created docs/operations/clean-slate-protocol.md
 - Created UPDATES-REQUIRED.md tracking doc
 - Created IMPLEMENTATION-READY.md status doc
@@ -83,7 +83,7 @@ docs(design): split task spec and add architectural documentation
 
 ### Commit 2: `b6675ac1` (Refinements)
 ```
-docs(design): refine 006a task config with type inference and first-class date fields
+docs(design): refine 003 task config with type inference and first-class date fields
 
 Improvements:
 - Type inference via #[serde(untagged)]
@@ -108,9 +108,9 @@ Changes:
 ## Files Modified
 
 ### Completed (Committed):
-- ✅ `docs/design/006a-config-task.md` - Fully refined and ready
-- ✅ `docs/design/006b-note-list-task.md` - Complete
-- ✅ `docs/design/006c-template-task-integration.md` - Complete
+- ✅ `docs/design/003-config-task.md` - Fully refined and ready
+- ✅ `docs/design/007-note-list-task.md` - Complete
+- ✅ `docs/design/012-template-task-integration.md` - Complete
 - ✅ `docs/operations/clean-slate-protocol.md` - Complete
 - ✅ `docs/design/UPDATES-REQUIRED.md` - Tracking doc
 - ✅ `docs/design/IMPLEMENTATION-READY.md` - Status doc (updated)
@@ -127,24 +127,24 @@ From `UPDATES-REQUIRED.md`:
    - Update port names to `config::ports::{Query, Command}`
    - Split errors to `CommandError` and `QueryError`
 
-3. **003-note-models.md**
+3. **004-note-models.md**
    - Add `FieldValue` section
    - Update Frontmatter to use `FieldValue`
    - Add NotePath examples
 
-4. **004-note-cqrs.md**
+4. **005-note-cqrs.md**
    - Update port names to `note::ports::{Query, Command}`
    - Split errors
 
-5. **005-note-frontmatter.md**
+5. **006-note-frontmatter.md**
    - Use `FieldValue` from `note::value` module
    - Add conversion section
 
-6. **008-schema-cqrs.md**
+6. **009-schema-cqrs.md**
    - Rename port traits
    - Split errors
 
-7. **010-property-spec.md**
+7. **011-property-spec.md**
    - Add VaultRelPath validation examples
    - Add regex cache pseudocode
 
@@ -189,28 +189,28 @@ From `UPDATES-REQUIRED.md`:
    - Add split error types: `CommandError`, `QueryError`
    - Fix cross-reference to 001
 
-3. **003-note-models.md**
+3. **004-note-models.md**
    - Add FieldValue section (owned by note context)
    - Update Frontmatter to use FieldValue
    - Add NotePath examples (markdown files with `.md` extension)
    - Update file structure diagram
 
-4. **004-note-cqrs.md**
+4. **005-note-cqrs.md**
    - Update port imports: `note::ports::{Query, Command}`
    - Add split errors
    - Reference clean-slate protocol
 
-5. **005-note-frontmatter.md**
+5. **006-note-frontmatter.md**
    - Replace local types with `note::value::FieldValue`
    - Add YAML/TOML conversion section
    - Reference `src/note/value.rs`
 
-6. **008-schema-cqrs.md**
+6. **009-schema-cqrs.md**
    - Rename port traits
    - Split errors
    - Reference clean-slate protocol
 
-7. **010-property-spec.md**
+7. **011-property-spec.md**
    - Add VaultRelPath examples (directory validation, not file paths)
    - Add regex cache pseudocode
    - Document string length semantics
@@ -229,15 +229,15 @@ grep "SettingValue" docs/design/001-config-models.md docs/design/002-config-cqrs
 # Expected: 0 results in "universal type" context
 
 # Check FieldValue added
-grep "FieldValue" docs/design/003-note-models.md docs/design/005-note-frontmatter.md
+grep "FieldValue" docs/design/004-note-models.md docs/design/006-note-frontmatter.md
 # Expected: Multiple results
 
 # Check port naming
-grep "ports::{Query, Command}" docs/design/002-config-cqrs.md docs/design/004-note-cqrs.md docs/design/008-schema-cqrs.md
+grep "ports::{Query, Command}" docs/design/002-config-cqrs.md docs/design/005-note-cqrs.md docs/design/009-schema-cqrs.md
 # Expected: Consistent qualified imports
 
 # Check error splits
-grep "CommandError\\|QueryError" docs/design/002-config-cqrs.md docs/design/004-note-cqrs.md docs/design/008-schema-cqrs.md
+grep "CommandError\\|QueryError" docs/design/002-config-cqrs.md docs/design/005-note-cqrs.md docs/design/009-schema-cqrs.md
 # Expected: Split error types
 ```
 
@@ -246,16 +246,16 @@ grep "CommandError\\|QueryError" docs/design/002-config-cqrs.md docs/design/004-
 ## Critical Context for AI Assistant
 
 ### What We Just Finished
-- **006a-config-task.md**: Fully refined with 4 improvements (type inference, first-class dates, keyword newtype, unified DateTime)
+- **003-config-task.md**: Fully refined with 4 improvements (type inference, first-class dates, keyword newtype, unified DateTime)
 - **Committed**: All changes staged and committed successfully
 
 ### What's Next
 - **7 specs pending updates** (see UPDATES-REQUIRED.md for full details)
 - **Start with 001-config-models.md** (highest priority)
-- **Follow template pattern**: Same 8-section structure as 006a/b/c
+- **Follow template pattern**: Same 8-section structure as 003/007/012
 
 ### Don't Repeat
-- Task spec is **DONE** - no more changes to 006a/b/c
+- Task spec is **DONE** - no more changes to 003/007/012
 - Focus on **remaining 7 specs** in priority order
 
 ---
@@ -267,7 +267,7 @@ grep "CommandError\\|QueryError" docs/design/002-config-cqrs.md docs/design/004-
 - **Commits**: 2 (clean, atomic)
 - **Lines changed**: ~350 (mostly additions)
 - **Design improvements**: 4 major patterns locked in
-- **Specs ready**: 4 (006a, 006b, 006c, clean-slate-protocol)
+- **Specs ready**: 4 (003, 007, 012, clean-slate-protocol)
 - **Specs pending**: 7 (tracked in UPDATES-REQUIRED.md)
 
 ---
