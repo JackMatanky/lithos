@@ -16,22 +16,26 @@ tags: [note, task, list, domain, markdown]
 The Note bounded context currently lacks complete representation of markdown list structures and rich task entities. This creates an impedance mismatch between what the markdown parser (pulldown-cmark) provides and what the domain can model.
 
 **Current Gaps**:
+
 - No `List` entity (ordered lists, unordered lists, task lists not modeled structurally)
 - Task entities are too simple (only checkbox status, no metadata)
 - No distinction between "checkbox item" (structure) and "task" (semantics)
 - No support for inline task metadata (`[priority:: 1]`)
 
 **Architectural Context**:
+
 - pulldown-cmark parses ALL list types (ordered/unordered/checkbox)
 - Note context is responsible for note content semantics
 - TaskConfig (from config context) provides validation rules
 
 **Why Now**:
+
 - Epic 11 (Query Service) requires rich task metadata for queries
 - Epic 12 (Templates) needs task access for template rendering
 - Current checkbox-only model cannot support task management workflows
 
 **Related Decisions**:
+
 - [ADR 008: Markdown Parsing](../adr/008-markdown-parsing.md)
 - [006a: Task Configuration Schema](./006a-config-task-schema.md)
 - [Epic 11: Query Service](../../_bmad-output/planning-artifacts/epics/epic-11-query-service-knowledge-graph-mvp-core.md)
@@ -39,6 +43,7 @@ The Note bounded context currently lacks complete representation of markdown lis
 ### 1.2 Goals & Non-Goals
 
 **Goals**:
+
 1. Model **all markdown list types** (ordered, unordered, checkbox)
 2. Distinguish **List (structure)** from **Task (semantics)**
 3. Support **inline task metadata** validated against TaskConfig
@@ -47,6 +52,7 @@ The Note bounded context currently lacks complete representation of markdown lis
 6. Support **both structural queries** (all lists) and **semantic queries** (tasks only)
 
 **Non-Goals**:
+
 - Task CQRS ports (defer to separate CQRS spec)
 - Nested task hierarchies (parent-child relationships)
 - Task dependencies or recurring tasks
@@ -56,22 +62,26 @@ The Note bounded context currently lacks complete representation of markdown lis
 ### 1.3 Constraints (The Hard Limits)
 
 **Architectural**:
+
 - Note context is **sync-first** (no async domain logic)
 - **No imports from Schema/Template contexts** (only infrastructure + config)
 - Domain types **must not store parser types** (pulldown-cmark is adapter layer)
 - Task IDs must be **UUID v7** (time-ordered, stable identity)
 
 **Performance**:
+
 - Parse **1000 tasks in <100ms** (inline with Epic 10 indexing goals)
 - Use **`&str` slices during parsing** (no eager allocation)
 - **`FieldValue` uses `String`** (simplicity over premature optimization)
 
 **Zero-Copy Constraints**:
+
 - Source positions are byte offsets (stable, zero-copy)
 - Metadata parsing uses borrowed slices when possible
 - Validation against TaskConfig happens during construction
 
 **Data Integrity**:
+
 - Invalid metadata → parse error (fail-fast)
 - Unconfigured fields → stored as `FieldValue::String` (forward compatibility)
 - List items without promotion → List only (no Task entity)
@@ -221,6 +231,7 @@ for task in note.tasks() {
 4. **Promotion = Tag-Based**: Checkbox with task tag → Task entity
 
 **Think of it like**:
+
 - **List** = HTML `<ul>` or `<ol>` (document structure)
 - **Task** = Application-level TODO item (business semantics)
 - **TaskMetadata** = Key-value store validated by TaskConfig
@@ -339,11 +350,11 @@ impl FieldValue {
 
 #### Small Types (Newtypes/IDs)
 
-| Signature | Purpose | Layer | Rules | Notes |
-|-----------|---------|-------|-------|-------|
-| `TaskId(Uuid)` | Uniquely identifies a task | Domain | UUID v7 (time-ordered) | Stable across file renames |
-| `ListType::Ordered { start: u64 }` | Numbered list starting at N | Domain | start >= 1 | Preserves markdown numbering |
-| `ListType::Unordered` | Bullet list | Domain | None | -, *, + markers |
+| Signature                          | Purpose                     | Layer  | Rules                  | Notes                        |
+| ---------------------------------- | --------------------------- | ------ | ---------------------- | ---------------------------- |
+| `TaskId(Uuid)`                     | Uniquely identifies a task  | Domain | UUID v7 (time-ordered) | Stable across file renames   |
+| `ListType::Ordered { start: u64 }` | Numbered list starting at N | Domain | start >= 1             | Preserves markdown numbering |
+| `ListType::Unordered`              | Bullet list                 | Domain | None                   | -, \*, + markers             |
 
 #### `ListItem` (Domain)
 
@@ -854,6 +865,7 @@ fn parse_tasks(markdown: &str, config: &TaskConfig) -> (Vec<List>, Vec<Task>) {
 ```
 
 **Logs**:
+
 - `DEBUG`: Task promotion decisions (tag matched, metadata found)
 - `WARN`: Unknown metadata fields (forward compatibility)
 - `ERROR`: Validation failures (type mismatch, out of bounds)
@@ -861,31 +873,37 @@ fn parse_tasks(markdown: &str, config: &TaskConfig) -> (Vec<List>, Vec<Task>) {
 ### 5.2 Migration Strategy
 
 **Phase 1: Add List Entity** (Non-Breaking)
+
 - Add `note/list.rs` with List/ListItem types
 - Add `note::lists: Vec<List>` to Note aggregate
 - Parser emits both lists and tasks
 
 **Phase 2: Add FieldValue Primitive**
+
 - Create `note/value.rs` with FieldValue enum
 - Move frontmatter to use FieldValue (from current types)
 - Add `note/task.rs` using FieldValue for metadata
 
 **Phase 3: Add Task Entity**
+
 - Implement Task::from_checkbox with TaskConfig validation
 - Add `note::tasks: Vec<Task>` to Note aggregate
 - Wire up promotion logic in parser
 
 **Backward Compatibility**:
+
 - Old notes parse as lists (no tasks promoted)
 - Old frontmatter continues to work (FieldValue is superset)
 
 ### 5.3 Security & Privacy
 
 **Metadata Injection**:
+
 - Validate all metadata against TaskConfig (prevent arbitrary fields)
 - Unknown fields logged but stored (graceful degradation)
 
 **No Code Execution**:
+
 - Metadata values are data only (no eval/exec)
 - Template rendering happens in separate context
 
@@ -905,12 +923,12 @@ fn parse_tasks(markdown: &str, config: &TaskConfig) -> (Vec<List>, Vec<Task>) {
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                          | Resolution                                              |
-|:-----------|:------------------------------------------|:--------------------------------------------------------|
-| 2026-02-08 | "Should FieldValue be in frontmatter.rs?" | No - shared primitive in note/value.rs                  |
-| 2026-02-08 | "Promotion rules too complex?"            | Simplified to tag-based only (no auto-promote)          |
-| 2026-02-08 | "String vs Box<str> for metadata?"        | Use String for simplicity; optimize later if needed     |
-| 2026-02-08 | "How to link List and Task?"              | task_id in ListItem::Checkbox (optional)                |
+| Date       | Critique / Issue                          | Resolution                                          |
+| :--------- | :---------------------------------------- | :-------------------------------------------------- |
+| 2026-02-08 | "Should FieldValue be in frontmatter.rs?" | No - shared primitive in note/value.rs              |
+| 2026-02-08 | "Promotion rules too complex?"            | Simplified to tag-based only (no auto-promote)      |
+| 2026-02-08 | "String vs Box<str> for metadata?"        | Use String for simplicity; optimize later if needed |
+| 2026-02-08 | "How to link List and Task?"              | task_id in ListItem::Checkbox (optional)            |
 
 ## 8. References
 
