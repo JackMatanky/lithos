@@ -141,7 +141,7 @@ keyword = "notes"  # String inferred (no pattern = any string)
 
 # Query optimization
 [task.indexing]
-indexed_fields = ["due_date", "priority", "project_name", "task_type"]
+indexed_fields = ["priority", "project_name", "task_type", "estimate_hours"]
 ```
 
 **Step 2: Config Validation**
@@ -247,7 +247,7 @@ use lithos_core::config::task::{StatusSymbol, StatusName};
 let symbol = StatusSymbol('x');
 let name = task_config.status().name_for_symbol(symbol);
 
-assert_eq!(name, Some(&StatusName::new("complete")?));
+assert_eq!(name, Some(&StatusName::try_from("complete")?));
 ```
 
 ### 2.2 Mental Model
