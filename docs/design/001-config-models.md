@@ -12,7 +12,7 @@ tags: [config, domain-models, cqrs, rkyv, invariants]
 Related specs:
 
 - [docs/design/002-config-cqrs.md](002-config-cqrs.md) (how config models are persisted and retrieved)
-- [docs/design/006-task-management-system.md](006-task-management-system.md) (a major consumer of config-driven schemas/values; keep config model decisions compatible with planned task config)
+- [docs/design/006a-config-task-schema.md](006a-config-task-schema.md) (task configuration schema; config context exports TaskConfig as cross-cutting infrastructure)
 
 ## 1. Problem Space (The "Why")
 
@@ -25,7 +25,7 @@ Current implementation lives in:
 - `lithos-core/src/config/aggregate.rs` (`Config` aggregate root; merge + validation)
 - `lithos-core/src/config/global.rs` (`Global` configuration)
 - `lithos-core/src/config/vault.rs` (`Vault` configuration + `Metadata`)
-- `lithos-core/src/config/types.rs` (shared config types: `Frontmatter`, `Logging`, `Schema`, `Template`, `SettingValue`)
+- `lithos-core/src/config/types.rs` (shared config types: `Frontmatter`, `Logging`, `Schema`, `Template`)
 - `lithos-core/src/config/error.rs` (`ConfigError`)
 - `lithos-core/src/config/events.rs` (domain events)
 
