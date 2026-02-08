@@ -26,9 +26,11 @@
 use super::{
     error::ConfigError,
     events::{ConfigUpdated, Events},
+    frontmatter::Frontmatter,
     global::{Global, Paths as GlobalPaths},
+    paths::{Schema, Template},
     task::TaskConfig,
-    types::{Frontmatter, Logging, Schema, Template},
+    types::Logging,
     vault::{CacheDir, Metadata, Vault, VaultId, VaultRoot},
 };
 
@@ -456,9 +458,9 @@ mod tests {
 
         use super::*;
         use crate::config::{
-            types::{
-                FileName, FrontmatterKey, LogLevel, SchemasDir, TemplatesDir,
-            },
+            frontmatter::FrontmatterKey,
+            paths::{FileName, SchemasDir, TemplatesDir},
+            types::LogLevel,
             vault::{SchemaOverrides, TemplateOverrides},
         };
 
@@ -1028,7 +1030,7 @@ mod tests {
 
         use super::*;
         use crate::config::{
-            types::TemplatesDir,
+            paths::TemplatesDir,
             vault::{SchemaOverrides, TemplateOverrides, VaultRoot},
         };
 

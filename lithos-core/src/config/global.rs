@@ -18,9 +18,11 @@ use std::{collections::HashMap, path::PathBuf};
 
 use super::{
     error::ConfigError,
+    frontmatter::Frontmatter,
+    paths::{Schema, Template},
     raw::{RawGlobal, RawGlobalPaths, RawTrustedVaults},
     task::TaskConfig,
-    types::{Frontmatter, Logging, Schema, Template},
+    types::Logging,
     vault::VaultRoot,
 };
 
@@ -325,7 +327,7 @@ mod tests {
     use std::{collections::HashMap, path::PathBuf};
 
     use super::TrustedVaults;
-    use crate::config::{types::SchemasDir, vault::VaultRoot};
+    use crate::config::{paths::SchemasDir, vault::VaultRoot};
 
     #[test]
     #[expect(

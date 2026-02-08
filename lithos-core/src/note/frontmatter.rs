@@ -622,8 +622,9 @@ mod tests {
 
         pub fn config_with_custom_frontmatter_keys() -> Config {
             use crate::config::{
+                frontmatter::{Frontmatter, FrontmatterKey},
                 global::{Global, Paths as GlobalPaths},
-                types::{Frontmatter, FrontmatterKey, Logging},
+                types::Logging,
                 vault::{Vault, VaultId, VaultRoot},
             };
 

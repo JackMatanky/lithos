@@ -9,9 +9,11 @@ use uuid::Uuid;
 
 use super::{
     error::ConfigError,
+    frontmatter::Frontmatter,
+    paths::{FileName, SchemasDir, TemplatesDir},
     raw::{RawVault, RawVaultPaths},
     task::TaskConfig,
-    types::{FileName, Frontmatter, Logging, SchemasDir, TemplatesDir},
+    types::Logging,
 };
 
 /// Stable vault identity.
