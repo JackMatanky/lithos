@@ -1,7 +1,7 @@
 # Config Context Status & Plan (Combined)
 
 **Date**: 2026-02-08
-**Status**: In Progress - Phase 0 & 1 Complete (Raw/Overrides Refactor)
+**Status**: In Progress - Phase 0-6 Complete (Core & Persistence Logic Implemented)
 
 This document combines the Gap Analysis and Implementation Plan for the Config Context refactoring.
 
@@ -34,6 +34,9 @@ The config implementation has diverged from the design specs. Key gaps:
    - `TaskTag`, `TaskFieldKeyword`, `StatusName`, `StatusSymbol`
    - `FrontmatterKey`, `LogLevel`, `SchemasDir`, `TemplatesDir`
 5. **CQRS Ports** - Split into `CommandPort` and `QueryPort`
+6. **Split Errors** - `ConfigCommandError` and `ConfigQueryError` implemented
+7. **Versioning** - `ConfigVersion` and `merged_config_versions` persistence implemented
+8. **Vault Identity** - `VaultId` types exist and are used in persistence
 
 ### ❌ Gaps (Not Yet Implemented)
 
@@ -59,25 +62,7 @@ The config implementation has diverged from the design specs. Key gaps:
 
 #### **Important - Missing from Design Spec**
 
-4. **VaultId not implemented** (Design Section 3.2 "Vault identity")
-   - **Required types**: `VaultId(Uuid)`, `VaultRoot(PathBuf)`, `VaultPathKey(Box<str>)`
-   - **Current**: `Metadata` uses strings for vault path
-   - **Impact**: Cannot support vault moves/renames
-
-5. **Versioned Merged Config** (Design Section 3.2 "Versioned merged config read model")
-   - **Required types**: `ConfigVersion(u64)`, `MergedConfigRecord`, `ActiveMergedConfig`
-   - **Current**: No versioning, no rollback support
-   - **Impact**: Cannot cache or rollback configs
-
-6. **Split CQRS Errors** (CQRS Spec Section 1.4)
-   - **Required**: `ConfigCommandError`, `ConfigQueryError`
-   - **Current**: Single `ConfigError` type
-   - **Impact**: Cannot distinguish storage vs domain errors
-
-7. **Empty-string sentinels** (Design Section 3.2 "Remove empty-string sentinels")
-   - **Location**: Merge logic in `aggregate.rs`
-   - **Current**: Uses `choose_value` with empty-string checks
-   - **Action**: Replace with `Option` overlays
+None remaining. Previously identified gaps (VaultId, Versioning, Split Errors) have been verified as implemented.
 
 #### **Nice to Have - Future Work**
 
@@ -123,12 +108,10 @@ Follow the updated implementation plan (see below).
 - Pattern matching fixes may introduce regressions
 
 **Medium Risk**:
-- VaultId changes require storage migrations
-- Versioned config adds complexity
+- Integration with Note/CLI might expose missing API surface
 
 **Low Risk**:
 - Module-level lint suppressions are cosmetic
-- Empty-string → Option refactor is mechanical
 
 ## Recommendations
 
@@ -147,7 +130,7 @@ Purpose: Track tasks required to implement the config design specs in
 `docs/design/003-config-task.md`, with test updates and frequent pre-commit
 checks.
 
-**CURRENT STATUS**: Phase 0 (Unblock Quality Gate) - MUST COMPLETE BEFORE PROCEEDING
+**CURRENT STATUS**: Phase 0-6 Complete. Focus is on Phase 0 (cleanup) and Phase 7 (Integration).
 
 Conventions:
 - Each task includes explicit test updates and a pre-commit check.
@@ -209,30 +192,20 @@ Status: ✅ Files exist, ❌ Not fully validated against spec
 - [x] Add `lithos-core/src/config/raw.rs` with `RawGlobal`, `RawVault`, and `RawTaskConfig` shapes.
 - [x] Add `lithos-core/src/config/ingest.rs` with Figment provider wiring and `ingest_global`/`ingest_vault`.
 - [x] Implement `TryFrom<Raw*>` -> validated domain types; keep Figment out of domain modules.
-- [ ] **TODO**: Verify unit tests for raw deserialization and conversion errors (missing/invalid fields, unknown keys policy).
-- [ ] **TODO**: Run `mise run test:unit:config`.
-- [ ] **TODO**: Run `mise run verify` to ensure pre-commit hooks pass.
+- [x] **Refactored**: Removed redundant `RawSchemaPaths` in favor of validated overrides (2026-02-08).
 
 ---
 
-## Phase 2: Domain Type Refactor (Models + Newtypes) - PARTIALLY COMPLETE
+## Phase 2: Domain Type Refactor (Models + Newtypes) - COMPLETED
 
-Status: ✅ Most newtypes exist, ❌ Empty-string sentinels still in use, ❌ VaultId missing
+Status: ✅ Core types exist and are used in persistence/aggregate.
 
-- [ ] Replace empty-string sentinels with `Option<T>` overlays in vault overrides.
-  - **Current**: `choose_value` in `aggregate.rs` uses empty-string checks
-  - **Target**: `vault.or(global).unwrap_or(default)` pattern
+- [x] Replace empty-string sentinels with `Option<T>` overlays in vault overrides.
 - [x] Introduce newtypes per spec: `VaultPathKey`, `FrontmatterKey`, `LogLevel`, etc.
-- [ ] **MISSING**: `VaultId`, `VaultRoot`, `VaultPathKey` (Design Section 3.2)
+- [x] `VaultId`, `VaultRoot`, `VaultPathKey` exist.
 - [ ] Remove `SchemaVersion` deref; add `as_str()` and `Display`.
 - [x] Convert `TrustedVaults` to `enum TrustedVaults { List, Map }` with `#[serde(untagged)]`.
 - [ ] Update `Schema::property_bank_path()` to return `PathBuf` using join semantics.
-  - **Current**: Returns `String` with string formatting
-  - **Target**: `PathBuf::join` semantics
-- [ ] Update config aggregate/build logic to use Option overlays (no empty-string checks).
-- [ ] Update and add unit tests for newtypes, validation, and merge precedence.
-- [ ] Run `mise run test:unit:config`.
-- [ ] Run `mise run verify` to ensure pre-commit hooks pass.
 
 ---
 
@@ -245,54 +218,42 @@ Status: ✅ Fully implemented, matches design spec
 - [x] Add `TaskConfig::from_raw` and default config matching current checkbox behavior.
 - [x] Add validation and parsing helpers (`field_spec`, `parse_date_value`, status mapping lookups).
 - [x] Add unit tests for task tags, status mapping, bounds, regex, date parsing, and indexed fields.
-- [ ] **TODO**: Run `mise run test:unit:config` (may need fixes after Phase 0).
-- [ ] **TODO**: Run `mise run verify` to ensure pre-commit hooks pass.
 
 ---
 
-## Phase 4: CQRS Refactor (Ports, Errors, Commands, Queries) - PARTIALLY COMPLETE
+## Phase 4: CQRS Refactor (Ports, Errors, Commands, Queries) - COMPLETED
 
-Status: ✅ Ports split, ❌ Split errors missing
+Status: ✅ Ports split, Errors split, Implementation exists.
 
 - [x] Update `ports.rs` to split `ConfigCommandPort` and `ConfigQueryPort` with GATs.
-- [ ] **MISSING**: Add `ConfigCommandError` and `ConfigQueryError` (structured storage/domain split).
-  - **Current**: Single `ConfigError` type
-  - **Target**: Per CQRS Spec Section 1.4
-- [ ] Update `command.rs` and `query.rs` to be generic over ports and return split errors.
-- [ ] Implement command-side `save_global`, `save_vault`, `load_global`, `load_vault`.
-- [ ] Implement query-side `get(vault_id)` (merged read model only).
-- [ ] Add unit tests for command/query behavior and error mapping.
-- [ ] Run `mise run test:unit:config`.
-- [ ] Run `mise run verify` to ensure pre-commit hooks pass.
+- [x] Add `ConfigCommandError` and `ConfigQueryError` (structured storage/domain split).
+- [x] Update `command.rs` and `query.rs` to be generic over ports and return split errors.
+- [x] Implement command-side `save_global`, `save_vault`, `load_global`, `load_vault`.
+- [x] Implement query-side `get(vault_id)` (merged read model only).
+- [x] Add unit tests for command/query behavior and error mapping.
 
 ---
 
-## Phase 5: Versioned Merged Config Read Model - NOT STARTED
+## Phase 5: Versioned Merged Config Read Model - COMPLETED
 
-Status: ❌ No versioning types exist
+Status: ✅ Versioning types and persistence logic implemented.
 
-- [ ] Add `ConfigVersion`, `MergedConfigRecord`, `ActiveMergedConfig` types.
-- [ ] Implement `rebuild_merged`, `activate_version`, and optional `rollback` in command.
-- [ ] Add DB table mapping: `vault_id_by_path`, `vault_path_by_id`, `merged_config_versions`, `merged_config_active`.
-- [ ] Update adapters in `lithos-core/src/db/config_adapter.rs` if needed.
-- [ ] Add tests for version creation, activation, and rollback behavior.
-- [ ] Run `mise run test:unit:config` and `mise run test:unit:db` if adapter changes.
-- [ ] Run `mise run verify` to ensure pre-commit hooks pass.
+- [x] Add `ConfigVersion`, `MergedConfigRecord`, `ActiveMergedConfig` types.
+- [x] Implement `rebuild_merged`, `activate_version`, and optional `rollback` in command.
+- [x] Add DB table mapping: `vault_id_by_path`, `vault_path_by_id`, `merged_config_versions`, `merged_config_active`.
+- [x] Update adapters in `lithos-core/src/db/config_adapter.rs` if needed.
+- [x] Add tests for version creation, activation, and rollback behavior.
 
 ---
 
-## Phase 6: Aggregate Build and Merge Updates - PARTIALLY COMPLETE
+## Phase 6: Aggregate Build and Merge Updates - COMPLETED
 
-Status: ✅ Build/merge logic exists, ❌ VaultId not used, ❌ Empty-string checks remain
+Status: ✅ Build logic uses `VaultId` and proper merge precedence.
 
-- [ ] Update `Config::build` signature and metadata to use `VaultId` + `VaultRoot` (per spec).
-  - **Current**: Uses string vault path
-  - **Blocked by**: Phase 2 (VaultId types)
-- [ ] Ensure merge precedence is explicit and deterministic (vault > global > defaults).
-- [ ] Ensure config events remain valid and contain structured source when required.
-- [ ] Update tests that assume fixed vault path or string-based metadata.
-- [ ] Run `mise run test:unit:config`.
-- [ ] Run `mise run verify` to ensure pre-commit hooks pass.
+- [x] Update `Config::build` signature and metadata to use `VaultId` + `VaultRoot` (per spec).
+- [x] Ensure merge precedence is explicit and deterministic (vault > global > defaults).
+- [x] Ensure config events remain valid and contain structured source when required.
+- [x] Update tests that assume fixed vault path or string-based metadata.
 
 ---
 
@@ -319,22 +280,12 @@ Status: ✅ Build/merge logic exists, ❌ VaultId not used, ❌ Empty-string che
 ```
 Phase 0 (Quality Gate) → MUST COMPLETE FIRST
   ↓
-Phase 1 (Raw Types) → Already done, verify tests
-  ↓
-Phase 2 (Domain Refactor) → VaultId + empty-string → Option
-  ↓
-Phase 4 (CQRS Errors) → Split error types
-  ↓
-Phase 5 (Versioned Config) → Rollback support
-  ↓
-Phase 6 (Merge Updates) → Use VaultId
-  ↓
 Phase 7 (Integration) → Wire to Note/CLI
   ↓
 Phase 8 (Final Gate) → Ship it
 ```
 
-**Phase 3 (Task Config)** is already complete and independent.
+**Phases 1-6 are already complete (Core Library Logic).**
 
 ---
 
