@@ -133,7 +133,11 @@ min = 0.5
 max = 40.0  # Float inferred from min/max
 
 [task.fields.reviewed]
-keyword = "reviewed"  # Boolean inferred (no constraints)
+keyword = "reviewed"
+values = ["true", "false"]  # Boolean as two-value enum
+
+[task.fields.notes]
+keyword = "notes"  # String inferred (no pattern = any string)
 
 # Query optimization
 [task.indexing]
@@ -423,6 +427,49 @@ impl StatusName {
 }
 ```
 
+#### `Bounds<T>` (Domain)
+
+- **Purpose**: Type-safe numeric bounds validation for Integer/Float fields
+- **Key rules**: `Range` variant enforces `min <= max` at construction
+- **Important notes**: Shared by both Integer and Float specs
+- **Shape**:
+
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub enum Bounds<T> {
+    Unbounded,
+    Min(T),
+    Max(T),
+    Range { min: T, max: T },
+}
+
+impl<T: PartialOrd> Bounds<T> {
+    pub fn try_from_options(min: Option<T>, max: Option<T>) -> Result<Self, ConfigError> {
+        match (min, max) {
+            (None, None) => Ok(Bounds::Unbounded),
+            (Some(min), None) => Ok(Bounds::Min(min)),
+            (None, Some(max)) => Ok(Bounds::Max(max)),
+            (Some(min), Some(max)) => {
+                if min <= max {
+                    Ok(Bounds::Range { min, max })
+                } else {
+                    Err(ConfigError::InvalidBounds("min must be <= max"))
+                }
+            }
+        }
+    }
+
+    pub fn validate(&self, value: T) -> bool {
+        match self {
+            Bounds::Unbounded => true,
+            Bounds::Min(min) => value >= *min,
+            Bounds::Max(max) => value <= *max,
+            Bounds::Range { min, max } => value >= *min && value <= *max,
+        }
+    }
+}
+```
+
 #### `DateFieldSpec` (Domain)
 
 - **Purpose**: Validated specification for first-class temporal fields (due, created, reminder, completed)
@@ -455,25 +502,19 @@ pub enum TaskFieldSpec {
     },
     Integer {
         keyword: TaskFieldKeyword,
-        min: Option<i64>,
-        max: Option<i64>,
+        bounds: Bounds<i64>,
     },
     Float {
         keyword: TaskFieldKeyword,
-        min: Option<f64>,
-        max: Option<f64>,
-    },
-    Boolean {
-        keyword: TaskFieldKeyword,
+        bounds: Bounds<f64>,
     },
     Enum {
         keyword: TaskFieldKeyword,
-        values: Vec<Box<str>>,
+        values: Vec<Box<str>>,  // >= 2 values required
     },
     DateTime {
         keyword: TaskFieldKeyword,
-        format: Box<str>,
-        emoji: Option<char>,
+        format: Box<str>,  // No emoji here - only in DateFieldSpec
     },
 }
 ```
@@ -562,7 +603,7 @@ pub struct RawDateFieldSpec {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]  // Type inferred from structure
 pub enum RawTaskFieldSpec {
-    // Enum: has `values` array
+    // Enum: has `values` array (>= 2 values for booleans, >= 1 for enums)
     Enum {
         keyword: String,
         values: Vec<String>,
@@ -583,22 +624,16 @@ pub enum RawTaskFieldSpec {
         #[serde(default)]
         max: Option<f64>,
     },
-    // DateTime: has format string and optional emoji
+    // DateTime: has format string (no emoji - only for first-class dates)
     DateTime {
         keyword: String,
         format: String,
-        #[serde(default)]
-        emoji: Option<char>,
     },
-    // String: has regex pattern
+    // String: has regex pattern OR is the fallback (keyword only)
     String {
         keyword: String,
         #[serde(default)]
         pattern: Option<String>,
-    },
-    // Boolean: no constraints (inferred if only keyword present)
-    Boolean {
-        keyword: String,
     },
 }
 ```
@@ -661,6 +696,18 @@ pub enum RawTaskFieldSpec {
   - Format string is valid chrono format (validated at construction)
   - Emoji (if present) is single char
 
+#### Component: `Bounds<T>`
+
+- **Responsibility**: Type-safe numeric bounds validation
+- **Public Interface** (internal to config context):
+  - `Bounds::try_from_options(min: Option<T>, max: Option<T>) -> Result<Self, ConfigError>`
+    - _Behavior_: Constructs bounds from optional min/max, validates `min <= max`
+    - _Errors_: `min > max`
+  - `validate(&self, value: T) -> bool`
+    - _Behavior_: Checks if value satisfies bounds
+- **State/Invariants**:
+  - `Range { min, max }` variant guarantees `min <= max` (enforced at construction)
+
 #### Component: `TaskFieldSpec`
 
 - **Responsibility**: Validated field specification with compiled constraints
@@ -671,8 +718,8 @@ pub enum RawTaskFieldSpec {
 - **State/Invariants**:
   - Keyword is valid (non-empty, alphanumeric + `_-`, <= 64 chars)
   - Regex pattern (if present) is compiled
-  - Numeric bounds satisfy min <= max
-  - Enum values are non-empty
+  - Integer/Float bounds are valid (enforced by `Bounds<T>`)
+  - Enum values are non-empty (>= 1 value; >= 2 for boolean-like enums)
   - DateTime format string is valid chrono format
 
 #### Component: `CheckboxStatus`
@@ -752,33 +799,37 @@ sequenceDiagram
 impl TaskFieldSpec {
     fn validate_raw_value(&self, value: &serde_json::Value) -> Result<(), ConfigError> {
         match self {
-            TaskFieldSpec::Integer { keyword, min, max } => {
+            TaskFieldSpec::Integer { keyword, bounds } => {
                 let n = value.as_i64()
                     .ok_or(ConfigError::TypeMismatch {
                         field: keyword.as_ref().into(),
                         expected: "integer"
                     })?;
 
-                if let Some(min) = min {
-                    if n < *min {
-                        return Err(ConfigError::OutOfBounds {
-                            field: keyword.as_ref().into(),
-                            value: n,
-                            min: Some(*min),
-                            max: *max,
-                        });
-                    }
+                if !bounds.validate(n) {
+                    return Err(ConfigError::OutOfBounds {
+                        field: keyword.as_ref().into(),
+                        value: n,
+                        bounds: bounds.clone(),
+                    });
                 }
 
-                if let Some(max) = max {
-                    if n > *max {
-                        return Err(ConfigError::OutOfBounds {
-                            field: keyword.as_ref().into(),
-                            value: n,
-                            min: *min,
-                            max: Some(*max),
-                        });
-                    }
+                Ok(())
+            }
+
+            TaskFieldSpec::Float { keyword, bounds } => {
+                let f = value.as_f64()
+                    .ok_or(ConfigError::TypeMismatch {
+                        field: keyword.as_ref().into(),
+                        expected: "float"
+                    })?;
+
+                if !bounds.validate(f) {
+                    return Err(ConfigError::OutOfBounds {
+                        field: keyword.as_ref().into(),
+                        value: f,
+                        bounds: bounds.clone(),
+                    });
                 }
 
                 Ok(())
@@ -822,7 +873,7 @@ impl TaskFieldSpec {
                 Ok(())
             }
 
-            TaskFieldSpec::DateTime { keyword, format, .. } => {
+            TaskFieldSpec::DateTime { keyword, format } => {
                 let s = value.as_str()
                     .ok_or(ConfigError::TypeMismatch {
                         field: keyword.as_ref().into(),
@@ -845,8 +896,9 @@ impl TaskFieldSpec {
 
                 Ok(())
             }
-
-            // ... other variants
+        }
+    }
+}
         }
     }
 }
@@ -976,8 +1028,8 @@ impl Default for TaskConfig {
 - **Rationale**:
   - **User experience**: Cleaner config (no redundant `type =` when constraints already signal intent)
   - **Serde support**: Untagged enums naturally match structure-based discrimination
-  - **Validation**: Ambiguous cases caught at config load (e.g., `{keyword = "foo"}` → defaults to Boolean)
-  - **Trade-off**: Order matters in untagged enum variants (most specific first: Enum, Integer, Float, DateTime, String, Boolean)
+  - **Validation**: Ambiguous cases use String fallback (e.g., `{keyword = "foo"}` → String with no pattern)
+  - **Trade-off**: Order matters in untagged enum variants (most specific first: Enum, Integer, Float, DateTime, String)
 
 #### Decision: First-Class Date Fields with Emoji Support (Not Generic Custom Fields)
 
@@ -1019,6 +1071,49 @@ impl Default for TaskConfig {
   - **Performance**: Validation happens once (construction), no runtime checks
   - **Consistency**: Same pattern as `TaskTag`, `StatusName`, `StatusSymbol` (validated newtypes)
   - **Bounds**: 64-char limit prevents abuse (e.g., malicious 10KB keywords)
+
+#### Decision: Bounds<T> Newtype for Numeric Validation (Not Separate min/max Options)
+
+- **Context**: How should numeric bounds (min/max) be represented for Integer/Float fields?
+- **Choice**: Dedicated `Bounds<T>` enum with `Unbounded`, `Min`, `Max`, and `Range` variants
+- **Alternatives Considered**:
+  - _Separate Option fields_: `min: Option<i64>, max: Option<i64>`. **Rejected** - doesn't enforce `min <= max` invariant
+  - _Tuple type_: `bounds: Option<(i64, i64)>`. **Rejected** - can't represent "min only" or "max only"
+  - _Trait-based validation_: Generic `Validator` trait. **Rejected** - overengineering for simple bounds check
+- **Rationale**:
+  - **Type safety**: `Range { min, max }` variant enforces `min <= max` at construction (impossible to create invalid state)
+  - **Intent clarity**: `Bounds::Min(0)` is more explicit than `min: Some(0), max: None`
+  - **Validation logic**: Single `bounds.validate(value)` method vs manual min/max checking
+  - **Deduplication**: Both Integer and Float share same `Bounds<T>` pattern (DRY principle)
+  - **Error messages**: Can pattern match on bounds to provide better error context
+
+#### Decision: Drop Boolean Variant (Use Enum with 2 Values)
+
+- **Context**: Should Boolean be a first-class field type?
+- **Choice**: No dedicated Boolean variant; users define Enum with 2 values (`["true", "false"]`, `["yes", "no"]`, etc.)
+- **Alternatives Considered**:
+  - _Dedicated Boolean variant_: `Boolean { keyword }`. **Rejected** - ambiguous with String fallback in untagged enum
+  - _Explicit type marker_: `value_type = "boolean"`. **Rejected** - defeats purpose of type inference
+  - _Hardcode "true"/"false"_: Force specific values. **Rejected** - breaks flexibility (users want "yes/no", "1/0", etc.)
+- **Rationale**:
+  - **UX problem solved**: With `#[serde(untagged)]`, a field with just `keyword` would match Boolean (last variant), but users expecting "any string" would be confused
+  - **Flexibility**: Users choose their boolean vocabulary (`["true", "false"]`, `["yes", "no"]`, `["1", "0"]`, `["enabled", "disabled"]`)
+  - **Explicit is better**: `values = ["true", "false"]` makes intent clear (this is a two-state field)
+  - **Validation**: Enum validation ensures only configured values accepted (catches typos like "tru")
+  - **String fallback**: Fields with just `keyword` (no constraints) → String type (accepts any text)
+
+#### Decision: Remove emoji from Custom DateTime Fields (First-Class Dates Only)
+
+- **Context**: Should custom datetime fields (`task.fields.*`) support emoji syntax?
+- **Choice**: No emoji in `TaskFieldSpec::DateTime`; emoji only in first-class `DateFieldSpec` (`task.dates.*`)
+- **Alternatives Considered**:
+  - _Emoji everywhere_: All datetime fields support emoji. **Rejected** - confusing (why do custom fields need emojis?)
+  - _Emoji as separate config_: `emoji_map` global section. **Rejected** - overcomplicates config
+- **Rationale**:
+  - **Clear separation**: First-class dates (`due`, `created`, `reminder`, `completed`) = Obsidian compatibility (emojis)
+  - **Custom fields = generic**: User-defined datetime fields are for domain-specific needs (no plugin compatibility required)
+  - **Simpler types**: `TaskFieldSpec::DateTime { keyword, format }` vs `DateFieldSpec { keyword, emoji, format }`
+  - **Consistency**: Emoji support is a feature of first-class temporal fields (not all datetime values)
 
 ## 5. Operational Readiness (The "Reality Check")
 
@@ -1116,6 +1211,9 @@ fn load_task_config(raw: RawTaskConfig) -> Result<TaskConfig, ConfigError> {
 | 2026-02-08 | "First-class date fields for Obsidian compatibility"  | Add `task.dates.*` section with emoji support, dedicated `DateFieldSpec` type      |
 | 2026-02-08 | "TaskFieldKeyword newtype for type safety"            | Add validated newtype: alphanumeric + `_-`, non-empty, <= 64 chars                 |
 | 2026-02-08 | "Unified DateTime type vs separate Date/Time/DateTime"| Single `DateTime` variant - format string determines precision (aligns with chrono)|
+| 2026-02-08 | "Bounds<T> newtype for min/max validation"            | Add `Bounds<T>` enum - enforces `min <= max` invariant, DRY for Integer/Float     |
+| 2026-02-08 | "Boolean type ambiguous with String fallback"         | Drop Boolean variant - use Enum with 2 values (`["true", "false"]`)               |
+| 2026-02-08 | "Emoji in custom DateTime fields?"                    | Remove emoji from `TaskFieldSpec::DateTime` - only for first-class `DateFieldSpec`|
 
 ## 8. References
 
