@@ -12,7 +12,7 @@ tags: [config, cqrs, persistence, redb, rkyv, errors]
 Related specs:
 
 - [docs/design/001-config-models.md](001-config-models.md)
-- [docs/design/006-task-management-system.md](006-task-management-system.md) (task schema is config-driven; CQRS/storage decisions here should support that direction)
+- [docs/design/006a-config-task-schema.md](006a-config-task-schema.md) (task schema is config-driven; CQRS/storage decisions here should support that direction)
 
 ## 1. Problem Space (The "Why")
 
@@ -64,6 +64,39 @@ See `docs/design/001-config-models.md` for the vault-identity discussion and the
 - **dyn-compatibility**: the port traits should remain dyn-compatible (no generic closure methods).
 - **Persisted bytes contract**: config persistence format changes are migration events.
 
+## 1.4 Error Type Strategy
+
+CQRS operations use split error types for clearer domain/storage error separation:
+
+**ConfigCommandError**:
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigCommandError {
+    #[error("Domain error: {0}")]
+    Domain(#[from] ConfigError),
+
+    #[error("Storage error: {0}")]
+    Storage(#[from] DbError),
+}
+```
+
+**ConfigQueryError**:
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigQueryError {
+    #[error("Storage error: {0}")]
+    Storage(#[from] DbError),
+
+    #[error("Data corruption: {0}")]
+    Corruption(String),
+}
+```
+
+**Rationale**: Split error types allow:
+- Commands to distinguish domain validation failures from storage failures
+- Queries to surface data corruption separately from transient storage errors
+- Better error handling at call sites (pattern match on error kind)
+
 ## 2. Guide-Level Explanation (The "What")
 
 ### 2.1 User/Dev Experience
@@ -72,7 +105,7 @@ Typical usage from application code:
 
 ```rust
 use lithos_core::config::{command, query};
-use lithos_core::config::ports::{Command as _, Query as _};
+use lithos_core::config::ports::{Command, Query};
 
 let cmd = command::Command::new(&db);
 let qry = query::Query::new(&db);
@@ -307,6 +340,7 @@ Error-handling rules (match existing contexts):
 
 - Changes to persisted config layouts require migration planning.
 - If error contracts change (e.g., structured storage errors), update the CLI reporting layer.
+- See [Clean-Slate Protocol](../operations/clean-slate-protocol.md) for config revalidation and reindex procedures when config schema changes.
 
 ### 5.3 Security & Privacy
 
