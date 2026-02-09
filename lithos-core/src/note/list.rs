@@ -10,6 +10,86 @@
 use super::{task::TaskId, types::SourceByteOffset};
 use crate::config::task::StatusSymbol;
 
+/// Markdown list structure.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+#[expect(
+    clippy::struct_field_names,
+    reason = "list_type is the clearest name for the list kind."
+)]
+pub struct List {
+    list_type: ListType,
+    items: Vec<ListItem>,
+    depth: u8,
+}
+
+impl List {
+    /// Creates a new empty list with depth 0.
+    #[inline]
+    #[must_use]
+    pub fn new(list_type: ListType) -> Self {
+        Self {
+            list_type,
+            items: Vec::new(),
+            depth: 0,
+        }
+    }
+
+    /// Creates a new empty list with an explicit depth.
+    #[inline]
+    #[must_use]
+    pub fn with_depth(list_type: ListType, depth: u8) -> Self {
+        Self {
+            list_type,
+            items: Vec::new(),
+            depth,
+        }
+    }
+
+    /// Appends a list item, preserving source order.
+    #[inline]
+    pub fn add_item(&mut self, item: ListItem) {
+        self.items.push(item);
+    }
+
+    /// Returns the list type.
+    #[inline]
+    #[must_use]
+    pub const fn list_type(&self) -> ListType {
+        self.list_type
+    }
+
+    /// Returns the list items in source order.
+    #[inline]
+    #[must_use]
+    pub fn items(&self) -> &[ListItem] {
+        &self.items
+    }
+
+    /// Returns the list nesting depth (0 = top level).
+    #[inline]
+    #[must_use]
+    pub const fn depth(&self) -> u8 {
+        self.depth
+    }
+
+    /// Sets the list nesting depth.
+    #[inline]
+    pub fn set_depth(&mut self, depth: u8) {
+        self.depth = depth;
+    }
+}
+
 /// Single item in a markdown list.
 #[derive(
     Debug,
@@ -160,86 +240,6 @@ pub enum ListType {
     },
     /// Unordered list (bullets).
     Unordered,
-}
-
-/// Markdown list structure.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-#[expect(
-    clippy::struct_field_names,
-    reason = "list_type is the clearest name for the list kind."
-)]
-pub struct List {
-    list_type: ListType,
-    items: Vec<ListItem>,
-    depth: u8,
-}
-
-impl List {
-    /// Creates a new empty list with depth 0.
-    #[inline]
-    #[must_use]
-    pub fn new(list_type: ListType) -> Self {
-        Self {
-            list_type,
-            items: Vec::new(),
-            depth: 0,
-        }
-    }
-
-    /// Creates a new empty list with an explicit depth.
-    #[inline]
-    #[must_use]
-    pub fn with_depth(list_type: ListType, depth: u8) -> Self {
-        Self {
-            list_type,
-            items: Vec::new(),
-            depth,
-        }
-    }
-
-    /// Appends a list item, preserving source order.
-    #[inline]
-    pub fn add_item(&mut self, item: ListItem) {
-        self.items.push(item);
-    }
-
-    /// Returns the list type.
-    #[inline]
-    #[must_use]
-    pub const fn list_type(&self) -> ListType {
-        self.list_type
-    }
-
-    /// Returns the list items in source order.
-    #[inline]
-    #[must_use]
-    pub fn items(&self) -> &[ListItem] {
-        &self.items
-    }
-
-    /// Returns the list nesting depth (0 = top level).
-    #[inline]
-    #[must_use]
-    pub const fn depth(&self) -> u8 {
-        self.depth
-    }
-
-    /// Sets the list nesting depth.
-    #[inline]
-    pub fn set_depth(&mut self, depth: u8) {
-        self.depth = depth;
-    }
 }
 
 #[cfg(test)]
