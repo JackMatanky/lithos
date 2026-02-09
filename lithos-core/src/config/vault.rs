@@ -15,6 +15,239 @@ use super::{
     task::TaskConfig,
 };
 
+// ============================================================================
+// Public Domain Types (Most Important)
+// ============================================================================
+
+/// Vault-specific configuration.
+///
+/// Contains overrides for global defaults.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    Default,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub struct Vault {
+    /// Overridden paths settings.
+    paths: Paths,
+    /// Overridden frontmatter settings.
+    frontmatter: Option<Frontmatter>,
+    /// Overridden logging settings.
+    logging: Option<Logging>,
+    /// Overridden task settings.
+    task: Option<TaskConfig>,
+}
+
+impl Vault {
+    /// Create vault-specific configuration.
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        paths: Paths,
+        frontmatter: Option<Frontmatter>,
+        logging: Option<Logging>,
+        task: Option<TaskConfig>,
+    ) -> Self {
+        Self {
+            paths,
+            frontmatter,
+            logging,
+            task,
+        }
+    }
+
+    /// Return the overridden paths settings.
+    #[inline]
+    #[must_use]
+    pub const fn paths(&self) -> &Paths {
+        &self.paths
+    }
+
+    /// Return the overridden frontmatter settings, if set.
+    #[inline]
+    #[must_use]
+    pub fn frontmatter(&self) -> Option<&Frontmatter> {
+        self.frontmatter.as_ref()
+    }
+
+    /// Return the overridden logging settings, if set.
+    #[inline]
+    #[must_use]
+    pub fn logging(&self) -> Option<&Logging> {
+        self.logging.as_ref()
+    }
+
+    /// Return the overridden task settings, if set.
+    #[inline]
+    #[must_use]
+    pub fn task(&self) -> Option<&TaskConfig> {
+        self.task.as_ref()
+    }
+}
+
+/// Metadata for a specific vault.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub struct Metadata {
+    /// Unique identity of the vault.
+    id: VaultId,
+    /// Absolute path to the vault root on disk.
+    root: VaultRoot,
+    /// Human-readable name of the vault.
+    name: String,
+    /// Version of the vault schema/Lithos that created it.
+    version: SchemaVersion,
+}
+
+impl Metadata {
+    /// Create vault metadata.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if validation fails.
+    #[inline]
+    pub fn new(
+        id: VaultId,
+        root: VaultRoot,
+        name: Option<String>,
+        version: Option<SchemaVersion>,
+    ) -> Result<Self, ConfigError> {
+        let name = name.unwrap_or_else(|| {
+            root.as_path().file_name().map_or_else(
+                || "unnamed".to_owned(),
+                |n| n.to_string_lossy().into_owned(),
+            )
+        });
+        let version = match version {
+            Some(v) => v,
+            None => SchemaVersion::try_new(env!("CARGO_PKG_VERSION")).map_err(
+                |e| ConfigError::ValidationFailed {
+                    field: "version".to_owned().into(),
+                    message: format!("default version invalid: {e}").into(),
+                },
+            )?,
+        };
+
+        Ok(Self {
+            id,
+            root,
+            name,
+            version,
+        })
+    }
+
+    /// Return the vault identity.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> VaultId {
+        self.id
+    }
+
+    /// Return the vault root path.
+    #[inline]
+    #[must_use]
+    pub const fn root(&self) -> &VaultRoot {
+        &self.root
+    }
+
+    /// Return the vault name.
+    #[inline]
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Return the vault version.
+    #[inline]
+    #[must_use]
+    pub fn version(&self) -> &SchemaVersion {
+        &self.version
+    }
+}
+
+impl Default for Metadata {
+    #[inline]
+    #[expect(
+        clippy::expect_used,
+        clippy::disallowed_methods,
+        reason = "Default version is guaranteed non-empty"
+    )]
+    fn default() -> Self {
+        Self {
+            id: VaultId::default(),
+            root: VaultRoot::default(),
+            name: "unnamed".to_owned(),
+            version: SchemaVersion::try_new(env!("CARGO_PKG_VERSION"))
+                .expect("package version is non-empty"),
+        }
+    }
+}
+
+/// Vault-specific paths configuration (overrides).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    Default,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub struct Paths {
+    /// Overridden cache settings.
+    pub cache: Option<Cache>,
+    /// Overridden schema settings.
+    pub schema: Option<Schema>,
+    /// Overridden property bank filename.
+    pub property_bank: Option<PropertyBank>,
+    /// Overridden template settings.
+    pub template: Option<Template>,
+}
+
+impl Paths {
+    /// Create vault-specific paths settings.
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        cache: Option<Cache>,
+        schema: Option<Schema>,
+        property_bank: Option<PropertyBank>,
+        template: Option<Template>,
+    ) -> Self {
+        Self {
+            cache,
+            schema,
+            property_bank,
+            template,
+        }
+    }
+}
+
+// ============================================================================
+// Building Block Types
+// ============================================================================
+
 /// Vault unique identity (UUID v7).
 #[derive(
     Debug,
@@ -247,230 +480,9 @@ impl std::fmt::Display for SchemaVersion {
     }
 }
 
-/// Metadata for a specific vault.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct Metadata {
-    /// Unique identity of the vault.
-    id: VaultId,
-    /// Absolute path to the vault root on disk.
-    root: VaultRoot,
-    /// Human-readable name of the vault.
-    name: String,
-    /// Version of the vault schema/Lithos that created it.
-    version: SchemaVersion,
-}
-
-impl Metadata {
-    /// Create vault metadata.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if validation fails.
-    #[inline]
-    pub fn new(
-        id: VaultId,
-        root: VaultRoot,
-        name: Option<String>,
-        version: Option<SchemaVersion>,
-    ) -> Result<Self, ConfigError> {
-        let name = name.unwrap_or_else(|| {
-            root.as_path().file_name().map_or_else(
-                || "unnamed".to_owned(),
-                |n| n.to_string_lossy().into_owned(),
-            )
-        });
-        let version = match version {
-            Some(v) => v,
-            None => SchemaVersion::try_new(env!("CARGO_PKG_VERSION")).map_err(
-                |e| ConfigError::ValidationFailed {
-                    field: "version".to_owned().into(),
-                    message: format!("default version invalid: {e}").into(),
-                },
-            )?,
-        };
-
-        Ok(Self {
-            id,
-            root,
-            name,
-            version,
-        })
-    }
-
-    /// Return the vault identity.
-    #[inline]
-    #[must_use]
-    pub const fn id(&self) -> VaultId {
-        self.id
-    }
-
-    /// Return the vault root path.
-    #[inline]
-    #[must_use]
-    pub const fn root(&self) -> &VaultRoot {
-        &self.root
-    }
-
-    /// Return the vault name.
-    #[inline]
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Return the vault version.
-    #[inline]
-    #[must_use]
-    pub fn version(&self) -> &SchemaVersion {
-        &self.version
-    }
-}
-
-impl Default for Metadata {
-    #[inline]
-    #[expect(
-        clippy::expect_used,
-        clippy::disallowed_methods,
-        reason = "Default version is guaranteed non-empty"
-    )]
-    fn default() -> Self {
-        Self {
-            id: VaultId::default(),
-            root: VaultRoot::default(),
-            name: "unnamed".to_owned(),
-            version: SchemaVersion::try_new(env!("CARGO_PKG_VERSION"))
-                .expect("package version is non-empty"),
-        }
-    }
-}
-
-/// Vault-specific paths configuration (overrides).
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Default,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct Paths {
-    /// Overridden cache settings.
-    pub cache: Option<Cache>,
-    /// Overridden schema settings.
-    pub schema: Option<Schema>,
-    /// Overridden property bank filename.
-    pub property_bank: Option<PropertyBank>,
-    /// Overridden template settings.
-    pub template: Option<Template>,
-}
-
-impl Paths {
-    /// Create vault-specific paths settings.
-    #[inline]
-    #[must_use]
-    pub const fn new(
-        cache: Option<Cache>,
-        schema: Option<Schema>,
-        property_bank: Option<PropertyBank>,
-        template: Option<Template>,
-    ) -> Self {
-        Self {
-            cache,
-            schema,
-            property_bank,
-            template,
-        }
-    }
-}
-
-/// Vault-specific configuration.
-///
-/// Contains overrides for global defaults.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Default,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct Vault {
-    /// Overridden paths settings.
-    paths: Paths,
-    /// Overridden frontmatter settings.
-    frontmatter: Option<Frontmatter>,
-    /// Overridden logging settings.
-    logging: Option<Logging>,
-    /// Overridden task settings.
-    task: Option<TaskConfig>,
-}
-
-impl Vault {
-    /// Create vault-specific configuration.
-    #[inline]
-    #[must_use]
-    pub const fn new(
-        paths: Paths,
-        frontmatter: Option<Frontmatter>,
-        logging: Option<Logging>,
-        task: Option<TaskConfig>,
-    ) -> Self {
-        Self {
-            paths,
-            frontmatter,
-            logging,
-            task,
-        }
-    }
-
-    /// Return the overridden paths settings.
-    #[inline]
-    #[must_use]
-    pub const fn paths(&self) -> &Paths {
-        &self.paths
-    }
-
-    /// Return the overridden frontmatter settings, if set.
-    #[inline]
-    #[must_use]
-    pub fn frontmatter(&self) -> Option<&Frontmatter> {
-        self.frontmatter.as_ref()
-    }
-
-    /// Return the overridden logging settings, if set.
-    #[inline]
-    #[must_use]
-    pub fn logging(&self) -> Option<&Logging> {
-        self.logging.as_ref()
-    }
-
-    /// Return the overridden task settings, if set.
-    #[inline]
-    #[must_use]
-    pub fn task(&self) -> Option<&TaskConfig> {
-        self.task.as_ref()
-    }
-}
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 #[expect(

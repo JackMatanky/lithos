@@ -13,10 +13,13 @@ use std::path::{Path, PathBuf};
 use super::error::ConfigError;
 
 // ============================================================================
-// Public Domain Types (Most Important - User-Facing API)
+// Fully Resolved Configuration (Aggregate Components)
 // ============================================================================
 
 /// Fully resolved paths configuration.
+///
+/// This struct contains all path-related settings after defaults and
+/// overrides have been merged. All fields are guaranteed to be present.
 #[derive(
     Debug,
     Clone,
@@ -60,12 +63,18 @@ impl Paths {
     }
 
     /// Get the full path to the property bank file.
+    ///
+    /// Combines the schemas directory with the property bank filename.
     #[inline]
     #[must_use]
     pub fn property_bank_path(&self) -> PathBuf {
-        self.schema.schemas_dir.as_path().join(self.property_bank.as_str())
+        self.schema.schemas_dir().as_path().join(self.property_bank.as_str())
     }
 }
+
+// ============================================================================
+// Domain Types (Building Blocks)
+// ============================================================================
 
 /// Schema storage configuration (directory).
 #[derive(
@@ -82,7 +91,7 @@ impl Paths {
 #[non_exhaustive]
 pub struct Schema {
     /// Directory containing schema files.
-    pub schemas_dir: RelativePath,
+    schemas_dir: RelativePath,
 }
 
 impl Default for Schema {
@@ -95,6 +104,15 @@ impl Default for Schema {
 }
 
 impl Schema {
+    /// Create schema configuration.
+    #[inline]
+    #[must_use]
+    pub const fn new(schemas_dir: RelativePath) -> Self {
+        Self {
+            schemas_dir,
+        }
+    }
+
     /// Create a validated schema directory path.
     ///
     /// # Errors
@@ -104,15 +122,6 @@ impl Schema {
         Ok(Self {
             schemas_dir: RelativePath::try_new(path)?,
         })
-    }
-
-    /// Create schema configuration.
-    #[inline]
-    #[must_use]
-    pub const fn new(schemas_dir: RelativePath) -> Self {
-        Self {
-            schemas_dir,
-        }
     }
 
     /// Return the schemas directory.
@@ -151,6 +160,15 @@ impl Default for Template {
 }
 
 impl Template {
+    /// Create template configuration.
+    #[inline]
+    #[must_use]
+    pub const fn new(templates_dir: RelativePath) -> Self {
+        Self {
+            templates_dir,
+        }
+    }
+
     /// Create a validated template directory path.
     ///
     /// # Errors
@@ -160,15 +178,6 @@ impl Template {
         Ok(Self {
             templates_dir: RelativePath::try_new(path)?,
         })
-    }
-
-    /// Create template configuration.
-    #[inline]
-    #[must_use]
-    pub const fn new(templates_dir: RelativePath) -> Self {
-        Self {
-            templates_dir,
-        }
     }
 
     /// Return the templates directory.
@@ -207,6 +216,15 @@ impl Default for Cache {
 }
 
 impl Cache {
+    /// Create cache configuration.
+    #[inline]
+    #[must_use]
+    pub const fn new(cache_dir: RelativePath) -> Self {
+        Self {
+            cache_dir,
+        }
+    }
+
     /// Create a validated cache directory path.
     ///
     /// # Errors
@@ -216,15 +234,6 @@ impl Cache {
         Ok(Self {
             cache_dir: RelativePath::try_new(path)?,
         })
-    }
-
-    /// Create cache configuration.
-    #[inline]
-    #[must_use]
-    pub const fn new(cache_dir: RelativePath) -> Self {
-        Self {
-            cache_dir,
-        }
     }
 
     /// Return the cache directory.
@@ -284,7 +293,7 @@ impl PropertyBank {
 }
 
 // ============================================================================
-// Building Block Types (Path Components)
+// Low-Level Implementation Types
 // ============================================================================
 
 /// A validated vault-relative path.
@@ -524,17 +533,13 @@ mod tests {
     mod fixtures {
         use std::path::PathBuf;
 
-        use super::super::{PropertyBank, RelativePath, Schema};
+        use super::super::{PropertyBank, Schema};
 
-        #[expect(dead_code, reason = "Used in other test modules")]
         pub fn sample_schema() -> Schema {
-            Schema {
-                schemas_dir: RelativePath::try_new(PathBuf::from("schemas"))
-                    .expect("valid dir for fixture"),
-            }
+            Schema::try_new(PathBuf::from("schemas"))
+                .expect("valid dir for fixture")
         }
 
-        #[expect(dead_code, reason = "Used in other test modules")]
         pub fn sample_property_bank() -> PropertyBank {
             PropertyBank::try_new("props.json").expect("valid file for fixture")
         }
@@ -567,17 +572,14 @@ mod tests {
     mod accessors {
         use std::path::PathBuf;
 
-        use super::super::{Cache, Paths, PropertyBank, Schema, Template};
+        use super::super::{Cache, Paths, Template};
 
         /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
         /// Priority: P1.
         #[test]
         fn schema_property_bank_path_logic_works() {
-            let schema = Schema::new(
-                super::super::RelativePath::try_new(PathBuf::from("schemas"))
-                    .unwrap(),
-            );
-            let property_bank = PropertyBank::try_new("props.json").unwrap();
+            let schema = super::fixtures::sample_schema();
+            let property_bank = super::fixtures::sample_property_bank();
             let paths = Paths::new(
                 Cache::default(),
                 schema,
