@@ -36,6 +36,223 @@ use super::{
     vault::{Metadata, VaultId, VaultRoot},
 };
 
+// ============================================================================
+// Config Aggregate Root
+// ============================================================================
+
+/// Merged configuration result from global and vault configurations.
+///
+/// This struct represents the final merged configuration after applying
+/// domain constraints for precedence (vault overrides global). The
+/// configuration is immutable once created and represents the complete runtime
+/// configuration for a vault operation.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[non_exhaustive]
+pub struct Config {
+    /// Vault metadata with versioning and naming.
+    pub vault_metadata: Metadata,
+    /// Merged logging configuration.
+    pub logging: Logging,
+    /// Merged paths configuration.
+    pub paths: Paths,
+    /// Merged frontmatter configuration.
+    pub frontmatter: Frontmatter,
+    /// Merged task configuration.
+    pub task: TaskConfig,
+    /// Domain events pending emission (not persisted).
+    #[serde(skip)]
+    #[rkyv(with = rkyv::with::Skip)]
+    pending_events: Vec<Events>,
+}
+
+impl Default for Config {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            frontmatter: Frontmatter::default(),
+            paths: Paths::default(),
+            logging: Logging::default(),
+            pending_events: vec![],
+            task: TaskConfig::default(),
+            vault_metadata: Metadata::default(),
+        }
+    }
+}
+
+impl Config {
+    /// Build validated Config from Figment-merged raw configuration.
+    ///
+    /// This is the **primary constructor** for `Config`. It takes a `RawConfig`
+    /// that has already been merged across layers (defaults → global → vault)
+    /// by `ingest::build_merged_raw()`, validates all fields, and constructs
+    /// a fully validated domain configuration.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if validation fails for any field.
+    #[inline]
+    pub fn build(
+        raw: &raw::RawConfig,
+        vault_id: VaultId,
+        vault_root: VaultRoot,
+    ) -> Result<Self, ConfigError> {
+        let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
+
+        let fs = &raw.paths;
+
+        let paths = Self::make_resolved_paths(fs)?;
+
+        let frontmatter = raw
+            .frontmatter
+            .as_ref()
+            .map(|x| x.clone().try_into())
+            .transpose()?
+            .unwrap_or_default();
+
+        let logging = raw
+            .logging
+            .as_ref()
+            .map(|x| x.clone().try_into())
+            .transpose()?
+            .unwrap_or_default();
+
+        let task = raw
+            .task
+            .as_ref()
+            .map(|x| TaskConfig::from_raw(x.clone()))
+            .transpose()?
+            .unwrap_or_default();
+
+        let mut config = Self {
+            frontmatter,
+            paths,
+            logging,
+            task,
+            vault_metadata,
+            pending_events: vec![],
+        };
+
+        config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
+            "merged".to_owned(),
+            chrono::Utc::now().timestamp(),
+        )));
+
+        Ok(config)
+    }
+
+    /// Returns a reference to pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn pending_events(&self) -> &[Events] {
+        &self.pending_events
+    }
+
+    /// Returns and clears pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<Events> {
+        std::mem::take(&mut self.pending_events)
+    }
+
+    /// Adds a domain event to the pending events collection.
+    #[inline]
+    fn add_event(&mut self, event: Events) {
+        self.pending_events.push(event);
+    }
+
+    /// Build resolved paths from merged config.
+    fn make_resolved_paths(
+        fs: &raw::RawPathsConfig,
+    ) -> Result<Paths, ConfigError> {
+        let cache = Self::opt_path_to_domain(
+            &fs.cache_dir,
+            Cache::try_new,
+            "cache_dir",
+        )?
+        .unwrap_or_default();
+
+        let schema = Self::opt_path_to_domain(
+            &fs.schemas_dir,
+            Schema::try_new,
+            "schemas_dir",
+        )?
+        .unwrap_or_default();
+
+        let property_bank = Self::opt_filename(
+            &fs.property_bank_filename,
+            PropertyBank::try_new,
+            "property_bank_filename",
+        )?
+        .unwrap_or_default();
+
+        let template = Self::opt_path_to_domain(
+            &fs.templates_dir,
+            Template::try_new,
+            "templates_dir",
+        )?
+        .unwrap_or_default();
+
+        Ok(Paths::new(cache, schema, property_bank, template))
+    }
+
+    /// Convert optional path string to domain type.
+    #[expect(
+        clippy::ref_option,
+        reason = "API consistency with Option<T> patterns"
+    )]
+    fn opt_path_to_domain<T>(
+        opt: &Option<String>,
+        constructor: fn(PathBuf) -> Result<T, ConfigError>,
+        field_name: &str,
+    ) -> Result<Option<T>, ConfigError> {
+        opt.as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                constructor(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: field_name.to_owned().into(),
+                        message: format!("invalid path: {e}").into(),
+                    }
+                })
+            })
+            .transpose()
+    }
+
+    #[expect(
+        clippy::ref_option,
+        reason = "API consistency with Option<T> patterns"
+    )]
+    fn opt_filename<T>(
+        opt: &Option<String>,
+        constructor: fn(String) -> Result<T, ConfigError>,
+        field_name: &str,
+    ) -> Result<Option<T>, ConfigError> {
+        opt.as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                constructor(s.clone()).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: field_name.to_owned().into(),
+                        message: format!("invalid filename: {e}").into(),
+                    }
+                })
+            })
+            .transpose()
+    }
+}
+
+// ============================================================================
+// Versioning & Persistence Types
+// ============================================================================
+
 /// Monotonic version identifier for merged configs.
 #[derive(
     Debug,
@@ -142,214 +359,9 @@ pub struct ActiveMergedConfig {
     pub version: ConfigVersion,
 }
 
-/// Merged configuration result from global and vault configurations.
-///
-/// This struct represents the final merged configuration after applying
-/// domain constraints for precedence (vault overrides global). The
-/// configuration is immutable once created and represents the complete runtime
-/// configuration for a vault operation.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[non_exhaustive]
-pub struct Config {
-    /// Vault metadata with versioning and naming.
-    pub vault_metadata: Metadata,
-    /// Merged logging configuration.
-    pub logging: Logging,
-    /// Merged paths configuration.
-    pub paths: Paths,
-    /// Merged frontmatter configuration.
-    pub frontmatter: Frontmatter,
-    /// Merged task configuration.
-    pub task: TaskConfig,
-    /// Domain events pending emission (not persisted).
-    #[serde(skip)]
-    #[rkyv(with = rkyv::with::Skip)]
-    pending_events: Vec<Events>,
-}
-
-impl Default for Config {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            frontmatter: Frontmatter::default(),
-            paths: Paths::default(),
-            logging: Logging::default(),
-            pending_events: vec![],
-            task: TaskConfig::default(),
-            vault_metadata: Metadata::default(),
-        }
-    }
-}
-
-impl Config {
-    /// Adds a domain event to the pending events collection.
-    #[inline]
-    fn add_event(&mut self, event: Events) {
-        self.pending_events.push(event);
-    }
-
-    /// Convert optional path string to domain type.
-    #[expect(
-        clippy::ref_option,
-        reason = "API consistency with Option<T> patterns"
-    )]
-    fn opt_path_to_domain<T>(
-        opt: &Option<String>,
-        constructor: fn(PathBuf) -> Result<T, ConfigError>,
-        field_name: &str,
-    ) -> Result<Option<T>, ConfigError> {
-        opt.as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                constructor(PathBuf::from(s)).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: field_name.to_owned().into(),
-                        message: format!("invalid path: {e}").into(),
-                    }
-                })
-            })
-            .transpose()
-    }
-
-    #[expect(
-        clippy::ref_option,
-        reason = "API consistency with Option<T> patterns"
-    )]
-    fn opt_filename<T>(
-        opt: &Option<String>,
-        constructor: fn(String) -> Result<T, ConfigError>,
-        field_name: &str,
-    ) -> Result<Option<T>, ConfigError> {
-        opt.as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                constructor(s.clone()).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: field_name.to_owned().into(),
-                        message: format!("invalid filename: {e}").into(),
-                    }
-                })
-            })
-            .transpose()
-    }
-
-    /// Build resolved paths from merged config.
-    fn make_resolved_paths(
-        fs: &raw::RawPathsConfig,
-    ) -> Result<Paths, ConfigError> {
-        let cache = Self::opt_path_to_domain(
-            &fs.cache_dir,
-            Cache::try_new,
-            "cache_dir",
-        )?
-        .unwrap_or_default();
-
-        let schema = Self::opt_path_to_domain(
-            &fs.schemas_dir,
-            Schema::try_new,
-            "schemas_dir",
-        )?
-        .unwrap_or_default();
-
-        let property_bank = Self::opt_filename(
-            &fs.property_bank_filename,
-            PropertyBank::try_new,
-            "property_bank_filename",
-        )?
-        .unwrap_or_default();
-
-        let template = Self::opt_path_to_domain(
-            &fs.templates_dir,
-            Template::try_new,
-            "templates_dir",
-        )?
-        .unwrap_or_default();
-
-        Ok(Paths::new(cache, schema, property_bank, template))
-    }
-
-    /// Build validated Config from Figment-merged raw configuration.
-    ///
-    /// This is the **primary constructor** for `Config`. It takes a `RawConfig`
-    /// that has already been merged across layers (defaults → global → vault)
-    /// by `ingest::build_merged_raw()`, validates all fields, and constructs
-    /// a fully validated domain configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if validation fails for any field.
-    #[inline]
-    pub fn build(
-        raw: &raw::RawConfig,
-        vault_id: VaultId,
-        vault_root: VaultRoot,
-    ) -> Result<Self, ConfigError> {
-        let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
-
-        let fs = &raw.paths;
-
-        let paths = Self::make_resolved_paths(fs)?;
-
-        let frontmatter = raw
-            .frontmatter
-            .as_ref()
-            .map(|x| x.clone().try_into())
-            .transpose()?
-            .unwrap_or_default();
-
-        let logging = raw
-            .logging
-            .as_ref()
-            .map(|x| x.clone().try_into())
-            .transpose()?
-            .unwrap_or_default();
-
-        let task = raw
-            .task
-            .as_ref()
-            .map(|x| TaskConfig::from_raw(x.clone()))
-            .transpose()?
-            .unwrap_or_default();
-
-        let mut config = Self {
-            frontmatter,
-            paths,
-            logging,
-            task,
-            vault_metadata,
-            pending_events: vec![],
-        };
-
-        config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
-            "merged".to_owned(),
-            chrono::Utc::now().timestamp(),
-        )));
-
-        Ok(config)
-    }
-
-    /// Returns a reference to pending domain events.
-    #[inline]
-    #[must_use]
-    pub fn pending_events(&self) -> &[Events] {
-        &self.pending_events
-    }
-
-    /// Returns and clears pending domain events.
-    #[inline]
-    #[must_use]
-    pub fn take_events(&mut self) -> Vec<Events> {
-        std::mem::take(&mut self.pending_events)
-    }
-}
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 #[expect(
@@ -360,10 +372,6 @@ impl Config {
     reason = "Test modules have relaxed rules for unwrapping and events"
 )]
 mod tests {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Fixture helpers use expect for deterministic setup."
-    )]
     mod fixtures {
         use std::path::PathBuf;
 

@@ -4,55 +4,9 @@
 
 use super::error::ConfigError;
 
-/// Validated frontmatter key (non-empty).
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
-#[non_exhaustive]
-pub struct FrontmatterKey(
-    /// Internal key storage.
-    String,
-);
-
-impl FrontmatterKey {
-    /// Create a validated frontmatter key.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the key is empty.
-    #[inline]
-    pub fn try_new<T: Into<String>>(value: T) -> Result<Self, ConfigError> {
-        let value = value.into();
-        validate_non_empty("frontmatter_key", &value)?;
-        Ok(Self(value))
-    }
-
-    pub(crate) fn try_new_with_field(
-        field: &'static str,
-        value: impl Into<String>,
-    ) -> Result<Self, ConfigError> {
-        let value = value.into();
-        validate_non_empty(field, &value)?;
-        Ok(Self(value))
-    }
-
-    /// Return the key as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
+// ============================================================================
+// Public Domain Types (Most Important)
+// ============================================================================
 
 /// Frontmatter configuration with validation.
 #[derive(
@@ -78,6 +32,29 @@ pub struct Frontmatter {
     file_class_key: FrontmatterKey,
     /// Key used for title in frontmatter.
     title_key: FrontmatterKey,
+}
+
+impl Default for Frontmatter {
+    #[inline]
+    #[expect(
+        clippy::disallowed_methods,
+        clippy::expect_used,
+        reason = "Default values are guaranteed to be valid"
+    )]
+    fn default() -> Self {
+        Self {
+            alias_key: FrontmatterKey::try_new("aliases")
+                .expect("default alias key must be valid"),
+            date_created_key: FrontmatterKey::try_new("date_created")
+                .expect("default created key must be valid"),
+            date_modified_key: FrontmatterKey::try_new("date_modified")
+                .expect("default modified key must be valid"),
+            file_class_key: FrontmatterKey::try_new("file_class")
+                .expect("default file class key must be valid"),
+            title_key: FrontmatterKey::try_new("title")
+                .expect("default title key must be valid"),
+        }
+    }
 }
 
 impl Frontmatter {
@@ -136,44 +113,59 @@ impl Frontmatter {
     }
 }
 
-impl Default for Frontmatter {
+/// Validated frontmatter key (non-empty).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct FrontmatterKey(
+    /// Internal key storage.
+    String,
+);
+
+impl FrontmatterKey {
+    /// Create a validated frontmatter key.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the key is empty.
     #[inline]
-    #[expect(
-        clippy::disallowed_methods,
-        clippy::expect_used,
-        reason = "Default values are guaranteed to be valid"
-    )]
-    fn default() -> Self {
-        Self {
-            alias_key: FrontmatterKey::try_new("aliases")
-                .expect("default alias key must be valid"),
-            date_created_key: FrontmatterKey::try_new("date_created")
-                .expect("default created key must be valid"),
-            date_modified_key: FrontmatterKey::try_new("date_modified")
-                .expect("default modified key must be valid"),
-            file_class_key: FrontmatterKey::try_new("file_class")
-                .expect("default file class key must be valid"),
-            title_key: FrontmatterKey::try_new("title")
-                .expect("default title key must be valid"),
-        }
+    pub fn try_new<T: Into<String>>(value: T) -> Result<Self, ConfigError> {
+        let value = value.into();
+        validate_non_empty("frontmatter_key", &value)?;
+        Ok(Self(value))
+    }
+
+    pub(crate) fn try_new_with_field(
+        field: &'static str,
+        value: impl Into<String>,
+    ) -> Result<Self, ConfigError> {
+        let value = value.into();
+        validate_non_empty(field, &value)?;
+        Ok(Self(value))
+    }
+
+    /// Return the key as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
-impl TryFrom<String> for FrontmatterKey {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, ConfigError> {
-        Self::try_new(value)
-    }
-}
-
-impl From<FrontmatterKey> for String {
-    #[inline]
-    fn from(key: FrontmatterKey) -> Self {
-        key.0
-    }
-}
+// ============================================================================
+// Input DTOs
+// ============================================================================
 
 /// Raw frontmatter configuration (unvalidated input).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -190,6 +182,10 @@ pub struct RawFrontmatter {
     /// Frontmatter key for title.
     pub title_key: Option<String>,
 }
+
+// ============================================================================
+// Standard Trait Implementations (Conversions)
+// ============================================================================
 
 impl TryFrom<RawFrontmatter> for Frontmatter {
     type Error = ConfigError;
@@ -239,6 +235,26 @@ impl TryFrom<RawFrontmatter> for Frontmatter {
     }
 }
 
+impl TryFrom<String> for FrontmatterKey {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, ConfigError> {
+        Self::try_new(value)
+    }
+}
+
+impl From<FrontmatterKey> for String {
+    #[inline]
+    fn from(key: FrontmatterKey) -> Self {
+        key.0
+    }
+}
+
+// ============================================================================
+// Low-Level Validation Helpers
+// ============================================================================
+
 fn validate_non_empty(
     field: &'static str,
     value: &str,
@@ -251,6 +267,10 @@ fn validate_non_empty(
     }
     Ok(())
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 #[expect(
