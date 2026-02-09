@@ -11,6 +11,10 @@ use super::{
     vault::{Vault, VaultId, VaultRoot},
 };
 
+// ============================================================================
+// Command Implementation
+// ============================================================================
+
 /// Command implementation for Config write operations.
 pub struct Command<C> {
     command_port: C,
@@ -192,13 +196,16 @@ where
     }
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    reason = "Test modules group fixtures and test logic for readability"
+    reason = "Test modules have relaxed rules"
 )]
 mod tests {
-
     use super::*;
     use crate::{
         config::ports as config_ports,
