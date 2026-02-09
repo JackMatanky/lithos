@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, Tag, TagEnd};
 
 use super::{
     aggregate::Note,
@@ -11,7 +11,10 @@ use super::{
     task::Task,
     types::SourceByteOffset,
 };
-use crate::config::task::{StatusSymbol, TaskConfig};
+use crate::{
+    config::task::{StatusSymbol, TaskConfig},
+    fs::MarkdownParser,
+};
 
 /// Markdown parser for list and task extraction.
 #[derive(Debug, Clone, Copy)]
@@ -40,11 +43,10 @@ impl<'config> NoteParser<'config> {
         &self,
         markdown: &str,
     ) -> Result<ParseOutcome, NoteError> {
-        let options = Options::ENABLE_TASKLISTS;
-        let parser = Parser::new_ext(markdown, options);
+        let parser = MarkdownParser::with_tasklists();
         let mut state = ParseState::new(self.config);
 
-        for (event, range) in parser.into_offset_iter() {
+        for (event, range) in parser.parse_offsets(markdown) {
             state.handle_event(event, range)?;
         }
 

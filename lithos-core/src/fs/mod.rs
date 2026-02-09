@@ -15,10 +15,14 @@
 //! - **parsers**: TOML/JSON/YAML parsing strategies with auto-detection.
 //!   - Strategy pattern implementation for structured data formats.
 //!   - Re-exported as `FormatDispatcher` for clarity in calling code.
+//! - **markdown**: Offset-aware markdown parsing utilities.
+//!   - Wraps pulldown-cmark for adapter layers.
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 /// Filesystem error types.
 pub mod error;
+/// Markdown parsing utilities.
+pub mod markdown;
 /// Structured data parsers (TOML/JSON/YAML).
 pub mod parsers;
 /// Security-critical path validation utilities.
@@ -28,6 +32,11 @@ pub mod validator;
 
 /// Format dispatcher type alias.
 pub type FormatDispatcher = parsers::Dispatcher;
+/// Markdown parser type alias.
+pub type MarkdownParser = markdown::MarkdownParser;
+/// Markdown offset iterator type alias.
+pub type MarkdownOffsetIter<'markdown> =
+    markdown::MarkdownOffsetIter<'markdown>;
 /// Filesystem error type alias.
 pub type FsError = error::FsError;
 /// Parse error type alias.
