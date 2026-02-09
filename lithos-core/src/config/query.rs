@@ -9,6 +9,10 @@ use super::{
     vault::VaultId,
 };
 
+// ============================================================================
+// Query Implementation
+// ============================================================================
+
 /// Query implementation for Config read operations.
 pub struct Query<Q> {
     query_port: Q,
@@ -82,13 +86,16 @@ where
     }
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
     reason = "Test modules group fixtures and test logic for readability"
 )]
 mod tests {
-
     use super::*;
     use crate::{
         config::{
