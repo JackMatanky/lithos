@@ -23,55 +23,6 @@ use super::{
     task::Task,
 };
 
-/// Unique identifier for a Note.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct NoteId(uuid::Uuid);
-
-impl NoteId {
-    /// Creates a new random `NoteId` (UUID v7).
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self(uuid::Uuid::now_v7())
-    }
-}
-
-impl Default for NoteId {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl From<uuid::Uuid> for NoteId {
-    #[inline]
-    fn from(uuid: uuid::Uuid) -> Self {
-        Self(uuid)
-    }
-}
-
-impl From<NoteId> for uuid::Uuid {
-    #[inline]
-    fn from(id: NoteId) -> uuid::Uuid {
-        id.0
-    }
-}
-
 /// Represents an Obsidian-compatible markdown note.
 ///
 /// `Note` is the aggregate root for the note bounded context. It maintains
@@ -111,70 +62,6 @@ pub struct Note {
     #[rkyv(with = rkyv::with::Skip)]
     #[serde(skip)]
     pending_events: Vec<NoteEvents>,
-}
-
-/// Validated vault-relative path for a note.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct NotePath(Box<str>);
-
-impl NotePath {
-    /// Creates a new `NotePath` with validation.
-    ///
-    /// # Errors
-    /// Returns [`NoteError::InvalidPath`] if the path is invalid.
-    #[inline]
-    pub fn new(path: String) -> Result<Self, NoteError> {
-        // Basic normalization: convert backslashes to forward slashes
-        // Avoid allocation if no backslashes
-        let normalized = if path.contains('\\') {
-            path.replace('\\', "/")
-        } else {
-            path
-        };
-
-        // Use core filesystem validator
-        crate::fs::validate_vault_path(&normalized, Some("md"))
-            .map_err(|e| NoteError::InvalidPath(e.clone()))?;
-
-        Ok(Self(normalized.into()))
-    }
-
-    /// Returns the path as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<&str> for NotePath {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new(value.to_owned())
-    }
-}
-
-impl TryFrom<String> for NotePath {
-    type Error = NoteError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
 }
 
 impl Note {
@@ -320,6 +207,119 @@ impl Note {
     #[must_use]
     pub fn take_events(&mut self) -> Vec<NoteEvents> {
         std::mem::take(&mut self.pending_events)
+    }
+}
+
+/// Unique identifier for a Note.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct NoteId(uuid::Uuid);
+
+impl NoteId {
+    /// Creates a new random `NoteId` (UUID v7).
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(uuid::Uuid::now_v7())
+    }
+}
+
+impl Default for NoteId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<uuid::Uuid> for NoteId {
+    #[inline]
+    fn from(uuid: uuid::Uuid) -> Self {
+        Self(uuid)
+    }
+}
+
+impl From<NoteId> for uuid::Uuid {
+    #[inline]
+    fn from(id: NoteId) -> uuid::Uuid {
+        id.0
+    }
+}
+
+/// Validated vault-relative path for a note.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct NotePath(Box<str>);
+
+impl NotePath {
+    /// Creates a new `NotePath` with validation.
+    ///
+    /// # Errors
+    /// Returns [`NoteError::InvalidPath`] if the path is invalid.
+    #[inline]
+    pub fn new(path: String) -> Result<Self, NoteError> {
+        // Basic normalization: convert backslashes to forward slashes
+        // Avoid allocation if no backslashes
+        let normalized = if path.contains('\\') {
+            path.replace('\\', "/")
+        } else {
+            path
+        };
+
+        // Use core filesystem validator
+        crate::fs::validate_vault_path(&normalized, Some("md"))
+            .map_err(|e| NoteError::InvalidPath(e.clone()))?;
+
+        Ok(Self(normalized.into()))
+    }
+
+    /// Returns the path as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for NotePath {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value.to_owned())
+    }
+}
+
+impl TryFrom<String> for NotePath {
+    type Error = NoteError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
     }
 }
 
