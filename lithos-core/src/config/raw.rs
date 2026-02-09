@@ -1,59 +1,8 @@
 //! Raw (serde) configuration input types.
 //!
-//! ## Purpose
-//!
 //! These types are **serde-only Data Transfer Objects (DTOs)** that serve as
 //! the deserialization boundary between configuration files (TOML/YAML/JSON)
 //! and validated domain models.
-//!
-//! ## Architecture Pattern
-//!
-//! ```text
-//! Config File (TOML)
-//!     ↓ serde::Deserialize
-//! Raw* Types (unvalidated, optional fields)
-//!     ↓ TryFrom<Raw*> (validation happens here)
-//! Domain Types (validated invariants, typed enums)
-//!     ↓ rkyv::Archive
-//! Database (redb, zero-copy bytes)
-//! ```
-//!
-//! ## Key Characteristics
-//!
-//! - **No Implementation**: Raw types have zero methods by design
-//! - **All Optional Fields**: Accept flexible/partial configuration input
-//! - **No Validation**: Can contain empty strings, invalid values,
-//!   contradictions
-//! - **String Enums**: Accept any string, validation happens in `TryFrom`
-//! - **Not Persisted**: Only validated domain types are stored in the database
-//!
-//! ## Validation Boundary & Co-location
-//!
-//! **Domain-specific Raw types are co-located** with their validated types for
-//! better readability. The aggregate Raw types remain in this module.
-//!
-//! Validation occurs in `TryFrom<Raw*>` implementations in the same file:
-//!
-//! | Raw Type           | Validated Type  | Location                      | Validates        |
-//! | ------------------ | --------------- | ----------------------------- | ---------------- |
-//! | `RawFrontmatter`   | `Frontmatter`   | `frontmatter.rs` ← co-located | Non-empty keys   |
-//! | `RawLogging`       | `Logging`       | `logging.rs` ← co-located     | Log level enum   |
-//! | `RawTrustedVaults` | `TrustedVaults` | `global.rs`                   | List/map format  |
-//! | `RawTaskConfig`    | `TaskConfig`    | `task.rs`                     | Complex rules    |
-//!
-//! The domain-specific Raw types are imported by this module (for use in the
-//! aggregate structs) but defined alongside their validated types.
-//!
-//! ## Design Rationale
-//!
-//! Separating Raw types from validated domain types enables:
-//!
-//! - **Flexible Parsing**: Accept typos, wrong types, partial configs
-//! - **Clear Error Messages**: Report which file field failed validation
-//! - **Default Handling**: `None` fields trigger default value logic
-//! - **Independent Evolution**: File format can change without breaking domain
-//!
-//! See `docs/design/001-config-models.md` Section 3.2.1 for full rationale.
 
 #![allow(
     missing_docs,
@@ -65,7 +14,7 @@ use std::collections::HashMap;
 use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 
 // ============================================================================
-// Unified Raw Config Schema (Phase 1.1 - Figment Integration)
+// Aggregate Root Raw Config
 // ============================================================================
 
 /// Unified raw configuration for Figment merge.
@@ -73,33 +22,6 @@ use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 /// This replaces separate `RawGlobal` and `RawVault` with a single schema
 /// that works at all layers (defaults, global, vault). All fields are
 /// `Option<T>` to enable deep merging across layers.
-///
-/// ## Figment Merge Flow
-///
-/// ```text
-/// Layer 1: Compiled defaults (RawConfig::default())
-///     ↓ Figment::merge
-/// Layer 2: Global config (~/.config/lithos/lithos.toml)
-///     ↓ Figment::merge
-/// Layer 3: Vault config (<vault>/.lithos/lithos.toml)
-///     ↓ Figment::extract
-/// Merged RawConfig (all layers combined)
-/// ```
-///
-/// ## Example TOML
-///
-/// ```toml
-/// # Global config
-/// [paths]
-/// schemas_dir = "global-schemas"
-/// templates_dir = "global-templates"
-///
-/// # Vault config
-/// [paths]
-/// schemas_dir = "vault-schemas"  # Overrides global
-/// cache_dir = ".cache"            # New field
-/// # templates_dir inherited from global
-/// ```
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawConfig {
@@ -121,11 +43,11 @@ pub struct RawConfig {
     pub trusted_vaults: Option<RawTrustedVaults>,
 }
 
+// ============================================================================
+// Component Raw Types
+// ============================================================================
+
 /// Path configuration with optional fields for deep merge.
-///
-/// All fields are `Option<T>` so Figment can deep-merge them across layers.
-/// This enables vault configs to override individual fields while inheriting
-/// others from global config.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPathsConfig {
@@ -146,18 +68,7 @@ pub struct RawPathsConfig {
     pub templates_dir: Option<String>,
 }
 
-// Raw trusted vaults configuration.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(untagged)]
-#[non_exhaustive]
-pub enum RawTrustedVaults {
-    /// List format.
-    List(Vec<String>),
-    /// Map format (alias -> path).
-    Map(HashMap<String, String>),
-}
-
-// Raw task configuration input.
+/// Raw task configuration input.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawTaskConfig {
@@ -175,7 +86,7 @@ pub struct RawTaskConfig {
     pub indexing: Option<RawIndexingConfig>,
 }
 
-// Raw date field configuration.
+/// Configuration for date fields in tasks.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawTaskDates {
@@ -207,19 +118,14 @@ pub struct RawDateFieldSpec {
 #[non_exhaustive]
 pub enum RawTaskFieldSpec {
     /// A categorical field with a predefined set of allowed values.
-    /// Matches when 'values' array is present.
     Enum(RawEnumFieldSpec),
     /// A date/time field.
-    /// Matches when 'format' string is present.
     DateTime(RawDateTimeFieldSpec),
     /// A string field with optional pattern matching.
-    /// Fallback variant or matches when 'pattern' is present.
     String(RawStringFieldSpec),
     /// An integer field with optional range constraints.
-    /// Matches when 'min' or 'max' are integers.
     Integer(RawIntegerFieldSpec),
     /// A floating point field.
-    /// Matches when 'min' or 'max' are floats.
     Float(RawFloatFieldSpec),
 }
 
@@ -290,6 +196,21 @@ pub struct RawIndexingConfig {
     pub indexed_fields: Option<Vec<String>>,
 }
 
+/// Raw trusted vaults configuration.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[non_exhaustive]
+pub enum RawTrustedVaults {
+    /// List format.
+    List(Vec<String>),
+    /// Map format (alias -> path).
+    Map(HashMap<String, String>),
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,20 +221,16 @@ mod tests {
         #[test]
         fn deserializes_unknown_keys_without_error() {
             let toml = r#"
-unknown_key = "value"
+                unknown_key = "value"
 
-[logging]
-log_level = "info"
-"#;
+                [logging]
+                log_level = "info"
+            "#;
 
             let parsed: Result<RawConfig, _> = toml::from_str(toml);
             assert!(parsed.is_ok(), "Unknown keys should be ignored");
         }
     }
-
-    // ========================================================================
-    // Phase 1.1: Unified RawConfig Tests
-    // ========================================================================
 
     mod unified_raw_config {
         use super::*;
