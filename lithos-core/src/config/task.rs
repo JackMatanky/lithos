@@ -9,8 +9,17 @@
     missing_docs,
     reason = "rkyv generates undocumented archived struct fields"
 )]
+#![allow(
+    clippy::allow_attributes,
+    clippy::missing_trait_methods,
+    dead_code,
+    reason = "Internal validation helpers and clippy compatibility"
+)]
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use regex::Regex;
 
@@ -52,9 +61,9 @@ pub struct TaskConfig {
     /// Optional completed date field configuration.
     completed_field: Option<DateFieldSpec>,
     /// Custom task field specifications.
-    fields: HashMap<String, TaskFieldSpec>,
+    fields: HashMap<Box<str>, TaskFieldSpec>,
     /// List of field names to be indexed.
-    indexed_fields: Vec<String>,
+    indexed_fields: Vec<Box<str>>,
 }
 
 /// Validated status name (e.g., `complete`).
@@ -70,300 +79,16 @@ pub struct TaskConfig {
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
-pub struct StatusName(String);
-
-/// Validated status symbol (e.g., `x`).
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
-pub struct StatusSymbol(char);
-
-/// Checkbox status mappings.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct CheckboxStatus {
-    /// Name to symbol mapping.
-    by_name: HashMap<StatusName, StatusSymbol>,
-    /// Symbol to name mapping.
-    by_symbol: HashMap<StatusSymbol, StatusName>,
-}
-
-/// Validated task tag marker (e.g., `#task`).
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct TaskTag(String);
-
-/// Field keyword used in task text (e.g., `due:`).
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct TaskFieldKeyword(String);
-
-/// Numeric bounds for integer field validation.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum IntegerBounds {
-    /// No bounds.
-    Unbounded,
-    /// Minimum value only.
-    Min(i64),
-    /// Maximum value only.
-    Max(i64),
-    /// Both minimum and maximum.
-    Range {
-        /// Inclusive minimum.
-        min: i64,
-        /// Inclusive maximum.
-        max: i64,
-    },
-}
-
-/// Numeric bounds for float field validation.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum FloatBounds {
-    /// No bounds.
-    Unbounded,
-    /// Minimum value only.
-    Min(f64),
-    /// Maximum value only.
-    Max(f64),
-    /// Both minimum and maximum.
-    Range {
-        /// Inclusive minimum.
-        min: f64,
-        /// Inclusive maximum.
-        max: f64,
-    },
-}
-
-/// Date field specification.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct DateFieldSpec {
-    /// Keyword used in text.
-    keyword: TaskFieldKeyword,
-    /// Optional emoji marker.
-    emoji: Option<char>,
-    /// Chrono format string.
-    format: String,
-}
-
-/// Custom task field specification.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub enum TaskFieldSpec {
-    /// Integer field.
-    Integer {
-        /// Field keyword.
-        keyword: TaskFieldKeyword,
-        /// Optional bounds.
-        bounds: IntegerBounds,
-    },
-    /// Float field.
-    Float {
-        /// Field keyword.
-        keyword: TaskFieldKeyword,
-        /// Optional bounds.
-        bounds: FloatBounds,
-    },
-    /// String field.
-    String {
-        /// Field keyword.
-        keyword: TaskFieldKeyword,
-        /// Optional validation pattern.
-        pattern: Option<String>,
-    },
-    /// Enumerated field.
-    Enum {
-        /// Field keyword.
-        keyword: TaskFieldKeyword,
-        /// List of allowed values.
-        values: Vec<String>,
-    },
-    /// Date time field.
-    DateTime {
-        /// Field keyword.
-        keyword: TaskFieldKeyword,
-        /// Chrono format string.
-        format: String,
-    },
-}
-
-impl TaskTag {
-    #[inline]
-    /// Create a validated task tag.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the tag is not a valid task
-    /// marker.
-    pub fn try_new<T: AsRef<str> + Into<String>>(
-        value: T,
-    ) -> Result<Self, ConfigError> {
-        let text = value.as_ref();
-        if text.len() < 2 || !text.starts_with('#') {
-            return Err(ConfigError::ValidationFailed {
-                field: "task_tags".to_owned().into(),
-                message: "task tag must start with '#' and be non-empty"
-                    .to_owned()
-                    .into(),
-            });
-        }
-        if !text
-            .chars()
-            .skip(1)
-            .all(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        {
-            return Err(ConfigError::ValidationFailed {
-                field: "task_tags".to_owned().into(),
-                message: "task tag must be ASCII alphanumeric, '_' or '-'"
-                    .to_owned()
-                    .into(),
-            });
-        }
-        Ok(Self(value.into()))
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the tag as a string slice.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TaskFieldKeyword {
-    #[inline]
-    /// Create a validated task field keyword.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the keyword is invalid.
-    pub fn try_new<T: AsRef<str> + Into<String>>(
-        value: T,
-    ) -> Result<Self, ConfigError> {
-        let text = value.as_ref();
-        if text.is_empty() || text.len() > 64 {
-            return Err(ConfigError::ValidationFailed {
-                field: "task.fields.keyword".to_owned().into(),
-                message: "keyword must be 1-64 characters".to_owned().into(),
-            });
-        }
-        if !text
-            .chars()
-            .all(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        {
-            return Err(ConfigError::ValidationFailed {
-                field: "task.fields.keyword".to_owned().into(),
-                message: "keyword must be ASCII alphanumeric, '_' or '-'"
-                    .to_owned()
-                    .into(),
-            });
-        }
-        Ok(Self(value.into()))
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the keyword as a string slice.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
+#[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
+pub struct StatusName(Box<str>);
 
 impl StatusName {
     #[inline]
     /// Create a validated status name.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the name is invalid.
-    pub fn try_new<T: AsRef<str> + Into<String>>(
-        value: T,
-    ) -> Result<Self, ConfigError> {
+    /// Returns `ConfigError::ValidationFailed` if the name is empty or invalid.
+    pub fn try_new<T: AsRef<str>>(value: T) -> Result<Self, ConfigError> {
         let text = value.as_ref();
         if text.is_empty() || text.len() > 32 {
             return Err(ConfigError::ValidationFailed {
@@ -381,7 +106,7 @@ impl StatusName {
                     .into(),
             });
         }
-        Ok(Self(value.into()))
+        Ok(Self(text.to_owned().into_boxed_str()))
     }
 
     #[inline]
@@ -391,6 +116,30 @@ impl StatusName {
         &self.0
     }
 }
+
+impl From<StatusName> for String {
+    #[inline]
+    fn from(name: StatusName) -> Self {
+        name.0.into_string()
+    }
+}
+
+/// Validated status symbol (e.g., `x`).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
+pub struct StatusSymbol(char);
 
 impl StatusSymbol {
     #[inline]
@@ -416,136 +165,21 @@ impl StatusSymbol {
     }
 }
 
-impl IntegerBounds {
-    #[inline]
-    /// Build bounds from optional min/max values.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if min is greater than max.
-    pub fn try_from_options(
-        min: Option<i64>,
-        max: Option<i64>,
-        field: &'static str,
-    ) -> Result<Self, ConfigError> {
-        match (min, max) {
-            (None, None) => Ok(Self::Unbounded),
-            (Some(min), None) => Ok(Self::Min(min)),
-            (None, Some(max)) => Ok(Self::Max(max)),
-            (Some(min), Some(max)) => {
-                if min <= max {
-                    Ok(Self::Range {
-                        min,
-                        max,
-                    })
-                } else {
-                    Err(ConfigError::ValidationFailed {
-                        field: field.to_owned().into(),
-                        message: "min must be <= max".to_owned().into(),
-                    })
-                }
-            }
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return true when the value satisfies the bounds.
-    pub fn validate(&self, value: i64) -> bool {
-        match *self {
-            Self::Unbounded => true,
-            Self::Min(min) => value >= min,
-            Self::Max(max) => value <= max,
-            Self::Range {
-                min,
-                max,
-            } => value >= min && value <= max,
-        }
-    }
-}
-
-impl FloatBounds {
-    #[inline]
-    /// Build bounds from optional min/max values.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if min is greater than max.
-    pub fn try_from_options(
-        min: Option<f64>,
-        max: Option<f64>,
-        field: &'static str,
-    ) -> Result<Self, ConfigError> {
-        match (min, max) {
-            (None, None) => Ok(Self::Unbounded),
-            (Some(min), None) => Ok(Self::Min(min)),
-            (None, Some(max)) => Ok(Self::Max(max)),
-            (Some(min), Some(max)) => {
-                if min <= max {
-                    Ok(Self::Range {
-                        min,
-                        max,
-                    })
-                } else {
-                    Err(ConfigError::ValidationFailed {
-                        field: field.to_owned().into(),
-                        message: "min must be <= max".to_owned().into(),
-                    })
-                }
-            }
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return true when the value satisfies the bounds.
-    pub fn validate(&self, value: f64) -> bool {
-        match *self {
-            Self::Unbounded => true,
-            Self::Min(min) => value >= min,
-            Self::Max(max) => value <= max,
-            Self::Range {
-                min,
-                max,
-            } => value >= min && value <= max,
-        }
-    }
-}
-
-impl DateFieldSpec {
-    #[inline]
-    /// Build a date field spec from raw input.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the format is invalid.
-    pub fn from_raw(raw: RawDateFieldSpec) -> Result<Self, ConfigError> {
-        let keyword = TaskFieldKeyword::try_new(raw.keyword)?;
-        validate_chrono_format(&raw.format, "task.dates.format")?;
-        Ok(Self {
-            keyword,
-            emoji: raw.emoji,
-            format: raw.format,
-        })
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the field keyword.
-    pub fn keyword(&self) -> &TaskFieldKeyword {
-        &self.keyword
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the optional emoji marker.
-    pub fn emoji(&self) -> Option<char> {
-        self.emoji
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the chrono format string.
-    pub fn format(&self) -> &str {
-        &self.format
-    }
+/// Checkbox status mappings.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+pub struct CheckboxStatus {
+    by_name: HashMap<StatusName, StatusSymbol>,
+    by_symbol: HashMap<StatusSymbol, StatusName>,
 }
 
 impl CheckboxStatus {
@@ -609,6 +243,465 @@ impl CheckboxStatus {
     }
 }
 
+/// Validated task tag marker (e.g., `#task`).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+pub struct TaskTag(Box<str>);
+
+impl TaskTag {
+    #[inline]
+    /// Create a validated task tag.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the tag is not a valid task
+    /// marker.
+    pub fn try_new<T: AsRef<str>>(value: T) -> Result<Self, ConfigError> {
+        let text = value.as_ref();
+        if text.len() < 2 || !text.starts_with('#') {
+            return Err(ConfigError::ValidationFailed {
+                field: "task_tags".to_owned().into(),
+                message: "task tag must start with '#' and be non-empty"
+                    .to_owned()
+                    .into(),
+            });
+        }
+        if !text
+            .chars()
+            .skip(1)
+            .all(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(ConfigError::ValidationFailed {
+                field: "task_tags".to_owned().into(),
+                message: "task tag must be ASCII alphanumeric, '_' or '-'"
+                    .to_owned()
+                    .into(),
+            });
+        }
+        Ok(Self(text.to_owned().into_boxed_str()))
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the tag as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<TaskTag> for String {
+    #[inline]
+    fn from(tag: TaskTag) -> Self {
+        tag.0.into_string()
+    }
+}
+
+/// Field keyword used in task text (e.g., `due:`).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
+pub struct TaskFieldKeyword(Box<str>);
+
+impl TaskFieldKeyword {
+    #[inline]
+    /// Create a validated task field keyword.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the keyword is invalid.
+    pub fn try_new<T: AsRef<str>>(value: T) -> Result<Self, ConfigError> {
+        let text = value.as_ref();
+        if text.is_empty() || text.len() > 64 {
+            return Err(ConfigError::ValidationFailed {
+                field: "task.fields.keyword".to_owned().into(),
+                message: "keyword must be 1-64 characters".to_owned().into(),
+            });
+        }
+        if !text
+            .chars()
+            .all(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(ConfigError::ValidationFailed {
+                field: "task.fields.keyword".to_owned().into(),
+                message: "keyword must be ASCII alphanumeric, '_' or '-'"
+                    .to_owned()
+                    .into(),
+            });
+        }
+        Ok(Self(text.to_owned().into_boxed_str()))
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the keyword as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<TaskFieldKeyword> for String {
+    #[inline]
+    fn from(keyword: TaskFieldKeyword) -> Self {
+        keyword.0.into_string()
+    }
+}
+
+/// Numeric bounds for integer field validation.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum IntegerBounds {
+    /// No bounds.
+    Unbounded,
+    /// Minimum value only.
+    Min(i64),
+    /// Maximum value only.
+    Max(i64),
+    /// Both minimum and maximum.
+    Range {
+        /// Inclusive minimum.
+        min: i64,
+        /// Inclusive maximum.
+        max: i64,
+    },
+}
+
+impl IntegerBounds {
+    #[inline]
+    /// Build bounds from optional min/max values.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if min is greater than max.
+    pub fn try_from_options(
+        min: Option<i64>,
+        max: Option<i64>,
+        field: &'static str,
+    ) -> Result<Self, ConfigError> {
+        match (min, max) {
+            (None, None) => Ok(Self::Unbounded),
+            (Some(min), None) => Ok(Self::Min(min)),
+            (None, Some(max)) => Ok(Self::Max(max)),
+            (Some(min), Some(max)) => {
+                if min <= max {
+                    Ok(Self::Range {
+                        min,
+                        max,
+                    })
+                } else {
+                    Err(ConfigError::ValidationFailed {
+                        field: field.to_owned().into(),
+                        message: "min must be <= max".to_owned().into(),
+                    })
+                }
+            }
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return true when the value satisfies the bounds.
+    pub fn validate(&self, value: i64) -> bool {
+        match *self {
+            Self::Unbounded => true,
+            Self::Min(min) => value >= min,
+            Self::Max(max) => value <= max,
+            Self::Range {
+                min,
+                max,
+            } => value >= min && value <= max,
+        }
+    }
+}
+
+/// Numeric bounds for float field validation.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum FloatBounds {
+    /// No bounds.
+    Unbounded,
+    /// Minimum value only.
+    Min(f64),
+    /// Maximum value only.
+    Max(f64),
+    /// Both minimum and maximum.
+    Range {
+        /// Inclusive minimum.
+        min: f64,
+        /// Inclusive maximum.
+        max: f64,
+    },
+}
+
+impl FloatBounds {
+    #[inline]
+    /// Build bounds from optional min/max values.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if min is greater than max.
+    pub fn try_from_options(
+        min: Option<f64>,
+        max: Option<f64>,
+        field: &'static str,
+    ) -> Result<Self, ConfigError> {
+        match (min, max) {
+            (None, None) => Ok(Self::Unbounded),
+            (Some(min), None) => Ok(Self::Min(min)),
+            (None, Some(max)) => Ok(Self::Max(max)),
+            (Some(min), Some(max)) => {
+                if min <= max {
+                    Ok(Self::Range {
+                        min,
+                        max,
+                    })
+                } else {
+                    Err(ConfigError::ValidationFailed {
+                        field: field.to_owned().into(),
+                        message: "min must be <= max".to_owned().into(),
+                    })
+                }
+            }
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return true when the value satisfies the bounds.
+    pub fn validate(&self, value: f64) -> bool {
+        match *self {
+            Self::Unbounded => true,
+            Self::Min(min) => value >= min,
+            Self::Max(max) => value <= max,
+            Self::Range {
+                min,
+                max,
+            } => value >= min && value <= max,
+        }
+    }
+}
+
+/// Date field specification.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub struct DateFieldSpec {
+    /// Keyword used in text.
+    keyword: TaskFieldKeyword,
+    /// Optional emoji marker.
+    emoji: Option<char>,
+    /// Chrono format string.
+    format: Box<str>,
+}
+
+impl DateFieldSpec {
+    #[inline]
+    /// Build a date field spec from raw input.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the spec is invalid.
+    pub fn from_raw(raw: RawDateFieldSpec) -> Result<Self, ConfigError> {
+        let keyword = TaskFieldKeyword::try_new(raw.keyword)?;
+        validate_chrono_format(&raw.format, "task.dates.format")?;
+        Ok(Self {
+            keyword,
+            emoji: raw.emoji,
+            format: raw.format.into_boxed_str(),
+        })
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the field keyword.
+    pub fn keyword(&self) -> &TaskFieldKeyword {
+        &self.keyword
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the optional emoji marker.
+    pub fn emoji(&self) -> Option<char> {
+        self.emoji
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the chrono format string.
+    pub fn format(&self) -> &str {
+        &self.format
+    }
+}
+
+/// Custom task field specification.
+#[derive(
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum TaskFieldSpec {
+    /// Integer field.
+    Integer {
+        /// Field keyword.
+        keyword: TaskFieldKeyword,
+        /// Optional bounds.
+        bounds: IntegerBounds,
+    },
+    /// Float field.
+    Float {
+        /// Field keyword.
+        keyword: TaskFieldKeyword,
+        /// Optional bounds.
+        bounds: FloatBounds,
+    },
+    /// String field.
+    String {
+        /// Field keyword.
+        keyword: TaskFieldKeyword,
+        /// Optional validation pattern.
+        pattern: Option<String>,
+        /// Pre-compiled regex pattern for validation.
+        #[rkyv(with = rkyv::with::Skip)]
+        #[serde(skip)]
+        compiled: Option<Arc<Regex>>,
+    },
+    /// Enumerated field.
+    Enum {
+        /// Field keyword.
+        keyword: TaskFieldKeyword,
+        /// List of allowed values.
+        values: Vec<Box<str>>,
+    },
+    /// Date time field.
+    DateTime {
+        /// Field keyword.
+        keyword: TaskFieldKeyword,
+        /// Chrono format string.
+        format: String,
+    },
+}
+
+impl PartialEq for TaskFieldSpec {
+    #[inline]
+    #[expect(clippy::pattern_type_mismatch, reason = "Enum pattern matching")]
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Integer {
+                    keyword: k1,
+                    bounds: b1,
+                },
+                Self::Integer {
+                    keyword: k2,
+                    bounds: b2,
+                },
+            ) => k1 == k2 && b1 == b2,
+            (
+                Self::Float {
+                    keyword: k1,
+                    bounds: b1,
+                },
+                Self::Float {
+                    keyword: k2,
+                    bounds: b2,
+                },
+            ) => k1 == k2 && b1 == b2,
+            (
+                Self::String {
+                    keyword: k1,
+                    pattern: p1,
+                    ..
+                },
+                Self::String {
+                    keyword: k2,
+                    pattern: p2,
+                    ..
+                },
+            ) => k1 == k2 && p1 == p2,
+            (
+                Self::Enum {
+                    keyword: k1,
+                    values: v1,
+                },
+                Self::Enum {
+                    keyword: k2,
+                    values: v2,
+                },
+            ) => k1 == k2 && v1 == v2,
+            (
+                Self::DateTime {
+                    keyword: k1,
+                    format: f1,
+                },
+                Self::DateTime {
+                    keyword: k2,
+                    format: f2,
+                },
+            ) => k1 == k2 && f1 == f2,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for TaskFieldSpec {
+    #[inline]
+    fn assert_receiver_is_total_eq(&self) {
+        // Default implementation is fine
+    }
+}
+
 impl TaskFieldSpec {
     #[inline]
     /// Build a task field spec from raw input.
@@ -617,10 +710,10 @@ impl TaskFieldSpec {
     /// Returns `ConfigError::ValidationFailed` if the spec is invalid.
     pub fn from_raw(raw: RawTaskFieldSpec) -> Result<Self, ConfigError> {
         match raw {
-            RawTaskFieldSpec::Enum {
+            RawTaskFieldSpec::Enum(crate::config::raw::RawEnumFieldSpec {
                 keyword,
                 values,
-            } => {
+            }) => {
                 if values.is_empty() {
                     return Err(ConfigError::ValidationFailed {
                         field: "task.fields.values".to_owned().into(),
@@ -630,16 +723,20 @@ impl TaskFieldSpec {
                     });
                 }
                 let keyword = TaskFieldKeyword::try_new(keyword)?;
+                let values =
+                    values.into_iter().map(String::into_boxed_str).collect();
                 Ok(Self::Enum {
                     keyword,
                     values,
                 })
             }
-            RawTaskFieldSpec::Integer {
-                keyword,
-                min,
-                max,
-            } => {
+            RawTaskFieldSpec::Integer(
+                crate::config::raw::RawIntegerFieldSpec {
+                    keyword,
+                    min,
+                    max,
+                },
+            ) => {
                 let keyword = TaskFieldKeyword::try_new(keyword)?;
                 let bounds =
                     IntegerBounds::try_from_options(min, max, "task.fields")?;
@@ -648,11 +745,13 @@ impl TaskFieldSpec {
                     bounds,
                 })
             }
-            RawTaskFieldSpec::Float {
-                keyword,
-                min,
-                max,
-            } => {
+            RawTaskFieldSpec::Float(
+                crate::config::raw::RawFloatFieldSpec {
+                    keyword,
+                    min,
+                    max,
+                },
+            ) => {
                 let keyword = TaskFieldKeyword::try_new(keyword)?;
                 let bounds =
                     FloatBounds::try_from_options(min, max, "task.fields")?;
@@ -661,10 +760,12 @@ impl TaskFieldSpec {
                     bounds,
                 })
             }
-            RawTaskFieldSpec::DateTime {
-                keyword,
-                format,
-            } => {
+            RawTaskFieldSpec::DateTime(
+                crate::config::raw::RawDateTimeFieldSpec {
+                    keyword,
+                    format,
+                },
+            ) => {
                 let keyword = TaskFieldKeyword::try_new(keyword)?;
                 validate_chrono_format(&format, "task.fields.format")?;
                 Ok(Self::DateTime {
@@ -672,11 +773,14 @@ impl TaskFieldSpec {
                     format,
                 })
             }
-            RawTaskFieldSpec::String {
-                keyword,
-                pattern,
-            } => {
+            RawTaskFieldSpec::String(
+                crate::config::raw::RawStringFieldSpec {
+                    keyword,
+                    pattern,
+                },
+            ) => {
                 let keyword = TaskFieldKeyword::try_new(keyword)?;
+                let mut compiled = None;
                 #[expect(
                     clippy::pattern_type_mismatch,
                     reason = "Ergonomic pattern for Option<String> reference"
@@ -688,16 +792,18 @@ impl TaskFieldSpec {
                             message: "pattern too long".to_owned().into(),
                         });
                     }
-                    Regex::new(pattern_str).map_err(|error| {
+                    let regex = Regex::new(pattern_str).map_err(|error| {
                         ConfigError::ValidationFailed {
                             field: "task.fields.pattern".to_owned().into(),
                             message: error.to_string().into(),
                         }
                     })?;
+                    compiled = Some(Arc::new(regex));
                 }
                 Ok(Self::String {
                     keyword,
                     pattern,
+                    compiled,
                 })
             }
         }
@@ -744,7 +850,7 @@ impl TaskFieldSpec {
         clippy::pattern_type_mismatch,
         reason = "Ergonomic enum pattern for validation dispatch"
     )]
-    pub fn validate_raw_value(
+    pub(crate) fn validate_raw_value(
         &self,
         value: &serde_json::Value,
     ) -> Result<(), ConfigError> {
@@ -759,8 +865,9 @@ impl TaskFieldSpec {
             } => Self::validate_float(value, keyword, bounds),
             Self::String {
                 keyword,
-                pattern,
-            } => Self::validate_string(value, keyword, pattern.as_deref()),
+                compiled,
+                ..
+            } => Self::validate_string(value, keyword, compiled.as_deref()),
             Self::Enum {
                 keyword,
                 values,
@@ -819,26 +926,20 @@ impl TaskFieldSpec {
     fn validate_string(
         value: &serde_json::Value,
         keyword: &TaskFieldKeyword,
-        pattern: Option<&str>,
+        pattern: Option<&Regex>,
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
             field: keyword.as_str().to_owned().into(),
             expected: "string".to_owned().into(),
             actual: value_type(value).into(),
         })?;
-        if let Some(pattern) = pattern {
-            let regex = Regex::new(pattern).map_err(|error| {
-                ConfigError::ValidationFailed {
-                    field: keyword.as_str().to_owned().into(),
-                    message: error.to_string().into(),
-                }
-            })?;
-            if !regex.is_match(text) {
-                return Err(ConfigError::ValidationFailed {
-                    field: keyword.as_str().to_owned().into(),
-                    message: "pattern mismatch".to_owned().into(),
-                });
-            }
+        if let Some(regex) = pattern
+            && !regex.is_match(text)
+        {
+            return Err(ConfigError::ValidationFailed {
+                field: keyword.as_str().to_owned().into(),
+                message: "pattern mismatch".to_owned().into(),
+            });
         }
         Ok(())
     }
@@ -846,18 +947,22 @@ impl TaskFieldSpec {
     fn validate_enum(
         value: &serde_json::Value,
         keyword: &TaskFieldKeyword,
-        values: &[String],
+        values: &[Box<str>],
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
             field: keyword.as_str().to_owned().into(),
             expected: "string (enum)".to_owned().into(),
             actual: value_type(value).into(),
         })?;
-        if !values.iter().any(|entry| entry == text) {
+        if !values.iter().any(|entry| entry.as_ref() == text) {
             return Err(ConfigError::InvalidEnumValue {
                 field: keyword.as_str().to_owned().into(),
                 value: text.to_owned().into(),
-                allowed: values.to_vec(),
+                allowed: values
+                    .iter()
+                    .map(Box::as_ref)
+                    .map(String::from)
+                    .collect(),
             });
         }
         Ok(())
@@ -919,7 +1024,7 @@ impl TaskConfig {
             entries.sort_by(|left, right| left.0.cmp(&right.0));
             for (name, spec) in entries {
                 let field_spec = TaskFieldSpec::from_raw(spec)?;
-                parsed.insert(name, field_spec);
+                parsed.insert(name.into_boxed_str(), field_spec);
             }
             config.fields = parsed;
         }
@@ -998,7 +1103,7 @@ impl TaskConfig {
     #[inline]
     #[must_use]
     /// Return the list of indexed field names.
-    pub fn indexed_fields(&self) -> &[String] {
+    pub fn indexed_fields(&self) -> &[Box<str>] {
         &self.indexed_fields
     }
 
@@ -1032,7 +1137,7 @@ impl TaskConfig {
             let mut indexed = Vec::new();
             for field in fields {
                 if seen.insert(field.clone()) {
-                    indexed.push(field);
+                    indexed.push(field.into_boxed_str());
                 }
             }
             self.indexed_fields = indexed;
@@ -1102,13 +1207,6 @@ impl TryFrom<String> for TaskTag {
     }
 }
 
-impl From<TaskTag> for String {
-    #[inline]
-    fn from(value: TaskTag) -> Self {
-        value.0
-    }
-}
-
 impl TryFrom<String> for TaskFieldKeyword {
     type Error = ConfigError;
 
@@ -1118,26 +1216,12 @@ impl TryFrom<String> for TaskFieldKeyword {
     }
 }
 
-impl From<TaskFieldKeyword> for String {
-    #[inline]
-    fn from(value: TaskFieldKeyword) -> Self {
-        value.0
-    }
-}
-
 impl TryFrom<String> for StatusName {
     type Error = ConfigError;
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::try_new(value)
-    }
-}
-
-impl From<StatusName> for String {
-    #[inline]
-    fn from(value: StatusName) -> Self {
-        value.0
     }
 }
 
@@ -1269,15 +1353,23 @@ mod tests {
 
         pub fn sample_raw_task_config() -> RawTaskConfig {
             let mut fields = HashMap::new();
-            fields.insert("priority".to_owned(), RawTaskFieldSpec::Integer {
-                keyword: "priority".to_owned(),
-                min: Some(0),
-                max: Some(5),
-            });
-            fields.insert("tags".to_owned(), RawTaskFieldSpec::Enum {
-                keyword: "tags".to_owned(),
-                values: vec!["work".to_owned(), "personal".to_owned()],
-            });
+            fields.insert(
+                "priority".to_owned(),
+                RawTaskFieldSpec::Integer(
+                    crate::config::raw::RawIntegerFieldSpec {
+                        keyword: "priority".to_owned(),
+                        min: Some(0),
+                        max: Some(5),
+                    },
+                ),
+            );
+            fields.insert(
+                "tags".to_owned(),
+                RawTaskFieldSpec::Enum(crate::config::raw::RawEnumFieldSpec {
+                    keyword: "tags".to_owned(),
+                    values: vec!["work".to_owned(), "personal".to_owned()],
+                }),
+            );
 
             RawTaskConfig {
                 enabled: Some(true),
@@ -1330,6 +1422,54 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        clippy::shadow_unrelated,
+        reason = "Test utilities"
+    )]
+    fn task_field_spec_type_inference() {
+        let toml = r#"
+keyword = "priority"
+min = 0
+max = 10
+"#;
+        let spec: RawTaskFieldSpec =
+            toml::from_str(toml).expect("Should infer Integer type");
+        assert!(matches!(spec, RawTaskFieldSpec::Integer(_)));
+
+        let toml = r#"
+keyword = "tags"
+values = ["a", "b"]
+"#;
+        let spec: RawTaskFieldSpec =
+            toml::from_str(toml).expect("Should infer Enum type");
+        assert!(matches!(spec, RawTaskFieldSpec::Enum(_)));
+
+        let toml = r#"
+keyword = "due"
+format = "%Y-%m-%d"
+"#;
+        let spec: RawTaskFieldSpec =
+            toml::from_str(toml).expect("Should infer DateTime type");
+        assert!(matches!(spec, RawTaskFieldSpec::DateTime(_)));
+
+        let toml = r#"
+keyword = "name"
+pattern = "^[a-z]+$"
+"#;
+        let spec: RawTaskFieldSpec =
+            toml::from_str(toml).expect("Should infer String type");
+        assert!(matches!(spec, RawTaskFieldSpec::String(_)));
+
+        let toml = r#"
+keyword = "generic"
+"#;
+        let spec: RawTaskFieldSpec =
+            toml::from_str(toml).expect("Should infer String type as fallback");
+        assert!(matches!(spec, RawTaskFieldSpec::String(_)));
+    }
+
+    #[test]
     fn task_config_rejects_unknown_indexed_field() {
         let raw = RawTaskConfig {
             enabled: None,
@@ -1375,11 +1515,16 @@ mod tests {
     #[test]
     fn task_config_from_raw_invalid_bounds() {
         let mut fields = HashMap::new();
-        fields.insert("priority".to_owned(), RawTaskFieldSpec::Integer {
-            keyword: "priority".to_owned(),
-            min: Some(10),
-            max: Some(5),
-        });
+        fields.insert(
+            "priority".to_owned(),
+            RawTaskFieldSpec::Integer(
+                crate::config::raw::RawIntegerFieldSpec {
+                    keyword: "priority".to_owned(),
+                    min: Some(10),
+                    max: Some(0),
+                },
+            ),
+        );
 
         let raw = RawTaskConfig {
             fields: Some(fields),

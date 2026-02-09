@@ -161,10 +161,6 @@ pub struct RawTaskConfig {
 pub struct RawTaskDates {
     /// Configuration for the 'due' date field.
     pub due: Option<RawDateFieldSpec>,
-    /// Configuration for the 'scheduled' date field.
-    pub scheduled: Option<RawDateFieldSpec>,
-    /// Configuration for the 'start' date field.
-    pub start: Option<RawDateFieldSpec>,
     /// Configuration for the 'completed' date field.
     pub completed: Option<RawDateFieldSpec>,
     /// Configuration for the 'created' date field.
@@ -187,48 +183,83 @@ pub struct RawDateFieldSpec {
 
 /// Raw custom task field specification.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(untagged)]
 #[non_exhaustive]
 pub enum RawTaskFieldSpec {
-    /// An integer field with optional range constraints.
-    Integer {
-        /// Keyword used in the task text.
-        keyword: String,
-        /// Minimum permitted value.
-        min: Option<i64>,
-        /// Maximum permitted value.
-        max: Option<i64>,
-    },
-    /// A floating point field.
-    Float {
-        /// Keyword used in the task text.
-        keyword: String,
-        /// Minimum permitted value.
-        min: Option<f64>,
-        /// Maximum permitted value.
-        max: Option<f64>,
-    },
-    /// A date/time field.
-    DateTime {
-        /// Keyword used in the task text.
-        keyword: String,
-        /// Expected format for the value.
-        format: String,
-    },
-    /// A string field with optional pattern matching.
-    String {
-        /// Keyword used in the task text.
-        keyword: String,
-        /// Optional regex pattern for validation.
-        pattern: Option<String>,
-    },
     /// A categorical field with a predefined set of allowed values.
-    Enum {
-        /// Keyword used in the task text.
-        keyword: String,
-        /// List of allowed values.
-        values: Vec<String>,
-    },
+    /// Matches when 'values' array is present.
+    Enum(RawEnumFieldSpec),
+    /// A date/time field.
+    /// Matches when 'format' string is present.
+    DateTime(RawDateTimeFieldSpec),
+    /// A string field with optional pattern matching.
+    /// Fallback variant or matches when 'pattern' is present.
+    String(RawStringFieldSpec),
+    /// An integer field with optional range constraints.
+    /// Matches when 'min' or 'max' are integers.
+    Integer(RawIntegerFieldSpec),
+    /// A floating point field.
+    /// Matches when 'min' or 'max' are floats.
+    Float(RawFloatFieldSpec),
+}
+
+/// Raw categorical field specification.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawEnumFieldSpec {
+    /// Keyword used in the task text.
+    pub keyword: String,
+    /// List of allowed values.
+    pub values: Vec<String>,
+}
+
+/// Raw date/time field specification.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawDateTimeFieldSpec {
+    /// Keyword used in the task text.
+    pub keyword: String,
+    /// Expected format for the value.
+    pub format: String,
+}
+
+/// Raw integer field specification.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawIntegerFieldSpec {
+    /// Keyword used in the task text.
+    pub keyword: String,
+    /// Minimum permitted value.
+    pub min: Option<i64>,
+    /// Maximum permitted value.
+    pub max: Option<i64>,
+}
+
+/// Raw floating point field specification.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawFloatFieldSpec {
+    /// Keyword used in the task text.
+    pub keyword: String,
+    /// Minimum permitted value.
+    pub min: Option<f64>,
+    /// Maximum permitted value.
+    pub max: Option<f64>,
+}
+
+/// Raw string field specification.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct RawStringFieldSpec {
+    /// Keyword used in the task text.
+    pub keyword: String,
+    /// Optional regex pattern for validation.
+    pub pattern: Option<String>,
 }
 
 /// Raw indexing configuration.
