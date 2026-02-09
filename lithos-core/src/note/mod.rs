@@ -15,6 +15,8 @@ pub mod error;
 pub mod events;
 /// Frontmatter value objects and logic.
 pub mod frontmatter;
+/// Note ingestion helpers (adapter boundary).
+pub mod ingest;
 /// Link subentity for Note aggregate.
 pub mod link;
 /// List subentities for Note aggregate.
