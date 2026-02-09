@@ -75,6 +75,121 @@ pub trait Query: Send + Sync {
     ) -> Result<Option<R>, NoteQueryError>
     where
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R;
+
+    /// Finds notes by alias using the alias index.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_alias(
+        &self,
+        alias: &str,
+    ) -> Result<Option<Note>, NoteQueryError>;
+
+    /// Finds notes by file class using the file_class index.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_file_class(
+        &self,
+        class: &str,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by folder path using the folder index.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_folder(&self, folder: &str)
+    -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Queries notes by frontmatter key-value pair using the generic
+    /// frontmatter index.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn query_frontmatter_kv(
+        &self,
+        key: &str,
+        value: &str,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by task due date using the tasks_by_due_date index.
+    ///
+    /// Returns notes containing tasks with the specified due date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_due_date(
+        &self,
+        due_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by task created date using the tasks_by_created_date index.
+    ///
+    /// Returns notes containing tasks with the specified created date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_created_date(
+        &self,
+        created_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by task reminder date using the tasks_by_reminder_date
+    /// index.
+    ///
+    /// Returns notes containing tasks with the specified reminder date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_reminder_date(
+        &self,
+        reminder_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by task completed date using the tasks_by_completed_date
+    /// index.
+    ///
+    /// Returns notes containing tasks with the specified completed date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_completed_date(
+        &self,
+        completed_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by task priority using the tasks_by_priority index.
+    ///
+    /// Returns notes containing tasks with the specified priority.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_priority(
+        &self,
+        priority: f64,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by task project using the tasks_by_project index.
+    ///
+    /// Returns notes containing tasks with the specified project.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_project(
+        &self,
+        project: &str,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by task status using the tasks_by_status index.
+    ///
+    /// Returns notes containing tasks with the specified status.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_status(
+        &self,
+        status: &str,
+    ) -> Result<Vec<Note>, NoteQueryError>;
 }
 
 #[cfg(test)]

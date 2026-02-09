@@ -46,26 +46,273 @@ impl super::ports::Query for Query<'_> {
     /// # Errors
     /// Returns `NoteQueryError` if query execution fails.
     #[inline]
-    fn with_archived_by_id<F, R>(
-        &self,
-        id: Uuid,
-        f: F,
-    ) -> Result<Option<R>, NoteQueryError>
-    where
-        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
-    {
-        let id_str = id.to_string();
-        self.db
-            .get::<Note, _, R>("notes", &id_str, |archived| f(archived))
-            .map_err(NoteQueryError::Storage)
-    }
-
-    /// Finds a note by its vault-relative path.
+    /// Access a note as archived data by path (zero-copy).
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query execution fails.
     #[inline]
-    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteQueryError> {
+    fn with_archived_by_path<F, R>(
+        &self,
+        path: &str,
+        f: F,
+    ) -> Result<Option<R>, NoteQueryError>
+    where
+        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R;
+
+    /// Access a note as archived data by path (zero-copy).
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    #[inline]
+    fn with_archived_by_path<F, R>(
+        &self,
+        path: &str,
+        f: F,
+    ) -> Result<Option<R>, NoteQueryError>
+    where
+        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R;
+
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    #[inline]
+    fn with_archived_by_path<F, R>(
+        &self,
+        path: &str,
+        f: F,
+    ) -> Result<Option<R>, NoteQueryError>
+    where
+        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R;
+
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_file_class(
+        &self,
+        class: &str,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        let ids = self
+            .db
+            .multimap_get("file_class_to_id", class)
+            .map_err(NoteQueryError::Storage)?;
+
+        let mut notes = Vec::with_capacity(ids.len());
+        for id_str in ids {
+            if let Some(note) = self
+                .db
+                .get_owned::<Note>("notes", id_str)
+                .map_err(NoteQueryError::Storage)?
+            {
+                notes.push(note);
+            }
+        }
+        Ok(notes)
+    }
+
+    /// Finds notes by folder path using the folder index.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_folder(
+        &self,
+        folder: &str,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        let ids = self
+            .db
+            .multimap_get("folder_to_id", folder)
+            .map_err(NoteQueryError::Storage)?;
+
+        let mut notes = Vec::with_capacity(ids.len());
+        for id_str in ids {
+            if let Some(note) = self
+                .db
+                .get_owned::<Note>("notes", id_str)
+                .map_err(NoteQueryError::Storage)?
+            {
+                notes.push(note);
+            }
+        }
+        Ok(notes)
+    }
+
+    /// Queries notes by frontmatter key-value pair using the generic
+    /// frontmatter index.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn query_frontmatter_kv(
+        &self,
+        key: &str,
+        value: &str,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        let ids = self
+            .db
+            .multimap_get("frontmatter_kv_to_id", &(key, value))
+            .map_err(NoteQueryError::Storage)?;
+
+        let mut notes = Vec::with_capacity(ids.len());
+        for id_str in ids {
+            if let Some(note) = self
+                .db
+                .get_owned::<Note>("notes", id_str)
+                .map_err(NoteQueryError::Storage)?
+            {
+                notes.push(note);
+            }
+        }
+        Ok(notes)
+    }
+
+    /// Finds notes by task due date using the tasks_by_due_date index.
+    ///
+    /// Returns notes containing tasks with the specified due date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_due_date(
+        &self,
+        due_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        self.find_notes_by_task_index(
+            "tasks_by_due_date",
+            &due_date.to_string(),
+        )
+    }
+
+    /// Finds notes by task created date using the tasks_by_created_date index.
+    ///
+    /// Returns notes containing tasks with the specified created date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_created_date(
+        &self,
+        created_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        self.find_notes_by_task_index(
+            "tasks_by_created_date",
+            &created_date.to_string(),
+        )
+    }
+
+    /// Finds notes by task reminder date using the tasks_by_reminder_date
+    /// index.
+    ///
+    /// Returns notes containing tasks with the specified reminder date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_reminder_date(
+        &self,
+        reminder_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        self.find_notes_by_task_index(
+            "tasks_by_reminder_date",
+            &reminder_date.to_string(),
+        )
+    }
+
+    /// Finds notes by task completed date using the tasks_by_completed_date
+    /// index.
+    ///
+    /// Returns notes containing tasks with the specified completed date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_completed_date(
+        &self,
+        completed_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        self.find_notes_by_task_index(
+            "tasks_by_completed_date",
+            &completed_date.to_string(),
+        )
+    }
+
+    /// Finds notes by task priority using the tasks_by_priority index.
+    ///
+    /// Returns notes containing tasks with the specified priority.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_priority(
+        &self,
+        priority: f64,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        self.find_notes_by_task_index(
+            "tasks_by_priority",
+            &priority.to_string(),
+        )
+    }
+
+    /// Finds notes by task project using the tasks_by_project index.
+    ///
+    /// Returns notes containing tasks with the specified project.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_project(
+        &self,
+        project: &str,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        self.find_notes_by_task_index("tasks_by_project", project)
+    }
+
+    /// Finds notes by task status using the tasks_by_status index.
+    ///
+    /// Returns notes containing tasks with the specified status.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_status(
+        &self,
+        status: &str,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        self.find_notes_by_task_index("tasks_by_status", status)
+    }
+
+    /// Helper method to find notes by any task index.
+    ///
+    /// This consolidates the logic for task index lookups.
+    fn find_notes_by_task_index(
+        &self,
+        index_name: &str,
+        index_key: &str,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        let note_refs = self
+            .db
+            .multimap_get(index_name, index_key)
+            .map_err(NoteQueryError::Storage)?;
+
+        let mut notes = Vec::with_capacity(note_refs.len());
+        for (note_id_str, task_id_str) in note_refs {
+            // Verify the task ID matches to ensure data integrity
+            if note_id_str == task_id_str {
+                if let Some(note) = self
+                    .db
+                    .get_owned::<Note>("notes", note_id_str)
+                    .map_err(NoteQueryError::Storage)?
+                {
+                    notes.push(note);
+                }
+            }
+        }
+        Ok(notes)
+    }
+
+    /// Access a note as archived data by path (zero-copy).
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    #[inline]
+    fn with_archived_by_path<F, R>(
+        &self,
+        path: &str,
+        f: F,
+    ) -> Result<Option<R>, NoteQueryError>
+    where
+        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R
+    {
         let ids = self
             .db
             .multimap_get("path_to_id", path)
@@ -73,22 +320,12 @@ impl super::ports::Query for Query<'_> {
 
         if let Some(id_str) = ids.first() {
             self.db
-                .get_owned::<Note>("notes", id_str)
+                .get::<Note, _, R>("notes", &id_str, f)
                 .map_err(NoteQueryError::Storage)
         } else {
             Ok(None)
         }
     }
-
-    /// Lists all notes in the vault.
-    ///
-    /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
-    #[inline]
-    fn list(&self) -> Result<Vec<Note>, NoteQueryError> {
-        self.db.list_owned::<Note>("notes").map_err(NoteQueryError::Storage)
-    }
-}
 
 #[cfg(test)]
 #[expect(
