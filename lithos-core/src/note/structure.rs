@@ -7,48 +7,6 @@
 use super::error::NoteError;
 use crate::note::types::{SourceByteOffset, SourceByteRange};
 
-/// Heading level (1-6).
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct HeadingLevel(u8);
-
-impl HeadingLevel {
-    /// Creates a new `HeadingLevel`, validating it is between 1 and 6.
-    ///
-    /// # Errors
-    /// Returns an error if the level is not in the range 1..=6.
-    #[inline]
-    pub fn try_new(level: u8) -> Result<Self, NoteError> {
-        if (1..=6).contains(&level) {
-            Ok(Self(level))
-        } else {
-            Err(NoteError::Structure(format!(
-                "Invalid heading level: {level}. Must be between 1 and 6."
-            )))
-        }
-    }
-
-    /// Returns the raw level value.
-    #[inline]
-    #[must_use]
-    pub const fn as_u8(&self) -> u8 {
-        self.0
-    }
-}
-
 /// Represents a heading within a note.
 #[derive(
     Debug,
@@ -72,13 +30,6 @@ pub struct Heading {
 }
 
 impl Heading {
-    /// Returns the heading level.
-    #[inline]
-    #[must_use]
-    pub const fn level(&self) -> HeadingLevel {
-        self.level
-    }
-
     /// Creates a new heading with validation.
     ///
     /// # Errors
@@ -101,6 +52,13 @@ impl Heading {
             text,
             position,
         })
+    }
+
+    /// Returns the heading level.
+    #[inline]
+    #[must_use]
+    pub const fn level(&self) -> HeadingLevel {
+        self.level
     }
 
     /// Returns the character position in the source document.
@@ -142,20 +100,6 @@ pub struct Section {
 }
 
 impl Section {
-    /// Returns the section content text.
-    #[inline]
-    #[must_use]
-    pub fn content(&self) -> &str {
-        &self.content
-    }
-
-    /// Returns the optional heading that starts this section.
-    #[inline]
-    #[must_use]
-    pub const fn heading(&self) -> Option<&Heading> {
-        self.heading.as_ref()
-    }
-
     /// Creates a new section.
     #[inline]
     #[must_use]
@@ -171,11 +115,67 @@ impl Section {
         }
     }
 
+    /// Returns the section content text.
+    #[inline]
+    #[must_use]
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Returns the optional heading that starts this section.
+    #[inline]
+    #[must_use]
+    pub const fn heading(&self) -> Option<&Heading> {
+        self.heading.as_ref()
+    }
+
     /// Returns the character range in the source document.
     #[inline]
     #[must_use]
     pub const fn range(&self) -> SourceByteRange {
         self.range
+    }
+}
+
+/// Heading level (1-6).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct HeadingLevel(u8);
+
+impl HeadingLevel {
+    /// Creates a new `HeadingLevel`, validating it is between 1 and 6.
+    ///
+    /// # Errors
+    /// Returns an error if the level is not in the range 1..=6.
+    #[inline]
+    pub fn try_new(level: u8) -> Result<Self, NoteError> {
+        if (1..=6).contains(&level) {
+            Ok(Self(level))
+        } else {
+            Err(NoteError::Structure(format!(
+                "Invalid heading level: {level}. Must be between 1 and 6."
+            )))
+        }
+    }
+
+    /// Returns the raw level value.
+    #[inline]
+    #[must_use]
+    pub const fn as_u8(&self) -> u8 {
+        self.0
     }
 }
 
