@@ -98,25 +98,44 @@ impl Schema {
     /// `property_bank_filename` is empty.
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
+        self.schemas_dir.validate()?;
+        // FileName is validated at construction
         Ok(())
     }
 }
 
 impl Default for Schema {
     #[inline]
+    #[expect(
+        clippy::disallowed_methods,
+        clippy::expect_used,
+        reason = "Default values are guaranteed to be valid"
+    )]
     fn default() -> Self {
         Self {
             schemas_dir: SchemasDir::default(),
             property_bank_filename: FileName::try_new("property_bank.json")
-                .unwrap_or_else(|_| FileName("property_bank.json".into())),
+                .expect("default filename must be valid"),
         }
     }
 }
 
 /// Template configuration (templates directory).
 ///
-/// Validated configuration for template file storage. All paths are
-/// vault-relative.
+/// Validated configuration for template storage. All paths are vault-relative.
+///
+/// # Examples
+///
+/// ```rust
+/// # use lithos_core::config::paths::Template;
+/// let template = Template::default();
+///
+/// assert_eq!(
+///     template.templates_dir().as_path(),
+///     std::path::Path::new("templates"),
+///     "Template directory should match default"
+/// );
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -138,7 +157,7 @@ impl Template {
     /// Create template configuration.
     #[inline]
     #[must_use]
-    pub fn new(templates_dir: TemplatesDir) -> Self {
+    pub const fn new(templates_dir: TemplatesDir) -> Self {
         Self {
             templates_dir,
         }
@@ -147,17 +166,17 @@ impl Template {
     /// Return the templates directory.
     #[inline]
     #[must_use]
-    pub fn templates_dir(&self) -> &TemplatesDir {
+    pub const fn templates_dir(&self) -> &TemplatesDir {
         &self.templates_dir
     }
 
     /// Validate template configuration.
     ///
     /// # Errors
-    ///
     /// Returns `ConfigError::ValidationFailed` if `templates_dir` is empty.
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
+        self.templates_dir.validate()?;
         Ok(())
     }
 }
@@ -171,21 +190,21 @@ impl Default for Template {
     }
 }
 
-/// Schema path overrides (optional configuration).
+/// Schema configuration overrides.
 ///
-/// Used for vault-specific overrides of global schema settings.
+/// Used in vault configuration to override global schema defaults.
 #[derive(
     Debug,
     Clone,
     PartialEq,
-    Default,
     serde::Serialize,
     serde::Deserialize,
+    Default,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct SchemaOverrides {
     /// Overridden schemas directory.
@@ -195,10 +214,10 @@ pub struct SchemaOverrides {
 }
 
 impl SchemaOverrides {
-    /// Create schema override values.
+    /// Create schema overrides.
     #[inline]
     #[must_use]
-    pub fn new(
+    pub const fn new(
         schemas_dir: Option<SchemasDir>,
         property_bank_filename: Option<FileName>,
     ) -> Self {
@@ -207,37 +226,23 @@ impl SchemaOverrides {
             property_bank_filename,
         }
     }
-
-    /// Return the overridden schemas directory, if set.
-    #[inline]
-    #[must_use]
-    pub fn schemas_dir(&self) -> Option<&SchemasDir> {
-        self.schemas_dir.as_ref()
-    }
-
-    /// Return the overridden property bank filename, if set.
-    #[inline]
-    #[must_use]
-    pub fn property_bank_filename(&self) -> Option<&FileName> {
-        self.property_bank_filename.as_ref()
-    }
 }
 
-/// Template path overrides (optional configuration).
+/// Template configuration overrides.
 ///
-/// Used for vault-specific overrides of global template settings.
+/// Used in vault configuration to override global template defaults.
 #[derive(
     Debug,
     Clone,
     PartialEq,
-    Default,
     serde::Serialize,
     serde::Deserialize,
+    Default,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct TemplateOverrides {
     /// Overridden templates directory.
@@ -245,7 +250,7 @@ pub struct TemplateOverrides {
 }
 
 impl TemplateOverrides {
-    /// Create template override values.
+    /// Create template overrides.
     #[inline]
     #[must_use]
     pub fn new(templates_dir: Option<TemplatesDir>) -> Self {
@@ -309,6 +314,15 @@ impl SchemasDir {
     pub fn as_path(&self) -> &Path {
         &self.0
     }
+
+    /// Validate the schemas directory.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the path is empty.
+    #[inline]
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        validate_non_empty("schemas_dir", &self.0.to_string_lossy())
+    }
 }
 
 impl Default for SchemasDir {
@@ -360,6 +374,15 @@ impl TemplatesDir {
     #[must_use]
     pub fn as_path(&self) -> &Path {
         &self.0
+    }
+
+    /// Validate the templates directory.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the path is empty.
+    #[inline]
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        validate_non_empty("templates_dir", &self.0.to_string_lossy())
     }
 }
 
@@ -568,8 +591,6 @@ impl From<TemplateOverrides> for Template {
 }
 
 // ============================================================================
-// Raw DTOs (Deserialization Boundary - Internal)
-// ============================================================================
 // Private Validation Helpers (Implementation Details)
 // ============================================================================
 
@@ -620,67 +641,76 @@ fn validate_relative_path(
 // ============================================================================
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test modules have relaxed unwrap/expect rules"
+)]
 mod tests {
-    use std::path::PathBuf;
-
-    use super::*;
-
     mod fixtures {
         use std::path::PathBuf;
 
-        use super::*;
+        use super::super::{FileName, Schema, SchemasDir};
 
         pub fn sample_schema() -> Schema {
             Schema::new(
-                SchemasDir::try_new(PathBuf::from("schemas")).unwrap(),
-                FileName::try_new("props.json").unwrap(),
+                SchemasDir::try_new(PathBuf::from("schemas"))
+                    .expect("valid dir for fixture"),
+                FileName::try_new("props.json")
+                    .expect("valid file for fixture"),
             )
         }
     }
 
-    /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
-    /// Priority: P1.
-    #[test]
-    #[expect(
-        clippy::panic_in_result_fn,
-        reason = "Test uses assert_eq! which can panic."
-    )]
-    fn constructs_valid_property_bank_path() -> Result<(), super::ConfigError> {
-        let schema = fixtures::sample_schema();
+    mod constructor {
+        use std::path::PathBuf;
 
-        let path = schema.property_bank_path();
+        use super::super::*;
 
-        assert_eq!(
-            path,
-            PathBuf::from("schemas").join("props.json"),
-            "property_bank_path logic works"
-        );
-        Ok(())
+        #[test]
+        fn templates_dir_rejects_empty() {
+            let result = TemplatesDir::try_new(PathBuf::from(""));
+            assert!(result.is_err(), "Expected validation error");
+        }
+
+        #[test]
+        fn cache_dir_rejects_empty() {
+            let result = CacheDir::try_new(PathBuf::from(""));
+            assert!(result.is_err(), "Expected validation error");
+        }
     }
 
-    /// 3.3-UNIT-036: `rejects_empty_templates_dir`.
-    /// Priority: P0.
-    #[test]
-    fn rejects_empty_templates_dir() {
-        let result = TemplatesDir::try_new(std::path::PathBuf::from(""));
-        assert!(result.is_err(), "Expected validation error");
+    mod accessors {
+        use std::path::PathBuf;
+
+        /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
+        /// Priority: P1.
+        #[test]
+        fn schema_property_bank_path_logic_works() {
+            let schema = super::fixtures::sample_schema();
+
+            let path = schema.property_bank_path();
+
+            assert_eq!(
+                path,
+                PathBuf::from("schemas").join("props.json"),
+                "property_bank_path logic works"
+            );
+        }
     }
 
-    /// 3.3-UNIT-036: `rejects_empty_cache_dir`.
-    /// Priority: P0.
-    #[test]
-    fn rejects_empty_cache_dir() {
-        let result = CacheDir::try_new(std::path::PathBuf::from(""));
-        assert!(result.is_err(), "Expected validation error");
-    }
+    mod validation {
+        use std::path::PathBuf;
 
-    /// 3.3-UNIT-028: `schema_validate_rejects_empty_paths`.
-    /// Priority: P0.
-    #[test]
-    fn schema_rejects_empty_paths() {
-        let schemas_dir = SchemasDir::try_new(std::path::PathBuf::from(""));
-        let file_name = FileName::try_new("");
-        assert!(schemas_dir.is_err(), "Expected invalid schemas_dir");
-        assert!(file_name.is_err(), "Expected invalid file name");
+        use super::super::*;
+
+        /// 3.3-UNIT-028: `schema_validate_rejects_empty_paths`.
+        /// Priority: P0.
+        #[test]
+        fn schema_rejects_empty_paths() {
+            let schemas_dir = SchemasDir::try_new(PathBuf::from(""));
+            let file_name = FileName::try_new("");
+            assert!(schemas_dir.is_err(), "Expected invalid schemas_dir");
+            assert!(file_name.is_err(), "Expected invalid file name");
+        }
     }
 }

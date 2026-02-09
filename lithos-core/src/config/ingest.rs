@@ -64,21 +64,36 @@ pub fn ingest_vault(vault_root: &Path) -> Result<RawVault, ConfigIngestError> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module groups fixtures and submodules for readability"
+)]
 mod tests {
     use tempfile::tempdir;
 
     use super::*;
 
     mod fixtures {
-        use std::fs;
+        use std::{fs, path::PathBuf};
 
-        use tempfile::{TempDir, tempdir};
+        use tempfile::TempDir;
+
+        #[expect(dead_code, reason = "Fixture may be used in future tests")]
+        pub fn temp_lithos_config_dir(
+            content: &str,
+        ) -> Result<(TempDir, PathBuf), std::io::Error> {
+            let dir = tempfile::tempdir()?;
+            let config_dir = dir.path().join(".config/lithos");
+            fs::create_dir_all(&config_dir)?;
+            let config_path = config_dir.join("lithos.toml");
+            fs::write(&config_path, content)?;
+            Ok((dir, config_path))
+        }
 
         pub fn setup_vault_with_config(
             content: &str,
-        ) -> Result<(TempDir, std::path::PathBuf), Box<dyn std::error::Error>>
-        {
-            let dir = tempdir()?;
+        ) -> Result<(TempDir, PathBuf), std::io::Error> {
+            let dir = tempfile::tempdir()?;
             let config_dir = dir.path().join(".lithos");
             fs::create_dir_all(&config_dir)?;
             let config_path = config_dir.join("lithos.toml");
@@ -87,39 +102,40 @@ mod tests {
         }
     }
 
-    #[test]
-    fn ingest_global_returns_defaults_when_env_unset() {
-        let result = ingest_global_with_path(None);
-        assert!(result.is_ok(), "Expected default ingest to succeed");
-    }
+    mod load {
+        use super::*;
 
-    #[test]
-    #[expect(
-        clippy::panic_in_result_fn,
-        reason = "Test uses assert! which can panic."
-    )]
-    fn ingest_vault_uses_defaults_when_file_missing()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let dir = tempdir()?;
-        let result = ingest_vault(dir.path());
-        assert!(result.is_ok(), "Expected default ingest to succeed");
-        Ok(())
-    }
+        #[test]
+        fn ingest_global_returns_defaults_when_env_unset() {
+            let result = ingest_global_with_path(None);
+            assert!(result.is_ok(), "Expected default ingest to succeed");
+        }
 
-    #[test]
-    #[expect(
-        clippy::panic_in_result_fn,
-        reason = "Test uses assert! which can panic."
-    )]
-    fn ingest_vault_reads_lithos_toml_when_present()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let (_dir, _path) = fixtures::setup_vault_with_config(
-            "[logging]\nlog_level = \"debug\"\n",
-        )?;
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "expect is permitted in test setup"
+        )]
+        fn ingest_vault_uses_defaults_when_file_missing() {
+            let dir = tempdir().expect("tempdir");
+            let result = ingest_vault(dir.path());
+            assert!(result.is_ok(), "Expected default ingest to succeed");
+        }
 
-        let raw = ingest_vault(_dir.path())?;
-        let logging = raw.logging.ok_or("logging section missing")?;
-        assert_eq!(logging.log_level.as_deref(), Some("debug"));
-        Ok(())
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "expect is permitted in test setup"
+        )]
+        fn ingest_vault_reads_lithos_toml_when_present() {
+            let (dir, _path) = fixtures::setup_vault_with_config(
+                "[logging]\nlog_level = \"debug\"\n",
+            )
+            .expect("setup vault");
+
+            let raw = ingest_vault(dir.path()).expect("ingest vault");
+            let logging = raw.logging.expect("logging section missing");
+            assert_eq!(logging.log_level.as_deref(), Some("debug"));
+        }
     }
 }

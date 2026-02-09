@@ -286,8 +286,8 @@ impl Config {
         let schemas_dir = vault
             .filesystem()
             .schema()
-            .schemas_dir()
-            .cloned()
+            .schemas_dir
+            .clone()
             .or_else(|| {
                 global.map(|g| g.filesystem().schema().schemas_dir().clone())
             })
@@ -296,8 +296,8 @@ impl Config {
         let property_bank_filename = vault
             .filesystem()
             .schema()
-            .property_bank_filename()
-            .cloned()
+            .property_bank_filename
+            .clone()
             .or_else(|| {
                 global.map(|g| {
                     g.filesystem().schema().property_bank_filename().clone()
@@ -456,7 +456,7 @@ mod tests {
     mod fixtures {
         use std::path::PathBuf;
 
-        use super::*;
+        use super::super::*;
         use crate::config::{
             frontmatter::FrontmatterKey,
             logging::LogLevel,
@@ -591,7 +591,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::config::{global::Paths as GlobalPaths, paths::CacheDir};
+    use crate::config::paths::CacheDir;
 
     mod integrity {
         use super::*;
@@ -617,7 +617,7 @@ mod tests {
         #[test]
         fn config_version_try_from_rejects_zero() {
             let result = ConfigVersion::try_from(0);
-            result.unwrap_err();
+            let _: ConfigError = result.expect_err("should reject zero");
         }
 
         #[test]
@@ -1145,7 +1145,7 @@ mod tests {
         }
     }
 
-    mod validate {
+    mod validation {
         use std::path::PathBuf;
 
         use super::*;

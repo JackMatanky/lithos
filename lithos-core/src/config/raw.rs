@@ -71,7 +71,7 @@ use std::collections::HashMap;
 use super::{
     frontmatter::RawFrontmatter,
     logging::RawLogging,
-    paths::{CacheDir, SchemaOverrides, TemplateOverrides},
+    paths::{SchemaOverrides, TemplateOverrides},
 };
 
 /// Raw global configuration input.
@@ -80,7 +80,7 @@ use super::{
 pub struct RawGlobal {
     /// Filesystem configuration for global defaults.
     pub filesystem: Option<RawGlobalPaths>,
-    /// Frontmatter configuration overrides.
+    /// Frontmatter configuration overrrides.
     pub frontmatter: Option<RawFrontmatter>,
     /// Logging configuration overrides.
     pub logging: Option<RawLogging>,
@@ -104,25 +104,25 @@ pub struct RawVault {
     pub task: Option<RawTaskConfig>,
 }
 
-/// Raw global filesystem configuration.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+/// Raw filesystem configuration for global defaults.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawGlobalPaths {
-    /// Schema-related filesystem config.
+    /// Global schema directory.
     pub schema: Option<SchemaOverrides>,
-    /// Template-related filesystem config.
+    /// Global template directory.
     pub template: Option<TemplateOverrides>,
 }
 
-/// Raw vault filesystem configuration.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+/// Raw filesystem configuration for vault overrides.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawVaultPaths {
-    /// Cache directory override.
-    pub cache_dir: Option<CacheDir>,
-    /// Schema-related filesystem config.
+    /// Local cache directory override.
+    pub cache_dir: Option<String>,
+    /// Vault-specific schema overrides.
     pub schema: Option<SchemaOverrides>,
-    /// Template-related filesystem config.
+    /// Vault-specific template overrides.
     pub template: Option<TemplateOverrides>,
 }
 
@@ -131,122 +131,122 @@ pub struct RawVaultPaths {
 #[serde(untagged)]
 #[non_exhaustive]
 pub enum RawTrustedVaults {
-    /// List of trusted vault paths.
+    /// List format.
     List(Vec<String>),
-    /// Map of aliases to trusted vault paths.
+    /// Map format (alias -> path).
     Map(HashMap<String, String>),
 }
 
-/// Raw task configuration.
+/// Raw task configuration input.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawTaskConfig {
-    /// Enable task parsing.
+    /// Whether task processing is enabled for this vault.
     pub enabled: Option<bool>,
-    /// Tags that identify tasks.
+    /// List of hashtags that identify a line as a task.
     pub task_tags: Option<Vec<String>>,
-    /// Status mapping from name to symbol.
+    /// Map of checkbox symbols to status names.
     pub status: Option<HashMap<String, char>>,
-    /// Date field configuration.
+    /// Configuration for date fields in tasks.
     pub dates: Option<RawTaskDates>,
-    /// Custom task field specs.
+    /// Configuration for custom metadata fields in tasks.
     pub fields: Option<HashMap<String, RawTaskFieldSpec>>,
-    /// Indexing configuration for task fields.
+    /// Configuration for indexing task fields.
     pub indexing: Option<RawIndexingConfig>,
 }
 
-/// Raw task dates configuration.
+/// Raw date field configuration.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawTaskDates {
-    /// Due date field spec.
+    /// Configuration for the 'due' date field.
     pub due: Option<RawDateFieldSpec>,
-    /// Created date field spec.
-    pub created: Option<RawDateFieldSpec>,
-    /// Reminder date field spec.
-    pub reminder: Option<RawDateFieldSpec>,
-    /// Completed date field spec.
+    /// Configuration for the 'scheduled' date field.
+    pub scheduled: Option<RawDateFieldSpec>,
+    /// Configuration for the 'start' date field.
+    pub start: Option<RawDateFieldSpec>,
+    /// Configuration for the 'completed' date field.
     pub completed: Option<RawDateFieldSpec>,
+    /// Configuration for the 'created' date field.
+    pub created: Option<RawDateFieldSpec>,
+    /// Configuration for the 'reminder' date field.
+    pub reminder: Option<RawDateFieldSpec>,
 }
 
 /// Raw date field specification.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawDateFieldSpec {
-    /// Keyword used in task metadata.
+    /// Keyword used in the task text (e.g., 'due:').
     pub keyword: String,
-    /// Optional emoji prefix for the field.
+    /// Optional emoji used to identify the field.
     pub emoji: Option<char>,
-    /// Chrono datetime format string.
+    /// Expected format for the date value.
     pub format: String,
 }
 
-/// Raw indexing configuration.
+/// Raw custom task field specification.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum RawTaskFieldSpec {
+    /// An integer field with optional range constraints.
+    Integer {
+        /// Keyword used in the task text.
+        keyword: String,
+        /// Minimum permitted value.
+        min: Option<i64>,
+        /// Maximum permitted value.
+        max: Option<i64>,
+    },
+    /// A floating point field.
+    Float {
+        /// Keyword used in the task text.
+        keyword: String,
+        /// Minimum permitted value.
+        min: Option<f64>,
+        /// Maximum permitted value.
+        max: Option<f64>,
+    },
+    /// A date/time field.
+    DateTime {
+        /// Keyword used in the task text.
+        keyword: String,
+        /// Expected format for the value.
+        format: String,
+    },
+    /// A string field with optional pattern matching.
+    String {
+        /// Keyword used in the task text.
+        keyword: String,
+        /// Optional regex pattern for validation.
+        pattern: Option<String>,
+    },
+    /// A categorical field with a predefined set of allowed values.
+    Enum {
+        /// Keyword used in the task text.
+        keyword: String,
+        /// List of allowed values.
+        values: Vec<String>,
+    },
+}
+
+/// Raw indexing configuration.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawIndexingConfig {
-    /// Names of task fields to index.
+    /// List of field keywords that should be indexed for querying.
     pub indexed_fields: Option<Vec<String>>,
 }
 
-/// Raw task field specification (type inferred by shape).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(untagged)]
-#[non_exhaustive]
-pub enum RawTaskFieldSpec {
-    /// Enum field definition.
-    Enum {
-        /// Field keyword.
-        keyword: String,
-        /// Allowed values.
-        values: Vec<String>,
-    },
-    /// Integer field definition.
-    Integer {
-        /// Field keyword.
-        keyword: String,
-        #[serde(default)]
-        /// Minimum allowed value.
-        min: Option<i64>,
-        #[serde(default)]
-        /// Maximum allowed value.
-        max: Option<i64>,
-    },
-    /// Floating-point field definition.
-    Float {
-        /// Field keyword.
-        keyword: String,
-        #[serde(default)]
-        /// Minimum allowed value.
-        min: Option<f64>,
-        #[serde(default)]
-        /// Maximum allowed value.
-        max: Option<f64>,
-    },
-    /// Datetime field definition.
-    DateTime {
-        /// Field keyword.
-        keyword: String,
-        /// Chrono datetime format string.
-        format: String,
-    },
-    /// String field definition.
-    String {
-        /// Field keyword.
-        keyword: String,
-        #[serde(default)]
-        /// Optional regex pattern constraint.
-        pattern: Option<String>,
-    },
-}
-
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test modules group fixtures and test logic for readability"
+)]
 mod tests {
-    use super::*;
-    use crate::config::global::Global;
-
     mod fixtures {
-        use super::*;
+        use crate::config::{logging::RawLogging, raw::RawGlobal};
 
         pub fn raw_global_invalid_logging() -> RawGlobal {
             RawGlobal {
@@ -261,41 +261,54 @@ mod tests {
         }
     }
 
-    #[test]
-    fn deserializes_unknown_keys_without_error() {
-        let toml = r#"
+    use super::*;
+    use crate::config::global::Global;
+
+    mod formatting {
+        use super::*;
+
+        #[test]
+        fn deserializes_unknown_keys_without_error() {
+            let toml = r#"
 unknown_key = "value"
 
 [logging]
 log_level = "info"
 "#;
 
-        let parsed: Result<RawGlobal, _> = toml::from_str(toml);
-        assert!(parsed.is_ok(), "Unknown keys should be ignored");
+            let parsed: Result<RawGlobal, _> = toml::from_str(toml);
+            assert!(parsed.is_ok(), "Unknown keys should be ignored");
+        }
     }
 
-    #[test]
-    fn conversion_rejects_invalid_log_level() {
-        let raw = fixtures::raw_global_invalid_logging();
+    mod conversions {
+        use super::*;
 
-        let result = Global::try_from(raw);
-        assert!(result.is_err(), "Invalid log level should be rejected");
-    }
+        #[test]
+        fn global_rejects_invalid_log_level() {
+            let raw = fixtures::raw_global_invalid_logging();
 
-    #[test]
-    fn conversion_rejects_absolute_template_dir_in_vault() {
-        // Validation now happens at deserialization time for Overrides.
-        // We simulate deserialization failure by checking if we can construct
-        // it invalidly. But since we can't construct an invalid
-        // TemplatesDir via safe API, we test deserialization directly.
-        let toml = r#"
+            let result = Global::try_from(raw);
+            assert!(result.is_err(), "Invalid log level should be rejected");
+        }
+
+        #[test]
+        fn vault_rejects_absolute_template_dir() {
+            // Validation now happens at deserialization time for Overrides.
+            // We simulate deserialization failure by checking if we can
+            // construct it invalidly. But since we can't construct an
+            // invalid TemplatesDir via safe API, we test
+            // deserialization directly.
+            let toml = r#"
 [filesystem.template]
 templates_dir = "/abs"
 "#;
-        let parsed: Result<RawVault, _> = toml::from_str(toml);
-        assert!(
-            parsed.is_err(),
-            "Absolute templates_dir should be rejected during deserialization"
-        );
+            let parsed: Result<RawVault, _> = toml::from_str(toml);
+            assert!(
+                parsed.is_err(),
+                "Absolute templates_dir should be rejected during \
+                 deserialization"
+            );
+        }
     }
 }

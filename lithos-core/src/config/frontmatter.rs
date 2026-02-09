@@ -1,38 +1,60 @@
 //! Frontmatter configuration types.
-//!
-//! This module contains types related to frontmatter key configuration
-//! for Markdown file metadata.
 
-#![expect(
-    clippy::struct_field_names,
-    reason = "Frontmatter struct fields intentionally share '_key' suffix \
-              (flagged by rkyv::Archive derive)"
-)]
+#![allow(clippy::struct_field_names, reason = "Fields share '_key' suffix")]
 
 use super::error::ConfigError;
 
-// ============================================================================
-// Public Domain Types (Most Important - User-Facing API)
-// ============================================================================
+/// Validated frontmatter key (non-empty).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct FrontmatterKey(
+    /// Internal key storage.
+    String,
+);
 
-/// Frontmatter configuration for Markdown file metadata.
-///
-/// Configures which keys to use when reading/writing frontmatter fields in
-/// Markdown files. All keys must be non-empty strings.
-///
-/// # Invariants
-/// - All keys must be non-empty strings.
-/// - Keys should follow YAML/TOML naming conventions (lowercase, underscores).
-///
-/// # Examples
-/// ```
-/// # use lithos_core::config::frontmatter::Frontmatter;
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let frontmatter = Frontmatter::default();
-/// frontmatter.validate()?;
-/// # Ok(())
-/// # }
-/// ```
+impl FrontmatterKey {
+    /// Create a validated frontmatter key.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the key is empty.
+    #[inline]
+    pub fn try_new<T: Into<String>>(value: T) -> Result<Self, ConfigError> {
+        let value = value.into();
+        validate_non_empty("frontmatter_key", &value)?;
+        Ok(Self(value))
+    }
+
+    pub(crate) fn try_new_with_field(
+        field: &'static str,
+        value: impl Into<String>,
+    ) -> Result<Self, ConfigError> {
+        let value = value.into();
+        validate_non_empty(field, &value)?;
+        Ok(Self(value))
+    }
+
+    /// Return the key as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Frontmatter configuration with validation.
 #[derive(
     Debug,
     Clone,
@@ -46,15 +68,15 @@ use super::error::ConfigError;
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Frontmatter {
-    /// Key for aliases in frontmatter.
+    /// Key used for aliases in frontmatter.
     alias_key: FrontmatterKey,
-    /// Key for creation date in frontmatter.
+    /// Key used for creation date in frontmatter.
     date_created_key: FrontmatterKey,
-    /// Key for modification date in frontmatter.
+    /// Key used for modification date in frontmatter.
     date_modified_key: FrontmatterKey,
-    /// Key for file classification in frontmatter.
+    /// Key used for file class/type in frontmatter.
     file_class_key: FrontmatterKey,
-    /// Key for title field in frontmatter.
+    /// Key used for title in frontmatter.
     title_key: FrontmatterKey,
 }
 
@@ -81,43 +103,42 @@ impl Frontmatter {
     /// Return the alias key.
     #[inline]
     #[must_use]
-    pub fn alias_key(&self) -> &FrontmatterKey {
+    pub const fn alias_key(&self) -> &FrontmatterKey {
         &self.alias_key
     }
 
-    /// Return the created date key.
+    /// Return the date created key.
     #[inline]
     #[must_use]
-    pub fn date_created_key(&self) -> &FrontmatterKey {
+    pub const fn date_created_key(&self) -> &FrontmatterKey {
         &self.date_created_key
     }
 
-    /// Return the modified date key.
+    /// Return the date modified key.
     #[inline]
     #[must_use]
-    pub fn date_modified_key(&self) -> &FrontmatterKey {
+    pub const fn date_modified_key(&self) -> &FrontmatterKey {
         &self.date_modified_key
     }
 
-    /// Return the file classification key.
+    /// Return the file class key.
     #[inline]
     #[must_use]
-    pub fn file_class_key(&self) -> &FrontmatterKey {
+    pub const fn file_class_key(&self) -> &FrontmatterKey {
         &self.file_class_key
     }
 
     /// Return the title key.
     #[inline]
     #[must_use]
-    pub fn title_key(&self) -> &FrontmatterKey {
+    pub const fn title_key(&self) -> &FrontmatterKey {
         &self.title_key
     }
 
     /// Validate frontmatter configuration.
     ///
     /// # Errors
-    ///
-    /// Returns `ConfigError::ValidationFailed` if any frontmatter key is empty.
+    /// Returns `ConfigError::ValidationFailed` if any key is empty.
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
         Ok(())
@@ -126,82 +147,26 @@ impl Frontmatter {
 
 impl Default for Frontmatter {
     #[inline]
+    #[expect(
+        clippy::disallowed_methods,
+        clippy::expect_used,
+        reason = "Default values are guaranteed to be valid"
+    )]
     fn default() -> Self {
         Self {
             alias_key: FrontmatterKey::try_new("aliases")
-                .unwrap_or_else(|_| FrontmatterKey("aliases".into())),
+                .expect("default alias key must be valid"),
             date_created_key: FrontmatterKey::try_new("date_created")
-                .unwrap_or_else(|_| FrontmatterKey("date_created".into())),
+                .expect("default created key must be valid"),
             date_modified_key: FrontmatterKey::try_new("date_modified")
-                .unwrap_or_else(|_| FrontmatterKey("date_modified".into())),
+                .expect("default modified key must be valid"),
             file_class_key: FrontmatterKey::try_new("file_class")
-                .unwrap_or_else(|_| FrontmatterKey("file_class".into())),
+                .expect("default file class key must be valid"),
             title_key: FrontmatterKey::try_new("title")
-                .unwrap_or_else(|_| FrontmatterKey("title".into())),
+                .expect("default title key must be valid"),
         }
     }
 }
-
-// ============================================================================
-// Building Block Types (Key Component)
-// ============================================================================
-
-/// Validated frontmatter key (non-empty).
-///
-/// A validated string used as a key in YAML/TOML frontmatter. Must be
-/// non-empty.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
-#[non_exhaustive]
-pub struct FrontmatterKey(
-    /// Internal key storage.
-    Box<str>,
-);
-
-impl FrontmatterKey {
-    /// Create a validated frontmatter key.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the key is empty.
-    #[inline]
-    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
-        let value = value.into();
-        validate_non_empty("frontmatter_key", &value)?;
-        Ok(Self(value))
-    }
-
-    pub(crate) fn try_new_with_field(
-        field: &'static str,
-        value: impl Into<Box<str>>,
-    ) -> Result<Self, ConfigError> {
-        let value = value.into();
-        validate_non_empty(field, &value)?;
-        Ok(Self(value))
-    }
-
-    /// Return the key as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-// ============================================================================
-// Standard Trait Implementations (Conversions)
-// ============================================================================
 
 impl TryFrom<String> for FrontmatterKey {
     type Error = ConfigError;
@@ -214,20 +179,12 @@ impl TryFrom<String> for FrontmatterKey {
 
 impl From<FrontmatterKey> for String {
     #[inline]
-    fn from(value: FrontmatterKey) -> Self {
-        value.0.into()
+    fn from(key: FrontmatterKey) -> Self {
+        key.0
     }
 }
 
-// ============================================================================
-// Raw DTOs (Deserialization Boundary - Internal)
-// ============================================================================
-
-/// Raw frontmatter configuration (unvalidated input from config files).
-///
-/// This is a serde-only DTO that accepts flexible input from TOML/YAML/JSON.
-/// All fields are optional to support partial configuration and defaults.
-/// Validation happens during conversion to [`Frontmatter`] via [`TryFrom`].
+/// Raw frontmatter configuration (unvalidated input).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 #[non_exhaustive]
 pub struct RawFrontmatter {
@@ -247,8 +204,9 @@ impl TryFrom<RawFrontmatter> for Frontmatter {
     type Error = ConfigError;
 
     #[inline]
-    fn try_from(raw: RawFrontmatter) -> Result<Self, Self::Error> {
+    fn try_from(raw: RawFrontmatter) -> Result<Self, ConfigError> {
         let defaults = Frontmatter::default();
+
         let alias_key = match raw.alias_key {
             Some(value) => {
                 FrontmatterKey::try_new_with_field("alias_key", value)?
@@ -280,19 +238,15 @@ impl TryFrom<RawFrontmatter> for Frontmatter {
             None => defaults.title_key,
         };
 
-        Ok(Frontmatter::new(
+        Ok(Self {
             alias_key,
             date_created_key,
             date_modified_key,
             file_class_key,
             title_key,
-        ))
+        })
     }
 }
-
-// ============================================================================
-// Private Validation Helpers (Implementation Details)
-// ============================================================================
 
 fn validate_non_empty(
     field: &'static str,
@@ -307,33 +261,37 @@ fn validate_non_empty(
     Ok(())
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test modules have relaxed unwrap/expect rules"
+)]
 mod tests {
-    use super::*;
-
     mod fixtures {
-        use super::*;
+        use super::super::FrontmatterKey;
 
         pub fn sample_key() -> FrontmatterKey {
-            FrontmatterKey::try_new("author").unwrap()
+            FrontmatterKey::try_new("author").expect("valid key for fixture")
         }
     }
 
-    /// 3.3-UNIT-026: `frontmatter_validate_rejects_empty_keys`.
-    /// Priority: P0.
-    #[test]
-    fn frontmatter_key_rejects_empty() {
-        let result = FrontmatterKey::try_new("");
-        assert!(result.is_err(), "Expected validation error");
+    mod constructor {
+        use super::super::*;
+
+        /// 3.3-UNIT-026: `frontmatter_validate_rejects_empty_keys`.
+        /// Priority: P0.
+        #[test]
+        fn frontmatter_key_rejects_empty() {
+            let result = FrontmatterKey::try_new("");
+            assert!(result.is_err(), "Expected validation error");
+        }
     }
 
-    #[test]
-    fn frontmatter_key_accepts_valid() {
-        let key = fixtures::sample_key();
-        assert_eq!(key.as_str(), "author");
+    mod accessors {
+        #[test]
+        fn frontmatter_key_as_str_returns_expected() {
+            let key = super::fixtures::sample_key();
+            assert_eq!(key.as_str(), "author");
+        }
     }
 }
