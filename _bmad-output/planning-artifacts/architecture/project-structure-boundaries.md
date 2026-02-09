@@ -125,12 +125,12 @@ lithos/
 
 ## Architectural Boundaries
 
-**API Boundaries:**
+### API Boundaries
 
 - **CLI (`lithos-cli`):** The primary driver. Orchestrates `lithos-core` logic and owns terminal rendering via `miette`.
 - **Core (`lithos-core`):** Contains all business logic, storage implementation, and file processing.
 
-**Logical Boundaries (Module Visibility):**
+### Logical Boundaries (Module Visibility)
 
 - **Public API:** Only types reachable from `lithos-core/src/lib.rs` are public.
 - **Context Isolation:**
@@ -145,17 +145,17 @@ lithos/
   - Type aliases hide complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>`
   - Port split prevents interface bloat and enables read-only test fakes
 
-**Component Boundaries:**
+### Component Boundaries
 
 - **Indexer:** Not a separate actor anymore, but a logical phase in `lithos-cli`. Writes are atomic and coordinated via `db.batch_write()` for bulk operations.
 - **Compliance Engine:** Located in `lithos-core/src/schema/`. Checks if Note metadata satisfies Schema rules.
 
-**Service Boundaries:**
+### Service Boundaries
 
 - **Template System:** The core logic remains in `lithos-core/src/template/`. Interaction is handled via `lithos-cli`.
 - **Metrics & Stats:** Aggregates vault-wide data. Likely implemented as queries in `lithos-core/src/note/query.rs` or a specialized metrics module.
 
-**Data Boundaries:**
+### Data Boundaries
 
 - **Identity (UUID v7):** We use UUID v7 (Time-ordered) instead of paths or numeric IDs.
   - **Performance:** Ensures new notes are appended to Redb B-Tree leaves sequentially, achieving O(1) insertion.
@@ -171,7 +171,7 @@ lithos/
   - Mechanical conversions at storage boundary when `Stored*` exists
   - Treat `Stored*` changes as migration decisions (persisted format contract)
 
-**File Organization Patterns:**
+## File Organization Patterns
 
 - **Module Folder with mod.rs:** Use `<context>/mod.rs` as the entry point for all contexts.
 - **CQRS Structure:** Split logic into:
@@ -188,14 +188,14 @@ lithos/
 
 ## Requirements to Structure Mapping
 
-**Feature/Epic Mapping:**
+### Feature/Epic Mapping
 
 - **Knowledge Graph (FR20-FR25):** `lithos-core/src/note/` + `lithos-core/src/db/` (Links/Embeds/Tags).
 - **Schema & Compliance (FR8-FR14):** `lithos-core/src/schema/`.
 - **Template Design (FR1-FR7, FR9):** `lithos-core/src/template/`.
 - **Interactive CLI (FR41-FR47):** `lithos-cli/src/main.rs` (Driver) delegating to `lithos-core/src/` contexts.
 
-**Cross-Cutting Concerns:**
+### Cross-Cutting Concerns
 
 - **Metadata Extraction:** Handled in `lithos-core/src/note/frontmatter.rs` and `lithos-core/src/fs/parsers.rs`.
 - **Validation Hierarchy:**
@@ -206,28 +206,28 @@ lithos/
 
 ## Integration Points
 
-**Internal Communication:**
+### Internal Communication
 
 - **Hybrid Bus (ADR 004):** Minimized for Phase 1. `src/db/` handles data persistence. Events are emitted via simple callbacks or staged in `UnitOfWork` for later dispatch if needed.
 - **Database:** `lithos-core/src/db/mod.rs` exposes a concrete `Database` struct with zero-copy methods (`get`, `put`).
 
-**External Integrations:**
+### External Integrations
 
 - **Obsidian Vault:** Interfaced via `lithos-core/src/fs/` and extracted via `lithos-core/src/fs/parsers.rs`.
 - **Hierarchical Config:** Managed by `figment` in `lithos-core/src/config/` (Global -> User -> Project -> Vault -> Env -> Flag).
 
-**Data Flow:**
+### Data Flow
 
 - **Write Path:** CLI -> Note::command::save(&db) -> Database::put -> Redb.
 - **Read Path:** CLI -> Note::query::find_by_id(&db) -> Database::get -> Zero-copy view.
 
 ## Development Workflow Integration
 
-**Development Server Structure:**
+### Development Server Structure
 
 - Managed via `mise run dev` which wraps `cargo-watch` for automatic rebuilding.
 
-**Build Process Structure:**
+### Build Process Structure
 
 - **Mise-first:** `mise run build` handles static linking and binary stripping to produce a zero-dependency artifact.
 - **Tasks:**

@@ -190,16 +190,19 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 **Context**: Comprehensive review of implementation vs design specs revealed critical misalignments.
 **Source**: Design specs 001-config-models.md, 002-config-cqrs.md, 003-config-task.md
 
-### 0.5.1) CRITICAL: Fix ConfigCommandError Extra Variant
-**Spec**: 002-config-cqrs.md Section 1.4
-**Issue**: `ConfigCommandError` has `Ingest` variant not in spec (only Domain/Storage allowed)
-- [ ] Read `lithos-core/src/config/error.rs` lines 108-128
-- [ ] **Decision needed**: Remove `Ingest` variant OR update design spec to justify it
-- [ ] If removing: Map ingest errors to `Domain(ConfigError)` in command.rs
-- [ ] If keeping: Document rationale and update spec
-- [ ] Update tests in `error.rs` if error variants change
-- [ ] Run `mise run test:unit:config`
-- [ ] Run `mise run verify` (REQUIRED)
+### 0.5.1) ✅ COMPLETE: ConfigCommandError Extra Variant (RESOLVED)
+**Spec**: 002-config-cqrs.md Section 1.4 (UPDATED)
+**Status**: ✅ **RESOLVED** - Spec updated to document three-tier error taxonomy
+**Rationale**:
+- `ConfigIngestError` isolates Figment/adapter errors at boundary
+- `ConfigError` for domain validation failures
+- `ConfigCommandError` aggregates: Domain | Storage | Ingest
+- This separation prevents adapter concerns from leaking into domain errors
+**Verification**:
+- [x] Implementation in `error.rs` lines 108-128 matches updated spec
+- [x] `From<ConfigIngestError>` impl correctly maps to Ingest variant
+- [x] All 100 config tests pass
+- [x] `mise run verify` passes (REQUIRED)
 
 ### 0.5.2) CRITICAL: Consolidate Bounds Types (DRY Violation)
 **Spec**: 003-config-task.md Section 3.2 lines 434-475, Decision 4.1.8

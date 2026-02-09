@@ -1,10 +1,12 @@
 # Config Context Design Review Findings
+
 **Date**: 2026-02-09
 **Scope**: Comprehensive review of design specs vs implementation + Figment optimization analysis
 
 ## Executive Summary
 
 Completed thorough review of:
+
 1. **Design Specs**: 001-config-models.md, 002-config-cqrs.md, 003-config-task.md
 2. **Implementation**: `lithos-core/src/config/*`
 3. **Figment Usage**: Research on optimal patterns for layered configuration
@@ -20,6 +22,7 @@ Completed thorough review of:
 **Adherence**: ~90% aligned
 
 **Key Recommendations from Spec**:
+
 - ✅ Use `Option` overlays instead of empty-string sentinels (implemented in raw types)
 - ✅ Type-driven newtypes (`LogLevel`, `VaultId`, etc.) (mostly implemented)
 - ✅ Figment for layering with `merge` precedence (correctly implemented)
@@ -27,11 +30,13 @@ Completed thorough review of:
 - ⚠️ Some path types still `String` instead of `PathBuf` (see Phase 0.5)
 
 **Strong Points**:
+
 - Clean separation: `Raw* → TryFrom → Domain → [Stored*]`
 - Figment confined to `config::ingest` (adapter boundary)
 - Validation happens at construction (newtype pattern)
 
 **Minor Gaps**:
+
 - Vault identity (`VaultId`) not yet fully implemented (noted in spec as future work)
 - Some path operations use string formatting instead of `PathBuf::join` (Phase 0.5 task)
 
@@ -42,10 +47,12 @@ Completed thorough review of:
 **Adherence**: 100% aligned (after today's spec update)
 
 **Changes Made**:
+
 - ✅ Added `ConfigIngestError` variant to spec (matches implementation)
 - ✅ Documented rationale for three-tier error taxonomy
 
 **Error Taxonomy** (validated):
+
 ```rust
 // Infrastructure errors (adapter boundary failures)
 ConfigIngestError    → TOML parsing, Figment extraction
@@ -60,11 +67,13 @@ ConfigQueryError    → Storage | Corruption
 ```
 
 **Strong Points**:
+
 - Split CQRS error types prevent domain/storage confusion
 - `ConfigIngestError` properly isolates Figment errors at adapter boundary
 - Versioned merged config read model architecture well-designed (not yet implemented)
 
 **Implementation Status**:
+
 - ✅ Basic CQRS structure in place
 - ⏳ Versioned merged config (future work, not blocking)
 - ⏳ VaultId-based persistence (future work, path-based for now)
@@ -76,6 +85,7 @@ ConfigQueryError    → Storage | Corruption
 **Adherence**: ~75% aligned (12 misalignments identified)
 
 **Critical Issues** (Phase 0.5):
+
 1. **Type inference UX**: Spec says `#[serde(untagged)]` for type inference (no `type=` key), implementation uses tagged format
 2. **Performance**: Spec says compile regex at config load (`Arc<Regex>`), implementation stores `Option<String>`
 3. **DRY**: Spec says `Bounds<T>` generic, implementation has separate `IntegerBounds`/`FloatBounds`
@@ -84,6 +94,7 @@ ConfigQueryError    → Storage | Corruption
 **See Phase 0.5 in `config-context-combined-status.md` for complete list**
 
 **Strong Points**:
+
 - TaskConfig newtype pattern correctly applied
 - First-class date fields with emoji support (Obsidian compatibility)
 - Validation-in-construction enforced
@@ -95,6 +106,7 @@ ConfigQueryError    → Storage | Corruption
 ### Current Implementation Review
 
 **What We're Doing**:
+
 ```rust
 // ingest_global()
 Figment::from(Serialized::defaults(RawGlobal::default()))
@@ -111,18 +123,19 @@ Figment::from(Serialized::defaults(RawVault::default()))
 
 ### Figment Best Practices Validated
 
-| Practice | Lithos Implementation | Status |
-|:---------|:---------------------|:-------|
+| Practice                                                 | Lithos Implementation                            | Status  |
+| :------------------------------------------------------- | :----------------------------------------------- | :------ |
 | **Use `Serialized::defaults` for programmatic defaults** | ✅ `RawGlobal::default()`, `RawVault::default()` | Correct |
-| **Use `merge` for overrides (incoming wins)** | ✅ File overrides defaults | Correct |
-| **Use `join` for fallbacks (existing wins)** | ❌ Not needed (we only have defaults + file) | N/A |
-| **Avoid `#[serde(flatten)]`** (breaks error attribution) | ✅ No flatten used | Correct |
-| **Let Figment handle missing files gracefully** | ✅ Check `path.exists()` before merge | Correct |
-| **Extract into Raw types, validate separately** | ✅ `Raw* → TryFrom → Domain` | Correct |
+| **Use `merge` for overrides (incoming wins)**            | ✅ File overrides defaults                       | Correct |
+| **Use `join` for fallbacks (existing wins)**             | ❌ Not needed (we only have defaults + file)     | N/A     |
+| **Avoid `#[serde(flatten)]`** (breaks error attribution) | ✅ No flatten used                               | Correct |
+| **Let Figment handle missing files gracefully**          | ✅ Check `path.exists()` before merge            | Correct |
+| **Extract into Raw types, validate separately**          | ✅ `Raw* → TryFrom → Domain`                     | Correct |
 
 ### Figment Features We're NOT Using (Intentionally)
 
 #### Profiles (`select`, `nested`)
+
 ```rust
 // What we could do:
 Figment::from(Toml::file("config.toml").nested())
@@ -130,16 +143,19 @@ Figment::from(Toml::file("config.toml").nested())
 ```
 
 **Why we don't need it**:
+
 - Global vs Vault layers are NOT profiles (they're distinct data sources)
 - We don't have environment-specific config (dev/staging/prod)
 - If we add environment support later, we'd use profiles for **operational context** (not vault identity)
 
 **Spec guidance** (001-config-models.md, Appendix A.3.2):
+
 > "Profiles work well for runtime context (dev/test/prod), NOT for vault identity (vaults are domain instances)"
 
 **Recommendation**: Don't add profiles unless we need operational contexts (rare for CLI tool)
 
 #### Environment Variables (`Env::prefixed`)
+
 ```rust
 // What we could do:
 Figment::from(Serialized::defaults(...))
@@ -148,6 +164,7 @@ Figment::from(Serialized::defaults(...))
 ```
 
 **Why we don't need it**:
+
 - Current pattern uses single env var: `LITHOS_GLOBAL_CONFIG` (path to file)
 - Per-field env overrides add complexity without user request
 - TOML files are the intended UX (not dozens of env vars)
@@ -155,16 +172,19 @@ Figment::from(Serialized::defaults(...))
 **Recommendation**: Keep current pattern unless users request env var overrides
 
 #### Array Concatenation (`admerge`)
+
 ```rust
 // What we could do:
 figment.admerge(provider)  // Concatenate arrays instead of replacing
 ```
 
 **Why we don't need it**:
+
 - Replace semantics are correct for our config (vault overrides global entirely)
 - No use case for "extend global list with vault additions"
 
 **Spec guidance** (001-config-models.md, Appendix A.3.5):
+
 > "Default to **replace** for arrays/lists in config overrides"
 
 **Recommendation**: Don't use `admerge` (replace semantics are correct)
@@ -176,6 +196,7 @@ figment.admerge(provider)  // Concatenate arrays instead of replacing
 ### None Found for Figment Usage
 
 Our ingest implementation is **already following Figment best practices**:
+
 1. ✅ Defaults via `Serialized::defaults`
 2. ✅ Merge precedence for overrides
 3. ✅ Extract into Raw types (validation deferred to `TryFrom`)
@@ -185,6 +206,7 @@ Our ingest implementation is **already following Figment best practices**:
 ### Code Simplification: None Needed
 
 **Current pattern is minimal and correct**:
+
 ```rust
 pub fn ingest_global() -> Result<RawGlobal, ConfigIngestError> {
     let mut figment = Figment::from(Serialized::defaults(RawGlobal::default()));
@@ -200,6 +222,7 @@ pub fn ingest_global() -> Result<RawGlobal, ConfigIngestError> {
 ```
 
 **Why not simplify further?**
+
 - We could remove `if path.exists()` check (Figment handles missing files), but **explicit check is clearer**
 - We could inline `global_config_path_from_env()`, but **separation is clearer**
 - We could remove `mut figment`, but **builder pattern is idiomatic**
@@ -256,6 +279,7 @@ pub fn ingest_global() -> Result<RawGlobal, ConfigIngestError> {
 **Design Alignment**: ⚠️ 12 minor issues in Phase 0.5, mostly in task config
 
 **Next Steps**:
+
 1. ✅ ConfigIngestError documented in spec (DONE)
 2. ⏭️ Address Phase 0.5 issues (12 tasks in `config-context-combined-status.md`)
 3. ⏭️ Run `mise run verify` after each fix
