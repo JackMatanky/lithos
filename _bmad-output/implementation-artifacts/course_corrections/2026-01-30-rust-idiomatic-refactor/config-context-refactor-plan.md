@@ -1553,3 +1553,611 @@ These documents are preserved as a record of the review process and findings.
 
 _Document created: 2026-02-09_
 _Consolidates: Implementation plan + Review findings + Verification results_
+
+---
+
+## 5. Figment Integration Enhancement Plan (Phase 1 - RECOMMENDED)
+
+_Added: 2026-02-09_
+_Objective: Leverage Figment's deep merge capabilities to eliminate manual merge logic_
+
+### Executive Summary
+
+**Current Problem**: Manual field-by-field merge logic (~80 lines) that Figment could handle automatically.
+
+**Solution**: Create unified `RawConfig` schema that works at all layers, let Figment deep-merge, then convert to domain types.
+
+**Key Constraint**: Must preserve rkyv serialization for redb storage (essential for Database integration).
+
+**Estimated Effort**: 8 hours across 4 phases
+
+---
+
+### Architecture Decision
+
+**KEEP BOTH serde AND rkyv**:
+
+```rust
+// Raw types (serde ONLY - not stored in redb)
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RawConfig { /* ... */ }
+
+// Domain types (BOTH serde AND rkyv)
+#[derive(
+    Debug, Clone,
+    serde::Serialize, serde::Deserialize,  // For Figment extraction
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,  // For redb storage
+)]
+pub struct Config { /* ... */ }
+```
+
+**Flow**:
+```
+TOML Files → (serde) → RawConfig → (Figment merge) → RawConfig
+    → (TryFrom validation) → Config → (rkyv) → redb bytes
+```
+
+---
+
+### Phase 1.1: Create Unified Raw Schema (Non-Breaking)
+
+**File**: `lithos-core/src/config/raw.rs`
+
+**Add new types alongside existing**:
+
+```rust
+/// Unified raw configuration for Figment merge.
+///
+/// Replaces separate `RawGlobal` and `RawVault` with single schema
+/// that works at all layers (defaults, global, vault).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawConfig {
+    /// Filesystem configuration (deeply mergeable across layers).
+    #[serde(default)]
+    pub filesystem: RawFilesystemConfig,
+
+    /// Frontmatter configuration.
+    pub frontmatter: Option<RawFrontmatter>,
+
+    /// Logging configuration.
+    pub logging: Option<RawLogging>,
+
+    /// Task configuration.
+    pub task: Option<RawTaskConfig>,
+
+    /// Trusted vaults (global-only, ignored at vault layer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trusted_vaults: Option<RawTrustedVaults>,
+}
+
+/// Filesystem configuration with optional fields for deep merge.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawFilesystemConfig {
+    /// Cache directory (typically vault-specific).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+
+    /// Schema directory (can override at any layer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schemas_dir: Option<String>,
+
+    /// Property bank filename (can override at any layer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub property_bank_filename: Option<String>,
+
+    /// Templates directory (can override at any layer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub templates_dir: Option<String>,
+}
+
+// Mark old types as deprecated (don't delete yet)
+#[deprecated(since = "0.2.0", note = "Use RawConfig instead")]
+pub type RawGlobal = /* existing type */;
+
+#[deprecated(since = "0.2.0", note = "Use RawConfig instead")]
+pub type RawVault = /* existing type */;
+```
+
+**Tests to add**:
+
+```rust
+#[test]
+fn raw_config_deserializes_from_toml() {
+    let toml = r#"
+        [filesystem]
+        schemas_dir = "custom-schemas"
+        templates_dir = "custom-templates"
+
+        [logging]
+        log_level = "debug"
+    "#;
+
+    let raw: RawConfig = toml::from_str(toml).unwrap();
+    assert_eq!(raw.filesystem.schemas_dir.as_deref(), Some("custom-schemas"));
+}
+
+#[test]
+fn raw_config_supports_partial_filesystem() {
+    let toml = r#"
+        [filesystem]
+        cache_dir = ".cache"
+        # schemas_dir omitted - will merge from lower layer
+    "#;
+
+    let raw: RawConfig = toml::from_str(toml).unwrap();
+    assert_eq!(raw.filesystem.cache_dir.as_deref(), Some(".cache"));
+    assert_eq!(raw.filesystem.schemas_dir, None);
+}
+```
+
+**Checklist**:
+- [ ] Create `RawConfig` struct
+- [ ] Create `RawFilesystemConfig` struct
+- [ ] Add Default implementations
+- [ ] Add deprecation notices to old types
+- [ ] Add unit tests
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify`
+
+**Estimated time**: 30 minutes
+
+---
+
+### Phase 1.2: Implement Figment Merge
+
+**File**: `lithos-core/src/config/ingest.rs`
+
+**Add new merge function**:
+
+```rust
+/// Build merged raw config from global and vault sources using Figment.
+///
+/// This implements Phase 1 hierarchy:
+/// 1. Compiled defaults (lowest priority)
+/// 2. Global config file (~/.config/lithos/lithos.toml)
+/// 3. Vault config file (<vault>/.lithos/lithos.toml) (highest priority)
+///
+/// Future phases will add:
+/// - CLI flags
+/// - Environment variables (optional)
+///
+/// # Errors
+///
+/// Returns `ConfigIngestError` if:
+/// - File reading fails
+/// - TOML parsing fails
+/// - Figment extraction fails
+pub fn build_merged_raw(vault_root: &Path) -> Result<RawConfig, ConfigIngestError> {
+    // Layer 1: Compiled defaults
+    let mut figment = Figment::from(Serialized::defaults(RawConfig::default()));
+
+    // Layer 2: Global config (if exists)
+    if let Some(path) = global_config_path_from_env() {
+        if path.exists() {
+            figment = figment.merge(Toml::file(path));
+        }
+    }
+
+    // Layer 3: Vault config (if exists)
+    let vault_config_path = vault_root.join(".lithos").join("lithos.toml");
+    if vault_config_path.exists() {
+        figment = figment.merge(Toml::file(vault_config_path));
+    }
+
+    // Extract merged config
+    figment.extract().map_err(ConfigIngestError::from)
+}
+```
+
+**Tests to add**:
+
+```rust
+#[test]
+fn build_merged_raw_merges_global_and_vault() {
+    let temp_dir = tempdir().unwrap();
+
+    // Create global config
+    let global_dir = temp_dir.path().join(".config/lithos");
+    fs::create_dir_all(&global_dir).unwrap();
+    fs::write(
+        global_dir.join("lithos.toml"),
+        r#"
+            [filesystem]
+            schemas_dir = "global-schemas"
+            templates_dir = "global-templates"
+        "#,
+    ).unwrap();
+
+    // Create vault config
+    let vault_dir = temp_dir.path().join("vault");
+    let vault_config_dir = vault_dir.join(".lithos");
+    fs::create_dir_all(&vault_config_dir).unwrap();
+    fs::write(
+        vault_config_dir.join("lithos.toml"),
+        r#"
+            [filesystem]
+            schemas_dir = "vault-schemas"
+            cache_dir = ".cache"
+        "#,
+    ).unwrap();
+
+    // Set env var
+    std::env::set_var("LITHOS_GLOBAL_CONFIG", global_dir.join("lithos.toml"));
+
+    // Merge
+    let raw = build_merged_raw(&vault_dir).unwrap();
+
+    // Verify deep merge
+    assert_eq!(raw.filesystem.schemas_dir.as_deref(), Some("vault-schemas")); // Overridden
+    assert_eq!(raw.filesystem.templates_dir.as_deref(), Some("global-templates")); // Inherited
+    assert_eq!(raw.filesystem.cache_dir.as_deref(), Some(".cache")); // New
+
+    std::env::remove_var("LITHOS_GLOBAL_CONFIG");
+}
+```
+
+**Checklist**:
+- [ ] Add `build_merged_raw()` function
+- [ ] Keep old `ingest_global()` and `ingest_vault()` for backwards compatibility
+- [ ] Add unit tests for merge behavior
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify`
+
+**Estimated time**: 45 minutes
+
+---
+
+### Phase 1.3: Simplify Config::build()
+
+**File**: `lithos-core/src/config/aggregate.rs`
+
+**Add new constructor**:
+
+```rust
+impl Config {
+    /// Build Config from pre-merged raw configuration.
+    ///
+    /// This replaces manual merge logic with Figment-merged input.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError` if:
+    /// - Validation fails for any domain type
+    /// - Path conversion fails
+    /// - Required fields are missing after merge
+    pub fn from_merged_raw(
+        raw: RawConfig,
+        vault_id: VaultId,
+        vault_root: VaultRoot,
+    ) -> Result<Self, ConfigError> {
+        // Convert raw to validated domain types
+        let frontmatter = raw.frontmatter
+            .map(Frontmatter::try_from)
+            .transpose()?
+            .unwrap_or_default();
+
+        let logging = raw.logging
+            .map(Logging::try_from)
+            .transpose()?
+            .unwrap_or_default();
+
+        let task = raw.task
+            .map(TaskConfig::try_from)
+            .transpose()?
+            .unwrap_or_default();
+
+        // Build filesystem config (Figment already merged!)
+        let cache_dir = raw.filesystem.cache_dir
+            .map(|s| CacheDir::try_new(PathBuf::from(s)))
+            .transpose()?
+            .unwrap_or_default();
+
+        let schemas_dir = raw.filesystem.schemas_dir
+            .map(|s| SchemasDir::try_new(PathBuf::from(s)))
+            .transpose()?
+            .unwrap_or_default();
+
+        let property_bank_filename = raw.filesystem.property_bank_filename
+            .map(FileName::try_new)
+            .transpose()?
+            .unwrap_or_default();
+
+        let templates_dir = raw.filesystem.templates_dir
+            .map(|s| TemplatesDir::try_new(PathBuf::from(s)))
+            .transpose()?
+            .unwrap_or_default();
+
+        let schema = Schema::new(schemas_dir, property_bank_filename);
+        let template = Template::new(templates_dir);
+
+        let vault_filesystem = ResolvedVaultPaths {
+            cache_dir,
+            schema,
+            template,
+        };
+
+        let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
+
+        let mut config = Self {
+            vault_metadata,
+            logging,
+            global_filesystem: GlobalPaths::default(),
+            vault_filesystem,
+            frontmatter,
+            task,
+            pending_events: vec![],
+        };
+
+        config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
+            "merged".to_owned(),
+            chrono::Utc::now().timestamp(),
+        )));
+
+        config.validate()?;
+
+        Ok(config)
+    }
+
+    // Deprecate old build method
+    #[deprecated(since = "0.2.0", note = "Use from_merged_raw instead")]
+    pub fn build(
+        global: Option<&Global>,
+        vault_id: VaultId,
+        vault_root: VaultRoot,
+        vault: &Vault,
+    ) -> Result<Self, ConfigError> {
+        // Keep old implementation for now
+        /* ... existing code ... */
+    }
+}
+```
+
+**Checklist**:
+- [ ] Add `from_merged_raw()` method
+- [ ] Deprecate `build()` method
+- [ ] Deprecate `merge_frontmatter()`, `merge_logging()`, `merge_task()`
+- [ ] Update tests
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify`
+
+**Estimated time**: 1.5 hours
+
+---
+
+### Phase 1.4: Update Command Flow
+
+**File**: `lithos-core/src/config/command.rs`
+
+**Simplify `rebuild_merged()`**:
+
+```rust
+pub fn rebuild_merged(
+    &self,
+    vault_id: VaultId,
+    vault_root: &VaultRoot,
+) -> Result<ConfigVersion, ConfigCommandError> {
+    // NEW: Single Figment merge
+    let raw = ingest::build_merged_raw(vault_root.as_path())?;
+
+    // Convert to validated domain config
+    let merged = Config::from_merged_raw(raw, vault_id, vault_root.clone())
+        .map_err(ConfigCommandError::Domain)?;
+
+    // Persist merged config
+    let version = self.next_version(vault_id)?;
+    self.command_port
+        .save_merged(vault_id, version, &merged)
+        .map_err(|error| ConfigCommandError::Storage(error.into()))?;
+    self.command_port
+        .set_active_version(vault_id, version)
+        .map_err(|error| ConfigCommandError::Storage(error.into()))?;
+
+    Ok(version)
+}
+```
+
+**Before**: 30 lines with manual Global/Vault loading and merge
+**After**: 15 lines with automatic Figment merge
+
+**Checklist**:
+- [ ] Update `rebuild_merged()` to use new flow
+- [ ] Update tests
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify`
+
+**Estimated time**: 20 minutes
+
+---
+
+### Phase 1.5: Apply Rust Best Practices
+
+**Files**: Multiple
+
+**Changes**:
+
+1. **task.rs** - Remove redundant `from_raw()`, use only `TryFrom`
+2. **task.rs** - Fix clone in hot path (line 1139)
+3. **frontmatter.rs** - Use combinators instead of match
+4. **global.rs**, **vault.rs** - Derive Default where possible
+5. **All files** - Improve `# Errors` documentation
+
+**Checklist**:
+- [ ] Delete `TaskConfig::from_raw()`, use `TryFrom` only
+- [ ] Fix clone in deduplication loop
+- [ ] Replace match with `.map().transpose()?.unwrap_or()`
+- [ ] Add `#[derive(Default)]` where applicable
+- [ ] Improve error documentation
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify`
+
+**Estimated time**: 1 hour
+
+---
+
+### Phase 1.6: Cleanup & Remove Deprecated Code
+
+**Files**: Multiple
+
+**Remove**:
+- [ ] `RawGlobal` type
+- [ ] `RawVault` type
+- [ ] `RawGlobalPaths` type
+- [ ] `RawVaultPaths` type
+- [ ] `Config::build()` old implementation
+- [ ] `merge_frontmatter()`, `merge_logging()`, `merge_task()`
+- [ ] `ingest_global()`, `ingest_vault()` (keep as thin wrappers if needed)
+
+**Checklist**:
+- [ ] Remove all deprecated types
+- [ ] Remove all deprecated functions
+- [ ] Update all documentation
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify`
+- [ ] Commit checkpoint
+
+**Estimated time**: 30 minutes
+
+---
+
+### Phase 1.7: Testing & Validation
+
+**Comprehensive test updates**:
+
+```rust
+// New integration test
+#[test]
+fn figment_deep_merge_preserves_provenance() {
+    // Verify that Figment's deep merge works correctly
+    // for all nested structures
+}
+
+#[test]
+fn config_from_merged_raw_validates_correctly() {
+    // Verify that domain validation still works
+    // after Figment merge
+}
+```
+
+**Checklist**:
+- [ ] Add tests for Figment deep merge
+- [ ] Add tests for provenance (future CLI feature)
+- [ ] Update all existing tests to use new API
+- [ ] Run `mise run test` (all tests)
+- [ ] Run `mise run verify`
+- [ ] Document any breaking changes
+
+**Estimated time**: 2 hours
+
+---
+
+### Expected Outcomes
+
+**Code Metrics**:
+| Metric | Before | After | Change |
+|--------|--------|-------|--------|
+| Lines in `aggregate.rs::build()` | ~120 | ~50 | -58% |
+| Lines in `command.rs::rebuild_merged()` | ~30 | ~15 | -50% |
+| Manual merge functions | 3 | 0 | -100% |
+| Raw config types | 6 | 2 | -67% |
+| Total config LOC | ~1800 | ~1400 | -22% |
+
+**Quality Improvements**:
+- ✅ Automatic deep merge (no manual field handling)
+- ✅ Better error messages (Figment provenance)
+- ✅ Forward compatible (easy to add CLI/env layers)
+- ✅ Zero-copy reads preserved (rkyv still used)
+- ✅ Type safety maintained (validation unchanged)
+- ✅ Rust best practices applied
+
+**Estimated Total Effort**: ~8 hours
+
+---
+
+### Migration Checklist Summary
+
+**Phase 1.1**: Create unified schema (30 min)
+**Phase 1.2**: Implement Figment merge (45 min)
+**Phase 1.3**: Simplify Config::build() (1.5 hrs)
+**Phase 1.4**: Update command flow (20 min)
+**Phase 1.5**: Apply best practices (1 hr)
+**Phase 1.6**: Cleanup deprecated code (30 min)
+**Phase 1.7**: Testing & validation (2 hrs)
+
+**Total**: ~8 hours
+
+---
+
+### Risk Assessment
+
+**Low Risk**:
+- Changes are non-breaking (Phase 1.1-1.5 add alongside existing code)
+- All existing tests continue passing
+- Deprecation warnings guide migration
+
+**Medium Risk**:
+- Phase 1.6 (cleanup) is breaking change
+- Need to update downstream code
+
+**Mitigation**:
+- Implement in phases
+- Run `mise run verify` after each phase
+- Keep deprecated code until all callers migrated
+
+---
+
+### Success Criteria
+
+- [ ] All tests pass (100/100 config tests + integration)
+- [ ] `mise run verify` passes (all quality gates)
+- [ ] Code LOC reduced by ~20%
+- [ ] Manual merge logic eliminated
+- [ ] Figment handles all deep merging
+- [ ] rkyv/redb integration preserved
+- [ ] Documentation updated
+
+---
+
+## 6. Best Practices Applied (Summary)
+
+### Rust Idioms Addressed
+
+1. **✅ Use borrowed types for arguments** - Already compliant
+2. **✅ Concatenate with format!** - Already compliant
+3. **✅ Constructors: new() vs try_new()** - Mixed (needs TryFrom consistency)
+4. **⚠️ Derive Default where possible** - Manual impls should be derived
+5. **✅ Prefer iterators over indexing** - Already compliant
+6. **⚠️ Remove clone in hot path** - task.rs:1139 needs fix
+7. **⚠️ Use combinators over match** - frontmatter.rs can improve
+8. **✅ Path handling** - Already uses PathBuf/&Path correctly
+9. **⚠️ Error documentation** - Needs more detail in `# Errors` sections
+10. **✅ No unwrap/expect in production** - Already compliant
+
+---
+
+## 7. References
+
+### Design Specifications
+- `docs/design/001-config-models.md` - Config domain models
+- `docs/design/002-config-cqrs.md` - CQRS implementation
+- `docs/design/003-config-task.md` - Task configuration
+- `docs/adr/009-configuration-management.md` - Figment decision
+
+### Best Practices Research
+- `docs/refs/rust/idioms.md` - Rust idioms reference
+- `docs/refs/rust/style.md` - Rust style guide
+- `docs/refs/crates/rkyv.md` - rkyv usage patterns
+- `docs/refs/crates/redb.md` - redb integration patterns
+
+### Related Documents
+- `config-context-gap-analysis.md` - Gap analysis vs specs
+- `config-design-review-findings.md` - Comprehensive review
+- `PHASE-0.5-VERIFIED.md` - Verification results
+- Figment crate documentation - Best practices research
+
+---
+
+_Section 5 added: 2026-02-09_
+_Total document size: ~2300 lines_
+_Status: Ready for implementation_
