@@ -32,7 +32,25 @@ use super::{
 /// Represents an Obsidian-compatible markdown note.
 ///
 /// `Note` is the aggregate root for the note bounded context. It maintains
-/// consistency across its sub-entities and stages domain events.
+/// consistency across its sub-entities (links, tags, tasks, etc.) and stages
+/// domain events for persistence.
+///
+/// This struct uses zero-copy serialization via `rkyv` and is designed for
+/// high-performance indexing and retrieval.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::aggregate::{Note, NoteId};
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let id = NoteId::new();
+/// let path = "inbox/meeting-notes.md".to_string();
+///
+/// let note = Note::new(id, path)?;
+/// assert_eq!(note.path().as_str(), "inbox/meeting-notes.md");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -217,6 +235,17 @@ impl Note {
 }
 
 /// Unique identifier for a Note.
+///
+/// Uses UUID v7 for time-ordered, sortable identities that are well-suited
+/// for database primary keys.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::aggregate::NoteId;
+/// let id = NoteId::new();
+/// println!("Created note with ID: {:?}", id);
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -266,6 +295,27 @@ impl From<NoteId> for uuid::Uuid {
 }
 
 /// Validated vault-relative path for a note.
+///
+/// Ensures the path follows Obsidian conventions (e.g., forward slashes,
+/// `.md` extension) and prevents directory traversal attacks.
+///
+/// # Errors
+///
+/// Returns [`NoteError::InvalidPath`] if:
+/// - The path is absolute (starts with `/`).
+/// - The extension is not `.md`.
+/// - The path contains invalid characters.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::aggregate::NotePath;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let path = NotePath::new("daily/2024-01-01.md".to_string())?;
+/// assert_eq!(path.as_str(), "daily/2024-01-01.md");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,

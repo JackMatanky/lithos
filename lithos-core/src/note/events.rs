@@ -2,6 +2,7 @@
 
 //! Note domain events.
 #![allow(
+    missing_docs,
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
     reason = "rkyv generates Archived types with public fields/variants"
@@ -117,6 +118,21 @@ impl FrontmatterValidated {
 }
 
 /// Domain events that can be emitted by the Note aggregate.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::events::{NoteEvents, NoteCreated};
+/// # use uuid::Uuid;
+/// let inner = NoteCreated::new(Uuid::now_v7(), "test.md".into(), 0);
+/// let event = NoteEvents::NoteCreated(inner);
+///
+/// match event {
+///     NoteEvents::NoteCreated(e) => println!("Note created: {}", e.path),
+///     NoteEvents::FrontmatterValidated(_) => (),
+///     _ => (),
+/// }
+/// ```
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]

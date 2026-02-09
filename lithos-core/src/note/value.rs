@@ -17,7 +17,19 @@ use std::collections::HashMap;
 /// It is used for both frontmatter (YAML/TOML) and task metadata (`[key::
 /// value]`).
 ///
-/// Note: `DateTime` stored as i64 timestamp for rkyv compatibility.
+/// Note: `DateTime` is stored as an `i64` Unix timestamp for `rkyv`
+/// compatibility.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::value::FieldValue;
+/// let val = FieldValue::String("active".into());
+/// assert_eq!(val.as_str(), Some("active"));
+///
+/// let num = FieldValue::Number(42.0);
+/// assert!(num.as_number().is_some());
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -54,6 +66,9 @@ pub enum FieldValue {
 }
 
 /// A high-level type descriptor for [`FieldValue`].
+///
+/// This is primarily used for error reporting and debugging to describe
+/// the expected vs actual types of metadata fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldValueType {
     /// Array of field values.

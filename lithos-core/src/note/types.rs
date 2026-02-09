@@ -9,6 +9,17 @@
 use rkyv::{Archive, Deserialize, Serialize};
 
 /// A byte offset into the original UTF-8 source of a note.
+///
+/// Offset values are zero-indexed and represent the number of bytes from
+/// the start of the file.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::types::SourceByteOffset;
+/// let offset = SourceByteOffset::new(1024);
+/// assert_eq!(u32::from(offset), 1024);
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -74,6 +85,20 @@ impl From<SourceByteOffset> for usize {
 }
 
 /// A byte range in the original UTF-8 source.
+///
+/// Defines a contiguous span of text within a note, typically representing
+/// an entity's location.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::types::{SourceByteOffset, SourceByteRange};
+/// let start = SourceByteOffset::new(0);
+/// let end = SourceByteOffset::new(10);
+/// let range = SourceByteRange::new(start, end);
+///
+/// assert_eq!(range.len(), 10);
+/// ```
 #[derive(
     Debug,
     Clone,

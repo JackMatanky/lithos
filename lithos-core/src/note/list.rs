@@ -1,8 +1,3 @@
-//! Markdown list and list item entities.
-//!
-//! Models ordered and unordered lists, including checkbox items that
-//! can be promoted to domain-level tasks.
-
 //! List subentities for the Note aggregate.
 #![allow(
     missing_docs,
@@ -16,6 +11,17 @@ use super::{task::TaskId, types::SourceByteOffset};
 use crate::config::task::StatusSymbol;
 
 /// Markdown list structure.
+///
+/// Represents a collection of [`ListItem`]s, which can be ordered or unordered.
+/// A `List` tracks its nesting depth within the document.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::list::{List, ListType};
+/// let list = List::new(ListType::Unordered);
+/// assert_eq!(list.depth(), 0);
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -96,6 +102,20 @@ impl List {
 }
 
 /// Single item in a markdown list.
+///
+/// Items can be plain text or checkbox items. Checkbox items may be
+/// promoted to [`Task`] entities while remaining part of their parent list.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::{list::ListItem, types::SourceByteOffset};
+/// let item = ListItem::Plain {
+///     text: "Buy groceries".into(),
+///     position: SourceByteOffset::new(0),
+/// };
+/// assert_eq!(item.text(), "Buy groceries");
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -240,7 +260,7 @@ impl ListItem {
 pub enum ListType {
     /// Ordered list starting at the given number.
     Ordered {
-        /// Starting index for the list.
+        /// Starting index for the list (usually 1).
         start: u64,
     },
     /// Unordered list (bullets).
