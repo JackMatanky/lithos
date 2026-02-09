@@ -21,7 +21,7 @@ use super::{
     frontmatter::Frontmatter,
     logging::Logging,
     paths::{Schema, Template},
-    raw::{RawGlobal, RawGlobalPaths, RawTrustedVaults},
+    raw::RawTrustedVaults,
     task::TaskConfig,
 };
 
@@ -356,52 +356,6 @@ impl From<TrustedVaultPath> for String {
     #[inline]
     fn from(path: TrustedVaultPath) -> Self {
         path.0.to_string_lossy().into_owned()
-    }
-}
-
-impl TryFrom<RawGlobal> for Global {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(raw: RawGlobal) -> Result<Self, ConfigError> {
-        let filesystem = raw
-            .filesystem
-            .map(Paths::try_from)
-            .transpose()?
-            .unwrap_or_default();
-        let frontmatter = raw
-            .frontmatter
-            .map(Frontmatter::try_from)
-            .transpose()?
-            .unwrap_or_default();
-        let logging =
-            raw.logging.map(Logging::try_from).transpose()?.unwrap_or_default();
-        let trusted_vaults =
-            raw.trusted_vaults.map(TrustedVaults::try_from).transpose()?;
-        let task = raw.task.map(TaskConfig::from_raw).transpose()?;
-
-        Ok(Self {
-            filesystem,
-            frontmatter,
-            logging,
-            trusted_vaults,
-            task,
-        })
-    }
-}
-
-impl TryFrom<RawGlobalPaths> for Paths {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(raw: RawGlobalPaths) -> Result<Self, ConfigError> {
-        let schema = raw.schema.map(Schema::from).unwrap_or_default();
-        let template = raw.template.map(Template::from).unwrap_or_default();
-
-        Ok(Self {
-            schema,
-            template,
-        })
     }
 }
 

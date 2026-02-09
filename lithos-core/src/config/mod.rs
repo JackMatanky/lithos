@@ -38,22 +38,21 @@ pub mod vault;
 
 use crate::db::{
     Database,
-    config_adapter::{RedbConfigCommandAdapter, RedbConfigQueryAdapter},
+    config_adapter::{CommandAdapter, QueryAdapter},
 };
 
 /// Redb-backed config command alias.
-pub type RedbConfigCommand<'db> =
-    command::Command<RedbConfigCommandAdapter<'db>>;
+pub type RedbConfigCommand<'db> = command::Command<CommandAdapter<'db>>;
 
 /// Redb-backed config query alias.
-pub type RedbConfigQuery<'db> = query::Query<RedbConfigQueryAdapter<'db>>;
+pub type RedbConfigQuery<'db> = query::Query<QueryAdapter<'db>>;
 
 impl<'db> RedbConfigCommand<'db> {
     #[inline]
     #[must_use]
     /// Create a redb-backed config command.
     pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(RedbConfigCommandAdapter::new(db))
+        Self::new(CommandAdapter::new(db))
     }
 }
 
@@ -62,6 +61,6 @@ impl<'db> RedbConfigQuery<'db> {
     #[must_use]
     /// Create a redb-backed config query.
     pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(RedbConfigQueryAdapter::new(db))
+        Self::new(QueryAdapter::new(db))
     }
 }

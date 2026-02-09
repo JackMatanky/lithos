@@ -4,18 +4,18 @@ use crate::{
     config::{
         aggregate::{Config, ConfigVersion},
         global::Global,
-        ports::{ConfigCommandPort, ConfigQueryPort},
+        ports::{Command, Query},
         vault::{Vault, VaultId, VaultRoot},
     },
     db::{Database, DbError},
 };
 
 /// Redb-backed config command adapter.
-pub struct RedbConfigCommandAdapter<'db> {
+pub struct CommandAdapter<'db> {
     db: &'db Database,
 }
 
-impl<'db> RedbConfigCommandAdapter<'db> {
+impl<'db> CommandAdapter<'db> {
     #[inline]
     #[must_use]
     /// Create a command adapter for a database.
@@ -26,21 +26,15 @@ impl<'db> RedbConfigCommandAdapter<'db> {
     }
 }
 
-impl ConfigCommandPort for RedbConfigCommandAdapter<'_> {
+impl Command for CommandAdapter<'_> {
     type Error = DbError;
 
     #[inline]
-    fn save_global(&self, config: &Global) -> Result<(), Self::Error> {
-        self.db.put("config", "global", config)
-    }
-
-    #[inline]
-    fn save_vault(
+    fn load_active_version(
         &self,
         vault_id: VaultId,
-        config: &Vault,
-    ) -> Result<(), Self::Error> {
-        self.db.put("config", &vault_id.to_string(), config)
+    ) -> Result<Option<ConfigVersion>, Self::Error> {
+        self.db.get_owned("merged_config_active", &vault_id.to_string())
     }
 
     #[inline]
@@ -57,6 +51,11 @@ impl ConfigCommandPort for RedbConfigCommandAdapter<'_> {
     }
 
     #[inline]
+    fn save_global(&self, config: &Global) -> Result<(), Self::Error> {
+        self.db.put("config", "global", config)
+    }
+
+    #[inline]
     fn save_merged(
         &self,
         vault_id: VaultId,
@@ -68,11 +67,12 @@ impl ConfigCommandPort for RedbConfigCommandAdapter<'_> {
     }
 
     #[inline]
-    fn load_active_version(
+    fn save_vault(
         &self,
         vault_id: VaultId,
-    ) -> Result<Option<ConfigVersion>, Self::Error> {
-        self.db.get_owned("merged_config_active", &vault_id.to_string())
+        config: &Vault,
+    ) -> Result<(), Self::Error> {
+        self.db.put("config", &vault_id.to_string(), config)
     }
 
     #[inline]
@@ -97,11 +97,11 @@ impl ConfigCommandPort for RedbConfigCommandAdapter<'_> {
 }
 
 /// Redb-backed config query adapter.
-pub struct RedbConfigQueryAdapter<'db> {
+pub struct QueryAdapter<'db> {
     db: &'db Database,
 }
 
-impl<'db> RedbConfigQueryAdapter<'db> {
+impl<'db> QueryAdapter<'db> {
     #[inline]
     #[must_use]
     /// Create a query adapter for a database.
@@ -112,7 +112,7 @@ impl<'db> RedbConfigQueryAdapter<'db> {
     }
 }
 
-impl ConfigQueryPort for RedbConfigQueryAdapter<'_> {
+impl Query for QueryAdapter<'_> {
     type Archived<'archived> = &'archived rkyv::Archived<Config>;
     type Error = DbError;
 

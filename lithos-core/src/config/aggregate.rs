@@ -23,13 +23,16 @@
     reason = "rkyv generates exhaustive archived structs"
 )]
 
+use std::path::PathBuf;
+
 use super::{
     error::ConfigError,
     events::{ConfigUpdated, Events},
     frontmatter::Frontmatter,
     global::{Global, Paths as GlobalPaths},
     logging::Logging,
-    paths::{CacheDir, Schema, Template},
+    paths::{CacheDir, FileName, Schema, SchemasDir, Template, TemplatesDir},
+    raw,
     task::TaskConfig,
     vault::{Metadata, Vault, VaultId, VaultRoot},
 };
@@ -360,6 +363,187 @@ impl Config {
         // Step 5: Final invariant check
         config.validate()?;
 
+        Ok(config)
+    }
+
+    /// Convert optional path string to domain type.
+    #[expect(
+        clippy::ref_option,
+        reason = "API consistency with Option<T> patterns"
+    )]
+    fn opt_path_to_domain<T>(
+        opt: &Option<String>,
+        constructor: fn(PathBuf) -> Result<T, ConfigError>,
+        field_name: &str,
+    ) -> Result<Option<T>, ConfigError> {
+        opt.as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                constructor(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: field_name.to_owned().into(),
+                        message: format!("invalid path: {e}").into(),
+                    }
+                })
+            })
+            .transpose()
+    }
+
+    #[expect(
+        clippy::ref_option,
+        reason = "API consistency with Option<T> patterns"
+    )]
+    fn opt_filename(
+        opt: &Option<String>,
+        field_name: &str,
+    ) -> Result<Option<FileName>, ConfigError> {
+        opt.as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                FileName::try_new(s.clone()).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: field_name.to_owned().into(),
+                        message: format!("invalid filename: {e}").into(),
+                    }
+                })
+            })
+            .transpose()
+    }
+
+    /// Default property bank filename - guaranteed valid constant.
+    #[expect(
+        clippy::expect_used,
+        clippy::disallowed_methods,
+        reason = "Compile-time constant 'property_bank.json' is guaranteed \
+                  valid"
+    )]
+    fn default_property_bank_filename() -> FileName {
+        FileName::try_new("property_bank.json")
+            .expect("property_bank.json is a valid constant filename")
+    }
+
+    /// Build global filesystem paths from merged config.
+    fn make_global_filesystem(
+        fs: &raw::RawFilesystemConfig,
+    ) -> Result<GlobalPaths, ConfigError> {
+        let schemas_dir = Self::opt_path_to_domain(
+            &fs.schemas_dir,
+            SchemasDir::try_new,
+            "schemas_dir",
+        )?
+        .unwrap_or_default();
+        let property_bank_filename = Self::opt_filename(
+            &fs.property_bank_filename,
+            "property_bank_filename",
+        )?
+        .unwrap_or_else(Self::default_property_bank_filename);
+        let templates_dir = Self::opt_path_to_domain(
+            &fs.templates_dir,
+            TemplatesDir::try_new,
+            "templates_dir",
+        )?
+        .unwrap_or_default();
+
+        Ok(GlobalPaths::new(
+            Schema::new(schemas_dir, property_bank_filename),
+            Template::new(templates_dir),
+        ))
+    }
+
+    /// Build vault filesystem paths from merged config.
+    fn make_vault_filesystem(
+        fs: &raw::RawFilesystemConfig,
+    ) -> Result<ResolvedVaultPaths, ConfigError> {
+        let cache_dir = Self::opt_path_to_domain(
+            &fs.cache_dir,
+            CacheDir::try_new,
+            "cache_dir",
+        )?
+        .unwrap_or_default();
+        let schemas_dir = Self::opt_path_to_domain(
+            &fs.schemas_dir,
+            SchemasDir::try_new,
+            "schemas_dir",
+        )?
+        .unwrap_or_default();
+        let property_bank_filename = Self::opt_filename(
+            &fs.property_bank_filename,
+            "property_bank_filename",
+        )?
+        .unwrap_or_else(Self::default_property_bank_filename);
+        let templates_dir = Self::opt_path_to_domain(
+            &fs.templates_dir,
+            TemplatesDir::try_new,
+            "templates_dir",
+        )?
+        .unwrap_or_default();
+
+        Ok(ResolvedVaultPaths {
+            cache_dir,
+            schema: Schema::new(schemas_dir, property_bank_filename),
+            template: Template::new(templates_dir),
+        })
+    }
+
+    /// Build a Config directly from a merged `RawConfig` using Figment.
+    ///
+    /// This is the Phase 1 entry point that simplifies the config building
+    /// by using the pre-merged `RawConfig` from `build_merged_raw()`. The
+    /// `vault_root` is required to construct vault metadata.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if `vault_root` is empty.
+    /// Returns `ConfigError::ValidationFailed` if metadata is invalid.
+    #[inline]
+    pub fn from_merged_raw(
+        raw: &raw::RawConfig,
+        vault_id: VaultId,
+        vault_root: VaultRoot,
+    ) -> Result<Self, ConfigError> {
+        let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
+
+        let fs = &raw.filesystem;
+
+        let global_filesystem = Self::make_global_filesystem(fs)?;
+        let vault_filesystem = Self::make_vault_filesystem(fs)?;
+
+        let frontmatter = raw
+            .frontmatter
+            .as_ref()
+            .map(|x| x.clone().try_into())
+            .transpose()?
+            .unwrap_or_default();
+
+        let logging = raw
+            .logging
+            .as_ref()
+            .map(|x| x.clone().try_into())
+            .transpose()?
+            .unwrap_or_default();
+
+        let task = raw
+            .task
+            .as_ref()
+            .map(|x| TaskConfig::from_raw(x.clone()))
+            .transpose()?
+            .unwrap_or_default();
+
+        let mut config = Self {
+            frontmatter,
+            global_filesystem,
+            logging,
+            task,
+            vault_filesystem,
+            vault_metadata,
+            pending_events: vec![],
+        };
+
+        config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
+            "merged".to_owned(),
+            chrono::Utc::now().timestamp(),
+        )));
+
+        config.validate()?;
         Ok(config)
     }
 

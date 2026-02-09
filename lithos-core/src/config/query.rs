@@ -3,7 +3,9 @@
 //! Generic over a query port for storage access.
 
 use super::{
-    aggregate::Config, error::ConfigQueryError, ports::ConfigQueryPort,
+    aggregate::Config,
+    error::ConfigQueryError,
+    ports::{self as config_ports},
     vault::VaultId,
 };
 
@@ -25,7 +27,7 @@ impl<Q> Query<Q> {
 
 impl<Q> Query<Q>
 where
-    Q: ConfigQueryPort,
+    Q: config_ports::Query,
     Q::Error: Into<crate::db::DbError>,
 {
     /// Get the active merged config for a vault.
@@ -92,7 +94,7 @@ mod tests {
         config::{
             aggregate::{Config, ConfigVersion},
             global::Global,
-            ports::ConfigQueryPort,
+            ports as config_ports,
             vault::VaultId,
         },
         db::{Database, DbError},
@@ -126,14 +128,14 @@ mod tests {
         }
     }
 
-    impl ConfigQueryPort for DbPort<'_> {
+    impl config_ports::Query for DbPort<'_> {
         type Archived<'archived> = &'archived rkyv::Archived<Config>;
         type Error = DbError;
 
         fn get_active_version(
             &self,
             vault_id: VaultId,
-        ) -> Result<Option<ConfigVersion>, Self::Error> {
+        ) -> Result<Option<ConfigVersion>, DbError> {
             self.db.get_owned("merged_config_active", &vault_id.to_string())
         }
 
@@ -141,7 +143,7 @@ mod tests {
             &self,
             vault_id: VaultId,
             version: ConfigVersion,
-        ) -> Result<Option<Config>, Self::Error> {
+        ) -> Result<Option<Config>, DbError> {
             let key = format!("{vault_id}:{}", version.value());
             self.db.get_owned("merged_config_versions", &key)
         }
@@ -151,7 +153,7 @@ mod tests {
             vault_id: VaultId,
             version: ConfigVersion,
             f: F,
-        ) -> Result<Option<R>, Self::Error>
+        ) -> Result<Option<R>, DbError>
         where
             F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
         {

@@ -10,7 +10,7 @@ use super::{
 };
 
 /// Command port for configuration write operations.
-pub trait ConfigCommandPort: Send + Sync {
+pub trait Command: Send + Sync {
     /// Storage error type for command operations.
     type Error: std::error::Error;
 
@@ -80,7 +80,7 @@ pub trait ConfigCommandPort: Send + Sync {
 }
 
 /// Query port for configuration read operations.
-pub trait ConfigQueryPort: Send + Sync {
+pub trait Query: Send + Sync {
     /// Archived merged config type for zero-copy reads.
     type Archived<'archived>;
     /// Storage error type for query operations.
