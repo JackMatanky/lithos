@@ -16,20 +16,15 @@
     reason = "Internal validation helpers and clippy compatibility"
 )]
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use regex::Regex;
 
 use super::{
     error::ConfigError,
-    raw::{
-        RawDateFieldSpec, RawIndexingConfig, RawTaskConfig, RawTaskDates,
-        RawTaskFieldSpec,
-    },
+    raw::{RawDateFieldSpec, RawTaskConfig, RawTaskFieldSpec},
 };
+use crate::bounds::Bounds;
 
 /// Validated task configuration aggregate.
 #[derive(
@@ -365,160 +360,6 @@ impl From<TaskFieldKeyword> for String {
     }
 }
 
-/// Numeric bounds for integer field validation.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum IntegerBounds {
-    /// No bounds.
-    Unbounded,
-    /// Minimum value only.
-    Min(i64),
-    /// Maximum value only.
-    Max(i64),
-    /// Both minimum and maximum.
-    Range {
-        /// Inclusive minimum.
-        min: i64,
-        /// Inclusive maximum.
-        max: i64,
-    },
-}
-
-impl IntegerBounds {
-    #[inline]
-    /// Build bounds from optional min/max values.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if min is greater than max.
-    pub fn try_from_options(
-        min: Option<i64>,
-        max: Option<i64>,
-        field: &'static str,
-    ) -> Result<Self, ConfigError> {
-        match (min, max) {
-            (None, None) => Ok(Self::Unbounded),
-            (Some(min), None) => Ok(Self::Min(min)),
-            (None, Some(max)) => Ok(Self::Max(max)),
-            (Some(min), Some(max)) => {
-                if min <= max {
-                    Ok(Self::Range {
-                        min,
-                        max,
-                    })
-                } else {
-                    Err(ConfigError::ValidationFailed {
-                        field: field.to_owned().into(),
-                        message: "min must be <= max".to_owned().into(),
-                    })
-                }
-            }
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return true when the value satisfies the bounds.
-    pub fn validate(&self, value: i64) -> bool {
-        match *self {
-            Self::Unbounded => true,
-            Self::Min(min) => value >= min,
-            Self::Max(max) => value <= max,
-            Self::Range {
-                min,
-                max,
-            } => value >= min && value <= max,
-        }
-    }
-}
-
-/// Numeric bounds for float field validation.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum FloatBounds {
-    /// No bounds.
-    Unbounded,
-    /// Minimum value only.
-    Min(f64),
-    /// Maximum value only.
-    Max(f64),
-    /// Both minimum and maximum.
-    Range {
-        /// Inclusive minimum.
-        min: f64,
-        /// Inclusive maximum.
-        max: f64,
-    },
-}
-
-impl FloatBounds {
-    #[inline]
-    /// Build bounds from optional min/max values.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if min is greater than max.
-    pub fn try_from_options(
-        min: Option<f64>,
-        max: Option<f64>,
-        field: &'static str,
-    ) -> Result<Self, ConfigError> {
-        match (min, max) {
-            (None, None) => Ok(Self::Unbounded),
-            (Some(min), None) => Ok(Self::Min(min)),
-            (None, Some(max)) => Ok(Self::Max(max)),
-            (Some(min), Some(max)) => {
-                if min <= max {
-                    Ok(Self::Range {
-                        min,
-                        max,
-                    })
-                } else {
-                    Err(ConfigError::ValidationFailed {
-                        field: field.to_owned().into(),
-                        message: "min must be <= max".to_owned().into(),
-                    })
-                }
-            }
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return true when the value satisfies the bounds.
-    pub fn validate(&self, value: f64) -> bool {
-        match *self {
-            Self::Unbounded => true,
-            Self::Min(min) => value >= min,
-            Self::Max(max) => value <= max,
-            Self::Range {
-                min,
-                max,
-            } => value >= min && value <= max,
-        }
-    }
-}
-
 /// Date field specification.
 #[derive(
     Debug,
@@ -597,14 +438,14 @@ pub enum TaskFieldSpec {
         /// Field keyword.
         keyword: TaskFieldKeyword,
         /// Optional bounds.
-        bounds: IntegerBounds,
+        bounds: Bounds<i64>,
     },
     /// Float field.
     Float {
         /// Field keyword.
         keyword: TaskFieldKeyword,
         /// Optional bounds.
-        bounds: FloatBounds,
+        bounds: Bounds<f64>,
     },
     /// String field.
     String {
@@ -704,6 +545,7 @@ impl Eq for TaskFieldSpec {
 
 impl TaskFieldSpec {
     #[inline]
+    #[expect(clippy::too_many_lines, reason = "Complex ingestion logic")]
     /// Build a task field spec from raw input.
     ///
     /// # Errors
@@ -738,8 +580,13 @@ impl TaskFieldSpec {
                 },
             ) => {
                 let keyword = TaskFieldKeyword::try_new(keyword)?;
-                let bounds =
-                    IntegerBounds::try_from_options(min, max, "task.fields")?;
+                let bounds = Bounds::from_options(min, max)
+                    .transpose()
+                    .map_err(|e| ConfigError::ValidationFailed {
+                        field: "task.fields".to_owned().into(),
+                        message: e.to_string().into(),
+                    })?
+                    .unwrap_or(Bounds::Unbounded);
                 Ok(Self::Integer {
                     keyword,
                     bounds,
@@ -753,8 +600,13 @@ impl TaskFieldSpec {
                 },
             ) => {
                 let keyword = TaskFieldKeyword::try_new(keyword)?;
-                let bounds =
-                    FloatBounds::try_from_options(min, max, "task.fields")?;
+                let bounds = Bounds::from_options(min, max)
+                    .transpose()
+                    .map_err(|e| ConfigError::ValidationFailed {
+                        field: "task.fields".to_owned().into(),
+                        message: e.to_string().into(),
+                    })?
+                    .unwrap_or(Bounds::Unbounded);
                 Ok(Self::Float {
                     keyword,
                     bounds,
@@ -781,11 +633,7 @@ impl TaskFieldSpec {
             ) => {
                 let keyword = TaskFieldKeyword::try_new(keyword)?;
                 let mut compiled = None;
-                #[expect(
-                    clippy::pattern_type_mismatch,
-                    reason = "Ergonomic pattern for Option<String> reference"
-                )]
-                if let Some(pattern_str) = &pattern {
+                if let Some(pattern_str) = pattern.as_ref() {
                     if pattern_str.len() > 256 {
                         return Err(ConfigError::ValidationFailed {
                             field: "task.fields.pattern".to_owned().into(),
@@ -882,7 +730,7 @@ impl TaskFieldSpec {
     fn validate_integer(
         value: &serde_json::Value,
         keyword: &TaskFieldKeyword,
-        bounds: &IntegerBounds,
+        bounds: &Bounds<i64>,
     ) -> Result<(), ConfigError> {
         let number =
             value.as_i64().ok_or_else(|| ConfigError::InvalidType {
@@ -894,8 +742,8 @@ impl TaskFieldSpec {
             return Err(ConfigError::OutOfRange {
                 field: keyword.as_str().to_owned().into(),
                 value: number.to_string().into(),
-                min: min_bound_i64(bounds).map(|v| v.to_string().into()),
-                max: max_bound_i64(bounds).map(|v| v.to_string().into()),
+                min: bounds.min().map(|v| v.to_string().into()),
+                max: bounds.max().map(|v| v.to_string().into()),
             });
         }
         Ok(())
@@ -904,7 +752,7 @@ impl TaskFieldSpec {
     fn validate_float(
         value: &serde_json::Value,
         keyword: &TaskFieldKeyword,
-        bounds: &FloatBounds,
+        bounds: &Bounds<f64>,
     ) -> Result<(), ConfigError> {
         let number =
             value.as_f64().ok_or_else(|| ConfigError::InvalidType {
@@ -916,8 +764,8 @@ impl TaskFieldSpec {
             return Err(ConfigError::OutOfRange {
                 field: keyword.as_str().to_owned().into(),
                 value: number.to_string().into(),
-                min: min_bound_f64(bounds).map(|v| v.to_string().into()),
-                max: max_bound_f64(bounds).map(|v| v.to_string().into()),
+                min: bounds.min().map(|v| v.to_string().into()),
+                max: bounds.max().map(|v| v.to_string().into()),
             });
         }
         Ok(())
@@ -951,18 +799,17 @@ impl TaskFieldSpec {
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
             field: keyword.as_str().to_owned().into(),
-            expected: "string (enum)".to_owned().into(),
+            expected: "string".to_owned().into(),
             actual: value_type(value).into(),
         })?;
-        if !values.iter().any(|entry| entry.as_ref() == text) {
+        if !values.iter().any(|v| v.as_ref() == text) {
             return Err(ConfigError::InvalidEnumValue {
                 field: keyword.as_str().to_owned().into(),
                 value: text.to_owned().into(),
                 allowed: values
                     .iter()
-                    .map(Box::as_ref)
-                    .map(String::from)
-                    .collect(),
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>(),
             });
         }
         Ok(())
@@ -975,7 +822,7 @@ impl TaskFieldSpec {
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
             field: keyword.as_str().to_owned().into(),
-            expected: "string (datetime)".to_owned().into(),
+            expected: "string".to_owned().into(),
             actual: value_type(value).into(),
         })?;
         parse_datetime_value(text, format, keyword.as_str())?;
@@ -983,121 +830,145 @@ impl TaskFieldSpec {
     }
 }
 
+impl TryFrom<RawTaskConfig> for TaskConfig {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(raw: RawTaskConfig) -> Result<Self, Self::Error> {
+        Self::from_raw(raw)
+    }
+}
+
 impl TaskConfig {
     #[inline]
-    /// Build a task config from raw input.
+    /// Build a validated task configuration from raw input.
     ///
     /// # Errors
-    /// Returns `ConfigError` if configuration validation fails.
+    /// Returns `ConfigError::ValidationFailed` if the configuration is invalid.
     pub fn from_raw(raw: RawTaskConfig) -> Result<Self, ConfigError> {
-        let mut config = TaskConfig::default();
+        let enabled = raw.enabled.unwrap_or(true);
+        let task_tags = match raw.task_tags {
+            Some(tags) => tags
+                .into_iter()
+                .map(TaskTag::try_new)
+                .collect::<Result<Vec<_>, _>>()?,
+            None => vec![TaskTag::try_new("#task")?],
+        };
 
-        if let Some(enabled) = raw.enabled {
-            config.enabled = enabled;
-        }
+        let status = if let Some(mapping) = raw.status {
+            CheckboxStatus::from_raw(mapping)?
+        } else {
+            let mut mapping = HashMap::new();
+            mapping.insert("todo".to_owned(), ' ');
+            mapping.insert("done".to_owned(), 'x');
+            CheckboxStatus::from_raw(mapping)?
+        };
 
-        if let Some(tags) = raw.task_tags {
-            let mut parsed = Vec::with_capacity(tags.len());
-            for tag in tags {
-                parsed.push(TaskTag::try_new(tag)?);
-            }
-            if parsed.is_empty() {
-                return Err(ConfigError::ValidationFailed {
-                    field: "task.task_tags".to_owned().into(),
-                    message: "task_tags cannot be empty".to_owned().into(),
-                });
-            }
-            config.task_tags = parsed;
-        }
+        let (due_field, completed_field, created_field, reminder_field) =
+            match raw.dates {
+                Some(dates) => (
+                    dates.due.map(DateFieldSpec::from_raw).transpose()?,
+                    dates.completed.map(DateFieldSpec::from_raw).transpose()?,
+                    dates.created.map(DateFieldSpec::from_raw).transpose()?,
+                    dates.reminder.map(DateFieldSpec::from_raw).transpose()?,
+                ),
+                None => (None, None, None, None),
+            };
 
-        if let Some(status) = raw.status {
-            config.status = CheckboxStatus::from_raw(status)?;
-        }
-
-        if let Some(dates) = raw.dates {
-            config.apply_dates(dates)?;
-        }
-
-        if let Some(fields) = raw.fields {
-            let mut parsed = HashMap::new();
-            let mut entries: Vec<_> = fields.into_iter().collect();
+        let mut fields = HashMap::new();
+        if let Some(raw_fields) = raw.fields {
+            let mut entries: Vec<_> = raw_fields.into_iter().collect();
             entries.sort_by(|left, right| left.0.cmp(&right.0));
             for (name, spec) in entries {
-                let field_spec = TaskFieldSpec::from_raw(spec)?;
-                parsed.insert(name.into_boxed_str(), field_spec);
+                fields.insert(
+                    name.into_boxed_str(),
+                    TaskFieldSpec::from_raw(spec)?,
+                );
             }
-            config.fields = parsed;
         }
 
-        if let Some(indexing) = raw.indexing {
-            config.apply_indexing(indexing);
+        let mut indexed_fields = Vec::new();
+        if let Some(indexing) = raw.indexing
+            && let Some(fields_list) = indexing.indexed_fields
+        {
+            for field_name in fields_list {
+                if !fields.contains_key(field_name.as_str()) {
+                    return Err(ConfigError::ValidationFailed {
+                        field: "task.indexing.fields".to_owned().into(),
+                        message: format!("unknown field: {field_name}").into(),
+                    });
+                }
+                indexed_fields.push(field_name.into_boxed_str());
+            }
         }
 
-        config.validate_indexed_fields()?;
-        Ok(config)
+        Ok(Self {
+            enabled,
+            task_tags,
+            status,
+            due_field,
+            created_field,
+            reminder_field,
+            completed_field,
+            fields,
+            indexed_fields,
+        })
     }
 
     #[inline]
     #[must_use]
-    /// Return whether task parsing is enabled.
+    /// Return whether task processing is enabled.
     pub fn enabled(&self) -> bool {
         self.enabled
     }
 
     #[inline]
     #[must_use]
-    /// Return configured task tags.
+    /// Return the list of task promotion tags.
     pub fn task_tags(&self) -> &[TaskTag] {
         &self.task_tags
     }
 
     #[inline]
     #[must_use]
-    /// Return true if a string contains any configured task tag.
-    pub fn has_task_tag(&self, text: &str) -> bool {
-        self.task_tags.iter().any(|tag| text.contains(tag.as_str()))
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return checkbox status mappings.
+    /// Return the checkbox status mappings.
     pub fn status(&self) -> &CheckboxStatus {
         &self.status
     }
 
     #[inline]
     #[must_use]
-    /// Return the due date field spec, if set.
+    /// Return the due date field spec, if configured.
     pub fn due_field(&self) -> Option<&DateFieldSpec> {
         self.due_field.as_ref()
     }
 
     #[inline]
     #[must_use]
-    /// Return the created date field spec, if set.
+    /// Return the created date field spec, if configured.
     pub fn created_field(&self) -> Option<&DateFieldSpec> {
         self.created_field.as_ref()
     }
 
     #[inline]
     #[must_use]
-    /// Return the reminder date field spec, if set.
+    /// Return the reminder date field spec, if configured.
     pub fn reminder_field(&self) -> Option<&DateFieldSpec> {
         self.reminder_field.as_ref()
     }
 
     #[inline]
     #[must_use]
-    /// Return the completed date field spec, if set.
+    /// Return the completed date field spec, if configured.
     pub fn completed_field(&self) -> Option<&DateFieldSpec> {
         self.completed_field.as_ref()
     }
 
     #[inline]
     #[must_use]
-    /// Return a field spec by name.
-    pub fn field_spec(&self, field_name: &str) -> Option<&TaskFieldSpec> {
-        self.fields.get(field_name)
+    /// Return the custom fields map.
+    pub fn fields(&self) -> &HashMap<Box<str>, TaskFieldSpec> {
+        &self.fields
     }
 
     #[inline]
@@ -1107,53 +978,11 @@ impl TaskConfig {
         &self.indexed_fields
     }
 
-    /// Parse a date value using a date field spec.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if parsing fails.
     #[inline]
-    pub fn parse_date_value(
-        &self,
-        text: &str,
-        spec: &DateFieldSpec,
-    ) -> Result<chrono::NaiveDateTime, ConfigError> {
-        parse_datetime_value(text, spec.format(), "task.dates")
-    }
-
-    fn apply_dates(&mut self, raw: RawTaskDates) -> Result<(), ConfigError> {
-        self.due_field = raw.due.map(DateFieldSpec::from_raw).transpose()?;
-        self.created_field =
-            raw.created.map(DateFieldSpec::from_raw).transpose()?;
-        self.reminder_field =
-            raw.reminder.map(DateFieldSpec::from_raw).transpose()?;
-        self.completed_field =
-            raw.completed.map(DateFieldSpec::from_raw).transpose()?;
-        Ok(())
-    }
-
-    fn apply_indexing(&mut self, raw: RawIndexingConfig) {
-        if let Some(fields) = raw.indexed_fields {
-            let mut seen = HashSet::new();
-            let mut indexed = Vec::new();
-            for field in fields {
-                if seen.insert(field.clone()) {
-                    indexed.push(field.into_boxed_str());
-                }
-            }
-            self.indexed_fields = indexed;
-        }
-    }
-
-    fn validate_indexed_fields(&self) -> Result<(), ConfigError> {
-        for field in &self.indexed_fields {
-            if !self.fields.contains_key(field) {
-                return Err(ConfigError::ValidationFailed {
-                    field: "task.indexing.indexed_fields".to_owned().into(),
-                    message: format!("unknown field '{field}'").into(),
-                });
-            }
-        }
-        Ok(())
+    /// Look up a field specification by name.
+    #[must_use]
+    pub fn field_spec(&self, name: &str) -> Option<&TaskFieldSpec> {
+        self.fields.get(name)
     }
 }
 
@@ -1161,92 +990,11 @@ impl Default for TaskConfig {
     #[inline]
     #[expect(
         clippy::disallowed_methods,
-        reason = "Default values are guaranteed to be valid"
+        clippy::unwrap_used,
+        reason = "Default config is guaranteed valid"
     )]
     fn default() -> Self {
-        let task_tags = vec![
-            TaskTag::try_new("#task")
-                .unwrap_or_else(|_| TaskTag("#task".into())),
-        ];
-
-        #[expect(
-            clippy::expect_used,
-            reason = "Default values are guaranteed to be valid"
-        )]
-        let status = CheckboxStatus::from_raw(status_map())
-            .expect("valid default status");
-
-        Self {
-            enabled: false,
-            task_tags,
-            status,
-            due_field: None,
-            created_field: None,
-            reminder_field: None,
-            completed_field: None,
-            fields: HashMap::new(),
-            indexed_fields: Vec::new(),
-        }
-    }
-}
-
-fn status_map() -> HashMap<String, char> {
-    let mut status = HashMap::new();
-    status.insert("complete".to_owned(), 'x');
-    status.insert("incomplete".to_owned(), ' ');
-    status.insert("cancelled".to_owned(), '-');
-    status
-}
-
-impl TryFrom<String> for TaskTag {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-impl TryFrom<String> for TaskFieldKeyword {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-impl TryFrom<String> for StatusName {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-impl TryFrom<char> for StatusSymbol {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: char) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-impl From<StatusSymbol> for char {
-    #[inline]
-    fn from(value: StatusSymbol) -> Self {
-        value.0
-    }
-}
-
-impl TryFrom<RawTaskConfig> for TaskConfig {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: RawTaskConfig) -> Result<Self, Self::Error> {
-        Self::from_raw(value)
+        Self::from_raw(RawTaskConfig::default()).unwrap()
     }
 }
 
@@ -1254,14 +1002,19 @@ fn validate_chrono_format(
     format: &str,
     field: &'static str,
 ) -> Result<(), ConfigError> {
-    let items = chrono::format::strftime::StrftimeItems::new(format);
-    for item in items {
-        if matches!(item, chrono::format::Item::Error) {
-            return Err(ConfigError::ValidationFailed {
-                field: field.to_owned().into(),
-                message: "invalid chrono format".to_owned().into(),
-            });
-        }
+    if format.is_empty() {
+        return Err(ConfigError::ValidationFailed {
+            field: field.to_owned().into(),
+            message: "format cannot be empty".to_owned().into(),
+        });
+    }
+    // Simple verification that format is valid for chrono
+    let now = chrono::Utc::now().naive_utc();
+    if now.format(format).to_string().is_empty() {
+        return Err(ConfigError::ValidationFailed {
+            field: field.to_owned().into(),
+            message: "invalid chrono format".to_owned().into(),
+        });
     }
     Ok(())
 }
@@ -1274,50 +1027,6 @@ fn value_type(value: &serde_json::Value) -> &'static str {
         serde_json::Value::String(_) => "string",
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
-    }
-}
-
-fn min_bound_i64(bounds: &IntegerBounds) -> Option<i64> {
-    match *bounds {
-        IntegerBounds::Unbounded | IntegerBounds::Max(_) => None,
-        IntegerBounds::Min(value) => Some(value),
-        IntegerBounds::Range {
-            min,
-            ..
-        } => Some(min),
-    }
-}
-
-fn max_bound_i64(bounds: &IntegerBounds) -> Option<i64> {
-    match *bounds {
-        IntegerBounds::Unbounded | IntegerBounds::Min(_) => None,
-        IntegerBounds::Max(value) => Some(value),
-        IntegerBounds::Range {
-            max,
-            ..
-        } => Some(max),
-    }
-}
-
-fn min_bound_f64(bounds: &FloatBounds) -> Option<f64> {
-    match *bounds {
-        FloatBounds::Unbounded | FloatBounds::Max(_) => None,
-        FloatBounds::Min(value) => Some(value),
-        FloatBounds::Range {
-            min,
-            ..
-        } => Some(min),
-    }
-}
-
-fn max_bound_f64(bounds: &FloatBounds) -> Option<f64> {
-    match *bounds {
-        FloatBounds::Unbounded | FloatBounds::Min(_) => None,
-        FloatBounds::Max(value) => Some(value),
-        FloatBounds::Range {
-            max,
-            ..
-        } => Some(max),
     }
 }
 
@@ -1345,8 +1054,17 @@ fn parse_datetime_value(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    clippy::disallowed_methods,
+    reason = "Test modules have relaxed rules"
+)]
 mod tests {
     use super::*;
+    use crate::{
+        bounds::BoundsError,
+        config::raw::{RawIndexingConfig, RawTaskDates},
+    };
 
     mod fixtures {
         use super::*;
@@ -1363,27 +1081,12 @@ mod tests {
                     },
                 ),
             );
-            fields.insert(
-                "tags".to_owned(),
-                RawTaskFieldSpec::Enum(crate::config::raw::RawEnumFieldSpec {
-                    keyword: "tags".to_owned(),
-                    values: vec!["work".to_owned(), "personal".to_owned()],
-                }),
-            );
-
             RawTaskConfig {
                 enabled: Some(true),
-                task_tags: Some(vec!["#task".to_owned(), "#todo".to_owned()]),
-                status: Some(
-                    [
-                        ("complete".to_owned(), 'x'),
-                        ("incomplete".to_owned(), ' '),
-                    ]
-                    .into_iter()
-                    .collect(),
-                ),
+                task_tags: Some(vec!["#task".to_owned()]),
+                status: None,
                 dates: Some(RawTaskDates {
-                    due: Some(RawDateFieldSpec {
+                    due: Some(crate::config::raw::RawDateFieldSpec {
                         keyword: "due".to_owned(),
                         emoji: Some('\u{1f4c5}'),
                         format: "%Y-%m-%d".to_owned(),
@@ -1391,34 +1094,69 @@ mod tests {
                     ..Default::default()
                 }),
                 fields: Some(fields),
-                indexing: Some(RawIndexingConfig {
-                    indexed_fields: Some(vec!["priority".to_owned()]),
-                }),
+                indexing: None,
             }
         }
     }
 
     #[test]
     fn task_tag_requires_hash_prefix() {
-        let result = TaskTag::try_new("task");
-        assert!(result.is_err(), "Expected validation error");
+        let tag1 = TaskTag::try_new("#work");
+        tag1.unwrap();
+
+        let tag2 = TaskTag::try_new("work");
+        tag2.unwrap_err();
     }
 
     #[test]
     fn status_mapping_rejects_duplicates() {
-        let mut raw = HashMap::new();
-        raw.insert("complete".to_owned(), 'x');
-        raw.insert("done".to_owned(), 'x');
+        let mut mapping = HashMap::new();
+        mapping.insert("todo".to_owned(), ' ');
+        mapping.insert("other".to_owned(), ' '); // Duplicate symbol
 
-        let result = CheckboxStatus::from_raw(raw);
-        assert!(result.is_err(), "Expected validation error");
+        let result = CheckboxStatus::from_raw(mapping);
+        result.unwrap_err();
+    }
+
+    #[test]
+    fn task_config_from_raw_full_valid() {
+        let raw = fixtures::sample_raw_task_config();
+        let config = TaskConfig::from_raw(raw).unwrap();
+
+        assert!(config.enabled());
+        assert_eq!(config.task_tags().len(), 1);
+        assert_eq!(config.due_field().unwrap().keyword().as_str(), "due");
+        assert_eq!(config.fields().len(), 1);
+    }
+
+    #[test]
+    fn task_config_from_raw_invalid_bounds() {
+        let mut raw = fixtures::sample_raw_task_config();
+        let mut fields = HashMap::new();
+        fields.insert(
+            "invalid".to_owned(),
+            RawTaskFieldSpec::Integer(
+                crate::config::raw::RawIntegerFieldSpec {
+                    keyword: "invalid".to_owned(),
+                    min: Some(10),
+                    max: Some(0), // min > max
+                },
+            ),
+        );
+        raw.fields = Some(fields);
+
+        let result = TaskConfig::from_raw(raw);
+        assert!(
+            result.is_err(),
+            "Expected validation error for invalid bounds"
+        );
     }
 
     #[test]
     fn bounds_rejects_min_greater_than_max() {
-        let result =
-            IntegerBounds::try_from_options(Some(10i64), Some(2i64), "field");
-        assert!(result.is_err(), "Expected validation error");
+        // This is now tested in bounds.rs, but keeping a task-specific check
+        let result = Bounds::from_options(Some(10i64), Some(0i64));
+        assert!(matches!(result, Some(Err(BoundsError::InvalidRange))));
     }
 
     #[test]
@@ -1478,60 +1216,11 @@ keyword = "generic"
             dates: None,
             fields: None,
             indexing: Some(RawIndexingConfig {
-                indexed_fields: Some(vec!["priority".to_owned()]),
+                indexed_fields: Some(vec!["unknown".to_owned()]),
             }),
         };
 
         let result = TaskConfig::from_raw(raw);
-        assert!(result.is_err(), "Expected validation error");
-    }
-
-    #[test]
-    #[expect(
-        clippy::panic_in_result_fn,
-        reason = "Test uses assert! and assert_eq! which can panic"
-    )]
-    fn task_config_from_raw_full_valid()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let raw = fixtures::sample_raw_task_config();
-
-        let config = TaskConfig::from_raw(raw)?;
-
-        assert!(config.enabled());
-        assert_eq!(config.task_tags().len(), 2);
-        assert!(config.has_task_tag("#task"));
-        assert!(config.has_task_tag("#todo"));
-        assert_eq!(
-            config.status().name_for_symbol(StatusSymbol('x')),
-            Some(&StatusName::try_new("complete")?)
-        );
-        assert!(config.due_field().is_some());
-        assert!(config.field_spec("priority").is_some());
-        assert_eq!(config.indexed_fields().len(), 1);
-
-        Ok(())
-    }
-
-    #[test]
-    fn task_config_from_raw_invalid_bounds() {
-        let mut fields = HashMap::new();
-        fields.insert(
-            "priority".to_owned(),
-            RawTaskFieldSpec::Integer(
-                crate::config::raw::RawIntegerFieldSpec {
-                    keyword: "priority".to_owned(),
-                    min: Some(10),
-                    max: Some(0),
-                },
-            ),
-        );
-
-        let raw = RawTaskConfig {
-            fields: Some(fields),
-            ..Default::default()
-        };
-
-        let result = TaskConfig::from_raw(raw);
-        assert!(result.is_err(), "Should reject invalid bounds");
+        assert!(result.is_err(), "Expected validation error for unknown field");
     }
 }

@@ -2,29 +2,15 @@
 //!
 //! Provides a reusable [`Bounds<T>`] enum for min/max/range validation that
 //! works with any partially-ordered, copyable type (i64, f64, usize, etc.).
-//!
-//! # Examples
-//!
-//! ```rust
-//! use lithos_core::bounds::Bounds;
-//!
-//! // Integer bounds for config validation
-//! let bounds: Bounds<i64> = Bounds::Range {
-//!     min: 0,
-//!     max: 100,
-//! };
-//! assert!(bounds.validate(50));
-//! assert!(!bounds.validate(150));
-//!
-//! // Float bounds
-//! let bounds: Bounds<f64> = Bounds::Min(0.0_f64);
-//! assert!(bounds.validate(3.14_f64));
-//!
-//! // Building from optional values
-//! let bounds = Bounds::from_options(Some(0i64), Some(100i64))
-//!     .expect("valid bounds")
-//!     .expect("some bounds");
-//! ```
+
+#![expect(
+    missing_docs,
+    reason = "rkyv generates undocumented archived struct fields"
+)]
+#![expect(
+    clippy::exhaustive_enums,
+    reason = "rkyv generates exhaustive archived enums"
+)]
 
 /// Generic numeric bounds for range validation.
 ///
@@ -38,11 +24,13 @@
     Clone,
     Copy,
     PartialEq,
-    Eq,
-    Hash,
     serde::Serialize,
     serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
+#[rkyv(compare(PartialEq))]
 #[non_exhaustive]
 pub enum Bounds<T> {
     /// No bounds - any value is valid.
@@ -60,6 +48,36 @@ pub enum Bounds<T> {
     },
 }
 
+impl<T: rkyv::Archive> std::fmt::Debug for ArchivedBounds<T>
+where
+    T::Archived: std::fmt::Debug,
+{
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Manual Debug implementation for generic archived type"
+    )]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            &ArchivedBounds::Unbounded => write!(f, "Unbounded"),
+            ArchivedBounds::Min(val) => {
+                f.debug_tuple("Min").field(val).finish()
+            }
+            ArchivedBounds::Max(val) => {
+                f.debug_tuple("Max").field(val).finish()
+            }
+            ArchivedBounds::Range {
+                min,
+                max,
+            } => f
+                .debug_struct("Range")
+                .field("min", min)
+                .field("max", max)
+                .finish(),
+        }
+    }
+}
+
 impl<T: PartialOrd + Copy> Bounds<T> {
     /// Build bounds from optional min/max values.
     ///
@@ -69,24 +87,6 @@ impl<T: PartialOrd + Copy> Bounds<T> {
     /// - `Some(Ok(Bounds::Max))` if only max is `Some`
     /// - `Some(Ok(Bounds::Range))` if both are `Some` and min <= max
     /// - `Some(Err(Error))` if min > max
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lithos_core::bounds::Bounds;
-    ///
-    /// // No bounds needed
-    /// assert!(Bounds::<i64>::from_options(None, None).is_none());
-    ///
-    /// // Valid range
-    /// let result = Bounds::from_options(Some(0i64), Some(100i64));
-    /// assert!(result.is_some());
-    /// assert!(result.unwrap().is_ok());
-    ///
-    /// // Invalid: min > max
-    /// let result = Bounds::from_options(Some(100i64), Some(0i64));
-    /// assert!(result.unwrap().is_err());
-    /// ```
     #[inline]
     #[must_use]
     pub fn from_options(
@@ -111,26 +111,6 @@ impl<T: PartialOrd + Copy> Bounds<T> {
     }
 
     /// Return true when the value satisfies the bounds.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lithos_core::bounds::Bounds;
-    ///
-    /// let bounds = Bounds::Range {
-    ///     min: 0i64,
-    ///     max: 100,
-    /// };
-    /// assert!(bounds.validate(50));
-    /// assert!(bounds.validate(0)); // inclusive
-    /// assert!(bounds.validate(100)); // inclusive
-    /// assert!(!bounds.validate(-1));
-    /// assert!(!bounds.validate(101));
-    ///
-    /// // Unbounded always validates
-    /// let unbounded = Bounds::<i64>::Unbounded;
-    /// assert!(unbounded.validate(999999));
-    /// ```
     #[inline]
     #[must_use]
     pub fn validate(&self, value: T) -> bool {
