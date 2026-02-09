@@ -519,28 +519,40 @@ fn tag_regex() -> Result<&'static Regex, NoteError> {
     cached.as_ref().map_err(Clone::clone)
 }
 
+#[expect(
+    clippy::string_slice,
+    reason = "Indices are validated by match_indices."
+)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "Offset addition is safe after successful match."
+)]
 fn find_inline_field<'text>(
     text: &'text str,
     keyword: &str,
 ) -> Option<&'text str> {
-    let needle = format!("[{keyword}::");
-    let start = text.find(&needle)?;
-    let value_start = start.checked_add(needle.len())?;
-    let tail = text.get(value_start..)?;
-    let value_end = tail.find(']')?;
-    let end = value_start.checked_add(value_end)?;
-    let value = text.get(value_start..end)?.trim();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
+    for (start, _) in text.match_indices('[') {
+        let after_bracket = &text[start + 1..];
+        if let Some(after_keyword) = after_bracket.strip_prefix(keyword)
+            && let Some(rest) = after_keyword.strip_prefix("::")
+            && let Some(value_end) = rest.find(']')
+        {
+            let value = rest[..value_end].trim();
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
     }
+    None
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "Offset addition is safe after successful find."
+)]
 fn find_emoji_field(text: &str, emoji: char) -> Option<&str> {
-    let emoji_str = emoji.to_string();
-    let start = text.find(&emoji_str)?;
-    let value_start = start.checked_add(emoji_str.len())?;
+    let start = text.find(emoji)?;
+    let value_start = start + emoji.len_utf8();
     let tail = text.get(value_start..)?;
     let value = tail.split_whitespace().next()?;
     if value.is_empty() {

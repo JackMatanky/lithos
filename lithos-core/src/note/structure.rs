@@ -63,11 +63,12 @@ impl Heading {
     /// # Errors
     /// Returns `NoteError::ValidationFailed` if heading text is empty.
     #[inline]
-    pub fn new(
+    pub fn new<T: Into<Box<str>>>(
         level: HeadingLevel,
-        text: String,
+        text: T,
         position: SourceByteOffset,
     ) -> Result<Self, NoteError> {
+        let text = text.into();
         if text.trim().is_empty() {
             return Err(NoteError::ValidationFailed(
                 "Heading text cannot be empty".to_owned(),
@@ -76,7 +77,7 @@ impl Heading {
 
         Ok(Self {
             level,
-            text: text.into(),
+            text,
             position,
         })
     }
@@ -151,8 +152,8 @@ impl Section {
     /// let pos = SourceByteOffset::from(10u32);
     /// let range = SourceByteRange::new(pos, SourceByteOffset::from(50u32));
     /// let section = Section::new(
-    ///     Some(Heading::new(level, "Title".to_string(), pos)?),
-    ///     "Content here...".to_string(),
+    ///     Some(Heading::new(level, "Title", pos)?),
+    ///     "Content here...",
     ///     range,
     /// );
     /// assert_eq!(section.range(), range, "Section range should match");
@@ -161,9 +162,9 @@ impl Section {
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(
+    pub fn new<T: Into<Box<str>>>(
         heading: Option<Heading>,
-        content: String,
+        content: T,
         range: SourceByteRange,
     ) -> Self {
         Self {
@@ -236,18 +237,15 @@ mod tests {
         {
             let heading = Some(Heading::new(
                 HeadingLevel::try_new(1)?,
-                "Title".into(),
+                "Title",
                 SourceByteOffset::from(0u32),
             )?);
             let range = SourceByteRange::new(
                 SourceByteOffset::from(0u32),
                 SourceByteOffset::from(15u32),
             );
-            let section = Section::new(
-                heading.clone(),
-                "Section content".to_owned(),
-                range,
-            );
+            let section =
+                Section::new(heading.clone(), "Section content", range);
             Ok((section, heading, range))
         }
     }
