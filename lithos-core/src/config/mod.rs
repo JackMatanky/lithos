@@ -1,7 +1,69 @@
-//! Configuration bounded context.
+//! Domain-centric configuration management for Lithos.
 //!
-//! This module contains configuration domain entities, business logic, and
-//! events.
+//! This module provides the domain entities, validation logic, and storage
+//! ports for Lithos configuration. It ensures that configuration is
+//! "Always Valid" by performing strict validation during ingestion and
+//! construction.
+//!
+//! Once a domain type like [`Config`] is constructed, it is guaranteed to be
+//! internally consistent and valid for use throughout the system.
+//!
+//! # Features
+//!
+//! - **Layered Ingestion**: Merges defaults, global settings, and vault
+//!   overrides using Figment.
+//! - **Always Valid Invariants**: Strict type-driven validation at the domain
+//!   boundary.
+//! - **CQRS Architecture**: Separate Command and Query implementations
+//!   decoupled via Ports.
+//! - **Zero-Copy Persistence**: Optimized storage using `rkyv` and `redb`.
+//!
+//! # Usage
+//!
+//! ```rust
+//! # use std::path::Path;
+//! # use lithos_core::config::{aggregate::Config, vault::VaultId, vault::VaultRoot, ingest};
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let vault_root = Path::new("/path/to/vault");
+//! let vault_id = VaultId::new();
+//!
+//! // 1. Ingest raw configuration from files
+//! let raw = ingest::build_merged_raw(vault_root)?;
+//!
+//! // 2. Transform into a validated domain aggregate
+//! let config = Config::build(
+//!     &raw,
+//!     vault_id,
+//!     VaultRoot::try_new(vault_root.to_path_buf())?,
+//! )?;
+//!
+//! // 3. Use the validated configuration
+//! assert!(config.paths.cache.cache_dir().as_path().is_relative());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Layout
+//!
+//! The configuration context is organized into three logical areas:
+//!
+//! ### Core Aggregates
+//! These modules define the primary domain models and their invariants:
+//! - [`aggregate`] - The [`Config`] aggregate root.
+//! - [`global`] - Global-level configuration settings.
+//! - [`vault`] - Vault-specific overrides and metadata.
+//! - [`paths`] - Validated path configurations.
+//!
+//! ### CQRS Infrastructure
+//! Implementation of write and read operations:
+//! - [`command`] - Mutations and state changes (saving/rebuilding).
+//! - [`query`] - Read-only access to configuration snapshots.
+//! - [`ports`] - Trait definitions for storage decoupling.
+//!
+//! ### Supporting Modules
+//! - [`ingest`] - Figment-based adapter for file loading.
+//! - [`task`] - Task-specific schema and validation.
+//! - [`logging`] / [`frontmatter`] - Focused domain building blocks.
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 

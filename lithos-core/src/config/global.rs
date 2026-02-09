@@ -1,8 +1,7 @@
-//! Global configuration structures.
+//! Global-level configuration settings.
 //!
-//! This module contains configuration types that are specific to global-level
-//! configuration, including paths settings, trusted vaults, and global
-//! defaults.
+//! This module defines the [`Global`] configuration, which contains settings
+//! that apply across all vaults (e.g., trusted vault paths).
 
 #![expect(
     clippy::exhaustive_enums,
@@ -16,13 +15,19 @@ use super::{
     paths::Paths, raw::RawTrustedVaults, task::TaskConfig,
 };
 
-/// Global default configuration.
+/// System-wide configuration settings.
 ///
-/// # Constraints
-/// - Provides system-wide defaults.
-/// - Loaded from global lithos.toml or system defaults.
-/// - The global configuration has the lowest precedence in the configuration
-///   hierarchy.
+/// `Global` contains settings that are defined at the system level and
+/// shared across all vaults, such as the list of trusted vault paths.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_core::config::global::Global;
+///
+/// let global = Global::default();
+/// assert!(global.trusted_vaults().is_none());
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -46,85 +51,6 @@ pub struct Global {
     /// Task configuration overrides.
     task: Option<TaskConfig>,
 }
-
-/// Trusted vaults configuration supporting list or format.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(untagged)]
-#[non_exhaustive]
-pub enum TrustedVaults {
-    /// List format for trusted vault paths.
-    List(TrustedVaultList),
-    /// Map format for trusted vault paths with aliases.
-    Map(TrustedVaultMap),
-}
-
-/// List of trusted vault paths.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct TrustedVaultList(
-    /// Internal storage for vault list.
-    Vec<TrustedVaultPath>,
-);
-
-/// Map of trusted vault aliases to paths.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct TrustedVaultMap(
-    /// Internal storage for vault map.
-    HashMap<Box<str>, TrustedVaultPath>,
-);
-
-/// Validated path to a trusted vault (absolute).
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
-#[non_exhaustive]
-pub struct TrustedVaultPath(
-    /// Internal path storage.
-    #[rkyv(with = rkyv::with::AsString)]
-    PathBuf,
-);
 
 impl Default for Global {
     #[inline]
@@ -195,9 +121,137 @@ impl Global {
     }
 }
 
+/// Trusted vaults configuration supporting list or map format.
+///
+/// This enum allows defining trusted vaults either as a simple list of paths
+/// or as a mapping from aliases to paths.
+///
+/// # Examples
+///
+/// ```rust
+/// # use std::collections::HashMap;
+/// # use lithos_core::config::global::{TrustedVaults, TrustedVaultPath, TrustedVaultList, TrustedVaultMap};
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // List format
+/// let list = TrustedVaults::List(TrustedVaultList::new(vec![
+///     TrustedVaultPath::try_new("/vaults/alpha".into())?
+/// ]));
+///
+/// // Map format
+/// let mut map = HashMap::new();
+/// map.insert("beta".into(), TrustedVaultPath::try_new("/vaults/beta".into())?);
+/// let map = TrustedVaults::Map(TrustedVaultMap::new(map));
+/// # Ok(())
+/// # }
+/// ```
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(untagged)]
+#[non_exhaustive]
+pub enum TrustedVaults {
+    /// List format for trusted vault paths.
+    List(TrustedVaultList),
+    /// Map format for trusted vault paths with aliases.
+    Map(TrustedVaultMap),
+}
+
+/// List of validated trusted vault paths.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct TrustedVaultList(
+    /// Internal storage for vault list.
+    Vec<TrustedVaultPath>,
+);
+
+impl TrustedVaultList {
+    /// Create a new trusted vault list.
+    #[inline]
+    #[must_use]
+    pub fn new(paths: Vec<TrustedVaultPath>) -> Self {
+        Self(paths)
+    }
+}
+
+/// Map of trusted vault aliases to validated paths.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct TrustedVaultMap(
+    /// Internal storage for vault map.
+    HashMap<Box<str>, TrustedVaultPath>,
+);
+
+impl TrustedVaultMap {
+    /// Create a new trusted vault map.
+    #[inline]
+    #[must_use]
+    pub fn new(map: HashMap<Box<str>, TrustedVaultPath>) -> Self {
+        Self(map)
+    }
+}
+
+/// A validated path to a trusted vault (absolute).
+///
+/// # Invariants
+///
+/// - Must be an absolute path on the filesystem.
+/// - Must not be empty.
+///
+/// # Errors
+///
+/// Returns [`ConfigError::ValidationFailed`] if the provided path is relative.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct TrustedVaultPath(
+    /// Internal path storage.
+    #[rkyv(with = rkyv::with::AsString)]
+    PathBuf,
+);
+
 impl TrustedVaultPath {
     #[inline]
-    /// Create a validated trusted vault path.
+    /// Creates a validated trusted vault path.
     ///
     /// # Errors
     /// Returns [`ConfigError`] if the path is not absolute or is empty.

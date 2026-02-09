@@ -1,18 +1,14 @@
-//! Config bounded context aggregate root.
+//! Config aggregate root and versioning.
 //!
-//! This module defines the `Config` aggregate root that represents the final
-//! resolved configuration for a vault operation. It handles the merging logic
-//! between global settings and vault-specific overrides.
-//!
-//! # Constraints
-//! - **Precedence**: Vault-specific configuration always overrides global
-//!   configuration.
-//! - **Defaults**: Sensible system defaults are applied when both global and
+//! This module provides the [`Config`] aggregate, which represents the
+//! fully-merged and validated configuration state for a vault. It also
+//! defines [`ConfigVersion`] for tracking configuration history.
 //!   vault configurations are missing specific fields.
 //! - **Immutability**: Once built, the configuration is immutable and serves as
 //!   the "Source of Truth" for the current execution context.
 //! - **Validation**: All paths and enums are strictly validated during the
-//!   build phase.
+//!   build phase. Construction of a [`Config`] instance is impossible without
+//!   satisfying all domain constraints.
 
 #![expect(
     clippy::partial_pub_fields,
@@ -40,12 +36,36 @@ use super::{
 // Config Aggregate Root
 // ============================================================================
 
-/// Merged configuration result from global and vault configurations.
+/// Fully-resolved and validated configuration for a vault.
 ///
-/// This struct represents the final merged configuration after applying
-/// domain constraints for precedence (vault overrides global). The
-/// configuration is immutable once created and represents the complete runtime
-/// configuration for a vault operation.
+/// `Config` represents the "Always Valid" state of a vault's configuration
+/// after merging global settings, vault overrides, and system defaults.
+/// It is the aggregate root used by the rest of the system for decision
+/// making.
+///
+/// # Precedence Rules
+///
+/// 1. **Vault Overrides**: Values in the vault-specific `lithos.toml`.
+/// 2. **Global Settings**: System-wide settings in the global `lithos.toml`.
+/// 3. **System Defaults**: Hardcoded defaults (see [`Default`] implementation).
+///
+/// # Examples
+///
+/// ```rust
+/// # use std::path::Path;
+/// # use lithos_core::config::{aggregate::Config, vault::VaultId, vault::VaultRoot, ingest};
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let vault_root_path = Path::new("/tmp/vault");
+/// # let vault_id = VaultId::new();
+/// # let vault_root = VaultRoot::try_new(vault_root_path.to_path_buf())?;
+/// // Ingest and build the aggregate
+/// let raw = ingest::build_merged_raw(vault_root_path)?;
+/// let config = Config::build(&raw, vault_id, vault_root)?;
+///
+/// assert!(config.logging.log_level_str() == "info");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -253,7 +273,26 @@ impl Config {
 // Versioning & Persistence Types
 // ============================================================================
 
-/// Monotonic version identifier for merged configs.
+/// Monotonically increasing version number for configuration snapshots.
+///
+/// This type ensures that configuration versions are positive integers
+/// and provides safe incrementing logic.
+///
+/// # Invariants
+///
+/// - A `ConfigVersion` must be greater than zero.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_core::config::aggregate::ConfigVersion;
+///
+/// let version = ConfigVersion::initial();
+/// assert_eq!(version.value(), 1);
+///
+/// let next = version.next().unwrap();
+/// assert_eq!(next.value(), 2);
+/// ```
 #[derive(
     Debug,
     Clone,

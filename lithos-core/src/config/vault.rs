@@ -1,4 +1,8 @@
-//! Vault-scoped configuration types.
+//! Vault-specific overrides and metadata.
+//!
+//! This module defines the [`Vault`] configuration, which contains
+//! vault-specific settings and overrides for global defaults. It also
+//! manages [`VaultId`] and [`VaultRoot`].
 
 #![expect(
     clippy::exhaustive_structs,
@@ -19,9 +23,20 @@ use super::{
 // Public Domain Types (Most Important)
 // ============================================================================
 
-/// Vault-specific configuration.
+/// Vault-specific configuration overrides.
 ///
-/// Contains overrides for global defaults.
+/// `Vault` contains settings that are specific to a single vault and
+/// override the global defaults. It covers paths, frontmatter, and
+/// logging settings.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_core::config::vault::Vault;
+///
+/// let vault = Vault::default();
+/// assert!(vault.logging().is_none());
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -94,6 +109,34 @@ impl Vault {
 }
 
 /// Metadata for a specific vault.
+///
+/// This struct holds the identity, root path, and versioning information
+/// for a vault. It is stored as part of the [`Config`] aggregate.
+///
+/// # Invariants
+///
+/// - **Vault Identity**: Every vault must have a unique UUID v7 identifier.
+/// - **Vault Root**: The root path of a vault must be a non-empty directory
+///   path.
+/// - **Schema Version**: Every vault is associated with a specific schema
+///   version.
+///
+/// # Examples
+///
+/// ```rust
+/// # use lithos_core::config::vault::{Metadata, VaultId, VaultRoot};
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let metadata = Metadata::new(
+///     VaultId::new(),
+///     VaultRoot::try_new("/vaults/work".into())?,
+///     Some("Work".into()),
+///     None,
+/// )?;
+///
+/// assert_eq!(metadata.name(), "Work");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -118,10 +161,11 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    /// Create vault metadata.
+    /// Creates vault metadata.
     ///
     /// # Errors
-    /// Returns `ConfigError` if validation fails.
+    /// Returns [`ConfigError`] if the vault root validation fails or if the
+    /// default schema version cannot be constructed.
     #[inline]
     pub fn new(
         id: VaultId,
@@ -201,6 +245,10 @@ impl Default for Metadata {
 }
 
 /// Vault-specific paths configuration (overrides).
+///
+/// Unlike the resolved [`crate::config::paths::Paths`], this struct uses
+/// [`Option`] for all fields to represent partial overrides of global path
+/// settings.
 #[derive(
     Debug,
     Clone,
@@ -248,7 +296,10 @@ impl Paths {
 // Building Block Types
 // ============================================================================
 
-/// Vault unique identity (UUID v7).
+/// Vault unique identity using UUID v7.
+///
+/// UUID v7 is used for its time-ordered properties, which helps with
+/// database indexing and debugging.
 #[derive(
     Debug,
     Clone,
@@ -296,7 +347,16 @@ impl std::fmt::Display for VaultId {
     }
 }
 
-/// Validated path to a vault root (absolute).
+/// A validated, absolute path to a vault root.
+///
+/// # Invariants
+///
+/// - Must be a non-empty path.
+/// - Should ideally be an absolute path (checked at the application level).
+///
+/// # Errors
+///
+/// Returns [`ConfigError::ValidationFailed`] if the path is empty.
 #[derive(
     Debug,
     Clone,
@@ -315,10 +375,10 @@ impl std::fmt::Display for VaultId {
 pub struct VaultRoot(#[rkyv(with = rkyv::with::AsString)] PathBuf);
 
 impl VaultRoot {
-    /// Create a validated vault root path.
+    /// Creates a validated vault root path.
     ///
     /// # Errors
-    /// Returns [`ConfigError`] if the path is empty.
+    /// Returns [`ConfigError::ValidationFailed`] if the path is empty.
     #[inline]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         if path.as_os_str().is_empty() {
@@ -366,7 +426,7 @@ impl Default for VaultRoot {
     }
 }
 
-/// Key used for vault path mapping.
+/// A string-based key representing a vault path for indexing.
 #[derive(
     Debug,
     Clone,
@@ -415,6 +475,9 @@ impl TryFrom<String> for VaultPathKey {
 }
 
 /// Version identifier for vault configuration or schema.
+///
+/// This type ensures that version strings are not empty and represent
+/// a valid schema version.
 #[derive(
     Debug,
     Clone,
@@ -433,10 +496,11 @@ impl TryFrom<String> for VaultPathKey {
 pub struct SchemaVersion(Box<str>);
 
 impl SchemaVersion {
-    /// Create a new schema version.
+    /// Creates a new schema version.
     ///
     /// # Errors
-    /// Returns [`ConfigError`] if the version is empty.
+    /// Returns [`ConfigError::ValidationFailed`] if the version string is
+    /// empty.
     #[inline]
     pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
         let value = value.into();

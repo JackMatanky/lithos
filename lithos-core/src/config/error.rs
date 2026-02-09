@@ -1,11 +1,15 @@
 //! Configuration error types.
 //!
-//! This module defines configuration-specific errors using thiserror for
-//! structured error handling.
+//! This module defines the [`ConfigError`] hierarchy, covering ingestion,
+//! validation failures, and storage-layer errors.
 
 use crate::db::DbError;
 
-/// Configuration-related errors.
+/// Primary error type for configuration operations.
+///
+/// This enum covers all domain-level validation failures, dependency
+/// violations, and type mismatches that can occur during configuration
+/// construction.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ConfigError {
@@ -105,7 +109,7 @@ pub enum ConfigError {
     Storage(Box<str>),
 }
 
-/// Errors returned by config command operations.
+/// Errors returned by configuration command operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ConfigCommandError {
@@ -120,7 +124,7 @@ pub enum ConfigCommandError {
     Ingest(#[from] Box<ConfigIngestError>),
 }
 
-/// Errors returned by config query operations.
+/// Errors returned by configuration query operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ConfigQueryError {

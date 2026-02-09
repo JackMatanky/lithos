@@ -1,7 +1,7 @@
-//! Logging configuration types.
+//! Logging configuration types and validation.
 //!
-//! This module contains types related to logging configuration,
-//! including log levels and logging settings.
+//! This module provides the [`Logging`] domain type and [`LogLevel`] enum
+//! to ensure system logging is configured correctly.
 
 #![expect(
     clippy::exhaustive_enums,
@@ -15,6 +15,18 @@ use super::error::ConfigError;
 // ============================================================================
 
 /// Logging configuration with validation.
+///
+/// This struct ensures that the system logging verbosity is set to a
+/// supported level.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_core::config::logging::{LogLevel, Logging};
+///
+/// let logging = Logging::new(LogLevel::Debug);
+/// assert_eq!(logging.log_level_str(), "debug");
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -67,6 +79,8 @@ impl Logging {
 }
 
 /// Logging verbosity level.
+///
+/// Defines the granularity of system logs.
 #[derive(
     Debug,
     Clone,
@@ -84,16 +98,16 @@ impl Logging {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum LogLevel {
-    /// Error-level logging only.
+    /// Error-level logging only (least verbose).
     Error,
     /// Warning and error logging.
     Warn,
-    /// Informational logging.
+    /// Informational logging (default).
     #[default]
     Info,
     /// Debug logging.
     Debug,
-    /// Trace-level logging.
+    /// Trace-level logging (most verbose).
     Trace,
 }
 
@@ -144,6 +158,11 @@ impl TryFrom<String> for LogLevel {
     type Error = ConfigError;
 
     #[inline]
+    /// Attempts to create a [`LogLevel`] from a string.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::InvalidEnumValue`] if the string does not match
+    /// a known log level.
     fn try_from(value: String) -> Result<Self, ConfigError> {
         match value.as_str() {
             "error" => Ok(Self::Error),

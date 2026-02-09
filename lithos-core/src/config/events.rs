@@ -1,4 +1,7 @@
 //! Configuration domain events.
+//!
+//! This module defines the [`Events`] emitted when configuration state
+//! changes, allowing other contexts to react to updates.
 
 #![expect(
     clippy::exhaustive_structs,
@@ -9,6 +12,9 @@
 use serde::{Deserialize, Serialize};
 
 /// Domain events that can be emitted by the Config aggregate.
+///
+/// These events represent significant changes in the configuration state
+/// and are used to synchronize other bounded contexts.
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
@@ -16,6 +22,9 @@ use serde::{Deserialize, Serialize};
 #[non_exhaustive]
 pub enum Events {
     /// Configuration was updated.
+    ///
+    /// This variant contains the details of which source triggered the
+    /// update and at what time.
     ConfigUpdated(ConfigUpdated),
 }
 
@@ -25,12 +34,13 @@ pub enum Events {
 /// other bounded contexts to react to configuration updates.
 ///
 /// # Examples
-/// ```
+///
+/// ```rust
 /// use lithos_core::config::events::ConfigUpdated;
 ///
 /// let event = ConfigUpdated::new("vault".to_string(), 1234567890);
-/// assert_eq!(event.timestamp, 1234567890, "Timestamp should match input");
-/// assert_eq!(event.source, "vault", "Source should match input");
+/// assert_eq!(event.timestamp, 1234567890);
+/// assert_eq!(event.source, "vault");
 /// ```
 #[derive(
     Debug,

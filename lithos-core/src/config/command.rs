@@ -1,6 +1,8 @@
-//! Config command implementations (CQRS write operations).
+//! Configuration command implementations (CQRS write operations).
 //!
-//! Generic over a command port for storage access.
+//! This module provides the [`Command`] type, which handles all mutations
+//! to the configuration state, including saving settings and rebuilding
+//! the merged snapshots.
 
 use super::{
     aggregate::{Config, ConfigVersion},
@@ -15,13 +17,37 @@ use super::{
 // Command Implementation
 // ============================================================================
 
-/// Command implementation for Config write operations.
+/// Command implementation for configuration write operations.
+///
+/// This struct handles all mutations to the configuration state,
+/// including saving global and vault settings, and rebuilding the
+/// merged configuration snapshot.
+///
+/// # Examples
+///
+/// ```rust
+/// # use lithos_core::config::{command::Command, vault::VaultId, vault::VaultRoot, aggregate::ConfigVersion, aggregate::Config, global::Global};
+/// # struct MockPort;
+/// # impl lithos_core::config::ports::Command for MockPort {
+/// #     type Error = std::io::Error;
+/// #     fn load_active_version(&self, _: VaultId) -> Result<Option<ConfigVersion>, Self::Error> { Ok(None) }
+/// #     fn load_global(&self) -> Result<Option<Global>, Self::Error> { Ok(None) }
+/// #     fn load_vault(&self, _: VaultId) -> Result<Option<lithos_core::config::vault::Vault>, Self::Error> { Ok(None) }
+/// #     fn save_global(&self, _: &Global) -> Result<(), Self::Error> { Ok(()) }
+/// #     fn save_merged(&self, _: VaultId, _: ConfigVersion, _: &Config) -> Result<(), Self::Error> { Ok(()) }
+/// #     fn save_vault(&self, _: VaultId, _: &lithos_core::config::vault::Vault) -> Result<(), Self::Error> { Ok(()) }
+/// #     fn save_vault_path_mapping(&self, _: VaultId, _: &VaultRoot) -> Result<(), Self::Error> { Ok(()) }
+/// #     fn set_active_version(&self, _: VaultId, _: ConfigVersion) -> Result<(), Self::Error> { Ok(()) }
+/// # }
+/// let cmd = Command::new(MockPort);
+/// ```
 pub struct Command<C> {
+    /// Port interface for storage operations.
     command_port: C,
 }
 
 impl<C> Command<C> {
-    /// Create a new `Command` with the given port.
+    /// Creates a new `Command` with the given port.
     #[inline]
     #[must_use]
     pub const fn new(command_port: C) -> Self {
@@ -36,10 +62,10 @@ where
     C: config_ports::Command,
     C::Error: Into<crate::db::DbError>,
 {
-    /// Save global configuration.
+    /// Saves the global configuration.
     ///
     /// # Errors
-    /// Returns `ConfigCommandError` if persistence fails.
+    /// Returns [`ConfigCommandError::Storage`] if persistence fails.
     #[inline]
     pub fn save_global(
         &self,
@@ -50,10 +76,10 @@ where
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
-    /// Save vault-specific configuration.
+    /// Saves a vault-specific configuration.
     ///
     /// # Errors
-    /// Returns `ConfigCommandError` if persistence fails.
+    /// Returns [`ConfigCommandError::Storage`] if persistence fails.
     #[inline]
     pub fn save_vault(
         &self,
@@ -90,10 +116,20 @@ where
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
-    /// Rebuild the merged config read model for a vault.
+    /// Rebuilds the merged configuration read model for a vault.
+    ///
+    /// This method performs the full configuration lifecycle:
+    /// 1. **Ingestion**: Loads raw configuration from files using Figment.
+    /// 2. **Merging**: Layers vault overrides on top of global settings and
+    ///    defaults.
+    /// 3. **Validation**: Transforms merged raw data into an "Always Valid"
+    ///    [`Config`].
+    /// 4. **Versioning**: Generates a new [`ConfigVersion`].
+    /// 5. **Persistence**: Saves the new snapshot and updates the active
+    ///    pointer.
     ///
     /// # Errors
-    /// Returns `ConfigCommandError` if ingestion, validation, or persistence
+    /// Returns [`ConfigCommandError`] if ingestion, validation, or persistence
     /// fails.
     #[inline]
     pub fn rebuild_merged(
