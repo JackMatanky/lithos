@@ -8,6 +8,17 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Domain events that can be emitted by the Config aggregate.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Events {
+    /// Configuration was updated.
+    ConfigUpdated(ConfigUpdated),
+}
+
 /// Configuration updated domain event.
 ///
 /// This event is published when configuration changes occur, allowing
@@ -39,17 +50,6 @@ pub struct ConfigUpdated {
     pub source: String,
     /// Unix timestamp when the configuration was updated.
     pub timestamp: i64,
-}
-
-/// Domain events that can be emitted by the Config aggregate.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Events {
-    /// Configuration was updated.
-    ConfigUpdated(ConfigUpdated),
 }
 
 impl ConfigUpdated {
