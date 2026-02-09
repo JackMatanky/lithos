@@ -16,10 +16,58 @@ use super::error::ConfigError;
 // Public Domain Types (Most Important - User-Facing API)
 // ============================================================================
 
-/// Schema configuration (schemas directory + property bank filename).
-///
-/// Validated configuration for schema file storage. All paths are
-/// vault-relative.
+/// Fully resolved paths configuration.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    Default,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub struct Paths {
+    /// Resolved cache settings.
+    pub cache: Cache,
+    /// Resolved schema settings.
+    pub schema: Schema,
+    /// Resolved property bank filename.
+    pub property_bank: PropertyBank,
+    /// Resolved template settings.
+    pub template: Template,
+}
+
+impl Paths {
+    /// Create fully resolved paths.
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        cache: Cache,
+        schema: Schema,
+        property_bank: PropertyBank,
+        template: Template,
+    ) -> Self {
+        Self {
+            cache,
+            schema,
+            property_bank,
+            template,
+        }
+    }
+
+    /// Get the full path to the property bank file.
+    #[inline]
+    #[must_use]
+    pub fn property_bank_path(&self) -> PathBuf {
+        self.schema.schemas_dir.as_path().join(self.property_bank.as_str())
+    }
+}
+
+/// Schema storage configuration (directory).
 #[derive(
     Debug,
     Clone,
@@ -34,81 +82,48 @@ use super::error::ConfigError;
 #[non_exhaustive]
 pub struct Schema {
     /// Directory containing schema files.
-    pub schemas_dir: Option<RelativePath>,
-    /// Property bank filename (stored in `schemas_dir`).
-    pub property_bank_filename: Option<FileName>,
+    pub schemas_dir: RelativePath,
 }
 
 impl Default for Schema {
     #[inline]
-    #[expect(
-        clippy::disallowed_methods,
-        clippy::expect_used,
-        reason = "Default values are guaranteed to be valid"
-    )]
     fn default() -> Self {
         Self {
-            schemas_dir: Some(RelativePath(PathBuf::from("schemas"))),
-            property_bank_filename: Some(
-                FileName::try_new("property_bank.json")
-                    .expect("default filename must be valid"),
-            ),
+            schemas_dir: RelativePath(PathBuf::from("schemas")),
         }
     }
 }
 
 impl Schema {
+    /// Create a validated schema directory path.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if the path is invalid.
+    #[inline]
+    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+        Ok(Self {
+            schemas_dir: RelativePath::try_new(path)?,
+        })
+    }
+
     /// Create schema configuration.
     #[inline]
     #[must_use]
-    pub const fn new(
-        schemas_dir: Option<RelativePath>,
-        property_bank_filename: Option<FileName>,
-    ) -> Self {
+    pub const fn new(schemas_dir: RelativePath) -> Self {
         Self {
             schemas_dir,
-            property_bank_filename,
         }
     }
 
-    /// Return the schemas directory, if set.
+    /// Return the schemas directory.
     #[inline]
     #[must_use]
-    pub fn schemas_dir(&self) -> Option<&RelativePath> {
-        self.schemas_dir.as_ref()
-    }
-
-    /// Return the property bank file name, if set.
-    #[inline]
-    #[must_use]
-    pub fn property_bank_filename(&self) -> Option<&FileName> {
-        self.property_bank_filename.as_ref()
-    }
-
-    /// Get the full path to the property bank file.
-    ///
-    /// # Panics
-    /// Panics if either `schemas_dir` or `property_bank_filename` is missing.
-    /// This should only be called on resolved configurations.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "Internal invariant for resolved config"
-    )]
-    pub fn property_bank_path(&self) -> PathBuf {
-        self.schemas_dir.as_ref().expect("resolved schemas_dir").as_path().join(
-            self.property_bank_filename
-                .as_ref()
-                .expect("resolved property_bank_filename")
-                .as_str(),
-        )
+    pub const fn schemas_dir(&self) -> &RelativePath {
+        &self.schemas_dir
     }
 }
 
-/// Template configuration (templates directory).
-///
-/// Validated configuration for template storage. All paths are vault-relative.
+/// Template storage configuration (directory).
 #[derive(
     Debug,
     Clone,
@@ -123,39 +138,48 @@ impl Schema {
 #[non_exhaustive]
 pub struct Template {
     /// Directory containing template files.
-    pub templates_dir: Option<RelativePath>,
+    pub templates_dir: RelativePath,
 }
 
 impl Default for Template {
     #[inline]
     fn default() -> Self {
         Self {
-            templates_dir: Some(RelativePath(PathBuf::from("templates"))),
+            templates_dir: RelativePath(PathBuf::from("templates")),
         }
     }
 }
 
 impl Template {
+    /// Create a validated template directory path.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if the path is invalid.
+    #[inline]
+    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+        Ok(Self {
+            templates_dir: RelativePath::try_new(path)?,
+        })
+    }
+
     /// Create template configuration.
     #[inline]
     #[must_use]
-    pub const fn new(templates_dir: Option<RelativePath>) -> Self {
+    pub const fn new(templates_dir: RelativePath) -> Self {
         Self {
             templates_dir,
         }
     }
 
-    /// Return the templates directory, if set.
+    /// Return the templates directory.
     #[inline]
     #[must_use]
-    pub fn templates_dir(&self) -> Option<&RelativePath> {
-        self.templates_dir.as_ref()
+    pub const fn templates_dir(&self) -> &RelativePath {
+        &self.templates_dir
     }
 }
 
-/// Cache configuration (cache directory).
-///
-/// Validated configuration for cache storage. All paths are vault-relative.
+/// Cache storage configuration (directory).
 #[derive(
     Debug,
     Clone,
@@ -170,33 +194,92 @@ impl Template {
 #[non_exhaustive]
 pub struct Cache {
     /// Directory containing cache files.
-    pub cache_dir: Option<RelativePath>,
+    pub cache_dir: RelativePath,
 }
 
 impl Default for Cache {
     #[inline]
     fn default() -> Self {
         Self {
-            cache_dir: Some(RelativePath(PathBuf::from(".cache"))),
+            cache_dir: RelativePath(PathBuf::from(".cache")),
         }
     }
 }
 
 impl Cache {
+    /// Create a validated cache directory path.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if the path is invalid.
+    #[inline]
+    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+        Ok(Self {
+            cache_dir: RelativePath::try_new(path)?,
+        })
+    }
+
     /// Create cache configuration.
     #[inline]
     #[must_use]
-    pub const fn new(cache_dir: Option<RelativePath>) -> Self {
+    pub const fn new(cache_dir: RelativePath) -> Self {
         Self {
             cache_dir,
         }
     }
 
-    /// Return the cache directory, if set.
+    /// Return the cache directory.
     #[inline]
     #[must_use]
-    pub fn cache_dir(&self) -> Option<&RelativePath> {
-        self.cache_dir.as_ref()
+    pub const fn cache_dir(&self) -> &RelativePath {
+        &self.cache_dir
+    }
+}
+
+/// Property bank filename configuration.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+pub struct PropertyBank(FileName);
+
+impl Default for PropertyBank {
+    #[inline]
+    #[expect(
+        clippy::disallowed_methods,
+        clippy::expect_used,
+        reason = "Default filename is guaranteed valid"
+    )]
+    fn default() -> Self {
+        Self::try_new("property_bank.json")
+            .expect("default property bank filename must be valid")
+    }
+}
+
+impl PropertyBank {
+    /// Create a validated property bank filename.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if the name is invalid.
+    #[inline]
+    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
+        Ok(Self(FileName::try_new(value)?))
+    }
+
+    /// Return the filename as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 }
 
@@ -352,6 +435,20 @@ impl FileName {
 // Standard Trait Implementations (Conversions)
 // ============================================================================
 
+impl From<FileName> for PropertyBank {
+    #[inline]
+    fn from(value: FileName) -> Self {
+        Self(value)
+    }
+}
+
+impl From<PropertyBank> for FileName {
+    #[inline]
+    fn from(value: PropertyBank) -> Self {
+        value.0
+    }
+}
+
 impl TryFrom<String> for RelativePath {
     type Error = ConfigError;
 
@@ -384,10 +481,33 @@ impl From<FileName> for String {
     }
 }
 
+impl TryFrom<String> for PropertyBank {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+impl From<PropertyBank> for String {
+    #[inline]
+    fn from(value: PropertyBank) -> Self {
+        value.0.into()
+    }
+}
+
 impl std::fmt::Display for RelativePath {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.to_string_lossy())
+    }
+}
+
+impl std::fmt::Display for PropertyBank {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -404,19 +524,19 @@ mod tests {
     mod fixtures {
         use std::path::PathBuf;
 
-        use super::super::{FileName, RelativePath, Schema};
+        use super::super::{PropertyBank, RelativePath, Schema};
 
+        #[expect(dead_code, reason = "Used in other test modules")]
         pub fn sample_schema() -> Schema {
-            Schema::new(
-                Some(
-                    RelativePath::try_new(PathBuf::from("schemas"))
-                        .expect("valid dir for fixture"),
-                ),
-                Some(
-                    FileName::try_new("props.json")
-                        .expect("valid file for fixture"),
-                ),
-            )
+            Schema {
+                schemas_dir: RelativePath::try_new(PathBuf::from("schemas"))
+                    .expect("valid dir for fixture"),
+            }
+        }
+
+        #[expect(dead_code, reason = "Used in other test modules")]
+        pub fn sample_property_bank() -> PropertyBank {
+            PropertyBank::try_new("props.json").expect("valid file for fixture")
         }
     }
 
@@ -447,13 +567,25 @@ mod tests {
     mod accessors {
         use std::path::PathBuf;
 
+        use super::super::{Cache, Paths, PropertyBank, Schema, Template};
+
         /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
         /// Priority: P1.
         #[test]
         fn schema_property_bank_path_logic_works() {
-            let schema = super::fixtures::sample_schema();
+            let schema = Schema::new(
+                super::super::RelativePath::try_new(PathBuf::from("schemas"))
+                    .unwrap(),
+            );
+            let property_bank = PropertyBank::try_new("props.json").unwrap();
+            let paths = Paths::new(
+                Cache::default(),
+                schema,
+                property_bank,
+                Template::default(),
+            );
 
-            let path = schema.property_bank_path();
+            let path = paths.property_bank_path();
 
             assert_eq!(
                 path,
@@ -472,7 +604,7 @@ mod tests {
         fn schema_rejects_empty_paths() {
             let schemas_dir =
                 RelativePath::try_new(std::path::PathBuf::from(""));
-            let file_name = FileName::try_new("");
+            let file_name = PropertyBank::try_new("");
             assert!(schemas_dir.is_err(), "Expected invalid schemas_dir");
             assert!(file_name.is_err(), "Expected invalid file name");
         }

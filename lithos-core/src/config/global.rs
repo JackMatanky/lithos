@@ -12,12 +12,8 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use super::{
-    error::ConfigError,
-    frontmatter::Frontmatter,
-    logging::Logging,
-    paths::{Schema, Template},
-    raw::RawTrustedVaults,
-    task::TaskConfig,
+    error::ConfigError, frontmatter::Frontmatter, logging::Logging,
+    paths::Paths, raw::RawTrustedVaults, task::TaskConfig,
 };
 
 /// Global default configuration.
@@ -49,27 +45,6 @@ pub struct Global {
     trusted_vaults: Option<TrustedVaults>,
     /// Task configuration overrides.
     task: Option<TaskConfig>,
-}
-
-/// Global paths configuration (global template/schema library).
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Default,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct Paths {
-    /// Schema configuration for global library.
-    schema: Schema,
-    /// Template configuration for global library.
-    template: Template,
 }
 
 /// Trusted vaults configuration supporting list or format.
@@ -220,32 +195,6 @@ impl Global {
     }
 }
 
-impl Paths {
-    #[inline]
-    #[must_use]
-    /// Create global paths settings.
-    pub const fn new(schema: Schema, template: Template) -> Self {
-        Self {
-            schema,
-            template,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return global schema settings.
-    pub const fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return global template settings.
-    pub const fn template(&self) -> &Template {
-        &self.template
-    }
-}
-
 impl TrustedVaultPath {
     #[inline]
     /// Create a validated trusted vault path.
@@ -336,14 +285,17 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
 
 #[cfg(test)]
 #[expect(
+    clippy::arbitrary_source_item_ordering,
     clippy::disallowed_methods,
     reason = "Test modules have relaxed rules"
 )]
 mod tests {
-    mod constructor {
-        use std::path::PathBuf;
+    use std::path::PathBuf;
 
-        use super::super::*;
+    use super::*;
+
+    mod constructor {
+        use super::*;
 
         #[test]
         fn trusted_vault_path_rejects_empty() {
@@ -390,7 +342,7 @@ mod tests {
             let global = Global::default();
 
             assert!(
-                global.trusted_vaults.is_none(),
+                global.trusted_vaults().is_none(),
                 "Default trusted_vaults should be None"
             );
         }
@@ -417,21 +369,10 @@ mod tests {
         }
     }
 
-    mod fixtures {
-        use std::path::PathBuf;
-
-        use super::super::*;
-
-        #[expect(dead_code, reason = "Used in commented out tests")]
-        pub fn trusted_vault_path(path: &str) -> TrustedVaultPath {
-            TrustedVaultPath::try_new(PathBuf::from(path)).expect("valid path")
-        }
-    }
-
     mod validation {
         use std::collections::HashMap;
 
-        use super::super::*;
+        use super::*;
         use crate::config::raw::RawTrustedVaults;
 
         #[test]

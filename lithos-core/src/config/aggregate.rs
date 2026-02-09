@@ -29,37 +29,12 @@ use super::{
     error::ConfigError,
     events::{ConfigUpdated, Events},
     frontmatter::Frontmatter,
-    global::Paths as GlobalPaths,
     logging::Logging,
-    paths::{Cache, FileName, RelativePath, Schema, Template},
+    paths::{Cache, Paths, PropertyBank, Schema, Template},
     raw,
     task::TaskConfig,
     vault::{Metadata, VaultId, VaultRoot},
 };
-
-/// Resolved vault paths configuration (merged).
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct ResolvedVaultPaths {
-    /// Cache configuration for vault.
-    pub cache: Cache,
-    /// Schema configuration for vault.
-    pub schema: Schema,
-    /// Template configuration for vault.
-    pub template: Template,
-}
-
-impl ResolvedVaultPaths {}
 
 /// Monotonic version identifier for merged configs.
 #[derive(
@@ -189,16 +164,15 @@ pub struct Config {
     pub vault_metadata: Metadata,
     /// Merged logging configuration.
     pub logging: Logging,
-    /// Global paths configuration.
-    pub global_paths: GlobalPaths,
-    /// Vault paths configuration.
-    pub vault_paths: ResolvedVaultPaths,
+    /// Merged paths configuration.
+    pub paths: Paths,
     /// Merged frontmatter configuration.
     pub frontmatter: Frontmatter,
     /// Merged task configuration.
     pub task: TaskConfig,
     /// Domain events pending emission (not persisted).
     #[serde(skip)]
+    #[rkyv(with = rkyv::with::Skip)]
     pending_events: Vec<Events>,
 }
 
@@ -207,15 +181,10 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             frontmatter: Frontmatter::default(),
-            global_paths: GlobalPaths::default(),
+            paths: Paths::default(),
             logging: Logging::default(),
             pending_events: vec![],
             task: TaskConfig::default(),
-            vault_paths: ResolvedVaultPaths {
-                cache: Cache::default(),
-                schema: Schema::default(),
-                template: Template::default(),
-            },
             vault_metadata: Metadata::default(),
         }
     }
@@ -255,14 +224,15 @@ impl Config {
         clippy::ref_option,
         reason = "API consistency with Option<T> patterns"
     )]
-    fn opt_filename(
+    fn opt_filename<T>(
         opt: &Option<String>,
+        constructor: fn(String) -> Result<T, ConfigError>,
         field_name: &str,
-    ) -> Result<Option<FileName>, ConfigError> {
+    ) -> Result<Option<T>, ConfigError> {
         opt.as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| {
-                FileName::try_new(s.clone()).map_err(|e| {
+                constructor(s.clone()).map_err(|e| {
                     ConfigError::ValidationFailed {
                         field: field_name.to_owned().into(),
                         message: format!("invalid filename: {e}").into(),
@@ -272,79 +242,39 @@ impl Config {
             .transpose()
     }
 
-    /// Build global paths from merged config.
-    fn make_global_paths(
+    /// Build resolved paths from merged config.
+    fn make_resolved_paths(
         fs: &raw::RawPathsConfig,
-    ) -> Result<GlobalPaths, ConfigError> {
-        let default_schema = Schema::default();
-        let default_template = Template::default();
-
-        let schemas_dir = Self::opt_path_to_domain(
-            &fs.schemas_dir,
-            RelativePath::try_new,
-            "schemas_dir",
-        )?
-        .or(default_schema.schemas_dir);
-
-        let property_bank_filename = Self::opt_filename(
-            &fs.property_bank_filename,
-            "property_bank_filename",
-        )?
-        .or(default_schema.property_bank_filename);
-
-        let templates_dir = Self::opt_path_to_domain(
-            &fs.templates_dir,
-            RelativePath::try_new,
-            "templates_dir",
-        )?
-        .or(default_template.templates_dir);
-
-        Ok(GlobalPaths::new(
-            Schema::new(schemas_dir, property_bank_filename),
-            Template::new(templates_dir),
-        ))
-    }
-
-    /// Build vault paths from merged config.
-    fn make_vault_paths(
-        fs: &raw::RawPathsConfig,
-    ) -> Result<ResolvedVaultPaths, ConfigError> {
-        let default_cache = Cache::default();
-        let default_schema = Schema::default();
-        let default_template = Template::default();
-
-        let cache_dir = Self::opt_path_to_domain(
+    ) -> Result<Paths, ConfigError> {
+        let cache = Self::opt_path_to_domain(
             &fs.cache_dir,
-            RelativePath::try_new,
+            Cache::try_new,
             "cache_dir",
         )?
-        .or(default_cache.cache_dir);
+        .unwrap_or_default();
 
-        let schemas_dir = Self::opt_path_to_domain(
+        let schema = Self::opt_path_to_domain(
             &fs.schemas_dir,
-            RelativePath::try_new,
+            Schema::try_new,
             "schemas_dir",
         )?
-        .or(default_schema.schemas_dir);
+        .unwrap_or_default();
 
-        let property_bank_filename = Self::opt_filename(
+        let property_bank = Self::opt_filename(
             &fs.property_bank_filename,
+            PropertyBank::try_new,
             "property_bank_filename",
         )?
-        .or(default_schema.property_bank_filename);
+        .unwrap_or_default();
 
-        let templates_dir = Self::opt_path_to_domain(
+        let template = Self::opt_path_to_domain(
             &fs.templates_dir,
-            RelativePath::try_new,
+            Template::try_new,
             "templates_dir",
         )?
-        .or(default_template.templates_dir);
+        .unwrap_or_default();
 
-        Ok(ResolvedVaultPaths {
-            cache: Cache::new(cache_dir),
-            schema: Schema::new(schemas_dir, property_bank_filename),
-            template: Template::new(templates_dir),
-        })
+        Ok(Paths::new(cache, schema, property_bank, template))
     }
 
     /// Build validated Config from Figment-merged raw configuration.
@@ -366,8 +296,7 @@ impl Config {
 
         let fs = &raw.paths;
 
-        let global_paths = Self::make_global_paths(fs)?;
-        let vault_paths = Self::make_vault_paths(fs)?;
+        let paths = Self::make_resolved_paths(fs)?;
 
         let frontmatter = raw
             .frontmatter
@@ -392,10 +321,9 @@ impl Config {
 
         let mut config = Self {
             frontmatter,
-            global_paths,
+            paths,
             logging,
             task,
-            vault_paths,
             vault_metadata,
             pending_events: vec![],
         };
@@ -548,7 +476,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config.global_paths.schema().schemas_dir().unwrap().as_path(),
+                config.paths.schema.schemas_dir().as_path(),
                 std::path::Path::new("schemas")
             );
         }
@@ -582,7 +510,7 @@ mod tests {
         fn defaults_apply_to_cache_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
-                config.vault_paths.cache.cache_dir().unwrap().as_path(),
+                config.paths.cache.cache_dir().as_path(),
                 std::path::Path::new(".cache")
             );
         }
@@ -591,7 +519,7 @@ mod tests {
         fn defaults_apply_to_templates_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
-                config.vault_paths.template.templates_dir().unwrap().as_path(),
+                config.paths.template.templates_dir().as_path(),
                 std::path::Path::new("templates")
             );
         }
@@ -600,7 +528,7 @@ mod tests {
         fn vault_templates_dir_overrides_global() {
             let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
-                merged.vault_paths.template.templates_dir().unwrap().as_path(),
+                merged.paths.template.templates_dir().as_path(),
                 std::path::Path::new("custom_templates")
             );
         }
@@ -619,16 +547,11 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config.global_paths.schema().schemas_dir().unwrap().as_path(),
+                config.paths.schema.schemas_dir().as_path(),
                 std::path::Path::new("schemas")
             );
             assert_eq!(
-                config
-                    .global_paths
-                    .schema()
-                    .property_bank_filename()
-                    .unwrap()
-                    .as_str(),
+                config.paths.property_bank.as_str(),
                 "property_bank.json"
             );
         }
@@ -651,11 +574,11 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config.global_paths.schema().schemas_dir().unwrap().as_path(),
+                config.paths.schema.schemas_dir().as_path(),
                 std::path::Path::new("my-schemas")
             );
             assert_eq!(
-                config.vault_paths.cache.cache_dir().unwrap().as_path(),
+                config.paths.cache.cache_dir().as_path(),
                 std::path::Path::new(".lithos-cache")
             );
         }
