@@ -353,7 +353,7 @@ log_level = "info"
             clippy::disallowed_methods,
             reason = "Tests use unwrap() for deterministic TOML parsing"
         )]
-        fn raw_config_supports_partial_filesystem() {
+        fn raw_config_supports_partial_paths() {
             let toml = r#"
                 [paths]
                 cache_dir = ".cache"
@@ -384,7 +384,7 @@ log_level = "info"
             clippy::disallowed_methods,
             reason = "Tests use unwrap() for deterministic TOML parsing"
         )]
-        fn raw_filesystem_config_all_fields_optional() {
+        fn raw_paths_config_all_fields_optional() {
             let toml = "
                 [paths]
                 # All fields omitted - should deserialize successfully

@@ -1,7 +1,7 @@
 //! Global configuration structures.
 //!
 //! This module contains configuration types that are specific to global-level
-//! configuration, including filesystem settings, trusted vaults, and global
+//! configuration, including paths settings, trusted vaults, and global
 //! defaults.
 
 #![expect(
@@ -39,8 +39,8 @@ use super::{
 )]
 #[non_exhaustive]
 pub struct Global {
-    /// Filesystem configuration for global defaults.
-    filesystem: Paths,
+    /// Paths configuration for global defaults.
+    paths: Paths,
     /// Frontmatter configuration for global defaults.
     frontmatter: Frontmatter,
     /// Logging configuration for global defaults.
@@ -51,7 +51,7 @@ pub struct Global {
     task: Option<TaskConfig>,
 }
 
-/// Global filesystem configuration (global template/schema library).
+/// Global paths configuration (global template/schema library).
 #[derive(
     Debug,
     Clone,
@@ -155,7 +155,7 @@ impl Default for Global {
     #[inline]
     fn default() -> Self {
         Self {
-            filesystem: Paths::default(),
+            paths: Paths::default(),
             frontmatter: Frontmatter::default(),
             logging: Logging::default(),
             trusted_vaults: None,
@@ -169,14 +169,14 @@ impl Global {
     #[must_use]
     /// Create a global configuration.
     pub fn new(
-        filesystem: Paths,
+        paths: Paths,
         frontmatter: Frontmatter,
         logging: Logging,
         trusted_vaults: Option<TrustedVaults>,
         task: Option<TaskConfig>,
     ) -> Self {
         Self {
-            filesystem,
+            paths,
             frontmatter,
             logging,
             trusted_vaults,
@@ -186,9 +186,9 @@ impl Global {
 
     #[inline]
     #[must_use]
-    /// Return global filesystem settings.
-    pub fn filesystem(&self) -> &Paths {
-        &self.filesystem
+    /// Return global paths settings.
+    pub fn paths(&self) -> &Paths {
+        &self.paths
     }
 
     #[inline]
@@ -223,7 +223,7 @@ impl Global {
 impl Paths {
     #[inline]
     #[must_use]
-    /// Create global filesystem settings.
+    /// Create global paths settings.
     pub const fn new(schema: Schema, template: Template) -> Self {
         Self {
             schema,

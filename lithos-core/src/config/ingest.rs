@@ -224,7 +224,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "expect is permitted in test setup"
         )]
-        fn filesystem_fields_merge_correctly() {
+        fn paths_fields_merge_correctly() {
             // GIVEN: global with schemas_dir, vault with cache_dir
             let (_global_dir, global_path, vault_dir) = setup_layered_configs(
                 "[paths]\nschemas_dir = \"global-schemas\"\n",
@@ -256,7 +256,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "expect is permitted in test setup"
         )]
-        fn vault_overrides_global_filesystem_field() {
+        fn vault_overrides_global_paths_field() {
             // GIVEN: global with templates_dir = global-templates, vault with
             // vault-templates
             let (_global_dir, global_path, vault_dir) = setup_layered_configs(
@@ -274,7 +274,7 @@ mod tests {
             assert_eq!(
                 raw.paths.templates_dir.as_deref(),
                 Some("vault-templates"),
-                "Vault filesystem field should override global"
+                "Vault paths field should override global"
             );
         }
     }
