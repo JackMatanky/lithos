@@ -34,18 +34,18 @@
 //!
 //! Validation occurs in `TryFrom<Raw*>` implementations in the same file:
 //!
-//! | Raw Type | Validated Type | Location | Validates |
-//! |----------|---------------|----------|-----------|
-//! | `RawFrontmatter` | `Frontmatter` | `frontmatter.rs` ← co-located | Non-empty keys |
-//! | `RawLogging` | `Logging` | `logging.rs` ← co-located | Log level enum |
-//! | `RawSchemaPaths` | `Schema` | `paths.rs` ← co-located | Path validity |
-//! | `RawTemplatePaths` | `Template` | `paths.rs` ← co-located | Path validity |
-//! | `RawGlobal` | `Global` | `global.rs` | Aggregation |
-//! | `RawVault` | `Vault` | `vault.rs` | Aggregation |
-//! | `RawGlobalPaths` | `Paths` | `global.rs` | Path aggregation |
-//! | `RawVaultPaths` | `Paths` | `vault.rs` | Path aggregation |
-//! | `RawTaskConfig` | `TaskConfig` | `task.rs` | Complex rules |
-//! | `RawTrustedVaults` | `TrustedVaults` | `global.rs` | List/map format |
+//! | Raw Type           | Validated Type  | Location                      | Validates        |
+//! | ------------------ | --------------- | ----------------------------- | ---------------- |
+//! | `RawFrontmatter`   | `Frontmatter`   | `frontmatter.rs` ← co-located | Non-empty keys   |
+//! | `RawLogging`       | `Logging`       | `logging.rs` ← co-located     | Log level enum   |
+//! | `RawSchemaPaths`   | `Schema`        | `paths.rs` ← co-located       | Path validity    |
+//! | `RawTemplatePaths` | `Template`      | `paths.rs` ← co-located       | Path validity    |
+//! | `RawGlobal`        | `Global`        | `global.rs`                   | Aggregation      |
+//! | `RawVault`         | `Vault`         | `vault.rs`                    | Aggregation      |
+//! | `RawGlobalPaths`   | `Paths`         | `global.rs`                   | Path aggregation |
+//! | `RawVaultPaths`    | `Paths`         | `vault.rs`                    | Path aggregation |
+//! | `RawTaskConfig`    | `TaskConfig`    | `task.rs`                     | Complex rules    |
+//! | `RawTrustedVaults` | `TrustedVaults` | `global.rs`                   | List/map format  |
 //!
 //! The domain-specific Raw types are imported by this module (for use in the
 //! aggregate structs) but defined alongside their validated types.
