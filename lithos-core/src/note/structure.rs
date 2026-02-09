@@ -1,6 +1,7 @@
 //! Structural entities for document organization.
 //!
-//! Provides [`Heading`] and [`Section`] types to model the hierarchical
+//! Provides [`crate::note::structure::Heading`] and
+//! [`crate::note::structure::Section`] types to model the hierarchical
 //! and sequential structure of a markdown document.
 
 //! Document structure subentities for Note aggregate.

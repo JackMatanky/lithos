@@ -1,8 +1,8 @@
 //! Note aggregate root and primary domain entity.
 //!
-//! This module defines the [`Note`] aggregate, which serves as the central
-//! coordination point for all note-related data including links, tags, and
-//! tasks.
+//! This module defines the [`crate::note::aggregate::Note`] aggregate, which
+//! serves as the central coordination point for all note-related data including
+//! links, tags, and tasks.
 
 //! Note aggregate root and core domain entities.
 //!
