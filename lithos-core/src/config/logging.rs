@@ -148,27 +148,6 @@ impl Logging {
     pub fn log_level_str(&self) -> &'static str {
         self.log_level.as_str()
     }
-
-    /// Validate logging configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConfigConfigError::InvalidEnumValue` if `log_level` is not one
-    /// of: debug, info, warn, error.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::config::logging::Logging;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let logging = Logging::default();
-    /// logging.validate()?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        Ok(())
-    }
 }
 
 impl TryFrom<RawLogging> for Logging {

@@ -104,18 +104,6 @@ impl Schema {
                 .as_str(),
         )
     }
-
-    /// Validate schema configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        if let Some(dir) = self.schemas_dir.as_ref() {
-            dir.validate()?;
-        }
-        Ok(())
-    }
 }
 
 /// Template configuration (templates directory).
@@ -162,18 +150,6 @@ impl Template {
     #[must_use]
     pub fn templates_dir(&self) -> Option<&RelativePath> {
         self.templates_dir.as_ref()
-    }
-
-    /// Validate template configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        if let Some(dir) = self.templates_dir.as_ref() {
-            dir.validate()?;
-        }
-        Ok(())
     }
 }
 
@@ -222,18 +198,6 @@ impl Cache {
     pub fn cache_dir(&self) -> Option<&RelativePath> {
         self.cache_dir.as_ref()
     }
-
-    /// Validate cache configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        if let Some(dir) = self.cache_dir.as_ref() {
-            dir.validate()?;
-        }
-        Ok(())
-    }
 }
 
 // ============================================================================
@@ -251,6 +215,7 @@ impl Cache {
     Clone,
     PartialEq,
     Eq,
+    Hash,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -282,21 +247,6 @@ impl RelativePath {
     #[must_use]
     pub fn as_path(&self) -> &Path {
         &self.0
-    }
-
-    /// Validate the path.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the path is empty.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.0.as_os_str().is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "path".to_owned().into(),
-                message: "path cannot be empty".to_owned().into(),
-            });
-        }
-        Ok(())
     }
 
     /// Private helper to validate relative path invariants.
@@ -399,7 +349,7 @@ impl FileName {
 }
 
 // ============================================================================
-// Tests
+// Standard Trait Implementations (Conversions)
 // ============================================================================
 
 impl TryFrom<String> for RelativePath {
@@ -520,12 +470,10 @@ mod tests {
         /// Priority: P0.
         #[test]
         fn schema_rejects_empty_paths() {
-            let schemas_dir = RelativePath(std::path::PathBuf::from(""));
+            let schemas_dir =
+                RelativePath::try_new(std::path::PathBuf::from(""));
             let file_name = FileName::try_new("");
-            assert!(
-                schemas_dir.validate().is_err(),
-                "Expected invalid schemas_dir"
-            );
+            assert!(schemas_dir.is_err(), "Expected invalid schemas_dir");
             assert!(file_name.is_err(), "Expected invalid file name");
         }
     }

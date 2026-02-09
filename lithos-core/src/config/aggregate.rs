@@ -59,19 +59,7 @@ pub struct ResolvedVaultPaths {
     pub template: Template,
 }
 
-impl ResolvedVaultPaths {
-    #[inline]
-    /// Validate resolved vault filesystem paths.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if cache, schema or template validation fails.
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        self.cache.validate()?;
-        self.schema.validate()?;
-        self.template.validate()?;
-        Ok(())
-    }
-}
+impl ResolvedVaultPaths {}
 
 /// Monotonic version identifier for merged configs.
 #[derive(
@@ -417,7 +405,6 @@ impl Config {
             chrono::Utc::now().timestamp(),
         )));
 
-        config.validate()?;
         Ok(config)
     }
 
@@ -433,23 +420,6 @@ impl Config {
     #[must_use]
     pub fn take_events(&mut self) -> Vec<Events> {
         std::mem::take(&mut self.pending_events)
-    }
-
-    /// Validate configuration against critical domain constraints.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if any required field is empty.
-    /// Returns `ConfigError::ValidationFailed` if metadata is invalid.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        // Validate all component parts
-        self.vault_metadata.validate()?;
-        self.global_filesystem.validate()?;
-        self.vault_filesystem.validate()?;
-        self.frontmatter.validate()?;
-        self.logging.validate()?;
-
-        Ok(())
     }
 }
 
