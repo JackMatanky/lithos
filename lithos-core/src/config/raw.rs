@@ -146,12 +146,6 @@ pub struct RawFilesystemConfig {
     pub templates_dir: Option<String>,
 }
 
-// ============================================================================
-// Legacy Raw Types (Removed in v0.2.0 - Use RawConfig instead)
-// ============================================================================
-// These types were used for manual layer-by-layer merging before Figment.
-// They have been replaced by the unified RawConfig schema above.
-
 // Raw trusted vaults configuration.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
