@@ -38,8 +38,6 @@
 //! | ------------------ | --------------- | ----------------------------- | ---------------- |
 //! | `RawFrontmatter`   | `Frontmatter`   | `frontmatter.rs` ← co-located | Non-empty keys   |
 //! | `RawLogging`       | `Logging`       | `logging.rs` ← co-located     | Log level enum   |
-//! | `RawSchemaPaths`   | `Schema`        | `paths.rs` ← co-located       | Path validity    |
-//! | `RawTemplatePaths` | `Template`      | `paths.rs` ← co-located       | Path validity    |
 //! | `RawTrustedVaults` | `TrustedVaults` | `global.rs`                   | List/map format  |
 //! | `RawTaskConfig`    | `TaskConfig`    | `task.rs`                     | Complex rules    |
 //!
