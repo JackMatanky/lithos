@@ -9,7 +9,10 @@
 
 use uuid::Uuid;
 
-use super::{aggregate::Note, error::NoteError};
+use super::{
+    aggregate::Note,
+    error::{NoteCommandError, NoteQueryError},
+};
 
 /// Command port for Note write operations.
 ///
@@ -19,20 +22,20 @@ pub trait Command: Send + Sync {
     /// Creates a new note with the given vault-relative path.
     ///
     /// # Errors
-    /// Returns `NoteError` if note creation fails validation or persistence.
-    fn create(&self, path: String) -> Result<Note, NoteError>;
+    /// Returns `NoteCommandError` if note creation fails.
+    fn create(&self, path: String) -> Result<Note, NoteCommandError>;
 
     /// Deletes a note by ID.
     ///
     /// # Errors
-    /// Returns `NoteError` if note deletion fails.
-    fn delete(&self, id: Uuid) -> Result<(), NoteError>;
+    /// Returns `NoteCommandError` if note deletion fails.
+    fn delete(&self, id: Uuid) -> Result<(), NoteCommandError>;
 
     /// Updates an existing note.
     ///
     /// # Errors
-    /// Returns `NoteError` if note update fails validation or persistence.
-    fn update(&self, note: Note) -> Result<Note, NoteError>;
+    /// Returns `NoteCommandError` if note update fails.
+    fn update(&self, note: Note) -> Result<Note, NoteCommandError>;
 }
 
 /// Query port for Note read operations.
@@ -40,23 +43,38 @@ pub trait Command: Send + Sync {
 /// This trait defines the interface for queries that retrieve Note state.
 /// Implementations should be in the adapters layer.
 pub trait Query: Send + Sync {
-    /// Finds a note by its UUID v7 identifier.
-    ///
-    /// # Errors
-    /// Returns `NoteError` if query execution fails.
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError>;
+    /// Archived note type for zero-copy reads.
+    type NoteArchived<'archived>;
 
-    /// Finds a note by its vault-relative path.
+    /// Finds a note by its UUID v7 identifier (owned).
     ///
     /// # Errors
-    /// Returns `NoteError` if query execution fails.
-    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteError>;
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError>;
 
-    /// Lists all notes in the vault.
+    /// Finds a note by its vault-relative path (owned).
     ///
     /// # Errors
-    /// Returns `NoteError` if query execution fails.
-    fn list(&self) -> Result<Vec<Note>, NoteError>;
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteQueryError>;
+
+    /// Lists all notes in the vault (owned).
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn list(&self) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Access a note as archived data (zero-copy).
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn with_archived_by_id<F, R>(
+        &self,
+        id: Uuid,
+        f: F,
+    ) -> Result<Option<R>, NoteQueryError>
+    where
+        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R;
 }
 
 #[cfg(test)]
@@ -72,29 +90,13 @@ mod tests {
     }
 
     #[test]
-    fn query_trait_is_object_safe() {
+    fn query_trait_is_send_and_sync() {
         // GIVEN: the Query trait
-        // WHEN: used as a trait object
-        fn _assert_object_safe(_: &dyn Query) {}
-        // THEN: it compiles
-    }
-
-    #[test]
-    fn traits_are_send_and_sync() {
-        // GIVEN: the port traits
-        #[expect(
-            dead_code,
-            reason = "Helper function for compile-time trait checking"
-        )]
-        fn is_send_sync<T: Send + Sync>() {}
-
         // WHEN: checking Send + Sync bounds
-        fn _assert_command_is_send_sync<T: Command>() {
-            is_send_sync::<T>();
-        }
         fn _assert_query_is_send_sync<T: Query>() {
+            fn is_send_sync<U: Send + Sync>() {}
             is_send_sync::<T>();
         }
-        // THEN: they satisfy the bounds
+        // THEN: it satisfies the bounds
     }
 }
