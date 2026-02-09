@@ -5,7 +5,7 @@
 
 use uuid::Uuid;
 
-use super::{aggregate::Note, error::NoteError};
+use super::{aggregate::Note, error::NoteQueryError};
 use crate::db::Database;
 
 /// Query implementation for Note read operations.
@@ -27,32 +27,54 @@ impl<'db> Query<'db> {
 }
 
 impl super::ports::Query for Query<'_> {
+    type NoteArchived<'archived> = &'archived rkyv::Archived<Note>;
+
     /// Finds a note by its UUID v7 identifier.
     ///
     /// # Errors
-    /// Returns `NoteError` if query execution fails.
+    /// Returns `NoteQueryError` if query execution fails.
     #[inline]
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError> {
         let id_str = id.to_string();
         self.db
             .get_owned::<Note>("notes", &id_str)
-            .map_err(|e: crate::db::DbError| NoteError::Storage(e.to_string()))
+            .map_err(NoteQueryError::Storage)
+    }
+
+    /// Access a note as archived data (zero-copy).
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    #[inline]
+    fn with_archived_by_id<F, R>(
+        &self,
+        id: Uuid,
+        f: F,
+    ) -> Result<Option<R>, NoteQueryError>
+    where
+        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
+    {
+        let id_str = id.to_string();
+        self.db
+            .get::<Note, _, R>("notes", &id_str, f)
+            .map_err(NoteQueryError::Storage)
     }
 
     /// Finds a note by its vault-relative path.
     ///
     /// # Errors
-    /// Returns `NoteError` if query execution fails.
+    /// Returns `NoteQueryError` if query execution fails.
     #[inline]
-    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteError> {
-        let ids = self.db.multimap_get("path_to_id", path).map_err(
-            |e: crate::db::DbError| NoteError::Storage(e.to_string()),
-        )?;
+    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteQueryError> {
+        let ids = self
+            .db
+            .multimap_get("path_to_id", path)
+            .map_err(NoteQueryError::Storage)?;
 
         if let Some(id_str) = ids.first() {
-            self.db.get_owned::<Note>("notes", id_str).map_err(
-                |e: crate::db::DbError| NoteError::Storage(e.to_string()),
-            )
+            self.db
+                .get_owned::<Note>("notes", id_str)
+                .map_err(NoteQueryError::Storage)
         } else {
             Ok(None)
         }
@@ -61,12 +83,10 @@ impl super::ports::Query for Query<'_> {
     /// Lists all notes in the vault.
     ///
     /// # Errors
-    /// Returns `NoteError` if query execution fails.
+    /// Returns `NoteQueryError` if query execution fails.
     #[inline]
-    fn list(&self) -> Result<Vec<Note>, NoteError> {
-        self.db
-            .list_owned::<Note>("notes")
-            .map_err(|e: crate::db::DbError| NoteError::Storage(e.to_string()))
+    fn list(&self) -> Result<Vec<Note>, NoteQueryError> {
+        self.db.list_owned::<Note>("notes").map_err(NoteQueryError::Storage)
     }
 }
 
@@ -133,6 +153,7 @@ mod tests {
     use super::*;
     use crate::note::{
         command,
+        error::NoteError,
         ports::{Command as _, Query as _},
     };
 
@@ -140,13 +161,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn find_by_id_returns_note_with_matching_id() -> Result<(), String> {
-            let (_dir, db, id, _fm) = fixtures::note_with_frontmatter()?;
+        fn find_by_id_returns_note_with_matching_id()
+        -> Result<(), NoteQueryError> {
+            let (_dir, db, id, _fm) = fixtures::note_with_frontmatter()
+                .map_err(|e| NoteQueryError::Domain(NoteError::Storage(e)))?;
             let qry = Query::new(&db);
 
             let observed = qry
-                .find_by_id(id)
-                .map_err(|e| e.to_string())?
+                .find_by_id(id)?
                 .expect("Query by id should return Some(note)");
             assert_eq!(
                 Uuid::from(observed.id()),
@@ -157,13 +179,13 @@ mod tests {
         }
 
         #[test]
-        fn find_by_id_preserves_frontmatter() -> Result<(), String> {
-            let (_dir, db, id, fm) = fixtures::note_with_frontmatter()?;
+        fn find_by_id_preserves_frontmatter() -> Result<(), NoteQueryError> {
+            let (_dir, db, id, fm) = fixtures::note_with_frontmatter()
+                .map_err(|e| NoteQueryError::Domain(NoteError::Storage(e)))?;
             let qry = Query::new(&db);
 
             let observed = qry
-                .find_by_id(id)
-                .map_err(|e| e.to_string())?
+                .find_by_id(id)?
                 .expect("Query by id should return Some(note)");
             assert_eq!(
                 observed.frontmatter(),
@@ -174,15 +196,17 @@ mod tests {
         }
 
         #[test]
-        fn find_by_id_returns_none_for_missing_id() -> Result<(), String> {
-            let (_dir, db) = fixtures::test_db()?;
+        fn find_by_id_returns_none_for_missing_id() -> Result<(), NoteQueryError>
+        {
+            let (_dir, db) = fixtures::test_db()
+                .map_err(|e| NoteQueryError::Domain(NoteError::Storage(e)))?;
             let cmd = command::Command::new(&db);
             let qry = Query::new(&db);
 
-            cmd.create("notes/a.md".to_owned()).map_err(|e| e.to_string())?;
-            let miss = qry
-                .find_by_id(fixtures::TEST_MISSING_ID)
-                .map_err(|e| e.to_string())?;
+            cmd.create("notes/a.md".to_owned()).map_err(|e| {
+                NoteQueryError::Domain(NoteError::Storage(e.to_string()))
+            })?;
+            let miss = qry.find_by_id(fixtures::TEST_MISSING_ID)?;
             assert!(miss.is_none(), "Non-existent ID should return None");
             Ok(())
         }

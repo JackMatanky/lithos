@@ -54,6 +54,32 @@ pub enum NoteError {
     ValidationFailed(String),
 }
 
+/// Errors surfaced by Note command operations.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum NoteCommandError {
+    /// Domain validation error.
+    #[error(transparent)]
+    Domain(#[from] NoteError),
+
+    /// Storage operation error.
+    #[error(transparent)]
+    Storage(#[from] crate::db::DbError),
+}
+
+/// Errors surfaced by Note query operations.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum NoteQueryError {
+    /// Domain validation error.
+    #[error(transparent)]
+    Domain(#[from] NoteError),
+
+    /// Storage operation error.
+    #[error(transparent)]
+    Storage(#[from] crate::db::DbError),
+}
+
 /// Errors surfaced by strict frontmatter accessors.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
