@@ -6,7 +6,7 @@ use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::{CacheDir, FileName, SchemasDir, TemplatesDir},
+    paths::{Cache, Schema, Template},
     task::TaskConfig,
 };
 
@@ -288,14 +288,12 @@ impl Default for Metadata {
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Paths {
-    /// Overridden cache directory.
-    cache_dir: Option<CacheDir>,
-    /// Overridden schemas directory.
-    schemas_dir: Option<SchemasDir>,
-    /// Overridden property bank filename.
-    property_bank_filename: Option<FileName>,
-    /// Overridden templates directory.
-    templates_dir: Option<TemplatesDir>,
+    /// Overridden cache settings.
+    cache: Option<Cache>,
+    /// Overridden schema settings.
+    schema: Option<Schema>,
+    /// Overridden template settings.
+    template: Option<Template>,
 }
 
 impl Paths {
@@ -303,45 +301,36 @@ impl Paths {
     #[inline]
     #[must_use]
     pub const fn new(
-        cache_dir: Option<CacheDir>,
-        schemas_dir: Option<SchemasDir>,
-        property_bank_filename: Option<FileName>,
-        templates_dir: Option<TemplatesDir>,
+        cache: Option<Cache>,
+        schema: Option<Schema>,
+        template: Option<Template>,
     ) -> Self {
         Self {
-            cache_dir,
-            schemas_dir,
-            property_bank_filename,
-            templates_dir,
+            cache,
+            schema,
+            template,
         }
     }
 
-    /// Return the overridden cache directory, if set.
+    /// Return the overridden cache settings, if set.
     #[inline]
     #[must_use]
-    pub fn cache_dir(&self) -> Option<&CacheDir> {
-        self.cache_dir.as_ref()
+    pub fn cache(&self) -> Option<&Cache> {
+        self.cache.as_ref()
     }
 
-    /// Return the overridden schemas directory, if set.
+    /// Return the overridden schema settings, if set.
     #[inline]
     #[must_use]
-    pub fn schemas_dir(&self) -> Option<&SchemasDir> {
-        self.schemas_dir.as_ref()
+    pub fn schema(&self) -> Option<&Schema> {
+        self.schema.as_ref()
     }
 
-    /// Return the overridden property bank filename, if set.
+    /// Return the overridden template settings, if set.
     #[inline]
     #[must_use]
-    pub fn property_bank_filename(&self) -> Option<&FileName> {
-        self.property_bank_filename.as_ref()
-    }
-
-    /// Return the overridden templates directory, if set.
-    #[inline]
-    #[must_use]
-    pub fn templates_dir(&self) -> Option<&TemplatesDir> {
-        self.templates_dir.as_ref()
+    pub fn template(&self) -> Option<&Template> {
+        self.template.as_ref()
     }
 
     /// Validate vault filesystem configuration.
@@ -350,6 +339,15 @@ impl Paths {
     /// Returns `ConfigError` if validation fails.
     #[inline]
     pub fn validate(&self) -> Result<(), ConfigError> {
+        if let Some(cache) = self.cache.as_ref() {
+            cache.validate()?;
+        }
+        if let Some(schema) = self.schema.as_ref() {
+            schema.validate()?;
+        }
+        if let Some(template) = self.template.as_ref() {
+            template.validate()?;
+        }
         Ok(())
     }
 }
@@ -451,12 +449,10 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use super::{
-        CacheDir, ConfigError, Metadata, Paths, Vault, VaultPathKey, VaultRoot,
-    };
+    use super::{ConfigError, Metadata, Paths, Vault, VaultPathKey, VaultRoot};
     use crate::config::{
         logging::{LogLevel, Logging},
-        paths::TemplatesDir,
+        paths::RelativePath,
     };
 
     mod constructor {
@@ -514,7 +510,7 @@ mod tests {
         #[test]
         fn cache_dir_rejects_empty() {
             // GIVEN: empty cache_dir
-            let result = CacheDir::try_new(PathBuf::from(""));
+            let result = RelativePath::try_new(PathBuf::from(""));
 
             // THEN: validation fails for cache_dir
             assert!(
@@ -561,12 +557,12 @@ mod tests {
         #[test]
         fn templates_dir_rejects_absolute() {
             // GIVEN: invalid template dir (absolute)
-            let result = TemplatesDir::try_new(PathBuf::from("/abs"));
+            let result = RelativePath::try_new(PathBuf::from("/abs"));
 
             // THEN: it fails
             assert!(
                 result.is_err(),
-                "TemplatesDir should reject absolute paths"
+                "RelativePath should reject absolute paths"
             );
         }
     }
