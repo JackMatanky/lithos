@@ -198,6 +198,32 @@ impl FieldValue {
             serde_json::Value::Null => Self::String("".into()),
         }
     }
+
+    /// Convert this `FieldValue` to a JSON string for indexing.
+    ///
+    /// This provides a stable string representation for metadata indexes.
+    #[inline]
+    #[must_use]
+    pub fn to_json_string(&self) -> String {
+        match self {
+            Self::String(s) => format!("\"{}\"", s.replace('"', "\\\"")),
+            Self::Number(n) => n.to_string(),
+            Self::Boolean(b) => b.to_string(),
+            Self::Date(ts) => ts.to_string(),
+            Self::Array(arr) => {
+                let elements: Vec<String> =
+                    arr.iter().map(|v| v.to_json_string()).collect();
+                format!("[{}]", elements.join(", "))
+            }
+            Self::Object(obj) => {
+                let pairs: Vec<String> = obj
+                    .iter()
+                    .map(|(k, v)| format!("\"{}\": {}", k, v.to_json_string()))
+                    .collect();
+                format!("{{{}}}", pairs.join(", "))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
