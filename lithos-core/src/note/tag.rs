@@ -15,37 +15,6 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::NoteError;
 
-/// Internal wrapper for the full tag path string (without leading `#`).
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct TagPath(Box<str>);
-
-/// Internal wrapper for tag segments.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct Segments(Vec<Box<str>>);
-
 /// Represents a hierarchical tag with segments.
 ///
 /// Tags follow the format `#segment1/segment2/segment3` and are used
@@ -68,24 +37,6 @@ pub struct Tag {
     full_path: TagPath,
     /// Individual path segments.
     segments: Segments,
-}
-
-impl Deref for TagPath {
-    type Target = str;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Deref for Segments {
-    type Target = [Box<str>];
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
 }
 
 impl Tag {
@@ -145,6 +96,55 @@ impl Tag {
     #[must_use]
     pub fn segments(&self) -> &[Box<str>] {
         &self.segments.0
+    }
+}
+
+/// Internal wrapper for the full tag path string (without leading `#`).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct TagPath(Box<str>);
+
+impl Deref for TagPath {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Internal wrapper for tag segments.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct Segments(Vec<Box<str>>);
+
+impl Deref for Segments {
+    type Target = [Box<str>];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
