@@ -297,7 +297,7 @@ impl Config {
 
     /// Build global filesystem paths from merged config.
     fn make_global_filesystem(
-        fs: &raw::RawFilesystemConfig,
+        fs: &raw::RawPathsConfig,
     ) -> Result<GlobalPaths, ConfigError> {
         let schemas_dir = Self::opt_path_to_domain(
             &fs.schemas_dir,
@@ -325,7 +325,7 @@ impl Config {
 
     /// Build vault filesystem paths from merged config.
     fn make_vault_filesystem(
-        fs: &raw::RawFilesystemConfig,
+        fs: &raw::RawPathsConfig,
     ) -> Result<ResolvedVaultPaths, ConfigError> {
         let cache_dir = Self::opt_path_to_domain(
             &fs.cache_dir,
@@ -433,7 +433,7 @@ impl Config {
     ) -> Result<Self, ConfigError> {
         let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
 
-        let fs = &raw.filesystem;
+        let fs = &raw.paths;
 
         let global_filesystem = Self::make_global_filesystem(fs)?;
         let vault_filesystem = Self::make_vault_filesystem(fs)?;
@@ -1354,7 +1354,7 @@ mod tests {
         fn applies_filesystem_fields_from_raw() {
             // GIVEN: RawConfig with custom filesystem
             let raw = raw::RawConfig {
-                filesystem: raw::RawFilesystemConfig {
+                paths: raw::RawPathsConfig {
                     cache_dir: Some(".lithos-cache".to_owned()),
                     schemas_dir: Some("my-schemas".to_owned()),
                     property_bank_filename: Some("bank.json".to_owned()),
@@ -1501,7 +1501,7 @@ mod tests {
             // GIVEN: RawConfig with invalid path (absolute when should be
             // relative)
             let raw = raw::RawConfig {
-                filesystem: raw::RawFilesystemConfig {
+                paths: raw::RawPathsConfig {
                     schemas_dir: Some("/absolute/path".to_owned()),
                     ..Default::default()
                 },
