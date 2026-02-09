@@ -48,6 +48,7 @@ use criterion::{
     criterion_main,
 };
 use lithos_core::{
+    config::task::{StatusSymbol, TaskConfig},
     db::Database,
     note::{
         aggregate::Note,
@@ -55,7 +56,7 @@ use lithos_core::{
         link::{Link, Target},
         structure::{Heading, Section},
         tag::Tag,
-        task::{Task, TaskStatus},
+        task::Task,
         types::{HeadingLevel, NoteId, SourceByteOffset, SourceByteRange},
     },
 };
@@ -122,13 +123,25 @@ fn create_test_note(index: usize) -> Note {
         .expect("valid heading"),
     );
 
+    let task_config = TaskConfig::default();
+    let status = StatusSymbol::try_new(' ').expect("valid status");
     note.add_task(
-        Task::new("Do something".to_owned(), TaskStatus::Incomplete, 15)
-            .expect("valid task"),
+        Task::from_checkbox(
+            "Do something",
+            status,
+            SourceByteOffset::new(15),
+            &task_config,
+        )
+        .expect("valid task"),
     );
     note.add_task(
-        Task::new("Already done".to_owned(), TaskStatus::Complete, 16)
-            .expect("valid task"),
+        Task::from_checkbox(
+            "Already done",
+            StatusSymbol::try_new('x').expect("valid status"),
+            SourceByteOffset::new(16),
+            &task_config,
+        )
+        .expect("valid task"),
     );
 
     note.add_section(Section::new(
