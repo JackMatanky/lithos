@@ -18,338 +18,6 @@ use crate::config::task::{
     DateFieldSpec, StatusName, StatusSymbol, TaskConfig, TaskFieldSpec,
 };
 
-// Pre-compiled regexes for performance
-static METADATA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        clippy::disallowed_methods,
-        reason = "Internal regex compilation"
-    )]
-    Regex::new(r"\[([^:\]]+)::\s*([^\]]+)\]").expect("Invalid metadata regex")
-});
-
-static TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        clippy::disallowed_methods,
-        reason = "Internal regex compilation"
-    )]
-    Regex::new("#([a-zA-Z0-9_-]+)").expect("Invalid tag regex")
-});
-
-/// A timestamp representing task temporal data.
-///
-/// Wraps an `i64` Unix timestamp for semantic clarity while maintaining
-/// zero-copy compatibility with rkyv serialization.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct TaskTimestamp(i64);
-
-impl TaskTimestamp {
-    /// Creates a new `TaskTimestamp` from a Unix timestamp.
-    ///
-    /// # Arguments
-    /// * `timestamp` - Unix timestamp in seconds since epoch.
-    #[inline]
-    #[must_use]
-    pub const fn new(timestamp: i64) -> Self {
-        Self(timestamp)
-    }
-
-    /// Creates a new `TaskTimestamp` from the current time.
-    #[inline]
-    #[must_use]
-    pub fn now() -> Self {
-        #[expect(
-            clippy::cast_possible_wrap,
-            clippy::as_conversions,
-            reason = "Unix timestamp fits in i64 for Lithos time range"
-        )]
-        Self(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64,
-        )
-    }
-
-    /// Returns the raw Unix timestamp.
-    #[inline]
-    #[must_use]
-    pub const fn as_i64(&self) -> i64 {
-        self.0
-    }
-
-    /// Returns true if this timestamp represents a future time.
-    ///
-    /// # Arguments
-    /// * `relative_to` - Optional reference time; defaults to now.
-    #[inline]
-    #[must_use]
-    pub fn is_future(&self, relative_to: Option<Self>) -> bool {
-        let reference = relative_to.unwrap_or_else(Self::now);
-        self.0 > reference.0
-    }
-
-    /// Returns true if this timestamp represents a past time.
-    ///
-    /// # Arguments
-    /// * `relative_to` - Optional reference time; defaults to now.
-    #[inline]
-    #[must_use]
-    pub fn is_past(&self, relative_to: Option<Self>) -> bool {
-        let reference = relative_to.unwrap_or_else(Self::now);
-        self.0 < reference.0
-    }
-
-    /// Returns the duration from now in seconds (positive for future, negative
-    /// for past).
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Timestamp arithmetic is safe"
-    )]
-    pub fn seconds_from_now(&self) -> i64 {
-        self.0 - Self::now().0
-    }
-
-    /// Returns the duration between two timestamps.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Timestamp arithmetic is safe"
-    )]
-    pub const fn duration_from(&self, other: Self) -> i64 {
-        self.0 - other.0
-    }
-
-    /// Returns true if this timestamp is within the specified duration from
-    /// now.
-    ///
-    /// # Arguments
-    /// * `duration_seconds` - Duration window in seconds.
-    /// * `relative_to` - Optional reference time; defaults to now.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Timestamp arithmetic is safe"
-    )]
-    pub fn is_within(
-        &self,
-        duration_seconds: i64,
-        relative_to: Option<Self>,
-    ) -> bool {
-        let reference = relative_to.unwrap_or_else(Self::now);
-        let diff = (self.0 - reference.0).abs();
-        diff <= duration_seconds
-    }
-}
-
-impl Default for TaskTimestamp {
-    #[inline]
-    fn default() -> Self {
-        Self::now()
-    }
-}
-
-impl From<i64> for TaskTimestamp {
-    #[inline]
-    fn from(timestamp: i64) -> Self {
-        Self(timestamp)
-    }
-}
-
-impl From<TaskTimestamp> for i64 {
-    #[inline]
-    fn from(timestamp: TaskTimestamp) -> i64 {
-        timestamp.0
-    }
-}
-
-impl From<std::time::SystemTime> for TaskTimestamp {
-    #[inline]
-    fn from(time: std::time::SystemTime) -> Self {
-        #[expect(
-            clippy::cast_possible_wrap,
-            clippy::as_conversions,
-            reason = "Unix timestamp fits in i64 for Lithos time range"
-        )]
-        Self(
-            time.duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64,
-        )
-    }
-}
-
-impl From<TaskTimestamp> for std::time::SystemTime {
-    #[inline]
-    fn from(timestamp: TaskTimestamp) -> Self {
-        #[expect(
-            clippy::cast_sign_loss,
-            clippy::as_conversions,
-            reason = "Timestamp is non-negative for Duration conversion"
-        )]
-        std::time::UNIX_EPOCH
-            .checked_add(std::time::Duration::from_secs(timestamp.0 as u64))
-            .unwrap_or(std::time::UNIX_EPOCH)
-    }
-}
-
-/// Unique identifier for a Task (UUID v7).
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct TaskId(Uuid);
-
-impl TaskId {
-    /// Creates a new `TaskId` (UUID v7).
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
-}
-
-impl Default for TaskId {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl From<Uuid> for TaskId {
-    #[inline]
-    fn from(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-}
-
-impl From<TaskId> for Uuid {
-    #[inline]
-    fn from(id: TaskId) -> Uuid {
-        id.0
-    }
-}
-
-/// Task metadata fields.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct TaskMetadata {
-    fields: HashMap<Box<str>, FieldValue>,
-}
-
-impl TaskMetadata {
-    /// Creates an empty metadata map.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            fields: HashMap::new(),
-        }
-    }
-
-    /// Inserts a metadata field.
-    #[inline]
-    pub fn insert(&mut self, field: Box<str>, value: FieldValue) {
-        self.fields.insert(field, value);
-    }
-
-    /// Returns a field value by name.
-    #[inline]
-    #[must_use]
-    pub fn get(&self, field: &str) -> Option<&FieldValue> {
-        self.fields.get(field)
-    }
-
-    /// Returns a string field value if present.
-    #[inline]
-    #[must_use]
-    pub fn get_string(&self, field: &str) -> Option<&str> {
-        self.get(field)?.as_str()
-    }
-
-    /// Returns a numeric field value if present.
-    #[inline]
-    #[must_use]
-    pub fn get_number(&self, field: &str) -> Option<f64> {
-        self.get(field)?.as_number()
-    }
-
-    /// Returns task priority if set.
-    #[inline]
-    #[must_use]
-    pub fn priority(&self) -> Option<f64> {
-        self.get_number("priority")
-    }
-
-    /// Returns task project if set.
-    #[inline]
-    #[must_use]
-    pub fn project(&self) -> Option<&str> {
-        self.get_string("project")
-    }
-
-    /// Returns task area if set.
-    #[inline]
-    #[must_use]
-    pub fn area(&self) -> Option<&str> {
-        self.get_string("area")
-    }
-
-    /// Returns all metadata fields.
-    #[inline]
-    #[must_use]
-    pub const fn fields(&self) -> &HashMap<Box<str>, FieldValue> {
-        &self.fields
-    }
-}
-
-impl Default for TaskMetadata {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Task entity within a Note.
 #[derive(
     Debug,
@@ -374,13 +42,6 @@ pub struct Task {
     reminder_at: Option<TaskTimestamp>,
     completed_at: Option<TaskTimestamp>,
 }
-
-type TemporalFields = (
-    Option<TaskTimestamp>,
-    Option<TaskTimestamp>,
-    Option<TaskTimestamp>,
-    Option<TaskTimestamp>,
-);
 
 impl Task {
     /// Creates a new Task from checkbox text and metadata.
@@ -654,6 +315,345 @@ impl Task {
                 .is_some_and(|spec| spec.keyword().as_str() == keyword)
     }
 }
+
+/// Unique identifier for a Task (UUID v7).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct TaskId(Uuid);
+
+impl TaskId {
+    /// Creates a new `TaskId` (UUID v7).
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+}
+
+impl Default for TaskId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<Uuid> for TaskId {
+    #[inline]
+    fn from(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+}
+
+impl From<TaskId> for Uuid {
+    #[inline]
+    fn from(id: TaskId) -> Uuid {
+        id.0
+    }
+}
+
+/// A timestamp representing task temporal data.
+///
+/// Wraps an `i64` Unix timestamp for semantic clarity while maintaining
+/// zero-copy compatibility with rkyv serialization.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct TaskTimestamp(i64);
+
+impl TaskTimestamp {
+    /// Creates a new `TaskTimestamp` from a Unix timestamp.
+    ///
+    /// # Arguments
+    /// * `timestamp` - Unix timestamp in seconds since epoch.
+    #[inline]
+    #[must_use]
+    pub const fn new(timestamp: i64) -> Self {
+        Self(timestamp)
+    }
+
+    /// Creates a new `TaskTimestamp` from the current time.
+    #[inline]
+    #[must_use]
+    pub fn now() -> Self {
+        #[expect(
+            clippy::cast_possible_wrap,
+            clippy::as_conversions,
+            reason = "Unix timestamp fits in i64 for Lithos time range"
+        )]
+        Self(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64,
+        )
+    }
+
+    /// Returns the raw Unix timestamp.
+    #[inline]
+    #[must_use]
+    pub const fn as_i64(&self) -> i64 {
+        self.0
+    }
+
+    /// Returns true if this timestamp represents a future time.
+    ///
+    /// # Arguments
+    /// * `relative_to` - Optional reference time; defaults to now.
+    #[inline]
+    #[must_use]
+    pub fn is_future(&self, relative_to: Option<Self>) -> bool {
+        let reference = relative_to.unwrap_or_else(Self::now);
+        self.0 > reference.0
+    }
+
+    /// Returns true if this timestamp represents a past time.
+    ///
+    /// # Arguments
+    /// * `relative_to` - Optional reference time; defaults to now.
+    #[inline]
+    #[must_use]
+    pub fn is_past(&self, relative_to: Option<Self>) -> bool {
+        let reference = relative_to.unwrap_or_else(Self::now);
+        self.0 < reference.0
+    }
+
+    /// Returns the duration from now in seconds (positive for future, negative
+    /// for past).
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Timestamp arithmetic is safe"
+    )]
+    pub fn seconds_from_now(&self) -> i64 {
+        self.0 - Self::now().0
+    }
+
+    /// Returns the duration between two timestamps.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Timestamp arithmetic is safe"
+    )]
+    pub const fn duration_from(&self, other: Self) -> i64 {
+        self.0 - other.0
+    }
+
+    /// Returns true if this timestamp is within the specified duration from
+    /// now.
+    ///
+    /// # Arguments
+    /// * `duration_seconds` - Duration window in seconds.
+    /// * `relative_to` - Optional reference time; defaults to now.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Timestamp arithmetic is safe"
+    )]
+    pub fn is_within(
+        &self,
+        duration_seconds: i64,
+        relative_to: Option<Self>,
+    ) -> bool {
+        let reference = relative_to.unwrap_or_else(Self::now);
+        let diff = (self.0 - reference.0).abs();
+        diff <= duration_seconds
+    }
+}
+
+impl Default for TaskTimestamp {
+    #[inline]
+    fn default() -> Self {
+        Self::now()
+    }
+}
+
+impl From<i64> for TaskTimestamp {
+    #[inline]
+    fn from(timestamp: i64) -> Self {
+        Self(timestamp)
+    }
+}
+
+impl From<TaskTimestamp> for i64 {
+    #[inline]
+    fn from(timestamp: TaskTimestamp) -> i64 {
+        timestamp.0
+    }
+}
+
+impl From<std::time::SystemTime> for TaskTimestamp {
+    #[inline]
+    fn from(time: std::time::SystemTime) -> Self {
+        #[expect(
+            clippy::cast_possible_wrap,
+            clippy::as_conversions,
+            reason = "Unix timestamp fits in i64 for Lithos time range"
+        )]
+        Self(
+            time.duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64,
+        )
+    }
+}
+
+impl From<TaskTimestamp> for std::time::SystemTime {
+    #[inline]
+    fn from(timestamp: TaskTimestamp) -> Self {
+        #[expect(
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "Timestamp is non-negative for Duration conversion"
+        )]
+        std::time::UNIX_EPOCH
+            .checked_add(std::time::Duration::from_secs(timestamp.0 as u64))
+            .unwrap_or(std::time::UNIX_EPOCH)
+    }
+}
+
+/// Task metadata fields.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct TaskMetadata {
+    fields: HashMap<Box<str>, FieldValue>,
+}
+
+impl TaskMetadata {
+    /// Creates an empty metadata map.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            fields: HashMap::new(),
+        }
+    }
+
+    /// Inserts a metadata field.
+    #[inline]
+    pub fn insert(&mut self, field: Box<str>, value: FieldValue) {
+        self.fields.insert(field, value);
+    }
+
+    /// Returns a field value by name.
+    #[inline]
+    #[must_use]
+    pub fn get(&self, field: &str) -> Option<&FieldValue> {
+        self.fields.get(field)
+    }
+
+    /// Returns a string field value if present.
+    #[inline]
+    #[must_use]
+    pub fn get_string(&self, field: &str) -> Option<&str> {
+        self.get(field)?.as_str()
+    }
+
+    /// Returns a numeric field value if present.
+    #[inline]
+    #[must_use]
+    pub fn get_number(&self, field: &str) -> Option<f64> {
+        self.get(field)?.as_number()
+    }
+
+    /// Returns task priority if set.
+    #[inline]
+    #[must_use]
+    pub fn priority(&self) -> Option<f64> {
+        self.get_number("priority")
+    }
+
+    /// Returns task project if set.
+    #[inline]
+    #[must_use]
+    pub fn project(&self) -> Option<&str> {
+        self.get_string("project")
+    }
+
+    /// Returns task area if set.
+    #[inline]
+    #[must_use]
+    pub fn area(&self) -> Option<&str> {
+        self.get_string("area")
+    }
+
+    /// Returns all metadata fields.
+    #[inline]
+    #[must_use]
+    pub const fn fields(&self) -> &HashMap<Box<str>, FieldValue> {
+        &self.fields
+    }
+}
+
+impl Default for TaskMetadata {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+type TemporalFields = (
+    Option<TaskTimestamp>,
+    Option<TaskTimestamp>,
+    Option<TaskTimestamp>,
+    Option<TaskTimestamp>,
+);
+
+// Pre-compiled regexes for performance
+static METADATA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        clippy::disallowed_methods,
+        reason = "Internal regex compilation"
+    )]
+    Regex::new(r"\[([^:\]]+)::\s*([^\]]+)\]").expect("Invalid metadata regex")
+});
+
+static TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        clippy::disallowed_methods,
+        reason = "Internal regex compilation"
+    )]
+    Regex::new("#([a-zA-Z0-9_-]+)").expect("Invalid tag regex")
+});
 
 #[expect(
     clippy::pattern_type_mismatch,
