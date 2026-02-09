@@ -19,6 +19,8 @@ pub mod frontmatter;
 pub mod link;
 /// List subentities for Note aggregate.
 pub mod list;
+/// Markdown parsing adapter for lists and tasks.
+pub mod parser;
 /// Note ports for CQRS.
 pub mod ports;
 /// Note query implementations (CQRS read operations).
