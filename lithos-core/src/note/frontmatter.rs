@@ -3,7 +3,6 @@
 //! Handles the parsing, validation, and retrieval of structured metadata
 //! stored at the beginning of markdown files.
 
-//! Frontmatter domain entities and metadata extraction.
 #![allow(
     missing_docs,
     clippy::exhaustive_structs,
@@ -65,11 +64,12 @@ pub struct Frontmatter {
 }
 
 impl Frontmatter {
-    /// Creates a new Frontmatter from field map.
+    /// Creates a new [`Frontmatter`] instance from a field map.
     ///
     /// # Errors
     ///
-    /// Currently infallible, but returns Result for future validation.
+    /// Currently infallible, but returns [`Result`] for future structural
+    /// validation.
     #[inline]
     pub fn new(
         fields: HashMap<Box<str>, FieldValue>,
@@ -102,7 +102,8 @@ impl Frontmatter {
     ///
     /// # Errors
     ///
-    /// Returns an error if the key exists but cannot be converted to `T`.
+    /// Returns a [`FrontmatterError`] if the key exists but cannot be converted
+    /// to `T`.
     #[inline]
     pub fn try_get<T: FromFieldValue>(
         &self,
@@ -120,7 +121,7 @@ impl Frontmatter {
     ///
     /// # Errors
     ///
-    /// Returns `FrontmatterError::Missing` if the key is absent.
+    /// Returns [`FrontmatterError::Missing`] if the key is absent.
     #[inline]
     pub fn try_get_required<T: FromFieldValue>(
         &self,
@@ -131,7 +132,7 @@ impl Frontmatter {
         })
     }
 
-    /// Strict string-array extraction.
+    /// Performs strict string-array extraction.
     ///
     /// This fails if an array contains any non-string elements.
     ///
@@ -154,7 +155,8 @@ impl Frontmatter {
     ///
     /// # Errors
     ///
-    /// Returns an error if the key exists but cannot be converted to `T`.
+    /// Returns a [`FrontmatterError`] if the key exists but cannot be converted
+    /// to `T`.
     #[inline]
     pub fn try_get_ref<'frontmatter, T>(
         &'frontmatter self,
@@ -175,7 +177,7 @@ impl Frontmatter {
     ///
     /// # Errors
     ///
-    /// Returns `FrontmatterError::Missing` if the key is absent.
+    /// Returns [`FrontmatterError::Missing`] if the key is absent.
     #[inline]
     pub fn try_get_required_ref<'frontmatter, T>(
         &'frontmatter self,
@@ -259,6 +261,16 @@ impl Frontmatter {
 /// This is intentionally a *local* trait (instead of `TryFrom<&FieldValue>`) to
 /// avoid Rust's orphan rules (we can't implement foreign traits for foreign
 /// types like `bool`, `f64`, `String`, etc.).
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::frontmatter::FromFieldValue;
+/// # use lithos_core::note::value::FieldValue;
+/// let val = FieldValue::Boolean(true);
+/// let result = bool::from_value(&val).unwrap();
+/// assert!(result);
+/// ```
 pub trait FromFieldValue: Sized {
     /// Attempts to extract a value of type `Self` from a [`FieldValue`].
     ///
@@ -273,6 +285,16 @@ pub trait FromFieldValue: Sized {
 /// Fallible, strict conversions from a borrowed [`FieldValue`].
 ///
 /// This exists to support *non-owning* access patterns like `&str` and slices.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::frontmatter::FromFieldValueRef;
+/// # use lithos_core::note::value::FieldValue;
+/// let val = FieldValue::String("borrowed".into());
+/// let result = <&str>::from_value_ref(&val).unwrap();
+/// assert_eq!(result, "borrowed");
+/// ```
 pub trait FromFieldValueRef<'frontmatter>: Sized {
     /// Attempts to extract a value of type `Self` from a borrowed
     /// [`FieldValue`].
