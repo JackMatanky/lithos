@@ -15,8 +15,8 @@ use crate::db::Database;
 
 /// Query implementation for Note read operations.
 ///
-/// Implements the [`ports::Query`] trait using the [`Database`] layer.
-/// This struct provides high-performance, zero-copy read access to notes
+/// Implements the [`crate::note::ports::Query`] trait using the [`Database`]
+/// layer. This struct provides high-performance, zero-copy read access to notes
 /// and tasks, utilizing specialized database indexes for rapid filtering.
 ///
 /// # Examples

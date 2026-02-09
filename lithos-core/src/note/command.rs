@@ -18,10 +18,10 @@ use crate::db::Database;
 
 /// Command implementation for Note write operations.
 ///
-/// Implements the [`ports::Command`] trait using the [`Database`] layer.
-/// This struct handles the atomic creation, update, and deletion of notes,
-/// ensuring that all secondary indexes remain consistent with the primary
-/// note data.
+/// Implements the [`crate::note::ports::Command`] trait using the [`Database`]
+/// layer. This struct handles the atomic creation, update, and deletion of
+/// notes, ensuring that all secondary indexes remain consistent with the
+/// primary note data.
 ///
 /// # Examples
 ///

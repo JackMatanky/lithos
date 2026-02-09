@@ -1,7 +1,7 @@
 //! Task sub-entity and temporal management.
 //!
-//! Defines the [`Task`] entity and its specialized components, including
-//! semantic timestamp handling and metadata extraction.
+//! Defines the [`crate::note::task::Task`] entity and its specialized
+//! components, including semantic timestamp handling and metadata extraction.
 
 //! Task subentity for Note aggregate.
 #![allow(

@@ -10,7 +10,7 @@ use super::value::FieldValueType;
 /// Note-related errors.
 ///
 /// This enum covers domain-level errors related to parsing, validation,
-/// and consistency of the [`aggregate::Note`] aggregate.
+/// and consistency of the [`crate::note::aggregate::Note`] aggregate.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum NoteError {

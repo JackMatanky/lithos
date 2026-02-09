@@ -9,9 +9,8 @@
 //!
 //! - **Obsidian Compatibility**: Full support for wiki-links, frontmatter, and
 //!   hierarchical tags.
-//! - **Port-Based CQRS**: Explicit separation of read
-//!   ([`query::Query`][query::Query]) and write
-//!   ([`command::Command`][command::Command]) operations.
+//! - **Port-Based CQRS**: Explicit separation of read ([`query::Query`]) and
+//!   write ([`command::Command`]) operations.
 //! - **Zero-Copy Serialization**: Optimized performance using `rkyv` for
 //!   database storage and retrieval.
 //! - **Rich Task Modeling**: Integrated task management with 7 specialized

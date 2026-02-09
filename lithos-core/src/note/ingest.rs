@@ -1,7 +1,7 @@
 //! Orchestration helpers for ingesting raw content into the Note domain.
 //!
-//! Provides high-level functions to populate a [`Note`] aggregate from
-//! external sources or raw markdown.
+//! Provides high-level functions to populate a [`crate::note::aggregate::Note`]
+//! aggregate from external sources or raw markdown.
 
 //! Markdown ingestion helpers for the note context.
 //!

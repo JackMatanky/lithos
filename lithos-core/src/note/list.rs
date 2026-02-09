@@ -104,7 +104,8 @@ impl List {
 /// Single item in a markdown list.
 ///
 /// Items can be plain text or checkbox items. Checkbox items may be
-/// promoted to [`Task`] entities while remaining part of their parent list.
+/// promoted to [`crate::note::task::Task`] entities while remaining part of
+/// their parent list.
 ///
 /// # Examples
 ///
