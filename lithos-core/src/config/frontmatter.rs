@@ -134,15 +134,6 @@ impl Frontmatter {
     pub const fn title_key(&self) -> &FrontmatterKey {
         &self.title_key
     }
-
-    /// Validate frontmatter configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if any key is empty.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        Ok(())
-    }
 }
 
 impl Default for Frontmatter {

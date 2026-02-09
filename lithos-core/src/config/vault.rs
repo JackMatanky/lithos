@@ -250,15 +250,6 @@ impl Metadata {
     pub fn version(&self) -> &str {
         &self.version
     }
-
-    /// Validate vault metadata.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        Ok(())
-    }
 }
 
 impl Default for Metadata {
@@ -331,24 +322,6 @@ impl Paths {
     #[must_use]
     pub fn template(&self) -> Option<&Template> {
         self.template.as_ref()
-    }
-
-    /// Validate vault filesystem configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        if let Some(cache) = self.cache.as_ref() {
-            cache.validate()?;
-        }
-        if let Some(schema) = self.schema.as_ref() {
-            schema.validate()?;
-        }
-        if let Some(template) = self.template.as_ref() {
-            template.validate()?;
-        }
-        Ok(())
     }
 }
 
@@ -537,22 +510,6 @@ mod tests {
 
     mod validation {
         use super::*;
-
-        #[test]
-        fn paths_passes_with_defaults() {
-            // GIVEN: default filesystem config
-            let filesystem = Paths::default();
-
-            // WHEN: validating
-            let result = filesystem.validate();
-
-            // THEN: it succeeds
-            assert!(
-                result.is_ok(),
-                "Validation should succeed, but got: {:?}",
-                result.err()
-            );
-        }
 
         #[test]
         fn templates_dir_rejects_absolute() {

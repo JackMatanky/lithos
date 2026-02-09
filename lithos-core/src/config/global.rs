@@ -8,11 +8,6 @@
     clippy::exhaustive_enums,
     reason = "rkyv generates exhaustive archived enums"
 )]
-#![expect(
-    clippy::pattern_type_mismatch,
-    reason = "Matching on &self with TrustedVaults enum - rust auto-borrows \
-              fields"
-)]
 
 use std::{collections::HashMap, path::PathBuf};
 
@@ -77,7 +72,7 @@ pub struct Paths {
     template: Template,
 }
 
-/// Trusted vaults configuration supporting list or map format.
+/// Trusted vaults configuration supporting list or format.
 #[derive(
     Debug,
     Clone,
@@ -140,6 +135,7 @@ pub struct TrustedVaultMap(
     Clone,
     PartialEq,
     Eq,
+    Hash,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -248,65 +244,6 @@ impl Paths {
     pub const fn template(&self) -> &Template {
         &self.template
     }
-
-    #[inline]
-    /// Validate global filesystem configuration.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError`] if paths are invalid.
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        self.schema.validate()?;
-        self.template.validate()?;
-        Ok(())
-    }
-}
-
-impl TrustedVaults {
-    #[inline]
-    /// Validate trusted vaults configuration.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError`] if formatting is invalid.
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        match self {
-            Self::List(list) => list.validate(),
-            Self::Map(map) => map.validate(),
-        }
-    }
-}
-
-impl TrustedVaultList {
-    #[inline]
-    /// Validate trusted vault list.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError`] if list is empty.
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.0.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "trusted_vaults".to_owned().into(),
-                message: "list cannot be empty".to_owned().into(),
-            });
-        }
-        Ok(())
-    }
-}
-
-impl TrustedVaultMap {
-    #[inline]
-    /// Validate trusted vault map.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError`] if map is empty.
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.0.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "trusted_vaults".to_owned().into(),
-                message: "map cannot be empty".to_owned().into(),
-            });
-        }
-        Ok(())
-    }
 }
 
 impl TrustedVaultPath {
@@ -366,6 +303,12 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
     fn try_from(raw: RawTrustedVaults) -> Result<Self, ConfigError> {
         match raw {
             RawTrustedVaults::List(list) => {
+                if list.is_empty() {
+                    return Err(ConfigError::ValidationFailed {
+                        field: "trusted_vaults".to_owned().into(),
+                        message: "list cannot be empty".to_owned().into(),
+                    });
+                }
                 let paths = list
                     .into_iter()
                     .map(TrustedVaultPath::try_from)
@@ -373,6 +316,12 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
                 Ok(Self::List(TrustedVaultList(paths)))
             }
             RawTrustedVaults::Map(map) => {
+                if map.is_empty() {
+                    return Err(ConfigError::ValidationFailed {
+                        field: "trusted_vaults".to_owned().into(),
+                        message: "map cannot be empty".to_owned().into(),
+                    });
+                }
                 let paths = map
                     .into_iter()
                     .map(|(k, v)| {
@@ -386,25 +335,15 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test modules have relaxed rules"
+)]
 mod tests {
-    mod fixtures {
-        use std::path::PathBuf;
-
-        use super::super::TrustedVaultPath;
-
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "expect is permitted in test setup"
-        )]
-        pub fn trusted_vault_path(path: &str) -> TrustedVaultPath {
-            TrustedVaultPath::try_new(PathBuf::from(path)).expect("valid path")
-        }
-    }
-
     mod constructor {
         use std::path::PathBuf;
 
-        use super::*;
+        use super::super::*;
 
         #[test]
         fn trusted_vault_path_rejects_empty() {
@@ -443,82 +382,6 @@ mod tests {
         }
     }
 
-    mod validation {
-        use super::*;
-
-        #[test]
-        fn trusted_vaults_accepts_list_only() {
-            // GIVEN: trusted vaults configured with list format
-            let trusted = TrustedVaults::List(TrustedVaultList(vec![
-                fixtures::trusted_vault_path("/vaults/alpha"),
-            ]));
-
-            // WHEN: validating the trusted vault configuration
-            let result = trusted.validate();
-
-            // THEN: validation succeeds
-            assert!(
-                result.is_ok(),
-                "Validation should succeed, but got: {:?}",
-                result.err()
-            );
-        }
-
-        #[test]
-        fn trusted_vaults_accepts_map_only() {
-            // GIVEN: trusted vaults configured with map format
-            let trusted = TrustedVaults::Map(TrustedVaultMap(
-                [(
-                    Box::from("alpha"),
-                    fixtures::trusted_vault_path("/vaults/alpha"),
-                )]
-                .into_iter()
-                .collect(),
-            ));
-
-            // WHEN: validating the trusted vault configuration
-            let result = trusted.validate();
-
-            // THEN: validation succeeds
-            assert!(
-                result.is_ok(),
-                "Validation should succeed, but got: {:?}",
-                result.err()
-            );
-        }
-
-        #[test]
-        fn trusted_vaults_rejects_empty_map() {
-            // GIVEN: trusted vaults configured with empty map format
-            let trusted = TrustedVaults::Map(TrustedVaultMap(HashMap::new()));
-
-            // WHEN: validating the trusted vault configuration
-            let result = trusted.validate();
-
-            // THEN: validation fails because map is empty
-            assert!(
-                result.is_err(),
-                "Expected validation failure when map is empty"
-            );
-        }
-
-        #[test]
-        fn trusted_vaults_rejects_no_entries() {
-            // GIVEN: trusted vaults configured with no list or map
-            let trusted = TrustedVaults::List(TrustedVaultList(Vec::new()));
-
-            // WHEN: validating the trusted vault configuration
-            let result = trusted.validate();
-
-            // THEN: validation fails because no format is provided
-            assert!(
-                result.is_err(),
-                "Expected validation failure when no trusted vaults are \
-                 provided"
-            );
-        }
-    }
-
     mod defaults {
         use super::super::*;
 
@@ -554,9 +417,78 @@ mod tests {
         }
     }
 
-    use std::collections::HashMap;
+    mod fixtures {
+        use std::path::PathBuf;
 
-    use super::{
-        TrustedVaultList, TrustedVaultMap, TrustedVaultPath, TrustedVaults,
-    };
+        use super::super::*;
+
+        #[expect(dead_code, reason = "Used in commented out tests")]
+        pub fn trusted_vault_path(path: &str) -> TrustedVaultPath {
+            TrustedVaultPath::try_new(PathBuf::from(path)).expect("valid path")
+        }
+    }
+
+    mod validation {
+        use std::collections::HashMap;
+
+        use super::super::*;
+        use crate::config::raw::RawTrustedVaults;
+
+        #[test]
+        fn trusted_vaults_accepts_list_only() {
+            // GIVEN: trusted vaults configured with list format
+            let raw = RawTrustedVaults::List(vec!["/vaults/alpha".to_owned()]);
+
+            // WHEN: creating trusted vaults
+            let result = TrustedVaults::try_from(raw);
+
+            // THEN: it succeeds
+            result.unwrap();
+        }
+
+        #[test]
+        fn trusted_vaults_accepts_map_only() {
+            // GIVEN: trusted vaults configured with map format
+            let mut map = HashMap::new();
+            map.insert("alpha".to_owned(), "/vaults/alpha".to_owned());
+            let raw = RawTrustedVaults::Map(map);
+
+            // WHEN: creating trusted vaults
+            let result = TrustedVaults::try_from(raw);
+
+            // THEN: it succeeds
+            result.unwrap();
+        }
+
+        #[test]
+        fn trusted_vaults_rejects_empty_map() {
+            // GIVEN: trusted vaults configured with empty map format
+            let raw = RawTrustedVaults::Map(HashMap::new());
+
+            // WHEN: creating trusted vaults
+            let result = TrustedVaults::try_from(raw);
+
+            // THEN: validation fails because map is empty
+            assert!(
+                result.is_err(),
+                "Expected validation failure when map is empty"
+            );
+        }
+
+        #[test]
+        fn trusted_vaults_rejects_no_entries() {
+            // GIVEN: trusted vaults configured with no list or map
+            let raw = RawTrustedVaults::List(Vec::new());
+
+            // WHEN: creating trusted vaults
+            let result = TrustedVaults::try_from(raw);
+
+            // THEN: validation fails because list is empty
+            assert!(
+                result.is_err(),
+                "Expected validation failure when no trusted vaults are \
+                 provided"
+            );
+        }
+    }
 }
