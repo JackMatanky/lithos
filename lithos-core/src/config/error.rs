@@ -120,13 +120,6 @@ pub enum ConfigCommandError {
     Ingest(#[from] Box<ConfigIngestError>),
 }
 
-impl From<ConfigIngestError> for ConfigCommandError {
-    #[inline]
-    fn from(error: ConfigIngestError) -> Self {
-        Self::Ingest(Box::new(error))
-    }
-}
-
 /// Errors returned by config query operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -146,6 +139,13 @@ pub enum ConfigIngestError {
     /// Figment provider or extraction error.
     #[error("Config ingestion failed: {0}")]
     Figment(Box<figment::Error>),
+}
+
+impl From<ConfigIngestError> for ConfigCommandError {
+    #[inline]
+    fn from(error: ConfigIngestError) -> Self {
+        Self::Ingest(Box::new(error))
+    }
 }
 
 impl From<figment::Error> for ConfigIngestError {
