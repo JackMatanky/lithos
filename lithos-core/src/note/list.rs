@@ -1,3 +1,8 @@
+//! Markdown list and list item entities.
+//!
+//! Models ordered and unordered lists, including checkbox items that
+//! can be promoted to domain-level tasks.
+
 //! List subentities for the Note aggregate.
 #![allow(
     missing_docs,

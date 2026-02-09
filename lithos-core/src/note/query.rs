@@ -1,3 +1,8 @@
+//! Concrete implementation of the [`ports::Query`] trait.
+//!
+//! Provides high-performance, zero-copy read operations for notes and tasks,
+//! utilizing specialized database indexes.
+
 //! Note query implementations (CQRS read operations).
 //!
 //! This module implements the Query port trait for Note read operations,

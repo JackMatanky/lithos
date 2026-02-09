@@ -1,3 +1,9 @@
+//! Note aggregate root and primary domain entity.
+//!
+//! This module defines the [`Note`] aggregate, which serves as the central
+//! coordination point for all note-related data including links, tags, and
+//! tasks.
+
 //! Note aggregate root and core domain entities.
 //!
 //! The Note aggregate represents an Obsidian-compatible markdown note and owns

@@ -1,3 +1,5 @@
+//! Shared source-related primitives for the Note context.
+
 //! Shared domain types for the Note context.
 #![allow(
     clippy::exhaustive_structs,

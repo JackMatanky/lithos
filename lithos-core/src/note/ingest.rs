@@ -1,3 +1,8 @@
+//! Orchestration helpers for ingesting raw content into the Note domain.
+//!
+//! Provides high-level functions to populate a [`Note`] aggregate from
+//! external sources or raw markdown.
+
 //! Markdown ingestion helpers for the note context.
 //!
 //! Keeps adapter-facing parsing orchestration out of the core aggregate.

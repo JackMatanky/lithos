@@ -1,7 +1,50 @@
-//! Note bounded context module.
+//! Note bounded context for markdown-based document modeling and persistence.
 //!
-//! This module contains all entities, value objects, and logic related to the
-//! Note aggregate and its subentities in the domain layer.
+//! This module provides the core domain entities, value objects, and ports
+//! required to model, parse, and persist Obsidian-compatible markdown notes.
+//! It follows a Port-Based CQRS architecture, isolating the business logic
+//! from the underlying storage layer.
+//!
+//! # Features
+//!
+//! - **Obsidian Compatibility**: Full support for wiki-links, frontmatter, and
+//!   hierarchical tags.
+//! - **Port-Based CQRS**: Explicit separation of read
+//!   ([`query::Query`][query::Query]) and write
+//!   ([`command::Command`][command::Command]) operations.
+//! - **Zero-Copy Serialization**: Optimized performance using `rkyv` for
+//!   database storage and retrieval.
+//! - **Rich Task Modeling**: Integrated task management with 7 specialized
+//!   indexes for efficient querying.
+//!
+//! # Usage
+//!
+//! ```
+//! # use lithos_core::note::{aggregate::{Note, NoteId}, tag::Tag};
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Create a new note identity and path
+//! let id = NoteId::new();
+//! let path = "projects/lithos.md".to_string();
+//!
+//! // Construct the aggregate root
+//! let mut note = Note::new(id, path)?;
+//!
+//! // Add domain components
+//! note.add_tag(Tag::new("#research")?);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Layout
+//!
+//! The Note context is organized around the [`aggregate`] root:
+//!
+//! - [`aggregate`] - The [`aggregate::Note`] root and primary domain entities.
+//! - [`ports`] - Command and Query trait definitions for CQRS.
+//! - [`command`] & [`query`] - Concrete implementations of the CQRS ports.
+//! - [`parser`] & [`ingest`] - Markdown parsing and ingestion adapters.
+//! - [`task`], [`tag`], [`link`], [`list`] - Sub-entities owned by the
+//!   [`aggregate::Note`].
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 

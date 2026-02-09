@@ -1,3 +1,5 @@
+//! Dynamic field value primitive for metadata and frontmatter.
+
 //! Shared value primitive for note metadata (frontmatter and task metadata).
 #![allow(
     missing_docs,

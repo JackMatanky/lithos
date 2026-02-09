@@ -1,3 +1,8 @@
+//! Concrete implementation of the [`ports::Command`] trait.
+//!
+//! Provides write operations for the Note aggregate, including creation,
+//! updates, and deletion, ensuring atomic persistence and index consistency.
+
 //! Note command implementations (CQRS write operations).
 //!
 //! This module implements the Command port trait for Note write operations,

@@ -1,3 +1,8 @@
+//! YAML/TOML metadata management for notes.
+//!
+//! Handles the parsing, validation, and retrieval of structured metadata
+//! stored at the beginning of markdown files.
+
 //! Frontmatter domain entities and metadata extraction.
 #![allow(
     missing_docs,
