@@ -10,16 +10,60 @@
 
 use super::error::ConfigError;
 
-/// Raw logging configuration (unvalidated input from config files).
-///
-/// This is a serde-only DTO that accepts flexible input from TOML/YAML/JSON.
-/// The log level is a string that will be validated during conversion to
-/// [`Logging`].
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+// ============================================================================
+// Public Domain Types (Most Important)
+// ============================================================================
+
+/// Logging configuration with validation.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
-pub struct RawLogging {
-    /// Logging verbosity level.
-    pub log_level: Option<String>,
+pub struct Logging {
+    /// Log level (debug, info, warn, error).
+    log_level: LogLevel,
+}
+
+impl Default for Logging {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            log_level: LogLevel::Info,
+        }
+    }
+}
+
+impl Logging {
+    /// Create logging configuration.
+    #[inline]
+    #[must_use]
+    pub fn new(log_level: LogLevel) -> Self {
+        Self {
+            log_level,
+        }
+    }
+
+    /// Return the log level.
+    #[inline]
+    #[must_use]
+    pub fn log_level(&self) -> LogLevel {
+        self.log_level
+    }
+
+    /// Return the log level as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn log_level_str(&self) -> &'static str {
+        self.log_level.as_str()
+    }
 }
 
 /// Logging verbosity level.
@@ -53,24 +97,6 @@ pub enum LogLevel {
     Trace,
 }
 
-/// Logging configuration with validation.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct Logging {
-    /// Log level (debug, info, warn, error).
-    log_level: LogLevel,
-}
-
 impl LogLevel {
     #[inline]
     #[must_use]
@@ -82,6 +108,34 @@ impl LogLevel {
             Self::Info => "info",
             Self::Debug => "debug",
             Self::Trace => "trace",
+        }
+    }
+}
+
+// ============================================================================
+// Input DTOs
+// ============================================================================
+
+/// Raw logging configuration (unvalidated input from config files).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[non_exhaustive]
+pub struct RawLogging {
+    /// Logging verbosity level.
+    pub log_level: Option<String>,
+}
+
+// ============================================================================
+// Standard Trait Implementations (Conversions)
+// ============================================================================
+
+impl TryFrom<RawLogging> for Logging {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(raw: RawLogging) -> Result<Self, Self::Error> {
+        match raw.log_level {
+            Some(value) => Ok(Logging::new(LogLevel::try_from(value)?)),
+            None => Ok(Logging::default()),
         }
     }
 }
@@ -116,51 +170,9 @@ impl From<LogLevel> for String {
     }
 }
 
-impl Default for Logging {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            log_level: LogLevel::Info,
-        }
-    }
-}
-
-impl Logging {
-    #[inline]
-    #[must_use]
-    /// Create logging configuration.
-    pub fn new(log_level: LogLevel) -> Self {
-        Self {
-            log_level,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the log level.
-    pub fn log_level(&self) -> LogLevel {
-        self.log_level
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the log level as a string.
-    pub fn log_level_str(&self) -> &'static str {
-        self.log_level.as_str()
-    }
-}
-
-impl TryFrom<RawLogging> for Logging {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(raw: RawLogging) -> Result<Self, Self::Error> {
-        match raw.log_level {
-            Some(value) => Ok(Logging::new(LogLevel::try_from(value)?)),
-            None => Ok(Logging::default()),
-        }
-    }
-}
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
