@@ -90,12 +90,12 @@ use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 ///
 /// ```toml
 /// # Global config
-/// [filesystem]
+/// [paths]
 /// schemas_dir = "global-schemas"
 /// templates_dir = "global-templates"
 ///
 /// # Vault config
-/// [filesystem]
+/// [paths]
 /// schemas_dir = "vault-schemas"  # Overrides global
 /// cache_dir = ".cache"            # New field
 /// # templates_dir inherited from global
@@ -103,9 +103,9 @@ use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawConfig {
-    /// Filesystem configuration (deeply mergeable across layers).
+    /// Path configuration (deeply mergeable across layers).
     #[serde(default)]
-    pub filesystem: RawFilesystemConfig,
+    pub paths: RawPathsConfig,
 
     /// Frontmatter configuration.
     pub frontmatter: Option<RawFrontmatter>,
@@ -121,14 +121,14 @@ pub struct RawConfig {
     pub trusted_vaults: Option<RawTrustedVaults>,
 }
 
-/// Filesystem configuration with optional fields for deep merge.
+/// Path configuration with optional fields for deep merge.
 ///
 /// All fields are `Option<T>` so Figment can deep-merge them across layers.
 /// This enables vault configs to override individual fields while inheriting
 /// others from global config.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct RawFilesystemConfig {
+pub struct RawPathsConfig {
     /// Cache directory (typically vault-specific).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_dir: Option<String>,
@@ -325,7 +325,7 @@ log_level = "info"
         )]
         fn raw_config_deserializes_from_toml() {
             let toml = r#"
-                [filesystem]
+                [paths]
                 schemas_dir = "custom-schemas"
                 templates_dir = "custom-templates"
 
@@ -335,11 +335,11 @@ log_level = "info"
 
             let raw: RawConfig = toml::from_str(toml).unwrap();
             assert_eq!(
-                raw.filesystem.schemas_dir.as_deref(),
+                raw.paths.schemas_dir.as_deref(),
                 Some("custom-schemas")
             );
             assert_eq!(
-                raw.filesystem.templates_dir.as_deref(),
+                raw.paths.templates_dir.as_deref(),
                 Some("custom-templates")
             );
             assert_eq!(
@@ -355,24 +355,24 @@ log_level = "info"
         )]
         fn raw_config_supports_partial_filesystem() {
             let toml = r#"
-                [filesystem]
+                [paths]
                 cache_dir = ".cache"
                 # schemas_dir omitted - will merge from lower layer
             "#;
 
             let raw: RawConfig = toml::from_str(toml).unwrap();
-            assert_eq!(raw.filesystem.cache_dir.as_deref(), Some(".cache"));
-            assert_eq!(raw.filesystem.schemas_dir, None);
+            assert_eq!(raw.paths.cache_dir.as_deref(), Some(".cache"));
+            assert_eq!(raw.paths.schemas_dir, None);
         }
 
         #[test]
         fn raw_config_defaults_to_empty() {
             let raw = RawConfig::default();
 
-            assert!(raw.filesystem.cache_dir.is_none());
-            assert!(raw.filesystem.schemas_dir.is_none());
-            assert!(raw.filesystem.property_bank_filename.is_none());
-            assert!(raw.filesystem.templates_dir.is_none());
+            assert!(raw.paths.cache_dir.is_none());
+            assert!(raw.paths.schemas_dir.is_none());
+            assert!(raw.paths.property_bank_filename.is_none());
+            assert!(raw.paths.templates_dir.is_none());
             assert!(raw.frontmatter.is_none());
             assert!(raw.logging.is_none());
             assert!(raw.task.is_none());
@@ -386,12 +386,12 @@ log_level = "info"
         )]
         fn raw_filesystem_config_all_fields_optional() {
             let toml = "
-                [filesystem]
+                [paths]
                 # All fields omitted - should deserialize successfully
             ";
 
             let raw: RawConfig = toml::from_str(toml).unwrap();
-            let fs = raw.filesystem;
+            let fs = raw.paths;
 
             assert!(fs.cache_dir.is_none());
             assert!(fs.schemas_dir.is_none());
@@ -406,7 +406,7 @@ log_level = "info"
         )]
         fn raw_config_with_all_sections() {
             let toml = r#"
-                [filesystem]
+                [paths]
                 schemas_dir = "schemas"
                 cache_dir = ".cache"
 
@@ -418,8 +418,8 @@ log_level = "info"
             "#;
 
             let raw: RawConfig = toml::from_str(toml).unwrap();
-            assert_eq!(raw.filesystem.schemas_dir.as_deref(), Some("schemas"));
-            assert_eq!(raw.filesystem.cache_dir.as_deref(), Some(".cache"));
+            assert_eq!(raw.paths.schemas_dir.as_deref(), Some("schemas"));
+            assert_eq!(raw.paths.cache_dir.as_deref(), Some(".cache"));
             assert!(raw.logging.is_some());
             assert!(raw.frontmatter.is_some());
         }
@@ -431,7 +431,7 @@ log_level = "info"
         )]
         fn raw_config_serializes_and_roundtrips() {
             let original = RawConfig {
-                filesystem: RawFilesystemConfig {
+                paths: RawPathsConfig {
                     cache_dir: Some(".cache".to_owned()),
                     schemas_dir: Some("schemas".to_owned()),
                     property_bank_filename: Some("bank.json".to_owned()),

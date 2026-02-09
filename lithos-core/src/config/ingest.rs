@@ -227,8 +227,8 @@ mod tests {
         fn filesystem_fields_merge_correctly() {
             // GIVEN: global with schemas_dir, vault with cache_dir
             let (_global_dir, global_path, vault_dir) = setup_layered_configs(
-                "[filesystem]\nschemas_dir = \"global-schemas\"\n",
-                "[filesystem]\ncache_dir = \".cache\"\n",
+                "[paths]\nschemas_dir = \"global-schemas\"\n",
+                "[paths]\ncache_dir = \".cache\"\n",
             )
             .expect("setup configs");
 
@@ -238,7 +238,7 @@ mod tests {
                     .expect("build merged raw");
 
             // THEN: both fields present (deep merge)
-            let fs = &raw.filesystem;
+            let fs = &raw.paths;
             assert_eq!(
                 fs.schemas_dir.as_deref(),
                 Some("global-schemas"),
@@ -260,8 +260,8 @@ mod tests {
             // GIVEN: global with templates_dir = global-templates, vault with
             // vault-templates
             let (_global_dir, global_path, vault_dir) = setup_layered_configs(
-                "[filesystem]\ntemplates_dir = \"global-templates\"\n",
-                "[filesystem]\ntemplates_dir = \"vault-templates\"\n",
+                "[paths]\ntemplates_dir = \"global-templates\"\n",
+                "[paths]\ntemplates_dir = \"vault-templates\"\n",
             )
             .expect("setup configs");
 
@@ -272,7 +272,7 @@ mod tests {
 
             // THEN: vault value wins
             assert_eq!(
-                raw.filesystem.templates_dir.as_deref(),
+                raw.paths.templates_dir.as_deref(),
                 Some("vault-templates"),
                 "Vault filesystem field should override global"
             );
