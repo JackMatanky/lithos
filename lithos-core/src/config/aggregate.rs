@@ -29,12 +29,12 @@ use super::{
     error::ConfigError,
     events::{ConfigUpdated, Events},
     frontmatter::Frontmatter,
-    global::{Global, Paths as GlobalPaths},
+    global::Paths as GlobalPaths,
     logging::Logging,
     paths::{CacheDir, FileName, Schema, SchemasDir, Template, TemplatesDir},
     raw,
     task::TaskConfig,
-    vault::{Metadata, Vault, VaultId, VaultRoot},
+    vault::{Metadata, VaultId, VaultRoot},
 };
 
 /// Resolved vault filesystem configuration (merged).
@@ -239,133 +239,6 @@ impl Config {
         self.pending_events.push(event);
     }
 
-    /// Build a new Config by combining optional Global and Vault configurations
-    /// with domain constraints.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
-    /// Returns `ConfigError::ValidationFailed` if metadata is invalid.
-    ///
-    /// # Examples
-    /// ```
-    /// # use std::path::PathBuf;
-    /// # use lithos_core::config::{
-    /// #   aggregate::Config,
-    /// #   global::Global,
-    /// #   vault::{Vault, VaultId, VaultRoot}
-    /// # };
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let global = Global::default();
-    /// let vault = Vault::default();
-    /// let config = Config::build(
-    ///     Some(&global),
-    ///     VaultId::new(),
-    ///     VaultRoot::try_new(PathBuf::from("/vault"))?,
-    ///     &vault,
-    /// )?;
-    /// assert_eq!(
-    ///     config.vault_metadata.root().as_path(),
-    ///     PathBuf::from("/vault").as_path(),
-    ///     "Vault root should match"
-    /// );
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn build(
-        global: Option<&Global>,
-        vault_id: VaultId,
-        vault_root: VaultRoot,
-        vault: &Vault,
-    ) -> Result<Self, ConfigError> {
-        let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
-
-        let global_filesystem =
-            global.map(|g| g.filesystem().clone()).unwrap_or_default();
-
-        let schema_defaults = Schema::default();
-        let template_defaults = Template::default();
-
-        let schemas_dir = vault
-            .filesystem()
-            .schema()
-            .schemas_dir
-            .clone()
-            .or_else(|| {
-                global.map(|g| g.filesystem().schema().schemas_dir().clone())
-            })
-            .unwrap_or_else(|| schema_defaults.schemas_dir().clone());
-
-        let property_bank_filename = vault
-            .filesystem()
-            .schema()
-            .property_bank_filename
-            .clone()
-            .or_else(|| {
-                global.map(|g| {
-                    g.filesystem().schema().property_bank_filename().clone()
-                })
-            })
-            .unwrap_or_else(|| {
-                schema_defaults.property_bank_filename().clone()
-            });
-
-        let templates_dir = vault
-            .filesystem()
-            .template()
-            .templates_dir()
-            .cloned()
-            .or_else(|| {
-                global
-                    .map(|g| g.filesystem().template().templates_dir().clone())
-            })
-            .unwrap_or_else(|| template_defaults.templates_dir().clone());
-
-        let cache_dir = vault
-            .filesystem()
-            .cache_dir()
-            .cloned()
-            .unwrap_or_else(CacheDir::default);
-
-        let vault_filesystem = ResolvedVaultPaths {
-            cache_dir,
-            schema: Schema::new(schemas_dir, property_bank_filename),
-            template: Template::new(templates_dir),
-        };
-
-        let frontmatter = Config::merge_frontmatter(
-            global.map(Global::frontmatter),
-            vault.frontmatter(),
-        );
-
-        let logging =
-            Config::merge_logging(global.map(Global::logging), vault.logging());
-
-        let task =
-            Config::merge_task(global.and_then(Global::task), vault.task());
-
-        // Step 5: Construct the final strictly-validated aggregate
-        let mut config = Self {
-            frontmatter,
-            global_filesystem,
-            logging,
-            task,
-            vault_filesystem,
-            vault_metadata,
-            pending_events: vec![],
-        };
-
-        config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
-            "merged".to_owned(),
-            chrono::Utc::now().timestamp(),
-        )));
-
-        // Step 5: Final invariant check
-        config.validate()?;
-
-        Ok(config)
-    }
-
     /// Convert optional path string to domain type.
     #[expect(
         clippy::ref_option,
@@ -485,17 +358,75 @@ impl Config {
         })
     }
 
-    /// Build a Config directly from a merged `RawConfig` using Figment.
+    /// Build validated Config from Figment-merged raw configuration.
     ///
-    /// This is the Phase 1 entry point that simplifies the config building
-    /// by using the pre-merged `RawConfig` from `build_merged_raw()`. The
-    /// `vault_root` is required to construct vault metadata.
+    /// This is the **primary constructor** for `Config`. It takes a `RawConfig`
+    /// that has already been merged across layers (defaults → global → vault)
+    /// by `ingest::build_merged_raw()`, validates all fields, and constructs
+    /// a fully validated domain configuration.
+    ///
+    /// ## Configuration Hierarchy
+    ///
+    /// The input `RawConfig` represents the result of Figment's 3-layer merge:
+    ///
+    /// 1. **Layer 1 (lowest priority):** Compiled defaults
+    ///    (`RawConfig::default()`)
+    /// 2. **Layer 2:** Global config file (`~/.config/lithos/lithos.toml`)
+    /// 3. **Layer 3 (highest priority):** Vault config file
+    ///    (`<vault>/.lithos/lithos.toml`)
+    ///
+    /// Fields from higher layers override lower layers. For nested structures
+    /// (like `filesystem`), Figment performs deep merging - individual fields
+    /// can be overridden independently.
+    ///
+    /// ## Validation
+    ///
+    /// All fields are validated during construction:
+    /// - Path fields must be vault-relative (not absolute)
+    /// - File names must not contain path separators
+    /// - Enum values (like log level) must be valid
+    /// - Required fields use defaults if not specified
+    ///
+    /// ## Events
+    ///
+    /// Emits a `ConfigUpdated` domain event upon successful construction.
+    ///
+    /// # Parameters
+    ///
+    /// - `raw`: Pre-merged configuration from Figment (use
+    ///   `ingest::build_merged_raw()`)
+    /// - `vault_id`: Unique identifier for the vault
+    /// - `vault_root`: Absolute path to vault root directory
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if `vault_root` is empty.
-    /// Returns `ConfigError::ValidationFailed` if metadata is invalid.
+    ///
+    /// Returns `ConfigError` if:
+    /// - `vault_root` is empty
+    /// - Any path field is invalid (absolute, contains `..`, etc.)
+    /// - Any enum value is invalid
+    /// - Metadata construction fails
+    /// - Validation fails after construction
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use lithos_core::config::{
+    /// #     aggregate::Config,
+    /// #     ingest,
+    /// #     vault::{VaultId, VaultRoot},
+    /// # };
+    /// # use std::path::PathBuf;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let vault_root = VaultRoot::try_new(PathBuf::from("/vault"))?;
+    /// let raw = ingest::build_merged_raw(vault_root.as_path())?;
+    /// let config = Config::build(&raw, VaultId::new(), vault_root)?;
+    /// assert_eq!(config.logging.log_level_str(), "info"); // default
+    ///
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
-    pub fn from_merged_raw(
+    pub fn build(
         raw: &raw::RawConfig,
         vault_id: VaultId,
         vault_root: VaultRoot,
@@ -545,30 +476,6 @@ impl Config {
 
         config.validate()?;
         Ok(config)
-    }
-
-    /// Merge frontmatter configurations applying defaults where needed.
-    pub(crate) fn merge_frontmatter(
-        global: Option<&Frontmatter>,
-        vault: Option<&Frontmatter>,
-    ) -> Frontmatter {
-        vault.cloned().or_else(|| global.cloned()).unwrap_or_default()
-    }
-
-    /// Merge logging configurations applying defaults where needed.
-    pub(crate) fn merge_logging(
-        global: Option<&Logging>,
-        vault: Option<&Logging>,
-    ) -> Logging {
-        vault.cloned().or_else(|| global.cloned()).unwrap_or_default()
-    }
-
-    /// Merge task configurations applying defaults where needed.
-    pub(crate) fn merge_task(
-        global: Option<&TaskConfig>,
-        vault: Option<&TaskConfig>,
-    ) -> TaskConfig {
-        vault.cloned().or_else(|| global.cloned()).unwrap_or_default()
     }
 
     /// Returns a reference to pending domain events.
@@ -643,11 +550,13 @@ mod tests {
         use super::super::*;
         use crate::config::{
             frontmatter::FrontmatterKey,
+            global::Global,
             logging::LogLevel,
             paths::{
                 FileName, SchemaOverrides, SchemasDir, TemplateOverrides,
                 TemplatesDir,
             },
+            vault::Vault,
         };
 
         pub fn vault_id() -> VaultId {
@@ -1398,7 +1307,7 @@ mod tests {
         }
     }
 
-    mod from_merged_raw {
+    mod build_tests {
         use super::*;
         use crate::config::{frontmatter::RawFrontmatter, logging::RawLogging};
 
@@ -1414,9 +1323,8 @@ mod tests {
             let vault_root = fixtures::vault_root("/vault");
 
             // WHEN: building config
-            let config =
-                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
-                    .expect("should build with defaults");
+            let config = Config::build(&raw, vault_id, vault_root.clone())
+                .expect("should build with defaults");
 
             // THEN: all fields have defaults
             assert_eq!(
@@ -1458,9 +1366,8 @@ mod tests {
             let vault_root = fixtures::vault_root("/vault");
 
             // WHEN: building config
-            let config =
-                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
-                    .expect("should build");
+            let config = Config::build(&raw, vault_id, vault_root.clone())
+                .expect("should build");
 
             // THEN: filesystem fields are applied
             assert_eq!(
@@ -1502,9 +1409,8 @@ mod tests {
             let vault_root = fixtures::vault_root("/vault");
 
             // WHEN: building config
-            let config =
-                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
-                    .expect("should build");
+            let config = Config::build(&raw, vault_id, vault_root.clone())
+                .expect("should build");
 
             // THEN: logging is applied
             assert_eq!(config.logging.log_level_str(), "debug");
@@ -1531,9 +1437,8 @@ mod tests {
             let vault_root = fixtures::vault_root("/vault");
 
             // WHEN: building config
-            let config =
-                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
-                    .expect("should build");
+            let config = Config::build(&raw, vault_id, vault_root.clone())
+                .expect("should build");
 
             // THEN: frontmatter is applied
             assert_eq!(config.frontmatter.alias_key().as_str(), "custom_alias");
@@ -1561,9 +1466,8 @@ mod tests {
             let vault_root = fixtures::vault_root("/vault");
 
             // WHEN: building config
-            let config =
-                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
-                    .expect("should build");
+            let config = Config::build(&raw, vault_id, vault_root.clone())
+                .expect("should build");
 
             // THEN: ConfigUpdated event is emitted
             assert_eq!(config.pending_events().len(), 1);
@@ -1585,9 +1489,8 @@ mod tests {
             let vault_root = fixtures::vault_root("/vault");
 
             // WHEN: building config
-            let config =
-                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
-                    .expect("should build");
+            let config = Config::build(&raw, vault_id, vault_root.clone())
+                .expect("should build");
 
             // THEN: config is valid
             config.validate().unwrap();
@@ -1608,7 +1511,7 @@ mod tests {
             let vault_root = fixtures::vault_root("/vault");
 
             // WHEN: building config
-            let result = Config::from_merged_raw(&raw, vault_id, vault_root);
+            let result = Config::build(&raw, vault_id, vault_root);
 
             // THEN: validation fails
             assert!(
@@ -1630,7 +1533,7 @@ mod tests {
             let vault_root = fixtures::vault_root("/vault");
 
             // WHEN: building config
-            let result = Config::from_merged_raw(&raw, vault_id, vault_root);
+            let result = Config::build(&raw, vault_id, vault_root);
 
             // THEN: validation fails
             assert!(result.is_err(), "Should reject invalid log level");

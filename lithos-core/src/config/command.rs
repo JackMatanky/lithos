@@ -99,9 +99,8 @@ where
     ) -> Result<ConfigVersion, ConfigCommandError> {
         // Build merged config using the simplified API
         let raw_merged = ingest::build_merged_raw(vault_root.as_path())?;
-        let merged =
-            Config::from_merged_raw(&raw_merged, vault_id, vault_root.clone())
-                .map_err(ConfigCommandError::Domain)?;
+        let merged = Config::build(&raw_merged, vault_id, vault_root.clone())
+            .map_err(ConfigCommandError::Domain)?;
 
         // Save vault path mapping
         self.command_port
