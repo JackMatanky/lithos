@@ -77,6 +77,9 @@ pub enum ConfigCommandError {
 
     #[error("Storage error: {0}")]
     Storage(#[from] DbError),
+
+    #[error("Ingest error: {0}")]
+    Ingest(#[from] Box<ConfigIngestError>),
 }
 ```
 
@@ -92,10 +95,23 @@ pub enum ConfigQueryError {
 }
 ```
 
+**ConfigIngestError**:
+```rust
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+pub enum ConfigIngestError {
+    #[error("Config ingestion failed: {0}")]
+    Figment(Box<figment::Error>),
+}
+```
+
 **Rationale**: Split error types allow:
-- Commands to distinguish domain validation failures from storage failures
+- Commands to distinguish domain validation failures from storage failures from ingestion failures
 - Queries to surface data corruption separately from transient storage errors
 - Better error handling at call sites (pattern match on error kind)
+- **Ingest errors** separate adapter boundary failures (TOML parsing, type extraction) from domain validation (business rules)
+  - `ConfigIngestError` wraps `figment::Error` (malformed TOML, missing keys in raw file structure)
+  - `ConfigError` represents domain validation failures (empty paths, invalid enum values, constraint violations)
+  - This separation improves diagnostics: users can distinguish "syntax error on line 5" from "vault_path cannot be empty"
 
 ## 2. Guide-Level Explanation (The "What")
 
