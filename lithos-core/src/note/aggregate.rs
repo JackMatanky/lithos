@@ -59,27 +59,27 @@ use super::{
 #[non_exhaustive]
 pub struct Note {
     /// Unique identity (UUID v7, time-ordered).
-    id: NoteId,
+    pub id: NoteId,
     /// Vault-relative path.
-    path: NotePath,
+    pub path: NotePath,
     /// All links (wiki-links, markdown links, and embeds).
-    links: Vec<Link>,
+    pub links: Vec<Link>,
     /// Hierarchical tags.
-    tags: Vec<Tag>,
+    pub tags: Vec<Tag>,
     /// Markdown headings.
-    headings: Vec<Heading>,
+    pub headings: Vec<Heading>,
     /// Markdown lists.
-    lists: Vec<List>,
+    pub lists: Vec<List>,
     /// Task items.
-    tasks: Vec<Task>,
+    pub tasks: Vec<Task>,
     /// Document sections.
-    sections: Vec<Section>,
+    pub sections: Vec<Section>,
     /// YAML metadata.
-    frontmatter: Option<Frontmatter>,
+    pub frontmatter: Option<Frontmatter>,
     /// Domain events pending emission (not serialized).
     #[rkyv(with = rkyv::with::Skip)]
     #[serde(skip)]
-    pending_events: Vec<NoteEvents>,
+    pub pending_events: Vec<NoteEvents>,
 }
 
 /// Validated vault-relative path for a note.

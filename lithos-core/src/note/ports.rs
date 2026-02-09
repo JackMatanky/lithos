@@ -46,36 +46,6 @@ pub trait Query: Send + Sync {
     /// Archived note type for zero-copy reads.
     type NoteArchived<'archived>;
 
-    /// Finds a note by its UUID v7 identifier (owned).
-    ///
-    /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError>;
-
-    /// Finds a note by its vault-relative path (owned).
-    ///
-    /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
-    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteQueryError>;
-
-    /// Lists all notes in the vault (owned).
-    ///
-    /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
-    fn list(&self) -> Result<Vec<Note>, NoteQueryError>;
-
-    /// Access a note as archived data (zero-copy).
-    ///
-    /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
-    fn with_archived_by_id<F, R>(
-        &self,
-        id: Uuid,
-        f: F,
-    ) -> Result<Option<R>, NoteQueryError>
-    where
-        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R;
-
     /// Finds notes by alias using the alias index.
     ///
     /// # Errors
@@ -85,7 +55,7 @@ pub trait Query: Send + Sync {
         alias: &str,
     ) -> Result<Option<Note>, NoteQueryError>;
 
-    /// Finds notes by file class using the file_class index.
+    /// Finds notes by file class using the `file_class` index.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query execution fails.
@@ -101,52 +71,19 @@ pub trait Query: Send + Sync {
     fn find_by_folder(&self, folder: &str)
     -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Queries notes by frontmatter key-value pair using the generic
-    /// frontmatter index.
+    /// Finds a note by its UUID v7 identifier (owned).
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query execution fails.
-    fn query_frontmatter_kv(
-        &self,
-        key: &str,
-        value: &str,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError>;
 
-    /// Finds notes by task due date using the tasks_by_due_date index.
-    ///
-    /// Returns notes containing tasks with the specified due date.
+    /// Finds a note by its vault-relative path (owned).
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query execution fails.
-    fn find_by_task_due_date(
-        &self,
-        due_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteQueryError>;
 
-    /// Finds notes by task created date using the tasks_by_created_date index.
-    ///
-    /// Returns notes containing tasks with the specified created date.
-    ///
-    /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
-    fn find_by_task_created_date(
-        &self,
-        created_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError>;
-
-    /// Finds notes by task reminder date using the tasks_by_reminder_date
-    /// index.
-    ///
-    /// Returns notes containing tasks with the specified reminder date.
-    ///
-    /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
-    fn find_by_task_reminder_date(
-        &self,
-        reminder_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError>;
-
-    /// Finds notes by task completed date using the tasks_by_completed_date
+    /// Finds notes by task completed date using the `tasks_by_completed_date`
     /// index.
     ///
     /// Returns notes containing tasks with the specified completed date.
@@ -158,7 +95,30 @@ pub trait Query: Send + Sync {
         completed_date: i64,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds notes by task priority using the tasks_by_priority index.
+    /// Finds notes by task created date using the `tasks_by_created_date`
+    /// index.
+    ///
+    /// Returns notes containing tasks with the specified created date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_created_date(
+        &self,
+        created_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by task due date using the `tasks_by_due_date` index.
+    ///
+    /// Returns notes containing tasks with the specified due date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_due_date(
+        &self,
+        due_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by task priority using the `tasks_by_priority` index.
     ///
     /// Returns notes containing tasks with the specified priority.
     ///
@@ -169,7 +129,7 @@ pub trait Query: Send + Sync {
         priority: f64,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds notes by task project using the tasks_by_project index.
+    /// Finds notes by task project using the `tasks_by_project` index.
     ///
     /// Returns notes containing tasks with the specified project.
     ///
@@ -180,7 +140,19 @@ pub trait Query: Send + Sync {
         project: &str,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds notes by task status using the tasks_by_status index.
+    /// Finds notes by task reminder date using the `tasks_by_reminder_date`
+    /// index.
+    ///
+    /// Returns notes containing tasks with the specified reminder date.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn find_by_task_reminder_date(
+        &self,
+        reminder_date: i64,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Finds notes by task status using the `tasks_by_status` index.
     ///
     /// Returns notes containing tasks with the specified status.
     ///
@@ -190,6 +162,35 @@ pub trait Query: Send + Sync {
         &self,
         status: &str,
     ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Lists all notes in the vault (owned).
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn list(&self) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Queries notes by frontmatter key-value pair using the generic
+    /// frontmatter index.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn query_frontmatter_kv(
+        &self,
+        key: &str,
+        value: &str,
+    ) -> Result<Vec<Note>, NoteQueryError>;
+
+    /// Access a note as archived data (zero-copy).
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query execution fails.
+    fn with_archived_by_id<F, R>(
+        &self,
+        id: Uuid,
+        f: F,
+    ) -> Result<Option<R>, NoteQueryError>
+    where
+        F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R;
 }
 
 #[cfg(test)]
