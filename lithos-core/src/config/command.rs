@@ -424,6 +424,117 @@ mod tests {
 
             Ok(())
         }
+
+        #[test]
+        #[expect(
+            clippy::panic_in_result_fn,
+            reason = "Test uses assert_eq! which can panic."
+        )]
+        fn rebuild_merged_reads_vault_config_file()
+        -> Result<(), Box<dyn std::error::Error>> {
+            // GIVEN: vault with config file
+            let (dir, db): (tempfile::TempDir, Database) = fixtures::test_db()?;
+            let cmd = Command::new(DbPort::new(&db));
+            let vault_id = VaultId::new();
+            let vault_root = VaultRoot::try_new(dir.path().join("vault"))?;
+
+            // Create vault with config
+            std::fs::create_dir_all(vault_root.as_path().join(".lithos"))?;
+            std::fs::write(
+                vault_root.as_path().join(".lithos").join("lithos.toml"),
+                "[logging]\nlog_level = \"debug\"\n",
+            )?;
+
+            // WHEN: rebuilding merged config
+            let version = cmd.rebuild_merged(vault_id, &vault_root)?;
+
+            // THEN: config is read from file and persisted
+            let key = format!("{vault_id}:{}", version.value());
+            let stored: Option<Config> =
+                db.get_owned("merged_config_versions", &key)?;
+            let config = stored.expect("merged config should be persisted");
+
+            assert_eq!(config.logging.log_level_str(), "debug");
+            Ok(())
+        }
+
+        #[test]
+        #[expect(
+            clippy::panic_in_result_fn,
+            reason = "Test uses assert_eq! which can panic."
+        )]
+        fn rebuild_merged_applies_defaults_when_no_config_file()
+        -> Result<(), Box<dyn std::error::Error>> {
+            // GIVEN: vault without config file
+            let (dir, db): (tempfile::TempDir, Database) = fixtures::test_db()?;
+            let cmd = Command::new(DbPort::new(&db));
+            let vault_id = VaultId::new();
+            let vault_root = VaultRoot::try_new(dir.path().join("vault"))?;
+            std::fs::create_dir_all(vault_root.as_path())?;
+
+            // WHEN: rebuilding merged config
+            let version = cmd.rebuild_merged(vault_id, &vault_root)?;
+
+            // THEN: defaults are applied
+            let key = format!("{vault_id}:{}", version.value());
+            let stored: Option<Config> =
+                db.get_owned("merged_config_versions", &key)?;
+            let config = stored.expect("merged config should be persisted");
+
+            assert_eq!(config.logging.log_level_str(), "info"); // default
+            Ok(())
+        }
+
+        #[test]
+        #[expect(
+            clippy::panic_in_result_fn,
+            reason = "Test uses assert_eq! which can panic."
+        )]
+        fn rebuild_merged_saves_vault_path_mapping()
+        -> Result<(), Box<dyn std::error::Error>> {
+            // GIVEN: vault directory
+            let (dir, db): (tempfile::TempDir, Database) = fixtures::test_db()?;
+            let cmd = Command::new(DbPort::new(&db));
+            let vault_id = VaultId::new();
+            let vault_root = VaultRoot::try_new(dir.path().join("vault"))?;
+            std::fs::create_dir_all(vault_root.as_path())?;
+
+            // WHEN: rebuilding merged config
+            cmd.rebuild_merged(vault_id, &vault_root)?;
+
+            // THEN: vault path mapping is saved
+            let stored_root: Option<VaultRoot> =
+                db.get_owned("vault_path_by_id", &vault_id.to_string())?;
+            assert_eq!(
+                stored_root.expect("vault root should be mapped"),
+                vault_root
+            );
+            Ok(())
+        }
+
+        #[test]
+        #[expect(
+            clippy::panic_in_result_fn,
+            reason = "Test uses assert! which can panic."
+        )]
+        fn rebuild_merged_increments_version_on_subsequent_calls()
+        -> Result<(), Box<dyn std::error::Error>> {
+            // GIVEN: vault with existing merged config
+            let (dir, db): (tempfile::TempDir, Database) = fixtures::test_db()?;
+            let cmd = Command::new(DbPort::new(&db));
+            let vault_id = VaultId::new();
+            let vault_root = VaultRoot::try_new(dir.path().join("vault"))?;
+            std::fs::create_dir_all(vault_root.as_path())?;
+
+            // WHEN: rebuilding multiple times
+            let v1 = cmd.rebuild_merged(vault_id, &vault_root)?;
+            let v2 = cmd.rebuild_merged(vault_id, &vault_root)?;
+
+            // THEN: versions increment
+            assert_eq!(v1.value(), 1);
+            assert_eq!(v2.value(), 2);
+            Ok(())
+        }
     }
 
     mod load {
