@@ -12,10 +12,6 @@ use figment::{
 
 use super::{error::ConfigIngestError, raw::RawConfig};
 
-fn global_config_path_from_env() -> Option<PathBuf> {
-    std::env::var_os("LITHOS_GLOBAL_CONFIG").map(PathBuf::from)
-}
-
 /// Build merged raw config from global and vault sources using Figment.
 ///
 /// This implements the configuration hierarchy:
@@ -57,6 +53,10 @@ fn build_merged_raw_impl(
 
     // Extract merged config
     figment.extract().map_err(ConfigIngestError::from)
+}
+
+fn global_config_path_from_env() -> Option<PathBuf> {
+    std::env::var_os("LITHOS_GLOBAL_CONFIG").map(PathBuf::from)
 }
 
 #[cfg(test)]
