@@ -1,12 +1,17 @@
 //! Vault-scoped configuration types.
 
+#![expect(
+    clippy::exhaustive_structs,
+    reason = "rkyv generates exhaustive archived structs"
+)]
+
 use std::path::{Path, PathBuf};
 
 use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::{Cache, Schema, Template},
+    paths::{Cache, PropertyBank, Schema, Template},
     task::TaskConfig,
 };
 
@@ -118,8 +123,13 @@ impl From<VaultRoot> for String {
 
 impl Default for VaultRoot {
     #[inline]
+    #[expect(
+        clippy::expect_used,
+        clippy::disallowed_methods,
+        reason = "Root path is guaranteed non-empty"
+    )]
     fn default() -> Self {
-        Self(PathBuf::from("/"))
+        Self::try_new(PathBuf::from("/")).expect("root path is non-empty")
     }
 }
 
@@ -137,6 +147,7 @@ impl Default for VaultRoot {
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
+#[non_exhaustive]
 pub struct VaultPathKey(String);
 
 impl VaultPathKey {
@@ -170,6 +181,72 @@ impl TryFrom<String> for VaultPathKey {
     }
 }
 
+/// Version identifier for vault configuration or schema.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct SchemaVersion(Box<str>);
+
+impl SchemaVersion {
+    /// Create a new schema version.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError`] if the version is empty.
+    #[inline]
+    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
+        let value = value.into();
+        if value.is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: "version".to_owned().into(),
+                message: "version cannot be empty".to_owned().into(),
+            });
+        }
+        Ok(Self(value))
+    }
+
+    /// Return the version as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for SchemaVersion {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, ConfigError> {
+        Self::try_new(value)
+    }
+}
+
+impl From<SchemaVersion> for String {
+    #[inline]
+    fn from(version: SchemaVersion) -> Self {
+        version.0.into_string()
+    }
+}
+
+impl std::fmt::Display for SchemaVersion {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Metadata for a specific vault.
 #[derive(
     Debug,
@@ -191,7 +268,7 @@ pub struct Metadata {
     /// Human-readable name of the vault.
     name: String,
     /// Version of the vault schema/Lithos that created it.
-    version: String,
+    version: SchemaVersion,
 }
 
 impl Metadata {
@@ -204,7 +281,7 @@ impl Metadata {
         id: VaultId,
         root: VaultRoot,
         name: Option<String>,
-        version: Option<String>,
+        version: Option<SchemaVersion>,
     ) -> Result<Self, ConfigError> {
         let name = name.unwrap_or_else(|| {
             root.as_path().file_name().map_or_else(
@@ -212,8 +289,15 @@ impl Metadata {
                 |n| n.to_string_lossy().into_owned(),
             )
         });
-        let version =
-            version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned());
+        let version = match version {
+            Some(v) => v,
+            None => SchemaVersion::try_new(env!("CARGO_PKG_VERSION")).map_err(
+                |e| ConfigError::ValidationFailed {
+                    field: "version".to_owned().into(),
+                    message: format!("default version invalid: {e}").into(),
+                },
+            )?,
+        };
 
         Ok(Self {
             id,
@@ -247,24 +331,30 @@ impl Metadata {
     /// Return the vault version.
     #[inline]
     #[must_use]
-    pub fn version(&self) -> &str {
+    pub fn version(&self) -> &SchemaVersion {
         &self.version
     }
 }
 
 impl Default for Metadata {
     #[inline]
+    #[expect(
+        clippy::expect_used,
+        clippy::disallowed_methods,
+        reason = "Default version is guaranteed non-empty"
+    )]
     fn default() -> Self {
         Self {
             id: VaultId::default(),
             root: VaultRoot::default(),
             name: "unnamed".to_owned(),
-            version: env!("CARGO_PKG_VERSION").to_owned(),
+            version: SchemaVersion::try_new(env!("CARGO_PKG_VERSION"))
+                .expect("package version is non-empty"),
         }
     }
 }
 
-/// Vault-specific paths configuration.
+/// Vault-specific paths configuration (overrides).
 #[derive(
     Debug,
     Clone,
@@ -280,11 +370,13 @@ impl Default for Metadata {
 #[non_exhaustive]
 pub struct Paths {
     /// Overridden cache settings.
-    cache: Option<Cache>,
+    pub cache: Option<Cache>,
     /// Overridden schema settings.
-    schema: Option<Schema>,
+    pub schema: Option<Schema>,
+    /// Overridden property bank filename.
+    pub property_bank: Option<PropertyBank>,
     /// Overridden template settings.
-    template: Option<Template>,
+    pub template: Option<Template>,
 }
 
 impl Paths {
@@ -294,34 +386,15 @@ impl Paths {
     pub const fn new(
         cache: Option<Cache>,
         schema: Option<Schema>,
+        property_bank: Option<PropertyBank>,
         template: Option<Template>,
     ) -> Self {
         Self {
             cache,
             schema,
+            property_bank,
             template,
         }
-    }
-
-    /// Return the overridden cache settings, if set.
-    #[inline]
-    #[must_use]
-    pub fn cache(&self) -> Option<&Cache> {
-        self.cache.as_ref()
-    }
-
-    /// Return the overridden schema settings, if set.
-    #[inline]
-    #[must_use]
-    pub fn schema(&self) -> Option<&Schema> {
-        self.schema.as_ref()
-    }
-
-    /// Return the overridden template settings, if set.
-    #[inline]
-    #[must_use]
-    pub fn template(&self) -> Option<&Template> {
-        self.template.as_ref()
     }
 }
 
@@ -403,13 +476,18 @@ impl Vault {
 #[expect(
     clippy::arbitrary_source_item_ordering,
     clippy::disallowed_methods,
-    reason = "Test modules group fixtures and test logic for readability"
+    reason = "Test modules have relaxed rules"
 )]
 mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::config::logging::{LogLevel, Logging};
+
     mod fixtures {
         use std::path::PathBuf;
 
-        use super::super::{VaultId, VaultRoot};
+        use super::super::*;
 
         pub fn vault_root(path: &str) -> VaultRoot {
             VaultRoot::try_new(PathBuf::from(path)).expect("valid vault root")
@@ -419,14 +497,6 @@ mod tests {
             VaultId::new()
         }
     }
-
-    use std::path::PathBuf;
-
-    use super::{ConfigError, Metadata, Paths, Vault, VaultPathKey, VaultRoot};
-    use crate::config::{
-        logging::{LogLevel, Logging},
-        paths::RelativePath,
-    };
 
     mod constructor {
         use super::*;
@@ -462,7 +532,7 @@ mod tests {
 
             // THEN: version and name defaults are applied
             assert_eq!(
-                metadata.version(),
+                metadata.version().as_str(),
                 env!("CARGO_PKG_VERSION"),
                 "Expected version default to be set"
             );
@@ -483,6 +553,7 @@ mod tests {
         #[test]
         fn cache_dir_rejects_empty() {
             // GIVEN: empty cache_dir
+            use crate::config::paths::RelativePath;
             let result = RelativePath::try_new(PathBuf::from(""));
 
             // THEN: validation fails for cache_dir
@@ -508,22 +579,6 @@ mod tests {
         }
     }
 
-    mod validation {
-        use super::*;
-
-        #[test]
-        fn templates_dir_rejects_absolute() {
-            // GIVEN: invalid template dir (absolute)
-            let result = RelativePath::try_new(PathBuf::from("/abs"));
-
-            // THEN: it fails
-            assert!(
-                result.is_err(),
-                "RelativePath should reject absolute paths"
-            );
-        }
-    }
-
     mod conversions {
         use super::*;
 
@@ -545,6 +600,23 @@ mod tests {
             let result = VaultPathKey::try_from(String::new());
             let _: ConfigError =
                 result.expect_err("VaultPathKey should reject empty string");
+        }
+    }
+
+    mod validation {
+        use super::*;
+        use crate::config::paths::RelativePath;
+
+        #[test]
+        fn templates_dir_rejects_absolute() {
+            // GIVEN: invalid template dir (absolute)
+            let result = RelativePath::try_new(PathBuf::from("/abs"));
+
+            // THEN: it fails
+            assert!(
+                result.is_err(),
+                "RelativePath should reject absolute paths"
+            );
         }
     }
 }
