@@ -37,7 +37,7 @@ use super::{
     vault::{Metadata, VaultId, VaultRoot},
 };
 
-/// Resolved vault filesystem configuration (merged).
+/// Resolved vault paths configuration (merged).
 #[derive(
     Debug,
     Clone,
@@ -189,10 +189,10 @@ pub struct Config {
     pub vault_metadata: Metadata,
     /// Merged logging configuration.
     pub logging: Logging,
-    /// Global filesystem configuration.
-    pub global_filesystem: GlobalPaths,
-    /// Vault filesystem configuration.
-    pub vault_filesystem: ResolvedVaultPaths,
+    /// Global paths configuration.
+    pub global_paths: GlobalPaths,
+    /// Vault paths configuration.
+    pub vault_paths: ResolvedVaultPaths,
     /// Merged frontmatter configuration.
     pub frontmatter: Frontmatter,
     /// Merged task configuration.
@@ -207,11 +207,11 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             frontmatter: Frontmatter::default(),
-            global_filesystem: GlobalPaths::default(),
+            global_paths: GlobalPaths::default(),
             logging: Logging::default(),
             pending_events: vec![],
             task: TaskConfig::default(),
-            vault_filesystem: ResolvedVaultPaths {
+            vault_paths: ResolvedVaultPaths {
                 cache: Cache::default(),
                 schema: Schema::default(),
                 template: Template::default(),
@@ -272,8 +272,8 @@ impl Config {
             .transpose()
     }
 
-    /// Build global filesystem paths from merged config.
-    fn make_global_filesystem(
+    /// Build global paths from merged config.
+    fn make_global_paths(
         fs: &raw::RawPathsConfig,
     ) -> Result<GlobalPaths, ConfigError> {
         let default_schema = Schema::default();
@@ -305,8 +305,8 @@ impl Config {
         ))
     }
 
-    /// Build vault filesystem paths from merged config.
-    fn make_vault_filesystem(
+    /// Build vault paths from merged config.
+    fn make_vault_paths(
         fs: &raw::RawPathsConfig,
     ) -> Result<ResolvedVaultPaths, ConfigError> {
         let default_cache = Cache::default();
@@ -366,8 +366,8 @@ impl Config {
 
         let fs = &raw.paths;
 
-        let global_filesystem = Self::make_global_filesystem(fs)?;
-        let vault_filesystem = Self::make_vault_filesystem(fs)?;
+        let global_paths = Self::make_global_paths(fs)?;
+        let vault_paths = Self::make_vault_paths(fs)?;
 
         let frontmatter = raw
             .frontmatter
@@ -392,10 +392,10 @@ impl Config {
 
         let mut config = Self {
             frontmatter,
-            global_filesystem,
+            global_paths,
             logging,
             task,
-            vault_filesystem,
+            vault_paths,
             vault_metadata,
             pending_events: vec![],
         };
@@ -548,12 +548,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config
-                    .global_filesystem
-                    .schema()
-                    .schemas_dir()
-                    .unwrap()
-                    .as_path(),
+                config.global_paths.schema().schemas_dir().unwrap().as_path(),
                 std::path::Path::new("schemas")
             );
         }
@@ -587,7 +582,7 @@ mod tests {
         fn defaults_apply_to_cache_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
-                config.vault_filesystem.cache.cache_dir().unwrap().as_path(),
+                config.vault_paths.cache.cache_dir().unwrap().as_path(),
                 std::path::Path::new(".cache")
             );
         }
@@ -596,12 +591,7 @@ mod tests {
         fn defaults_apply_to_templates_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
-                config
-                    .vault_filesystem
-                    .template
-                    .templates_dir()
-                    .unwrap()
-                    .as_path(),
+                config.vault_paths.template.templates_dir().unwrap().as_path(),
                 std::path::Path::new("templates")
             );
         }
@@ -610,12 +600,7 @@ mod tests {
         fn vault_templates_dir_overrides_global() {
             let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
-                merged
-                    .vault_filesystem
-                    .template
-                    .templates_dir()
-                    .unwrap()
-                    .as_path(),
+                merged.vault_paths.template.templates_dir().unwrap().as_path(),
                 std::path::Path::new("custom_templates")
             );
         }
@@ -634,17 +619,12 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config
-                    .global_filesystem
-                    .schema()
-                    .schemas_dir()
-                    .unwrap()
-                    .as_path(),
+                config.global_paths.schema().schemas_dir().unwrap().as_path(),
                 std::path::Path::new("schemas")
             );
             assert_eq!(
                 config
-                    .global_filesystem
+                    .global_paths
                     .schema()
                     .property_bank_filename()
                     .unwrap()
@@ -654,7 +634,7 @@ mod tests {
         }
 
         #[test]
-        fn applies_filesystem_fields_from_raw() {
+        fn applies_paths_fields_from_raw() {
             let raw = raw::RawConfig {
                 paths: raw::RawPathsConfig {
                     cache_dir: Some(".lithos-cache".to_owned()),
@@ -671,16 +651,11 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config
-                    .global_filesystem
-                    .schema()
-                    .schemas_dir()
-                    .unwrap()
-                    .as_path(),
+                config.global_paths.schema().schemas_dir().unwrap().as_path(),
                 std::path::Path::new("my-schemas")
             );
             assert_eq!(
-                config.vault_filesystem.cache.cache_dir().unwrap().as_path(),
+                config.vault_paths.cache.cache_dir().unwrap().as_path(),
                 std::path::Path::new(".lithos-cache")
             );
         }

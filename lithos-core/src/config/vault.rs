@@ -264,7 +264,7 @@ impl Default for Metadata {
     }
 }
 
-/// Vault-specific filesystem configuration.
+/// Vault-specific paths configuration.
 #[derive(
     Debug,
     Clone,
@@ -288,7 +288,7 @@ pub struct Paths {
 }
 
 impl Paths {
-    /// Create vault-specific filesystem settings.
+    /// Create vault-specific paths settings.
     #[inline]
     #[must_use]
     pub const fn new(
@@ -342,8 +342,8 @@ impl Paths {
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Vault {
-    /// Overridden filesystem settings.
-    filesystem: Paths,
+    /// Overridden paths settings.
+    paths: Paths,
     /// Overridden frontmatter settings.
     frontmatter: Option<Frontmatter>,
     /// Overridden logging settings.
@@ -357,24 +357,24 @@ impl Vault {
     #[inline]
     #[must_use]
     pub const fn new(
-        filesystem: Paths,
+        paths: Paths,
         frontmatter: Option<Frontmatter>,
         logging: Option<Logging>,
         task: Option<TaskConfig>,
     ) -> Self {
         Self {
-            filesystem,
+            paths,
             frontmatter,
             logging,
             task,
         }
     }
 
-    /// Return the overridden filesystem settings.
+    /// Return the overridden paths settings.
     #[inline]
     #[must_use]
-    pub const fn filesystem(&self) -> &Paths {
-        &self.filesystem
+    pub const fn paths(&self) -> &Paths {
+        &self.paths
     }
 
     /// Return the overridden frontmatter settings, if set.
@@ -438,7 +438,7 @@ mod tests {
             let vault =
                 Vault::new(paths.clone(), None, Some(logging.clone()), None);
 
-            assert_eq!(vault.filesystem(), &paths);
+            assert_eq!(vault.paths(), &paths);
             assert_eq!(vault.logging(), Some(&logging));
         }
 
