@@ -18,7 +18,24 @@ use crate::db::Database;
 
 /// Command implementation for Note write operations.
 ///
-/// Implements the Command port trait using the Database layer.
+/// Implements the [`ports::Command`] trait using the [`Database`] layer.
+/// This struct handles the atomic creation, update, and deletion of notes,
+/// ensuring that all secondary indexes remain consistent with the primary
+/// note data.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::command::Command;
+/// # use lithos_core::db::Database;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let path = std::env::temp_dir().join("test_command.db");
+/// # let db = Database::open(&path)?;
+/// let command = Command::new(&db);
+/// // Use command to create a note...
+/// # Ok(())
+/// # }
+/// ```
 pub struct Command<'db> {
     db: &'db Database,
 }

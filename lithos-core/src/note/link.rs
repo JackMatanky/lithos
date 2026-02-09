@@ -15,6 +15,20 @@
 use super::{error::NoteError, types::SourceByteOffset};
 
 /// Sub-note anchor (heading or block reference).
+///
+/// An anchor represents a specific location within a note, allowing links
+/// to point to more than just the file level.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::link::Anchor;
+/// let heading = Anchor::Heading("Introduction".into());
+/// let block = Anchor::BlockRef("abc123".into());
+///
+/// assert!(heading.is_heading());
+/// assert_eq!(block.text(), "abc123");
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -35,6 +49,9 @@ pub enum Anchor {
 }
 
 /// Represents different types of embedded content.
+///
+/// Used when a link is prefixed with `!` (e.g., `![[image.png]]`),
+/// indicating that the content should be displayed inline.
 #[derive(
     Debug,
     Clone,
@@ -63,6 +80,22 @@ pub enum EmbedType {
 }
 
 /// Represents a link within a note.
+///
+/// Supports multiple syntactic styles (Wiki-links vs Markdown links) and
+/// can represent both internal vault references and external URLs.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::{link::{Link, Target}, types::SourceByteOffset};
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let target = Target::Unresolved { raw: "Main Page".into() };
+/// let link = Link::new_wikilink(target, None, None, SourceByteOffset::new(0))?;
+///
+/// assert!(!link.is_embed());
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -107,6 +140,21 @@ pub enum Style {
 }
 
 /// Target of a link - may or may not resolve to an existing note.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::link::Target;
+/// let external = Target::External {
+///     url: "https://rust-lang.org".into(),
+/// };
+/// let unresolved = Target::Unresolved {
+///     raw: "New Note".into(),
+/// };
+///
+/// assert!(external.is_external());
+/// assert_eq!(unresolved.vault_path(), Some("New Note"));
+/// ```
 #[derive(
     Debug,
     Clone,

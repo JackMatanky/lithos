@@ -13,6 +13,21 @@ use super::error::NoteError;
 use crate::note::types::{SourceByteOffset, SourceByteRange};
 
 /// Represents a heading within a note.
+///
+/// Headings (H1-H6) mark structural points in the document.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::{structure::{Heading, HeadingLevel}, types::SourceByteOffset};
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let level = HeadingLevel::try_new(1)?;
+/// let heading = Heading::new(level, "Project Overview", SourceByteOffset::new(0))?;
+///
+/// assert_eq!(heading.text(), "Project Overview");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -82,6 +97,19 @@ impl Heading {
 }
 
 /// Represents a content section within a note.
+///
+/// A section groups content between headings. Content before the first
+/// heading is represented as a section with `None` for the heading field.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::{structure::Section, types::SourceByteRange, types::SourceByteOffset};
+/// let range = SourceByteRange::new(SourceByteOffset::new(0), SourceByteOffset::new(50));
+/// let section = Section::new(None, "Initial preamble content.", range);
+///
+/// assert!(section.heading().is_none());
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -143,6 +171,20 @@ impl Section {
 }
 
 /// Heading level (1-6).
+///
+/// # Errors
+///
+/// Returns [`NoteError::Structure`] if the level is not between 1 and 6.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::structure::HeadingLevel;
+/// let h1 = HeadingLevel::try_new(1).unwrap();
+/// assert_eq!(h1.as_u8(), 1);
+///
+/// assert!(HeadingLevel::try_new(7).is_err());
+/// ```
 #[derive(
     Debug,
     Clone,

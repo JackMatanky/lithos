@@ -15,9 +15,62 @@ use crate::db::Database;
 
 /// Query implementation for Note read operations.
 ///
-/// Implements the Query port trait using the Database layer.
+/// Implements the [`ports::Query`] trait using the [`Database`] layer.
+/// This struct provides high-performance, zero-copy read access to notes
+/// and tasks, utilizing specialized database indexes for rapid filtering.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::query::Query;
+/// # use lithos_core::db::Database;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # let path = std::env::temp_dir().join("test_query.db");
+/// # let db = Database::open(&path)?;
+/// let query = Query::new(&db);
+/// // Use query to find notes...
+/// # Ok(())
+/// # }
+/// ```
 pub struct Query<'db> {
     db: &'db Database,
+}
+
+impl<'db> Query<'db> {
+    /// Create a new `Query` with a database reference.
+    #[inline]
+    #[must_use]
+    pub const fn new(db: &'db Database) -> Self {
+        Self {
+            db,
+        }
+    }
+
+    /// Helper method to find notes by any task index.
+    ///
+    /// This consolidates the logic for task index lookups.
+    fn find_notes_by_task_index(
+        &self,
+        index_name: &str,
+        index_key: &str,
+    ) -> Result<Vec<Note>, NoteQueryError> {
+        let note_refs = self
+            .db
+            .multimap_get(index_name, index_key)
+            .map_err(NoteQueryError::Storage)?;
+
+        let mut notes = Vec::with_capacity(note_refs.len());
+        for note_id_str in note_refs {
+            if let Some(note) = self
+                .db
+                .get_owned::<Note>("notes", &note_id_str)
+                .map_err(NoteQueryError::Storage)?
+            {
+                notes.push(note);
+            }
+        }
+        Ok(notes)
+    }
 }
 
 impl super::ports::Query for Query<'_> {
@@ -304,43 +357,6 @@ impl super::ports::Query for Query<'_> {
         self.db
             .get::<Note, _, R>("notes", &id_str, f)
             .map_err(NoteQueryError::Storage)
-    }
-}
-
-impl<'db> Query<'db> {
-    /// Create a new `Query` with a database reference.
-    #[inline]
-    #[must_use]
-    pub const fn new(db: &'db Database) -> Self {
-        Self {
-            db,
-        }
-    }
-
-    /// Helper method to find notes by any task index.
-    ///
-    /// This consolidates the logic for task index lookups.
-    fn find_notes_by_task_index(
-        &self,
-        index_name: &str,
-        index_key: &str,
-    ) -> Result<Vec<Note>, NoteQueryError> {
-        let note_refs = self
-            .db
-            .multimap_get(index_name, index_key)
-            .map_err(NoteQueryError::Storage)?;
-
-        let mut notes = Vec::with_capacity(note_refs.len());
-        for note_id_str in note_refs {
-            if let Some(note) = self
-                .db
-                .get_owned::<Note>("notes", &note_id_str)
-                .map_err(NoteQueryError::Storage)?
-            {
-                notes.push(note);
-            }
-        }
-        Ok(notes)
     }
 }
 

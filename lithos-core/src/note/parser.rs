@@ -22,6 +22,25 @@ use crate::{
 };
 
 /// Markdown parser for list and task extraction.
+///
+/// `NoteParser` uses `pulldown-cmark` to traverse a markdown document and
+/// extract structural elements such as headings, lists, and tasks. It is
+/// bound to a specific [`TaskConfig`] which defines the rules for task
+/// promotion and metadata parsing.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::parser::NoteParser;
+/// # use lithos_core::config::task::TaskConfig;
+/// let config = TaskConfig::default();
+/// let parser = NoteParser::new(&config);
+///
+/// let markdown = "- [ ] #task Review PR";
+/// let (lists, tasks) = parser.parse_lists_and_tasks(markdown).unwrap();
+///
+/// assert_eq!(tasks.len(), 1);
+/// ```
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct NoteParser<'config> {

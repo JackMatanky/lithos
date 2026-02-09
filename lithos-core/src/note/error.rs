@@ -8,6 +8,9 @@
 use super::value::FieldValueType;
 
 /// Note-related errors.
+///
+/// This enum covers domain-level errors related to parsing, validation,
+/// and consistency of the [`aggregate::Note`] aggregate.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum NoteError {
@@ -57,6 +60,8 @@ pub enum NoteError {
 }
 
 /// Errors surfaced by Note command operations.
+///
+/// Combines domain errors with low-level storage errors.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum NoteCommandError {
@@ -70,6 +75,8 @@ pub enum NoteCommandError {
 }
 
 /// Errors surfaced by Note query operations.
+///
+/// Combines domain errors with low-level storage errors.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum NoteQueryError {

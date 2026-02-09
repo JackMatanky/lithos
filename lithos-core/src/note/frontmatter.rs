@@ -23,7 +23,30 @@ use super::{
 
 pub type FrontmatterError = super::error::FrontmatterError;
 
-/// Represents YAML metadata extracted from a note header.
+/// Represents YAML/TOML metadata extracted from a note header.
+///
+/// Frontmatter provides structured key-value pairs at the beginning of a
+/// markdown document. It is used for tagging, aliasing, and custom metadata
+/// that can be queried across the vault.
+///
+/// This struct provides a type-safe API for accessing metadata values while
+/// maintaining the dynamic nature of markdown headers.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::frontmatter::Frontmatter;
+/// # use lithos_core::note::value::FieldValue;
+/// # use std::collections::HashMap;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let mut fields = HashMap::new();
+/// fields.insert("status".into(), FieldValue::String("draft".into()));
+///
+/// let fm = Frontmatter::new(fields)?;
+/// assert!(fm.has("status"));
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,

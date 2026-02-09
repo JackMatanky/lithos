@@ -24,6 +24,30 @@ use crate::config::task::{
 };
 
 /// Task entity within a Note.
+///
+/// Represents a promoted checkbox item from a markdown list. A `Task` carries
+/// additional domain semantics such as status, temporal data (due dates, etc.),
+/// and rich metadata extracted from inline tags and brackets.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::{task::Task, types::SourceByteOffset};
+/// # use lithos_core::config::task::{TaskConfig, StatusSymbol};
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = TaskConfig::default();
+/// let status = StatusSymbol::try_new(' ')?;
+/// let task = Task::from_checkbox(
+///     "#task Urgent work",
+///     status,
+///     SourceByteOffset::new(0),
+///     &config,
+/// )?;
+///
+/// assert_eq!(task.text(), "Urgent work");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -373,7 +397,15 @@ impl From<TaskId> for Uuid {
 /// A timestamp representing task temporal data.
 ///
 /// Wraps an `i64` Unix timestamp for semantic clarity while maintaining
-/// zero-copy compatibility with rkyv serialization.
+/// zero-copy compatibility with `rkyv` serialization.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::task::TaskTimestamp;
+/// let now = TaskTimestamp::now();
+/// assert!(!now.is_future(None));
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -546,6 +578,18 @@ impl From<TaskTimestamp> for std::time::SystemTime {
 }
 
 /// Task metadata fields.
+///
+/// Stores dynamic key-value pairs extracted from task text using the
+/// `[key:: value]` syntax.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::{task::TaskMetadata, value::FieldValue};
+/// let mut meta = TaskMetadata::new();
+/// meta.insert("priority".into(), FieldValue::Number(1.0));
+/// assert_eq!(meta.priority(), Some(1.0));
+/// ```
 #[derive(
     Debug,
     Clone,

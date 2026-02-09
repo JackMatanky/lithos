@@ -24,6 +24,18 @@ use super::error::NoteError;
 ///
 /// Tags follow the format `#segment1/segment2/segment3` and are used
 /// for organizing and categorizing notes.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::tag::Tag;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let tag = Tag::new("#work/project/urgent")?;
+/// assert_eq!(tag.full_path(), "work/project/urgent");
+/// assert_eq!(tag.segments().len(), 3);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
