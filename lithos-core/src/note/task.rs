@@ -73,10 +73,15 @@ pub struct Task {
 }
 
 impl Task {
-    /// Creates a new Task from checkbox text and metadata.
+    /// Creates a new [`Task`] from checkbox text and metadata.
     ///
     /// # Errors
-    /// Returns `NoteError` if parsing fails.
+    ///
+    /// Returns [`NoteError::Task`] if:
+    /// - The status symbol is unrecognized.
+    /// - The task text is empty after cleaning.
+    /// - Temporal field parsing fails.
+    /// - Metadata validation fails against configuration.
     #[inline]
     pub fn from_checkbox(
         raw_text: &str,
@@ -115,77 +120,77 @@ impl Task {
         })
     }
 
-    /// Returns true if the checkbox should be promoted to a Task.
+    /// Returns `true` if the checkbox text should be promoted to a [`Task`].
     #[inline]
     #[must_use]
     pub fn should_promote(text: &str, config: &TaskConfig) -> bool {
         config.has_task_tag(text)
     }
 
-    /// Returns the task ID.
+    /// Returns the unique task identifier.
     #[inline]
     #[must_use]
     pub const fn id(&self) -> TaskId {
         self.id
     }
 
-    /// Returns the task status name.
+    /// Returns the current task status.
     #[inline]
     #[must_use]
     pub fn status(&self) -> StatusName {
         self.status.clone()
     }
 
-    /// Returns the task text.
+    /// Returns the task's descriptive text.
     #[inline]
     #[must_use]
     pub fn text(&self) -> &str {
         &self.text
     }
 
-    /// Returns the task position in the note.
+    /// Returns the byte position of the task in the note source.
     #[inline]
     #[must_use]
     pub const fn position(&self) -> SourceByteOffset {
         self.position
     }
 
-    /// Returns the task tags.
+    /// Returns the collection of tags associated with this task.
     #[inline]
     #[must_use]
     pub fn tags(&self) -> &[Box<str>] {
         &self.tags
     }
 
-    /// Returns the task created timestamp.
+    /// Returns the task's creation timestamp, if known.
     #[inline]
     #[must_use]
     pub const fn created_at(&self) -> Option<TaskTimestamp> {
         self.created_at
     }
 
-    /// Returns the task due timestamp.
+    /// Returns the task's due date, if set.
     #[inline]
     #[must_use]
     pub const fn due_at(&self) -> Option<TaskTimestamp> {
         self.due_at
     }
 
-    /// Returns the task reminder timestamp.
+    /// Returns the task's reminder date, if set.
     #[inline]
     #[must_use]
     pub const fn reminder_at(&self) -> Option<TaskTimestamp> {
         self.reminder_at
     }
 
-    /// Returns the task completion timestamp.
+    /// Returns the timestamp when the task was completed, if applicable.
     #[inline]
     #[must_use]
     pub const fn completed_at(&self) -> Option<TaskTimestamp> {
         self.completed_at
     }
 
-    /// Returns task metadata.
+    /// Returns the task's structured metadata fields.
     #[inline]
     #[must_use]
     pub const fn metadata(&self) -> &TaskMetadata {
@@ -365,7 +370,7 @@ impl Task {
 pub struct TaskId(Uuid);
 
 impl TaskId {
-    /// Creates a new `TaskId` (UUID v7).
+    /// Creates a new random `TaskId` (UUID v7).
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -424,7 +429,7 @@ impl From<TaskId> for Uuid {
 pub struct TaskTimestamp(i64);
 
 impl TaskTimestamp {
-    /// Creates a new `TaskTimestamp` from a Unix timestamp.
+    /// Creates a new [`TaskTimestamp`] from a Unix timestamp.
     ///
     /// # Arguments
     /// * `timestamp` - Unix timestamp in seconds since epoch.
@@ -434,7 +439,7 @@ impl TaskTimestamp {
         Self(timestamp)
     }
 
-    /// Creates a new `TaskTimestamp` from the current time.
+    /// Creates a new [`TaskTimestamp`] representing the current system time.
     #[inline]
     #[must_use]
     pub fn now() -> Self {
@@ -451,17 +456,17 @@ impl TaskTimestamp {
         )
     }
 
-    /// Returns the raw Unix timestamp.
+    /// Returns the raw Unix timestamp value.
     #[inline]
     #[must_use]
     pub const fn as_i64(&self) -> i64 {
         self.0
     }
 
-    /// Returns true if this timestamp represents a future time.
+    /// Returns `true` if this timestamp represents a time in the future.
     ///
     /// # Arguments
-    /// * `relative_to` - Optional reference time; defaults to now.
+    /// * `relative_to` - Optional reference time; defaults to system 'now'.
     #[inline]
     #[must_use]
     pub fn is_future(&self, relative_to: Option<Self>) -> bool {
@@ -469,10 +474,10 @@ impl TaskTimestamp {
         self.0 > reference.0
     }
 
-    /// Returns true if this timestamp represents a past time.
+    /// Returns `true` if this timestamp represents a time in the past.
     ///
     /// # Arguments
-    /// * `relative_to` - Optional reference time; defaults to now.
+    /// * `relative_to` - Optional reference time; defaults to system 'now'.
     #[inline]
     #[must_use]
     pub fn is_past(&self, relative_to: Option<Self>) -> bool {
@@ -492,7 +497,7 @@ impl TaskTimestamp {
         self.0 - Self::now().0
     }
 
-    /// Returns the duration between two timestamps.
+    /// Returns the duration in seconds between this timestamp and another.
     #[inline]
     #[must_use]
     #[expect(
@@ -503,12 +508,12 @@ impl TaskTimestamp {
         self.0 - other.0
     }
 
-    /// Returns true if this timestamp is within the specified duration from
-    /// now.
+    /// Returns `true` if this timestamp is within the specified duration
+    /// window.
     ///
     /// # Arguments
     /// * `duration_seconds` - Duration window in seconds.
-    /// * `relative_to` - Optional reference time; defaults to now.
+    /// * `relative_to` - Optional reference time; defaults to system 'now'.
     #[inline]
     #[must_use]
     #[expect(
@@ -606,7 +611,7 @@ pub struct TaskMetadata {
 }
 
 impl TaskMetadata {
-    /// Creates an empty metadata map.
+    /// Creates a new, empty [`TaskMetadata`] map.
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -615,55 +620,57 @@ impl TaskMetadata {
         }
     }
 
-    /// Inserts a metadata field.
+    /// Inserts a new metadata field into the collection.
     #[inline]
     pub fn insert(&mut self, field: Box<str>, value: FieldValue) {
         self.fields.insert(field, value);
     }
 
-    /// Returns a field value by name.
+    /// Returns a reference to the value for the given metadata field.
     #[inline]
     #[must_use]
     pub fn get(&self, field: &str) -> Option<&FieldValue> {
         self.fields.get(field)
     }
 
-    /// Returns a string field value if present.
+    /// Returns the string value for the given field, if it exists and is a
+    /// string.
     #[inline]
     #[must_use]
     pub fn get_string(&self, field: &str) -> Option<&str> {
         self.get(field)?.as_str()
     }
 
-    /// Returns a numeric field value if present.
+    /// Returns the numeric value for the given field, if it exists and is a
+    /// number.
     #[inline]
     #[must_use]
     pub fn get_number(&self, field: &str) -> Option<f64> {
         self.get(field)?.as_number()
     }
 
-    /// Returns task priority if set.
+    /// Returns the task's priority if defined in metadata.
     #[inline]
     #[must_use]
     pub fn priority(&self) -> Option<f64> {
         self.get_number("priority")
     }
 
-    /// Returns task project if set.
+    /// Returns the task's project name if defined in metadata.
     #[inline]
     #[must_use]
     pub fn project(&self) -> Option<&str> {
         self.get_string("project")
     }
 
-    /// Returns task area if set.
+    /// Returns the task's area name if defined in metadata.
     #[inline]
     #[must_use]
     pub fn area(&self) -> Option<&str> {
         self.get_string("area")
     }
 
-    /// Returns all metadata fields.
+    /// Returns a reference to the internal metadata field map.
     #[inline]
     #[must_use]
     pub const fn fields(&self) -> &HashMap<Box<str>, FieldValue> {

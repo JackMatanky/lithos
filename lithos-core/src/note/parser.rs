@@ -48,7 +48,7 @@ pub struct NoteParser<'config> {
 }
 
 impl<'config> NoteParser<'config> {
-    /// Creates a new parser bound to the provided task configuration.
+    /// Creates a new [`NoteParser`] bound to the provided task configuration.
     #[inline]
     #[must_use]
     pub const fn new(config: &'config TaskConfig) -> Self {
@@ -61,7 +61,17 @@ impl<'config> NoteParser<'config> {
     ///
     /// # Errors
     ///
-    /// Returns `NoteError` when task promotion or list extraction fails.
+    /// Returns [`NoteError`] when task promotion or list extraction fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::parser::NoteParser;
+    /// # use lithos_core::config::task::TaskConfig;
+    /// let config = TaskConfig::default();
+    /// let parser = NoteParser::new(&config);
+    /// let (lists, tasks) = parser.parse_lists_and_tasks("- [ ] task").unwrap();
+    /// ```
     #[inline]
     pub fn parse_lists_and_tasks(
         &self,
@@ -79,9 +89,25 @@ impl<'config> NoteParser<'config> {
 
     /// Parses markdown and appends extracted lists and tasks to a note.
     ///
+    /// This is the primary entry point for populating a [`Note`] aggregate
+    /// from markdown source.
+    ///
     /// # Errors
     ///
-    /// Returns `NoteError` when parsing fails.
+    /// Returns [`NoteError`] when parsing fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::{aggregate::{Note, NoteId}, parser::NoteParser};
+    /// # use lithos_core::config::task::TaskConfig;
+    /// let config = TaskConfig::default();
+    /// let mut note = Note::new(NoteId::new(), "test.md".to_string()).unwrap();
+    /// let parser = NoteParser::new(&config);
+    ///
+    /// parser.apply_to_note(&mut note, "- [ ] #task Review PR").unwrap();
+    /// assert_eq!(note.tasks().count(), 1);
+    /// ```
     #[inline]
     pub fn apply_to_note(
         &self,
