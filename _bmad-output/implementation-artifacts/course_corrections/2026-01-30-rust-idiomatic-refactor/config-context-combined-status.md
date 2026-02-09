@@ -185,6 +185,112 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 
 ---
 
+## Phase 0.5: Design Spec Alignment Issues (FROM DESIGN REVIEW 2026-02-09)
+
+**Context**: Comprehensive review of implementation vs design specs revealed critical misalignments.
+**Source**: Design specs 001-config-models.md, 002-config-cqrs.md, 003-config-task.md
+
+### 0.5.1) CRITICAL: Fix ConfigCommandError Extra Variant
+**Spec**: 002-config-cqrs.md Section 1.4
+**Issue**: `ConfigCommandError` has `Ingest` variant not in spec (only Domain/Storage allowed)
+- [ ] Read `lithos-core/src/config/error.rs` lines 108-128
+- [ ] **Decision needed**: Remove `Ingest` variant OR update design spec to justify it
+- [ ] If removing: Map ingest errors to `Domain(ConfigError)` in command.rs
+- [ ] If keeping: Document rationale and update spec
+- [ ] Update tests in `error.rs` if error variants change
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify` (REQUIRED)
+
+### 0.5.2) CRITICAL: Consolidate Bounds Types (DRY Violation)
+**Spec**: 003-config-task.md Section 3.2 lines 434-475, Decision 4.1.8
+**Issue**: Implementation has separate `IntegerBounds`/`FloatBounds`, spec requires generic `Bounds<T>`
+- [ ] Read `lithos-core/src/config/task.rs` lines 145-203 (current separate types)
+- [ ] Create generic `Bounds<T>` enum with Unbounded/Min/Max/Range variants
+- [ ] Replace `IntegerBounds` with `Bounds<i64>`
+- [ ] Replace `FloatBounds` with `Bounds<f64>`
+- [ ] Update `TaskFieldSpec::Integer` and `TaskFieldSpec::Float` to use `Bounds<T>`
+- [ ] Update validation methods to use shared `bounds.validate(value)` logic
+- [ ] Update all tests referencing `IntegerBounds` or `FloatBounds`
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify` (REQUIRED)
+
+### 0.5.3) MAJOR: Implement Type Inference for RawTaskFieldSpec
+**Spec**: 003-config-task.md Section 4.1.5 Decision, Section 2.1 lines 117-140
+**Issue**: Uses `#[serde(tag = "type")]` requiring explicit `type=` key, spec requires `#[serde(untagged)]`
+- [ ] Read `lithos-core/src/config/raw.rs` lines 188-232
+- [ ] Change `#[serde(tag = "type", rename_all = "lowercase")]` to `#[serde(untagged)]`
+- [ ] Reorder enum variants for correct matching priority: Enum → Integer → Float → DateTime → String
+- [ ] Add comment explaining untagged matching order
+- [ ] Update deserialization tests to verify type inference works (no `type=` key needed)
+- [ ] **Breaking change**: Users must remove `type=` from config files
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify` (REQUIRED)
+
+### 0.5.4) MEDIUM: Store Compiled Regex in TaskFieldSpec
+**Spec**: 003-config-task.md Section 3.2 lines 497-506, Decision 4.1.3
+**Issue**: Stores `Option<String>`, spec requires `Option<Arc<regex::Regex>>` for performance
+- [ ] Read `lithos-core/src/config/task.rs` lines 240-276 (TaskFieldSpec enum)
+- [ ] Change `String { pattern: Option<String> }` to `String { pattern: Option<Arc<regex::Regex>> }`
+- [ ] Update `TaskFieldSpec::from_raw` to compile regex and wrap in Arc
+- [ ] Remove regex compilation from `validate_string` method (use pre-compiled)
+- [ ] Update rkyv derives (Arc<Regex> needs manual serialization or skip)
+- [ ] **Consider**: Store both compiled Arc<Regex> and pattern string for serialization
+- [ ] Update validation tests to verify compiled regex is used
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify` (REQUIRED)
+
+### 0.5.5) MEDIUM: Make validate_raw_value Private
+**Spec**: 003-config-task.md Section 3.3 lines 719-723 (marked as "private helper")
+**Issue**: Method is public, spec explicitly says private
+- [ ] Read `lithos-core/src/config/task.rs` line 737 (`pub fn validate_raw_value`)
+- [ ] Change `pub fn validate_raw_value` to `pub(crate) fn validate_raw_value`
+- [ ] **Rationale**: Only Note context should validate; users shouldn't call directly
+- [ ] Verify no external crate uses this method
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify` (REQUIRED)
+
+### 0.5.6) MEDIUM: Change TaskFieldKeyword Backing to Box<str>
+**Spec**: 003-config-task.md Section 3.2 lines 362-387
+**Issue**: Uses `String`, spec requires `Box<str>` (immutable, no growth capacity)
+- [ ] Read `lithos-core/src/config/task.rs` lines 129-143
+- [ ] Change `pub struct TaskFieldKeyword(String)` to `pub struct TaskFieldKeyword(Box<str>)`
+- [ ] Update `try_new` to convert `value.into(): String` to `value.into(): Box<str>`
+- [ ] Update `From<TaskFieldKeyword> for String` to use `.into_string()` or clone
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify` (REQUIRED)
+
+### 0.5.7) MEDIUM: Change TaskTag Backing to Box<str>
+**Spec**: 003-config-task.md Section 3.2 lines 336-360
+**Issue**: Uses `String`, spec requires `Box<str>` (same as TaskFieldKeyword)
+- [ ] Read `lithos-core/src/config/task.rs` lines 113-127
+- [ ] Change `pub struct TaskTag(String)` to `pub struct TaskTag(Box<str>)`
+- [ ] Update `try_new` to convert to `Box<str>`
+- [ ] Update `From<TaskTag> for String` implementation
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify` (REQUIRED)
+
+### 0.5.8) MEDIUM: Document or Remove Extra RawTaskDates Fields
+**Spec**: 003-config-task.md Section 3.2 lines 593-607 (only 4 fields: due/created/reminder/completed)
+**Issue**: Implementation adds `scheduled` and `start` fields not in spec
+- [ ] Read `lithos-core/src/config/raw.rs` lines 159-174
+- [ ] **Decision needed**: Keep extra fields (update spec) OR remove them (match spec)
+- [ ] If keeping: Add to spec documentation and explain use case
+- [ ] If removing: Delete `scheduled` and `start` fields
+- [ ] Update tests if fields are removed
+- [ ] Run `mise run test:unit:config`
+- [ ] Run `mise run verify` (REQUIRED)
+
+### 0.5.9) Quality Gate for Phase 0.5
+- [ ] Run `mise run verify` (full quality gate)
+- [ ] Confirm all spec alignment issues resolved
+- [ ] Document any deviations from spec with rationale
+- [ ] Stage changes: `git add lithos-core/src/config/`
+- [ ] Commit checkpoint: `git commit -m "fix(config): align implementation with design specs (bounds, errors, task fields)"`
+
+**STOP**: Do not proceed to Phase 7 until Phase 0.5 is complete and all design alignment issues are resolved.
+
+---
+
 ## Phase 1: Raw Input Types + Ingest Boundary (Figment) - COMPLETED
 
 Status: ✅ Files exist, ❌ Not fully validated against spec
@@ -297,3 +403,13 @@ Phase 8 (Final Gate) → Ship it
 - If any on-disk format changes are introduced, record migration notes or ADRs.
 - **STOP and fix immediately** if `mise run verify` fails - do not proceed to next phase.
 - See `config-context-gap-analysis.md` for detailed gap assessment vs design specs.
+
+## Architectural Patterns
+
+**Three-Shape Serialization Pattern**: The config context implements the canonical **Raw* → TryFrom → Domain → [Stored*]** pattern for parsing, validation, and optional storage optimization. See [`_bmad-output/planning-artifacts/architecture/implementation-patterns-consistency-rules.md`](../../../_bmad-output/planning-artifacts/architecture/implementation-patterns-consistency-rules.md#three-shape-serialization-pattern) for:
+- Rationale for zero-method Raw types (dumb data)
+- TryFrom as explicit validation boundary
+- When to create Stored* types (rarely, profiling only)
+- Testing approaches and anti-patterns
+
+This pattern is **canonical** and codified in the project architecture document. All external input validation must follow this three-layer approach.

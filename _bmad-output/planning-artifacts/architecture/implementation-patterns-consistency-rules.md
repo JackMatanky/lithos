@@ -17,7 +17,7 @@ section: "Implementation Standards"
 
 **Rust Naming Conventions:**
 
-- **Crate/Package Names:** Cargo *package* names are `kebab-case` (e.g., `lithos-core`, `lithos-cli`). In Rust code, the crate import path is `snake_case` (e.g., `lithos_core`).
+- **Crate/Package Names:** Cargo _package_ names are `kebab-case` (e.g., `lithos-core`, `lithos-cli`). In Rust code, the crate import path is `snake_case` (e.g., `lithos_core`).
 - **Modules & Files:** `snake_case` (e.g., `vault_indexer.rs`, `frontmatter_service.rs`)
 - **Functions & Variables:** `snake_case` (e.g., `execute_template`, `vault_path`)
 - **Structs & Enums:** `PascalCase` (e.g., `Note`, `DomainError`, `TemplateEngine`)
@@ -149,16 +149,19 @@ pub struct SchemaView<'a> { /* ... */ }
 ### API Design & Ownership Patterns
 
 **Argument Ownership:**
+
 - **Prefer borrowed arguments:** Take `&str`, `&Path`, `&[T]` instead of `String`, `PathBuf`, `Vec<T>`.
 - **Take ownership only when needed:** If you need to store the data, take `T` or `impl Into<T>`.
 - **Use `impl Trait` for inputs:** `fn process(input: impl Read)` is more flexible than `fn process(input: &mut File)`.
 
 **String Efficiency:**
+
 - **Zero-copy where possible:** Use `&str` for read-only text.
 - **`Box<str>` for immutable owned:** Use `Box<str>` instead of `String` for immutable text fields (saves 8 bytes per string).
 - **`Cow<'a, str>` for mixed:** Use `Cow` when data might be borrowed or owned.
 
 **Construction Conventions:**
+
 - **`new()`:** Infallible constructor.
 - **`try_new()`:** Fallible constructor returning `Result`.
 - **`with_capacity()`:** Pre-allocation for collections.
@@ -329,6 +332,7 @@ pub struct Config {
 ```
 
 **Benefits:**
+
 - Can add validation to setters later without breaking API
 - Can change internal representation without breaking callers
 - Clear ownership semantics (reference vs owned)
@@ -430,6 +434,7 @@ pub struct TemplateContext {
 ```
 
 **Benefits:**
+
 - Prevents external code from exhaustive matching (forces wildcard)
 - Prevents external code from direct struct construction
 - Allows adding variants/fields in minor versions
@@ -530,7 +535,7 @@ When designing a type, ask:
 
 ✅ Mark all fields private by default
 ✅ Wrap validated strings in newtypes (SchemaName, NotePath)
-✅ Use NonZero* types from std for positive numbers
+✅ Use NonZero\* types from std for positive numbers
 ✅ Expose collections via `&[T]` or iterators, not `&mut Vec<T>`
 ✅ Use `#[non_exhaustive]` on public enums
 
@@ -543,6 +548,7 @@ When designing a type, ask:
 **Pattern:** Define separate `QueryPort` and `CommandPort` traits in single `<context>/ports.rs` file.
 
 **Why Split Ports:**
+
 - Read-only use cases don't implement writes
 - Test fakes only implement needed capabilities
 - Future flexibility (cache reads, DB writes independently)
@@ -740,30 +746,200 @@ let schema = query.find_owned_by_name(name)?;
 
 ### Three-Shape Serialization Pattern
 
-**Core Principle:** Separate concerns of parsing, validation, and storage optimization.
+**Core Principle:** Separate concerns of parsing, validation, and storage optimization through three distinct type layers.
 
-**Shapes:**
+**Architecture Flow:**
 
-1. **Raw\* (parsing boundary):**
-   - Location: `<context>/raw.rs`
-   - Derives: `serde::Serialize + Deserialize`
-   - Purpose: Tolerant parsing from files
-   - Nullable fields for better error messages
+```text
+External Input (TOML/YAML/JSON/User Input)
+    ↓ serde::Deserialize
+Raw* Types (unvalidated, optional fields)
+    ↓ TryFrom<Raw*> (VALIDATION BOUNDARY)
+Domain Types (validated invariants, typed enums)
+    ↓ rkyv::Archive (if persisted)
+Database (redb, zero-copy bytes)
+```
 
-2. **Domain (application core):**
-   - Location: `<context>/aggregate.rs`
-   - Derives: `rkyv::Archive + Serialize + Deserialize`, optionally `serde` (feature-gated)
-   - Purpose: Validated entities used throughout app
-   - **Has rkyv derives** for zero-copy database operations
-   - Private fields with smart constructors
+---
 
-3. **Stored\* (storage optimization, optional):**
-   - Location: `db/stored/<context>.rs`
-   - Derives: `rkyv::Archive + Serialize + Deserialize`
-   - Purpose: Only when domain shape inefficient for storage
-   - Flattened newtypes, optimized layouts
+#### Shape 1: Raw\* Types (Parsing Boundary)
 
-**Conversion Flow Pattern:**
+**Purpose:** Accept flexible, unvalidated input from external sources (files, API requests, CLI args).
+
+**Characteristics:**
+
+- **Zero methods** - no `impl` blocks except `Derive`
+- **All fields `Option<T>`** - missing fields are `None`
+- **String enums** - accept any string, validation happens in `TryFrom`
+- **Public fields** - deserialization requires pub access
+- **Not persisted** - never stored in database
+- **Location:** `<context>/raw.rs` or co-located with domain type
+
+**Example:**
+
+```rust
+/// Raw frontmatter configuration (unvalidated).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawFrontmatter {
+    pub alias_key: Option<String>,        // Could be empty ""
+    pub title_key: Option<String>,        // Could be empty ""
+    pub date_created_key: Option<String>, // Could be empty ""
+    // NO impl blocks, NO methods
+}
+```
+
+**What NOT to do:**
+
+```rust
+impl RawFrontmatter {
+    // ❌ DON'T: No validation methods on Raw types
+    pub fn validate(&self) -> Result<(), ConfigError> { ... }
+
+    // ❌ DON'T: No parsing methods on Raw types
+    pub fn parse(&self) -> Result<Frontmatter, ConfigError> { ... }
+}
+```
+
+**Acceptable deviations (parsing helpers only):**
+
+```rust
+impl RawGlobal {
+    // ✅ OK: Format-specific parsing (not validation)
+    pub fn from_toml_str(s: &str) -> Result<Self, toml::de::Error> {
+        toml::from_str(s)  // Just deserialization, not validation
+    }
+}
+```
+
+---
+
+#### Shape 2: Domain Types (Application Core)
+
+**Purpose:** Represent valid business entities with guaranteed invariants.
+
+**Characteristics:**
+
+- **Private fields** - enforce invariants via getters
+- **Typed enums** - `LogLevel`, not `String`
+- **Newtypes** - `FrontmatterKey`, `VaultRoot`, not raw `String`/`PathBuf`
+- **Methods allowed** - business logic, queries, commands
+- **Persisted** - stored in database via `rkyv::Archive`
+- **Location:** `<context>/aggregate.rs`, `<context>/<entity>.rs`
+- **Derives:** `rkyv::Archive + Serialize + Deserialize`, optionally `serde` (feature-gated)
+
+**Example:**
+
+```rust
+/// Validated frontmatter configuration.
+#[derive(Debug, Clone, PartialEq,
+         rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[non_exhaustive]
+pub struct Frontmatter {
+    alias_key: FrontmatterKey,        // Validated (non-empty)
+    title_key: FrontmatterKey,        // Validated (non-empty)
+    date_created_key: FrontmatterKey, // Validated (non-empty)
+    // Private fields
+}
+
+impl Frontmatter {
+    // ✅ DO: Constructors enforce invariants
+    pub fn new(
+        alias_key: FrontmatterKey,
+        title_key: FrontmatterKey,
+        date_created_key: FrontmatterKey,
+    ) -> Self {
+        Self { alias_key, title_key, date_created_key }
+    }
+
+    // ✅ DO: Getters for private fields
+    pub fn alias_key(&self) -> &FrontmatterKey {
+        &self.alias_key
+    }
+}
+```
+
+---
+
+#### Validation Boundary: TryFrom
+
+**Purpose:** Explicit, single validation point from unvalidated → validated.
+
+**Pattern:** Use `TryFrom<Raw*>` trait as the validation boundary.
+
+**Why TryFrom (not methods on Raw types):**
+
+- ✅ **Rust convention** - standard validation pattern
+- ✅ **Single point** - all validation in one place
+- ✅ **Explicit** - caller must call `try_into()` or `TryFrom::try_from()`
+- ✅ **Testable** - easy to construct invalid Raw types for tests
+- ✅ **Type-safe** - compiler enforces validation before domain use
+
+**Example:**
+
+```rust
+impl TryFrom<RawFrontmatter> for Frontmatter {
+    type Error = ConfigError;
+
+    fn try_from(raw: RawFrontmatter) -> Result<Self, Self::Error> {
+        // Extract with defaults
+        let alias_key = raw.alias_key.unwrap_or_else(|| "aliases".to_owned());
+        let title_key = raw.title_key.unwrap_or_else(|| "title".to_owned());
+
+        // Validate (empty strings are invalid)
+        let alias_key = FrontmatterKey::try_new(alias_key)?;
+        let title_key = FrontmatterKey::try_new(title_key)?;
+
+        // Construct validated domain type
+        Ok(Frontmatter::new(alias_key, title_key, /* ... */))
+    }
+}
+```
+
+**Usage:**
+
+```rust
+// External input → Raw → Domain
+let raw: RawFrontmatter = toml::from_str(contents)?;  // Parse
+let validated: Frontmatter = raw.try_into()?;          // Validate (explicit)
+```
+
+---
+
+#### Shape 3: Stored\* Types (Storage Optimization, Optional)
+
+**Purpose:** Only when domain shape is inefficient for storage (rarely needed).
+
+**When to Create:**
+Only introduce `Stored*` when profiling reveals:
+
+- ✅ Wrapper newtypes (SchemaName) complicate database indexing
+- ✅ Deep nesting causes excessive alignment copy overhead
+- ✅ Arc<T> sharing doesn't serialize efficiently
+- ✅ Storage layout differs significantly from domain representation
+
+**Default Strategy:** Store domain types directly (they have rkyv derives).
+
+**Location:** `db/stored/<context>.rs`
+**Derives:** `rkyv::Archive + Serialize + Deserialize`
+
+**Example (only if profiling shows need):**
+
+```rust
+// db/stored/schema.rs
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct StoredSchema {
+    pub name: Box<str>,  // Flattened from SchemaName newtype
+    pub properties: Vec<StoredProperty>,
+}
+
+impl From<Schema> for StoredSchema { /* ... */ }
+impl TryFrom<StoredSchema> for Schema { /* ... */ }
+```
+
+---
+
+#### Conversion Flow Pattern
 
 ✅ **Prefer:**
 
@@ -771,8 +947,8 @@ let schema = query.find_owned_by_name(name)?;
 // fs/parsers.rs - File → Raw → Domain
 fn parse_schema_yaml(path: &Path) -> Result<Schema, ParseError> {
     let content = fs::read_to_string(path)?;
-    let raw: RawSchema = serde_yaml::from_str(&content)?;  // serde
-    Schema::try_from(raw)  // validation
+    let raw: RawSchema = serde_yaml::from_str(&content)?;  // Parse
+    Schema::try_from(raw)  // Validate (TryFrom boundary)
 }
 
 // db/schema_adapter.rs - Domain → Storage
@@ -788,28 +964,150 @@ impl SchemaCommandPort for RedbSchemaCommandAdapter<'_> {
 }
 ```
 
-**When to Create Stored\* Types:**
+---
 
-Only introduce `Stored*` when profiling reveals:
-- ✅ Wrapper newtypes (SchemaName) complicate database indexing
-- ✅ Deep nesting causes excessive alignment copy overhead
-- ✅ Arc<T> sharing doesn't serialize efficiently
-- ✅ Storage layout differs significantly from domain representation
+#### Design Rationale
 
-**Default Strategy:** Store domain types directly (they have rkyv derives).
+**Why separate Raw from Domain?**
 
-❌ **Avoid:**
+**Problems with direct deserialization:**
 
 ```rust
-// Creating Stored* prematurely without performance justification
-// db/stored/schema.rs - DON'T CREATE until needed!
-pub struct StoredSchema { /* ... */ }
-
-// Domain without rkyv derives (wrong!)
-// <context>/aggregate.rs
-#[derive(Debug, Clone)]  // Missing rkyv derives!
-pub struct Schema { /* ... */ }
+// ❌ BAD: Domain type directly deserialized
+#[derive(Deserialize)]
+pub struct Frontmatter {
+    alias_key: String,  // Can be empty! Invalid states representable
+}
 ```
+
+**Benefits of Raw/Domain split:**
+
+1. **Invalid states unrepresentable** - domain types enforce invariants
+2. **Clear error messages** - distinguish parse errors from validation errors
+3. **Flexible parsing** - Raw types accept typos, wrong types, partial configs
+4. **Easy testing** - construct invalid Raw types for test fixtures
+5. **Independent evolution** - file format can change without breaking domain
+
+**Why NOT methods on Raw types?**
+
+**Problem with this approach:**
+
+```rust
+impl RawFrontmatter {
+    pub fn parse(&self) -> Result<Frontmatter, ConfigError> {
+        // ❌ BAD: Raw types now have behavior
+    }
+}
+```
+
+**Issues:**
+
+- Breaks single responsibility (Raw types parse AND validate)
+- Violates "dumb data, smart functions" principle
+- Against Rust conventions (`TryFrom` is standard)
+- Harder to mock/test (Raw types become stateful)
+- Validation might be forgotten (not enforced by type system)
+
+---
+
+#### Testing Pattern
+
+**Test invalid Raw input:**
+
+```rust
+#[test]
+fn rejects_empty_alias_key() {
+    let raw = RawFrontmatter {
+        alias_key: Some("".to_string()), // Invalid
+        ..Default::default()
+    };
+
+    let result = Frontmatter::try_from(raw);
+    assert!(matches!(result, Err(ConfigError::ValidationFailed { .. })));
+}
+```
+
+**Test valid conversion:**
+
+```rust
+#[test]
+fn converts_valid_raw_config() -> Result<(), ConfigError> {
+    let raw = RawFrontmatter {
+        alias_key: Some("aliases".to_string()),
+        title_key: Some("title".to_string()),
+        ..Default::default()
+    };
+
+    let frontmatter = Frontmatter::try_from(raw)?;
+    assert_eq!(frontmatter.alias_key().as_str(), "aliases");
+    Ok(())
+}
+```
+
+---
+
+#### Anti-Patterns to Avoid
+
+❌ **DON'T: Validate in constructors**
+
+```rust
+impl Frontmatter {
+    // ❌ BAD: Makes invalid state constructible
+    pub fn new(alias_key: String) -> Self {
+        Self { alias_key }  // Can be empty!
+    }
+}
+```
+
+❌ **DON'T: Skip Raw layer**
+
+```rust
+// ❌ BAD: Deserializing directly into domain
+#[derive(Deserialize)]
+pub struct Frontmatter {
+    alias_key: String, // Can be empty!
+}
+```
+
+❌ **DON'T: Add methods to Raw types**
+
+```rust
+impl RawFrontmatter {
+    // ❌ BAD: Raw types should have zero methods
+    pub fn is_valid(&self) -> bool { ... }
+}
+```
+
+❌ **DON'T: Persist Raw types**
+
+```rust
+// ❌ BAD: Never store unvalidated data
+db.put("config", "frontmatter", &raw_frontmatter)?;
+```
+
+❌ **DON'T: Create Stored\* prematurely**
+
+```rust
+// ❌ BAD: Creating Stored* without performance justification
+pub struct StoredSchema { /* ... */ }  // Domain works fine!
+```
+
+---
+
+#### Summary Table
+
+| Aspect             | Raw Types                   | Domain Types             | Stored Types                |
+| ------------------ | --------------------------- | ------------------------ | --------------------------- |
+| **Purpose**        | Accept flexible input       | Represent valid entities | Optimize storage            |
+| **Validation**     | None (can be invalid)       | Guaranteed invariants    | N/A (mechanical conversion) |
+| **Fields**         | All `Option<T>`             | Typed, private           | Flattened, optimized        |
+| **Methods**        | Zero (pure DTO)             | Business logic allowed   | Only From/TryFrom           |
+| **Persistence**    | Never                       | Via rkyv                 | Yes (if needed)             |
+| **Conversion**     | N/A                         | Via `TryFrom<Raw*>`      | Via `From<Domain>`          |
+| **Testing**        | Easy to make invalid        | Hard to make invalid     | Not tested directly         |
+| **When to create** | Always (for external input) | Always                   | Rarely (profiling only)     |
+
+**Golden Rule:** Raw types are **dumb data**, validation is **explicit** via `TryFrom`, domain types are **smart** with invariants, Stored types are **rare optimizations**.
 
 ### Port-Based Testing Pattern
 
@@ -948,6 +1246,7 @@ When implementing port-based CQRS, verify:
 **Dependency Flow Rules:**
 
 ✅ **ALLOWED:**
+
 ```rust
 // From any business context (note, schema, template):
 use crate::config::Global;      // Config is cross-cutting infrastructure
@@ -963,6 +1262,7 @@ use super::ports::NoteStore;
 ```
 
 ❌ **FORBIDDEN:**
+
 ```rust
 // Business contexts importing each other:
 use crate::note::Note;          // From schema context
