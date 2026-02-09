@@ -53,6 +53,7 @@ use lithos_core::{
         structure::{Heading, Section},
         tag::Tag,
         task::{Task, TaskStatus},
+        types::SourceByteOffset,
     },
 };
 use tempfile::TempDir;
@@ -81,7 +82,7 @@ fn create_test_note(index: usize) -> Note {
             },
             None,
             None,
-            0,
+            SourceByteOffset::new(0),
         )
         .expect("valid link"),
         Link::new_markdown_link(
@@ -90,7 +91,7 @@ fn create_test_note(index: usize) -> Note {
             },
             Some("Example".to_owned()),
             None,
-            50,
+            SourceByteOffset::new(50),
         )
         .expect("valid link"),
     ];

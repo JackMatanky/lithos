@@ -347,7 +347,7 @@ impl Note {
     ///     None,
     ///     SourceByteOffset::new(0),
     /// )?;
-
+    ///
     /// note.links.push(link);
     /// assert_eq!(note.wikilinks().count(), 1, "Expected one wiki link");
     /// # Ok(())
@@ -452,8 +452,8 @@ mod tests {
         pub fn note_with_link_mix() -> Result<Note, NoteError> {
             let mut note = base_note()?;
 
-            note.links.push(wikilink("wiki1.md", 0_u32)?);
-            note.links.push(wikilink("wiki2.md", 10_u32)?);
+            note.links.push(wikilink("wiki1.md", 0u32)?);
+            note.links.push(wikilink("wiki2.md", 10u32)?);
             let md = Link::new_markdown_link(
                 Target::External {
                     url: "https://example.com".into(),
@@ -463,7 +463,7 @@ mod tests {
                 crate::note::types::SourceByteOffset::new(20),
             )?;
             note.links.push(md);
-            note.links.push(embed("img.png", 30_u32)?);
+            note.links.push(embed("img.png", 30u32)?);
 
             Ok(note)
         }
@@ -704,7 +704,7 @@ mod tests {
                 },
                 None,
                 None,
-                0_u32.into(),
+                0u32.into(),
             )
             .expect("Valid link expected");
 

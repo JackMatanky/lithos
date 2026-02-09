@@ -157,20 +157,13 @@ impl From<figment::Error> for ConfigIngestError {
 
 #[cfg(test)]
 mod tests {
+    mod fixtures {
+        // Shared fixtures for error tests
+    }
+
     use rstest::rstest;
 
     use super::*;
-
-    mod fixtures {
-        use super::*;
-
-        pub fn validation_error() -> ConfigError {
-            ConfigError::ValidationFailed {
-                field: "f".into(),
-                message: "m".into(),
-            }
-        }
-    }
 
     #[test]
     fn config_invalid_is_send_and_sync() {

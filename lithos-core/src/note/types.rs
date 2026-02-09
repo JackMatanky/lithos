@@ -1,4 +1,9 @@
 //! Note-specific domain types and newtypes.
+#![expect(
+    clippy::exhaustive_structs,
+    reason = "rkyv generates exhaustive ArchivedSourceByteOffset despite \
+              #[non_exhaustive]"
+)]
 
 use rkyv::{
     Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
@@ -25,6 +30,7 @@ use serde::{Deserialize, Serialize};
     RkyvDeserialize,
 )]
 #[rkyv(derive(Debug))]
+#[non_exhaustive]
 pub struct SourceByteOffset {
     /// The raw byte offset.
     pub value: u32,
@@ -48,8 +54,16 @@ impl From<SourceByteOffset> for u32 {
 
 impl From<SourceByteOffset> for usize {
     #[inline]
+    #[expect(
+        clippy::expect_used,
+        reason = "u32 always fits in usize on all supported platforms"
+    )]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "u32 always fits in usize on all supported platforms"
+    )]
     fn from(offset: SourceByteOffset) -> Self {
-        offset.value as usize
+        usize::try_from(offset.value).expect("u32 should fit in usize")
     }
 }
 

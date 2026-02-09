@@ -81,8 +81,11 @@ where
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test modules group fixtures and test logic for readability"
+)]
 mod tests {
-    use tempfile::{TempDir, tempdir};
 
     use super::*;
     use crate::{
@@ -96,10 +99,14 @@ mod tests {
     };
 
     mod fixtures {
-        use super::*;
+        use tempfile::{TempDir, tempdir};
 
-        pub fn test_db()
-        -> Result<(TempDir, Database), Box<dyn std::error::Error>> {
+        use crate::db::Database;
+
+        type TestDbResult =
+            Result<(TempDir, Database), Box<dyn std::error::Error>>;
+
+        pub fn test_db() -> TestDbResult {
             let dir = tempdir()?;
             let path = dir.path().join("config.redb");
             let db = Database::open(&path)?;
@@ -135,7 +142,7 @@ mod tests {
             vault_id: VaultId,
             version: ConfigVersion,
         ) -> Result<Option<Config>, Self::Error> {
-            let key = format!("{}:{}", vault_id, version.value());
+            let key = format!("{vault_id}:{}", version.value());
             self.db.get_owned("merged_config_versions", &key)
         }
 
@@ -148,48 +155,63 @@ mod tests {
         where
             F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
         {
-            let key = format!("{}:{}", vault_id, version.value());
+            let key = format!("{vault_id}:{}", version.value());
             self.db.get::<Config, _, _>("merged_config_versions", &key, f)
         }
     }
 
-    #[test]
-    #[expect(
-        clippy::panic_in_result_fn,
-        reason = "Test uses assert! which can panic."
-    )]
-    fn get_returns_none_when_active_missing()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let (_dir, db) = fixtures::test_db()?;
-        db.put("config", "global", &Global::default())?;
-        let qry = Query::new(DbPort::new(&db));
+    mod load {
+        use super::*;
 
-        let result = qry.get(VaultId::new())?;
-        assert!(result.is_none(), "Expected None when active version missing");
-        Ok(())
+        #[test]
+        #[expect(
+            clippy::panic_in_result_fn,
+            reason = "Test uses assert! which can panic."
+        )]
+        fn get_returns_none_when_active_missing()
+        -> Result<(), Box<dyn std::error::Error>> {
+            let (_dir, db) = fixtures::test_db()?;
+            db.put("config", "global", &Global::default())?;
+            let qry = Query::new(DbPort::new(&db));
+
+            let result = qry.get(VaultId::new())?;
+            assert!(
+                result.is_none(),
+                "Expected None when active version missing"
+            );
+            Ok(())
+        }
     }
 
-    #[test]
-    #[expect(
-        clippy::panic_in_result_fn,
-        reason = "Test uses assert_eq! which can panic."
-    )]
-    fn with_archived_executes_closure_on_archived_data()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let (_dir, db) = fixtures::test_db()?;
-        let vault_id = VaultId::new();
-        let version = ConfigVersion::try_from(1)?;
-        let config = Config::default();
+    mod borrowing {
+        use super::*;
 
-        // Setup: version 1 active with default config
-        db.put("merged_config_versions", &format!("{vault_id}:1"), &config)?;
-        db.put("merged_config_active", &vault_id.to_string(), &version)?;
+        #[test]
+        #[expect(
+            clippy::panic_in_result_fn,
+            reason = "Test uses assert_eq! which can panic."
+        )]
+        fn with_archived_executes_closure_on_archived_data()
+        -> Result<(), Box<dyn std::error::Error>> {
+            let (_dir, db) = fixtures::test_db()?;
+            let vault_id = VaultId::new();
+            let version = ConfigVersion::try_from(1)?;
+            let config = Config::default();
 
-        let qry = Query::new(DbPort::new(&db));
+            // Setup: version 1 active with default config
+            db.put(
+                "merged_config_versions",
+                &format!("{vault_id}:1"),
+                &config,
+            )?;
+            db.put("merged_config_active", &vault_id.to_string(), &version)?;
 
-        let result = qry.with_archived(vault_id, |_archived| true)?;
+            let qry = Query::new(DbPort::new(&db));
 
-        assert_eq!(result, Some(true));
-        Ok(())
+            let result = qry.with_archived(vault_id, |_archived| true)?;
+
+            assert_eq!(result, Some(true));
+            Ok(())
+        }
     }
 }

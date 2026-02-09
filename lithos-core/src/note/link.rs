@@ -48,9 +48,6 @@ pub enum Anchor {
 }
 
 /// Represents different types of embedded content.
-///
-/// Used within [`Link`] to specify the media type being embedded when
-/// `embed_type` is present.
 #[derive(
     Debug,
     Clone,
@@ -66,35 +63,45 @@ pub enum Anchor {
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum EmbedType {
-    /// Embedded audio: `![[audio.mp3]]`.
-    Audio,
-    /// Embedded image: `![[image.png]]`.
+    /// Images: `![[image.png]]`.
     Image,
-    /// Embedded note content: `![[another-note]]`.
-    Note,
-    /// Embedded PDF: `![[document.pdf]]`.
-    Pdf,
-    /// Embedded video: `![[video.mp4]]`.
+    /// Audio: `![[audio.mp3]]`.
+    Audio,
+    /// Video: `![[video.mp4]]`.
     Video,
+    /// PDF: `![[document.pdf]]`.
+    Pdf,
+    /// Transcluded note: `![[note]]`.
+    Note,
 }
 
-/// Represents a link within a note.
+/// Syntactic style of a link.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Style {
+    /// Markdown-style: `[alias](target)`.
+    MdLink,
+    /// Wiki-style: `[[target|alias]]`.
+    WikiLink,
+}
+
+/// Represents a link to another note or external resource.
 ///
-/// Links can be wiki-links (Obsidian style) or markdown links.
-/// Both styles can be embeds (prefixed with `!`), which is indicated by
-/// the presence of `embed_type`.
-///
-/// All link types support:
-/// - [`Target`]: The target (resolved, unresolved, or external).
-/// - `alias`: Optional display alias.
-/// - `position`: Character position in the source document.
-///
-/// Wiki-links and markdown links additionally support:
-/// - [`Anchor`]: Optional heading or block reference.
-///
-/// # Invariants
-/// - Embeds cannot have anchors (enforced by [`Link::validate`]).
-/// - External links cannot have block references (only heading anchors).
+/// Links are one of the primary ways notes are connected in Obsidian. Lithos
+/// supports both Wiki-style and Markdown-style links, including anchors and
+/// embeds.
 ///
 /// # Examples
 /// ```
@@ -105,10 +112,10 @@ pub enum EmbedType {
 /// use uuid::Uuid;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// // Wiki-link to an unresolved note with heading anchor
+/// // Create a standard wiki-link with an alias and anchor
 /// let link = Link::new_wikilink(
 ///     Target::Unresolved {
-///         raw: "Future Note".into(),
+///         raw: "my note".into(),
 ///     },
 ///     Some("my alias".to_string()),
 ///     Some(Anchor::Heading("section".into())),
@@ -117,10 +124,10 @@ pub enum EmbedType {
 /// assert_eq!(link.style(), Style::WikiLink, "Link style should be WikiLink");
 /// assert!(link.target().is_unresolved(), "Link target should be unresolved");
 ///
-/// // Embed an image (Wiki-style)
+/// // Create an image embed
 /// let embed = Link::new_embed(
 ///     Target::Unresolved {
-///         raw: "diagram.png".into(),
+///         raw: "image.png".into(),
 ///     },
 ///     EmbedType::Image,
 ///     None,
@@ -140,10 +147,10 @@ pub enum EmbedType {
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Link {
-    /// Target of the link.
+    /// Link target (internal path, UUID, or external URL).
     target: Target,
     /// Optional anchor (heading or block reference).
     anchor: Option<Anchor>,
@@ -153,66 +160,11 @@ pub struct Link {
     alias: Option<Box<str>>,
     /// Syntactic style of the link (Wiki vs Markdown).
     style: Style,
-    /// Type of embedded content (if any).
+    /// Type of embed, if this is an embed link (`![[...]`).
     embed_type: Option<EmbedType>,
 }
 
-/// Represents the syntactic style of a link.
-///
-/// Distinguishes between Wiki-style links (`[[...]]`) and Markdown-style links
-/// (`[...](...)`). Both styles can be either regular links or embeds depending
-/// on the presence of an exclamation mark prefix (handled by
-/// [`Link::is_embed`]).
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Style {
-    /// Markdown-style link: `[text](url)` or `![text](url)`.
-    MdLink,
-    /// Wiki-style link: `[[target]]` or `![[target]]`.
-    WikiLink,
-}
-
-/// Target of a link - may or may not resolve to an existing note.
-///
-/// This enum models the resolution state of a link target:
-/// - [`Target::Resolved`]: Target exists in the vault and has been indexed.
-/// - [`Target::Unresolved`]: Target doesn't exist yet (common in Obsidian for
-///   "future notes").
-/// - [`Target::External`]: Target is an external URL (http/https).
-///
-/// # Examples
-/// ```
-/// use lithos_core::note::link::Target;
-/// use uuid::Uuid;
-///
-/// // A resolved link to an existing note
-/// let resolved = Target::Resolved {
-///     id: Uuid::now_v7(),
-///     path: "projects/rust.md".into(),
-/// };
-///
-/// // An unresolved link to a note that doesn't exist yet
-/// let unresolved = Target::Unresolved {
-///     raw: "Future Project".into(),
-/// };
-///
-/// // An external link
-/// let external = Target::External {
-///     url: "https://rust-lang.org".into(),
-/// };
-/// ```
+/// Link target representation.
 #[derive(
     Debug,
     Clone,
@@ -223,121 +175,71 @@ pub enum Style {
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
+#[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub enum Target {
-    /// External URL (http/https).
+    /// External URL: `[link](https://...)`.
     External {
-        /// The external URL.
+        /// The external URL string.
         url: Box<str>,
     },
-    /// Resolved: target exists in vault.
+    /// Internal resolved link: `[[note]]`.
     Resolved {
-        /// UUID of the target note.
+        /// The unique identity of the target note.
         id: uuid::Uuid,
-        /// Vault-relative path to the target.
+        /// The vault-relative path to the target note.
         path: Box<str>,
     },
-    /// Unresolved: target doesn't exist yet.
+    /// Internal unresolved link (broken or not yet indexed).
     Unresolved {
-        /// Raw target string from the markdown source.
+        /// The raw text of the link target.
         raw: Box<str>,
     },
 }
 
 impl Anchor {
-    /// Returns `true` if this is a block reference.
+    /// Returns `true` if the anchor is a block reference.
     #[inline]
     #[must_use]
     pub const fn is_block_ref(&self) -> bool {
         matches!(self, Self::BlockRef(_))
     }
 
-    /// Returns `true` if this is a heading anchor.
+    /// Returns `true` if the anchor is a heading.
     #[inline]
     #[must_use]
     pub const fn is_heading(&self) -> bool {
         matches!(self, Self::Heading(_))
     }
 
-    /// Returns the anchor text (heading text or block ID).
+    /// Returns the raw text of the anchor.
     #[inline]
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Matching on &Anchor enum with non-Copy Box<str> fields. \
-                  Cannot dereference without moving. Pattern binding in match \
-                  arms is idiomatic for returning &str."
+        reason = "Matching on &Anchor enum with non-Copy Box<str> fields \
+                  (BlockRef, Heading). Cannot dereference without moving \
+                  non-Copy fields. Pattern matching on &self with field \
+                  binding is idiomatic for returning borrowed str."
     )]
     pub fn text(&self) -> &str {
         match self {
-            Self::BlockRef(s) | Self::Heading(s) => s,
+            Self::BlockRef(text) | Self::Heading(text) => text,
         }
     }
 }
 
 impl Link {
-    /// Returns the optional display alias.
+    /// Creates an image/media/note embed (`![[...]`).
     ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::note::{
-    ///     link::{Link, Target},
-    ///     types::SourceByteOffset,
-    /// };
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # Arguments
+    /// * `target` - The target of the embed.
+    /// * `embed_type` - The type of content being embedded.
+    /// * `alias` - Optional display text (e.g., image alt text).
+    /// * `position` - Character position in the source document.
     ///
-    /// let link = Link::new_wikilink(
-    ///     Target::Unresolved {
-    ///         raw: "note".into(),
-    ///     },
-    ///     Some("display text".to_string()),
-    ///     None,
-    ///     SourceByteOffset::new(0),
-    /// )?;
-    /// assert_eq!(
-    ///     link.alias(),
-    ///     Some("display text"),
-    ///     "Alias should return display text"
-    /// );
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn alias(&self) -> Option<&str> {
-        self.alias.as_deref()
-    }
-
-    /// Returns the optional anchor (heading or block reference).
-    #[inline]
-    #[must_use]
-    pub fn anchor(&self) -> Option<&Anchor> {
-        self.anchor.as_ref()
-    }
-
-    /// Returns the type of embedded content, if this is an embed.
-    #[inline]
-    #[must_use]
-    pub const fn embed_type(&self) -> Option<EmbedType> {
-        self.embed_type
-    }
-
-    /// Returns `true` if this link has an alias.
-    #[inline]
-    #[must_use]
-    pub fn has_alias(&self) -> bool {
-        self.alias.is_some()
-    }
-
-    /// Returns `true` if this link has an anchor.
-    #[inline]
-    #[must_use]
-    pub fn has_anchor(&self) -> bool {
-        self.anchor.is_some()
-    }
-
-    /// Returns `true` if this link represents an embedded content reference.
+    /// # Errors
+    /// Returns `NoteError::Link` if the target is empty.
     ///
     /// # Examples
     /// ```
@@ -360,26 +262,12 @@ impl Link {
     /// # }
     /// ```
     #[inline]
-    #[must_use]
-    pub const fn is_embed(&self) -> bool {
-        self.embed_type.is_some()
-    }
-
-    /// Creates a new embedded content reference (Wiki-style by default).
-    ///
-    /// # Arguments
-    /// * `target` - The target of the embed.
-    /// * `embed_type` - The type of embedded content.
-    /// * `alias` - Optional display alias.
-    /// * `position` - Character position in the source document.
-    ///
-    /// # Errors
-    /// Returns `NoteError::Link` if the target is empty.
-    ///
     /// # Examples
     /// ```
-    /// use lithos_core::note::link::{EmbedType, Link, Style, Target};
-    /// use lithos_core::note::types::SourceByteOffset;
+    /// use lithos_core::note::{
+    ///     link::{EmbedType, Link, Style, Target},
+    ///     types::SourceByteOffset,
+    /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let embed = Link::new_embed(
@@ -395,12 +283,11 @@ impl Link {
     ///     Style::WikiLink,
     ///     "Embed style should be WikiLink"
     /// );
-
+    ///
     /// assert!(embed.is_embed(), "Link should be an embed");
     /// # Ok(())
     /// # }
     /// ```
-    #[inline]
     pub fn new_embed(
         target: Target,
         embed_type: EmbedType,
@@ -625,6 +512,34 @@ impl Link {
         }
         Ok(())
     }
+
+    /// Returns `true` if this is an embed link (`![[...]`).
+    #[inline]
+    #[must_use]
+    pub const fn is_embed(&self) -> bool {
+        self.embed_type.is_some()
+    }
+
+    /// Returns the type of embed, if this is an embed link.
+    #[inline]
+    #[must_use]
+    pub const fn embed_type(&self) -> Option<EmbedType> {
+        self.embed_type
+    }
+
+    /// Returns the optional display alias.
+    #[inline]
+    #[must_use]
+    pub fn alias(&self) -> Option<&str> {
+        self.alias.as_deref()
+    }
+
+    /// Returns the optional anchor.
+    #[inline]
+    #[must_use]
+    pub const fn anchor(&self) -> Option<&Anchor> {
+        self.anchor.as_ref()
+    }
 }
 
 impl Target {
@@ -678,8 +593,11 @@ impl Target {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test modules have relaxed unwrap/expect rules"
+)]
 mod tests {
-    /// Test fixtures for Link testing.
     mod fixtures {
         use uuid::Uuid;
 
@@ -716,7 +634,7 @@ mod tests {
                 unresolved_target("Target Note"),
                 Some("Display Text".to_owned()),
                 Some(Anchor::Heading("section".into())),
-                SourceByteOffset::new(100_u32),
+                SourceByteOffset::new(100u32),
             )
         }
 
@@ -725,7 +643,7 @@ mod tests {
                 external_target("https://example.com"),
                 Some("Example".to_owned()),
                 None,
-                SourceByteOffset::new(50_u32),
+                SourceByteOffset::new(50u32),
             )
         }
 
@@ -734,7 +652,7 @@ mod tests {
                 unresolved_target("diagram.png"),
                 EmbedType::Image,
                 None,
-                SourceByteOffset::new(200_u32),
+                SourceByteOffset::new(200u32),
             )
         }
 
@@ -743,7 +661,7 @@ mod tests {
                 resolved_target("note.md"),
                 None,
                 Some(Anchor::Heading("section".into())),
-                SourceByteOffset::new(0_u32),
+                SourceByteOffset::new(0u32),
             )
         }
 
@@ -752,7 +670,7 @@ mod tests {
                 external_target("https://example.com#section"),
                 None,
                 Some(Anchor::Heading("section".into())),
-                SourceByteOffset::new(0_u32),
+                SourceByteOffset::new(0u32),
             )
         }
 
@@ -763,7 +681,7 @@ mod tests {
                 resolved_target("content"),
                 embed_type,
                 None,
-                SourceByteOffset::new(0_u32),
+                SourceByteOffset::new(0u32),
             )
         }
 
@@ -772,7 +690,7 @@ mod tests {
                 resolved_target("target.md"),
                 Some("Alias Text".to_owned()),
                 Some(Anchor::Heading("section".into())),
-                SourceByteOffset::new(42_u32),
+                SourceByteOffset::new(42u32),
             )
         }
     }
@@ -990,7 +908,7 @@ mod tests {
         }
     }
 
-    mod constructors {
+    mod constructor {
         use super::{
             super::{EmbedType, Link, Style},
             fixtures::{
@@ -1003,154 +921,150 @@ mod tests {
         /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn wikilink_style_is_wikilink() -> Result<(), NoteError> {
-            let link = wikilink_with_anchor_and_alias()?;
+        fn wikilink_style_is_wikilink() {
+            let link =
+                wikilink_with_anchor_and_alias().expect("valid wikilink setup");
             assert_eq!(
                 link.style(),
                 Style::WikiLink,
                 "Link should be WikiLink style"
             );
-            Ok(())
         }
 
         /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn wikilink_target_is_unresolved() -> Result<(), NoteError> {
-            let link = wikilink_with_anchor_and_alias()?;
+        fn wikilink_target_is_unresolved() {
+            let link =
+                wikilink_with_anchor_and_alias().expect("valid wikilink setup");
             assert!(
                 link.target().is_unresolved(),
                 "Link target should be unresolved"
             );
-            Ok(())
         }
 
         /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn wikilink_alias_matches() -> Result<(), NoteError> {
-            let link = wikilink_with_anchor_and_alias()?;
+        fn wikilink_alias_matches() {
+            let link =
+                wikilink_with_anchor_and_alias().expect("valid wikilink setup");
             assert_eq!(
                 link.alias(),
                 Some("Display Text"),
                 "Link alias should match"
             );
-            Ok(())
         }
 
         /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn wikilink_has_anchor() -> Result<(), NoteError> {
-            let link = wikilink_with_anchor_and_alias()?;
+        fn wikilink_has_anchor() {
+            let link =
+                wikilink_with_anchor_and_alias().expect("valid wikilink setup");
             assert!(link.anchor().is_some(), "Link should have anchor");
-            Ok(())
         }
 
         /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn wikilink_position_matches() -> Result<(), NoteError> {
-            let link = wikilink_with_anchor_and_alias()?;
+        fn wikilink_position_matches() {
+            let link =
+                wikilink_with_anchor_and_alias().expect("valid wikilink setup");
             assert_eq!(
                 link.position(),
-                SourceByteOffset::new(100_u32),
+                SourceByteOffset::new(100u32),
                 "Link position should match"
             );
-            Ok(())
         }
 
         /// 3.2-UNIT-017: `new_wikilink_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn wikilink_is_not_embed() -> Result<(), NoteError> {
-            let link = wikilink_with_anchor_and_alias()?;
+        fn wikilink_is_not_embed() {
+            let link =
+                wikilink_with_anchor_and_alias().expect("valid wikilink setup");
             assert!(!link.is_embed(), "Wiki-link should not be an embed");
-            Ok(())
         }
 
         /// 3.2-UNIT-018: `new_markdown_link_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn markdown_link_style_is_mdlink() -> Result<(), NoteError> {
-            let link = markdown_link_with_alias()?;
+        fn markdown_link_style_is_mdlink() {
+            let link =
+                markdown_link_with_alias().expect("valid markdown link setup");
             assert_eq!(
                 link.style(),
                 Style::MdLink,
                 "Link should be MdLink style"
             );
-            Ok(())
         }
 
         /// 3.2-UNIT-018: `new_markdown_link_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn markdown_link_target_is_external() -> Result<(), NoteError> {
-            let link = markdown_link_with_alias()?;
+        fn markdown_link_target_is_external() {
+            let link =
+                markdown_link_with_alias().expect("valid markdown link setup");
             assert!(
                 link.target().is_external(),
                 "Link target should be external"
             );
-            Ok(())
         }
 
         /// 3.2-UNIT-018: `new_markdown_link_creates_valid_link`.
         /// Priority: P1.
         #[test]
-        fn markdown_link_is_not_embed() -> Result<(), NoteError> {
-            let link = markdown_link_with_alias()?;
+        fn markdown_link_is_not_embed() {
+            let link =
+                markdown_link_with_alias().expect("valid markdown link setup");
             assert!(!link.is_embed(), "Markdown link should not be an embed");
-            Ok(())
         }
 
         /// 3.2-UNIT-019: `new_embed_creates_valid_embed`.
         /// Priority: P1.
         #[test]
-        fn embed_reports_is_embed() -> Result<(), NoteError> {
-            let embed = embed_image()?;
+        fn embed_reports_is_embed() {
+            let embed = embed_image().expect("valid embed setup");
             assert!(embed.is_embed(), "Link should be an embed");
-            Ok(())
         }
 
         /// 3.2-UNIT-019: `new_embed_creates_valid_embed`.
         /// Priority: P1.
         #[test]
-        fn embed_type_is_image() -> Result<(), NoteError> {
-            let embed = embed_image()?;
+        fn embed_type_is_image() {
+            let embed = embed_image().expect("valid embed setup");
             assert_eq!(
                 embed.embed_type(),
                 Some(EmbedType::Image),
                 "Embed type should be Image"
             );
-            Ok(())
         }
 
         /// 3.2-UNIT-019: `new_embed_creates_valid_embed`.
         /// Priority: P1.
         #[test]
-        fn embed_style_is_wikilink() -> Result<(), NoteError> {
-            let embed = embed_image()?;
+        fn embed_style_is_wikilink() {
+            let embed = embed_image().expect("valid embed setup");
             assert_eq!(
                 embed.style(),
                 Style::WikiLink,
                 "Embed should be WikiLink style"
             );
-            Ok(())
         }
 
         /// 3.2-UNIT-019: `new_embed_creates_valid_embed`.
         /// Priority: P1.
         #[test]
-        fn embed_has_no_anchor() -> Result<(), NoteError> {
-            let embed = embed_image()?;
+        fn embed_has_no_anchor() {
+            let embed = embed_image().expect("valid embed setup");
             assert!(embed.anchor().is_none(), "Embed should not have anchor");
-            Ok(())
         }
 
         /// 3.2-UNIT-020: `new_wikilink_rejects_empty_target`.
         /// Priority: P0.
         #[test]
-        fn new_wikilink_rejects_empty_target() {
+        fn wikilink_rejects_empty_target() {
             // GIVEN: an empty unresolved target
             let target = unresolved_target("");
 
@@ -1159,7 +1073,7 @@ mod tests {
                 target,
                 None,
                 None,
-                SourceByteOffset::new(0_u32),
+                SourceByteOffset::new(0u32),
             );
 
             // THEN: it should fail with empty target error
@@ -1172,7 +1086,7 @@ mod tests {
         /// 3.2-UNIT-021: `new_markdown_link_rejects_empty_target`.
         /// Priority: P0.
         #[test]
-        fn new_markdown_link_rejects_empty_target() {
+        fn markdown_link_rejects_empty_target() {
             // GIVEN: an empty external target
             let target = external_target("");
 
@@ -1181,7 +1095,7 @@ mod tests {
                 target,
                 None,
                 None,
-                SourceByteOffset::new(0_u32),
+                SourceByteOffset::new(0u32),
             );
 
             // THEN: it should fail with empty target error
@@ -1194,7 +1108,7 @@ mod tests {
         /// 3.2-UNIT-022: `new_embed_rejects_empty_target`.
         /// Priority: P0.
         #[test]
-        fn new_embed_rejects_empty_target() {
+        fn embed_rejects_empty_target() {
             // GIVEN: an empty unresolved target
             let target = unresolved_target("");
 
@@ -1203,7 +1117,7 @@ mod tests {
                 target,
                 EmbedType::Image,
                 None,
-                SourceByteOffset::new(0_u32),
+                SourceByteOffset::new(0u32),
             );
 
             // THEN: it should fail with empty target error
@@ -1214,7 +1128,7 @@ mod tests {
         }
     }
 
-    mod validators {
+    mod validation {
         use rstest::rstest;
 
         use super::{
@@ -1229,21 +1143,20 @@ mod tests {
         /// 3.2-UNIT-023: `validate_accepts_valid_wikilink`.
         /// Priority: P1.
         #[test]
-        fn validate_accepts_valid_wikilink() -> Result<(), NoteError> {
-            let link = resolved_wikilink_with_heading()?;
-            link.validate()?;
-            Ok(())
+        fn accepts_valid_wikilink() {
+            let link = resolved_wikilink_with_heading().expect("valid setup");
+            link.validate().unwrap();
         }
 
         /// 3.2-UNIT-024: `validate_rejects_embed_with_anchor`.
         /// Priority: P0.
         #[test]
-        fn validate_rejects_embed_with_anchor() -> Result<(), NoteError> {
+        fn rejects_embed_with_anchor() {
             // GIVEN: an embed with an anchor (invalid combination)
             let embed = Link {
                 target: resolved_target("image.png"),
                 anchor: Some(Anchor::Heading("invalid".into())),
-                position: SourceByteOffset::new(0_u32),
+                position: SourceByteOffset::new(0u32),
                 alias: None,
                 style: Style::WikiLink,
                 embed_type: Some(EmbedType::Image),
@@ -1260,20 +1173,18 @@ mod tests {
                 ),
                 "Embed with anchor should be rejected, got: {result:?}"
             );
-            Ok(())
         }
 
         /// 3.2-UNIT-025: `validate_rejects_external_link_with_block_ref`.
         /// Priority: P0.
         #[test]
-        fn validate_rejects_external_link_with_block_ref()
-        -> Result<(), NoteError> {
+        fn rejects_external_link_with_block_ref() {
             // GIVEN: an external link with a block reference (invalid)
             // We construct directly to bypass constructor validation
             let link = Link {
                 target: external_target("https://example.com"),
                 anchor: Some(Anchor::BlockRef("block-id".into())),
-                position: SourceByteOffset::new(0_u32),
+                position: SourceByteOffset::new(0u32),
                 alias: None,
                 style: Style::MdLink,
                 embed_type: None,
@@ -1291,17 +1202,14 @@ mod tests {
                 "External link with block ref should be rejected, got: \
                  {result:?}"
             );
-            Ok(())
         }
 
         /// 3.2-UNIT-026: `validate_accepts_external_link_with_heading`.
         /// Priority: P1.
         #[test]
-        fn validate_accepts_external_link_with_heading() -> Result<(), NoteError>
-        {
-            let link = markdown_link_with_heading()?;
-            link.validate()?;
-            Ok(())
+        fn accepts_external_link_with_heading() {
+            let link = markdown_link_with_heading().expect("valid setup");
+            link.validate().unwrap();
         }
 
         /// 3.2-UNIT-027:
@@ -1313,12 +1221,11 @@ mod tests {
         #[case::video(EmbedType::Video)]
         #[case::pdf(EmbedType::Pdf)]
         #[case::note(EmbedType::Note)]
-        fn validate_accepts_resolved_target_with_all_embed_types(
+        fn accepts_resolved_target_with_all_embed_types(
             #[case] embed_type: EmbedType,
-        ) -> Result<(), NoteError> {
-            let embed = embed_with_type(embed_type)?;
-            embed.validate()?;
-            Ok(())
+        ) {
+            let embed = embed_with_type(embed_type).expect("valid setup");
+            embed.validate().unwrap();
         }
     }
 
@@ -1336,79 +1243,56 @@ mod tests {
                 unresolved_target("file"),
                 embed_type,
                 None,
-                SourceByteOffset::new(0_u32),
+                SourceByteOffset::new(0u32),
             )
         }
 
         /// 3.2-UNIT-028: `accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
-        fn target_accessor_returns_resolved() -> Result<(), NoteError> {
-            let link = fully_populated_wikilink()?;
-            assert!(
-                link.target().is_resolved(),
-                "target() should return resolved target"
-            );
-            Ok(())
+        fn target_returns_resolved() {
+            let link = fully_populated_wikilink().expect("valid setup");
+            assert!(link.target().is_resolved());
         }
 
         /// 3.2-UNIT-028: `accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
-        fn anchor_accessor_returns_some() -> Result<(), NoteError> {
-            let link = fully_populated_wikilink()?;
-            assert!(
-                link.anchor().is_some(),
-                "anchor() should return Some for link with anchor"
-            );
-            Ok(())
+        fn anchor_returns_some() {
+            let link = fully_populated_wikilink().expect("valid setup");
+            assert!(link.anchor().is_some());
         }
 
         /// 3.2-UNIT-028: `accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
-        fn alias_accessor_returns_alias_text() -> Result<(), NoteError> {
-            let link = fully_populated_wikilink()?;
-            assert_eq!(
-                link.alias(),
-                Some("Alias Text"),
-                "alias() should return the alias text"
-            );
-            Ok(())
+        fn alias_returns_alias_text() {
+            let link = fully_populated_wikilink().expect("valid setup");
+            assert_eq!(link.alias(), Some("Alias Text"));
         }
 
         /// 3.2-UNIT-028: `accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
-        fn position_accessor_returns_position() -> Result<(), NoteError> {
-            let link = fully_populated_wikilink()?;
-            assert_eq!(
-                link.position(),
-                SourceByteOffset::new(42_u32),
-                "position() should return 42"
-            );
-            Ok(())
+        fn position_returns_position() {
+            let link = fully_populated_wikilink().expect("valid setup");
+            assert_eq!(link.position(), SourceByteOffset::new(42u32));
         }
 
         /// 3.2-UNIT-028: `accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
-        fn is_embed_returns_false_for_wikilink() -> Result<(), NoteError> {
-            let link = fully_populated_wikilink()?;
-            assert!(!link.is_embed(), "is_embed() should return false");
-            Ok(())
+        fn is_embed_returns_false_for_wikilink() {
+            let link = fully_populated_wikilink().expect("valid setup");
+            assert!(!link.is_embed());
         }
 
         /// 3.2-UNIT-028: `accessors_return_expected_values`.
         /// Priority: P1.
         #[test]
-        fn embed_type_returns_none_for_wikilink() -> Result<(), NoteError> {
-            let link = fully_populated_wikilink()?;
-            assert!(
-                link.embed_type().is_none(),
-                "embed_type() should return None"
-            );
-            Ok(())
+        fn embed_type_returns_none_for_wikilink() {
+            let link = fully_populated_wikilink().expect("valid setup");
+            assert!(link.embed_type().is_none());
         }
 
         /// 3.2-UNIT-029: `embed_type_accessor_returns_correct_type`.
@@ -1417,16 +1301,9 @@ mod tests {
         #[case::image(EmbedType::Image)]
         #[case::audio(EmbedType::Audio)]
         #[case::video(EmbedType::Video)]
-        fn embed_type_accessor_returns_correct_type(
-            #[case] embed_type: EmbedType,
-        ) -> Result<(), NoteError> {
-            let embed = embed_with_type(embed_type)?;
-            assert_eq!(
-                embed.embed_type(),
-                Some(embed_type),
-                "embed_type() should return {embed_type:?}"
-            );
-            Ok(())
+        fn embed_type_returns_correct_type(#[case] embed_type: EmbedType) {
+            let embed = embed_with_type(embed_type).expect("valid setup");
+            assert_eq!(embed.embed_type(), Some(embed_type));
         }
     }
 }
