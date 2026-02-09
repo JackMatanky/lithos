@@ -1,6 +1,8 @@
-//! Config query implementations (CQRS read operations).
+//! Configuration query implementations (CQRS read operations).
 //!
-//! Generic over a query port for storage access.
+//! This module provides the [`Query`] type, which handles read-only access
+//! to the persisted configuration snapshots, supporting both owned and
+//! zero-copy access patterns.
 
 use super::{
     aggregate::Config,
@@ -13,13 +15,26 @@ use super::{
 // Query Implementation
 // ============================================================================
 
-/// Query implementation for Config read operations.
+/// Query implementation for configuration read operations.
+///
+/// This struct provides the primary interface for retrieving persisted
+/// configuration snapshots. It is generic over a [`config_ports::Query`]
+/// to support different storage backends.
+///
+/// # Examples
+///
+/// ```rust
+/// // Note: Query is constructed with a storage port implementation
+/// // let qry = Query::new(storage_port);
+/// // let result = qry.get(vault_id);
+/// ```
 pub struct Query<Q> {
+    /// Port interface for storage operations.
     query_port: Q,
 }
 
 impl<Q> Query<Q> {
-    /// Create a new `Query` with the given port.
+    /// Creates a new `Query` with the given port.
     #[inline]
     #[must_use]
     pub const fn new(query_port: Q) -> Self {
@@ -34,11 +49,13 @@ where
     Q: config_ports::Query,
     Q::Error: Into<crate::db::DbError>,
 {
-    /// Get the active merged config for a vault.
+    /// Returns the active merged configuration for a vault.
+    ///
+    /// The returned [`Config`] is guaranteed to be in an "Always Valid" state.
     ///
     /// # Errors
-    /// Returns `ConfigQueryError` if storage fails or the read model is
-    /// missing.
+    /// Returns [`ConfigQueryError`] if storage access fails or the data is
+    /// corrupted.
     #[inline]
     pub fn get(
         &self,

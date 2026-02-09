@@ -1,4 +1,7 @@
 //! Task configuration schema and validation.
+//!
+//! This module provides the [`TaskConfig`] aggregate and supporting types
+//! for defining how Markdown-based tasks are recognized and indexed.
 
 #![expect(
     clippy::exhaustive_enums,
@@ -31,6 +34,27 @@ use crate::bounds::Bounds;
 // ============================================================================
 
 /// Validated task configuration aggregate.
+///
+/// This struct defines how tasks (e.g., in Markdown files) are recognized,
+/// parsed, and indexed by Lithos. It ensures all field keywords and status
+/// symbols are valid and unique.
+///
+/// # Always Valid Invariants
+///
+/// - **Promotion Tags**: Task tags must start with `#`.
+/// - **Status Mappings**: Checkbox symbols must be printable ASCII and unique.
+/// - **Field Keywords**: Custom field keywords must be ASCII alphanumeric.
+/// - **Field Integrity**: All indexed fields must exist in the field
+///   definitions.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_core::config::task::TaskConfig;
+///
+/// let config = TaskConfig::default();
+/// assert!(config.enabled());
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -79,10 +103,12 @@ impl Default for TaskConfig {
 
 impl TaskConfig {
     #[inline]
-    /// Build a validated task configuration from raw input.
+    /// Builds a validated task configuration from raw input.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the configuration is invalid.
+    /// Returns [`ConfigError::ValidationFailed`] if the configuration
+    /// invariants are violated (e.g., duplicate status symbols or unknown
+    /// indexed fields).
     pub fn from_raw(raw: RawTaskConfig) -> Result<Self, ConfigError> {
         let enabled = raw.enabled.unwrap_or(true);
         let task_tags = match raw.task_tags {
@@ -225,6 +251,8 @@ impl TaskConfig {
 }
 
 /// Custom task field specification.
+///
+/// Defines the type and validation rules for a specific task metadata field.
 #[derive(
     Debug,
     Clone,
@@ -237,21 +265,21 @@ impl TaskConfig {
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum TaskFieldSpec {
-    /// Integer field.
+    /// Integer field with optional range bounds.
     Integer {
         /// Field keyword.
         keyword: TaskFieldKeyword,
         /// Optional bounds.
         bounds: Bounds<i64>,
     },
-    /// Float field.
+    /// Floating point field with optional range bounds.
     Float {
         /// Field keyword.
         keyword: TaskFieldKeyword,
         /// Optional bounds.
         bounds: Bounds<f64>,
     },
-    /// String field.
+    /// String field with optional regex pattern validation.
     String {
         /// Field keyword.
         keyword: TaskFieldKeyword,
@@ -262,14 +290,14 @@ pub enum TaskFieldSpec {
         #[serde(skip)]
         compiled: Option<Arc<Regex>>,
     },
-    /// Enumerated field.
+    /// Categorical field with a fixed set of allowed values.
     Enum {
         /// Field keyword.
         keyword: TaskFieldKeyword,
         /// List of allowed values.
         values: Vec<Box<str>>,
     },
-    /// Date time field.
+    /// Date/time field with a specific Chrono format.
     DateTime {
         /// Field keyword.
         keyword: TaskFieldKeyword,
@@ -570,6 +598,11 @@ impl TaskFieldSpec {
 // ============================================================================
 
 /// Validated status name (e.g., `complete`).
+///
+/// # Invariants
+///
+/// - Must be 1-32 characters long.
+/// - Must be ASCII alphanumeric or `_`.
 #[derive(
     Debug,
     Clone,
@@ -587,10 +620,11 @@ pub struct StatusName(Box<str>);
 
 impl StatusName {
     #[inline]
-    /// Create a validated status name.
+    /// Creates a validated status name.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the name is empty or invalid.
+    /// Returns [`ConfigError::ValidationFailed`] if the name is empty, too
+    /// long, or contains non-alphanumeric characters.
     pub fn try_new<T: AsRef<str>>(value: T) -> Result<Self, ConfigError> {
         let text = value.as_ref();
         if text.is_empty() || text.len() > 32 {
@@ -628,6 +662,10 @@ impl From<StatusName> for String {
 }
 
 /// Validated status symbol (e.g., `x`).
+///
+/// # Invariants
+///
+/// - Must be a printable ASCII character.
 #[derive(
     Debug,
     Clone,
@@ -646,10 +684,11 @@ pub struct StatusSymbol(char);
 
 impl StatusSymbol {
     #[inline]
-    /// Create a validated status symbol.
+    /// Creates a validated status symbol.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the symbol is invalid.
+    /// Returns [`ConfigError::ValidationFailed`] if the symbol is not a
+    /// printable ASCII character.
     pub fn try_new(value: char) -> Result<Self, ConfigError> {
         if value == ' ' || value.is_ascii_graphic() {
             return Ok(Self(value));
@@ -668,7 +707,7 @@ impl StatusSymbol {
     }
 }
 
-/// Checkbox status mappings.
+/// Bi-directional mapping between status names and checkbox symbols.
 #[derive(
     Debug,
     Clone,
@@ -681,7 +720,9 @@ impl StatusSymbol {
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
 pub struct CheckboxStatus {
+    /// Forward mapping (name -> symbol).
     by_name: HashMap<StatusName, StatusSymbol>,
+    /// Reverse mapping (symbol -> name).
     by_symbol: HashMap<StatusSymbol, StatusName>,
 }
 
@@ -747,6 +788,12 @@ impl CheckboxStatus {
 }
 
 /// Validated task tag marker (e.g., `#task`).
+///
+/// # Invariants
+///
+/// - Must start with `#`.
+/// - Must be at least 2 characters long.
+/// - Remaining characters must be ASCII alphanumeric, `_`, or `-`.
 #[derive(
     Debug,
     Clone,
@@ -764,11 +811,11 @@ pub struct TaskTag(Box<str>);
 
 impl TaskTag {
     #[inline]
-    /// Create a validated task tag.
+    /// Creates a validated task tag.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the tag is not a valid task
-    /// marker.
+    /// Returns [`ConfigError::ValidationFailed`] if the tag does not start with
+    /// `#` or contains invalid characters.
     pub fn try_new<T: AsRef<str>>(value: T) -> Result<Self, ConfigError> {
         let text = value.as_ref();
         if text.len() < 2 || !text.starts_with('#') {
@@ -810,6 +857,11 @@ impl From<TaskTag> for String {
 }
 
 /// Field keyword used in task text (e.g., `due:`).
+///
+/// # Invariants
+///
+/// - Must be 1-64 characters long.
+/// - Must be ASCII alphanumeric, `_`, or `-`.
 #[derive(
     Debug,
     Clone,
@@ -827,10 +879,11 @@ pub struct TaskFieldKeyword(Box<str>);
 
 impl TaskFieldKeyword {
     #[inline]
-    /// Create a validated task field keyword.
+    /// Creates a validated task field keyword.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the keyword is invalid.
+    /// Returns [`ConfigError::ValidationFailed`] if the keyword is empty,
+    /// too long, or contains non-alphanumeric characters.
     pub fn try_new<T: AsRef<str>>(value: T) -> Result<Self, ConfigError> {
         let text = value.as_ref();
         if text.is_empty() || text.len() > 64 {
@@ -868,7 +921,7 @@ impl From<TaskFieldKeyword> for String {
     }
 }
 
-/// Date field specification.
+/// Validated date field specification.
 #[derive(
     Debug,
     Clone,
@@ -884,9 +937,9 @@ impl From<TaskFieldKeyword> for String {
 pub struct DateFieldSpec {
     /// Keyword used in text.
     keyword: TaskFieldKeyword,
-    /// Optional emoji marker.
+    /// Optional emoji marker (e.g., 📅).
     emoji: Option<char>,
-    /// Chrono format string.
+    /// Chrono format string (e.g., `%Y-%m-%d`).
     format: Box<str>,
 }
 

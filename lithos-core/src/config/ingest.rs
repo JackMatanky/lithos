@@ -1,7 +1,7 @@
-//! Figment-based configuration ingestion (adapter boundary).
+//! Figment-based configuration ingestion.
 //!
-//! This module loads Raw configuration types from external sources and keeps
-//! Figment out of the domain modules.
+//! This module handles the loading and merging of raw configuration data
+//! from external files and environment variables into [`RawConfig`].
 
 use std::path::{Path, PathBuf};
 
@@ -12,15 +12,16 @@ use figment::{
 
 use super::{error::ConfigIngestError, raw::RawConfig};
 
-/// Build merged raw config from global and vault sources using Figment.
+/// Builds a merged raw configuration from global and vault sources using
+/// Figment.
 ///
-/// This implements the configuration hierarchy:
-/// 1. Compiled defaults (lowest priority)
-/// 2. Global config file (~/.config/lithos/lithos.toml)
-/// 3. Vault config file (<vault>/.lithos/lithos.toml) (highest priority)
+/// This implements the configuration hierarchy by layering files on top of
+/// default values. The resulting [`RawConfig`] is an intermediate state
+/// that must be validated and transformed into a [`Config`] aggregate.
 ///
 /// # Errors
-/// Returns `ConfigIngestError` if file reading, parsing, or extraction fails.
+/// Returns [`ConfigIngestError`] if file reading, TOML parsing, or data
+/// extraction fails.
 #[inline]
 pub fn build_merged_raw(
     vault_root: &Path,

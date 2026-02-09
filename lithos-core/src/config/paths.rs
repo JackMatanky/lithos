@@ -1,7 +1,15 @@
-//! Path configuration types.
+//! Validated path configuration management.
 //!
-//! This module contains types for validated configuration paths,
-//! including schemas directory, templates directory, and file names.
+//! This module defines how Lithos manages its filesystem locations (cache,
+//! schemas, templates). It distinguishes between the fully-resolved [`Paths`]
+//! and the partial overrides used during construction.
+//!
+//! # Always Valid Invariants
+//! - **Relative Paths**: Most paths must be vault-relative and cannot use `..`
+//!   to escape the vault root.
+//! - **File Names**: Filenames must not contain path separators.
+//! - **Non-Empty**: Paths and filenames cannot be empty. Construction of these
+//!   types will fail if these invariants are violated.
 
 #![expect(
     clippy::exhaustive_structs,
@@ -19,7 +27,17 @@ use super::error::ConfigError;
 /// Fully resolved paths configuration.
 ///
 /// This struct contains all path-related settings after defaults and
-/// overrides have been merged. All fields are guaranteed to be present.
+/// overrides have been merged. All fields are guaranteed to be present
+/// and validated.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_core::config::paths::Paths;
+///
+/// let paths = Paths::default();
+/// assert_eq!(paths.property_bank.as_str(), "property_bank.json");
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -45,7 +63,7 @@ pub struct Paths {
 }
 
 impl Paths {
-    /// Create fully resolved paths.
+    /// Creates fully resolved paths.
     #[inline]
     #[must_use]
     pub const fn new(
@@ -76,7 +94,9 @@ impl Paths {
 // Domain Types (Building Blocks)
 // ============================================================================
 
-/// Schema storage configuration (directory).
+/// Schema storage configuration.
+///
+/// This type manages the location where Lithos looks for note schemas.
 #[derive(
     Debug,
     Clone,
@@ -113,10 +133,11 @@ impl Schema {
         }
     }
 
-    /// Create a validated schema directory path.
+    /// Creates a validated schema directory path.
     ///
     /// # Errors
-    /// Returns `ConfigError` if the path is invalid.
+    /// Returns [`ConfigError::ValidationFailed`] if the path is absolute,
+    /// empty, or contains parent directory traversal.
     #[inline]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         Ok(Self {
@@ -132,7 +153,9 @@ impl Schema {
     }
 }
 
-/// Template storage configuration (directory).
+/// Template storage configuration.
+///
+/// This type manages the location where Lithos looks for note templates.
 #[derive(
     Debug,
     Clone,
@@ -169,10 +192,11 @@ impl Template {
         }
     }
 
-    /// Create a validated template directory path.
+    /// Creates a validated template directory path.
     ///
     /// # Errors
-    /// Returns `ConfigError` if the path is invalid.
+    /// Returns [`ConfigError::ValidationFailed`] if the path is absolute,
+    /// empty, or contains parent directory traversal.
     #[inline]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         Ok(Self {
@@ -188,7 +212,9 @@ impl Template {
     }
 }
 
-/// Cache storage configuration (directory).
+/// Cache storage configuration.
+///
+/// This type manages the location where Lithos stores its performance cache.
 #[derive(
     Debug,
     Clone,
@@ -225,10 +251,11 @@ impl Cache {
         }
     }
 
-    /// Create a validated cache directory path.
+    /// Creates a validated cache directory path.
     ///
     /// # Errors
-    /// Returns `ConfigError` if the path is invalid.
+    /// Returns [`ConfigError::ValidationFailed`] if the path is absolute,
+    /// empty, or contains parent directory traversal.
     #[inline]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         Ok(Self {
@@ -245,6 +272,9 @@ impl Cache {
 }
 
 /// Property bank filename configuration.
+///
+/// The property bank is a central registry of all properties used across
+/// a vault's notes.
 #[derive(
     Debug,
     Clone,
@@ -275,10 +305,11 @@ impl Default for PropertyBank {
 }
 
 impl PropertyBank {
-    /// Create a validated property bank filename.
+    /// Creates a validated property bank filename.
     ///
     /// # Errors
-    /// Returns `ConfigError` if the name is invalid.
+    /// Returns [`ConfigError::ValidationFailed`] if the name is empty or
+    /// contains path separators.
     #[inline]
     pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
         Ok(Self(FileName::try_new(value)?))
@@ -298,10 +329,24 @@ impl PropertyBank {
 
 /// A validated vault-relative path.
 ///
-/// Validated path that must be:
-/// - Non-empty
-/// - Vault-relative (not absolute)
-/// - No parent directory traversal (`..`)
+/// This type ensures that paths do not escape the vault root using `..`
+/// traversal and are kept relative for portability.
+///
+/// # Invariants
+///
+/// - Must be a relative path.
+/// - Must not contain `..` (parent directory traversal).
+/// - Must not be empty.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_core::config::paths::RelativePath;
+///
+/// let path = RelativePath::try_new("schemas/main.json".into())?;
+/// assert_eq!(path.as_path().to_str().unwrap(), "schemas/main.json");
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -324,10 +369,11 @@ pub struct RelativePath(
 );
 
 impl RelativePath {
-    /// Create a validated relative path.
+    /// Creates a validated relative path.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the path is invalid.
+    /// Returns [`ConfigError::ValidationFailed`] if the path is absolute,
+    /// empty, or contains parent directory traversal (`..`).
     #[inline]
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         Self::validate_relative_path_invariants("path", &path)?;
@@ -372,12 +418,15 @@ impl RelativePath {
     }
 }
 
-/// File name without path separators.
+/// A validated filename.
 ///
-/// Validated filename that must be:
-/// - Non-empty
-/// - No forward slashes (`/`)
-/// - No backslashes (`\`)
+/// This type ensures that filenames are non-empty and do not contain
+/// path separators, ensuring they stay within their parent directory.
+///
+/// # Invariants
+///
+/// - Must not be empty.
+/// - Must not contain `/` or `\`.
 #[derive(
     Debug,
     Clone,
@@ -399,11 +448,11 @@ pub struct FileName(
 );
 
 impl FileName {
-    /// Create a validated file name.
+    /// Creates a validated file name.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the name is empty or contains
-    /// path separators.
+    /// Returns [`ConfigError::ValidationFailed`] if the name is empty or
+    /// contains path separators (`/` or `\`).
     #[inline]
     pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
         let value = value.into();

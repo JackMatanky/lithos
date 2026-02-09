@@ -1,8 +1,7 @@
-//! Raw (serde) configuration input types.
+//! Raw (serde) configuration input types (DTOs).
 //!
-//! These types are **serde-only Data Transfer Objects (DTOs)** that serve as
-//! the deserialization boundary between configuration files (TOML/YAML/JSON)
-//! and validated domain models.
+//! This module defines the [`RawConfig`] and supporting types used for
+//! deserialization from TOML/YAML/JSON files before validation.
 
 #![allow(
     missing_docs,
@@ -19,9 +18,9 @@ use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 
 /// Unified raw configuration for Figment merge.
 ///
-/// This replaces separate `RawGlobal` and `RawVault` with a single schema
-/// that works at all layers (defaults, global, vault). All fields are
-/// `Option<T>` to enable deep merging across layers.
+/// This struct serves as the primary Data Transfer Object (DTO) for
+/// deserializing configuration from files. All fields are optional to
+/// support deep merging across multiple layers (defaults, global, vault).
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawConfig {
@@ -43,11 +42,7 @@ pub struct RawConfig {
     pub trusted_vaults: Option<RawTrustedVaults>,
 }
 
-// ============================================================================
-// Component Raw Types
-// ============================================================================
-
-/// Path configuration with optional fields for deep merge.
+/// Raw path configuration input.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPathsConfig {

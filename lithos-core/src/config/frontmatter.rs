@@ -1,4 +1,7 @@
-//! Frontmatter configuration types.
+//! Frontmatter metadata key configuration.
+//!
+//! This module defines the [`Frontmatter`] keys used when parsing
+//! metadata from note files.
 
 #![allow(clippy::struct_field_names, reason = "Fields share '_key' suffix")]
 
@@ -9,6 +12,18 @@ use super::error::ConfigError;
 // ============================================================================
 
 /// Frontmatter configuration with validation.
+///
+/// This struct defines which keys Lithos looks for when parsing metadata
+/// from note frontmatter.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_core::config::frontmatter::Frontmatter;
+///
+/// let config = Frontmatter::default();
+/// assert_eq!(config.title_key().as_str(), "title");
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -113,7 +128,14 @@ impl Frontmatter {
     }
 }
 
-/// Validated frontmatter key (non-empty).
+/// A validated frontmatter key.
+///
+/// Ensures that frontmatter keys are not empty, maintaining the integrity
+/// of the metadata parsing process.
+///
+/// # Invariants
+///
+/// - Must not be empty.
 #[derive(
     Debug,
     Clone,
@@ -135,10 +157,10 @@ pub struct FrontmatterKey(
 );
 
 impl FrontmatterKey {
-    /// Create a validated frontmatter key.
+    /// Creates a validated frontmatter key.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the key is empty.
+    /// Returns [`ConfigError::ValidationFailed`] if the key is empty.
     #[inline]
     pub fn try_new<T: Into<String>>(value: T) -> Result<Self, ConfigError> {
         let value = value.into();
