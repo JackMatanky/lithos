@@ -33,7 +33,7 @@ pub type FrontmatterError = super::error::FrontmatterError;
 #[non_exhaustive]
 pub struct Frontmatter {
     /// Key-value pairs of metadata fields.
-    fields: HashMap<String, FieldValue>,
+    fields: HashMap<Box<str>, FieldValue>,
 }
 
 impl Frontmatter {
@@ -43,7 +43,9 @@ impl Frontmatter {
     ///
     /// Currently infallible, but returns Result for future validation.
     #[inline]
-    pub fn new(fields: HashMap<String, FieldValue>) -> Result<Self, NoteError> {
+    pub fn new(
+        fields: HashMap<Box<str>, FieldValue>,
+    ) -> Result<Self, NoteError> {
         Ok(Self {
             fields,
         })
@@ -113,8 +115,8 @@ impl Frontmatter {
     pub fn try_get_string_vec_strict(
         &self,
         key: &str,
-    ) -> Result<Vec<String>, FrontmatterError> {
-        self.try_get_required::<Vec<String>>(key)
+    ) -> Result<Vec<Box<str>>, FrontmatterError> {
+        self.try_get_required::<Vec<Box<str>>>(key)
     }
 
     /// Strictly extracts a *borrowed* typed value from frontmatter.
@@ -162,11 +164,12 @@ impl Frontmatter {
     /// Returns the title of the note, using the configured title key.
     #[inline]
     #[must_use]
-    pub fn title(&self, config: &crate::config::aggregate::Config) -> String {
-        self.get(config.frontmatter().title().as_str())
+    pub fn title(
+        &self,
+        config: &crate::config::aggregate::Config,
+    ) -> Option<&str> {
+        self.get(config.frontmatter.title_key().as_str())
             .and_then(FieldValue::as_str)
-            .unwrap_or_default()
-            .to_owned()
     }
 
     /// Returns the file class of the note, using the configured key.
@@ -175,21 +178,19 @@ impl Frontmatter {
     pub fn file_class(
         &self,
         config: &crate::config::aggregate::Config,
-    ) -> String {
-        self.get(config.frontmatter().file_class().as_str())
+    ) -> Option<&str> {
+        self.get(config.frontmatter.file_class_key().as_str())
             .and_then(FieldValue::as_str)
-            .unwrap_or_default()
-            .to_owned()
     }
 
-    /// Returns the aliases of the note as a vector of strings.
+    /// Returns the aliases of the note as a vector of boxed strings.
     #[inline]
     #[must_use]
     pub fn aliases(
         &self,
         config: &crate::config::aggregate::Config,
-    ) -> Vec<String> {
-        self.get(config.frontmatter().alias().as_str())
+    ) -> Vec<Box<str>> {
+        self.get(config.frontmatter.alias_key().as_str())
             .and_then(as_string_array_lossy)
             .unwrap_or_default()
     }
@@ -278,10 +279,10 @@ impl FromFieldValue for f64 {
     }
 }
 
-impl FromFieldValue for String {
+impl FromFieldValue for Box<str> {
     #[inline]
     fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
-        value.as_str().map(ToOwned::to_owned).ok_or_else(|| {
+        value.as_str().map(Into::into).ok_or_else(|| {
             FrontmatterError::TypeMismatch {
                 key: "".into(),
                 expected: "string".into(),
@@ -310,7 +311,7 @@ impl FromFieldValue for DateTime<Utc> {
     }
 }
 
-impl FromFieldValue for Vec<String> {
+impl FromFieldValue for Vec<Box<str>> {
     #[inline]
     fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
         if let Some(arr) = value.as_array() {
@@ -324,12 +325,12 @@ impl FromFieldValue for Vec<String> {
                         actual: item.value_type(),
                     });
                 };
-                out.push(s.to_owned());
+                out.push(s.into());
             }
             return Ok(out);
         }
 
-        value.as_str().map(|s| vec![s.to_owned()]).ok_or_else(|| {
+        value.as_str().map(|s| vec![s.into()]).ok_or_else(|| {
             FrontmatterError::TypeMismatch {
                 key: "".into(),
                 expected: "array|string".into(),
@@ -369,7 +370,7 @@ impl<'frontmatter> FromFieldValueRef<'frontmatter>
 
 impl<'frontmatter> FromFieldValueRef<'frontmatter>
     for &'frontmatter HashMap<
-        String,
+        Box<str>,
         FieldValue,
         ::std::collections::hash_map::RandomState,
     >
@@ -391,16 +392,16 @@ impl<'frontmatter> FromFieldValueRef<'frontmatter>
 /// This filters out non-string elements rather than erroring.
 #[inline]
 #[must_use]
-pub fn as_string_array_lossy(value: &FieldValue) -> Option<Vec<String>> {
+pub fn as_string_array_lossy(value: &FieldValue) -> Option<Vec<Box<str>>> {
     if let Some(arr) = value.as_array() {
         return Some(
             arr.iter()
-                .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+                .filter_map(|item| item.as_str().map(Into::into))
                 .collect(),
         );
     }
 
-    value.as_str().map(|s| vec![s.to_owned()])
+    value.as_str().map(|s| vec![s.into()])
 }
 
 #[cfg(test)]
@@ -418,7 +419,7 @@ mod tests {
 
         /// Builder for creating test Frontmatter instances.
         pub struct FrontmatterBuilder {
-            fields: HashMap<String, FieldValue>,
+            fields: HashMap<Box<str>, FieldValue>,
         }
 
         impl FrontmatterBuilder {
@@ -430,22 +431,22 @@ mod tests {
 
             pub fn with_string(mut self, key: &str, value: &str) -> Self {
                 self.fields
-                    .insert(key.to_owned(), FieldValue::String(value.into()));
+                    .insert(key.into(), FieldValue::String(value.into()));
                 self
             }
 
             pub fn with_boolean(mut self, key: &str, value: bool) -> Self {
-                self.fields.insert(key.to_owned(), FieldValue::Boolean(value));
+                self.fields.insert(key.into(), FieldValue::Boolean(value));
                 self
             }
 
             pub fn with_number(mut self, key: &str, value: f64) -> Self {
-                self.fields.insert(key.to_owned(), FieldValue::Number(value));
+                self.fields.insert(key.into(), FieldValue::Number(value));
                 self
             }
 
             pub fn with_date(mut self, key: &str, timestamp: i64) -> Self {
-                self.fields.insert(key.to_owned(), FieldValue::Date(timestamp));
+                self.fields.insert(key.into(), FieldValue::Date(timestamp));
                 self
             }
 
@@ -454,7 +455,7 @@ mod tests {
                 key: &str,
                 values: Vec<FieldValue>,
             ) -> Self {
-                self.fields.insert(key.to_owned(), FieldValue::Array(values));
+                self.fields.insert(key.into(), FieldValue::Array(values));
                 self
             }
 
@@ -463,28 +464,37 @@ mod tests {
             }
         }
 
+        pub fn config_with_custom_frontmatter_keys() -> Config {
             use crate::config::{
-                frontmatter::RawFrontmatter,
-                raw,
-                vault::{VaultId, VaultRoot},
+                frontmatter::{Frontmatter as FmConfig, FrontmatterKey},
+                global::{Global, Paths as GlobalPaths},
+                logging::Logging,
+                vault::{Vault, VaultId, VaultRoot},
             };
 
-            let raw = raw::RawConfig {
-                frontmatter: Some(RawFrontmatter {
-                    alias_key: Some("names".to_owned()),
-                    date_created_key: Some("date_created".to_owned()),
-                    date_modified_key: Some("date_modified".to_owned()),
-                    file_class_key: Some("kind".to_owned()),
-                    title_key: Some("subject".to_owned()),
-                }),
-                ..Default::default()
-            };
+            let frontmatter = FmConfig::new(
+                FrontmatterKey::try_new("names").expect("alias_key"),
+                FrontmatterKey::try_new("date_created").expect("date_created"),
+                FrontmatterKey::try_new("date_modified")
+                    .expect("date_modified"),
+                FrontmatterKey::try_new("kind").expect("file_class"),
+                FrontmatterKey::try_new("subject").expect("title"),
+            );
 
-            Config::build(
-                &raw,
+            let global = Global::new(
+                GlobalPaths::default(),
+                frontmatter,
+                Logging::default(),
+                None,
+                None,
+            );
+
+            crate::config::aggregate::Config::build(
+                Some(&global),
                 VaultId::new(),
                 VaultRoot::try_new(std::path::PathBuf::from("/v"))
                     .expect("vault_root"),
+                &Vault::default(),
             )
             .expect("Config build should succeed")
         }
@@ -525,9 +535,9 @@ mod tests {
 
         pub fn frontmatter_for_try_get() -> Frontmatter {
             let mut fields = HashMap::new();
-            fields.insert("s".to_owned(), FieldValue::String("text".into()));
-            fields.insert("b".to_owned(), FieldValue::Boolean(true));
-            fields.insert("n".to_owned(), FieldValue::Number(1.5f64));
+            fields.insert("s".into(), FieldValue::String("text".into()));
+            fields.insert("b".into(), FieldValue::Boolean(true));
+            fields.insert("n".into(), FieldValue::Number(1.5f64));
             Frontmatter::new(fields)
                 .expect("Frontmatter construction should succeed")
         }
@@ -535,7 +545,7 @@ mod tests {
         pub fn frontmatter_with_aliases_mixed() -> Frontmatter {
             let mut fields = HashMap::new();
             fields.insert(
-                "aliases".to_owned(),
+                "aliases".into(),
                 FieldValue::Array(vec![
                     FieldValue::String("ok".into()),
                     FieldValue::Number(123.0),
@@ -547,14 +557,14 @@ mod tests {
 
         pub fn frontmatter_with_number() -> Frontmatter {
             let mut fields = HashMap::new();
-            fields.insert("n".to_owned(), FieldValue::Number(1.0f64));
+            fields.insert("n".into(), FieldValue::Number(1.0f64));
             Frontmatter::new(fields)
                 .expect("Frontmatter construction should succeed")
         }
 
         pub fn frontmatter_with_invalid_date() -> Frontmatter {
             let mut fields = HashMap::new();
-            fields.insert("d".to_owned(), FieldValue::Date(i64::MAX));
+            fields.insert("d".into(), FieldValue::Date(i64::MAX));
             Frontmatter::new(fields)
                 .expect("Frontmatter construction should succeed")
         }
@@ -649,7 +659,7 @@ mod tests {
         #[test]
         fn object_coerces_to_object() {
             let mut obj_map = HashMap::new();
-            obj_map.insert("k".to_owned(), FieldValue::Boolean(false));
+            obj_map.insert("k".into(), FieldValue::Boolean(false));
             let value = FieldValue::Object(obj_map);
             assert!(
                 value.as_object().is_some(),
@@ -660,7 +670,7 @@ mod tests {
         #[test]
         fn object_does_not_coerce_to_string() {
             let mut obj_map = HashMap::new();
-            obj_map.insert("k".to_owned(), FieldValue::Boolean(false));
+            obj_map.insert("k".into(), FieldValue::Boolean(false));
             let value = FieldValue::Object(obj_map);
             assert!(
                 value.as_str().is_none(),
@@ -735,7 +745,7 @@ mod tests {
             let fm = fixtures::frontmatter_with_custom_keys();
             assert_eq!(
                 fm.title(&config),
-                "Subj",
+                Some("Subj"),
                 "Title should use configured key"
             );
         }
@@ -746,7 +756,7 @@ mod tests {
             let fm = fixtures::frontmatter_with_custom_keys();
             assert_eq!(
                 fm.file_class(&config),
-                "Note",
+                Some("Note"),
                 "File class should use configured key"
             );
         }
@@ -757,7 +767,7 @@ mod tests {
             let fm = fixtures::frontmatter_with_custom_keys();
             assert_eq!(
                 fm.aliases(&config),
-                vec!["Alias".to_owned()],
+                vec!["Alias".into()],
                 "Aliases should use configured key"
             );
         }
@@ -779,7 +789,7 @@ mod tests {
             let fm = fixtures::frontmatter_with_string_arrays();
             assert_eq!(
                 fm.get("single").and_then(as_string_array_lossy),
-                Some(vec!["a".to_owned()]),
+                Some(vec!["a".into()]),
                 "Single string should convert to array"
             );
         }
@@ -789,7 +799,7 @@ mod tests {
             let fm = fixtures::frontmatter_with_string_arrays();
             assert_eq!(
                 fm.get("multi").and_then(as_string_array_lossy),
-                Some(vec!["b".to_owned()]),
+                Some(vec!["b".into()]),
                 "Array should be returned as-is"
             );
         }
@@ -861,10 +871,10 @@ mod tests {
         #[test]
         fn try_get_returns_string_value() {
             let fm = fixtures::frontmatter_for_try_get();
-            let result = fm.try_get::<String>("s");
+            let result = fm.try_get::<Box<str>>("s");
             assert_eq!(
                 result,
-                Ok(Some("text".to_owned())),
+                Ok(Some("text".into())),
                 "Should retrieve and convert String field"
             );
         }
@@ -934,14 +944,14 @@ mod tests {
             let fm = fixtures::frontmatter_with_aliases_mixed();
             assert_eq!(
                 fm.get("aliases").and_then(as_string_array_lossy),
-                Some(vec!["ok".to_owned()])
+                Some(vec!["ok".into()])
             );
         }
 
         #[test]
         fn strict_get_required_reports_missing_key() {
             let fm = fixtures::frontmatter_with_number();
-            let result = fm.try_get_required::<String>("missing");
+            let result = fm.try_get_required::<Box<str>>("missing");
             assert!(
                 matches!(
                     &result,
@@ -955,7 +965,7 @@ mod tests {
         #[test]
         fn strict_get_required_reports_type_mismatch() {
             let fm = fixtures::frontmatter_with_number();
-            let result = fm.try_get_required::<String>("n");
+            let result = fm.try_get_required::<Box<str>>("n");
             assert!(
                 matches!(
                     &result,

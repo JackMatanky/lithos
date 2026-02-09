@@ -428,7 +428,7 @@ impl Task {
             } else {
                 metadata.insert(
                     keyword.into(),
-                    FieldValue::String(raw_value.to_owned()),
+                    FieldValue::String(raw_value.into()),
                 );
             }
         }
