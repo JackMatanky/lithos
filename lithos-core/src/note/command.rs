@@ -5,7 +5,10 @@
 
 use uuid::Uuid;
 
-use super::{aggregate::Note, error::NoteCommandError, types::NoteId};
+use super::{
+    aggregate::{Note, NoteId},
+    error::NoteCommandError,
+};
 use crate::db::Database;
 
 /// Command implementation for Note write operations.
@@ -36,13 +39,15 @@ impl super::ports::Command for Command<'_> {
         let note = Note::new(NoteId::new(), path)?;
         let id_str = Uuid::from(note.id()).to_string();
 
-        self.db
-            .put("notes", &id_str, &note)
-            .map_err(NoteCommandError::Storage)?;
-
-        self.db
-            .multimap_insert("path_to_id", note.path().as_str(), &id_str)
-            .map_err(NoteCommandError::Storage)?;
+        self.db.batch_write(|batch| {
+            batch.put("notes", &id_str, &note)?;
+            batch.multimap_insert(
+                "path_to_id",
+                note.path().as_str(),
+                &id_str,
+            )?;
+            Ok(())
+        })?;
 
         Ok(note)
     }
@@ -74,22 +79,20 @@ impl super::ports::Command for Command<'_> {
             .map_err(NoteCommandError::Storage)?;
 
         if let Some((path, tags)) = old_data {
-            // 2. Remove from path index
-            self.db
-                .multimap_remove("path_to_id", &path, &id_str)
-                .map_err(NoteCommandError::Storage)?;
+            self.db.batch_write(|batch| {
+                // 2. Remove from path index
+                batch.multimap_remove("path_to_id", &path, &id_str)?;
 
-            // 3. Remove from tag indexes
-            for tag in tags {
-                self.db
-                    .multimap_remove("tags_to_notes", &tag, &id_str)
-                    .map_err(NoteCommandError::Storage)?;
-            }
+                // 3. Remove from tag indexes
+                for tag in tags {
+                    batch.multimap_remove("tags_to_notes", &tag, &id_str)?;
+                }
 
-            // 4. Delete note
-            self.db
-                .delete("notes", &id_str)
-                .map_err(NoteCommandError::Storage)?;
+                // 4. Delete note
+                batch.delete("notes", &id_str)?;
+
+                Ok(())
+            })?;
         }
 
         Ok(())
@@ -121,46 +124,46 @@ impl super::ports::Command for Command<'_> {
             )
             .map_err(NoteCommandError::Storage)?;
 
-        if let Some((old_path, old_tags)) = old_data {
-            // 2. Update path index if changed
-            if old_path != note.path().as_str() {
-                self.db
-                    .multimap_remove("path_to_id", &old_path, &id_str)
-                    .map_err(NoteCommandError::Storage)?;
-                self.db
-                    .multimap_insert(
+        self.db.batch_write(|batch| {
+            if let Some((old_path, old_tags)) = old_data {
+                // 2. Update path index if changed
+                if old_path != note.path().as_str() {
+                    batch.multimap_remove("path_to_id", &old_path, &id_str)?;
+                    batch.multimap_insert(
                         "path_to_id",
                         note.path().as_str(),
                         &id_str,
-                    )
-                    .map_err(NoteCommandError::Storage)?;
+                    )?;
+                }
+
+                // 3. Update tag index
+                // Remove old tags
+                for tag in old_tags {
+                    batch.multimap_remove("tags_to_notes", &tag, &id_str)?;
+                }
+            } else {
+                // New note (even though it's update call), add path index
+                batch.multimap_insert(
+                    "path_to_id",
+                    note.path().as_str(),
+                    &id_str,
+                )?;
             }
 
-            // 3. Update tag index
-            // Remove old tags
-            for tag in old_tags {
-                self.db
-                    .multimap_remove("tags_to_notes", &tag, &id_str)
-                    .map_err(NoteCommandError::Storage)?;
+            // Add new tags
+            for tag in note.tags() {
+                batch.multimap_insert(
+                    "tags_to_notes",
+                    tag.full_path(),
+                    &id_str,
+                )?;
             }
-        } else {
-            // New note (even though it's update call), add path index
-            self.db
-                .multimap_insert("path_to_id", note.path().as_str(), &id_str)
-                .map_err(NoteCommandError::Storage)?;
-        }
 
-        // Add new tags
-        for tag in note.tags() {
-            self.db
-                .multimap_insert("tags_to_notes", tag.full_path(), &id_str)
-                .map_err(NoteCommandError::Storage)?;
-        }
+            // 4. Save new note
+            batch.put("notes", &id_str, &note)?;
 
-        // 4. Save new note
-        self.db
-            .put("notes", &id_str, &note)
-            .map_err(NoteCommandError::Storage)?;
+            Ok(())
+        })?;
 
         Ok(note)
     }
@@ -542,11 +545,7 @@ mod tests {
 
             let new_tag = fixtures::parse_tag("#new-tag")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            // To replace tags, we'd need a clear method.
-            // For now I'll just clear the internal vec if I had access,
-            // but Note only has add_tag.
-            // I'll add Note::clear_tags or similar.
-            // Actually, I'll just create a new note with same ID but new tags.
+
             let mut updated_note =
                 Note::new(note.id(), note.path().as_str().to_owned())?;
             updated_note.add_tag(new_tag);

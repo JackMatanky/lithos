@@ -7,19 +7,210 @@
               docs"
 )]
 
-use std::{collections::HashMap, sync::OnceLock};
+use std::{collections::HashMap, sync::LazyLock};
 
 use regex::Regex;
+use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{
-    error::NoteError,
-    types::{SourceByteOffset, TaskTimestamp},
-    value::FieldValue,
-};
+use super::{error::NoteError, types::SourceByteOffset, value::FieldValue};
 use crate::config::task::{
     DateFieldSpec, StatusName, StatusSymbol, TaskConfig, TaskFieldSpec,
 };
+
+// Pre-compiled regexes for performance
+static METADATA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        clippy::disallowed_methods,
+        reason = "Internal regex compilation"
+    )]
+    Regex::new(r"\[([^:\]]+)::\s*([^\]]+)\]").expect("Invalid metadata regex")
+});
+
+static TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        clippy::disallowed_methods,
+        reason = "Internal regex compilation"
+    )]
+    Regex::new("#([a-zA-Z0-9_-]+)").expect("Invalid tag regex")
+});
+
+/// A timestamp representing task temporal data.
+///
+/// Wraps an `i64` Unix timestamp for semantic clarity while maintaining
+/// zero-copy compatibility with rkyv serialization.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct TaskTimestamp(i64);
+
+impl TaskTimestamp {
+    /// Creates a new `TaskTimestamp` from a Unix timestamp.
+    ///
+    /// # Arguments
+    /// * `timestamp` - Unix timestamp in seconds since epoch.
+    #[inline]
+    #[must_use]
+    pub const fn new(timestamp: i64) -> Self {
+        Self(timestamp)
+    }
+
+    /// Creates a new `TaskTimestamp` from the current time.
+    #[inline]
+    #[must_use]
+    pub fn now() -> Self {
+        #[expect(
+            clippy::cast_possible_wrap,
+            clippy::as_conversions,
+            reason = "Unix timestamp fits in i64 for Lithos time range"
+        )]
+        Self(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64,
+        )
+    }
+
+    /// Returns the raw Unix timestamp.
+    #[inline]
+    #[must_use]
+    pub const fn as_i64(&self) -> i64 {
+        self.0
+    }
+
+    /// Returns true if this timestamp represents a future time.
+    ///
+    /// # Arguments
+    /// * `relative_to` - Optional reference time; defaults to now.
+    #[inline]
+    #[must_use]
+    pub fn is_future(&self, relative_to: Option<Self>) -> bool {
+        let reference = relative_to.unwrap_or_else(Self::now);
+        self.0 > reference.0
+    }
+
+    /// Returns true if this timestamp represents a past time.
+    ///
+    /// # Arguments
+    /// * `relative_to` - Optional reference time; defaults to now.
+    #[inline]
+    #[must_use]
+    pub fn is_past(&self, relative_to: Option<Self>) -> bool {
+        let reference = relative_to.unwrap_or_else(Self::now);
+        self.0 < reference.0
+    }
+
+    /// Returns the duration from now in seconds (positive for future, negative
+    /// for past).
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Timestamp arithmetic is safe"
+    )]
+    pub fn seconds_from_now(&self) -> i64 {
+        self.0 - Self::now().0
+    }
+
+    /// Returns the duration between two timestamps.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Timestamp arithmetic is safe"
+    )]
+    pub const fn duration_from(&self, other: Self) -> i64 {
+        self.0 - other.0
+    }
+
+    /// Returns true if this timestamp is within the specified duration from
+    /// now.
+    ///
+    /// # Arguments
+    /// * `duration_seconds` - Duration window in seconds.
+    /// * `relative_to` - Optional reference time; defaults to now.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Timestamp arithmetic is safe"
+    )]
+    pub fn is_within(
+        &self,
+        duration_seconds: i64,
+        relative_to: Option<Self>,
+    ) -> bool {
+        let reference = relative_to.unwrap_or_else(Self::now);
+        let diff = (self.0 - reference.0).abs();
+        diff <= duration_seconds
+    }
+}
+
+impl Default for TaskTimestamp {
+    #[inline]
+    fn default() -> Self {
+        Self::now()
+    }
+}
+
+impl From<i64> for TaskTimestamp {
+    #[inline]
+    fn from(timestamp: i64) -> Self {
+        Self(timestamp)
+    }
+}
+
+impl From<TaskTimestamp> for i64 {
+    #[inline]
+    fn from(timestamp: TaskTimestamp) -> i64 {
+        timestamp.0
+    }
+}
+
+impl From<std::time::SystemTime> for TaskTimestamp {
+    #[inline]
+    fn from(time: std::time::SystemTime) -> Self {
+        #[expect(
+            clippy::cast_possible_wrap,
+            clippy::as_conversions,
+            reason = "Unix timestamp fits in i64 for Lithos time range"
+        )]
+        Self(
+            time.duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64,
+        )
+    }
+}
+
+impl From<TaskTimestamp> for std::time::SystemTime {
+    #[inline]
+    fn from(timestamp: TaskTimestamp) -> Self {
+        #[expect(
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "Timestamp is non-negative for Duration conversion"
+        )]
+        std::time::UNIX_EPOCH
+            .checked_add(std::time::Duration::from_secs(timestamp.0 as u64))
+            .unwrap_or(std::time::UNIX_EPOCH)
+    }
+}
 
 /// Unique identifier for a Task (UUID v7).
 #[derive(
@@ -28,29 +219,24 @@ use crate::config::task::{
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     serde::Serialize,
     serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
 pub struct TaskId(Uuid);
 
 impl TaskId {
-    /// Creates a new time-ordered task id.
+    /// Creates a new `TaskId` (UUID v7).
     #[inline]
     #[must_use]
     pub fn new() -> Self {
         Self(Uuid::now_v7())
-    }
-
-    /// Returns the inner UUID.
-    #[inline]
-    #[must_use]
-    pub const fn as_uuid(&self) -> &Uuid {
-        &self.0
     }
 }
 
@@ -63,28 +249,28 @@ impl Default for TaskId {
 
 impl From<Uuid> for TaskId {
     #[inline]
-    fn from(value: Uuid) -> Self {
-        Self(value)
+    fn from(uuid: Uuid) -> Self {
+        Self(uuid)
     }
 }
 
 impl From<TaskId> for Uuid {
     #[inline]
-    fn from(value: TaskId) -> Self {
-        value.0
+    fn from(id: TaskId) -> Uuid {
+        id.0
     }
 }
 
-/// Task metadata parsed from inline fields.
+/// Task metadata fields.
 #[derive(
     Debug,
     Clone,
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
 pub struct TaskMetadata {
@@ -128,18 +314,32 @@ impl TaskMetadata {
         self.get(field)?.as_number()
     }
 
-    /// Returns a boolean field value if present.
+    /// Returns task priority if set.
     #[inline]
     #[must_use]
-    pub fn get_boolean(&self, field: &str) -> Option<bool> {
-        self.get(field)?.as_bool()
+    pub fn priority(&self) -> Option<f64> {
+        self.get_number("priority")
     }
 
-    /// Returns a date timestamp field value if present.
+    /// Returns task project if set.
     #[inline]
     #[must_use]
-    pub fn get_date(&self, field: &str) -> Option<i64> {
-        self.get(field)?.as_date()
+    pub fn project(&self) -> Option<&str> {
+        self.get_string("project")
+    }
+
+    /// Returns task area if set.
+    #[inline]
+    #[must_use]
+    pub fn area(&self) -> Option<&str> {
+        self.get_string("area")
+    }
+
+    /// Returns all metadata fields.
+    #[inline]
+    #[must_use]
+    pub const fn fields(&self) -> &HashMap<Box<str>, FieldValue> {
+        &self.fields
     }
 }
 
@@ -150,30 +350,29 @@ impl Default for TaskMetadata {
     }
 }
 
-/// Represents a promoted task entity parsed from a checkbox list item.
+/// Task entity within a Note.
 #[derive(
     Debug,
     Clone,
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[non_exhaustive]
 pub struct Task {
     id: TaskId,
-    text: Box<str>,
     status: StatusName,
+    text: String,
+    position: SourceByteOffset,
+    tags: Vec<Box<str>>,
+    metadata: TaskMetadata,
     created_at: Option<TaskTimestamp>,
     due_at: Option<TaskTimestamp>,
     reminder_at: Option<TaskTimestamp>,
     completed_at: Option<TaskTimestamp>,
-    position: SourceByteOffset,
-    tags: Vec<Box<str>>,
-    metadata: TaskMetadata,
 }
 
 type TemporalFields = (
@@ -184,12 +383,10 @@ type TemporalFields = (
 );
 
 impl Task {
-    /// Creates a task from checkbox text, validating against task config.
+    /// Creates a new Task from checkbox text and metadata.
     ///
     /// # Errors
-    ///
-    /// Returns `NoteError::Task` when the status symbol is unknown, when task
-    /// text is empty after normalization, or when metadata parsing fails.
+    /// Returns `NoteError` if parsing fails.
     #[inline]
     pub fn from_checkbox(
         raw_text: &str,
@@ -202,100 +399,100 @@ impl Task {
             .name_for_symbol(status_symbol)
             .ok_or_else(|| {
                 NoteError::Task(format!(
-                    "unknown status symbol '{}'",
+                    "unrecognized status symbol: '{}'",
                     status_symbol.value()
                 ))
             })?
             .clone();
 
         let text = Self::extract_clean_text(raw_text, config)?;
-        let tags = Self::extract_tags(raw_text)?;
+        let tags = Self::extract_tags(raw_text);
         let (created_at, due_at, reminder_at, completed_at) =
             Self::parse_temporal_fields(raw_text, config)?;
         let metadata = Self::parse_metadata(raw_text, config)?;
 
         Ok(Self {
             id: TaskId::new(),
-            text: text.into_boxed_str(),
             status,
+            text,
+            position,
+            tags,
+            metadata,
             created_at,
             due_at,
             reminder_at,
             completed_at,
-            position,
-            tags,
-            metadata,
         })
     }
 
-    /// Returns true if the checkbox text should be promoted to a Task.
+    /// Returns true if the checkbox should be promoted to a Task.
     #[inline]
     #[must_use]
     pub fn should_promote(text: &str, config: &TaskConfig) -> bool {
         config.has_task_tag(text)
     }
 
-    /// Returns the task id.
+    /// Returns the task ID.
     #[inline]
     #[must_use]
     pub const fn id(&self) -> TaskId {
         self.id
     }
 
-    /// Returns the normalized task text.
+    /// Returns the task status name.
+    #[inline]
+    #[must_use]
+    pub fn status(&self) -> StatusName {
+        self.status.clone()
+    }
+
+    /// Returns the task text.
     #[inline]
     #[must_use]
     pub fn text(&self) -> &str {
         &self.text
     }
 
-    /// Returns the semantic status name.
-    #[inline]
-    #[must_use]
-    pub const fn status(&self) -> &StatusName {
-        &self.status
-    }
-
-    /// Returns the created timestamp if present.
-    #[inline]
-    #[must_use]
-    pub const fn created_at(&self) -> Option<TaskTimestamp> {
-        self.created_at
-    }
-
-    /// Returns the due timestamp if present.
-    #[inline]
-    #[must_use]
-    pub const fn due_at(&self) -> Option<TaskTimestamp> {
-        self.due_at
-    }
-
-    /// Returns the reminder timestamp if present.
-    #[inline]
-    #[must_use]
-    pub const fn reminder_at(&self) -> Option<TaskTimestamp> {
-        self.reminder_at
-    }
-
-    /// Returns the completed timestamp if present.
-    #[inline]
-    #[must_use]
-    pub const fn completed_at(&self) -> Option<TaskTimestamp> {
-        self.completed_at
-    }
-
-    /// Returns the source byte offset of this task.
+    /// Returns the task position in the note.
     #[inline]
     #[must_use]
     pub const fn position(&self) -> SourceByteOffset {
         self.position
     }
 
-    /// Returns the tags found in the task text.
+    /// Returns the task tags.
     #[inline]
     #[must_use]
     pub fn tags(&self) -> &[Box<str>] {
         &self.tags
+    }
+
+    /// Returns the task created timestamp.
+    #[inline]
+    #[must_use]
+    pub const fn created_at(&self) -> Option<TaskTimestamp> {
+        self.created_at
+    }
+
+    /// Returns the task due timestamp.
+    #[inline]
+    #[must_use]
+    pub const fn due_at(&self) -> Option<TaskTimestamp> {
+        self.due_at
+    }
+
+    /// Returns the task reminder timestamp.
+    #[inline]
+    #[must_use]
+    pub const fn reminder_at(&self) -> Option<TaskTimestamp> {
+        self.reminder_at
+    }
+
+    /// Returns the task completion timestamp.
+    #[inline]
+    #[must_use]
+    pub const fn completed_at(&self) -> Option<TaskTimestamp> {
+        self.completed_at
     }
 
     /// Returns task metadata.
@@ -322,8 +519,7 @@ impl Task {
             }
         }
 
-        let regex = metadata_regex()?;
-        if let Some(mat) = regex.find(text)
+        if let Some(mat) = METADATA_REGEX.find(text)
             && let Some(prefix) = text.get(..mat.start())
         {
             text = prefix.trim_end();
@@ -338,12 +534,11 @@ impl Task {
         Ok(text.to_owned())
     }
 
-    fn extract_tags(raw_text: &str) -> Result<Vec<Box<str>>, NoteError> {
-        let regex = tag_regex()?;
-        Ok(regex
+    fn extract_tags(raw_text: &str) -> Vec<Box<str>> {
+        TAG_REGEX
             .find_iter(raw_text)
             .map(|mat| mat.as_str().to_owned().into_boxed_str())
-            .collect())
+            .collect()
     }
 
     fn parse_temporal_fields(
@@ -410,10 +605,9 @@ impl Task {
         text: &str,
         config: &TaskConfig,
     ) -> Result<TaskMetadata, NoteError> {
-        let regex = metadata_regex()?;
         let mut metadata = TaskMetadata::new();
 
-        for caps in regex.captures_iter(text) {
+        for caps in METADATA_REGEX.captures_iter(text) {
             let keyword = caps.get(1).map_or("", |m| m.as_str().trim());
             let raw_value = caps.get(2).map_or("", |m| m.as_str().trim());
 
@@ -506,26 +700,6 @@ fn parse_metadata_value(
             ..
         } => Ok(serde_json::Value::String(raw_value.to_owned())),
     }
-}
-
-fn metadata_regex() -> Result<&'static Regex, NoteError> {
-    static REGEX: OnceLock<Result<Regex, NoteError>> = OnceLock::new();
-    let cached = REGEX.get_or_init(|| {
-        Regex::new(r"\[([^:\]]+)::\s*([^\]]+)\]").map_err(|error| {
-            NoteError::Task(format!("metadata regex error: {error}"))
-        })
-    });
-    cached.as_ref().map_err(Clone::clone)
-}
-
-fn tag_regex() -> Result<&'static Regex, NoteError> {
-    static REGEX: OnceLock<Result<Regex, NoteError>> = OnceLock::new();
-    let cached = REGEX.get_or_init(|| {
-        Regex::new("#[A-Za-z0-9_-]+").map_err(|error| {
-            NoteError::Task(format!("tag regex error: {error}"))
-        })
-    });
-    cached.as_ref().map_err(Clone::clone)
 }
 
 #[expect(
@@ -627,7 +801,7 @@ mod tests {
         assert_eq!(task.metadata().get_string("project"), Some("lithos"));
 
         // Test temporal fields are accessible
-        assert!(task.created_at().is_none() || task.created_at().is_some()); // Should be Some or None
+        assert!(task.created_at().is_none() || task.created_at().is_some());
         assert!(task.due_at().is_none() || task.due_at().is_some());
         assert!(task.reminder_at().is_none() || task.reminder_at().is_some());
         assert!(task.completed_at().is_none() || task.completed_at().is_some());
@@ -660,15 +834,14 @@ mod tests {
         )
         .expect("task should parse");
 
-        // Test that temporal fields return TaskTimestamp when present
         if let Some(created_at) = task.created_at() {
-            assert_eq!(created_at.as_i64(), 1_704_067_200); // 2024-01-01 00:00:00 UTC
-            assert!(created_at.is_past(None)); // Should be in the past
+            assert_eq!(created_at.as_i64(), 1_704_067_200);
+            assert!(created_at.is_past(None));
         }
 
         if let Some(due_at) = task.due_at() {
-            assert_eq!(due_at.as_i64(), 1_735_689_600); // 2024-12-31 00:00:00 UTC
-            assert!(due_at.is_future(None)); // Should be in the future (relative to test time)
+            assert_eq!(due_at.as_i64(), 1_735_689_600);
+            assert!(due_at.is_future(None));
         }
     }
 }

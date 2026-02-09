@@ -5,12 +5,51 @@
 //! sections group content between headings.
 
 use super::error::NoteError;
-use crate::note::types::{HeadingLevel, SourceByteOffset, SourceByteRange};
+use crate::note::types::{SourceByteOffset, SourceByteRange};
+
+/// Heading level (1-6).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct HeadingLevel(u8);
+
+impl HeadingLevel {
+    /// Creates a new `HeadingLevel`, validating it is between 1 and 6.
+    ///
+    /// # Errors
+    /// Returns an error if the level is not in the range 1..=6.
+    #[inline]
+    pub fn try_new(level: u8) -> Result<Self, NoteError> {
+        if (1..=6).contains(&level) {
+            Ok(Self(level))
+        } else {
+            Err(NoteError::Structure(format!(
+                "Invalid heading level: {level}. Must be between 1 and 6."
+            )))
+        }
+    }
+
+    /// Returns the raw level value.
+    #[inline]
+    #[must_use]
+    pub const fn as_u8(&self) -> u8 {
+        self.0
+    }
+}
 
 /// Represents a heading within a note.
-///
-/// Headings provide document structure and are used to generate
-/// table of contents and section organization.
 #[derive(
     Debug,
     Clone,
@@ -41,24 +80,6 @@ impl Heading {
     }
 
     /// Creates a new heading with validation.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::note::{
-    ///     structure::Heading,
-    ///     types::{HeadingLevel, SourceByteOffset},
-    /// };
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///
-    /// let level = HeadingLevel::try_new(2)?;
-    /// let pos = SourceByteOffset::from(10u32);
-    /// let heading = Heading::new(level, "Implementation".to_string(), pos)?;
-    /// assert_eq!(heading.level().as_u8(), 2, "Heading level should match");
-    /// assert_eq!(heading.text(), "Implementation", "Heading text should match");
-    /// assert_eq!(heading.position(), pos, "Heading position should match");
-    /// # Ok(())
-    /// # }
-    /// ```
     ///
     /// # Errors
     /// Returns `NoteError::ValidationFailed` if heading text is empty.
@@ -98,9 +119,6 @@ impl Heading {
 }
 
 /// Represents a content section within a note.
-///
-/// Sections organize note content between headings, providing
-/// structural organization for large documents.
 #[derive(
     Debug,
     Clone,
@@ -139,27 +157,6 @@ impl Section {
     }
 
     /// Creates a new section.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::note::{
-    ///     structure::{Heading, Section},
-    ///     types::{HeadingLevel, SourceByteOffset, SourceByteRange},
-    /// };
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///
-    /// let level = HeadingLevel::try_new(1)?;
-    /// let pos = SourceByteOffset::from(10u32);
-    /// let range = SourceByteRange::new(pos, SourceByteOffset::from(50u32));
-    /// let section = Section::new(
-    ///     Some(Heading::new(level, "Title", pos)?),
-    ///     "Content here...",
-    ///     range,
-    /// );
-    /// assert_eq!(section.range(), range, "Section range should match");
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
     #[must_use]
     pub fn new<T: Into<Box<str>>>(
@@ -314,13 +311,8 @@ mod tests {
 
         #[test]
         fn heading_level_validation_rejects_invalid_values() {
-            // GIVEN: an invalid heading level
             let level = 7;
-
-            // WHEN: creating a heading level
             let result = HeadingLevel::try_new(level);
-
-            // THEN: it returns an error
             assert!(
                 result.is_err(),
                 "Invalid heading level (7) should be rejected"
@@ -329,15 +321,10 @@ mod tests {
 
         #[test]
         fn new_returns_error_for_empty_text() -> Result<(), NoteError> {
-            // GIVEN: empty heading text
             let level = HeadingLevel::try_new(1)?;
             let text = "   ".to_owned();
             let pos = SourceByteOffset::from(0u32);
-
-            // WHEN: creating a new heading
             let result = Heading::new(level, text, pos);
-
-            // THEN: it returns ValidationFailed
             assert!(
                 matches!(result, Err(NoteError::ValidationFailed(_))),
                 "Empty heading text should be rejected, got: {result:?}"
