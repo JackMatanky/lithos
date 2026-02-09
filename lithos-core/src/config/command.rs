@@ -7,7 +7,7 @@ use super::{
     error::{ConfigCommandError, ConfigError},
     global::Global,
     ingest,
-    ports::ConfigCommandPort,
+    ports::{self as config_ports},
     vault::{Vault, VaultId, VaultRoot},
 };
 
@@ -29,7 +29,7 @@ impl<C> Command<C> {
 
 impl<C> Command<C>
 where
-    C: ConfigCommandPort,
+    C: config_ports::Command,
     C::Error: Into<crate::db::DbError>,
 {
     /// Save global configuration.
@@ -97,25 +97,18 @@ where
         vault_id: VaultId,
         vault_root: &VaultRoot,
     ) -> Result<ConfigVersion, ConfigCommandError> {
-        let raw_global = ingest::ingest_global()?;
-        let raw_vault = ingest::ingest_vault(vault_root.as_path())?;
+        // Build merged config using the simplified API
+        let raw_merged = ingest::build_merged_raw(vault_root.as_path())?;
+        let merged =
+            Config::from_merged_raw(&raw_merged, vault_id, vault_root.clone())
+                .map_err(ConfigCommandError::Domain)?;
 
-        let global =
-            Global::try_from(raw_global).map_err(ConfigCommandError::Domain)?;
-        let vault =
-            Vault::try_from(raw_vault).map_err(ConfigCommandError::Domain)?;
-
-        self.save_global(&global)?;
-        self.save_vault(vault_id, &vault)?;
-
+        // Save vault path mapping
         self.command_port
             .save_vault_path_mapping(vault_id, vault_root)
             .map_err(|error| ConfigCommandError::Storage(error.into()))?;
 
-        let merged =
-            Config::build(Some(&global), vault_id, vault_root.clone(), &vault)
-                .map_err(ConfigCommandError::Domain)?;
-
+        // Save merged config and set as active
         let version = self.next_version(vault_id)?;
         self.command_port
             .save_merged(vault_id, version, &merged)
@@ -209,7 +202,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        config::ports::ConfigCommandPort,
+        config::ports as config_ports,
         db::{Database, DbError},
     };
 
@@ -241,19 +234,14 @@ mod tests {
         }
     }
 
-    impl ConfigCommandPort for DbPort<'_> {
+    impl config_ports::Command for DbPort<'_> {
         type Error = DbError;
 
-        fn save_global(&self, config: &Global) -> Result<(), Self::Error> {
-            self.db.put("config", "global", config)
-        }
-
-        fn save_vault(
+        fn load_active_version(
             &self,
             vault_id: VaultId,
-            config: &Vault,
-        ) -> Result<(), Self::Error> {
-            self.db.put("config", &vault_id.to_string(), config)
+        ) -> Result<Option<ConfigVersion>, Self::Error> {
+            self.db.get_owned("merged_config_active", &vault_id.to_string())
         }
 
         fn load_global(&self) -> Result<Option<Global>, Self::Error> {
@@ -267,6 +255,18 @@ mod tests {
             self.db.get_owned("config", &vault_id.to_string())
         }
 
+        fn save_global(&self, config: &Global) -> Result<(), Self::Error> {
+            self.db.put("config", "global", config)
+        }
+
+        fn save_vault(
+            &self,
+            vault_id: VaultId,
+            config: &Vault,
+        ) -> Result<(), Self::Error> {
+            self.db.put("config", &vault_id.to_string(), config)
+        }
+
         fn save_merged(
             &self,
             vault_id: VaultId,
@@ -275,13 +275,6 @@ mod tests {
         ) -> Result<(), Self::Error> {
             let key = format!("{vault_id}:{}", version.value());
             self.db.put("merged_config_versions", &key, config)
-        }
-
-        fn load_active_version(
-            &self,
-            vault_id: VaultId,
-        ) -> Result<Option<ConfigVersion>, Self::Error> {
-            self.db.get_owned("merged_config_active", &vault_id.to_string())
         }
 
         fn set_active_version(

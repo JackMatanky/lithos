@@ -40,12 +40,8 @@
 //! | `RawLogging`       | `Logging`       | `logging.rs` ← co-located     | Log level enum   |
 //! | `RawSchemaPaths`   | `Schema`        | `paths.rs` ← co-located       | Path validity    |
 //! | `RawTemplatePaths` | `Template`      | `paths.rs` ← co-located       | Path validity    |
-//! | `RawGlobal`        | `Global`        | `global.rs`                   | Aggregation      |
-//! | `RawVault`         | `Vault`         | `vault.rs`                    | Aggregation      |
-//! | `RawGlobalPaths`   | `Paths`         | `global.rs`                   | Path aggregation |
-//! | `RawVaultPaths`    | `Paths`         | `vault.rs`                    | Path aggregation |
-//! | `RawTaskConfig`    | `TaskConfig`    | `task.rs`                     | Complex rules    |
 //! | `RawTrustedVaults` | `TrustedVaults` | `global.rs`                   | List/map format  |
+//! | `RawTaskConfig`    | `TaskConfig`    | `task.rs`                     | Complex rules    |
 //!
 //! The domain-specific Raw types are imported by this module (for use in the
 //! aggregate structs) but defined alongside their validated types.
@@ -68,65 +64,97 @@
 
 use std::collections::HashMap;
 
-use super::{
-    frontmatter::RawFrontmatter,
-    logging::RawLogging,
-    paths::{SchemaOverrides, TemplateOverrides},
-};
+use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 
-/// Raw global configuration input.
+// ============================================================================
+// Unified Raw Config Schema (Phase 1.1 - Figment Integration)
+// ============================================================================
+
+/// Unified raw configuration for Figment merge.
+///
+/// This replaces separate `RawGlobal` and `RawVault` with a single schema
+/// that works at all layers (defaults, global, vault). All fields are
+/// `Option<T>` to enable deep merging across layers.
+///
+/// ## Figment Merge Flow
+///
+/// ```text
+/// Layer 1: Compiled defaults (RawConfig::default())
+///     ↓ Figment::merge
+/// Layer 2: Global config (~/.config/lithos/lithos.toml)
+///     ↓ Figment::merge
+/// Layer 3: Vault config (<vault>/.lithos/lithos.toml)
+///     ↓ Figment::extract
+/// Merged RawConfig (all layers combined)
+/// ```
+///
+/// ## Example TOML
+///
+/// ```toml
+/// # Global config
+/// [filesystem]
+/// schemas_dir = "global-schemas"
+/// templates_dir = "global-templates"
+///
+/// # Vault config
+/// [filesystem]
+/// schemas_dir = "vault-schemas"  # Overrides global
+/// cache_dir = ".cache"            # New field
+/// # templates_dir inherited from global
+/// ```
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct RawGlobal {
-    /// Filesystem configuration for global defaults.
-    pub filesystem: Option<RawGlobalPaths>,
-    /// Frontmatter configuration overrrides.
+pub struct RawConfig {
+    /// Filesystem configuration (deeply mergeable across layers).
+    #[serde(default)]
+    pub filesystem: RawFilesystemConfig,
+
+    /// Frontmatter configuration.
     pub frontmatter: Option<RawFrontmatter>,
-    /// Logging configuration overrides.
+
+    /// Logging configuration.
     pub logging: Option<RawLogging>,
-    /// Trusted vaults configuration.
+
+    /// Task configuration.
+    pub task: Option<RawTaskConfig>,
+
+    /// Trusted vaults (global-only, ignored at vault layer).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub trusted_vaults: Option<RawTrustedVaults>,
-    /// Task configuration (global defaults).
-    pub task: Option<RawTaskConfig>,
 }
 
-/// Raw vault configuration input.
+/// Filesystem configuration with optional fields for deep merge.
+///
+/// All fields are `Option<T>` so Figment can deep-merge them across layers.
+/// This enables vault configs to override individual fields while inheriting
+/// others from global config.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct RawVault {
-    /// Filesystem configuration for vault overrides.
-    pub filesystem: Option<RawVaultPaths>,
-    /// Frontmatter configuration overrides.
-    pub frontmatter: Option<RawFrontmatter>,
-    /// Logging configuration overrides.
-    pub logging: Option<RawLogging>,
-    /// Task configuration overrides.
-    pub task: Option<RawTaskConfig>,
-}
-
-/// Raw filesystem configuration for global defaults.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawGlobalPaths {
-    /// Global schema directory.
-    pub schema: Option<SchemaOverrides>,
-    /// Global template directory.
-    pub template: Option<TemplateOverrides>,
-}
-
-/// Raw filesystem configuration for vault overrides.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawVaultPaths {
-    /// Local cache directory override.
+pub struct RawFilesystemConfig {
+    /// Cache directory (typically vault-specific).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_dir: Option<String>,
-    /// Vault-specific schema overrides.
-    pub schema: Option<SchemaOverrides>,
-    /// Vault-specific template overrides.
-    pub template: Option<TemplateOverrides>,
+
+    /// Schema directory (can override at any layer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schemas_dir: Option<String>,
+
+    /// Property bank filename (can override at any layer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub property_bank_filename: Option<String>,
+
+    /// Templates directory (can override at any layer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub templates_dir: Option<String>,
 }
 
-/// Raw trusted vaults configuration.
+// ============================================================================
+// Legacy Raw Types (Removed in v0.2.0 - Use RawConfig instead)
+// ============================================================================
+// These types were used for manual layer-by-layer merging before Figment.
+// They have been replaced by the unified RawConfig schema above.
+
+// Raw trusted vaults configuration.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
@@ -137,7 +165,7 @@ pub enum RawTrustedVaults {
     Map(HashMap<String, String>),
 }
 
-/// Raw task configuration input.
+// Raw task configuration input.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawTaskConfig {
@@ -155,7 +183,7 @@ pub struct RawTaskConfig {
     pub indexing: Option<RawIndexingConfig>,
 }
 
-/// Raw date field configuration.
+// Raw date field configuration.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawTaskDates {
@@ -271,29 +299,8 @@ pub struct RawIndexingConfig {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Test modules group fixtures and test logic for readability"
-)]
 mod tests {
-    mod fixtures {
-        use crate::config::{logging::RawLogging, raw::RawGlobal};
-
-        pub fn raw_global_invalid_logging() -> RawGlobal {
-            RawGlobal {
-                filesystem: None,
-                frontmatter: None,
-                logging: Some(RawLogging {
-                    log_level: Some("verbose".to_owned()),
-                }),
-                trusted_vaults: None,
-                task: None,
-            }
-        }
-    }
-
     use super::*;
-    use crate::config::global::Global;
 
     mod formatting {
         use super::*;
@@ -307,38 +314,153 @@ unknown_key = "value"
 log_level = "info"
 "#;
 
-            let parsed: Result<RawGlobal, _> = toml::from_str(toml);
+            let parsed: Result<RawConfig, _> = toml::from_str(toml);
             assert!(parsed.is_ok(), "Unknown keys should be ignored");
         }
     }
 
-    mod conversions {
+    // ========================================================================
+    // Phase 1.1: Unified RawConfig Tests
+    // ========================================================================
+
+    mod unified_raw_config {
         use super::*;
 
         #[test]
-        fn global_rejects_invalid_log_level() {
-            let raw = fixtures::raw_global_invalid_logging();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Tests use unwrap() for deterministic TOML parsing"
+        )]
+        fn raw_config_deserializes_from_toml() {
+            let toml = r#"
+                [filesystem]
+                schemas_dir = "custom-schemas"
+                templates_dir = "custom-templates"
 
-            let result = Global::try_from(raw);
-            assert!(result.is_err(), "Invalid log level should be rejected");
+                [logging]
+                log_level = "debug"
+            "#;
+
+            let raw: RawConfig = toml::from_str(toml).unwrap();
+            assert_eq!(
+                raw.filesystem.schemas_dir.as_deref(),
+                Some("custom-schemas")
+            );
+            assert_eq!(
+                raw.filesystem.templates_dir.as_deref(),
+                Some("custom-templates")
+            );
+            assert_eq!(
+                raw.logging.unwrap().log_level.as_deref(),
+                Some("debug")
+            );
         }
 
         #[test]
-        fn vault_rejects_absolute_template_dir() {
-            // Validation now happens at deserialization time for Overrides.
-            // We simulate deserialization failure by checking if we can
-            // construct it invalidly. But since we can't construct an
-            // invalid TemplatesDir via safe API, we test
-            // deserialization directly.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Tests use unwrap() for deterministic TOML parsing"
+        )]
+        fn raw_config_supports_partial_filesystem() {
             let toml = r#"
-[filesystem.template]
-templates_dir = "/abs"
-"#;
-            let parsed: Result<RawVault, _> = toml::from_str(toml);
-            assert!(
-                parsed.is_err(),
-                "Absolute templates_dir should be rejected during \
-                 deserialization"
+                [filesystem]
+                cache_dir = ".cache"
+                # schemas_dir omitted - will merge from lower layer
+            "#;
+
+            let raw: RawConfig = toml::from_str(toml).unwrap();
+            assert_eq!(raw.filesystem.cache_dir.as_deref(), Some(".cache"));
+            assert_eq!(raw.filesystem.schemas_dir, None);
+        }
+
+        #[test]
+        fn raw_config_defaults_to_empty() {
+            let raw = RawConfig::default();
+
+            assert!(raw.filesystem.cache_dir.is_none());
+            assert!(raw.filesystem.schemas_dir.is_none());
+            assert!(raw.filesystem.property_bank_filename.is_none());
+            assert!(raw.filesystem.templates_dir.is_none());
+            assert!(raw.frontmatter.is_none());
+            assert!(raw.logging.is_none());
+            assert!(raw.task.is_none());
+            assert!(raw.trusted_vaults.is_none());
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Tests use unwrap() for deterministic TOML parsing"
+        )]
+        fn raw_filesystem_config_all_fields_optional() {
+            let toml = "
+                [filesystem]
+                # All fields omitted - should deserialize successfully
+            ";
+
+            let raw: RawConfig = toml::from_str(toml).unwrap();
+            let fs = raw.filesystem;
+
+            assert!(fs.cache_dir.is_none());
+            assert!(fs.schemas_dir.is_none());
+            assert!(fs.property_bank_filename.is_none());
+            assert!(fs.templates_dir.is_none());
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Tests use unwrap() for deterministic TOML parsing"
+        )]
+        fn raw_config_with_all_sections() {
+            let toml = r#"
+                [filesystem]
+                schemas_dir = "schemas"
+                cache_dir = ".cache"
+
+                [logging]
+                log_level = "debug"
+
+                [frontmatter]
+                title_key = "title"
+            "#;
+
+            let raw: RawConfig = toml::from_str(toml).unwrap();
+            assert_eq!(raw.filesystem.schemas_dir.as_deref(), Some("schemas"));
+            assert_eq!(raw.filesystem.cache_dir.as_deref(), Some(".cache"));
+            assert!(raw.logging.is_some());
+            assert!(raw.frontmatter.is_some());
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Tests use unwrap() for deterministic TOML parsing"
+        )]
+        fn raw_config_serializes_and_roundtrips() {
+            let original = RawConfig {
+                filesystem: RawFilesystemConfig {
+                    cache_dir: Some(".cache".to_owned()),
+                    schemas_dir: Some("schemas".to_owned()),
+                    property_bank_filename: Some("bank.json".to_owned()),
+                    templates_dir: Some("templates".to_owned()),
+                },
+                frontmatter: None,
+                logging: None,
+                task: None,
+                trusted_vaults: None,
+            };
+
+            let toml_string = toml::to_string(&original).unwrap();
+            let deserialized: RawConfig = toml::from_str(&toml_string).unwrap();
+
+            assert_eq!(
+                deserialized.filesystem.cache_dir,
+                original.filesystem.cache_dir
+            );
+            assert_eq!(
+                deserialized.filesystem.schemas_dir,
+                original.filesystem.schemas_dir
             );
         }
     }

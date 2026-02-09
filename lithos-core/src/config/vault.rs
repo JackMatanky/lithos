@@ -7,7 +7,6 @@ use super::{
     frontmatter::Frontmatter,
     logging::Logging,
     paths::{CacheDir, SchemaOverrides, TemplateOverrides},
-    raw::{RawVault, RawVaultPaths},
     task::TaskConfig,
 };
 
@@ -415,45 +414,6 @@ impl Vault {
     #[must_use]
     pub fn task(&self) -> Option<&TaskConfig> {
         self.task.as_ref()
-    }
-}
-
-impl TryFrom<RawVaultPaths> for Paths {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(raw: RawVaultPaths) -> Result<Self, ConfigError> {
-        let cache_dir = raw
-            .cache_dir
-            .map(|s| CacheDir::try_new(PathBuf::from(s)))
-            .transpose()?;
-        let schema = raw.schema.unwrap_or_default();
-        let template = raw.template.unwrap_or_default();
-
-        Ok(Paths::new(cache_dir, schema, template))
-    }
-}
-
-impl TryFrom<RawVault> for Vault {
-    type Error = ConfigError;
-
-    #[inline]
-    /// Build vault configuration from raw input.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if configuration validation fails.
-    fn try_from(raw: RawVault) -> Result<Self, Self::Error> {
-        let filesystem = raw
-            .filesystem
-            .map(Paths::try_from)
-            .transpose()?
-            .unwrap_or_default();
-        let frontmatter =
-            raw.frontmatter.map(Frontmatter::try_from).transpose()?;
-        let logging = raw.logging.map(Logging::try_from).transpose()?;
-        let task = raw.task.map(TaskConfig::from_raw).transpose()?;
-
-        Ok(Vault::new(filesystem, frontmatter, logging, task))
     }
 }
 
