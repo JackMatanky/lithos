@@ -1,3 +1,5 @@
+//! Error types for note domain and persistence operations.
+
 //! Note error types.
 //!
 //! This module defines note-specific errors using thiserror for

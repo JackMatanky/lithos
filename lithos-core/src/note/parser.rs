@@ -1,3 +1,8 @@
+//! Markdown parsing adapter for extracting structural note data.
+//!
+//! Responsible for converting raw markdown strings into domain entities
+//! like lists, tasks, and headings using `pulldown-cmark`.
+
 //! Markdown adapter for extracting note lists and tasks.
 
 use std::ops::Range;

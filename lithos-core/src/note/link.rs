@@ -1,3 +1,8 @@
+//! Link and embed entities for document relationships.
+//!
+//! Models wiki-links, markdown links, and embedded content references
+//! with support for anchors and aliases.
+
 //! Link subentity for Note aggregate.
 #![allow(
     missing_docs,

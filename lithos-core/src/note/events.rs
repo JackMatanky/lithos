@@ -1,3 +1,5 @@
+//! Domain events emitted by the Note aggregate.
+
 //! Note domain events.
 #![allow(
     clippy::exhaustive_structs,

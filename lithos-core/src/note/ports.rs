@@ -1,3 +1,8 @@
+//! Command and Query port traits for the Note bounded context.
+//!
+//! Defines the architectural boundaries for interacting with note data,
+//! following the Port-Based CQRS pattern.
+
 //! Note bounded context ports for CQRS operations.
 //!
 //! This module defines the command and query trait interfaces for the Note

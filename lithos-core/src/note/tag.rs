@@ -1,3 +1,8 @@
+//! Hierarchical tag entity for note organization.
+//!
+//! Supports multi-segment tags (e.g., `#work/project`) with validated
+//! path segments and efficient string representations.
+
 //! Tag subentity for Note aggregate.
 //!
 //! Represents hierarchical tags used for note organization.

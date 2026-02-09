@@ -1,3 +1,8 @@
+//! Structural entities for document organization.
+//!
+//! Provides [`Heading`] and [`Section`] types to model the hierarchical
+//! and sequential structure of a markdown document.
+
 //! Document structure subentities for Note aggregate.
 //!
 //! Provides heading-based organization and section content management for
