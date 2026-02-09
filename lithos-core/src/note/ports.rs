@@ -6,7 +6,8 @@
 //! Note bounded context ports for CQRS operations.
 //!
 //! This module defines the command and query trait interfaces for the Note
-//! aggregate. These are shells for future implementation by adapters.
+//! aggregate. These are implemented by storage adapters to provide
+//! persistent data access.
 //!
 //! # Note on Sync-First
 //! This trait is synchronous per the architecture proposal (Phase 3).
@@ -22,173 +23,190 @@ use super::{
 /// Command port for Note write operations.
 ///
 /// This trait defines the interface for commands that modify Note state.
-/// Implementations should be in the adapters layer.
+/// Implementations handle the atomic persistence of notes and the maintenance
+/// of their secondary indexes.
 pub trait Command: Send + Sync {
     /// Creates a new note with the given vault-relative path.
     ///
     /// # Errors
-    /// Returns `NoteCommandError` if note creation fails.
+    ///
+    /// Returns [`NoteCommandError`] if:
+    /// - The note already exists at the given path.
+    /// - Initial index population fails.
+    /// - The storage layer returns an error.
     fn create(&self, path: String) -> Result<Note, NoteCommandError>;
 
-    /// Deletes a note by ID.
+    /// Deletes a note by its unique identifier.
     ///
     /// # Errors
-    /// Returns `NoteCommandError` if note deletion fails.
+    ///
+    /// Returns [`NoteCommandError`] if:
+    /// - The note does not exist.
+    /// - Cleanup of secondary indexes fails.
+    /// - The storage layer returns an error.
     fn delete(&self, id: Uuid) -> Result<(), NoteCommandError>;
 
-    /// Updates an existing note.
+    /// Updates an existing note aggregate.
     ///
     /// # Errors
-    /// Returns `NoteCommandError` if note update fails.
+    ///
+    /// Returns [`NoteCommandError`] if:
+    /// - The note does not exist.
+    /// - Atomically updating the note and its indexes fails.
+    /// - The storage layer returns an error.
     fn update(&self, note: Note) -> Result<Note, NoteCommandError>;
 }
 
 /// Query port for Note read operations.
 ///
 /// This trait defines the interface for queries that retrieve Note state.
-/// Implementations should be in the adapters layer.
+/// Implementations provide high-performance, zero-copy access to note and
+/// task data through specialized indexes.
 pub trait Query: Send + Sync {
     /// Archived note type for zero-copy reads.
     type NoteArchived<'archived>;
 
-    /// Finds notes by alias using the alias index.
+    /// Finds a single note by its configured alias.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_alias(
         &self,
         alias: &str,
     ) -> Result<Option<Note>, NoteQueryError>;
 
-    /// Finds notes by file class using the `file_class` index.
+    /// Finds all notes belonging to a specific file class.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_file_class(
         &self,
         class: &str,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds notes by folder path using the folder index.
+    /// Finds all notes located within a specific vault folder.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_folder(&self, folder: &str)
     -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds a note by its UUID v7 identifier (owned).
+    /// Finds a note by its unique UUID v7 identifier (owned).
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError>;
 
     /// Finds a note by its vault-relative path (owned).
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteQueryError>;
 
-    /// Finds notes by task completed date using the `tasks_by_completed_date`
-    /// index.
-    ///
-    /// Returns notes containing tasks with the specified completed date.
+    /// Finds all notes containing tasks completed on a specific date.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_task_completed_date(
         &self,
         completed_date: i64,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds notes by task created date using the `tasks_by_created_date`
-    /// index.
-    ///
-    /// Returns notes containing tasks with the specified created date.
+    /// Finds all notes containing tasks created on a specific date.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_task_created_date(
         &self,
         created_date: i64,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds notes by task due date using the `tasks_by_due_date` index.
-    ///
-    /// Returns notes containing tasks with the specified due date.
+    /// Finds all notes containing tasks due on a specific date.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_task_due_date(
         &self,
         due_date: i64,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds notes by task priority using the `tasks_by_priority` index.
-    ///
-    /// Returns notes containing tasks with the specified priority.
+    /// Finds all notes containing tasks with a specific priority level.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_task_priority(
         &self,
         priority: f64,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds notes by task project using the `tasks_by_project` index.
-    ///
-    /// Returns notes containing tasks with the specified project.
+    /// Finds all notes containing tasks assigned to a specific project.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_task_project(
         &self,
         project: &str,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds notes by task reminder date using the `tasks_by_reminder_date`
-    /// index.
-    ///
-    /// Returns notes containing tasks with the specified reminder date.
+    /// Finds all notes containing tasks with a specific reminder date.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_task_reminder_date(
         &self,
         reminder_date: i64,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Finds notes by task status using the `tasks_by_status` index.
-    ///
-    /// Returns notes containing tasks with the specified status.
+    /// Finds all notes containing tasks with a specific status name.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn find_by_task_status(
         &self,
         status: &str,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Lists all notes in the vault (owned).
+    /// Lists all notes currently managed in the vault (owned).
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn list(&self) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Queries notes by frontmatter key-value pair using the generic
-    /// frontmatter index.
+    /// Queries notes by a generic frontmatter key-value pair.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if the underlying storage fails.
     fn query_frontmatter_kv(
         &self,
         key: &str,
         value: &str,
     ) -> Result<Vec<Note>, NoteQueryError>;
 
-    /// Access a note as archived data (zero-copy).
+    /// Accesses a note by ID as archived data, enabling zero-copy reads.
+    ///
+    /// This method allows executing a closure against the low-level archived
+    /// representation of a note without performing full deserialization.
     ///
     /// # Errors
-    /// Returns `NoteQueryError` if query execution fails.
+    ///
+    /// Returns [`NoteQueryError`] if:
+    /// - The note is not found.
+    /// - The storage layer fails.
+    /// - Zero-copy access validation fails.
     fn with_archived_by_id<F, R>(
         &self,
         id: Uuid,

@@ -89,10 +89,19 @@ pub struct Note {
 }
 
 impl Note {
-    /// Creates a new Note with the given ID and path.
+    /// Creates a new [`Note`] with the given ID and path.
     ///
     /// # Errors
+    ///
     /// Returns [`NoteError::InvalidPath`] if the path validation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::aggregate::{Note, NoteId};
+    /// let id = NoteId::new();
+    /// let note = Note::new(id, "test.md".to_string()).unwrap();
+    /// ```
     #[inline]
     pub fn new(id: NoteId, path: String) -> Result<Self, NoteError> {
         Ok(Self {
@@ -332,9 +341,10 @@ impl From<NoteId> for uuid::Uuid {
 pub struct NotePath(Box<str>);
 
 impl NotePath {
-    /// Creates a new `NotePath` with validation.
+    /// Creates a new [`NotePath`] with validation.
     ///
     /// # Errors
+    ///
     /// Returns [`NoteError::InvalidPath`] if the path is invalid.
     #[inline]
     pub fn new(path: String) -> Result<Self, NoteError> {
