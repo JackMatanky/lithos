@@ -29,14 +29,24 @@ fn global_config_path_from_env() -> Option<PathBuf> {
 pub fn build_merged_raw(
     vault_root: &Path,
 ) -> Result<RawConfig, ConfigIngestError> {
+    build_merged_raw_impl(vault_root, global_config_path_from_env().as_deref())
+}
+
+/// Internal implementation that accepts an optional global config path.
+/// Exposed for testing.
+#[inline]
+fn build_merged_raw_impl(
+    vault_root: &Path,
+    global_config_path: Option<&Path>,
+) -> Result<RawConfig, ConfigIngestError> {
     // Layer 1: Compiled defaults
     let mut figment = Figment::from(Serialized::defaults(RawConfig::default()));
 
     // Layer 2: Global config (if exists)
-    if let Some(path) = global_config_path_from_env()
+    if let Some(path) = global_config_path
         && path.exists()
     {
-        figment = figment.merge(Toml::file(&path));
+        figment = figment.merge(Toml::file(path));
     }
 
     // Layer 3: Vault config (if exists)
@@ -74,6 +84,28 @@ mod tests {
             fs::write(&config_path, content)?;
             Ok((dir, config_path))
         }
+
+        /// Create a temporary directory with global and vault configs.
+        /// Returns (`global_dir`, `global_config_path`, `vault_dir`).
+        pub fn setup_layered_configs(
+            global_content: &str,
+            vault_content: &str,
+        ) -> Result<(TempDir, PathBuf, TempDir), std::io::Error> {
+            let vault_dir = tempfile::tempdir()?;
+            let global_dir = tempfile::tempdir()?;
+
+            // Write global config
+            let global_config_path = global_dir.path().join("lithos.toml");
+            fs::write(&global_config_path, global_content)?;
+
+            // Write vault config
+            let vault_config_dir = vault_dir.path().join(".lithos");
+            fs::create_dir_all(&vault_config_dir)?;
+            let vault_config_path = vault_config_dir.join("lithos.toml");
+            fs::write(&vault_config_path, vault_content)?;
+
+            Ok((global_dir, global_config_path, vault_dir))
+        }
     }
 
     mod load {
@@ -104,6 +136,146 @@ mod tests {
             let raw = build_merged_raw(dir.path()).expect("build merged raw");
             let logging = raw.logging.expect("logging section missing");
             assert_eq!(logging.log_level.as_deref(), Some("debug"));
+        }
+    }
+
+    mod layering {
+        use fixtures::setup_layered_configs;
+
+        use super::*;
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "expect is permitted in test setup"
+        )]
+        fn vault_overrides_global() {
+            // GIVEN: global config with logging = info, vault config with debug
+            let (_global_dir, global_path, vault_dir) = setup_layered_configs(
+                "[logging]\nlog_level = \"info\"\n",
+                "[logging]\nlog_level = \"debug\"\n",
+            )
+            .expect("setup configs");
+
+            // WHEN: building merged config
+            let raw =
+                build_merged_raw_impl(vault_dir.path(), Some(&global_path))
+                    .expect("build merged raw");
+
+            // THEN: vault value wins
+            let logging = raw.logging.expect("logging should be Some");
+            assert_eq!(
+                logging.log_level.as_deref(),
+                Some("debug"),
+                "Vault config should override global"
+            );
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "expect is permitted in test setup"
+        )]
+        fn global_used_when_vault_missing() {
+            // GIVEN: only global config
+            let (_global_dir, global_path, vault_dir) = setup_layered_configs(
+                "[logging]\nlog_level = \"warn\"\n",
+                "", // empty vault config
+            )
+            .expect("setup configs");
+
+            // WHEN: building merged config
+            let raw =
+                build_merged_raw_impl(vault_dir.path(), Some(&global_path))
+                    .expect("build merged raw");
+
+            // THEN: global value is used
+            let logging = raw.logging.expect("logging should be Some");
+            assert_eq!(
+                logging.log_level.as_deref(),
+                Some("warn"),
+                "Global config should be used when vault missing"
+            );
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "expect is permitted in test setup"
+        )]
+        fn defaults_used_when_both_missing() {
+            // GIVEN: no configs at all
+            let dir = tempdir().expect("tempdir");
+            let vault_path = dir.path();
+
+            // WHEN: building merged config with no global
+            let raw = build_merged_raw_impl(vault_path, None)
+                .expect("build merged raw");
+
+            // THEN: defaults apply
+            assert!(
+                raw.logging.is_none(),
+                "Logging should be None when not specified"
+            );
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "expect is permitted in test setup"
+        )]
+        fn filesystem_fields_merge_correctly() {
+            // GIVEN: global with schemas_dir, vault with cache_dir
+            let (_global_dir, global_path, vault_dir) = setup_layered_configs(
+                "[filesystem]\nschemas_dir = \"global-schemas\"\n",
+                "[filesystem]\ncache_dir = \".cache\"\n",
+            )
+            .expect("setup configs");
+
+            // WHEN: building merged config
+            let raw =
+                build_merged_raw_impl(vault_dir.path(), Some(&global_path))
+                    .expect("build merged raw");
+
+            // THEN: both fields present (deep merge)
+            let fs = &raw.filesystem;
+            assert_eq!(
+                fs.schemas_dir.as_deref(),
+                Some("global-schemas"),
+                "Global schemas_dir should be preserved"
+            );
+            assert_eq!(
+                fs.cache_dir.as_deref(),
+                Some(".cache"),
+                "Vault cache_dir should be added"
+            );
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "expect is permitted in test setup"
+        )]
+        fn vault_overrides_global_filesystem_field() {
+            // GIVEN: global with templates_dir = global-templates, vault with
+            // vault-templates
+            let (_global_dir, global_path, vault_dir) = setup_layered_configs(
+                "[filesystem]\ntemplates_dir = \"global-templates\"\n",
+                "[filesystem]\ntemplates_dir = \"vault-templates\"\n",
+            )
+            .expect("setup configs");
+
+            // WHEN: building merged config
+            let raw =
+                build_merged_raw_impl(vault_dir.path(), Some(&global_path))
+                    .expect("build merged raw");
+
+            // THEN: vault value wins
+            assert_eq!(
+                raw.filesystem.templates_dir.as_deref(),
+                Some("vault-templates"),
+                "Vault filesystem field should override global"
+            );
         }
     }
 }
