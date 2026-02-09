@@ -55,22 +55,34 @@ impl super::ports::Command for Command<'_> {
     fn delete(&self, id: Uuid) -> Result<(), NoteCommandError> {
         let id_str = id.to_string();
 
-        // 1. Get note first to clean up indexes
-        let note = self
+        // 1. Get old data for index cleanup using zero-copy read
+        let old_data = self
             .db
-            .get_owned::<Note>("notes", &id_str)
+            .get::<Note, _, (String, Vec<String>)>(
+                "notes",
+                &id_str,
+                |archived| {
+                    let path = archived.path().as_str().to_owned();
+                    let tags: Vec<String> = archived
+                        .tags()
+                        .iter()
+                        .map(|t| t.full_path().as_str().to_owned())
+                        .collect();
+                    (path, tags)
+                },
+            )
             .map_err(NoteCommandError::Storage)?;
 
-        if let Some(n) = note {
+        if let Some((path, tags)) = old_data {
             // 2. Remove from path index
             self.db
-                .multimap_remove("path_to_id", n.path().as_str(), &id_str)
+                .multimap_remove("path_to_id", &path, &id_str)
                 .map_err(NoteCommandError::Storage)?;
 
             // 3. Remove from tag indexes
-            for tag in n.tags() {
+            for tag in tags {
                 self.db
-                    .multimap_remove("tags_to_notes", tag.full_path(), &id_str)
+                    .multimap_remove("tags_to_notes", &tag, &id_str)
                     .map_err(NoteCommandError::Storage)?;
             }
 
@@ -91,17 +103,29 @@ impl super::ports::Command for Command<'_> {
     fn update(&self, note: Note) -> Result<Note, NoteCommandError> {
         let id_str = Uuid::from(note.id()).to_string();
 
-        // 1. Get old note to find what changed
-        let old_note = self
+        // 1. Get old data for index cleanup using zero-copy read
+        let old_data = self
             .db
-            .get_owned::<Note>("notes", &id_str)
+            .get::<Note, _, (String, Vec<String>)>(
+                "notes",
+                &id_str,
+                |archived| {
+                    let path = archived.path().as_str().to_owned();
+                    let tags: Vec<String> = archived
+                        .tags()
+                        .iter()
+                        .map(|t| t.full_path().as_str().to_owned())
+                        .collect();
+                    (path, tags)
+                },
+            )
             .map_err(NoteCommandError::Storage)?;
 
-        if let Some(old) = old_note {
+        if let Some((old_path, old_tags)) = old_data {
             // 2. Update path index if changed
-            if old.path() != note.path() {
+            if old_path != note.path().as_str() {
                 self.db
-                    .multimap_remove("path_to_id", old.path().as_str(), &id_str)
+                    .multimap_remove("path_to_id", &old_path, &id_str)
                     .map_err(NoteCommandError::Storage)?;
                 self.db
                     .multimap_insert(
@@ -114,9 +138,9 @@ impl super::ports::Command for Command<'_> {
 
             // 3. Update tag index
             // Remove old tags
-            for tag in old.tags() {
+            for tag in old_tags {
                 self.db
-                    .multimap_remove("tags_to_notes", tag.full_path(), &id_str)
+                    .multimap_remove("tags_to_notes", &tag, &id_str)
                     .map_err(NoteCommandError::Storage)?;
             }
         } else {
@@ -170,21 +194,21 @@ mod tests {
             cmd: &Command,
             path: &str,
         ) -> Result<Note, NoteCommandError> {
-            cmd.create(path.to_owned())
+            crate::note::ports::Command::create(cmd, path.to_owned())
         }
 
         pub fn update_note(
             cmd: &Command,
             note: Note,
         ) -> Result<Note, NoteCommandError> {
-            cmd.update(note)
+            crate::note::ports::Command::update(cmd, note)
         }
 
         pub fn delete_note(
             cmd: &Command,
             id: Uuid,
         ) -> Result<(), NoteCommandError> {
-            cmd.delete(id)
+            crate::note::ports::Command::delete(cmd, id)
         }
 
         pub fn parse_path(path: &str) -> Result<NotePath, String> {
@@ -218,7 +242,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::note::{error::NoteError, ports::Command as _};
+    use crate::note::error::NoteError;
 
     mod persistence {
         use super::*;

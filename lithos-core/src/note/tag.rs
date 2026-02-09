@@ -241,6 +241,24 @@ impl Tag {
     }
 }
 
+impl ArchivedTag {
+    /// Returns the full tag path.
+    #[inline]
+    #[must_use]
+    pub fn full_path(&self) -> &ArchivedTagPath {
+        &self.full_path
+    }
+}
+
+impl ArchivedTagPath {
+    /// Returns the tag path as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
 #[cfg(test)]
 #[expect(
     clippy::panic_in_result_fn,
