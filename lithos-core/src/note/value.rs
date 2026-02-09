@@ -212,7 +212,7 @@ impl FieldValue {
             Self::Date(ts) => ts.to_string(),
             Self::Array(arr) => {
                 let elements: Vec<String> =
-                    arr.iter().map(|v| v.to_json_string()).collect();
+                    arr.iter().map(FieldValue::to_json_string).collect();
                 format!("[{}]", elements.join(", "))
             }
             Self::Object(obj) => {
