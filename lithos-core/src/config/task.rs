@@ -26,6 +26,10 @@ use super::{
 };
 use crate::bounds::Bounds;
 
+// ============================================================================
+// Public Domain Types (Most Important)
+// ============================================================================
+
 /// Validated task configuration aggregate.
 #[derive(
     Debug,
@@ -60,6 +64,510 @@ pub struct TaskConfig {
     /// List of field names to be indexed.
     indexed_fields: Vec<Box<str>>,
 }
+
+impl Default for TaskConfig {
+    #[inline]
+    #[expect(
+        clippy::disallowed_methods,
+        clippy::unwrap_used,
+        reason = "Default config is guaranteed valid"
+    )]
+    fn default() -> Self {
+        Self::from_raw(RawTaskConfig::default()).unwrap()
+    }
+}
+
+impl TaskConfig {
+    #[inline]
+    /// Build a validated task configuration from raw input.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the configuration is invalid.
+    pub fn from_raw(raw: RawTaskConfig) -> Result<Self, ConfigError> {
+        let enabled = raw.enabled.unwrap_or(true);
+        let task_tags = match raw.task_tags {
+            Some(tags) => tags
+                .into_iter()
+                .map(TaskTag::try_new)
+                .collect::<Result<Vec<_>, _>>()?,
+            None => vec![TaskTag::try_new("#task")?],
+        };
+
+        let status = if let Some(mapping) = raw.status {
+            CheckboxStatus::from_raw(mapping)?
+        } else {
+            let mut mapping = HashMap::new();
+            mapping.insert("todo".to_owned(), ' ');
+            mapping.insert("done".to_owned(), 'x');
+            CheckboxStatus::from_raw(mapping)?
+        };
+
+        let (due_field, completed_field, created_field, reminder_field) =
+            match raw.dates {
+                Some(dates) => (
+                    dates.due.map(DateFieldSpec::from_raw).transpose()?,
+                    dates.completed.map(DateFieldSpec::from_raw).transpose()?,
+                    dates.created.map(DateFieldSpec::from_raw).transpose()?,
+                    dates.reminder.map(DateFieldSpec::from_raw).transpose()?,
+                ),
+                None => (None, None, None, None),
+            };
+
+        let mut fields = HashMap::new();
+        if let Some(raw_fields) = raw.fields {
+            let mut entries: Vec<_> = raw_fields.into_iter().collect();
+            entries.sort_by(|left, right| left.0.cmp(&right.0));
+            for (name, spec) in entries {
+                fields.insert(
+                    name.into_boxed_str(),
+                    TaskFieldSpec::from_raw(spec)?,
+                );
+            }
+        }
+
+        let mut indexed_fields = Vec::new();
+        if let Some(indexing) = raw.indexing
+            && let Some(fields_list) = indexing.indexed_fields
+        {
+            for field_name in fields_list {
+                if !fields.contains_key(field_name.as_str()) {
+                    return Err(ConfigError::ValidationFailed {
+                        field: "task.indexing.fields".to_owned().into(),
+                        message: format!("unknown field: {field_name}").into(),
+                    });
+                }
+                indexed_fields.push(field_name.into_boxed_str());
+            }
+        }
+
+        Ok(Self {
+            enabled,
+            task_tags,
+            status,
+            due_field,
+            created_field,
+            reminder_field,
+            completed_field,
+            fields,
+            indexed_fields,
+        })
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return whether task processing is enabled.
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the list of task promotion tags.
+    pub fn task_tags(&self) -> &[TaskTag] {
+        &self.task_tags
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the checkbox status mappings.
+    pub fn status(&self) -> &CheckboxStatus {
+        &self.status
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the due date field spec, if configured.
+    pub fn due_field(&self) -> Option<&DateFieldSpec> {
+        self.due_field.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the created date field spec, if configured.
+    pub fn created_field(&self) -> Option<&DateFieldSpec> {
+        self.created_field.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the reminder date field spec, if configured.
+    pub fn reminder_field(&self) -> Option<&DateFieldSpec> {
+        self.reminder_field.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the completed date field spec, if configured.
+    pub fn completed_field(&self) -> Option<&DateFieldSpec> {
+        self.completed_field.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the custom fields map.
+    pub fn fields(&self) -> &HashMap<Box<str>, TaskFieldSpec> {
+        &self.fields
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the list of indexed field names.
+    pub fn indexed_fields(&self) -> &[Box<str>] {
+        &self.indexed_fields
+    }
+
+    #[inline]
+    /// Look up a field specification by name.
+    #[must_use]
+    pub fn field_spec(&self, name: &str) -> Option<&TaskFieldSpec> {
+        self.fields.get(name)
+    }
+}
+
+/// Custom task field specification.
+#[derive(
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum TaskFieldSpec {
+    /// Integer field.
+    Integer {
+        /// Field keyword.
+        keyword: TaskFieldKeyword,
+        /// Optional bounds.
+        bounds: Bounds<i64>,
+    },
+    /// Float field.
+    Float {
+        /// Field keyword.
+        keyword: TaskFieldKeyword,
+        /// Optional bounds.
+        bounds: Bounds<f64>,
+    },
+    /// String field.
+    String {
+        /// Field keyword.
+        keyword: TaskFieldKeyword,
+        /// Optional validation pattern.
+        pattern: Option<String>,
+        /// Pre-compiled regex pattern for validation.
+        #[rkyv(with = rkyv::with::Skip)]
+        #[serde(skip)]
+        compiled: Option<Arc<Regex>>,
+    },
+    /// Enumerated field.
+    Enum {
+        /// Field keyword.
+        keyword: TaskFieldKeyword,
+        /// List of allowed values.
+        values: Vec<Box<str>>,
+    },
+    /// Date time field.
+    DateTime {
+        /// Field keyword.
+        keyword: TaskFieldKeyword,
+        /// Chrono format string.
+        format: String,
+    },
+}
+
+impl TaskFieldSpec {
+    #[inline]
+    #[expect(clippy::too_many_lines, reason = "Complex ingestion logic")]
+    /// Build a task field spec from raw input.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if the spec is invalid.
+    pub fn from_raw(raw: RawTaskFieldSpec) -> Result<Self, ConfigError> {
+        match raw {
+            RawTaskFieldSpec::Enum(crate::config::raw::RawEnumFieldSpec {
+                keyword,
+                values,
+            }) => {
+                if values.is_empty() {
+                    return Err(ConfigError::ValidationFailed {
+                        field: "task.fields.values".to_owned().into(),
+                        message: "enum values cannot be empty"
+                            .to_owned()
+                            .into(),
+                    });
+                }
+                let keyword = TaskFieldKeyword::try_new(keyword)?;
+                let values =
+                    values.into_iter().map(String::into_boxed_str).collect();
+                Ok(Self::Enum {
+                    keyword,
+                    values,
+                })
+            }
+            RawTaskFieldSpec::Integer(
+                crate::config::raw::RawIntegerFieldSpec {
+                    keyword,
+                    min,
+                    max,
+                },
+            ) => {
+                let keyword = TaskFieldKeyword::try_new(keyword)?;
+                let bounds = Bounds::from_options(min, max)
+                    .transpose()
+                    .map_err(|e| ConfigError::ValidationFailed {
+                        field: "task.fields".to_owned().into(),
+                        message: e.to_string().into(),
+                    })?
+                    .unwrap_or(Bounds::Unbounded);
+                Ok(Self::Integer {
+                    keyword,
+                    bounds,
+                })
+            }
+            RawTaskFieldSpec::Float(
+                crate::config::raw::RawFloatFieldSpec {
+                    keyword,
+                    min,
+                    max,
+                },
+            ) => {
+                let keyword = TaskFieldKeyword::try_new(keyword)?;
+                let bounds = Bounds::from_options(min, max)
+                    .transpose()
+                    .map_err(|e| ConfigError::ValidationFailed {
+                        field: "task.fields".to_owned().into(),
+                        message: e.to_string().into(),
+                    })?
+                    .unwrap_or(Bounds::Unbounded);
+                Ok(Self::Float {
+                    keyword,
+                    bounds,
+                })
+            }
+            RawTaskFieldSpec::DateTime(
+                crate::config::raw::RawDateTimeFieldSpec {
+                    keyword,
+                    format,
+                },
+            ) => {
+                let keyword = TaskFieldKeyword::try_new(keyword)?;
+                validate_chrono_format(&format, "task.fields.format")?;
+                Ok(Self::DateTime {
+                    keyword,
+                    format,
+                })
+            }
+            RawTaskFieldSpec::String(
+                crate::config::raw::RawStringFieldSpec {
+                    keyword,
+                    pattern,
+                },
+            ) => {
+                let keyword = TaskFieldKeyword::try_new(keyword)?;
+                let mut compiled = None;
+                if let Some(pattern_str) = pattern.as_ref() {
+                    if pattern_str.len() > 256 {
+                        return Err(ConfigError::ValidationFailed {
+                            field: "task.fields.pattern".to_owned().into(),
+                            message: "pattern too long".to_owned().into(),
+                        });
+                    }
+                    let regex = Regex::new(pattern_str).map_err(|error| {
+                        ConfigError::ValidationFailed {
+                            field: "task.fields.pattern".to_owned().into(),
+                            message: error.to_string().into(),
+                        }
+                    })?;
+                    compiled = Some(Arc::new(regex));
+                }
+                Ok(Self::String {
+                    keyword,
+                    pattern,
+                    compiled,
+                })
+            }
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the field keyword.
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Ergonomic enum pattern for accessing shared field"
+    )]
+    pub fn keyword(&self) -> &TaskFieldKeyword {
+        match self {
+            Self::String {
+                keyword,
+                ..
+            }
+            | Self::Integer {
+                keyword,
+                ..
+            }
+            | Self::Float {
+                keyword,
+                ..
+            }
+            | Self::Enum {
+                keyword,
+                ..
+            }
+            | Self::DateTime {
+                keyword,
+                ..
+            } => keyword,
+        }
+    }
+
+    #[inline]
+    /// Validate a raw JSON value against this spec.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if the value does not match the spec.
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Ergonomic enum pattern for validation dispatch"
+    )]
+    pub(crate) fn validate_raw_value(
+        &self,
+        value: &serde_json::Value,
+    ) -> Result<(), ConfigError> {
+        match self {
+            Self::Integer {
+                keyword,
+                bounds,
+            } => Self::validate_integer(value, keyword, bounds),
+            Self::Float {
+                keyword,
+                bounds,
+            } => Self::validate_float(value, keyword, bounds),
+            Self::String {
+                keyword,
+                compiled,
+                ..
+            } => Self::validate_string(value, keyword, compiled.as_deref()),
+            Self::Enum {
+                keyword,
+                values,
+            } => Self::validate_enum(value, keyword, values),
+            Self::DateTime {
+                keyword,
+                format,
+            } => Self::validate_datetime(value, keyword, format),
+        }
+    }
+
+    fn validate_integer(
+        value: &serde_json::Value,
+        keyword: &TaskFieldKeyword,
+        bounds: &Bounds<i64>,
+    ) -> Result<(), ConfigError> {
+        let number =
+            value.as_i64().ok_or_else(|| ConfigError::InvalidType {
+                field: keyword.as_str().to_owned().into(),
+                expected: "integer".to_owned().into(),
+                actual: value_type(value).into(),
+            })?;
+        if !bounds.validate(number) {
+            return Err(ConfigError::OutOfRange {
+                field: keyword.as_str().to_owned().into(),
+                value: number.to_string().into(),
+                min: bounds.min().map(|v| v.to_string().into()),
+                max: bounds.max().map(|v| v.to_string().into()),
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_float(
+        value: &serde_json::Value,
+        keyword: &TaskFieldKeyword,
+        bounds: &Bounds<f64>,
+    ) -> Result<(), ConfigError> {
+        let number =
+            value.as_f64().ok_or_else(|| ConfigError::InvalidType {
+                field: keyword.as_str().to_owned().into(),
+                expected: "float".to_owned().into(),
+                actual: value_type(value).into(),
+            })?;
+        if !bounds.validate(number) {
+            return Err(ConfigError::OutOfRange {
+                field: keyword.as_str().to_owned().into(),
+                value: number.to_string().into(),
+                min: bounds.min().map(|v| v.to_string().into()),
+                max: bounds.max().map(|v| v.to_string().into()),
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_string(
+        value: &serde_json::Value,
+        keyword: &TaskFieldKeyword,
+        pattern: Option<&Regex>,
+    ) -> Result<(), ConfigError> {
+        let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
+            field: keyword.as_str().to_owned().into(),
+            expected: "string".to_owned().into(),
+            actual: value_type(value).into(),
+        })?;
+        if let Some(regex) = pattern
+            && !regex.is_match(text)
+        {
+            return Err(ConfigError::ValidationFailed {
+                field: keyword.as_str().to_owned().into(),
+                message: "pattern mismatch".to_owned().into(),
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_enum(
+        value: &serde_json::Value,
+        keyword: &TaskFieldKeyword,
+        values: &[Box<str>],
+    ) -> Result<(), ConfigError> {
+        let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
+            field: keyword.as_str().to_owned().into(),
+            expected: "string".to_owned().into(),
+            actual: value_type(value).into(),
+        })?;
+        if !values.iter().any(|v| v.as_ref() == text) {
+            return Err(ConfigError::InvalidEnumValue {
+                field: keyword.as_str().to_owned().into(),
+                value: text.to_owned().into(),
+                allowed: values
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>(),
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_datetime(
+        value: &serde_json::Value,
+        keyword: &TaskFieldKeyword,
+        format: &str,
+    ) -> Result<(), ConfigError> {
+        let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
+            field: keyword.as_str().to_owned().into(),
+            expected: "string".to_owned().into(),
+            actual: value_type(value).into(),
+        })?;
+        parse_datetime_value(text, format, keyword.as_str())?;
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Building Block Types
+// ============================================================================
 
 /// Validated status name (e.g., `complete`).
 #[derive(
@@ -420,58 +928,17 @@ impl DateFieldSpec {
     }
 }
 
-/// Custom task field specification.
-#[derive(
-    Debug,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum TaskFieldSpec {
-    /// Integer field.
-    Integer {
-        /// Field keyword.
-        keyword: TaskFieldKeyword,
-        /// Optional bounds.
-        bounds: Bounds<i64>,
-    },
-    /// Float field.
-    Float {
-        /// Field keyword.
-        keyword: TaskFieldKeyword,
-        /// Optional bounds.
-        bounds: Bounds<f64>,
-    },
-    /// String field.
-    String {
-        /// Field keyword.
-        keyword: TaskFieldKeyword,
-        /// Optional validation pattern.
-        pattern: Option<String>,
-        /// Pre-compiled regex pattern for validation.
-        #[rkyv(with = rkyv::with::Skip)]
-        #[serde(skip)]
-        compiled: Option<Arc<Regex>>,
-    },
-    /// Enumerated field.
-    Enum {
-        /// Field keyword.
-        keyword: TaskFieldKeyword,
-        /// List of allowed values.
-        values: Vec<Box<str>>,
-    },
-    /// Date time field.
-    DateTime {
-        /// Field keyword.
-        keyword: TaskFieldKeyword,
-        /// Chrono format string.
-        format: String,
-    },
+// ============================================================================
+// Standard Trait Implementations (Conversions)
+// ============================================================================
+
+impl TryFrom<RawTaskConfig> for TaskConfig {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(raw: RawTaskConfig) -> Result<Self, Self::Error> {
+        Self::from_raw(raw)
+    }
 }
 
 impl PartialEq for TaskFieldSpec {
@@ -543,460 +1010,9 @@ impl Eq for TaskFieldSpec {
     }
 }
 
-impl TaskFieldSpec {
-    #[inline]
-    #[expect(clippy::too_many_lines, reason = "Complex ingestion logic")]
-    /// Build a task field spec from raw input.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the spec is invalid.
-    pub fn from_raw(raw: RawTaskFieldSpec) -> Result<Self, ConfigError> {
-        match raw {
-            RawTaskFieldSpec::Enum(crate::config::raw::RawEnumFieldSpec {
-                keyword,
-                values,
-            }) => {
-                if values.is_empty() {
-                    return Err(ConfigError::ValidationFailed {
-                        field: "task.fields.values".to_owned().into(),
-                        message: "enum values cannot be empty"
-                            .to_owned()
-                            .into(),
-                    });
-                }
-                let keyword = TaskFieldKeyword::try_new(keyword)?;
-                let values =
-                    values.into_iter().map(String::into_boxed_str).collect();
-                Ok(Self::Enum {
-                    keyword,
-                    values,
-                })
-            }
-            RawTaskFieldSpec::Integer(
-                crate::config::raw::RawIntegerFieldSpec {
-                    keyword,
-                    min,
-                    max,
-                },
-            ) => {
-                let keyword = TaskFieldKeyword::try_new(keyword)?;
-                let bounds = Bounds::from_options(min, max)
-                    .transpose()
-                    .map_err(|e| ConfigError::ValidationFailed {
-                        field: "task.fields".to_owned().into(),
-                        message: e.to_string().into(),
-                    })?
-                    .unwrap_or(Bounds::Unbounded);
-                Ok(Self::Integer {
-                    keyword,
-                    bounds,
-                })
-            }
-            RawTaskFieldSpec::Float(
-                crate::config::raw::RawFloatFieldSpec {
-                    keyword,
-                    min,
-                    max,
-                },
-            ) => {
-                let keyword = TaskFieldKeyword::try_new(keyword)?;
-                let bounds = Bounds::from_options(min, max)
-                    .transpose()
-                    .map_err(|e| ConfigError::ValidationFailed {
-                        field: "task.fields".to_owned().into(),
-                        message: e.to_string().into(),
-                    })?
-                    .unwrap_or(Bounds::Unbounded);
-                Ok(Self::Float {
-                    keyword,
-                    bounds,
-                })
-            }
-            RawTaskFieldSpec::DateTime(
-                crate::config::raw::RawDateTimeFieldSpec {
-                    keyword,
-                    format,
-                },
-            ) => {
-                let keyword = TaskFieldKeyword::try_new(keyword)?;
-                validate_chrono_format(&format, "task.fields.format")?;
-                Ok(Self::DateTime {
-                    keyword,
-                    format,
-                })
-            }
-            RawTaskFieldSpec::String(
-                crate::config::raw::RawStringFieldSpec {
-                    keyword,
-                    pattern,
-                },
-            ) => {
-                let keyword = TaskFieldKeyword::try_new(keyword)?;
-                let mut compiled = None;
-                if let Some(pattern_str) = pattern.as_ref() {
-                    if pattern_str.len() > 256 {
-                        return Err(ConfigError::ValidationFailed {
-                            field: "task.fields.pattern".to_owned().into(),
-                            message: "pattern too long".to_owned().into(),
-                        });
-                    }
-                    let regex = Regex::new(pattern_str).map_err(|error| {
-                        ConfigError::ValidationFailed {
-                            field: "task.fields.pattern".to_owned().into(),
-                            message: error.to_string().into(),
-                        }
-                    })?;
-                    compiled = Some(Arc::new(regex));
-                }
-                Ok(Self::String {
-                    keyword,
-                    pattern,
-                    compiled,
-                })
-            }
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the field keyword.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Ergonomic enum pattern for accessing shared field"
-    )]
-    pub fn keyword(&self) -> &TaskFieldKeyword {
-        match self {
-            Self::String {
-                keyword,
-                ..
-            }
-            | Self::Integer {
-                keyword,
-                ..
-            }
-            | Self::Float {
-                keyword,
-                ..
-            }
-            | Self::Enum {
-                keyword,
-                ..
-            }
-            | Self::DateTime {
-                keyword,
-                ..
-            } => keyword,
-        }
-    }
-
-    #[inline]
-    /// Validate a raw JSON value against this spec.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if the value does not match the spec.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Ergonomic enum pattern for validation dispatch"
-    )]
-    pub(crate) fn validate_raw_value(
-        &self,
-        value: &serde_json::Value,
-    ) -> Result<(), ConfigError> {
-        match self {
-            Self::Integer {
-                keyword,
-                bounds,
-            } => Self::validate_integer(value, keyword, bounds),
-            Self::Float {
-                keyword,
-                bounds,
-            } => Self::validate_float(value, keyword, bounds),
-            Self::String {
-                keyword,
-                compiled,
-                ..
-            } => Self::validate_string(value, keyword, compiled.as_deref()),
-            Self::Enum {
-                keyword,
-                values,
-            } => Self::validate_enum(value, keyword, values),
-            Self::DateTime {
-                keyword,
-                format,
-            } => Self::validate_datetime(value, keyword, format),
-        }
-    }
-
-    fn validate_integer(
-        value: &serde_json::Value,
-        keyword: &TaskFieldKeyword,
-        bounds: &Bounds<i64>,
-    ) -> Result<(), ConfigError> {
-        let number =
-            value.as_i64().ok_or_else(|| ConfigError::InvalidType {
-                field: keyword.as_str().to_owned().into(),
-                expected: "integer".to_owned().into(),
-                actual: value_type(value).into(),
-            })?;
-        if !bounds.validate(number) {
-            return Err(ConfigError::OutOfRange {
-                field: keyword.as_str().to_owned().into(),
-                value: number.to_string().into(),
-                min: bounds.min().map(|v| v.to_string().into()),
-                max: bounds.max().map(|v| v.to_string().into()),
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_float(
-        value: &serde_json::Value,
-        keyword: &TaskFieldKeyword,
-        bounds: &Bounds<f64>,
-    ) -> Result<(), ConfigError> {
-        let number =
-            value.as_f64().ok_or_else(|| ConfigError::InvalidType {
-                field: keyword.as_str().to_owned().into(),
-                expected: "float".to_owned().into(),
-                actual: value_type(value).into(),
-            })?;
-        if !bounds.validate(number) {
-            return Err(ConfigError::OutOfRange {
-                field: keyword.as_str().to_owned().into(),
-                value: number.to_string().into(),
-                min: bounds.min().map(|v| v.to_string().into()),
-                max: bounds.max().map(|v| v.to_string().into()),
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_string(
-        value: &serde_json::Value,
-        keyword: &TaskFieldKeyword,
-        pattern: Option<&Regex>,
-    ) -> Result<(), ConfigError> {
-        let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
-            field: keyword.as_str().to_owned().into(),
-            expected: "string".to_owned().into(),
-            actual: value_type(value).into(),
-        })?;
-        if let Some(regex) = pattern
-            && !regex.is_match(text)
-        {
-            return Err(ConfigError::ValidationFailed {
-                field: keyword.as_str().to_owned().into(),
-                message: "pattern mismatch".to_owned().into(),
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_enum(
-        value: &serde_json::Value,
-        keyword: &TaskFieldKeyword,
-        values: &[Box<str>],
-    ) -> Result<(), ConfigError> {
-        let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
-            field: keyword.as_str().to_owned().into(),
-            expected: "string".to_owned().into(),
-            actual: value_type(value).into(),
-        })?;
-        if !values.iter().any(|v| v.as_ref() == text) {
-            return Err(ConfigError::InvalidEnumValue {
-                field: keyword.as_str().to_owned().into(),
-                value: text.to_owned().into(),
-                allowed: values
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect::<Vec<_>>(),
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_datetime(
-        value: &serde_json::Value,
-        keyword: &TaskFieldKeyword,
-        format: &str,
-    ) -> Result<(), ConfigError> {
-        let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
-            field: keyword.as_str().to_owned().into(),
-            expected: "string".to_owned().into(),
-            actual: value_type(value).into(),
-        })?;
-        parse_datetime_value(text, format, keyword.as_str())?;
-        Ok(())
-    }
-}
-
-impl TryFrom<RawTaskConfig> for TaskConfig {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(raw: RawTaskConfig) -> Result<Self, Self::Error> {
-        Self::from_raw(raw)
-    }
-}
-
-impl TaskConfig {
-    #[inline]
-    /// Build a validated task configuration from raw input.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if the configuration is invalid.
-    pub fn from_raw(raw: RawTaskConfig) -> Result<Self, ConfigError> {
-        let enabled = raw.enabled.unwrap_or(true);
-        let task_tags = match raw.task_tags {
-            Some(tags) => tags
-                .into_iter()
-                .map(TaskTag::try_new)
-                .collect::<Result<Vec<_>, _>>()?,
-            None => vec![TaskTag::try_new("#task")?],
-        };
-
-        let status = if let Some(mapping) = raw.status {
-            CheckboxStatus::from_raw(mapping)?
-        } else {
-            let mut mapping = HashMap::new();
-            mapping.insert("todo".to_owned(), ' ');
-            mapping.insert("done".to_owned(), 'x');
-            CheckboxStatus::from_raw(mapping)?
-        };
-
-        let (due_field, completed_field, created_field, reminder_field) =
-            match raw.dates {
-                Some(dates) => (
-                    dates.due.map(DateFieldSpec::from_raw).transpose()?,
-                    dates.completed.map(DateFieldSpec::from_raw).transpose()?,
-                    dates.created.map(DateFieldSpec::from_raw).transpose()?,
-                    dates.reminder.map(DateFieldSpec::from_raw).transpose()?,
-                ),
-                None => (None, None, None, None),
-            };
-
-        let mut fields = HashMap::new();
-        if let Some(raw_fields) = raw.fields {
-            let mut entries: Vec<_> = raw_fields.into_iter().collect();
-            entries.sort_by(|left, right| left.0.cmp(&right.0));
-            for (name, spec) in entries {
-                fields.insert(
-                    name.into_boxed_str(),
-                    TaskFieldSpec::from_raw(spec)?,
-                );
-            }
-        }
-
-        let mut indexed_fields = Vec::new();
-        if let Some(indexing) = raw.indexing
-            && let Some(fields_list) = indexing.indexed_fields
-        {
-            for field_name in fields_list {
-                if !fields.contains_key(field_name.as_str()) {
-                    return Err(ConfigError::ValidationFailed {
-                        field: "task.indexing.fields".to_owned().into(),
-                        message: format!("unknown field: {field_name}").into(),
-                    });
-                }
-                indexed_fields.push(field_name.into_boxed_str());
-            }
-        }
-
-        Ok(Self {
-            enabled,
-            task_tags,
-            status,
-            due_field,
-            created_field,
-            reminder_field,
-            completed_field,
-            fields,
-            indexed_fields,
-        })
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return whether task processing is enabled.
-    pub fn enabled(&self) -> bool {
-        self.enabled
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the list of task promotion tags.
-    pub fn task_tags(&self) -> &[TaskTag] {
-        &self.task_tags
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the checkbox status mappings.
-    pub fn status(&self) -> &CheckboxStatus {
-        &self.status
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the due date field spec, if configured.
-    pub fn due_field(&self) -> Option<&DateFieldSpec> {
-        self.due_field.as_ref()
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the created date field spec, if configured.
-    pub fn created_field(&self) -> Option<&DateFieldSpec> {
-        self.created_field.as_ref()
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the reminder date field spec, if configured.
-    pub fn reminder_field(&self) -> Option<&DateFieldSpec> {
-        self.reminder_field.as_ref()
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the completed date field spec, if configured.
-    pub fn completed_field(&self) -> Option<&DateFieldSpec> {
-        self.completed_field.as_ref()
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the custom fields map.
-    pub fn fields(&self) -> &HashMap<Box<str>, TaskFieldSpec> {
-        &self.fields
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return the list of indexed field names.
-    pub fn indexed_fields(&self) -> &[Box<str>] {
-        &self.indexed_fields
-    }
-
-    #[inline]
-    /// Look up a field specification by name.
-    #[must_use]
-    pub fn field_spec(&self, name: &str) -> Option<&TaskFieldSpec> {
-        self.fields.get(name)
-    }
-}
-
-impl Default for TaskConfig {
-    #[inline]
-    #[expect(
-        clippy::disallowed_methods,
-        clippy::unwrap_used,
-        reason = "Default config is guaranteed valid"
-    )]
-    fn default() -> Self {
-        Self::from_raw(RawTaskConfig::default()).unwrap()
-    }
-}
+// ============================================================================
+// Low-Level Validation Helpers
+// ============================================================================
 
 fn validate_chrono_format(
     format: &str,
@@ -1052,6 +1068,10 @@ fn parse_datetime_value(
         message: "invalid date time".to_owned().into(),
     })
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 #[expect(
