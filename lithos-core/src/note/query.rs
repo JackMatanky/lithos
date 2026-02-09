@@ -56,7 +56,7 @@ impl super::ports::Query for Query<'_> {
     {
         let id_str = id.to_string();
         self.db
-            .get::<Note, _, R>("notes", &id_str, f)
+            .get::<Note, _, R>("notes", &id_str, |archived| f(archived))
             .map_err(NoteQueryError::Storage)
     }
 
@@ -118,11 +118,11 @@ mod tests {
 
         pub fn complex_frontmatter() -> Result<Frontmatter, String> {
             Frontmatter::new(HashMap::from([(
-                "root".to_owned(),
+                "root".into(),
                 FieldValue::Object(HashMap::from([(
-                    "nested".to_owned(),
+                    "nested".into(),
                     FieldValue::Array(vec![
-                        FieldValue::String("x".to_owned()),
+                        FieldValue::String("x".into()),
                         FieldValue::Boolean(true),
                     ]),
                 )])),

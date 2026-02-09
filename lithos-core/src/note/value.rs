@@ -46,9 +46,9 @@ pub enum FieldValue {
     /// Numeric value (float).
     Number(f64),
     /// Nested object of values.
-    Object(#[rkyv(omit_bounds)] HashMap<String, FieldValue>),
+    Object(#[rkyv(omit_bounds)] HashMap<Box<str>, FieldValue>),
     /// String value.
-    String(String),
+    String(Box<str>),
 }
 
 /// A high-level type descriptor for [`FieldValue`].
@@ -151,7 +151,7 @@ impl FieldValue {
     /// Returns the object map if this is an `Object` variant.
     #[inline]
     #[must_use]
-    pub fn as_object(&self) -> Option<&HashMap<String, FieldValue>> {
+    pub fn as_object(&self) -> Option<&HashMap<Box<str>, FieldValue>> {
         if let Self::Object(obj) = self {
             Some(obj)
         } else {
@@ -178,7 +178,9 @@ impl FieldValue {
     #[must_use]
     pub fn from_json(value: &serde_json::Value) -> Self {
         match value {
-            serde_json::Value::String(s) => Self::String(s.clone()),
+            serde_json::Value::String(s) => {
+                Self::String(s.clone().into_boxed_str())
+            }
             serde_json::Value::Number(n) => {
                 Self::Number(n.as_f64().unwrap_or(0.0))
             }
@@ -188,10 +190,12 @@ impl FieldValue {
             }
             serde_json::Value::Object(obj) => Self::Object(
                 obj.iter()
-                    .map(|(k, v)| (k.clone(), Self::from_json(v)))
+                    .map(|(k, v)| {
+                        (k.clone().into_boxed_str(), Self::from_json(v))
+                    })
                     .collect(),
             ),
-            serde_json::Value::Null => Self::String(String::new()),
+            serde_json::Value::Null => Self::String("".into()),
         }
     }
 }
@@ -284,7 +288,7 @@ mod tests {
     #[test]
     fn value_type_detection() {
         assert_eq!(
-            FieldValue::String(String::new()).value_type(),
+            FieldValue::String("".into()).value_type(),
             FieldValueType::String
         );
         assert_eq!(
