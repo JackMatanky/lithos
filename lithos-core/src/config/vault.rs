@@ -6,7 +6,7 @@ use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::{CacheDir, SchemaOverrides, TemplateOverrides},
+    paths::{CacheDir, FileName, SchemasDir, TemplatesDir},
     task::TaskConfig,
 };
 
@@ -290,10 +290,12 @@ impl Default for Metadata {
 pub struct Paths {
     /// Overridden cache directory.
     cache_dir: Option<CacheDir>,
-    /// Overridden schema settings.
-    schema: SchemaOverrides,
-    /// Overridden template settings.
-    template: TemplateOverrides,
+    /// Overridden schemas directory.
+    schemas_dir: Option<SchemasDir>,
+    /// Overridden property bank filename.
+    property_bank_filename: Option<FileName>,
+    /// Overridden templates directory.
+    templates_dir: Option<TemplatesDir>,
 }
 
 impl Paths {
@@ -302,13 +304,15 @@ impl Paths {
     #[must_use]
     pub const fn new(
         cache_dir: Option<CacheDir>,
-        schema: SchemaOverrides,
-        template: TemplateOverrides,
+        schemas_dir: Option<SchemasDir>,
+        property_bank_filename: Option<FileName>,
+        templates_dir: Option<TemplatesDir>,
     ) -> Self {
         Self {
             cache_dir,
-            schema,
-            template,
+            schemas_dir,
+            property_bank_filename,
+            templates_dir,
         }
     }
 
@@ -319,18 +323,25 @@ impl Paths {
         self.cache_dir.as_ref()
     }
 
-    /// Return the overridden schema settings.
+    /// Return the overridden schemas directory, if set.
     #[inline]
     #[must_use]
-    pub const fn schema(&self) -> &SchemaOverrides {
-        &self.schema
+    pub fn schemas_dir(&self) -> Option<&SchemasDir> {
+        self.schemas_dir.as_ref()
     }
 
-    /// Return the overridden template settings.
+    /// Return the overridden property bank filename, if set.
     #[inline]
     #[must_use]
-    pub const fn template(&self) -> &TemplateOverrides {
-        &self.template
+    pub fn property_bank_filename(&self) -> Option<&FileName> {
+        self.property_bank_filename.as_ref()
+    }
+
+    /// Return the overridden templates directory, if set.
+    #[inline]
+    #[must_use]
+    pub fn templates_dir(&self) -> Option<&TemplatesDir> {
+        self.templates_dir.as_ref()
     }
 
     /// Validate vault filesystem configuration.

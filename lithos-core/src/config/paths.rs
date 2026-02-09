@@ -3,11 +3,6 @@
 //! This module contains types for validated configuration paths,
 //! including schemas directory, templates directory, and file names.
 
-#![expect(
-    clippy::exhaustive_structs,
-    reason = "rkyv generates exhaustive archived structs"
-)]
-
 use std::path::{Path, PathBuf};
 
 use super::error::ConfigError;
@@ -187,83 +182,6 @@ impl Default for Template {
         Self {
             templates_dir: TemplatesDir::default(),
         }
-    }
-}
-
-/// Schema configuration overrides.
-///
-/// Used in vault configuration to override global schema defaults.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Default,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct SchemaOverrides {
-    /// Overridden schemas directory.
-    pub schemas_dir: Option<SchemasDir>,
-    /// Overridden property bank filename.
-    pub property_bank_filename: Option<FileName>,
-}
-
-impl SchemaOverrides {
-    /// Create schema overrides.
-    #[inline]
-    #[must_use]
-    pub const fn new(
-        schemas_dir: Option<SchemasDir>,
-        property_bank_filename: Option<FileName>,
-    ) -> Self {
-        Self {
-            schemas_dir,
-            property_bank_filename,
-        }
-    }
-}
-
-/// Template configuration overrides.
-///
-/// Used in vault configuration to override global template defaults.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Default,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-#[non_exhaustive]
-pub struct TemplateOverrides {
-    /// Overridden templates directory.
-    pub templates_dir: Option<TemplatesDir>,
-}
-
-impl TemplateOverrides {
-    /// Create template overrides.
-    #[inline]
-    #[must_use]
-    pub fn new(templates_dir: Option<TemplatesDir>) -> Self {
-        Self {
-            templates_dir,
-        }
-    }
-
-    /// Return the overridden templates directory, if set.
-    #[inline]
-    #[must_use]
-    pub fn templates_dir(&self) -> Option<&TemplatesDir> {
-        self.templates_dir.as_ref()
     }
 }
 
@@ -565,28 +483,6 @@ impl From<FileName> for String {
     #[inline]
     fn from(value: FileName) -> Self {
         value.0.into()
-    }
-}
-
-impl From<SchemaOverrides> for Schema {
-    #[inline]
-    fn from(overrides: SchemaOverrides) -> Self {
-        let defaults = Schema::default();
-        let schemas_dir = overrides.schemas_dir.unwrap_or(defaults.schemas_dir);
-        let property_bank_filename = overrides
-            .property_bank_filename
-            .unwrap_or(defaults.property_bank_filename);
-        Self::new(schemas_dir, property_bank_filename)
-    }
-}
-
-impl From<TemplateOverrides> for Template {
-    #[inline]
-    fn from(overrides: TemplateOverrides) -> Self {
-        let defaults = Template::default();
-        let templates_dir =
-            overrides.templates_dir.unwrap_or(defaults.templates_dir);
-        Self::new(templates_dir)
     }
 }
 
