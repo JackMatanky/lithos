@@ -115,7 +115,7 @@ impl TryFrom<u64> for ConfigVersion {
         if value == 0 {
             return Err(ConfigError::ValidationFailed {
                 field: "config_version".to_owned().into(),
-                message: "version must be >= 1".to_owned().into(),
+                message: "config version cannot be zero".to_owned().into(),
             });
         }
         Ok(Self(value))
@@ -1395,6 +1395,245 @@ mod tests {
                 ),
                 "Expected InvalidEnumValue for log_level, got: {result:?}"
             );
+        }
+    }
+
+    mod from_merged_raw {
+        use super::*;
+        use crate::config::{frontmatter::RawFrontmatter, logging::RawLogging};
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic setup"
+        )]
+        fn builds_config_from_empty_raw() {
+            // GIVEN: empty RawConfig (all defaults)
+            let raw = raw::RawConfig::default();
+            let vault_id = fixtures::vault_id();
+            let vault_root = fixtures::vault_root("/vault");
+
+            // WHEN: building config
+            let config =
+                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
+                    .expect("should build with defaults");
+
+            // THEN: all fields have defaults
+            assert_eq!(
+                config.global_filesystem.schema().schemas_dir().as_path(),
+                std::path::Path::new("schemas")
+            );
+            assert_eq!(
+                config
+                    .global_filesystem
+                    .schema()
+                    .property_bank_filename()
+                    .as_str(),
+                "property_bank.json"
+            );
+            assert_eq!(
+                config.global_filesystem.template().templates_dir().as_path(),
+                std::path::Path::new("templates")
+            );
+            assert_eq!(config.logging.log_level_str(), "info");
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic setup"
+        )]
+        fn applies_filesystem_fields_from_raw() {
+            // GIVEN: RawConfig with custom filesystem
+            let raw = raw::RawConfig {
+                filesystem: raw::RawFilesystemConfig {
+                    cache_dir: Some(".lithos-cache".to_owned()),
+                    schemas_dir: Some("my-schemas".to_owned()),
+                    property_bank_filename: Some("bank.json".to_owned()),
+                    templates_dir: Some("my-templates".to_owned()),
+                },
+                ..Default::default()
+            };
+            let vault_id = fixtures::vault_id();
+            let vault_root = fixtures::vault_root("/vault");
+
+            // WHEN: building config
+            let config =
+                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
+                    .expect("should build");
+
+            // THEN: filesystem fields are applied
+            assert_eq!(
+                config.global_filesystem.schema().schemas_dir().as_path(),
+                std::path::Path::new("my-schemas")
+            );
+            assert_eq!(
+                config
+                    .global_filesystem
+                    .schema()
+                    .property_bank_filename()
+                    .as_str(),
+                "bank.json"
+            );
+            assert_eq!(
+                config.global_filesystem.template().templates_dir().as_path(),
+                std::path::Path::new("my-templates")
+            );
+            assert_eq!(
+                config.vault_filesystem.cache_dir.as_path(),
+                std::path::Path::new(".lithos-cache")
+            );
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic setup"
+        )]
+        fn applies_logging_from_raw() {
+            // GIVEN: RawConfig with custom logging
+            let raw = raw::RawConfig {
+                logging: Some(RawLogging {
+                    log_level: Some("debug".to_owned()),
+                }),
+                ..Default::default()
+            };
+            let vault_id = fixtures::vault_id();
+            let vault_root = fixtures::vault_root("/vault");
+
+            // WHEN: building config
+            let config =
+                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
+                    .expect("should build");
+
+            // THEN: logging is applied
+            assert_eq!(config.logging.log_level_str(), "debug");
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic setup"
+        )]
+        fn applies_frontmatter_from_raw() {
+            // GIVEN: RawConfig with custom frontmatter
+            let raw = raw::RawConfig {
+                frontmatter: Some(RawFrontmatter {
+                    alias_key: Some("custom_alias".to_owned()),
+                    date_created_key: Some("created_at".to_owned()),
+                    date_modified_key: Some("modified_at".to_owned()),
+                    file_class_key: Some("type".to_owned()),
+                    title_key: Some("heading".to_owned()),
+                }),
+                ..Default::default()
+            };
+            let vault_id = fixtures::vault_id();
+            let vault_root = fixtures::vault_root("/vault");
+
+            // WHEN: building config
+            let config =
+                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
+                    .expect("should build");
+
+            // THEN: frontmatter is applied
+            assert_eq!(config.frontmatter.alias_key().as_str(), "custom_alias");
+            assert_eq!(
+                config.frontmatter.date_created_key().as_str(),
+                "created_at"
+            );
+            assert_eq!(
+                config.frontmatter.date_modified_key().as_str(),
+                "modified_at"
+            );
+            assert_eq!(config.frontmatter.file_class_key().as_str(), "type");
+            assert_eq!(config.frontmatter.title_key().as_str(), "heading");
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic setup"
+        )]
+        fn emits_config_updated_event() {
+            // GIVEN: RawConfig
+            let raw = raw::RawConfig::default();
+            let vault_id = fixtures::vault_id();
+            let vault_root = fixtures::vault_root("/vault");
+
+            // WHEN: building config
+            let config =
+                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
+                    .expect("should build");
+
+            // THEN: ConfigUpdated event is emitted
+            assert_eq!(config.pending_events().len(), 1);
+            assert!(matches!(
+                config.pending_events().first(),
+                Some(Events::ConfigUpdated(_))
+            ));
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic setup"
+        )]
+        fn validates_after_construction() {
+            // GIVEN: RawConfig
+            let raw = raw::RawConfig::default();
+            let vault_id = fixtures::vault_id();
+            let vault_root = fixtures::vault_root("/vault");
+
+            // WHEN: building config
+            let config =
+                Config::from_merged_raw(&raw, vault_id, vault_root.clone())
+                    .expect("should build");
+
+            // THEN: config is valid
+            config.validate().unwrap();
+        }
+
+        #[test]
+        fn rejects_invalid_filesystem_paths() {
+            // GIVEN: RawConfig with invalid path (absolute when should be
+            // relative)
+            let raw = raw::RawConfig {
+                filesystem: raw::RawFilesystemConfig {
+                    schemas_dir: Some("/absolute/path".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let vault_id = fixtures::vault_id();
+            let vault_root = fixtures::vault_root("/vault");
+
+            // WHEN: building config
+            let result = Config::from_merged_raw(&raw, vault_id, vault_root);
+
+            // THEN: validation fails
+            assert!(
+                result.is_err(),
+                "Should reject absolute path for schemas_dir"
+            );
+        }
+
+        #[test]
+        fn rejects_invalid_log_level() {
+            // GIVEN: RawConfig with invalid log level
+            let raw = raw::RawConfig {
+                logging: Some(RawLogging {
+                    log_level: Some("invalid".to_owned()),
+                }),
+                ..Default::default()
+            };
+            let vault_id = fixtures::vault_id();
+            let vault_root = fixtures::vault_root("/vault");
+
+            // WHEN: building config
+            let result = Config::from_merged_raw(&raw, vault_id, vault_root);
+
+            // THEN: validation fails
+            assert!(result.is_err(), "Should reject invalid log level");
         }
     }
 }
