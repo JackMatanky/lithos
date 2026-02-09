@@ -4,37 +4,53 @@
 //! events.
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
+
+// ============================================================================
+// Core Aggregate Modules
+// ============================================================================
+
 /// Configuration aggregate root.
 pub mod aggregate;
+/// Global configuration types and validation.
+pub mod global;
+/// Path configuration types.
+pub mod paths;
+/// Vault-scoped configuration types.
+pub mod vault;
+
+// ============================================================================
+// Logic & Infrastructure Modules
+// ============================================================================
+
 /// Configuration command implementations (CQRS write operations).
 pub mod command;
+/// Figment ingestion boundary for raw config.
+pub mod ingest;
+/// Configuration ports for CQRS.
+pub mod ports;
+/// Configuration query implementations (CQRS read operations).
+pub mod query;
+
+// ============================================================================
+// Supporting Domain Modules
+// ============================================================================
+
 /// Configuration error types.
 pub mod error;
 /// Configuration domain events.
 pub mod events;
 /// Frontmatter configuration types.
 pub mod frontmatter;
-/// Global configuration types and validation.
-pub mod global;
-/// Figment ingestion boundary for raw config.
-pub mod ingest;
 /// Logging configuration types.
 pub mod logging;
-/// Path configuration types.
-pub mod paths;
-/// Configuration ports for CQRS.
-pub mod ports;
-/// Configuration query implementations (CQRS read operations).
-pub mod query;
 /// Raw (serde) configuration input types.
 pub mod raw;
 /// Task configuration schema and validation.
 pub mod task;
-/// Vault-scoped configuration types.
-pub mod vault;
 
-// --- Public API & Submodules ---
-// Types are accessed via config::<submodule>::<Type>
+// ============================================================================
+// Concrete Implementation Aliases (Redb)
+// ============================================================================
 
 use crate::db::{
     Database,
