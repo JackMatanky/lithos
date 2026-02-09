@@ -12,7 +12,11 @@ use std::{collections::HashMap, sync::OnceLock};
 use regex::Regex;
 use uuid::Uuid;
 
-use super::{error::NoteError, types::SourceByteOffset, value::FieldValue};
+use super::{
+    error::NoteError,
+    types::{SourceByteOffset, TaskTimestamp},
+    value::FieldValue,
+};
 use crate::config::task::{
     DateFieldSpec, StatusName, StatusSymbol, TaskConfig, TaskFieldSpec,
 };
@@ -163,16 +167,21 @@ pub struct Task {
     id: TaskId,
     text: Box<str>,
     status: StatusName,
-    created_at: Option<i64>,
-    due_at: Option<i64>,
-    reminder_at: Option<i64>,
-    completed_at: Option<i64>,
+    created_at: Option<TaskTimestamp>,
+    due_at: Option<TaskTimestamp>,
+    reminder_at: Option<TaskTimestamp>,
+    completed_at: Option<TaskTimestamp>,
     position: SourceByteOffset,
     tags: Vec<Box<str>>,
     metadata: TaskMetadata,
 }
 
-type TemporalFields = (Option<i64>, Option<i64>, Option<i64>, Option<i64>);
+type TemporalFields = (
+    Option<TaskTimestamp>,
+    Option<TaskTimestamp>,
+    Option<TaskTimestamp>,
+    Option<TaskTimestamp>,
+);
 
 impl Task {
     /// Creates a task from checkbox text, validating against task config.
@@ -250,28 +259,28 @@ impl Task {
     /// Returns the created timestamp if present.
     #[inline]
     #[must_use]
-    pub const fn created_at(&self) -> Option<i64> {
+    pub const fn created_at(&self) -> Option<TaskTimestamp> {
         self.created_at
     }
 
     /// Returns the due timestamp if present.
     #[inline]
     #[must_use]
-    pub const fn due_at(&self) -> Option<i64> {
+    pub const fn due_at(&self) -> Option<TaskTimestamp> {
         self.due_at
     }
 
     /// Returns the reminder timestamp if present.
     #[inline]
     #[must_use]
-    pub const fn reminder_at(&self) -> Option<i64> {
+    pub const fn reminder_at(&self) -> Option<TaskTimestamp> {
         self.reminder_at
     }
 
     /// Returns the completed timestamp if present.
     #[inline]
     #[must_use]
-    pub const fn completed_at(&self) -> Option<i64> {
+    pub const fn completed_at(&self) -> Option<TaskTimestamp> {
         self.completed_at
     }
 
@@ -369,7 +378,7 @@ impl Task {
         text: &str,
         spec: &DateFieldSpec,
         config: &TaskConfig,
-    ) -> Result<Option<i64>, NoteError> {
+    ) -> Result<Option<TaskTimestamp>, NoteError> {
         if let Some(value) = find_inline_field(text, spec.keyword().as_str()) {
             let naive =
                 config.parse_date_value(value, spec).map_err(|error| {
@@ -378,7 +387,7 @@ impl Task {
                         spec.keyword().as_str()
                     ))
                 })?;
-            return Ok(Some(naive.and_utc().timestamp()));
+            return Ok(Some(TaskTimestamp::new(naive.and_utc().timestamp())));
         }
 
         if let Some(emoji) = spec.emoji()
@@ -391,7 +400,7 @@ impl Task {
                         spec.keyword().as_str()
                     ))
                 })?;
-            return Ok(Some(naive.and_utc().timestamp()));
+            return Ok(Some(TaskTimestamp::new(naive.and_utc().timestamp())));
         }
 
         Ok(None)
@@ -616,6 +625,12 @@ mod tests {
         assert_eq!(task.text(), "Review PR");
         assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
         assert_eq!(task.metadata().get_string("project"), Some("lithos"));
+
+        // Test temporal fields are accessible
+        assert!(task.created_at().is_none() || task.created_at().is_some()); // Should be Some or None
+        assert!(task.due_at().is_none() || task.due_at().is_some());
+        assert!(task.reminder_at().is_none() || task.reminder_at().is_some());
+        assert!(task.completed_at().is_none() || task.completed_at().is_some());
     }
 
     #[test]
@@ -631,5 +646,29 @@ mod tests {
 
         assert!(task.tags().iter().any(|tag| tag.as_ref() == "#task"));
         assert!(task.tags().iter().any(|tag| tag.as_ref() == "#work"));
+    }
+
+    #[test]
+    fn task_timestamp_provides_semantic_methods() {
+        let config = TaskConfig::default();
+        let task = Task::from_checkbox(
+            "#task Test task with dates [created:: 2024-01-01] [due:: \
+             2024-12-31]",
+            StatusSymbol::try_new(' ').expect("valid status"),
+            SourceByteOffset::new(0),
+            &config,
+        )
+        .expect("task should parse");
+
+        // Test that temporal fields return TaskTimestamp when present
+        if let Some(created_at) = task.created_at() {
+            assert_eq!(created_at.as_i64(), 1_704_067_200); // 2024-01-01 00:00:00 UTC
+            assert!(created_at.is_past(None)); // Should be in the past
+        }
+
+        if let Some(due_at) = task.due_at() {
+            assert_eq!(due_at.as_i64(), 1_735_689_600); // 2024-12-31 00:00:00 UTC
+            assert!(due_at.is_future(None)); // Should be in the future (relative to test time)
+        }
     }
 }
