@@ -148,13 +148,11 @@ impl Segments {
     /// characters.
     #[inline]
     pub fn validate(tag_path: &str) -> Result<(), NoteError> {
-        let segments: Vec<&str> = tag_path.split('/').collect();
+        for segment in tag_path.split('/') {
+            if segment.is_empty() {
+                return Err(NoteError::Tag("Empty tag segment".to_owned()));
+            }
 
-        if segments.iter().any(|s| s.is_empty()) {
-            return Err(NoteError::Tag("Empty tag segment".to_owned()));
-        }
-
-        for segment in &segments {
             if !segment
                 .chars()
                 .all(|c| c.is_alphanumeric() || c == '_' || c == '-')

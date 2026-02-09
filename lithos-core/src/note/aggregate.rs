@@ -110,13 +110,14 @@ impl NotePath {
     /// # Errors
     /// Returns [`NoteError::InvalidPath`] if the path is invalid.
     #[inline]
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "Constructor consumes path after potential normalization."
-    )]
     pub fn new(path: String) -> Result<Self, NoteError> {
         // Basic normalization: convert backslashes to forward slashes
-        let normalized = path.replace('\\', "/");
+        // Avoid allocation if no backslashes
+        let normalized = if path.contains('\\') {
+            path.replace('\\', "/")
+        } else {
+            path
+        };
 
         // Use core filesystem validator
         crate::fs::validate_vault_path(&normalized, Some("md"))
@@ -417,7 +418,7 @@ mod tests {
             let mut note = fixtures::base_note()?;
             let heading = Heading::new(
                 HeadingLevel::try_new(1)?,
-                "H1".into(),
+                "H1",
                 SourceByteOffset::new(0),
             )?;
             note.add_heading(heading);
