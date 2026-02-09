@@ -7,7 +7,8 @@
 ---
 
 ## 1. Original Status & Implementation Plan
-*Historical record of the roadmap from 2026-02-08*
+
+_Historical record of the roadmap from 2026-02-08_
 
 # Config Context Status & Plan (Combined)
 
@@ -23,6 +24,7 @@ This document combines the Gap Analysis and Implementation Plan for the Config C
 ## Executive Summary
 
 The config implementation has diverged from the design specs. Key gaps:
+
 1. **Legacy type exists**: `SettingValue` should not exist per design spec
 2. **Clippy failures blocking progress**: Pattern matching issues with `ref` patterns
 3. **Missing module-level lint suppressions**: rkyv-generated types trigger exhaustive lint
@@ -115,13 +117,16 @@ Follow the updated implementation plan (see below).
 ## Risk Assessment
 
 **High Risk**:
+
 - Removing `SettingValue` may break downstream code (unknown usage)
 - Pattern matching fixes may introduce regressions
 
 **Medium Risk**:
+
 - Integration with Note/CLI might expose missing API surface
 
 **Low Risk**:
+
 - Module-level lint suppressions are cosmetic
 
 ## Recommendations
@@ -144,6 +149,7 @@ checks.
 **CURRENT STATUS**: Phase 0-6 Complete. Focus is on Phase 0 (cleanup) and Phase 7 (Integration).
 
 Conventions:
+
 - Each task includes explicit test updates and a pre-commit check.
 - Use `mise run <task>` for tooling consistency.
 - Pre-commit hooks must pass at each checkpoint (run via `mise run verify`).
@@ -159,6 +165,7 @@ Conventions:
 See `config-context-gap-analysis.md` for detailed gap assessment.
 
 ### 0.1) Fix Clippy Pattern Errors
+
 - [ ] Read `lithos-core/src/config/global.rs` lines 295-325 (TrustedVaults::validate)
 - [ ] Read `lithos-core/src/config/task.rs` lines 647-705 (TaskFieldSpec methods)
 - [ ] Read `lithos-core/src/config/types.rs` lines 702-730 (SettingValue Debug impl)
@@ -168,6 +175,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (REQUIRED)
 
 ### 0.2) Add Module-Level Lint Suppressions
+
 - [ ] Add `#![expect(clippy::exhaustive_enums, reason = "rkyv::Archive derive generates exhaustive archived enums")]` to `types.rs`
 - [ ] Add `#![expect(clippy::struct_field_names, reason = "Frontmatter fields share '_key' suffix by design (flagged by rkyv::Archive)")]` to `types.rs`
 - [ ] Verify no unfulfilled lint expectations
@@ -175,6 +183,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (REQUIRED)
 
 ### 0.3) Remove SettingValue (Design Violation)
+
 - [ ] Search all usages: `rg "SettingValue" lithos-core/src/config/`
 - [ ] **CRITICAL**: `SettingValue` violates design spec Section 1.1 - must be removed
 - [ ] Delete `pub enum SettingValue` from `types.rs` (line ~631)
@@ -186,6 +195,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (REQUIRED)
 
 ### 0.4) Final Quality Gate Checkpoint
+
 - [ ] Run `mise run verify` (full check: fmt + lint + tests + adr)
 - [ ] Confirm zero clippy warnings
 - [ ] Confirm all tests pass
@@ -202,22 +212,26 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 **Source**: Design specs 001-config-models.md, 002-config-cqrs.md, 003-config-task.md
 
 ### 0.5.1) ✅ COMPLETE: ConfigCommandError Extra Variant (RESOLVED)
+
 **Spec**: 002-config-cqrs.md Section 1.4 (UPDATED)
 **Status**: ✅ **RESOLVED** - Spec updated to document three-tier error taxonomy
 **Rationale**:
+
 - `ConfigIngestError` isolates Figment/adapter errors at boundary
 - `ConfigError` for domain validation failures
 - `ConfigCommandError` aggregates: Domain | Storage | Ingest
 - This separation prevents adapter concerns from leaking into domain errors
-**Verification**:
+  **Verification**:
 - [x] Implementation in `error.rs` lines 108-128 matches updated spec
 - [x] `From<ConfigIngestError>` impl correctly maps to Ingest variant
 - [x] All 100 config tests pass
 - [x] `mise run verify` passes (REQUIRED)
 
 ### 0.5.2) CRITICAL: Consolidate Bounds Types (DRY Violation)
+
 **Spec**: 003-config-task.md Section 3.2 lines 434-475, Decision 4.1.8
 **Issue**: Implementation has separate `IntegerBounds`/`FloatBounds`, spec requires generic `Bounds<T>`
+
 - [ ] Read `lithos-core/src/config/task.rs` lines 145-203 (current separate types)
 - [ ] Create generic `Bounds<T>` enum with Unbounded/Min/Max/Range variants
 - [ ] Replace `IntegerBounds` with `Bounds<i64>`
@@ -229,8 +243,10 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (REQUIRED)
 
 ### 0.5.3) MAJOR: Implement Type Inference for RawTaskFieldSpec
+
 **Spec**: 003-config-task.md Section 4.1.5 Decision, Section 2.1 lines 117-140
 **Issue**: Uses `#[serde(tag = "type")]` requiring explicit `type=` key, spec requires `#[serde(untagged)]`
+
 - [ ] Read `lithos-core/src/config/raw.rs` lines 188-232
 - [ ] Change `#[serde(tag = "type", rename_all = "lowercase")]` to `#[serde(untagged)]`
 - [ ] Reorder enum variants for correct matching priority: Enum → Integer → Float → DateTime → String
@@ -241,8 +257,10 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (REQUIRED)
 
 ### 0.5.4) MEDIUM: Store Compiled Regex in TaskFieldSpec
+
 **Spec**: 003-config-task.md Section 3.2 lines 497-506, Decision 4.1.3
 **Issue**: Stores `Option<String>`, spec requires `Option<Arc<regex::Regex>>` for performance
+
 - [ ] Read `lithos-core/src/config/task.rs` lines 240-276 (TaskFieldSpec enum)
 - [ ] Change `String { pattern: Option<String> }` to `String { pattern: Option<Arc<regex::Regex>> }`
 - [ ] Update `TaskFieldSpec::from_raw` to compile regex and wrap in Arc
@@ -254,8 +272,10 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (REQUIRED)
 
 ### 0.5.5) MEDIUM: Make validate_raw_value Private
+
 **Spec**: 003-config-task.md Section 3.3 lines 719-723 (marked as "private helper")
 **Issue**: Method is public, spec explicitly says private
+
 - [ ] Read `lithos-core/src/config/task.rs` line 737 (`pub fn validate_raw_value`)
 - [ ] Change `pub fn validate_raw_value` to `pub(crate) fn validate_raw_value`
 - [ ] **Rationale**: Only Note context should validate; users shouldn't call directly
@@ -264,8 +284,10 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (REQUIRED)
 
 ### 0.5.6) MEDIUM: Change TaskFieldKeyword Backing to Box<str>
+
 **Spec**: 003-config-task.md Section 3.2 lines 362-387
 **Issue**: Uses `String`, spec requires `Box<str>` (immutable, no growth capacity)
+
 - [ ] Read `lithos-core/src/config/task.rs` lines 129-143
 - [ ] Change `pub struct TaskFieldKeyword(String)` to `pub struct TaskFieldKeyword(Box<str>)`
 - [ ] Update `try_new` to convert `value.into(): String` to `value.into(): Box<str>`
@@ -274,8 +296,10 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (REQUIRED)
 
 ### 0.5.7) MEDIUM: Change TaskTag Backing to Box<str>
+
 **Spec**: 003-config-task.md Section 3.2 lines 336-360
 **Issue**: Uses `String`, spec requires `Box<str>` (same as TaskFieldKeyword)
+
 - [ ] Read `lithos-core/src/config/task.rs` lines 113-127
 - [ ] Change `pub struct TaskTag(String)` to `pub struct TaskTag(Box<str>)`
 - [ ] Update `try_new` to convert to `Box<str>`
@@ -284,8 +308,10 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (REQUIRED)
 
 ### 0.5.8) MEDIUM: Document or Remove Extra RawTaskDates Fields
+
 **Spec**: 003-config-task.md Section 3.2 lines 593-607 (only 4 fields: due/created/reminder/completed)
 **Issue**: Implementation adds `scheduled` and `start` fields not in spec
+
 - [ ] Read `lithos-core/src/config/raw.rs` lines 159-174
 - [ ] **Decision needed**: Keep extra fields (update spec) OR remove them (match spec)
 - [ ] If keeping: Add to spec documentation and explain use case
@@ -295,6 +321,7 @@ See `config-context-gap-analysis.md` for detailed gap assessment.
 - [ ] Run `mise run verify` (REQUIRED)
 
 ### 0.5.9) Quality Gate for Phase 0.5
+
 - [ ] Run `mise run verify` (full quality gate)
 - [ ] Confirm all spec alignment issues resolved
 - [ ] Document any deviations from spec with rationale
@@ -421,9 +448,10 @@ Phase 8 (Final Gate) → Ship it
 ## Architectural Patterns
 
 **Three-Shape Serialization Pattern**: The config context implements the canonical **Raw* → TryFrom → Domain → [Stored*]** pattern for parsing, validation, and optional storage optimization. See [`_bmad-output/planning-artifacts/architecture/implementation-patterns-consistency-rules.md`](../../../_bmad-output/planning-artifacts/architecture/implementation-patterns-consistency-rules.md#three-shape-serialization-pattern) for:
+
 - Rationale for zero-method Raw types (dumb data)
 - TryFrom as explicit validation boundary
-- When to create Stored* types (rarely, profiling only)
+- When to create Stored\* types (rarely, profiling only)
 - Testing approaches and anti-patterns
 
 This pattern is **canonical** and codified in the project architecture document. All external input validation must follow this three-layer approach.
@@ -431,7 +459,8 @@ This pattern is **canonical** and codified in the project architecture document.
 ---
 
 ## 2. Combined Design Review Findings
-*Consolidated architectural review and Figment analysis*
+
+_Consolidated architectural review and Figment analysis_
 
 # Config Context Combined Review
 
@@ -496,6 +525,7 @@ This pattern is **canonical** and codified in the project architecture document.
 
 **Pattern A: Whole-Struct Replacement**
 Used in: `frontmatter`, `logging`, `task`
+
 ```rust
 pub struct Vault {
     frontmatter: Option<Frontmatter>,  // ← ALL OR NOTHING
@@ -511,6 +541,7 @@ vault.frontmatter.cloned()
 
 **Pattern B: Field-Level Overrides**
 Used in: schema, template
+
 ```rust
 pub struct SchemaOverrides {
     pub schemas_dir: Option<SchemasDir>,  // ← INDIVIDUAL FIELDS
@@ -528,6 +559,7 @@ let schemas_dir = vault
 **Problem**: Can't override JUST `title_key` while keeping global's other frontmatter fields.
 
 **Questions for Design**:
+
 1. Is whole-struct replacement **intentional** for frontmatter/logging?
 2. Should frontmatter also use field-level overrides like schema?
 3. Spec doesn't explicitly address this - is it a gap?
@@ -537,19 +569,23 @@ let schemas_dir = vault
 ### Issue #2: Figment Layering Clarification
 
 **Current Design** (CORRECT):
+
 ```
 Figment: TOML → RawGlobal/RawVault   (within layers - file1 + file2 + env)
 Domain:  Global + Vault → Config     (across layers - manual merge)
 ```
 
 **Spec Says** (001-config-models.md Appendix A):
+
 > "Use Figment for layering with merge precedence"
 
 **Reality**: Figment CANNOT merge different schemas:
+
 - Global has `trusted_vaults` (not in Vault)
 - Vault has `cache_dir` (not in Global)
 
 **Verdict**: Current design is CORRECT
+
 - Figment merges **within** layers (same schema)
 - Domain merges **across** layers (different schemas)
 
@@ -564,34 +600,35 @@ Document that "layering" means within layers, not across layers.
 
 **Best Practices Validated**:
 
-| Practice | Implementation | Status |
-|----------|---------------|--------|
+| Practice                                         | Implementation                                | Status     |
+| ------------------------------------------------ | --------------------------------------------- | ---------- |
 | `Serialized::defaults` for programmatic defaults | `RawGlobal::default()`, `RawVault::default()` | ✅ Correct |
-| `merge` for overrides | File overrides defaults | ✅ Correct |
-| Avoid `#[serde(flatten)]` | No flatten used | ✅ Correct |
-| Handle missing files gracefully | Check `path.exists()` | ✅ Correct |
-| Extract into Raw types | `Raw* → TryFrom → Domain` | ✅ Correct |
+| `merge` for overrides                            | File overrides defaults                       | ✅ Correct |
+| Avoid `#[serde(flatten)]`                        | No flatten used                               | ✅ Correct |
+| Handle missing files gracefully                  | Check `path.exists()`                         | ✅ Correct |
+| Extract into Raw types                           | `Raw* → TryFrom → Domain`                     | ✅ Correct |
 
 **Features Intentionally NOT Used**:
 
 1. **Profiles** (`select`, `nested`)
    - Global vs Vault are NOT profiles (distinct data sources)
    - No environment-specific config (dev/staging/prod) needed
-   - *Recommendation*: Don't add unless operational contexts needed
+   - _Recommendation_: Don't add unless operational contexts needed
 
 2. **Environment Variables** (`Env::prefixed`)
    - Current pattern: Single env var `LITHOS_GLOBAL_CONFIG` for path
    - Per-field env overrides add complexity without user request
-   - *Recommendation*: Keep current pattern
+   - _Recommendation_: Keep current pattern
 
 3. **Array Concatenation** (`admerge`)
    - Replace semantics are correct (vault overrides global entirely)
    - No use case for "extend global list with vault additions"
-   - *Recommendation*: Don't use `admerge`
+   - _Recommendation_: Don't use `admerge`
 
 ### Code Quality
 
 **Current ingest pattern is minimal and correct**:
+
 ```rust
 pub fn ingest_global() -> Result<RawGlobal, ConfigIngestError> {
     let mut figment = Figment::from(Serialized::defaults(RawGlobal::default()));
@@ -603,6 +640,7 @@ pub fn ingest_global() -> Result<RawGlobal, ConfigIngestError> {
 ```
 
 **Why not simplify further?**
+
 - Could remove `if path.exists()` (Figment handles missing files), but explicit check is clearer
 - Could inline `global_config_path_from_env()`, but separation is clearer
 - Could remove `mut figment`, but builder pattern is idiomatic
@@ -615,55 +653,55 @@ pub fn ingest_global() -> Result<RawGlobal, ConfigIngestError> {
 
 ### 001-config-models.md
 
-| Requirement | Status | Evidence |
-|-------------|--------|----------|
-| Use `Option` overlays, not empty strings | ✅ COMPLIANT | `aggregate.rs:366-388` |
-| Type-driven newtypes | ✅ COMPLIANT | `paths.rs`, `frontmatter.rs`, `logging.rs` |
-| Figment for layering | ✅ COMPLIANT | `ingest.rs` (within layers) |
-| Raw types separate | ✅ COMPLIANT | `raw.rs` + TryFrom implementations |
-| VaultId stable identity | ✅ COMPLIANT | `vault.rs:14-60` |
-| Versioned merged config | ✅ COMPLIANT | `aggregate.rs:59-163` |
+| Requirement                              | Status       | Evidence                                   |
+| ---------------------------------------- | ------------ | ------------------------------------------ |
+| Use `Option` overlays, not empty strings | ✅ COMPLIANT | `aggregate.rs:366-388`                     |
+| Type-driven newtypes                     | ✅ COMPLIANT | `paths.rs`, `frontmatter.rs`, `logging.rs` |
+| Figment for layering                     | ✅ COMPLIANT | `ingest.rs` (within layers)                |
+| Raw types separate                       | ✅ COMPLIANT | `raw.rs` + TryFrom implementations         |
+| VaultId stable identity                  | ✅ COMPLIANT | `vault.rs:14-60`                           |
+| Versioned merged config                  | ✅ COMPLIANT | `aggregate.rs:59-163`                      |
 
 ### 002-config-cqrs.md
 
-| Requirement | Status | Evidence |
-|-------------|--------|----------|
-| ConfigCommandError (3 variants) | ✅ COMPLIANT | `error.rs:108-128` |
-| ConfigQueryError (2 variants) | ✅ COMPLIANT | `error.rs:130-140` |
-| Command interface | ✅ COMPLIANT | `command.rs:35-184` |
-| Query interface | ✅ COMPLIANT | `query.rs:26-80` |
-| Port traits | ✅ COMPLIANT | `ports.rs:13-118` |
+| Requirement                     | Status       | Evidence            |
+| ------------------------------- | ------------ | ------------------- |
+| ConfigCommandError (3 variants) | ✅ COMPLIANT | `error.rs:108-128`  |
+| ConfigQueryError (2 variants)   | ✅ COMPLIANT | `error.rs:130-140`  |
+| Command interface               | ✅ COMPLIANT | `command.rs:35-184` |
+| Query interface                 | ✅ COMPLIANT | `query.rs:26-80`    |
+| Port traits                     | ✅ COMPLIANT | `ports.rs:13-118`   |
 
 ### 003-config-task.md
 
-| Requirement | Status | Evidence |
-|-------------|--------|----------|
-| TaskTag newtype | ⚠️ PENDING | Phase 0.5 verification |
+| Requirement               | Status     | Evidence               |
+| ------------------------- | ---------- | ---------------------- |
+| TaskTag newtype           | ⚠️ PENDING | Phase 0.5 verification |
 | Type inference (untagged) | ⚠️ PENDING | Phase 0.5 verification |
-| Bounds<T> generic | ⚠️ PENDING | Phase 0.5 verification |
-| Regex compilation | ⚠️ PENDING | Phase 0.5 verification |
+| Bounds<T> generic         | ⚠️ PENDING | Phase 0.5 verification |
+| Regex compilation         | ⚠️ PENDING | Phase 0.5 verification |
 
 ---
 
 ## Files Reviewed
 
-| File | Lines | Status | Notes |
-|------|-------|--------|-------|
-| `aggregate.rs` | 1217 | ✅ REVIEWED | Merge logic, versioning |
-| `global.rs` | 609 | ✅ REVIEWED | TrustedVaults enum |
-| `vault.rs` | 627 | ✅ REVIEWED | VaultId, VaultRoot |
-| `paths.rs` | 717 | ✅ REVIEWED | Schema/Template newtypes |
-| `frontmatter.rs` | 298 | ✅ REVIEWED | FrontmatterKey |
-| `logging.rs` | 212 | ✅ REVIEWED | LogLevel enum |
-| `command.rs` | 459 | ✅ REVIEWED | CQRS command side |
-| `query.rs` | 218 | ✅ REVIEWED | CQRS query side |
-| `ports.rs` | 119 | ✅ REVIEWED | Port traits with GATs |
-| `mod.rs` | 68 | ✅ REVIEWED | Public API |
-| `ingest.rs` | 142 | ✅ REVIEWED | Figment boundary |
-| `raw.rs` | partial | ✅ REVIEWED | DTO pattern |
-| `error.rs` | 278 | ✅ REVIEWED | Split CQRS errors |
-| `events.rs` | - | ✅ REVIEWED | Domain events |
-| `task.rs` | 1393 | ⏳ PENDING | Phase 0.5 verification needed |
+| File             | Lines   | Status      | Notes                         |
+| ---------------- | ------- | ----------- | ----------------------------- |
+| `aggregate.rs`   | 1217    | ✅ REVIEWED | Merge logic, versioning       |
+| `global.rs`      | 609     | ✅ REVIEWED | TrustedVaults enum            |
+| `vault.rs`       | 627     | ✅ REVIEWED | VaultId, VaultRoot            |
+| `paths.rs`       | 717     | ✅ REVIEWED | Schema/Template newtypes      |
+| `frontmatter.rs` | 298     | ✅ REVIEWED | FrontmatterKey                |
+| `logging.rs`     | 212     | ✅ REVIEWED | LogLevel enum                 |
+| `command.rs`     | 459     | ✅ REVIEWED | CQRS command side             |
+| `query.rs`       | 218     | ✅ REVIEWED | CQRS query side               |
+| `ports.rs`       | 119     | ✅ REVIEWED | Port traits with GATs         |
+| `mod.rs`         | 68      | ✅ REVIEWED | Public API                    |
+| `ingest.rs`      | 142     | ✅ REVIEWED | Figment boundary              |
+| `raw.rs`         | partial | ✅ REVIEWED | DTO pattern                   |
+| `error.rs`       | 278     | ✅ REVIEWED | Split CQRS errors             |
+| `events.rs`      | -       | ✅ REVIEWED | Domain events                 |
+| `task.rs`        | 1393    | ⏳ PENDING  | Phase 0.5 verification needed |
 
 **Coverage**: 14 of 15 files thoroughly reviewed
 **Remaining**: `task.rs` (Phase 0.5 issues)
@@ -699,14 +737,16 @@ This combined review consolidates findings from:
 2. **config-design-review-findings.md** - Figment usage analysis and spec review
 3. **HONEST-COMPREHENSIVE-REVIEW.md** - Thorough file-by-file review
 
-*Combined: 2026-02-09*
+_Combined: 2026-02-09_
 
 ---
 
 ## 3. Phase 0.5 Verification Results (Detailed Evidence)
-*Line-by-line verification of spec misalignments*
+
+_Line-by-line verification of spec misalignments_
 
 # Phase 0.5: Task Config Verification Results
+
 **Date**: 2026-02-09
 **File Reviewed**: `lithos-core/src/config/task.rs` (1393 lines), `raw.rs` (315 lines), `error.rs` (278 lines)
 **Status**: ✅ **ALL 8 CLAIMS VERIFIED**
@@ -718,6 +758,7 @@ This combined review consolidates findings from:
 **All 8 Phase 0.5 issues from `config-context-combined-status.md` are REAL.**
 
 Tests pass because the current implementation works correctly, but it **diverges from the spec** in ways that impact:
+
 - **Performance** (regex recompilation on every validation)
 - **Type safety** (String instead of Box<str>)
 - **DRY principle** (duplicate Bounds code)
@@ -734,6 +775,7 @@ Tests pass because the current implementation works correctly, but it **diverges
 **Status**: ✅ **RESOLVED** - Spec updated to document three-tier error taxonomy
 
 **Spec Says** (002-config-cqrs.md Section 1.4 - UPDATED):
+
 ```rust
 pub enum ConfigCommandError {
     Domain(ConfigError),         // Domain validation errors
@@ -743,6 +785,7 @@ pub enum ConfigCommandError {
 ```
 
 **Current Implementation** (error.rs lines 108-128):
+
 ```rust
 pub enum ConfigCommandError {
     /// Domain-level validation or merge error.
@@ -757,11 +800,13 @@ pub enum ConfigCommandError {
 **Evidence**: Implementation matches updated spec
 
 **Rationale** (documented in config-design-review-findings.md):
+
 - **ConfigIngestError**: Adapter boundary (Figment/TOML parsing failures)
 - **ConfigError**: Domain validation (business rule violations)
 - **ConfigCommandError**: CQRS wrapper aggregating all command-side errors
 
 **Three-Tier Error Taxonomy**:
+
 ```
 ConfigIngestError  → TOML parsing, Figment extraction (adapter)
 ConfigError        → Empty paths, invalid enums (domain)
@@ -776,6 +821,7 @@ ConfigCommandError → Domain | Storage | Ingest (CQRS aggregate)
 ### ✅ Issue 0.5.2: Separate IntegerBounds/FloatBounds (DRY Violation)
 
 **Spec Says** (003-config-task.md lines 434-475):
+
 ```rust
 pub enum Bounds<T> {
     Unbounded,
@@ -790,6 +836,7 @@ bounds: Bounds<f64>,  // for Float
 ```
 
 **Current Implementation** (task.rs lines 145-203):
+
 ```rust
 pub enum IntegerBounds {
     Unbounded,
@@ -809,6 +856,7 @@ pub enum FloatBounds {
 **Evidence**: Lines 145-203 show **two nearly identical enums** with only the numeric type differing.
 
 **Impact**:
+
 - ❌ **Code duplication**: 58 lines could be ~30 lines with generic
 - ❌ **Maintenance burden**: Bug fixes need to be applied twice
 - ❌ **Spec violation**: 003-config-task.md explicitly shows `Bounds<T>`
@@ -820,6 +868,7 @@ pub enum FloatBounds {
 ### ✅ Issue 0.5.3: Type Inference Missing (UX Regression)
 
 **Spec Says** (003-config-task.md lines 608-643):
+
 ```rust
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]  // ← Type inferred from structure
@@ -838,6 +887,7 @@ pub enum RawTaskFieldSpec {
 ```
 
 **Current Implementation** (raw.rs lines 188-232):
+
 ```rust
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]  // ← NO untagged!
@@ -852,11 +902,14 @@ pub enum RawTaskFieldSpec {
 ```
 
 **Evidence**:
+
 - ❌ **NO `#[serde(untagged)]`** attribute present
 - ❌ Default serde behavior requires explicit `type=` key in TOML
 
 **Impact**:
+
 - ❌ **User Experience**: Forces users to write redundant config:
+
   ```toml
   # Current (REQUIRED):
   [task.fields.priority]
@@ -871,6 +924,7 @@ pub enum RawTaskFieldSpec {
   min = 0  # ← Type inferred: has integer min/max = Integer
   max = 10
   ```
+
 - ❌ **Spec violation**: 003-config-task.md Decision 4.1.5 explicitly chooses untagged
 
 **Verdict**: ✅ **CONFIRMED** - Need to add `#[serde(untagged)]` and reorder variants (Enum first for match priority)
@@ -880,6 +934,7 @@ pub enum RawTaskFieldSpec {
 ### ✅ Issue 0.5.4: Regex NOT Compiled (Performance Issue)
 
 **Spec Says** (003-config-task.md lines 500-506):
+
 ```rust
 pub enum TaskFieldSpec {
     String {
@@ -891,6 +946,7 @@ pub enum TaskFieldSpec {
 ```
 
 **Current Implementation** (task.rs lines 255-261):
+
 ```rust
 pub enum TaskFieldSpec {
     String {
@@ -902,6 +958,7 @@ pub enum TaskFieldSpec {
 ```
 
 **Evidence**: Lines 819-842 show validation **recompiles regex on EVERY call**:
+
 ```rust
 fn validate_string(
     value: &serde_json::Value,
@@ -920,11 +977,13 @@ fn validate_string(
 ```
 
 **Impact**:
+
 - ❌ **Performance**: Regex compiled on **every validation** instead of once at config load
 - ❌ **Spec violation**: 003-config-task.md Decision 4.1.3 says "Compile at config load"
 - ⚠️ **Not a bug**: Works correctly, just inefficient
 
 **Benchmark Estimate**:
+
 - Regex compilation: ~10-100µs per validation
 - Arc<Regex> deref: ~1ns per validation
 - **100-10000x slower** for repeated validations
@@ -936,6 +995,7 @@ fn validate_string(
 ### ✅ Issue 0.5.5: validate_raw_value is PUBLIC (API Surface)
 
 **Spec Says** (003-config-task.md lines 716-728):
+
 ```rust
 impl TaskFieldSpec {
     // PRIVATE helper (internal to config context)
@@ -946,6 +1006,7 @@ impl TaskFieldSpec {
 ```
 
 **Current Implementation** (task.rs lines 738-773):
+
 ```rust
 impl TaskFieldSpec {
     #[inline]
@@ -966,6 +1027,7 @@ impl TaskFieldSpec {
 **Evidence**: `pub fn` on line 747 makes this part of public API
 
 **Impact**:
+
 - ❌ **API surface bloat**: Exposes internal validation helper
 - ❌ **Spec violation**: 003-config-task.md says "private helper"
 - ⚠️ **Low severity**: Doesn't break anything, just unnecessary
@@ -979,11 +1041,13 @@ impl TaskFieldSpec {
 ### ✅ Issue 0.5.6: TaskFieldKeyword Uses String (Not Box<str>)
 
 **Spec Says** (003-config-task.md lines 362-367):
+
 ```rust
 pub struct TaskFieldKeyword(Box<str>);  // ← Box<str>
 ```
 
 **Current Implementation** (task.rs lines 129-143):
+
 ```rust
 pub struct TaskFieldKeyword(String);  // ← String (extra capacity overhead)
 ```
@@ -991,16 +1055,19 @@ pub struct TaskFieldKeyword(String);  // ← String (extra capacity overhead)
 **Evidence**: Line 143 shows `String` backing storage
 
 **Impact**:
+
 - ❌ **Memory overhead**: `String` has 24 bytes (ptr+len+cap), `Box<str>` has 16 bytes (ptr+len)
 - ❌ **Unnecessary capacity**: Field keywords are **never mutated** after construction
 - ❌ **Spec violation**: 003-config-task.md explicitly uses `Box<str>`
 
 **Memory Math** (per TaskFieldKeyword):
+
 - Current: 24 bytes + heap allocation
 - Spec: 16 bytes + heap allocation
 - **Savings**: 8 bytes per keyword (33% reduction in stack size)
 
 **For typical config** (10 field keywords):
+
 - Current: 240 bytes
 - Spec: 160 bytes
 - **Total savings**: 80 bytes
@@ -1012,11 +1079,13 @@ pub struct TaskFieldKeyword(String);  // ← String (extra capacity overhead)
 ### ✅ Issue 0.5.7: TaskTag Uses String (Not Box<str>)
 
 **Spec Says** (003-config-task.md lines 336-360):
+
 ```rust
 pub struct TaskTag(Box<str>);  // ← Box<str> for immutable allocation
 ```
 
 **Current Implementation** (task.rs lines 113-127):
+
 ```rust
 pub struct TaskTag(String);  // ← String (extra capacity overhead)
 ```
@@ -1032,6 +1101,7 @@ pub struct TaskTag(String);  // ← String (extra capacity overhead)
 ### ✅ Issue 0.5.8: RawTaskDates Has Extra Fields (scheduled, start)
 
 **Spec Says** (003-config-task.md lines 587-599):
+
 ```rust
 pub struct RawTaskDates {
     pub due: Option<RawDateFieldSpec>,
@@ -1042,6 +1112,7 @@ pub struct RawTaskDates {
 ```
 
 **Current Implementation** (raw.rs lines 159-174):
+
 ```rust
 pub struct RawTaskDates {
     /// Configuration for the 'due' date field.
@@ -1060,16 +1131,19 @@ pub struct RawTaskDates {
 ```
 
 **Evidence**:
+
 - Lines 165, 167: `scheduled` and `start` fields present
 - Spec example (lines 587-599 in 003-config-task.md): Only shows 4 fields (due, created, reminder, completed)
 - grep search: No mention of `scheduled` or `start` as first-class date fields in any design doc
 
 **Impact**:
+
 - ❌ **Spec violation**: Implementation has 6 fields, spec shows 4
 - ❌ **Dead code**: Fields exist but are not used anywhere in codebase
 - ⚠️ **Design question**: Are these intentional additions or accidental?
 
 **Options**:
+
 1. **Remove them** (match spec strictly)
 2. **Keep them** (update spec to document use case)
 
@@ -1084,11 +1158,13 @@ pub struct RawTaskDates {
 **Note**: This issue was mentioned in earlier reviews but is **NOT in the official Phase 0.5 list** (0.5.1-0.5.8). Documenting for completeness:
 
 **Spec Says** (003-config-task.md lines 409-417):
+
 ```rust
 pub struct StatusName(Box<str>);
 ```
 
 **Current Implementation** (task.rs lines 60-74):
+
 ```rust
 pub struct StatusName(String);
 ```
@@ -1100,11 +1176,13 @@ pub struct StatusName(String);
 **Note**: Also NOT in official Phase 0.5 list:
 
 **Spec Says** (003-config-task.md lines 484-491):
+
 ```rust
 format: Box<str>,
 ```
 
 **Current Implementation** (task.rs lines 205-225):
+
 ```rust
 format: String,
 ```
@@ -1116,11 +1194,13 @@ format: String,
 **Note**: Also NOT in official Phase 0.5 list:
 
 **Spec Says** (003-config-task.md lines 515-518):
+
 ```rust
 values: Vec<Box<str>>,
 ```
 
 **Current Implementation** (task.rs lines 264-267):
+
 ```rust
 values: Vec<String>,
 ```
@@ -1132,12 +1212,14 @@ values: Vec<String>,
 **Note**: Also NOT in official Phase 0.5 list:
 
 **Spec Says** (003-config-task.md lines 558-573):
+
 ```rust
 fields: HashMap<Box<str>, TaskFieldSpec>,
 indexed_fields: Vec<Box<str>>,
 ```
 
 **Current Implementation** (task.rs lines 25-58):
+
 ```rust
 fields: HashMap<String, TaskFieldSpec>,
 indexed_fields: Vec<String>,
@@ -1149,16 +1231,16 @@ indexed_fields: Vec<String>,
 
 ## Summary Table
 
-| Issue | Status | Severity | Effort | Blocking |
-|-------|--------|----------|--------|----------|
-| 0.5.1 ConfigCommandError Extra | ✅ Confirmed | Medium | Low | No |
-| 0.5.2 Bounds<T> Generic | ✅ Confirmed | High | Medium | No |
-| 0.5.3 Type Inference | ✅ Confirmed | High | Low | **Yes** (UX) |
-| 0.5.4 Regex Compile | ✅ Confirmed | High | Medium | No |
-| 0.5.5 validate_raw_value Public | ✅ Confirmed | Low | Trivial | No |
-| 0.5.6 TaskFieldKeyword Box<str> | ✅ Confirmed | Low | Low | No |
-| 0.5.7 TaskTag Box<str> | ✅ Confirmed | Low | Low | No |
-| 0.5.8 RawTaskDates Extra Fields | ✅ Confirmed | Medium | Low | **Decision needed** |
+| Issue                           | Status       | Severity | Effort  | Blocking            |
+| ------------------------------- | ------------ | -------- | ------- | ------------------- |
+| 0.5.1 ConfigCommandError Extra  | ✅ Confirmed | Medium   | Low     | No                  |
+| 0.5.2 Bounds<T> Generic         | ✅ Confirmed | High     | Medium  | No                  |
+| 0.5.3 Type Inference            | ✅ Confirmed | High     | Low     | **Yes** (UX)        |
+| 0.5.4 Regex Compile             | ✅ Confirmed | High     | Medium  | No                  |
+| 0.5.5 validate_raw_value Public | ✅ Confirmed | Low      | Trivial | No                  |
+| 0.5.6 TaskFieldKeyword Box<str> | ✅ Confirmed | Low      | Low     | No                  |
+| 0.5.7 TaskTag Box<str>          | ✅ Confirmed | Low      | Low     | No                  |
+| 0.5.8 RawTaskDates Extra Fields | ✅ Confirmed | Medium   | Low     | **Decision needed** |
 
 **Total Verified**: 8/8 issues confirmed real
 
@@ -1193,6 +1275,7 @@ indexed_fields: Vec<String>,
 **All tests pass**: 100/100 config unit tests passing
 
 Tests don't catch these issues because:
+
 - 0.5.2: Tests use types correctly, just duplicate code
 - 0.5.3: Tests likely use explicit `type=` key
 - 0.5.4: Tests pass, just slow (regex compiles each time)
@@ -1213,13 +1296,14 @@ Tests don't catch these issues because:
 
 ---
 
-*Document generated: 2026-02-09*
-*Verified against: task.rs (1393 lines), raw.rs (315 lines), error.rs (278 lines)*
+_Document generated: 2026-02-09_
+_Verified against: task.rs (1393 lines), raw.rs (315 lines), error.rs (278 lines)_
 
 ---
 
 ## 4. Current Action Items & Update Plan
-*Actionable tasks for Phase 0.5 and beyond*
+
+_Actionable tasks for Phase 0.5 and beyond_
 
 # Config Context Update Plan
 
@@ -1251,15 +1335,18 @@ See original plan in config-context-combined-status.md (preserved as historical 
 **Context**: Comprehensive review of implementation vs design specs revealed critical misalignments.
 
 #### 0.5.1) ✅ COMPLETE: ConfigCommandError Extra Variant (RESOLVED)
+
 **Spec**: 002-config-cqrs.md Section 1.4 (UPDATED)
 **Status**: ✅ **RESOLVED** - Spec updated to document three-tier error taxonomy
 
 **Rationale**:
+
 - `ConfigIngestError` isolates Figment/adapter errors at boundary
 - `ConfigError` for domain validation failures
 - `ConfigCommandError` aggregates: Domain | Storage | Ingest
 
 **Verification**:
+
 - [x] Implementation in `error.rs` lines 108-128 matches updated spec
 - [x] `From<ConfigIngestError>` impl correctly maps to Ingest variant
 - [x] All 100 config tests pass
@@ -1268,21 +1355,25 @@ See original plan in config-context-combined-status.md (preserved as historical 
 ---
 
 #### 0.5.2) ✅ COMPLETE: Bounds<T> Generic Type (COMPLETED)
+
 **Spec**: 003-config-task.md Section 3.2 lines 434-475
 **Status**: ✅ **COMPLETED** - Generic `Bounds<T>` created with validation logic
 
 **Implementation** (`lithos-core/src/bounds.rs`):
+
 - Generic `Bounds<T>` enum with Unbounded/Min/Max/Range variants
 - `from_options()`, `validate()`, `min()`, `max()` methods
 - Full serde serialization support
 - 15 comprehensive unit tests
 
 **Rkyv Integration Strategy**:
+
 - `Bounds<T>` is designed for validation logic (no rkyv derives)
 - Task.rs retains `IntegerBounds`/`FloatBounds` with rkyv for database storage
 - Both types have identical shape for future interoperability
 
 **Verification**:
+
 - [x] All 15 bounds tests pass
 - [x] All 100 config tests pass
 - [x] `mise run verify` passes
@@ -1290,6 +1381,7 @@ See original plan in config-context-combined-status.md (preserved as historical 
 ---
 
 #### 0.5.3) MAJOR: Type Inference for RawTaskFieldSpec (PENDING)
+
 **Spec**: 003-config-task.md Section 4.1.5
 **Issue**: Uses `#[serde(tag = "type")]`, spec requires `#[serde(untagged)]`
 
@@ -1300,6 +1392,7 @@ See original plan in config-context-combined-status.md (preserved as historical 
 ---
 
 #### 0.5.4) MEDIUM: Compiled Regex in TaskFieldSpec (PENDING)
+
 **Spec**: 003-config-task.md Section 3.2
 **Issue**: Stores `Option<String>`, spec requires `Option<Arc<regex::Regex>>`
 
@@ -1310,6 +1403,7 @@ See original plan in config-context-combined-status.md (preserved as historical 
 ---
 
 #### 0.5.5) MEDIUM: Make validate_raw_value Private (PENDING)
+
 **Spec**: 003-config-task.md Section 3.3
 **Issue**: Method is public, spec says private helper
 **Fix**: Change `pub fn` to `pub(crate) fn`
@@ -1317,6 +1411,7 @@ See original plan in config-context-combined-status.md (preserved as historical 
 ---
 
 #### 0.5.6) MEDIUM: TaskFieldKeyword Box<str> (PENDING)
+
 **Spec**: 003-config-task.md Section 3.2
 **Issue**: Uses `String`, spec requires `Box<str>`
 **Impact**: 33% stack size reduction (never mutated after construction)
@@ -1324,11 +1419,13 @@ See original plan in config-context-combined-status.md (preserved as historical 
 ---
 
 #### 0.5.7) MEDIUM: TaskTag Box<str> (PENDING)
+
 Same as 0.5.6 but for `TaskTag`
 
 ---
 
 #### 0.5.8) MEDIUM: RawTaskDates Extra Fields (PENDING - DECISION NEEDED)
+
 **Spec**: 4 fields (`due`, `created`, `reminder`, `completed`)
 **Current**: 6 fields (adds `scheduled`, `start`)
 **Decision**: Keep for Obsidian compatibility or remove to match spec?
@@ -1356,11 +1453,13 @@ Same as 0.5.6 but for `TaskTag`
 #### Critical Issues Identified
 
 **Issue #1: Whole-Struct vs Field-Level Overrides**
+
 - Frontmatter/logging use whole-struct replacement
 - Schema/template use field-level overrides
 - **Question**: Intentional design or gap?
 
 **Issue #2: Figment Layering**
+
 - Figment merges within layers (correct)
 - Domain merges across layers (correct)
 - Spec needs clarification
@@ -1370,6 +1469,7 @@ Same as 0.5.6 but for `TaskTag`
 **Verdict**: ✅ **Already optimal**
 
 All Figment best practices validated:
+
 - ✅ `Serialized::defaults` for programmatic defaults
 - ✅ `merge` for overrides
 - ✅ No `#[serde(flatten)]`
@@ -1384,16 +1484,16 @@ All Figment best practices validated:
 
 **Status**: ✅ **ALL 8 CLAIMS VERIFIED**
 
-| Issue | Status | Severity |
-|-------|--------|----------|
-| 0.5.1 Error Variant | ✅ RESOLVED | Medium |
-| 0.5.2 Bounds<T> | ✅ COMPLETE | High |
-| 0.5.3 Type Inference | ⏳ PENDING | **High** |
-| 0.5.4 Regex Compile | ⏳ PENDING | **High** |
-| 0.5.5 Public Method | ⏳ PENDING | Low |
-| 0.5.6 Box<str> | ⏳ PENDING | Low |
-| 0.5.7 Box<str> | ⏳ PENDING | Low |
-| 0.5.8 Extra Fields | ⏳ PENDING | Medium |
+| Issue                | Status      | Severity |
+| -------------------- | ----------- | -------- |
+| 0.5.1 Error Variant  | ✅ RESOLVED | Medium   |
+| 0.5.2 Bounds<T>      | ✅ COMPLETE | High     |
+| 0.5.3 Type Inference | ⏳ PENDING  | **High** |
+| 0.5.4 Regex Compile  | ⏳ PENDING  | **High** |
+| 0.5.5 Public Method  | ⏳ PENDING  | Low      |
+| 0.5.6 Box<str>       | ⏳ PENDING  | Low      |
+| 0.5.7 Box<str>       | ⏳ PENDING  | Low      |
+| 0.5.8 Extra Fields   | ⏳ PENDING  | Medium   |
 
 **Critical Path**: 0.5.3 → 0.5.4 → (0.5.5-0.5.8 in any order)
 
@@ -1451,5 +1551,5 @@ These documents are preserved as a record of the review process and findings.
 
 ---
 
-*Document created: 2026-02-09*
-*Consolidates: Implementation plan + Review findings + Verification results*
+_Document created: 2026-02-09_
+_Consolidates: Implementation plan + Review findings + Verification results_
