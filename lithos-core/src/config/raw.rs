@@ -446,13 +446,10 @@ log_level = "info"
             let toml_string = toml::to_string(&original).unwrap();
             let deserialized: RawConfig = toml::from_str(&toml_string).unwrap();
 
+            assert_eq!(deserialized.paths.cache_dir, original.paths.cache_dir);
             assert_eq!(
-                deserialized.filesystem.cache_dir,
-                original.filesystem.cache_dir
-            );
-            assert_eq!(
-                deserialized.filesystem.schemas_dir,
-                original.filesystem.schemas_dir
+                deserialized.paths.schemas_dir,
+                original.paths.schemas_dir
             );
         }
     }

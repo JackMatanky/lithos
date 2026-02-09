@@ -503,17 +503,15 @@ impl Config {
     /// # use std::path::PathBuf;
     /// # use lithos_core::config::{
     /// #   aggregate::Config,
-    /// #   global::Global,
-    /// #   vault::{Vault, VaultId, VaultRoot}
+    /// #   raw::RawConfig,
+    /// #   vault::{VaultId, VaultRoot}
     /// # };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let global = Global::default();
-    /// let vault = Vault::default();
+    /// let raw = RawConfig::default();
     /// let config = Config::build(
-    ///     Some(&global),
+    ///     &raw,
     ///     VaultId::new(),
     ///     VaultRoot::try_new(PathBuf::from("/vault"))?,
-    ///     &vault,
     /// )?;
     /// config.validate()?;
     /// # Ok(())
@@ -548,16 +546,7 @@ mod tests {
         use std::path::PathBuf;
 
         use super::super::*;
-        use crate::config::{
-            frontmatter::FrontmatterKey,
-            global::Global,
-            logging::LogLevel,
-            paths::{
-                FileName, SchemaOverrides, SchemasDir, TemplateOverrides,
-                TemplatesDir,
-            },
-            vault::Vault,
-        };
+        use crate::config::{frontmatter::RawFrontmatter, logging::RawLogging};
 
         pub fn vault_id() -> VaultId {
             VaultId::new()
@@ -567,112 +556,43 @@ mod tests {
             VaultRoot::try_new(PathBuf::from(path)).expect("vault_root")
         }
 
-        fn schema(dir: &str, file: &str) -> Schema {
-            let schemas_dir =
-                SchemasDir::try_new(PathBuf::from(dir)).expect("schemas_dir");
-            let file_name = FileName::try_new(file).expect("file_name");
-            Schema::new(schemas_dir, file_name)
-        }
-
-        fn template(dir: &str) -> Template {
-            let templates_dir = TemplatesDir::try_new(PathBuf::from(dir))
-                .expect("templates_dir");
-            Template::new(templates_dir)
-        }
-
-        pub fn frontmatter(
-            alias_key: &str,
-            date_created_key: &str,
-            date_modified_key: &str,
-            file_class_key: &str,
-            title_key: &str,
-        ) -> Frontmatter {
-            Frontmatter::new(
-                FrontmatterKey::try_new(alias_key).expect("alias_key"),
-                FrontmatterKey::try_new(date_created_key)
-                    .expect("date_created_key"),
-                FrontmatterKey::try_new(date_modified_key)
-                    .expect("date_modified_key"),
-                FrontmatterKey::try_new(file_class_key)
-                    .expect("file_class_key"),
-                FrontmatterKey::try_new(title_key).expect("title_key"),
-            )
-        }
-
-        /// Test fixture: Create sample global configuration with system
-        /// defaults.
-        pub fn sample_global_config() -> Global {
-            Global::new(
-                GlobalPaths::new(
-                    schema("schemas", "property_bank.json"),
-                    template("templates"),
-                ),
-                frontmatter(
-                    "aliases",
-                    "date_created",
-                    "date_modified",
-                    "file_class",
-                    "title",
-                ),
-                Logging::new(LogLevel::Info),
-                None,
-                None,
-            )
-        }
-
-        /// Test fixture: Create sample vault configuration with user overrides.
-        pub fn sample_vault_config() -> Vault {
-            use crate::config::vault::Paths as VaultPaths;
-            Vault::new(
-                VaultPaths::new(
-                    None,
-                    SchemaOverrides::new(
-                        Some(
-                            schema("schemas", "property_bank.json")
-                                .schemas_dir()
-                                .clone(),
-                        ),
-                        Some(
-                            schema("schemas", "property_bank.json")
-                                .property_bank_filename()
-                                .clone(),
-                        ),
-                    ),
-                    TemplateOverrides::new(Some(
-                        template("custom_templates").templates_dir().clone(),
-                    )),
-                ),
-                Some(frontmatter(
-                    "aliases", "created", "modified", "type", "title",
-                )),
-                Some(Logging::new(LogLevel::Debug)),
-                None,
-            )
-        }
-
+        /// Create merged config simulating vault overrides.
+        /// - Global: `schemas="schemas"`, `templates="templates"`,
+        ///   `log_level=Info`
+        /// - Vault: `templates="custom_templates"`, `log_level=Debug`,
+        ///   frontmatter overrides
         pub fn merged_config_with_sample_overrides() -> Config {
-            let global = sample_global_config();
-            let vault = sample_vault_config();
-            Config::build(
-                Some(&global),
-                vault_id(),
-                vault_root("/vault"),
-                &vault,
-            )
-            .expect("Config build should succeed with sample data")
+            let raw = raw::RawConfig {
+                paths: raw::RawPathsConfig {
+                    schemas_dir: Some("schemas".to_owned()),
+                    templates_dir: Some("custom_templates".to_owned()), /* vault override */
+                    property_bank_filename: Some(
+                        "property_bank.json".to_owned(),
+                    ),
+                    cache_dir: Some(".lithos".to_owned()),
+                },
+                frontmatter: Some(RawFrontmatter {
+                    alias_key: Some("aliases".to_owned()),
+                    date_created_key: Some("created".to_owned()), /* vault override */
+                    date_modified_key: Some("modified".to_owned()), /* vault override */
+                    file_class_key: Some("type".to_owned()), // vault override
+                    title_key: Some("title".to_owned()),
+                }),
+                logging: Some(RawLogging {
+                    log_level: Some("debug".to_owned()), // vault override
+                }),
+                task: None,
+                trusted_vaults: None,
+            };
+            Config::build(&raw, vault_id(), vault_root("/vault"))
+                .expect("Config build should succeed with sample data")
         }
 
+        /// Create merged config with all defaults (empty `RawConfig`).
         pub fn merged_config_with_empty_inputs() -> Config {
-            let global = Global::default();
-            let vault = Vault::default();
-
-            Config::build(
-                Some(&global),
-                vault_id(),
-                vault_root("/vault"),
-                &vault,
-            )
-            .expect("Merge with empty values should succeed")
+            let raw = raw::RawConfig::default();
+            Config::build(&raw, vault_id(), vault_root("/vault"))
+                .expect("Merge with empty values should succeed")
         }
 
         pub fn config_with_cleared_events() -> Config {
@@ -733,13 +653,13 @@ mod tests {
             reason = "Test uses expect for deterministic config construction."
         )]
         fn build_handles_missing_global_sets_vault_path() {
-            let vault = Vault::default();
+            // Empty RawConfig = no config files, use all defaults
+            let raw = raw::RawConfig::default();
 
             let config = Config::build(
-                None,
+                &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
-                &vault,
             )
             .expect("Config build should succeed");
 
@@ -758,13 +678,13 @@ mod tests {
             reason = "Test uses expect for deterministic config construction."
         )]
         fn build_handles_missing_global_applies_global_defaults() {
-            let vault = Vault::default();
+            // Empty RawConfig = no config files, use all defaults
+            let raw = raw::RawConfig::default();
 
             let config = Config::build(
-                None,
+                &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
-                &vault,
             )
             .expect("Config build should succeed");
 
@@ -834,64 +754,6 @@ mod tests {
             );
         }
 
-        /// 3.3-UNIT-019:
-        /// `merge_frontmatter_handles_various_input_combinations`.
-        /// Priority: P1.
-        #[test]
-        fn merge_frontmatter_prefers_vault_values() {
-            let g = fixtures::frontmatter(
-                "aliases",
-                "date_created",
-                "date_modified",
-                "file_class",
-                "gt",
-            );
-            let v = fixtures::frontmatter(
-                "aliases",
-                "date_created",
-                "date_modified",
-                "file_class",
-                "vt",
-            );
-
-            assert_eq!(
-                Config::merge_frontmatter(Some(&g), Some(&v))
-                    .title_key()
-                    .as_str(),
-                "vt",
-            );
-        }
-
-        /// 3.3-UNIT-019:
-        /// `merge_frontmatter_handles_various_input_combinations`.
-        /// Priority: P1.
-        #[test]
-        fn merge_frontmatter_uses_global_when_vault_missing() {
-            let g = fixtures::frontmatter(
-                "aliases",
-                "date_created",
-                "date_modified",
-                "file_class",
-                "gt",
-            );
-
-            assert_eq!(
-                Config::merge_frontmatter(Some(&g), None).title_key().as_str(),
-                "gt",
-            );
-        }
-
-        /// 3.3-UNIT-019:
-        /// `merge_frontmatter_handles_various_input_combinations`.
-        /// Priority: P1.
-        #[test]
-        fn merge_frontmatter_uses_defaults_when_all_missing() {
-            assert_eq!(
-                Config::merge_frontmatter(None, None).title_key().as_str(),
-                "title",
-            );
-        }
-
         /// 3.3-UNIT-017: `supports_clone_debug_and_partial_eq`.
         /// Priority: P3.
         #[test]
@@ -924,27 +786,28 @@ mod tests {
             reason = "Test uses expect for deterministic config construction."
         )]
         fn merge_is_equivalent_for_identical_inputs() {
-            let global = fixtures::sample_global_config();
-            let vault = fixtures::sample_vault_config();
             let vault_id = fixtures::vault_id();
-            let config = Config::build(
-                Some(&global),
-                vault_id,
-                fixtures::vault_root("/vault"),
-                &vault.clone(),
-            )
-            .expect("First merge for trait verification failed");
+            let raw = raw::RawConfig {
+                paths: raw::RawPathsConfig {
+                    schemas_dir: Some("schemas".to_owned()),
+                    templates_dir: Some("templates".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+
+            let config =
+                Config::build(&raw, vault_id, fixtures::vault_root("/vault"))
+                    .expect("First merge for trait verification failed");
             let mut config = config;
             let _events = config.take_events();
-            let config2 = Config::build(
-                Some(&global),
-                vault_id,
-                fixtures::vault_root("/vault"),
-                &vault,
-            )
-            .expect("Second merge for trait verification failed");
+
+            let config2 =
+                Config::build(&raw, vault_id, fixtures::vault_root("/vault"))
+                    .expect("Second merge for trait verification failed");
             let mut config2 = config2;
             let _events_second = config2.take_events();
+
             assert_eq!(
                 config, config2,
                 "Merged configs with identical input must be equal (PartialEq)"
@@ -954,7 +817,7 @@ mod tests {
 
     mod merge {
         use super::*;
-        use crate::config::logging::LogLevel;
+        use crate::config::logging::{LogLevel, RawLogging};
 
         /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
         /// Priority: P1.
@@ -1071,29 +934,30 @@ mod tests {
             reason = "Test uses expect for deterministic config construction."
         )]
         fn merge_is_idempotent() {
-            // GIVEN: the same global and vault configs
-            let global = fixtures::sample_global_config();
-            let vault = fixtures::sample_vault_config();
+            // GIVEN: the same raw config
             let vault_id = fixtures::vault_id();
+            let raw = raw::RawConfig {
+                paths: raw::RawPathsConfig {
+                    schemas_dir: Some("schemas".to_owned()),
+                    templates_dir: Some("custom_templates".to_owned()),
+                    ..Default::default()
+                },
+                logging: Some(RawLogging {
+                    log_level: Some("debug".to_owned()),
+                }),
+                ..Default::default()
+            };
 
-            // WHEN: merging the same inputs multiple times
-            let merged1 = Config::build(
-                Some(&global),
-                vault_id,
-                fixtures::vault_root("/vault"),
-                &vault.clone(),
-            )
-            .expect("First merge should succeed");
+            // WHEN: building config from same inputs multiple times
+            let merged1 =
+                Config::build(&raw, vault_id, fixtures::vault_root("/vault"))
+                    .expect("First merge should succeed");
             let mut merged1 = merged1;
             let _events_first = merged1.take_events();
 
-            let merged2 = Config::build(
-                Some(&global),
-                vault_id,
-                fixtures::vault_root("/vault"),
-                &vault,
-            )
-            .expect("Second merge should succeed");
+            let merged2 =
+                Config::build(&raw, vault_id, fixtures::vault_root("/vault"))
+                    .expect("Second merge should succeed");
             let mut merged2 = merged2;
             let _events_second = merged2.take_events();
 
@@ -1159,10 +1023,7 @@ mod tests {
         use proptest::{prelude::*, test_runner::TestRunner};
 
         use super::*;
-        use crate::config::{
-            paths::{SchemaOverrides, TemplateOverrides, TemplatesDir},
-            vault::{Paths as VaultPaths, VaultRoot},
-        };
+        use crate::config::{paths::TemplatesDir, vault::VaultRoot};
 
         // 3.3-UNIT-012: `merge_handles_various_path_lengths`.
         // Priority: P2.
@@ -1177,27 +1038,23 @@ mod tests {
 
             let run_result =
                 runner.run(&strategy, |(vault_path, templates_dir)| {
-                    // GIVEN a global config and generated vault path/template
-                    // overrides
-                    let global = fixtures::sample_global_config();
-                    let templates_dir = TemplatesDir::try_new(PathBuf::from(
-                        templates_dir.clone(),
-                    ))
+                    // GIVEN a raw config with generated vault path/template dir
+                    let _templates_dir_validated = TemplatesDir::try_new(
+                        PathBuf::from(templates_dir.clone()),
+                    )
                     .map_err(|error| {
                         proptest::test_runner::TestCaseError::fail(format!(
                             "templates_dir should be valid, got: {error:?}"
                         ))
                     })?;
-                    let vault_config = Vault::new(
-                        VaultPaths::new(
-                            None,
-                            SchemaOverrides::new(None, None),
-                            TemplateOverrides::new(Some(templates_dir)),
-                        ),
-                        None,
-                        None,
-                        None,
-                    );
+
+                    let raw = raw::RawConfig {
+                        paths: raw::RawPathsConfig {
+                            templates_dir: Some(templates_dir),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    };
 
                     // WHEN building a config from the generated inputs
                     let root = VaultRoot::try_new(
@@ -1210,12 +1067,8 @@ mod tests {
                         ))
                     })?;
                     let root_clone = root.clone();
-                    let result = Config::build(
-                        Some(&global),
-                        fixtures::vault_id(),
-                        root,
-                        &vault_config,
-                    );
+                    let result =
+                        Config::build(&raw, fixtures::vault_id(), root);
 
                     let config = result.map_err(|error| {
                         proptest::test_runner::TestCaseError::fail(format!(
@@ -1243,29 +1096,32 @@ mod tests {
 
         use super::*;
         use crate::config::{
-            logging::LogLevel,
-            vault::{Paths as VaultPaths, VaultRoot},
+            logging::{LogLevel, RawLogging},
+            vault::VaultRoot,
         };
 
         /// 3.3-UNIT-016: `enforces_required_fields_and_enum_constraints`.
         /// Priority: P0.
         #[test]
         fn valid_config_passes_validation() {
-            // GIVEN: a vault config with specific field values
-            let global = fixtures::sample_global_config();
-            let vault = Vault::new(
-                VaultPaths::default(),
-                None,
-                Some(Logging::new(LogLevel::Info)),
-                None,
-            );
+            // GIVEN: a raw config with valid field values
+            let raw = raw::RawConfig {
+                paths: raw::RawPathsConfig {
+                    schemas_dir: Some("schemas".to_owned()),
+                    templates_dir: Some("templates".to_owned()),
+                    ..Default::default()
+                },
+                logging: Some(RawLogging {
+                    log_level: Some("info".to_owned()),
+                }),
+                ..Default::default()
+            };
 
-            // WHEN: attempting to merge the configs
+            // WHEN: building the config
             let result = Config::build(
-                Some(&global),
+                &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
-                &vault,
             );
 
             assert!(
