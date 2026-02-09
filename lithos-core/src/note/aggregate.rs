@@ -17,6 +17,7 @@ use super::{
     events::NoteEvents,
     frontmatter::Frontmatter,
     link::Link,
+    list::List,
     structure::{Heading, Section},
     tag::Tag,
     task::Task,
@@ -67,6 +68,8 @@ pub struct Note {
     tags: Vec<Tag>,
     /// Markdown headings.
     headings: Vec<Heading>,
+    /// Markdown lists.
+    lists: Vec<List>,
     /// Task items.
     tasks: Vec<Task>,
     /// Document sections.
@@ -161,6 +164,7 @@ impl Note {
             links: Vec::new(),
             tags: Vec::new(),
             headings: Vec::new(),
+            lists: Vec::new(),
             tasks: Vec::new(),
             sections: Vec::new(),
             frontmatter: None,
@@ -253,6 +257,18 @@ impl Note {
     #[inline]
     pub fn add_task(&mut self, task: Task) {
         self.tasks.push(task);
+    }
+
+    /// Returns an iterator over all lists in this note.
+    #[inline]
+    pub fn lists(&self) -> impl Iterator<Item = &List> {
+        self.lists.iter()
+    }
+
+    /// Adds a list to the note.
+    #[inline]
+    pub fn add_list(&mut self, list: List) {
+        self.lists.push(list);
     }
 
     /// Returns an iterator over all sections in this note.
@@ -353,7 +369,10 @@ mod tests {
 
     use fixtures::TEST_NOTE_ID;
 
-    use crate::note::types::{HeadingLevel, NoteId, SourceByteOffset};
+    use crate::note::{
+        list::{List, ListType},
+        types::{HeadingLevel, NoteId, SourceByteOffset},
+    };
 
     mod accessors {
         use super::*;
@@ -383,6 +402,16 @@ mod tests {
                 1,
                 "Note should have 1 heading"
             );
+            Ok(())
+        }
+
+        #[test]
+        fn lists_update_aggregate_state() -> Result<(), NoteError> {
+            let mut note = fixtures::base_note()?;
+            let list = List::new(ListType::Unordered);
+            note.add_list(list);
+
+            assert_eq!(note.lists().count(), 1, "Note should have 1 list");
             Ok(())
         }
 

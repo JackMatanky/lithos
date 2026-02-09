@@ -17,6 +17,8 @@ pub mod events;
 pub mod frontmatter;
 /// Link subentity for Note aggregate.
 pub mod link;
+/// List subentities for Note aggregate.
+pub mod list;
 /// Note ports for CQRS.
 pub mod ports;
 /// Note query implementations (CQRS read operations).
