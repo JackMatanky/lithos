@@ -21,30 +21,61 @@ use super::{
     structure::{Heading, Section},
     tag::{ArchivedTag, Tag},
     task::Task,
-    types::NoteId,
 };
+
+/// Unique identifier for a Note.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct NoteId(uuid::Uuid);
+
+impl NoteId {
+    /// Creates a new random `NoteId` (UUID v7).
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(uuid::Uuid::now_v7())
+    }
+}
+
+impl Default for NoteId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<uuid::Uuid> for NoteId {
+    #[inline]
+    fn from(uuid: uuid::Uuid) -> Self {
+        Self(uuid)
+    }
+}
+
+impl From<NoteId> for uuid::Uuid {
+    #[inline]
+    fn from(id: NoteId) -> uuid::Uuid {
+        id.0
+    }
+}
 
 /// Represents an Obsidian-compatible markdown note.
 ///
 /// `Note` is the aggregate root for the note bounded context. It maintains
 /// consistency across its sub-entities and stages domain events.
-///
-/// # Examples
-/// ```
-/// use lithos_core::note::{aggregate::Note, types::NoteId};
-/// use uuid::Uuid;
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// // For new files (first-time indexing)
-/// let new_id = NoteId::new();
-/// let note = Note::new(new_id, "projects/example.md".to_string())?;
-/// assert_eq!(
-///     note.path().as_str(),
-///     "projects/example.md",
-///     "Note path should match"
-/// );
-/// # Ok(())
-/// # }
-/// ```
 #[derive(
     Debug,
     Clone,
@@ -59,36 +90,30 @@ use super::{
 #[non_exhaustive]
 pub struct Note {
     /// Unique identity (UUID v7, time-ordered).
-    pub id: NoteId,
+    id: NoteId,
     /// Vault-relative path.
-    pub path: NotePath,
+    path: NotePath,
     /// All links (wiki-links, markdown links, and embeds).
-    pub links: Vec<Link>,
+    links: Vec<Link>,
     /// Hierarchical tags.
-    pub tags: Vec<Tag>,
+    tags: Vec<Tag>,
     /// Markdown headings.
-    pub headings: Vec<Heading>,
+    headings: Vec<Heading>,
     /// Markdown lists.
-    pub lists: Vec<List>,
+    lists: Vec<List>,
     /// Task items.
-    pub tasks: Vec<Task>,
+    tasks: Vec<Task>,
     /// Document sections.
-    pub sections: Vec<Section>,
+    sections: Vec<Section>,
     /// YAML metadata.
-    pub frontmatter: Option<Frontmatter>,
+    frontmatter: Option<Frontmatter>,
     /// Domain events pending emission (not serialized).
     #[rkyv(with = rkyv::with::Skip)]
     #[serde(skip)]
-    pub pending_events: Vec<NoteEvents>,
+    pending_events: Vec<NoteEvents>,
 }
 
 /// Validated vault-relative path for a note.
-///
-/// Enforces invariants:
-/// - Must end with `.md` extension.
-/// - Must not be absolute.
-/// - Must not contain path traversal (`..`).
-/// - Must be normalized (forward slashes).
 #[derive(
     Debug,
     Clone,
@@ -336,11 +361,11 @@ mod tests {
     mod fixtures {
         use uuid::Uuid;
 
-        use super::super::Note;
+        use super::super::{Note, NoteId};
         use crate::note::{
             error::NoteError,
             link::{EmbedType, Link, Target},
-            types::{NoteId, SourceByteOffset},
+            types::SourceByteOffset,
         };
 
         /// Fixed UUID for deterministic tests (valid UUID v7 format).
@@ -397,11 +422,12 @@ mod tests {
 
     use crate::note::{
         list::{List, ListType},
-        types::{HeadingLevel, NoteId, SourceByteOffset},
+        types::SourceByteOffset,
     };
 
     mod accessors {
         use super::*;
+        use crate::note::structure::HeadingLevel;
 
         #[test]
         fn tags_update_aggregate_state() -> Result<(), NoteError> {

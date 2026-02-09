@@ -205,22 +205,63 @@ impl FieldValue {
     #[inline]
     #[must_use]
     pub fn to_json_string(&self) -> String {
+        let mut out = String::new();
+        self.write_json(&mut out);
+        out
+    }
+
+    fn write_json(&self, out: &mut String) {
         match self {
-            Self::String(s) => format!("\"{}\"", s.replace('"', "\\\"")),
-            Self::Number(n) => n.to_string(),
-            Self::Boolean(b) => b.to_string(),
-            Self::Date(ts) => ts.to_string(),
+            Self::String(s) => {
+                out.push('"');
+                out.push_str(&s.replace('"', "\\\""));
+                out.push('"');
+            }
+            Self::Number(n) => {
+                use std::fmt::Write as _;
+                #[expect(
+                    clippy::let_underscore_must_use,
+                    reason = "Writing to String is infallible"
+                )]
+                let _ = write!(out, "{n}");
+            }
+            Self::Boolean(b) => {
+                out.push_str(if *b {
+                    "true"
+                } else {
+                    "false"
+                });
+            }
+            Self::Date(ts) => {
+                use std::fmt::Write as _;
+                #[expect(
+                    clippy::let_underscore_must_use,
+                    reason = "Writing to String is infallible"
+                )]
+                let _ = write!(out, "{ts}");
+            }
             Self::Array(arr) => {
-                let elements: Vec<String> =
-                    arr.iter().map(FieldValue::to_json_string).collect();
-                format!("[{}]", elements.join(", "))
+                out.push('[');
+                for (i, item) in arr.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    item.write_json(out);
+                }
+                out.push(']');
             }
             Self::Object(obj) => {
-                let pairs: Vec<String> = obj
-                    .iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k, v.to_json_string()))
-                    .collect();
-                format!("{{{}}}", pairs.join(", "))
+                out.push('{');
+                for (i, (k, v)) in obj.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    out.push('"');
+                    out.push_str(k);
+                    out.push_str("\": ");
+                    v.write_json(out);
+                }
+                out.push('}');
             }
         }
     }

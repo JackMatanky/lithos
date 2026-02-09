@@ -253,6 +253,7 @@ fn status_symbol_from_marker(checked: bool) -> Result<StatusSymbol, NoteError> {
 )]
 mod tests {
     use super::*;
+    use crate::note::aggregate::NoteId;
 
     #[test]
     #[expect(
@@ -324,10 +325,7 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "- [ ] #task Review PR\n";
 
-        let mut note = Note::new(
-            crate::note::types::NoteId::new(),
-            "notes/test.md".to_owned(),
-        )?;
+        let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
 
         parser.apply_to_note(&mut note, markdown)?;
 

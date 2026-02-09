@@ -51,28 +51,19 @@ use lithos_core::{
     config::task::{StatusSymbol, TaskConfig},
     db::Database,
     note::{
-        aggregate::Note,
+        aggregate::{Note, NoteId},
         frontmatter::Frontmatter,
         link::{Link, Target},
-        structure::{Heading, Section},
+        structure::{Heading, HeadingLevel, Section},
         tag::Tag,
         task::Task,
-        types::{HeadingLevel, NoteId, SourceByteOffset, SourceByteRange},
+        types::{SourceByteOffset, SourceByteRange},
     },
 };
 use tempfile::TempDir;
 use uuid::Uuid;
 
 /// Creates a realistic `Note` value with nested structures.
-///
-/// Purpose:
-/// - Ensures the benchmarks reflect the real read/write shapes Lithos expects
-///   (LSP hot paths, indexing, rendering) rather than a toy struct.
-///
-/// Expected results:
-/// - Increasing complexity here will slow both read and write benchmarks.
-/// - Archived reads should generally degrade less than full deserialization as
-///   fields are added, since they avoid constructing owned structures.
 fn create_test_note(index: usize) -> Note {
     let id = NoteId::new();
     let path = format!("notes/test-{index:04}.md");
@@ -160,15 +151,6 @@ fn create_test_note(index: usize) -> Note {
     note
 }
 
-/// Prepares a new database file populated with `count` notes.
-///
-/// Purpose:
-/// - Separates dataset creation from timed benchmark loops so we do not
-///   accidentally measure setup or I/O unrelated to the target operation.
-///
-/// Expected results:
-/// - This function should not dominate benchmark time, because it runs outside
-///   the timed loops.
 fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("bench.db");
@@ -190,16 +172,6 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
     (temp_dir, db, note_ids)
 }
 
-/// Benchmarks archived-access reads via `Database::get`.
-///
-/// Purpose:
-/// - Models the “LSP hot path”: inspect a subset of fields without building an
-///   owned `Note`.
-///
-/// Expected results:
-/// - Should be faster than `bench_full_deserialize`.
-/// - In this codebase, “zero-copy” includes an alignment copy into an
-///   `AlignedVec`, so expect a speedup closer to ~1.5–3× rather than 10×.
 fn bench_zero_copy_read(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
@@ -220,17 +192,6 @@ fn bench_zero_copy_read(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmarks full deserialization via `Database::get_owned`.
-///
-/// Purpose:
-/// - Models mutation/indexing flows where an owned `Note` is required.
-///
-/// Expected results:
-/// - Should be slower than `bench_zero_copy_read` because it allocates and
-///   constructs owned nested structures.
-/// - If this becomes close to archived-access reads, it likely means we are
-///   deserializing less data than we think or doing more work in the archived
-///   path than intended.
 fn bench_full_deserialize(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
@@ -250,15 +211,6 @@ fn bench_full_deserialize(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmarks individual writes using `Database::put`.
-///
-/// Purpose:
-/// - Estimates the cost of one write transaction + commit per item.
-///
-/// Expected results:
-/// - Much slower per inserted element than `bench_batch_write` for large N.
-/// - If this looks “too fast”, the filesystem may be caching aggressively; the
-///   transaction-overhead benchmark should still show the batching advantage.
 fn bench_single_write(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("bench_write.db");
@@ -280,16 +232,6 @@ fn bench_single_write(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmarks batched writes using `Database::batch_write`.
-///
-/// Purpose:
-/// - Captures the “indexing-style” workload: many inserts under one write
-///   transaction with one commit.
-///
-/// Expected results:
-/// - Should be dramatically faster than doing the same number of inserts via
-///   `Database::put` in a loop.
-/// - Should scale roughly linearly with batch size (100 < 500 < 1000).
 fn bench_batch_write(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
 
@@ -333,22 +275,13 @@ fn bench_batch_write(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmarks delete performance via `Database::delete`.
-///
-/// Purpose:
-/// - Ensures deletes do not regress badly as key/value sizes change.
-///
-/// Expected results:
-/// - Should remain low and relatively stable across releases.
-/// - If it degrades significantly, check for unintended extra work (e.g.,
-///   scanning or rebuilding indexes on delete).
 fn bench_delete(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(1000);
 
     let mut group = c.benchmark_group("delete");
     group.throughput(Throughput::Elements(1));
 
-    let mut index = 0;
+    let mut index: usize = 0;
     group.bench_function("delete_single", |b| {
         b.iter(|| {
             let id = note_ids[index % note_ids.len()];
@@ -363,17 +296,6 @@ fn bench_delete(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmarks “hot key” reads vs “rotating key” reads.
-///
-/// Purpose:
-/// - A sanity check for cache effects in the redb stack and OS page cache.
-/// - Helps detect when an internal change accidentally defeats locality.
-///
-/// Expected results:
-/// - Hot reads should generally be faster than cold reads.
-/// - If both converge, it may mean the working set fits entirely in cache, or
-///   the operation is dominated by non-cacheable work (e.g.,
-///   validation/copies).
 fn bench_cache_effectiveness(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
 
@@ -390,7 +312,7 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
         });
     });
 
-    let mut cold_index = 0;
+    let mut cold_index: usize = 0;
     group.bench_function("cold_read", |b| {
         b.iter(|| {
             let cold_id =
@@ -407,16 +329,6 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmarks transaction creation/commit overhead.
-///
-/// Purpose:
-/// - Isolates the cost of “many commits” vs “one commit”, which is the main
-///   lever behind write performance in redb.
-///
-/// Expected results:
-/// - `batch_txn` should be much faster than `individual_txns` for the same N.
-/// - If they converge, it likely means commits are not happening as expected
-///   (or redb durability settings changed).
 fn bench_transaction_overhead(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
 

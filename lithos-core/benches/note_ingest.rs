@@ -19,7 +19,10 @@ use criterion::{
 };
 use lithos_core::{
     config::task::TaskConfig,
-    note::{aggregate::Note, ingest::ingest_markdown, types::NoteId},
+    note::{
+        aggregate::{Note, NoteId},
+        ingest::ingest_markdown,
+    },
 };
 
 fn sample_markdown() -> &'static str {

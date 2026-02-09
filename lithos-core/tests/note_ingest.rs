@@ -3,10 +3,9 @@
 use lithos_core::{
     config::task::TaskConfig,
     note::{
-        aggregate::Note,
+        aggregate::{Note, NoteId},
         ingest::ingest_markdown,
         list::{List, ListItem, ListType},
-        types::NoteId,
     },
 };
 

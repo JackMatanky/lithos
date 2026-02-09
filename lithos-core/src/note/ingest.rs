@@ -26,14 +26,12 @@ pub fn ingest_markdown(
 )]
 mod tests {
     use super::*;
+    use crate::note::aggregate::NoteId;
 
     #[test]
     fn ingest_markdown_populates_lists_and_tasks() -> Result<(), NoteError> {
         let config = TaskConfig::default();
-        let mut note = Note::new(
-            crate::note::types::NoteId::new(),
-            "notes/ingest.md".to_owned(),
-        )?;
+        let mut note = Note::new(NoteId::new(), "notes/ingest.md".to_owned())?;
 
         ingest_markdown(&mut note, "- [ ] #task Review PR\n", &config)?;
 

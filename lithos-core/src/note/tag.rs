@@ -16,8 +16,6 @@ use rkyv::{Archive, Deserialize, Serialize};
 use super::error::NoteError;
 
 /// Internal wrapper for the full tag path string (without leading `#`).
-///
-/// This serves as the canonical stored key for tags.
 #[derive(
     Debug,
     Clone,
@@ -90,65 +88,29 @@ impl Deref for Segments {
     }
 }
 
-impl TagPath {
-    /// Returns string reference.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Creates a new `TagPath` from a raw tag string.
-    fn new(input: &str) -> Result<Self, NoteError> {
-        Self::validate(input)?;
-        let tag_path = input.strip_prefix('#').ok_or_else(|| {
-            NoteError::Tag("Tag must start with #".to_owned())
-        })?;
-        Ok(Self(tag_path.into()))
-    }
-
-    /// Validates a raw tag string.
+impl Tag {
+    /// Creates a new `Tag` from a raw tag string.
+    ///
+    /// # Tag Format
+    /// - Must start with `#`
+    /// - Segments separated by `/`
+    /// - Segments must match alphanumeric, underscore, or hyphen
+    /// - No empty segments allowed
     ///
     /// # Errors
-    /// Returns [`NoteError::Tag`] if the input doesn't start with `#` or is
-    /// empty.
+    /// Returns [`NoteError::Tag`] if validation fails.
     #[inline]
-    pub fn validate(input: &str) -> Result<(), NoteError> {
-        let tag_path = input.strip_prefix('#').ok_or_else(|| {
+    pub fn new(input: &str) -> Result<Self, NoteError> {
+        let tag_path_str = input.strip_prefix('#').ok_or_else(|| {
             NoteError::Tag("Tag must start with #".to_owned())
         })?;
 
-        if tag_path.is_empty() {
+        if tag_path_str.is_empty() {
             return Err(NoteError::Tag("Tag cannot be empty".to_owned()));
         }
 
-        Ok(())
-    }
-}
-
-impl Segments {
-    /// Returns segments as slice.
-    #[inline]
-    #[must_use]
-    pub fn as_slice(&self) -> &[Box<str>] {
-        &self.0
-    }
-
-    /// Creates new `Segments` from a tag path.
-    fn new(tag_path: &str) -> Result<Self, NoteError> {
-        Self::validate(tag_path)?;
-        let segments = tag_path.split('/').map(Into::into).collect();
-        Ok(Self(segments))
-    }
-
-    /// Validates individual path segments.
-    ///
-    /// # Errors
-    /// Returns [`NoteError::Tag`] if any segment is empty or contains invalid
-    /// characters.
-    #[inline]
-    pub fn validate(tag_path: &str) -> Result<(), NoteError> {
-        for segment in tag_path.split('/') {
+        let mut segments = Vec::new();
+        for segment in tag_path_str.split('/') {
             if segment.is_empty() {
                 return Err(NoteError::Tag("Empty tag segment".to_owned()));
             }
@@ -162,65 +124,12 @@ impl Segments {
                      underscore, and hyphen allowed"
                 )));
             }
+            segments.push(segment.into());
         }
 
-        Ok(())
-    }
-}
-
-impl Tag {
-    /// Creates a new `Tag` from a raw tag string.
-    ///
-    /// # Tag Format
-    /// - Must start with `#`
-    /// - Segments separated by `/`
-    /// - Segments must match alphanumeric, underscore, or hyphen
-    /// - No empty segments allowed
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::note::tag::Tag;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///
-    /// let tag = Tag::new("#work/project/urgent")?;
-    /// assert_eq!(
-    ///     tag.full_path(),
-    ///     "work/project/urgent",
-    ///     "Full path should omit leading #"
-    /// );
-    /// assert_eq!(tag.segments().len(), 3, "Segment count should match path");
-    /// assert_eq!(tag.segments(), &[
-    ///     "work".into(),
-    ///     "project".into(),
-    ///     "urgent".into()
-    /// ]);
-    ///
-    /// let simple_tag = Tag::new("#personal")?;
-    /// assert_eq!(
-    ///     simple_tag.full_path(),
-    ///     "personal",
-    ///     "Full path should match tag"
-    /// );
-    /// assert_eq!(
-    ///     simple_tag.segments(),
-    ///     &["personal".into()],
-    ///     "Segments should contain the tag"
-    /// );
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    /// Returns [`NoteError::Tag`] if the input doesn't start with `#`, the tag
-    /// is empty, contains empty segments, or contains invalid characters.
-    #[inline]
-    pub fn new(input: &str) -> Result<Self, NoteError> {
-        let tag_path = TagPath::new(input)?;
-        let segments = Segments::new(tag_path.as_str())?;
-
         Ok(Self {
-            full_path: tag_path,
-            segments,
+            full_path: TagPath(tag_path_str.into()),
+            segments: Segments(segments),
         })
     }
 

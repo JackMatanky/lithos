@@ -354,7 +354,9 @@ mod tests {
 
         use super::*;
         use crate::note::{
-            frontmatter::Frontmatter, types::NoteId, value::FieldValue,
+            aggregate::{Note, NoteId},
+            frontmatter::Frontmatter,
+            value::FieldValue,
         };
 
         pub const TEST_MISSING_ID: Uuid =
@@ -417,7 +419,7 @@ mod tests {
 
     mod query {
         use super::*;
-        use crate::note::types::NoteId;
+        use crate::note::aggregate::NoteId;
 
         #[test]
         fn find_by_id_returns_note_with_matching_id()
