@@ -11,8 +11,12 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use super::{
-    error::ConfigError, frontmatter::Frontmatter, logging::Logging,
-    paths::Paths, raw::RawTrustedVaults, task::TaskConfig,
+    error::ConfigError,
+    frontmatter::Frontmatter,
+    logging::Logging,
+    paths::{AbsolutePath, Paths},
+    raw::RawTrustedVaults,
+    task::TaskConfig,
 };
 
 /// System-wide configuration settings.
@@ -228,6 +232,9 @@ impl TrustedVaultMap {
 
 /// A validated path to a trusted vault (absolute).
 ///
+/// This is a wrapper around [`AbsolutePath`] that provides a domain-specific
+/// name for trusted vault paths.
+///
 /// # Invariants
 ///
 /// - Must be an absolute path on the filesystem.
@@ -253,8 +260,7 @@ impl TrustedVaultMap {
 #[non_exhaustive]
 pub struct TrustedVaultPath(
     /// Internal path storage.
-    #[rkyv(with = rkyv::with::AsString)]
-    PathBuf,
+    AbsolutePath,
 );
 
 impl TrustedVaultPath {
@@ -264,30 +270,14 @@ impl TrustedVaultPath {
     /// # Errors
     /// Returns [`ConfigError`] if the path is not absolute or is empty.
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
-        if path.as_os_str().is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "trusted_vault_path".to_owned().into(),
-                message: "path cannot be empty".to_owned().into(),
-            });
-        }
-        if !path.is_absolute() {
-            return Err(ConfigError::ValidationFailed {
-                field: "trusted_vault_path".to_owned().into(),
-                message: format!(
-                    "path must be absolute: {}",
-                    path.to_string_lossy()
-                )
-                .into(),
-            });
-        }
-        Ok(Self(path))
+        Ok(Self(AbsolutePath::try_new(path)?))
     }
 
     #[inline]
     #[must_use]
     /// Return the inner path.
     pub fn as_path(&self) -> &std::path::Path {
-        &self.0
+        self.0.as_path()
     }
 }
 
@@ -303,7 +293,7 @@ impl TryFrom<String> for TrustedVaultPath {
 impl From<TrustedVaultPath> for String {
     #[inline]
     fn from(path: TrustedVaultPath) -> Self {
-        path.0.to_string_lossy().into_owned()
+        path.0.as_path().to_string_lossy().into_owned()
     }
 }
 
