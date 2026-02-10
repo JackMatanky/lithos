@@ -134,12 +134,16 @@ lithos/
 
 - **Public API:** Only types reachable from `lithos-core/src/lib.rs` are public.
 - **Context Isolation:**
-  - **Business Contexts** (note, schema, template): Isolated from each other
-  - **Cross-Cutting Infrastructure** (config, db, fs, patterns): Available to all contexts
-  - Business contexts depend on infrastructure but NOT on each other
-- **Dependency Flow:** Infrastructure (db/, fs/, config/, patterns/) → Business Contexts (note/, schema/, template/) → CLI
+  - **Business Contexts** (`note`, `schema`, `template`): Isolated from each other
+  - **Cross-Cutting Context** (`config`): Shared business rules/settings accessible to all business contexts
+  - **Pure Infrastructure** (`db`, `fs`, ...): Generic utilities with no business rules
+  - Business contexts depend on config context and infrastructure, but NOT on each other
+- **Dependency Flow:**
+  - Pure Infrastructure (db/, fs/, patterns/) → All Business Contexts
+  - Config Context → Other Business Contexts (note/, schema/, template/)
+  - Business Contexts → CLI
 - **Port-Based CQRS:**
-  - Each context defines **split storage ports** with GATs (e.g., `SchemaQueryPort`, `SchemaCommandPort`)
+  - Each context defines **split storage ports** with GATs (e.g., `schema::ports::Query`, `schema::ports::Command`)
   - CQRS types generic over respective ports: `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`
   - Default adapters: `RedbSchemaQueryAdapter<'db>` and `RedbSchemaCommandAdapter<'db>` implement ports
   - Type aliases hide complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>`

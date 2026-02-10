@@ -19,11 +19,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Core Runtime
 - **Rust 1.92+**: Mandatory for memory safety patterns and zero-cost abstractions.
 - **Tokio 1.49**: Async runtime with **'full' features** enabled for concurrent vault operations and CLI responsiveness.
-    - *Safety Invariant*: NEVER perform blocking I/O or heavy CPU tasks (e.g., Redb transactions) inside an async fn without `tokio::task::spawn_blocking`.
+  - *Safety Invariant*: NEVER perform blocking I/O or heavy CPU tasks (e.g., Redb transactions) inside an async fn without `tokio::task::spawn_blocking`.
 
 ### Data & Persistence
 - **Redb 3.1 & rkyv 0.8**: Embedded ACID KV storage with **zero-copy deserialization** for high-frequency lookups.
-    - *Safety Invariant*: All storage types MUST use `rkyv` validation (`bytecheck`) before access to prevent memory corruption from malformed vault data.
+  - *Safety Invariant*: All storage types MUST use `rkyv` validation (`bytecheck`) before access to prevent memory corruption from malformed vault data.
 - **UUID 1.19 (v7)**: Time-ordered, sortable unique identifiers for note identity.
 
 ### Application Engine
@@ -34,13 +34,13 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ### Tooling & Orchestration
 - **mise**: **Primary and authorized entry point** for all tasks and tool version management (via `mise.toml`).
-    - *Safety Invariant*: All commands MUST be executed via `mise run <task>` to ensure toolchain parity across environments.
-    - **Available Tasks Reference:**
-        - **Quality Gates:** `quality` (fmt+lint+adr:validate), `verify` (full gates + tests), `fmt`, `lint`, `deny`
-        - **Testing:** `test` (unit+integration+e2e, alias: `t`), `test:unit`, `test:integration`, `test:e2e`, `test:coverage`, `test:watch`, `test:burn-in`, `test:changed`, `test:unit:*` (module-specific)
-        - **CI/CD:** `ci` (pipeline simulation), `verify` (alias: `v`)
-        - **Development:** `build`, `clean`, `doc`, `dev-setup`, `test:bench`
-        - **ADR Management:** `adr:validate`, `adr:metrics`
+  - *Safety Invariant*: All commands MUST be executed via `mise run <task>` to ensure toolchain parity across environments.
+  - **Available Tasks Reference:**
+    - **Quality Gates:** `quality` (fmt+lint+adr:validate), `verify` (full gates + tests), `fmt`, `lint`, `deny`
+    - **Testing:** `test` (unit+integration+e2e, alias: `t`), `test:unit`, `test:integration`, `test:e2e`, `test:coverage`, `test:watch`, `test:burn-in`, `test:changed`, `test:unit:*` (module-specific)
+    - **CI/CD:** `ci` (pipeline simulation), `verify` (alias: `v`)
+    - **Development:** `build`, `clean`, `doc`, `dev-setup`, `test:bench`
+    - **ADR Management:** `adr:validate`, `adr:metrics`
 - **pre-commit**: Mandatory quality gate for linting, formatting, and complexity checks before every commit. Bypassing hooks is strictly prohibited.
 
 ### Code Quality & Standards
@@ -58,26 +58,31 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ### Architectural Integrity
 - **Dependency Flow Architecture:**
-    - **Single Core Crate:** `lithos-core` contains all business logic and infrastructure. Dependencies flow INWARD from generic infrastructure (`db/`, `fs/`, `config/`) to business contexts (`note/`, `schema/`, `template/`).
-    - **Context Isolation:** Business contexts (note, schema, template) MUST NOT import each other. They depend only on infrastructure and shared utilities.
-    - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `lithos-cli`).
+  - **Single Core Crate:** `lithos-core` contains all business logic and infrastructure. Dependencies flow:
+    - Pure Infrastructure (`db/`, `fs/`) → All Contexts
+    - Cross-Cutting Business Rules (`config/`) → Business Contexts
+    - Business Contexts (`note/`, `schema/`, `template/`) → CLI
+  - **Context Isolation:**
+    - Business contexts (note, schema, template) MUST NOT import each other.
+    - Business contexts MAY depend on config context (user-configurable rules) and pure infrastructure (generic utilities).
+  - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `lithos-cli`).
 - **Port-Based CQRS:**
-    - **Port Traits:** Each context defines split storage capabilities via `<Context>QueryPort` and `<Context>CommandPort` traits (e.g., `SchemaQueryPort`, `SchemaCommandPort`) with GATs for zero-copy reads.
-    - **Generic CQRS:** Command/Query types are generic over respective ports (e.g., `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`).
-    - **Concrete Adapters:** Infrastructure provides concrete implementations (e.g., `RedbSchemaQueryAdapter`, `RedbSchemaCommandAdapter`).
-    - **Type Aliases:** Use type aliases for ergonomics (e.g., `RedbSchemaQuery::new_redb(&db).find(...)`).
-    - **Port Split Benefits:** Read-only test fakes don't implement writes, prevents interface bloat, enables future backend flexibility.
+  - **Port Traits:** Each context defines split storage capabilities via `<Context>::ports::Query` and `<Context>::ports::Command` traits (e.g., `schema::ports::QueryPort`, `schema::ports::CommandPort`) with GATs for zero-copy reads.
+  - **Generic CQRS:** Command/Query types are generic over respective ports (e.g., `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`).
+  - **Concrete Adapters:** Infrastructure provides concrete implementations (e.g., `RedbSchemaQueryAdapter`, `RedbSchemaCommandAdapter`).
+  - **Type Aliases:** Use type aliases for ergonomics (e.g., `RedbSchemaQuery::new_redb(&db).find(...)`).
+  - **Port Split Benefits:** Read-only test fakes don't implement writes, prevents interface bloat, enables future backend flexibility.
 - **Naming Convention:**
-    - Queries: `find_*`, `get_*`, `list_*`, `count_*`
-    - Commands: `save`, `delete`, `update`, `create`
-    - Ports: `<Context>Store` (e.g., `NoteStore`)
+  - Queries: `find_*`, `get_*`, `list_*`, `count_*`
+  - Commands: `save`, `delete`, `update`, `create`
+  - Ports: `<Context>Store` (e.g., `NoteStore`)
 - **Sync-First Execution Model:**
-    - **Default to Sync:** Core domain logic and file I/O must be synchronous.
-    - **Async at Edges:** Use `async` ONLY for LSP server, network I/O, or explicit concurrency (e.g., parallel indexing).
-    - **Bridge:** Use `tokio::task::spawn_blocking` to bridge sync core logic into async contexts (CLI/LSP).
+  - **Default to Sync:** Core domain logic and file I/O must be synchronous.
+  - **Async at Edges:** Use `async` ONLY for LSP server, network I/O, or explicit concurrency (e.g., parallel indexing).
+  - **Bridge:** Use `tokio::task::spawn_blocking` to bridge sync core logic into async contexts (CLI/LSP).
 - **Unit of Work (Transactional Context):**
-    - **Batch Operations:** For bulk updates (indexing), use `db.batch_write()` which handles transaction lifecycle and durability settings.
-    - **Deferred Dispatch:** Domain events must be staged and dispatched only after successful transaction commit.
+  - **Batch Operations:** For bulk updates (indexing), use `db.batch_write()` which handles transaction lifecycle and durability settings.
+  - **Deferred Dispatch:** Domain events must be staged and dispatched only after successful transaction commit.
 - **Dependency Injection:** Favor **Generics (`impl Trait` or `&ConcreteType`)** for internal adapter-level utility functions to maximize static dispatch performance. Explicit constructor injection is optional for core types.
 
 ### Language-Specific Rules (Rust)
@@ -92,17 +97,17 @@ _This file contains critical rules and patterns that AI agents must follow when 
 #### AI Pitfall Protections
 - **Path Protocol**: Use `PathBuf` (owned) or `&Path` (borrowed) for all file paths. NEVER use `String` for paths. Strictly avoid std::env::current_dir and std::fs::canonicalize due to platform inconsistencies; always use Figment-managed absolute paths for reliability. Exception: In error recovery scenarios, use canonicalize only if Figment paths are invalid.
 - **Async Resource Safety:**
-    - In `async` contexts, ONLY use `tokio::fs`. Use `spawn_blocking` for `std::fs` or heavy CPU tasks.
-    - **Concurrency Throttling:** Use tokio::sync::Semaphore to limit concurrent I/O, especially for large-scale operations (e.g., vault indexing). Set permits based on system limits, e.g., Semaphore::new(100) for file reads to avoid exceeding OS file descriptors.
+  - In `async` contexts, ONLY use `tokio::fs`. Use `spawn_blocking` for `std::fs` or heavy CPU tasks.
+  - **Concurrency Throttling:** Use tokio::sync::Semaphore to limit concurrent I/O, especially for large-scale operations (e.g., vault indexing). Set permits based on system limits, e.g., Semaphore::new(100) for file reads to avoid exceeding OS file descriptors.
 - **Lock Discipline:** NEVER hold a std::sync::MutexGuard across an .await, as it blocks the async runtime thread. If state must persist across awaits, use tokio::sync::Mutex, which is async-aware and releases locks during suspension.
 - **Numeric Safety:** Prohibit 'as' casting; use .try_into().context("...") to prevent silent truncation and handle errors gracefully. Avoid .expect() in production—propagate errors instead.
 
 #### Persistence & Performance
 - **rkyv Requirements:** Domain types MUST derive `Archive`, `Serialize`, `Deserialize`, and `CheckBytes` for zero-copy database operations. `Stored*` types used only when domain shape inefficient.
 - **Three-Shape Model (ADR 003):**
-  - **Raw\* (serde):** Unvalidated input from filesystem for tolerant parsing
+  - **`Raw*` (serde):** Unvalidated input from filesystem for tolerant parsing
   - **Domain (rkyv + serde feature-gated):** Validated entities with rkyv derives, used throughout application
-  - **Stored\* (rkyv, optional):** Storage-optimized representation, only when domain shape causes performance issues
+  - **`Stored*` (rkyv, optional):** Storage-optimized representation, only when domain shape causes performance issues
   - **Default Strategy:** Store domain types directly; introduce `Stored*` only when profiling reveals inefficiency
 - **Zero-Copy Boundary:** Port traits use GATs (`type Archived<'a>`) to enable closure-based archived reads without leaking transaction lifetimes.
 - **Note Identity:** Use **UUID v7** for primary keys in Redb to ensure time-ordered insertion and logical stability during file renames.
@@ -155,16 +160,16 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ### Testing Rules
 - **Port-Based Testing Hierarchy:**
-    - **Domain Tests:** Pure unit tests with zero dependencies. Focus on logic, invariants, and conversions.
-    - **Integration Tests:** Use `FakeStore` implementations to test CQRS logic without DB. Use real `RedbStore` with temporary DBs for full integration. Locations: Unit in `lithos-core/src/`, Integration in `lithos-core/tests/`.
-    - **E2E CLI Tests:** Use `assert_cmd` or similar to test the compiled binary against real temporary vaults.
+  - **Domain Tests:** Pure unit tests with zero dependencies. Focus on logic, invariants, and conversions.
+  - **Integration Tests:** Use `FakeStore` implementations to test CQRS logic without DB. Use real `RedbStore` with temporary DBs for full integration. Locations: Unit in `lithos-core/src/`, Integration in `lithos-core/tests/`.
+  - **E2E CLI Tests:** Use `assert_cmd` or similar to test the compiled binary against real temporary vaults.
 - **Authorized Entry Points:** All testing via Mise: Use 'mise run test' for all types, 'test:unit:<module>' for specific modules (config/note/schema/template/db/fs), 'test:coverage' for tarpaulin reports, 'test:bench' for criterion. Example: 'mise run test:unit:note'.
 - **Mandatory Tools:** nextest (runner), tarpaulin (coverage), insta (snapshots), pretty_assertions (diffs), criterion (benchmarks), proptest (property testing).
 - **Schema Validation Authority:** Use the JSON schemas in `docs/schemas/` (from the Go implementation) as the source of truth for backward compatibility tests of the Rust Schema Engine.
 - **Starter Kit Pipeline:**
-    - **Conversion:** All `templater` scripts and templates (from `docs/refs/obsidian/`) must be converted to Lithos/MiniJinja template syntax before being promoted to test fixtures or starter kit assets.
-    - **Sanitization:** ABSOLUTELY ALL personal information must be removed from sample files in `docs/refs/obsidian/` before they are used in tests or packaged.
-    - **Asset Bundle:** The final starter kit must include a cohesive set of sanitized templates, Go-compatible JSON schemas, a validated `lithos.toml` config, and a standard directory structure.
+  - **Conversion:** All `templater` scripts and templates (from `docs/refs/obsidian/`) must be converted to Lithos/MiniJinja template syntax before being promoted to test fixtures or starter kit assets.
+  - **Sanitization:** ABSOLUTELY ALL personal information must be removed from sample files in `docs/refs/obsidian/` before they are used in tests or packaged.
+  - **Asset Bundle:** The final starter kit must include a cohesive set of sanitized templates, Go-compatible JSON schemas, a validated `lithos.toml` config, and a standard directory structure.
 - **Async Testing:** ALWAYS use `#[tokio::test(flavor = "multi_thread")]` for integration tests to surface race conditions in the event bus or indexer. Safety invariants: Use timeouts (e.g., with_timeout), semaphore for I/O throttling. Block limit: >10ms requires spawn_blocking.
 - **Performance Benchmarking:** Use `criterion` for all NFR-critical paths (Indexing, Rendering). 10k-note vault benchmarks are mandatory for storage changes.
 - **Coverage Target:** Enforce 80%+ coverage via tarpaulin in CI pipelines. Focus coverage efforts on domain and app logic; ignore generated code.
@@ -183,8 +188,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 #### Naming & Mechanical Sympathy
 - **Transparency:** Prohibit hiding expensive clones or allocations behind getter methods. If a method clones, it MUST be named `clone_x()` or `to_x_owned()`.
 - **Port/Adapter Naming:**
-    - **Ports:** `<Context>Store` (e.g., `NoteStore`).
-    - **Adapters:** `Redb<Context>Store` (e.g., `RedbNoteStore`).
+  - **Ports:** `<Context>::ports::Store` (e.g., `note::ports::Store`).
+  - **Adapters:** `Redb<Context>Store` (e.g., `RedbNoteStore`).
 - **DTO Isolation:** Use `Stored*` prefix for persistence DTOs (e.g., `StoredNote`). These live in the storage layer and never leak into the public domain API.
 
 #### Documentation as "Agent Glue"
@@ -202,16 +207,16 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Cognitive Complexity:** Enforce hard limit of 25 via clippy deny. Refactor by extracting functions if exceeded.
 - **Anti-Pattern Deny:** Prohibit `clippy::unwrap_used`, `clippy::expect_used`, `clippy::todo`, `clippy::panic`, `clippy::unimplemented`, and `clippy::dbg_macro` in production code.
 - **Lint Suppression Policy:**
-    - Prefer `#[expect(...)]` over `#[allow(...)]` for intentional violations.
-    - Every `#[expect]` must explain the constraint, why unavoidable, and how idiomatic:
-      ```rust
-      #[expect(lint_name, reason = "[WHAT constraint]. [WHY unavoidable]. [HOW idiomatic].")]
-      ```
-    - Examples:
-        - Pattern Type Mismatch: "Enum has mixed Copy/non-Copy fields. Cannot dereference without moving. Matching on &self is idiomatic."
-        - Test Setup: "Test fixture uses unwrap() for clear errors. Acceptable in tests."
-        - Float Arithmetic: "Validation requires epsilon comparison for precision."
-    - Consolidate multiple `#[expect]` on the same item into one with unified reason.
+  - Prefer `#[expect(...)]` over `#[allow(...)]` for intentional violations.
+  - Every `#[expect]` must explain the constraint, why unavoidable, and how idiomatic:
+    ```rust
+    #[expect(lint_name, reason = "[WHAT constraint]. [WHY unavoidable]. [HOW idiomatic].")]
+    ```
+  - Examples:
+    - Pattern Type Mismatch: "Enum has mixed Copy/non-Copy fields. Cannot dereference without moving. Matching on &self is idiomatic."
+    - Test Setup: "Test fixture uses unwrap() for clear errors. Acceptable in tests."
+    - Float Arithmetic: "Validation requires epsilon comparison for precision."
+  - Consolidate multiple `#[expect]` on the same item into one with unified reason.
 
 #### Process & Orchestration
 - **Mise-First Formatting:** Formatting and linting MUST be run through `mise run verify` to ensure the exact toolchain versions from `mise.toml` are used.
