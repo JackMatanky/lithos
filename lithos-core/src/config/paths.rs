@@ -562,6 +562,105 @@ impl std::fmt::Display for RelativePath {
     }
 }
 
+/// A validated absolute path.
+///
+/// This type ensures that paths are fully resolved and absolute on the
+/// filesystem. It's the counterpart to [`RelativePath`] for cases where
+/// a complete, resolved path is required.
+///
+/// # Invariants
+///
+/// - Must be an absolute path.
+/// - Must not be empty.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_core::config::paths::AbsolutePath;
+///
+/// let path = AbsolutePath::try_new("/vaults/notes".into())?;
+/// assert!(path.as_path().is_absolute());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct AbsolutePath(
+    /// Internal path storage.
+    #[rkyv(with = rkyv::with::AsString)]
+    PathBuf,
+);
+
+impl AbsolutePath {
+    /// Creates a validated absolute path.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] if the path is not absolute
+    /// or is empty.
+    #[inline]
+    pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
+        if path.as_os_str().is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: "absolute_path".to_owned().into(),
+                message: "path cannot be empty".to_owned().into(),
+            });
+        }
+        if !path.is_absolute() {
+            return Err(ConfigError::ValidationFailed {
+                field: "absolute_path".to_owned().into(),
+                message: format!(
+                    "path must be absolute: {}",
+                    path.to_string_lossy()
+                )
+                .into(),
+            });
+        }
+        Ok(Self(path))
+    }
+
+    /// Return the inner path.
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for AbsolutePath {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, ConfigError> {
+        Self::try_new(PathBuf::from(value))
+    }
+}
+
+impl From<AbsolutePath> for String {
+    #[inline]
+    fn from(path: AbsolutePath) -> Self {
+        path.0.to_string_lossy().into_owned()
+    }
+}
+
+impl std::fmt::Display for AbsolutePath {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_string_lossy())
+    }
+}
+
 impl std::fmt::Display for PropertyBank {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
