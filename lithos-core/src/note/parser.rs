@@ -3,8 +3,6 @@
 //! Responsible for converting raw markdown strings into domain entities
 //! like lists, tasks, and headings using `pulldown-cmark`.
 
-//! Markdown adapter for extracting note lists and tasks.
-
 use std::ops::Range;
 
 use pulldown_cmark::{Event, Tag, TagEnd};
@@ -13,6 +11,7 @@ use super::{
     aggregate::Note,
     error::NoteError,
     list::{List, ListItem, ListType},
+    structure::{Heading, HeadingLevel},
     task::Task,
     types::SourceByteOffset,
 };
@@ -21,7 +20,7 @@ use crate::{
     fs::MarkdownParser,
 };
 
-/// Markdown parser for list and task extraction.
+/// Markdown parser for extracting note structural elements.
 ///
 /// `NoteParser` uses `pulldown-cmark` to traverse a markdown document and
 /// extract structural elements such as headings, lists, and tasks. It is
@@ -36,10 +35,11 @@ use crate::{
 /// let config = TaskConfig::default();
 /// let parser = NoteParser::new(&config);
 ///
-/// let markdown = "- [ ] #task Review PR";
-/// let (lists, tasks) = parser.parse_lists_and_tasks(markdown).unwrap();
+/// let markdown = "# Heading\n- [ ] #task Review PR";
+/// let (lists, tasks, headings) = parser.parse_all(markdown).unwrap();
 ///
 /// assert_eq!(tasks.len(), 1);
+/// assert_eq!(headings.len(), 1);
 /// ```
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
@@ -72,12 +72,25 @@ impl<'config> NoteParser<'config> {
     /// let parser = NoteParser::new(&config);
     /// let (lists, tasks) = parser.parse_lists_and_tasks("- [ ] task").unwrap();
     /// ```
+    /// Parses markdown into lists, tasks, and headings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] when parsing fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::parser::NoteParser;
+    /// # use lithos_core::config::task::TaskConfig;
+    /// let config = TaskConfig::default();
+    /// let parser = NoteParser::new(&config);
+    /// let (lists, tasks, headings) =
+    ///     parser.parse_all("# Heading\n- [ ] task").unwrap();
+    /// ```
     #[inline]
-    pub fn parse_lists_and_tasks(
-        &self,
-        markdown: &str,
-    ) -> Result<ParseOutcome, NoteError> {
-        let parser = MarkdownParser::with_tasklists();
+    pub fn parse_all(&self, markdown: &str) -> Result<ParseOutcome, NoteError> {
+        let parser = MarkdownParser::with_obsidian_features();
         let mut state = ParseState::new(self.config);
 
         for (event, range) in parser.parse_offsets(markdown) {
@@ -87,10 +100,36 @@ impl<'config> NoteParser<'config> {
         Ok(state.finish())
     }
 
-    /// Parses markdown and appends extracted lists and tasks to a note.
+    /// Parses markdown into lists and promoted tasks.
+    ///
+    /// # Deprecated
+    ///
+    /// Use [`parse_all`](Self::parse_all) instead to get headings as well.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] when task promotion or list extraction fails.
+    #[inline]
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use parse_all() instead to get headings as well"
+    )]
+    #[expect(
+        clippy::type_complexity,
+        reason = "Backward compatibility for deprecated method"
+    )]
+    pub fn parse_lists_and_tasks(
+        &self,
+        markdown: &str,
+    ) -> Result<(Vec<List>, Vec<Task>), NoteError> {
+        let (lists, tasks, _headings) = self.parse_all(markdown)?;
+        Ok((lists, tasks))
+    }
+
+    /// Parses markdown and appends extracted elements to a note.
     ///
     /// This is the primary entry point for populating a [`Note`] aggregate
-    /// from markdown source.
+    /// from markdown source. Extracts lists, tasks, and headings.
     ///
     /// # Errors
     ///
@@ -105,8 +144,9 @@ impl<'config> NoteParser<'config> {
     /// let mut note = Note::new(NoteId::new(), "test.md".to_string()).unwrap();
     /// let parser = NoteParser::new(&config);
     ///
-    /// parser.apply_to_note(&mut note, "- [ ] #task Review PR").unwrap();
+    /// parser.apply_to_note(&mut note, "# Heading\n- [ ] #task Review PR").unwrap();
     /// assert_eq!(note.tasks().count(), 1);
+    /// assert_eq!(note.headings().count(), 1);
     /// ```
     #[inline]
     pub fn apply_to_note(
@@ -114,26 +154,31 @@ impl<'config> NoteParser<'config> {
         note: &mut Note,
         markdown: &str,
     ) -> Result<(), NoteError> {
-        let (lists, tasks) = self.parse_lists_and_tasks(markdown)?;
+        let (lists, tasks, headings) = self.parse_all(markdown)?;
         for list in lists {
             note.add_list(list);
         }
         for task in tasks {
             note.add_task(task);
         }
+        for heading in headings {
+            note.add_heading(heading);
+        }
         Ok(())
     }
 }
 
-type ParseOutcome = (Vec<List>, Vec<Task>);
+type ParseOutcome = (Vec<List>, Vec<Task>, Vec<Heading>);
 
 #[derive(Debug)]
 struct ParseState<'config> {
     config: &'config TaskConfig,
     lists: Vec<List>,
     tasks: Vec<Task>,
+    headings: Vec<Heading>,
     list_stack: Vec<List>,
     current_item: Option<ItemState>,
+    current_heading: Option<HeadingState>,
 }
 
 impl<'config> ParseState<'config> {
@@ -142,11 +187,14 @@ impl<'config> ParseState<'config> {
             config,
             lists: Vec::new(),
             tasks: Vec::new(),
+            headings: Vec::new(),
             list_stack: Vec::new(),
             current_item: None,
+            current_heading: None,
         }
     }
 
+    #[tracing::instrument(skip(self, event, range), level = "trace")]
     fn handle_event(
         &mut self,
         event: Event<'_>,
@@ -157,19 +205,32 @@ impl<'config> ParseState<'config> {
             Event::End(TagEnd::List(_)) => self.end_list(),
             Event::Start(Tag::Item) => self.start_item(range.start)?,
             Event::End(TagEnd::Item) => self.end_item()?,
+            Event::Start(Tag::Heading {
+                level,
+                ..
+            }) => self.start_heading(level, range.start)?,
+            Event::End(TagEnd::Heading(_)) => self.end_heading()?,
             Event::TaskListMarker(checked) => {
                 if let Some(item) = self.current_item.as_mut() {
                     item.status = Some(status_symbol_from_marker(checked)?);
                 }
             }
             Event::Text(text) | Event::Code(text) => {
-                if let Some(item) = self.current_item.as_mut() {
+                if let Some(heading) = self.current_heading.as_mut() {
+                    heading.text.push_str(text.as_ref());
+                } else if let Some(item) = self.current_item.as_mut() {
                     item.text.push_str(text.as_ref());
+                } else {
+                    // Text not in a heading or list item - ignore for now
                 }
             }
             Event::SoftBreak | Event::HardBreak => {
-                if let Some(item) = self.current_item.as_mut() {
+                if let Some(heading) = self.current_heading.as_mut() {
+                    heading.text.push(' ');
+                } else if let Some(item) = self.current_item.as_mut() {
                     item.text.push(' ');
+                } else {
+                    // Break not in a heading or list item - ignore for now
                 }
             }
             Event::Start(_)
@@ -248,11 +309,53 @@ impl<'config> ParseState<'config> {
         Ok(())
     }
 
-    fn finish(mut self) -> (Vec<List>, Vec<Task>) {
+    fn finish(mut self) -> (Vec<List>, Vec<Task>, Vec<Heading>) {
         if !self.list_stack.is_empty() {
             self.lists.append(&mut self.list_stack);
         }
-        (self.lists, self.tasks)
+        (self.lists, self.tasks, self.headings)
+    }
+
+    #[tracing::instrument(skip(self, level, position), level = "debug")]
+    fn start_heading(
+        &mut self,
+        level: pulldown_cmark::HeadingLevel,
+        position: usize,
+    ) -> Result<(), NoteError> {
+        let level = match level {
+            pulldown_cmark::HeadingLevel::H1 => HeadingLevel::try_new(1)?,
+            pulldown_cmark::HeadingLevel::H2 => HeadingLevel::try_new(2)?,
+            pulldown_cmark::HeadingLevel::H3 => HeadingLevel::try_new(3)?,
+            pulldown_cmark::HeadingLevel::H4 => HeadingLevel::try_new(4)?,
+            pulldown_cmark::HeadingLevel::H5 => HeadingLevel::try_new(5)?,
+            pulldown_cmark::HeadingLevel::H6 => HeadingLevel::try_new(6)?,
+        };
+
+        let position = parse_offset(position)?;
+
+        self.current_heading = Some(HeadingState {
+            level,
+            text: String::new(),
+            position,
+        });
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self), level = "debug")]
+    fn end_heading(&mut self) -> Result<(), NoteError> {
+        let Some(heading_state) = self.current_heading.take() else {
+            return Ok(());
+        };
+
+        let heading = Heading::new(
+            heading_state.level,
+            heading_state.text,
+            heading_state.position,
+        )?;
+
+        self.headings.push(heading);
+        Ok(())
     }
 }
 
@@ -271,6 +374,13 @@ impl ItemState {
             status: None,
         }
     }
+}
+
+#[derive(Debug)]
+struct HeadingState {
+    level: HeadingLevel,
+    text: String,
+    position: SourceByteOffset,
 }
 
 fn parse_offset(offset: usize) -> Result<SourceByteOffset, NoteError> {
@@ -310,6 +420,10 @@ mod tests {
         clippy::pattern_type_mismatch,
         reason = "Test matches &ListItem using match ergonomics."
     )]
+    #[expect(
+        deprecated,
+        reason = "Testing backward compatibility of deprecated method"
+    )]
     fn parses_checkbox_list_and_promotes_tasks() -> Result<(), NoteError> {
         let config = TaskConfig::default();
         let parser = NoteParser::new(&config);
@@ -347,6 +461,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        deprecated,
+        reason = "Testing backward compatibility of deprecated method"
+    )]
     fn captures_list_depths() -> Result<(), NoteError> {
         let config = TaskConfig::default();
         let parser = NoteParser::new(&config);
@@ -381,6 +499,80 @@ mod tests {
 
         assert_eq!(note.lists().count(), 1, "note should have 1 list");
         assert_eq!(note.tasks().count(), 1, "note should have 1 task");
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "Test assertions are naturally repetitive"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn parses_headings() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6";
+
+        let (lists, tasks, headings) = parser.parse_all(markdown)?;
+        assert_eq!(lists.len(), 0, "expected no lists");
+        assert_eq!(tasks.len(), 0, "expected no tasks");
+        assert_eq!(headings.len(), 6, "expected 6 headings");
+
+        assert_eq!(headings[0].text(), "H1");
+        assert_eq!(headings[0].level().as_u8(), 1);
+        assert_eq!(headings[1].text(), "H2");
+        assert_eq!(headings[1].level().as_u8(), 2);
+        assert_eq!(headings[2].text(), "H3");
+        assert_eq!(headings[2].level().as_u8(), 3);
+        assert_eq!(headings[3].text(), "H4");
+        assert_eq!(headings[3].level().as_u8(), 4);
+        assert_eq!(headings[4].text(), "H5");
+        assert_eq!(headings[4].level().as_u8(), 5);
+        assert_eq!(headings[5].text(), "H6");
+        assert_eq!(headings[5].level().as_u8(), 6);
+
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn parses_headings_with_formatting() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "# Heading with **bold** and *italic*";
+
+        let (_lists, _tasks, headings) = parser.parse_all(markdown)?;
+        assert_eq!(headings.len(), 1);
+        assert_eq!(headings[0].text(), "Heading with bold and italic");
+        assert_eq!(headings[0].level().as_u8(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn apply_to_note_appends_headings() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "# Section 1\n\nContent\n\n## Section 2";
+
+        let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
+
+        parser.apply_to_note(&mut note, markdown)?;
+
+        assert_eq!(note.headings().count(), 2, "note should have 2 headings");
+        let headings: Vec<_> = note.headings().collect();
+        assert_eq!(headings[0].text(), "Section 1");
+        assert_eq!(headings[1].text(), "Section 2");
         Ok(())
     }
 }
