@@ -221,31 +221,6 @@ impl Metadata {
     }
 }
 
-impl Default for Metadata {
-    /// Creates a new `Metadata` with a freshly generated `VaultId`.
-    ///
-    /// # Warning
-    ///
-    /// This creates a **new** vault identity each time. For existing vaults,
-    /// use [`Metadata::new()`] with the vault ID loaded from the database
-    /// via `load_vault_id_by_path`.
-    #[inline]
-    #[expect(
-        clippy::expect_used,
-        clippy::disallowed_methods,
-        reason = "Default version is guaranteed non-empty"
-    )]
-    fn default() -> Self {
-        Self {
-            id: VaultId::new(),
-            root: VaultRoot::default(),
-            name: VaultName::from_root(&VaultRoot::default()),
-            version: AppVersion::try_new(env!("CARGO_PKG_VERSION"))
-                .expect("package version is non-empty"),
-        }
-    }
-}
-
 /// Vault-specific paths configuration (overrides).
 ///
 /// Unlike the resolved [`crate::config::paths::Paths`], this struct uses
