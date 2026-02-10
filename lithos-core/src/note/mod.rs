@@ -41,7 +41,7 @@
 //! - [`aggregate`] - The [`aggregate::Note`] root and primary domain entities.
 //! - [`ports`] - Command and Query trait definitions for CQRS.
 //! - [`command`] & [`query`] - Concrete implementations of the CQRS ports.
-//! - [`parser`] & [`ingest`] - Markdown parsing and ingestion adapters.
+//! - [`parser`] - Markdown parsing adapter for extracting domain entities.
 //! - [`task`], [`tag`], [`link`], [`list`] - Sub-entities owned by the
 //!   [`aggregate::Note`].
 
@@ -56,9 +56,7 @@ pub mod ports;
 /// Note query implementations (CQRS read operations).
 pub mod query;
 
-/// Note ingestion helpers (adapter boundary).
-pub mod ingest;
-/// Markdown parsing adapter for lists and tasks.
+/// Markdown parsing adapter for extracting domain entities.
 pub mod parser;
 
 /// Frontmatter value objects and logic.
