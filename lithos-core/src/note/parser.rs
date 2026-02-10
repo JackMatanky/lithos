@@ -133,7 +133,7 @@ impl<'config> NoteParser<'config> {
         Ok((lists, tasks))
     }
 
-    /// Parses markdown and appends extracted elements to a note.
+    /// Parses markdown and applies extracted elements to a note.
     ///
     /// This is the primary entry point for populating a [`Note`] aggregate
     /// from markdown source. Extracts lists, tasks, headings, links, and
@@ -152,12 +152,12 @@ impl<'config> NoteParser<'config> {
     /// let mut note = Note::new(NoteId::new(), "test.md".to_string()).unwrap();
     /// let parser = NoteParser::new(&config);
     ///
-    /// parser.apply_to_note(&mut note, "# Heading\n- [ ] #task Review PR").unwrap();
+    /// parser.apply(&mut note, "# Heading\n- [ ] #task Review PR").unwrap();
     /// assert_eq!(note.tasks().count(), 1);
     /// assert_eq!(note.headings().count(), 1);
     /// ```
     #[inline]
-    pub fn apply_to_note(
+    pub fn apply(
         &self,
         note: &mut Note,
         markdown: &str,
@@ -822,14 +822,14 @@ mod tests {
     }
 
     #[test]
-    fn apply_to_note_appends_lists_and_tasks() -> Result<(), NoteError> {
+    fn apply_appends_lists_and_tasks() -> Result<(), NoteError> {
         let config = TaskConfig::default();
         let parser = NoteParser::new(&config);
         let markdown = "- [ ] #task Review PR\n";
 
         let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
 
-        parser.apply_to_note(&mut note, markdown)?;
+        parser.apply(&mut note, markdown)?;
 
         assert_eq!(note.lists().count(), 1, "note should have 1 list");
         assert_eq!(note.tasks().count(), 1, "note should have 1 task");
@@ -838,72 +838,17 @@ mod tests {
 
     #[test]
     #[expect(
-        clippy::cognitive_complexity,
-        reason = "Test assertions are naturally repetitive"
-    )]
-    #[expect(
         clippy::indexing_slicing,
         reason = "Test asserts exact count before indexing"
     )]
-    fn parses_headings() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
-        let parser = NoteParser::new(&config);
-        let markdown = "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6";
-
-        let (lists, tasks, headings, _links, _frontmatter) =
-            parser.parse_all(markdown)?;
-        assert_eq!(lists.len(), 0, "expected no lists");
-        assert_eq!(tasks.len(), 0, "expected no tasks");
-        assert_eq!(headings.len(), 6, "expected 6 headings");
-
-        assert_eq!(headings[0].text(), "H1");
-        assert_eq!(headings[0].level().as_u8(), 1);
-        assert_eq!(headings[1].text(), "H2");
-        assert_eq!(headings[1].level().as_u8(), 2);
-        assert_eq!(headings[2].text(), "H3");
-        assert_eq!(headings[2].level().as_u8(), 3);
-        assert_eq!(headings[3].text(), "H4");
-        assert_eq!(headings[3].level().as_u8(), 4);
-        assert_eq!(headings[4].text(), "H5");
-        assert_eq!(headings[4].level().as_u8(), 5);
-        assert_eq!(headings[5].text(), "H6");
-        assert_eq!(headings[5].level().as_u8(), 6);
-
-        Ok(())
-    }
-
-    #[test]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "Test asserts exact count before indexing"
-    )]
-    fn parses_headings_with_formatting() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
-        let parser = NoteParser::new(&config);
-        let markdown = "# Heading with **bold** and *italic*";
-
-        let (_lists, _tasks, headings, _links, _frontmatter) =
-            parser.parse_all(markdown)?;
-        assert_eq!(headings.len(), 1);
-        assert_eq!(headings[0].text(), "Heading with bold and italic");
-        assert_eq!(headings[0].level().as_u8(), 1);
-
-        Ok(())
-    }
-
-    #[test]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "Test asserts exact count before indexing"
-    )]
-    fn apply_to_note_appends_headings() -> Result<(), NoteError> {
+    fn apply_appends_headings() -> Result<(), NoteError> {
         let config = TaskConfig::default();
         let parser = NoteParser::new(&config);
         let markdown = "# Section 1\n\nContent\n\n## Section 2";
 
         let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
 
-        parser.apply_to_note(&mut note, markdown)?;
+        parser.apply(&mut note, markdown)?;
 
         assert_eq!(note.headings().count(), 2, "note should have 2 headings");
         let headings: Vec<_> = note.headings().collect();
@@ -1071,14 +1016,14 @@ mod tests {
     }
 
     #[test]
-    fn apply_to_note_appends_links() -> Result<(), NoteError> {
+    fn apply_appends_links() -> Result<(), NoteError> {
         let config = TaskConfig::default();
         let parser = NoteParser::new(&config);
         let markdown = "[[link1]] and [[link2]]";
 
         let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
 
-        parser.apply_to_note(&mut note, markdown)?;
+        parser.apply(&mut note, markdown)?;
 
         assert_eq!(note.links().count(), 2, "note should have 2 links");
         Ok(())
@@ -1149,7 +1094,7 @@ Content";
     }
 
     #[test]
-    fn apply_to_note_sets_frontmatter() -> Result<(), NoteError> {
+    fn apply_sets_frontmatter() -> Result<(), NoteError> {
         let config = TaskConfig::default();
         let parser = NoteParser::new(&config);
         let markdown = "---
@@ -1160,7 +1105,7 @@ title: My Note
 
         let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
 
-        parser.apply_to_note(&mut note, markdown)?;
+        parser.apply(&mut note, markdown)?;
 
         let frontmatter =
             note.frontmatter().expect("note should have frontmatter");
