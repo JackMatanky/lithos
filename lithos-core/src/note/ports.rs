@@ -34,7 +34,7 @@ pub trait Command: Send + Sync {
     /// - The note already exists at the given path.
     /// - Initial index population fails.
     /// - The storage layer returns an error.
-    fn create(&self, path: String) -> Result<Note, NoteCommandError>;
+    fn create(&self, path: &str) -> Result<Note, NoteCommandError>;
 
     /// Deletes a note by its unique identifier.
     ///

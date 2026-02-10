@@ -23,7 +23,7 @@
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create a new note identity and path
 //! let id = NoteId::new();
-//! let path = "projects/lithos.md".to_string();
+//! let path = "projects/lithos.md";
 //!
 //! // Construct the aggregate root
 //! let mut note = Note::new(id, path)?;

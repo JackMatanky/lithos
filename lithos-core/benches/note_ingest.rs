@@ -45,9 +45,8 @@ fn bench_note_ingest(c: &mut Criterion) {
 
     group.bench_function("ingest_markdown", |b| {
         b.iter(|| {
-            let mut note =
-                Note::new(NoteId::new(), "notes/bench.md".to_owned())
-                    .expect("valid note path");
+            let mut note = Note::new(NoteId::new(), "notes/bench.md")
+                .expect("valid note path");
             NoteParser::new(&config)
                 .apply(&mut note, black_box(markdown))
                 .expect("ingest markdown");

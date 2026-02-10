@@ -268,7 +268,7 @@ impl Link {
     pub fn new_embed(
         target: Target,
         embed_type: EmbedType,
-        alias: Option<String>,
+        alias: Option<&str>,
         position: SourceByteOffset,
     ) -> Result<Self, NoteError> {
         Self::validate_target(&target)?;
@@ -289,7 +289,7 @@ impl Link {
     #[inline]
     pub fn new_markdown_link(
         target: Target,
-        alias: Option<String>,
+        alias: Option<&str>,
         anchor: Option<Anchor>,
         position: SourceByteOffset,
     ) -> Result<Self, NoteError> {
@@ -312,7 +312,7 @@ impl Link {
     #[inline]
     pub fn new_wikilink(
         target: Target,
-        alias: Option<String>,
+        alias: Option<&str>,
         anchor: Option<Anchor>,
         position: SourceByteOffset,
     ) -> Result<Self, NoteError> {
@@ -476,7 +476,7 @@ mod tests {
         pub fn wikilink_with_anchor_and_alias() -> Result<Link, NoteError> {
             Link::new_wikilink(
                 unresolved_target("Target Note"),
-                Some("Display Text".to_owned()),
+                Some("Display Text"),
                 Some(Anchor::Heading("section".into())),
                 SourceByteOffset::new(100u32),
             )

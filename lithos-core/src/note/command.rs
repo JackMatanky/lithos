@@ -90,7 +90,7 @@ impl super::ports::Command for Command<'_> {
     /// # Errors
     /// Returns `NoteCommandError` if note creation fails.
     #[inline]
-    fn create(&self, path: String) -> Result<Note, NoteCommandError> {
+    fn create(&self, path: &str) -> Result<Note, NoteCommandError> {
         let note = Note::new(NoteId::new(), path)?;
         let id_str = Uuid::from(note.id()).to_string();
 
@@ -222,7 +222,7 @@ mod tests {
             cmd: &Command,
             path: &str,
         ) -> Result<Note, NoteCommandError> {
-            crate::note::ports::Command::create(cmd, path.to_owned())
+            crate::note::ports::Command::create(cmd, path)
         }
 
         pub fn update_note(
@@ -240,7 +240,7 @@ mod tests {
         }
 
         pub fn parse_path(path: &str) -> Result<NotePath, String> {
-            NotePath::new(path.to_owned()).map_err(|e| e.to_string())
+            NotePath::new(path).map_err(|e| e.to_string())
         }
 
         pub fn parse_tag(tag: &str) -> Result<Tag, String> {
@@ -571,8 +571,7 @@ mod tests {
             let new_tag = fixtures::parse_tag("#new-tag")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
 
-            let mut updated_note =
-                Note::new(note.id(), note.path().as_str().to_owned())?;
+            let mut updated_note = Note::new(note.id(), note.path().as_str())?;
             updated_note.add_tag(new_tag);
 
             let update_result_after = fixtures::update_note(&cmd, updated_note);
@@ -613,8 +612,7 @@ mod tests {
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             let new_key = new_tag.full_path().to_owned();
 
-            let mut updated_note =
-                Note::new(note.id(), note.path().as_str().to_owned())?;
+            let mut updated_note = Note::new(note.id(), note.path().as_str())?;
             updated_note.add_tag(new_tag);
 
             let update_result_after = fixtures::update_note(&cmd, updated_note);

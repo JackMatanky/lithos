@@ -34,7 +34,7 @@ mod tests {
             "2. Second\n",
         );
 
-        let mut note = Note::new(NoteId::new(), "notes/ingest.md".to_owned())?;
+        let mut note = Note::new(NoteId::new(), "notes/ingest.md")?;
         NoteParser::new(&config).apply(&mut note, markdown)?;
 
         let lists: Vec<&List> = note.lists().collect();

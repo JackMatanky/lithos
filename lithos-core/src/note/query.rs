@@ -415,7 +415,7 @@ mod tests {
 
             // Create a simple note directly since command is not implemented
             let fm = complex_frontmatter()?;
-            let mut note = Note::new(NoteId::new(), "notes/a.md".to_owned())
+            let mut note = Note::new(NoteId::new(), "notes/a.md")
                 .map_err(|e| e.to_string())?;
 
             // Set frontmatter and content
@@ -484,8 +484,8 @@ mod tests {
                 .map_err(|e| NoteQueryError::Domain(NoteError::Storage(e)))?;
 
             // Ensure the data table exists by inserting and deleting a note
-            let temp_note = Note::new(NoteId::new(), "temp.md".to_owned())
-                .map_err(|e| {
+            let temp_note =
+                Note::new(NoteId::new(), "temp.md").map_err(|e| {
                     NoteQueryError::Domain(NoteError::Storage(e.to_string()))
                 })?;
             let temp_id = Uuid::from(temp_note.id());
@@ -527,8 +527,8 @@ mod tests {
 
             // Ensure the multimap table exists by inserting and deleting a path
             // mapping
-            let temp_note = Note::new(NoteId::new(), "temp.md".to_owned())
-                .map_err(|e| {
+            let temp_note =
+                Note::new(NoteId::new(), "temp.md").map_err(|e| {
                     NoteQueryError::Domain(NoteError::Storage(e.to_string()))
                 })?;
             let temp_id = Uuid::from(temp_note.id());
