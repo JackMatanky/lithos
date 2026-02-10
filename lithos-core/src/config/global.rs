@@ -345,6 +345,10 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,

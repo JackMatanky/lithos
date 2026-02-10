@@ -12,9 +12,9 @@ use std::collections::HashMap;
 
 use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 
-// ============================================================================
-// Aggregate Root Raw Config
-// ============================================================================
+// ----------------------------------------------------------- //
+//                  Raw Config Aggregate Root                  //
+// ----------------------------------------------------------- //
 
 /// Unified raw configuration for Figment merge.
 ///
@@ -201,6 +201,10 @@ pub enum RawTrustedVaults {
     /// Map format (alias -> path).
     Map(HashMap<String, String>),
 }
+
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
 
 #[cfg(test)]
 mod tests {
