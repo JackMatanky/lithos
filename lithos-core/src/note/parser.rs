@@ -10,6 +10,7 @@ use pulldown_cmark::{Event, Tag, TagEnd};
 use super::{
     aggregate::Note,
     error::NoteError,
+    link::{EmbedType, Link, Target},
     list::{List, ListItem, ListType},
     structure::{Heading, HeadingLevel},
     task::Task,
@@ -23,9 +24,9 @@ use crate::{
 /// Markdown parser for extracting note structural elements.
 ///
 /// `NoteParser` uses `pulldown-cmark` to traverse a markdown document and
-/// extract structural elements such as headings, lists, and tasks. It is
-/// bound to a specific [`TaskConfig`] which defines the rules for task
-/// promotion and metadata parsing.
+/// extract structural elements such as headings, lists, tasks, and links.
+/// It is bound to a specific [`TaskConfig`] which defines the rules for
+/// task promotion and metadata parsing.
 ///
 /// # Examples
 ///
@@ -36,7 +37,7 @@ use crate::{
 /// let parser = NoteParser::new(&config);
 ///
 /// let markdown = "# Heading\n- [ ] #task Review PR";
-/// let (lists, tasks, headings) = parser.parse_all(markdown).unwrap();
+/// let (lists, tasks, headings, links) = parser.parse_all(markdown).unwrap();
 ///
 /// assert_eq!(tasks.len(), 1);
 /// assert_eq!(headings.len(), 1);
@@ -72,7 +73,7 @@ impl<'config> NoteParser<'config> {
     /// let parser = NoteParser::new(&config);
     /// let (lists, tasks) = parser.parse_lists_and_tasks("- [ ] task").unwrap();
     /// ```
-    /// Parses markdown into lists, tasks, and headings.
+    /// Parses markdown into lists, tasks, headings, and links.
     ///
     /// # Errors
     ///
@@ -85,7 +86,7 @@ impl<'config> NoteParser<'config> {
     /// # use lithos_core::config::task::TaskConfig;
     /// let config = TaskConfig::default();
     /// let parser = NoteParser::new(&config);
-    /// let (lists, tasks, headings) =
+    /// let (lists, tasks, headings, links) =
     ///     parser.parse_all("# Heading\n- [ ] task").unwrap();
     /// ```
     #[inline]
@@ -104,7 +105,8 @@ impl<'config> NoteParser<'config> {
     ///
     /// # Deprecated
     ///
-    /// Use [`parse_all`](Self::parse_all) instead to get headings as well.
+    /// Use [`parse_all`](Self::parse_all) instead to get headings and links as
+    /// well.
     ///
     /// # Errors
     ///
@@ -112,7 +114,7 @@ impl<'config> NoteParser<'config> {
     #[inline]
     #[deprecated(
         since = "0.1.0",
-        note = "Use parse_all() instead to get headings as well"
+        note = "Use parse_all() instead to get headings and links as well"
     )]
     #[expect(
         clippy::type_complexity,
@@ -122,14 +124,14 @@ impl<'config> NoteParser<'config> {
         &self,
         markdown: &str,
     ) -> Result<(Vec<List>, Vec<Task>), NoteError> {
-        let (lists, tasks, _headings) = self.parse_all(markdown)?;
+        let (lists, tasks, _headings, _links) = self.parse_all(markdown)?;
         Ok((lists, tasks))
     }
 
     /// Parses markdown and appends extracted elements to a note.
     ///
     /// This is the primary entry point for populating a [`Note`] aggregate
-    /// from markdown source. Extracts lists, tasks, and headings.
+    /// from markdown source. Extracts lists, tasks, headings, and links.
     ///
     /// # Errors
     ///
@@ -154,7 +156,7 @@ impl<'config> NoteParser<'config> {
         note: &mut Note,
         markdown: &str,
     ) -> Result<(), NoteError> {
-        let (lists, tasks, headings) = self.parse_all(markdown)?;
+        let (lists, tasks, headings, links) = self.parse_all(markdown)?;
         for list in lists {
             note.add_list(list);
         }
@@ -164,11 +166,14 @@ impl<'config> NoteParser<'config> {
         for heading in headings {
             note.add_heading(heading);
         }
+        for link in links {
+            note.add_link(link);
+        }
         Ok(())
     }
 }
 
-type ParseOutcome = (Vec<List>, Vec<Task>, Vec<Heading>);
+type ParseOutcome = (Vec<List>, Vec<Task>, Vec<Heading>, Vec<Link>);
 
 #[derive(Debug)]
 struct ParseState<'config> {
@@ -176,9 +181,11 @@ struct ParseState<'config> {
     lists: Vec<List>,
     tasks: Vec<Task>,
     headings: Vec<Heading>,
+    links: Vec<Link>,
     list_stack: Vec<List>,
     current_item: Option<ItemState>,
     current_heading: Option<HeadingState>,
+    current_link: Option<LinkState>,
 }
 
 impl<'config> ParseState<'config> {
@@ -188,9 +195,11 @@ impl<'config> ParseState<'config> {
             lists: Vec::new(),
             tasks: Vec::new(),
             headings: Vec::new(),
+            links: Vec::new(),
             list_stack: Vec::new(),
             current_item: None,
             current_heading: None,
+            current_link: None,
         }
     }
 
@@ -210,18 +219,37 @@ impl<'config> ParseState<'config> {
                 ..
             }) => self.start_heading(level, range.start)?,
             Event::End(TagEnd::Heading(_)) => self.end_heading()?,
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                ..
+            }) => self.start_link(link_type, &dest_url, range.start, false)?,
+            Event::End(TagEnd::Link | TagEnd::Image) => {
+                self.end_link()?;
+            }
+            Event::Start(Tag::Image {
+                link_type,
+                dest_url,
+                ..
+            }) => self.start_link(link_type, &dest_url, range.start, true)?,
             Event::TaskListMarker(checked) => {
                 if let Some(item) = self.current_item.as_mut() {
                     item.status = Some(status_symbol_from_marker(checked)?);
                 }
             }
             Event::Text(text) | Event::Code(text) => {
-                if let Some(heading) = self.current_heading.as_mut() {
+                if let Some(link) = self.current_link.as_mut() {
+                    // For wikilinks with alias, this is the alias text
+                    if link.is_wikilink_with_alias {
+                        link.alias = Some(text.as_ref().to_owned());
+                    }
+                } else if let Some(heading) = self.current_heading.as_mut() {
                     heading.text.push_str(text.as_ref());
                 } else if let Some(item) = self.current_item.as_mut() {
                     item.text.push_str(text.as_ref());
                 } else {
-                    // Text not in a heading or list item - ignore for now
+                    // Text not in a heading, link, or list item - ignore for
+                    // now
                 }
             }
             Event::SoftBreak | Event::HardBreak => {
@@ -309,11 +337,15 @@ impl<'config> ParseState<'config> {
         Ok(())
     }
 
-    fn finish(mut self) -> (Vec<List>, Vec<Task>, Vec<Heading>) {
+    #[expect(
+        clippy::type_complexity,
+        reason = "Parse result is naturally a 4-tuple"
+    )]
+    fn finish(mut self) -> (Vec<List>, Vec<Task>, Vec<Heading>, Vec<Link>) {
         if !self.list_stack.is_empty() {
             self.lists.append(&mut self.list_stack);
         }
-        (self.lists, self.tasks, self.headings)
+        (self.lists, self.tasks, self.headings, self.links)
     }
 
     #[tracing::instrument(skip(self, level, position), level = "debug")]
@@ -357,6 +389,126 @@ impl<'config> ParseState<'config> {
         self.headings.push(heading);
         Ok(())
     }
+
+    #[tracing::instrument(
+        skip(self, link_type, dest_url),
+        level = "debug",
+        fields(dest_url = %dest_url, is_embed)
+    )]
+    fn start_link(
+        &mut self,
+        link_type: pulldown_cmark::LinkType,
+        dest_url: &pulldown_cmark::CowStr<'_>,
+        position: usize,
+        is_embed: bool,
+    ) -> Result<(), NoteError> {
+        use pulldown_cmark::LinkType as PLinkType;
+
+        let position = parse_offset(position)?;
+
+        match link_type {
+            PLinkType::WikiLink {
+                has_pothole,
+            } => {
+                // WikiLink: [[target]] or [[target|alias]]
+                // dest_url contains: "target" or "target#heading" or
+                // "target#^blockref"
+                self.current_link = Some(LinkState {
+                    target: dest_url.as_ref().into(),
+                    alias: None,
+                    position,
+                    is_embed,
+                    is_wikilink: true,
+                    is_wikilink_with_alias: has_pothole,
+                });
+            }
+            PLinkType::Inline
+            | PLinkType::Reference
+            | PLinkType::ReferenceUnknown
+            | PLinkType::Collapsed
+            | PLinkType::CollapsedUnknown
+            | PLinkType::Shortcut
+            | PLinkType::ShortcutUnknown
+            | PLinkType::Autolink
+            | PLinkType::Email => {
+                // Standard markdown link: [text](url)
+                self.current_link = Some(LinkState {
+                    target: dest_url.as_ref().into(),
+                    alias: None,
+                    position,
+                    is_embed,
+                    is_wikilink: false,
+                    is_wikilink_with_alias: false,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self), level = "debug")]
+    fn end_link(&mut self) -> Result<(), NoteError> {
+        let Some(link_state) = self.current_link.take() else {
+            return Ok(());
+        };
+
+        let link = Self::build_link(link_state)?;
+        self.links.push(link);
+        Ok(())
+    }
+
+    fn build_link(state: LinkState) -> Result<Link, NoteError> {
+        use super::link::Anchor;
+
+        // Parse target and anchor from dest_url
+        let (target_str, anchor) =
+            if let Some((target, anchor_part)) = state.target.split_once('#') {
+                let anchor =
+                    if let Some(block_ref) = anchor_part.strip_prefix('^') {
+                        Some(Anchor::BlockRef(block_ref.into()))
+                    } else {
+                        Some(Anchor::Heading(anchor_part.into()))
+                    };
+                (target, anchor)
+            } else {
+                (state.target.as_ref(), None)
+            };
+
+        if state.is_embed {
+            // ![[embed]] syntax
+            let embed_type = determine_embed_type(target_str);
+            Link::new_embed(
+                Target::Unresolved {
+                    raw: target_str.into(),
+                },
+                embed_type,
+                state.alias,
+                state.position,
+            )
+        } else if state.is_wikilink {
+            // [[link]] syntax
+            Link::new_wikilink(
+                Target::Unresolved {
+                    raw: target_str.into(),
+                },
+                state.alias,
+                anchor,
+                state.position,
+            )
+        } else {
+            // Standard markdown link
+            let target = if is_external_url(target_str) {
+                Target::External {
+                    url: target_str.into(),
+                }
+            } else {
+                Target::Unresolved {
+                    raw: target_str.into(),
+                }
+            };
+            Link::new_markdown_link(target, state.alias, anchor, state.position)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -381,6 +533,41 @@ struct HeadingState {
     level: HeadingLevel,
     text: String,
     position: SourceByteOffset,
+}
+
+#[derive(Debug)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Parser state flags are naturally independent booleans"
+)]
+struct LinkState {
+    target: Box<str>,
+    alias: Option<String>,
+    position: SourceByteOffset,
+    is_embed: bool,
+    is_wikilink: bool,
+    is_wikilink_with_alias: bool,
+}
+
+/// Determine embed type from file extension.
+fn determine_embed_type(path: &str) -> EmbedType {
+    let ext = path
+        .rsplit_once('.')
+        .map(|(_, ext)| ext.to_lowercase())
+        .unwrap_or_default();
+
+    match ext.as_str() {
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" => EmbedType::Image,
+        "mp4" | "webm" | "ogv" | "mov" => EmbedType::Video,
+        "mp3" | "wav" | "ogg" | "m4a" => EmbedType::Audio,
+        "pdf" => EmbedType::Pdf,
+        _ => EmbedType::Note,
+    }
+}
+
+/// Check if URL is external (http/https).
+fn is_external_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
 }
 
 fn parse_offset(offset: usize) -> Result<SourceByteOffset, NoteError> {
@@ -413,7 +600,10 @@ fn status_symbol_from_marker(checked: bool) -> Result<StatusSymbol, NoteError> {
 )]
 mod tests {
     use super::*;
-    use crate::note::aggregate::NoteId;
+    use crate::note::{
+        aggregate::NoteId,
+        link::{Anchor, EmbedType, Style, Target},
+    };
 
     #[test]
     #[expect(
@@ -516,7 +706,7 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6";
 
-        let (lists, tasks, headings) = parser.parse_all(markdown)?;
+        let (lists, tasks, headings, _links) = parser.parse_all(markdown)?;
         assert_eq!(lists.len(), 0, "expected no lists");
         assert_eq!(tasks.len(), 0, "expected no tasks");
         assert_eq!(headings.len(), 6, "expected 6 headings");
@@ -547,7 +737,7 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "# Heading with **bold** and *italic*";
 
-        let (_lists, _tasks, headings) = parser.parse_all(markdown)?;
+        let (_lists, _tasks, headings, _links) = parser.parse_all(markdown)?;
         assert_eq!(headings.len(), 1);
         assert_eq!(headings[0].text(), "Heading with bold and italic");
         assert_eq!(headings[0].level().as_u8(), 1);
@@ -573,6 +763,170 @@ mod tests {
         let headings: Vec<_> = note.headings().collect();
         assert_eq!(headings[0].text(), "Section 1");
         assert_eq!(headings[1].text(), "Section 2");
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn parses_wikilink_simple() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "[[target note]]";
+
+        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        assert_eq!(links.len(), 1, "expected one link");
+        assert!(matches!(links[0].style(), Style::WikiLink));
+        assert_eq!(links[0].target().vault_path(), Some("target note"));
+        assert!(!links[0].is_embed());
+
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn parses_wikilink_with_alias() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "[[target|display text]]";
+
+        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        assert_eq!(links.len(), 1, "expected one link");
+        assert!(matches!(links[0].style(), Style::WikiLink));
+        assert_eq!(links[0].target().vault_path(), Some("target"));
+        assert_eq!(links[0].alias(), Some("display text"));
+
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn parses_wikilink_with_heading_anchor() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "[[note#Section Title]]";
+
+        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        assert_eq!(links.len(), 1, "expected one link");
+        assert_eq!(links[0].target().vault_path(), Some("note"));
+        assert!(
+            matches!(links[0].anchor(), Some(Anchor::Heading(text)) if text.as_ref() == "Section Title")
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn parses_wikilink_with_blockref_anchor() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "[[note#^block123]]";
+
+        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        assert_eq!(links.len(), 1, "expected one link");
+        assert_eq!(links[0].target().vault_path(), Some("note"));
+        assert!(
+            matches!(links[0].anchor(), Some(Anchor::BlockRef(text)) if text.as_ref() == "block123")
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn parses_embed_image() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "![[image.png]]";
+
+        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        assert_eq!(links.len(), 1, "expected one link");
+        assert!(links[0].is_embed());
+        assert!(matches!(links[0].embed_type(), Some(EmbedType::Image)));
+        assert_eq!(links[0].target().vault_path(), Some("image.png"));
+
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn parses_embed_video() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "![[video.mp4]]";
+
+        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        assert_eq!(links.len(), 1, "expected one link");
+        assert!(links[0].is_embed());
+        assert!(matches!(links[0].embed_type(), Some(EmbedType::Video)));
+
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn parses_standard_markdown_link() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "[link text](target.md)";
+
+        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        assert_eq!(links.len(), 1, "expected one link");
+        assert!(matches!(links[0].style(), Style::MdLink));
+        assert_eq!(links[0].target().vault_path(), Some("target.md"));
+
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Test asserts exact count before indexing"
+    )]
+    fn parses_external_url_link() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "[example](https://example.com)";
+
+        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        assert_eq!(links.len(), 1, "expected one link");
+        assert!(matches!(links[0].target(), Target::External { .. }));
+
+        Ok(())
+    }
+
+    #[test]
+    fn apply_to_note_appends_links() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "[[link1]] and [[link2]]";
+
+        let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
+
+        parser.apply_to_note(&mut note, markdown)?;
+
+        assert_eq!(note.links().count(), 2, "note should have 2 links");
         Ok(())
     }
 }
