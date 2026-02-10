@@ -365,7 +365,7 @@ impl TryFrom<u64> for Version {
     }
 }
 
-/// Persisted merged configuration record with version metadata.
+/// Persisted configuration record with version metadata.
 #[derive(
     Debug,
     Clone,
@@ -377,7 +377,7 @@ impl TryFrom<u64> for Version {
     rkyv::Deserialize,
 )]
 #[non_exhaustive]
-pub struct MergedConfigRecord {
+pub struct Record {
     /// Vault identifier.
     pub vault_id: VaultId,
     /// Merged config version.
