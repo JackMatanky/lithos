@@ -13,14 +13,10 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
-
 use super::{
-    error::NoteError,
-    value::{FieldValue, FieldValueType},
+    error::{FrontmatterError, NoteError},
+    value::FieldValue,
 };
-
-pub type FrontmatterError = super::error::FrontmatterError;
 
 /// Represents YAML/TOML metadata extracted from a note header.
 ///
@@ -105,6 +101,11 @@ impl Frontmatter {
     /// Returns a [`FrontmatterError`] if the key exists but cannot be converted
     /// to `T`.
     #[inline]
+    #[expect(
+        private_bounds,
+        reason = "FromFieldValue is an internal adapter trait that should not \
+                  be public"
+    )]
     pub fn try_get<T: FromFieldValue>(
         &self,
         key: &str,
@@ -123,6 +124,11 @@ impl Frontmatter {
     ///
     /// Returns [`FrontmatterError::Missing`] if the key is absent.
     #[inline]
+    #[expect(
+        private_bounds,
+        reason = "FromFieldValue is an internal adapter trait that should not \
+                  be public"
+    )]
     pub fn try_get_required<T: FromFieldValue>(
         &self,
         key: &str,
@@ -158,6 +164,11 @@ impl Frontmatter {
     /// Returns a [`FrontmatterError`] if the key exists but cannot be converted
     /// to `T`.
     #[inline]
+    #[expect(
+        private_bounds,
+        reason = "FromFieldValueRef is an internal adapter trait that should \
+                  not be public"
+    )]
     pub fn try_get_ref<'frontmatter, T>(
         &'frontmatter self,
         key: &str,
@@ -179,6 +190,11 @@ impl Frontmatter {
     ///
     /// Returns [`FrontmatterError::Missing`] if the key is absent.
     #[inline]
+    #[expect(
+        private_bounds,
+        reason = "FromFieldValueRef is an internal adapter trait that should \
+                  not be public"
+    )]
     pub fn try_get_required_ref<'frontmatter, T>(
         &'frontmatter self,
         key: &str,
@@ -256,25 +272,20 @@ impl Frontmatter {
     }
 }
 
-/// Fallible, strict conversions from a [`FieldValue`].
+/// Adapter trait for frontmatter-specific conversions from [`FieldValue`].
 ///
-/// This is intentionally a *local* trait (instead of `TryFrom<&FieldValue>`) to
-/// avoid Rust's orphan rules (we can't implement foreign traits for foreign
-/// types like `bool`, `f64`, `String`, etc.).
+/// This trait provides frontmatter-specific error handling by converting
+/// generic [`super::value::FieldValueError`] into context-aware
+/// [`FrontmatterError`] with key information.
 ///
-/// # Examples
+/// # Implementation Note
 ///
-/// ```
-/// # use lithos_core::note::frontmatter::FromFieldValue;
-/// # use lithos_core::note::value::FieldValue;
-/// let val = FieldValue::Boolean(true);
-/// let result = bool::from_value(&val).unwrap();
-/// assert!(result);
-/// ```
-pub trait FromFieldValue: Sized {
+/// This trait mirrors [`super::value::FromFieldValue`] but returns
+/// [`FrontmatterError`] instead of [`super::value::FieldValueError`].
+/// The blanket implementation adapts all types implementing
+/// [`super::value::FromFieldValue`].
+pub(super) trait FromFieldValue: Sized {
     /// Attempts to extract a value of type `Self` from a [`FieldValue`].
-    ///
-    /// Returns a structured error when the value is present but incompatible.
     ///
     /// # Errors
     ///
@@ -282,20 +293,14 @@ pub trait FromFieldValue: Sized {
     fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
 }
 
-/// Fallible, strict conversions from a borrowed [`FieldValue`].
+/// Adapter trait for frontmatter-specific borrowed conversions from
+/// [`FieldValue`].
 ///
-/// This exists to support *non-owning* access patterns like `&str` and slices.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::frontmatter::FromFieldValueRef;
-/// # use lithos_core::note::value::FieldValue;
-/// let val = FieldValue::String("borrowed".into());
-/// let result = <&str>::from_value_ref(&val).unwrap();
-/// assert_eq!(result, "borrowed");
-/// ```
-pub trait FromFieldValueRef<'frontmatter>: Sized {
+/// This trait mirrors [`super::value::FromFieldValueRef`] but returns
+/// [`FrontmatterError`] instead of [`super::value::FieldValueError`].
+/// The blanket implementation adapts all types implementing
+/// [`super::value::FromFieldValueRef`].
+pub(super) trait FromFieldValueRef<'frontmatter>: Sized {
     /// Attempts to extract a value of type `Self` from a borrowed
     /// [`FieldValue`].
     ///
@@ -307,132 +312,78 @@ pub trait FromFieldValueRef<'frontmatter>: Sized {
     ) -> Result<Self, FrontmatterError>;
 }
 
-impl FromFieldValue for bool {
+// Blanket implementation that adapts value::FromFieldValue to
+// frontmatter::FromFieldValue
+impl<T> FromFieldValue for T
+where
+    T: super::value::FromFieldValue,
+{
     #[inline]
     fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
-        value.as_bool().ok_or_else(|| FrontmatterError::TypeMismatch {
-            key: "".into(),
-            expected: "boolean".into(),
-            actual: value.value_type(),
-        })
-    }
-}
-
-impl FromFieldValue for f64 {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
-        value.as_number().ok_or_else(|| FrontmatterError::TypeMismatch {
-            key: "".into(),
-            expected: "number".into(),
-            actual: value.value_type(),
-        })
-    }
-}
-
-impl FromFieldValue for Box<str> {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
-        value.as_str().map(Into::into).ok_or_else(|| {
-            FrontmatterError::TypeMismatch {
+        T::from_value(value).map_err(|err| match err {
+            super::value::FieldValueError::TypeMismatch {
+                expected,
+                actual,
+            } => FrontmatterError::TypeMismatch {
                 key: "".into(),
-                expected: "string".into(),
-                actual: value.value_type(),
-            }
-        })
-    }
-}
-
-impl FromFieldValue for DateTime<Utc> {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
-        use chrono::TimeZone as _;
-        let ts =
-            value.as_date().ok_or_else(|| FrontmatterError::TypeMismatch {
+                expected: format!("{expected}").into(),
+                actual,
+            },
+            super::value::FieldValueError::InvalidDateTimestamp {
+                timestamp,
+            } => FrontmatterError::InvalidDateTimestamp {
                 key: "".into(),
-                expected: "date".into(),
-                actual: value.value_type(),
-            })?;
-        Utc.timestamp_opt(ts, 0).single().ok_or_else(|| {
-            FrontmatterError::InvalidDateTimestamp {
+                timestamp,
+            },
+            super::value::FieldValueError::ArrayElementTypeMismatch {
+                index,
+                expected,
+                actual,
+            } => FrontmatterError::ArrayElementTypeMismatch {
                 key: "".into(),
-                timestamp: ts,
-            }
+                index,
+                expected,
+                actual,
+            },
         })
     }
 }
 
-impl FromFieldValue for Vec<Box<str>> {
-    #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
-        if let Some(arr) = value.as_array() {
-            let mut out = Vec::with_capacity(arr.len());
-            for (index, item) in arr.iter().enumerate() {
-                let Some(s) = item.as_str() else {
-                    return Err(FrontmatterError::ArrayElementTypeMismatch {
-                        key: "".into(),
-                        index,
-                        expected: FieldValueType::String,
-                        actual: item.value_type(),
-                    });
-                };
-                out.push(s.into());
-            }
-            return Ok(out);
-        }
-
-        value.as_str().map(|s| vec![s.into()]).ok_or_else(|| {
-            FrontmatterError::TypeMismatch {
-                key: "".into(),
-                expected: "array|string".into(),
-                actual: value.value_type(),
-            }
-        })
-    }
-}
-
-impl<'frontmatter> FromFieldValueRef<'frontmatter> for &'frontmatter str {
-    #[inline]
-    fn from_value_ref(
-        value: &'frontmatter FieldValue,
-    ) -> Result<Self, FrontmatterError> {
-        value.as_str().ok_or_else(|| FrontmatterError::TypeMismatch {
-            key: "".into(),
-            expected: "string".into(),
-            actual: value.value_type(),
-        })
-    }
-}
-
-impl<'frontmatter> FromFieldValueRef<'frontmatter>
-    for &'frontmatter [FieldValue]
+// Blanket implementation that adapts value::FromFieldValueRef to
+// frontmatter::FromFieldValueRef
+impl<'frontmatter, T> FromFieldValueRef<'frontmatter> for T
+where
+    T: super::value::FromFieldValueRef<'frontmatter>,
 {
     #[inline]
     fn from_value_ref(
         value: &'frontmatter FieldValue,
     ) -> Result<Self, FrontmatterError> {
-        value.as_array().ok_or_else(|| FrontmatterError::TypeMismatch {
-            key: "".into(),
-            expected: "array".into(),
-            actual: value.value_type(),
-        })
-    }
-}
-
-impl<'frontmatter> FromFieldValueRef<'frontmatter>
-    for &'frontmatter HashMap<
-        Box<str>,
-        FieldValue,
-        ::std::collections::hash_map::RandomState,
-    >
-{
-    #[inline]
-    fn from_value_ref(
-        value: &'frontmatter FieldValue,
-    ) -> Result<Self, FrontmatterError> {
-        value.as_object().ok_or_else(|| FrontmatterError::TypeMismatch {
-            key: "".into(),
-            expected: "object".into(),
-            actual: value.value_type(),
+        T::from_value_ref(value).map_err(|err| match err {
+            super::value::FieldValueError::TypeMismatch {
+                expected,
+                actual,
+            } => FrontmatterError::TypeMismatch {
+                key: "".into(),
+                expected: format!("{expected}").into(),
+                actual,
+            },
+            super::value::FieldValueError::InvalidDateTimestamp {
+                timestamp,
+            } => FrontmatterError::InvalidDateTimestamp {
+                key: "".into(),
+                timestamp,
+            },
+            super::value::FieldValueError::ArrayElementTypeMismatch {
+                index,
+                expected,
+                actual,
+            } => FrontmatterError::ArrayElementTypeMismatch {
+                key: "".into(),
+                index,
+                expected,
+                actual,
+            },
         })
     }
 }
@@ -462,7 +413,7 @@ mod tests {
         reason = "Fixture helpers use expect for deterministic setup."
     )]
     mod fixtures {
-        use chrono::TimeZone as _;
+        use chrono::{DateTime, TimeZone as _, Utc};
 
         use super::{super::*, TEST_TIMESTAMP};
         use crate::config::aggregate::Config;
@@ -632,6 +583,8 @@ mod tests {
             clippy::no_effect_underscore_binding,
             reason = "Test code style"
         )]
+
+        use chrono::Utc;
 
         use super::{super::*, TEST_TIMESTAMP, fixtures};
 
@@ -916,7 +869,10 @@ mod tests {
     }
 
     mod conversions {
+        use chrono::{DateTime, Utc};
+
         use super::{super::*, fixtures};
+        use crate::note::value::FieldValueType;
 
         #[test]
         fn try_get_returns_string_value() {
