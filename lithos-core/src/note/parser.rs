@@ -1170,4 +1170,54 @@ title: My Note
         );
         Ok(())
     }
+
+    #[test]
+    fn code_blocks_do_not_produce_tasks() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "```rust
+// - [ ] #task This is in a code block
+```
+
+- [ ] #task This is outside code block";
+
+        let (_lists, tasks, _headings, _links, _frontmatter) =
+            parser.parse_all(markdown)?;
+
+        // Should only find the task outside the code block
+        assert_eq!(tasks.len(), 1, "should only find task outside code block");
+        let task = tasks.first().expect("should have at least one task");
+        assert!(
+            task.text().contains("outside code block"),
+            "task should be the one outside code block"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn code_blocks_do_not_produce_headings() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "```markdown
+# Heading in code block
+```
+
+# Real heading";
+
+        let (_lists, _tasks, headings, _links, _frontmatter) =
+            parser.parse_all(markdown)?;
+
+        // Should only find the heading outside the code block
+        assert_eq!(
+            headings.len(),
+            1,
+            "should only find heading outside code block"
+        );
+        let heading =
+            headings.first().expect("should have at least one heading");
+        assert_eq!(heading.text(), "Real heading");
+
+        Ok(())
+    }
 }
