@@ -31,6 +31,7 @@ This refactoring plan consolidates our comprehensive analysis of pulldown-cmark 
 ## Reference Documentation
 
 ### Complete Documentation
+
 - **Full Reference**: [`docs/refs/crates/pulldown-cmark.md`](../docs/refs/crates/pulldown-cmark.md)
   - All 15 option flags documented (lines 197-215)
   - WikiLink parsing details (lines 742-820)
@@ -39,6 +40,7 @@ This refactoring plan consolidates our comprehensive analysis of pulldown-cmark 
   - Critical gotchas and patterns (lines 1255-1440)
 
 ### Analysis Documents
+
 - **Deep Analysis**: [`_bmad-output/pulldown-cmark-deep-analysis.md`](./pulldown-cmark-deep-analysis.md)
   - Gap analysis (what we're missing)
   - Event type mapping
@@ -56,13 +58,13 @@ This refactoring plan consolidates our comprehensive analysis of pulldown-cmark 
 
 ### What Exists (Unused Domain Models)
 
-| File                     | Lines | Status               | Accessor                   |
-| ------------------------ | ----- | -------------------- | -------------------------- |
-| `note/structure.rs`      | 457   | ❌ **Not Populated** | `note.headings()` → empty  |
-| `note/link.rs`           | 618   | ❌ **Not Populated** | `note.links()` → empty     |
-| `note/frontmatter.rs`    | 1011  | ❌ **Not Populated** | `note.frontmatter()` → None |
-| `note/list.rs`           | ?     | ✅ Working           | `note.lists()` → works     |
-| `note/task.rs`           | ?     | ✅ Working           | `note.tasks()` → works     |
+| File                  | Lines | Status               | Accessor                    |
+| --------------------- | ----- | -------------------- | --------------------------- |
+| `note/structure.rs`   | 457   | ❌ **Not Populated** | `note.headings()` → empty   |
+| `note/link.rs`        | 618   | ❌ **Not Populated** | `note.links()` → empty      |
+| `note/frontmatter.rs` | 1011  | ❌ **Not Populated** | `note.frontmatter()` → None |
+| `note/list.rs`        | ?     | ✅ Working           | `note.lists()` → works      |
+| `note/task.rs`        | ?     | ✅ Working           | `note.tasks()` → works      |
 
 ### What's Missing (Parser Implementation)
 
@@ -107,6 +109,7 @@ Event::Start(_)              // ← Ignores ALL unhandled tags!
 **File**: `lithos-core/src/fs/markdown.rs`
 
 **Changes**:
+
 1. Add new `with_obsidian_features()` method
 2. Update `note/parser.rs` to use new method (line 80)
 
@@ -127,6 +130,7 @@ pub const fn with_obsidian_features() -> Self {
 ```
 
 **Testing**:
+
 ```bash
 mise run test:unit:fs
 mise run test:unit:note
@@ -145,6 +149,7 @@ mise run test:unit:note
 **Changes**:
 
 1. **Extend `ParseState`** (add 2 fields):
+
 ```rust
 struct ParseState<'config> {
     headings: Vec<Heading>,                    // ← ADD
@@ -160,6 +165,7 @@ struct HeadingState {
 ```
 
 2. **Add event handlers** in `handle_event()`:
+
 ```rust
 Event::Start(Tag::Heading { level, .. }) => {
     self.start_heading(level, range.start)?
@@ -177,6 +183,7 @@ Event::Text(text) => {
 ```
 
 3. **Implement helpers** (~60 lines total):
+
 ```rust
 fn start_heading(&mut self, level: pulldown_cmark::HeadingLevel, position: usize)
     -> Result<(), NoteError>
@@ -184,6 +191,7 @@ fn end_heading(&mut self) -> Result<(), NoteError>
 ```
 
 4. **Update return type**:
+
 ```rust
 // OLD:
 type ParseOutcome = (Vec<List>, Vec<Task>);
@@ -193,6 +201,7 @@ type ParseOutcome = (Vec<List>, Vec<Task>, Vec<Heading>);
 ```
 
 5. **Update `apply_to_note()`**:
+
 ```rust
 let (lists, tasks, headings) = self.parse_lists_and_tasks(markdown)?;
 for heading in headings {
@@ -201,6 +210,7 @@ for heading in headings {
 ```
 
 **Testing**:
+
 ```rust
 #[test]
 fn parses_headings() -> Result<(), NoteError> {
@@ -220,6 +230,7 @@ fn parses_headings() -> Result<(), NoteError> {
 **Reference**: [`pulldown-cmark-reference-impl.md` lines 445-492](./pulldown-cmark-reference-impl.md)
 
 **Verification**:
+
 ```bash
 mise run test:unit:note
 ```
@@ -237,6 +248,7 @@ mise run test:unit:note
 **Changes**:
 
 1. **Extend `ParseState`** (add 3 fields):
+
 ```rust
 struct ParseState<'config> {
     links: Vec<Link>,                          // ← ADD
@@ -260,6 +272,7 @@ enum InternalLinkType {
 ```
 
 2. **Add event handlers**:
+
 ```rust
 Event::Start(Tag::Link { link_type, dest_url, .. }) => {
     self.start_link(link_type, dest_url, range.start, false)?
@@ -288,6 +301,7 @@ Event::Text(text) => {
 ```
 
 3. **Implement helpers** (~150 lines):
+
 ```rust
 fn start_link(&mut self, link_type: pulldown_cmark::LinkType, dest_url: CowStr<'_>,
               position: usize, is_embed: bool) -> Result<(), NoteError>
@@ -300,11 +314,13 @@ fn is_external_url(url: &str) -> bool
 ```
 
 4. **Update return type**:
+
 ```rust
 type ParseOutcome = (Vec<List>, Vec<Task>, Vec<Heading>, Vec<Link>);
 ```
 
 5. **Update `apply_to_note()`**:
+
 ```rust
 let (lists, tasks, headings, links) = self.parse_lists_and_tasks(markdown)?;
 for link in links {
@@ -313,6 +329,7 @@ for link in links {
 ```
 
 **Testing**:
+
 ```rust
 #[test]
 fn parses_wikilink_simple() {
@@ -350,6 +367,7 @@ fn parses_embed() {
 **Critical Gotcha**: WikiLink alias detection via `has_pothole` flag (see [`docs/refs/crates/pulldown-cmark.md` lines 1342-1373](../docs/refs/crates/pulldown-cmark.md))
 
 **Verification**:
+
 ```bash
 mise run test:unit:note
 ```
@@ -369,6 +387,7 @@ mise run test:unit:note
 **Changes**:
 
 1. **Extend `ParseState`** (add 2 fields):
+
 ```rust
 struct ParseState<'config> {
     frontmatter: Option<Frontmatter>,          // ← ADD
@@ -378,6 +397,7 @@ struct ParseState<'config> {
 ```
 
 2. **Add event handlers**:
+
 ```rust
 Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) => {
     self.metadata_text.clear();
@@ -400,6 +420,7 @@ Event::Text(text) => {
 ```
 
 3. **Implement helpers** (~80 lines):
+
 ```rust
 fn parse_frontmatter(&mut self) -> Result<(), NoteError>
 fn yaml_to_field_map(yaml: &serde_yaml::Value) -> Result<HashMap<Box<str>, FieldValue>, NoteError>
@@ -407,11 +428,13 @@ fn yaml_value_to_field_value(value: &serde_yaml::Value) -> Result<FieldValue, No
 ```
 
 4. **Update return type**:
+
 ```rust
 type ParseOutcome = (Vec<List>, Vec<Task>, Vec<Heading>, Vec<Link>, Option<Frontmatter>);
 ```
 
 5. **Update `apply_to_note()`**:
+
 ```rust
 let (lists, tasks, headings, links, frontmatter) = self.parse_lists_and_tasks(markdown)?;
 if let Some(fm) = frontmatter {
@@ -420,6 +443,7 @@ if let Some(fm) = frontmatter {
 ```
 
 **Testing**:
+
 ```rust
 #[test]
 fn parses_frontmatter() {
@@ -442,6 +466,7 @@ Content"#;
 **Critical Gotcha**: Frontmatter must be at document start (see [`docs/refs/crates/pulldown-cmark.md` lines 1375-1397](../docs/refs/crates/pulldown-cmark.md))
 
 **Verification**:
+
 ```bash
 mise run test:unit:note
 ```
@@ -459,6 +484,7 @@ mise run test:unit:note
 **Changes**:
 
 1. **Extend `ParseState`** (add 1 field):
+
 ```rust
 struct ParseState<'config> {
     in_code_block: bool,                       // ← ADD (context flag)
@@ -467,6 +493,7 @@ struct ParseState<'config> {
 ```
 
 2. **Add event handlers**:
+
 ```rust
 Event::Start(Tag::CodeBlock(_)) => {
     self.in_code_block = true;
@@ -477,6 +504,7 @@ Event::End(TagEnd::CodeBlock) => {
 ```
 
 3. **Update task promotion** in `note/task.rs`:
+
 ```rust
 // In Task::should_promote():
 pub fn should_promote(text: &str, config: &TaskConfig, in_code_block: bool) -> bool {
@@ -488,19 +516,21 @@ pub fn should_promote(text: &str, config: &TaskConfig, in_code_block: bool) -> b
 ```
 
 **Testing**:
+
 ```rust
 #[test]
 fn skips_tasks_in_code_blocks() {
     let md = r#"```rust
 // - [ ] #task This should be ignored
-```
 
-- [ ] #task This should be extracted"#;
+// - [ ] #task This should be extracted"#;
 
-    let (_, tasks, _, _, _) = parser.parse_lists_and_tasks(md)?;
-    assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].text().contains("This should be extracted"));
-}
+      let (_, tasks, _, _, _) = parser.parse_lists_and_tasks(md)?;
+      assert_eq!(tasks.len(), 1);
+      assert!(tasks[0].text().contains("This should be extracted"));
+
+  }
+
 ```
 
 **Reference**: [`pulldown-cmark-reference-impl.md` lines 585-632](./pulldown-cmark-reference-impl.md)
@@ -544,6 +574,7 @@ fn parse_frontmatter(&mut self) -> Result<(), NoteError>
 **Reference**: [`project-context.md` lines 117-134](../_bmad-output/project-context.md)
 
 **Verification**:
+
 ```bash
 RUST_LOG=debug mise run test:unit:note
 ```
@@ -586,6 +617,7 @@ mise run test:unit:note
 **Location**: `lithos-core/src/note/parser.rs` (in existing `#[cfg(test)] mod tests`)
 
 **Required Tests**:
+
 - ✅ Existing: List parsing (5 tests)
 - ✅ Existing: Task parsing (3 tests)
 - 🆕 Heading parsing (3 tests):
