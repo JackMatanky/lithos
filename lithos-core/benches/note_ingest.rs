@@ -49,7 +49,7 @@ fn bench_note_ingest(c: &mut Criterion) {
                 Note::new(NoteId::new(), "notes/bench.md".to_owned())
                     .expect("valid note path");
             NoteParser::new(&config)
-                .apply_to_note(&mut note, black_box(markdown))
+                .apply(&mut note, black_box(markdown))
                 .expect("ingest markdown");
             black_box(note);
         });

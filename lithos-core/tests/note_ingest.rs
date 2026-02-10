@@ -35,7 +35,7 @@ mod tests {
         );
 
         let mut note = Note::new(NoteId::new(), "notes/ingest.md".to_owned())?;
-        NoteParser::new(&config).apply_to_note(&mut note, markdown)?;
+        NoteParser::new(&config).apply(&mut note, markdown)?;
 
         let lists: Vec<&List> = note.lists().collect();
         assert_eq!(lists.len(), 2, "expected unordered + ordered lists");
