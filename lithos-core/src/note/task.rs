@@ -137,6 +137,9 @@ impl Task {
     }
 
     /// Returns the current task status.
+    ///
+    /// Note: This clones the `StatusName`. Consider changing to return
+    /// `&StatusName` if `StatusName` is not Copy.
     #[inline]
     #[must_use]
     pub fn status(&self) -> StatusName {
