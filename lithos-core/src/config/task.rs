@@ -583,6 +583,86 @@ impl FieldSpec {
 //                    Building Block Types                     //
 // ----------------------------------------------------------- //
 
+/// Bi-directional mapping between status names and checkbox symbols.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+pub struct CheckboxStatus {
+    /// Forward mapping (name -> symbol).
+    by_name: HashMap<StatusName, StatusSymbol>,
+    /// Reverse mapping (symbol -> name).
+    by_symbol: HashMap<StatusSymbol, StatusName>,
+}
+
+impl CheckboxStatus {
+    #[inline]
+    /// Build status mappings from raw name/symbol data.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if mappings are invalid.
+    pub fn from_raw(raw: HashMap<String, char>) -> Result<Self, ConfigError> {
+        let mut by_name = HashMap::new();
+        let mut by_symbol = HashMap::new();
+
+        let mut entries: Vec<_> = raw.into_iter().collect();
+        entries.sort_by(|left, right| left.0.cmp(&right.0));
+        for (name, symbol) in entries {
+            let status_name = StatusName::try_new(name.clone())?;
+            let status_symbol = StatusSymbol::try_new(symbol)?;
+
+            if by_name.contains_key(&status_name) {
+                return Err(ConfigError::ValidationFailed {
+                    field: "task.status".to_owned().into(),
+                    message: "duplicate status name".to_owned().into(),
+                });
+            }
+            if by_symbol.contains_key(&status_symbol) {
+                return Err(ConfigError::ValidationFailed {
+                    field: "task.status".to_owned().into(),
+                    message: "duplicate status symbol".to_owned().into(),
+                });
+            }
+
+            by_name.insert(status_name.clone(), status_symbol);
+            by_symbol.insert(status_symbol, status_name);
+        }
+
+        if by_name.is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: "task.status".to_owned().into(),
+                message: "status mapping cannot be empty".to_owned().into(),
+            });
+        }
+
+        Ok(Self {
+            by_name,
+            by_symbol,
+        })
+    }
+
+    #[inline]
+    #[must_use]
+    /// Look up the symbol for a status name.
+    pub fn symbol_for_name(&self, name: &StatusName) -> Option<StatusSymbol> {
+        self.by_name.get(name).copied()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Look up the status name for a symbol.
+    pub fn name_for_symbol(&self, symbol: StatusSymbol) -> Option<&StatusName> {
+        self.by_symbol.get(&symbol)
+    }
+}
+
 /// Validated status name (e.g., `complete`).
 ///
 /// # Invariants
@@ -690,86 +770,6 @@ impl StatusSymbol {
     /// Return the underlying status symbol.
     pub fn value(self) -> char {
         self.0
-    }
-}
-
-/// Bi-directional mapping between status names and checkbox symbols.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(compare(PartialEq), derive(Debug))]
-pub struct CheckboxStatus {
-    /// Forward mapping (name -> symbol).
-    by_name: HashMap<StatusName, StatusSymbol>,
-    /// Reverse mapping (symbol -> name).
-    by_symbol: HashMap<StatusSymbol, StatusName>,
-}
-
-impl CheckboxStatus {
-    #[inline]
-    /// Build status mappings from raw name/symbol data.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if mappings are invalid.
-    pub fn from_raw(raw: HashMap<String, char>) -> Result<Self, ConfigError> {
-        let mut by_name = HashMap::new();
-        let mut by_symbol = HashMap::new();
-
-        let mut entries: Vec<_> = raw.into_iter().collect();
-        entries.sort_by(|left, right| left.0.cmp(&right.0));
-        for (name, symbol) in entries {
-            let status_name = StatusName::try_new(name.clone())?;
-            let status_symbol = StatusSymbol::try_new(symbol)?;
-
-            if by_name.contains_key(&status_name) {
-                return Err(ConfigError::ValidationFailed {
-                    field: "task.status".to_owned().into(),
-                    message: "duplicate status name".to_owned().into(),
-                });
-            }
-            if by_symbol.contains_key(&status_symbol) {
-                return Err(ConfigError::ValidationFailed {
-                    field: "task.status".to_owned().into(),
-                    message: "duplicate status symbol".to_owned().into(),
-                });
-            }
-
-            by_name.insert(status_name.clone(), status_symbol);
-            by_symbol.insert(status_symbol, status_name);
-        }
-
-        if by_name.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "task.status".to_owned().into(),
-                message: "status mapping cannot be empty".to_owned().into(),
-            });
-        }
-
-        Ok(Self {
-            by_name,
-            by_symbol,
-        })
-    }
-
-    #[inline]
-    #[must_use]
-    /// Look up the symbol for a status name.
-    pub fn symbol_for_name(&self, name: &StatusName) -> Option<StatusSymbol> {
-        self.by_name.get(name).copied()
-    }
-
-    #[inline]
-    #[must_use]
-    /// Look up the status name for a symbol.
-    pub fn name_for_symbol(&self, symbol: StatusSymbol) -> Option<&StatusName> {
-        self.by_symbol.get(&symbol)
     }
 }
 
