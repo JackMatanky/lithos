@@ -67,6 +67,21 @@ impl List {
         }
     }
 
+    /// Creates a new empty list with an explicit depth and capacity hint.
+    #[inline]
+    #[must_use]
+    pub fn with_capacity(
+        list_type: ListType,
+        depth: u8,
+        capacity: usize,
+    ) -> Self {
+        Self {
+            list_type,
+            items: Vec::with_capacity(capacity),
+            depth,
+        }
+    }
+
     /// Appends a list item, preserving source order.
     #[inline]
     pub fn add_item(&mut self, item: ListItem) {

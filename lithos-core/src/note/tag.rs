@@ -77,7 +77,8 @@ impl Tag {
             return Err(NoteError::Tag("Tag cannot be empty".to_owned()));
         }
 
-        let mut segments = Vec::new();
+        let segments_count = tag_path_str.split('/').count();
+        let mut segments = Vec::with_capacity(segments_count);
         for segment in tag_path_str.split('/') {
             if segment.is_empty() {
                 return Err(NoteError::Tag("Empty tag segment".to_owned()));

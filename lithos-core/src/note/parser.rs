@@ -214,7 +214,7 @@ impl<'config> ParseState<'config> {
             frontmatter: None,
             metadata_text: String::new(),
             in_metadata_block: false,
-            list_stack: Vec::new(),
+            list_stack: Vec::with_capacity(4),
             current_item: None,
             current_heading: None,
             current_link: None,
@@ -596,7 +596,7 @@ fn yaml_to_field_map(
         ));
     };
 
-    let mut fields = std::collections::HashMap::new();
+    let mut fields = std::collections::HashMap::with_capacity(map.len());
 
     for (key, value) in map {
         let key_str = key
