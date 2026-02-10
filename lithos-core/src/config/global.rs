@@ -5,7 +5,8 @@
 
 #![expect(
     clippy::exhaustive_enums,
-    reason = "rkyv generates exhaustive archived enums"
+    clippy::exhaustive_structs,
+    reason = "rkyv generates exhaustive archived types"
 )]
 
 use std::{collections::HashMap, path::PathBuf};
@@ -14,10 +15,54 @@ use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::{AbsolutePath, Paths},
+    paths::{AbsolutePath, PropertyBank, Schema, Template},
     raw::RawTrustedVaults,
     task::Task,
 };
+
+/// Global-level paths configuration (without cache).
+///
+/// Unlike the resolved [`crate::config::paths::Paths`], this struct uses
+/// [`Option`] for all fields to represent partial overrides of vault-level
+/// defaults.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    Default,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+pub struct Paths {
+    /// Overridden template settings.
+    pub template: Option<Template>,
+    /// Overridden schema settings.
+    pub schema: Option<Schema>,
+    /// Overridden property bank filename.
+    pub property_bank: Option<PropertyBank>,
+}
+
+impl Paths {
+    /// Create global paths settings.
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        template: Option<Template>,
+        schema: Option<Schema>,
+        property_bank: Option<PropertyBank>,
+    ) -> Self {
+        Self {
+            template,
+            schema,
+            property_bank,
+        }
+    }
+}
 
 /// System-wide configuration settings.
 ///
@@ -46,7 +91,7 @@ use super::{
 pub struct Global {
     /// Logging configuration for global defaults.
     logging: Logging,
-    /// Paths configuration for global defaults.
+    /// Paths configuration for global defaults (without cache).
     paths: Paths,
     /// Trusted vaults configuration.
     trusted_vaults: Option<TrustedVaults>,
