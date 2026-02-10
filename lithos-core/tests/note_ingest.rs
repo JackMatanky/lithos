@@ -4,8 +4,8 @@ use lithos_core::{
     config::task::TaskConfig,
     note::{
         aggregate::{Note, NoteId},
-        ingest::ingest_markdown,
         list::{List, ListItem, ListType},
+        parser::NoteParser,
     },
 };
 
@@ -35,7 +35,7 @@ mod tests {
         );
 
         let mut note = Note::new(NoteId::new(), "notes/ingest.md".to_owned())?;
-        ingest_markdown(&mut note, markdown, &config)?;
+        NoteParser::new(&config).apply_to_note(&mut note, markdown)?;
 
         let lists: Vec<&List> = note.lists().collect();
         assert_eq!(lists.len(), 2, "expected unordered + ordered lists");

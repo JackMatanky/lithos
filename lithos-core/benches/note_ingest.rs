@@ -21,7 +21,7 @@ use lithos_core::{
     config::task::TaskConfig,
     note::{
         aggregate::{Note, NoteId},
-        ingest::ingest_markdown,
+        parser::NoteParser,
     },
 };
 
@@ -48,7 +48,8 @@ fn bench_note_ingest(c: &mut Criterion) {
             let mut note =
                 Note::new(NoteId::new(), "notes/bench.md".to_owned())
                     .expect("valid note path");
-            ingest_markdown(&mut note, black_box(markdown), &config)
+            NoteParser::new(&config)
+                .apply_to_note(&mut note, black_box(markdown))
                 .expect("ingest markdown");
             black_box(note);
         });
