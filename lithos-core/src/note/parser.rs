@@ -574,6 +574,9 @@ impl<'config> ParseState<'config> {
 }
 
 /// Convert `serde_yaml` Value to our `FieldValue` map.
+///
+/// Uses `FieldValue::from_yaml()` for the conversion logic, which is
+/// centralized in the value module.
 #[expect(
     clippy::pattern_type_mismatch,
     reason = "matching on &Value is clearer than *value for YAML"
@@ -594,66 +597,12 @@ fn yaml_to_field_map(
             .as_str()
             .ok_or_else(|| NoteError::Frontmatter("non-string key".into()))?;
 
-        let field_value = yaml_value_to_field_value(value)?;
+        let field_value =
+            FieldValue::from_yaml(value).map_err(NoteError::Frontmatter)?;
         fields.insert(key_str.into(), field_value);
     }
 
     Ok(fields)
-}
-
-/// Convert a single `serde_yaml` Value to `FieldValue`.
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "matching on &Value is clearer than *value for YAML"
-)]
-fn yaml_value_to_field_value(
-    value: &serde_yaml::Value,
-) -> Result<FieldValue, NoteError> {
-    match value {
-        serde_yaml::Value::Null => Ok(FieldValue::String("".into())),
-        serde_yaml::Value::Bool(b) => Ok(FieldValue::Boolean(*b)),
-        serde_yaml::Value::Number(n) =>
-        {
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "i64 to f64 conversion is acceptable for frontmatter \
-                          numbers"
-            )]
-            #[expect(
-                clippy::as_conversions,
-                reason = "i64 to f64 is the correct conversion for \
-                          frontmatter numbers"
-            )]
-            if let Some(i) = n.as_i64() {
-                Ok(FieldValue::Number(i as f64))
-            } else if let Some(f) = n.as_f64() {
-                Ok(FieldValue::Number(f))
-            } else {
-                Err(NoteError::Frontmatter("invalid number".into()))
-            }
-        }
-        serde_yaml::Value::String(s) => {
-            Ok(FieldValue::String(s.clone().into()))
-        }
-        serde_yaml::Value::Sequence(seq) => {
-            let arr: Result<Vec<_>, _> =
-                seq.iter().map(yaml_value_to_field_value).collect();
-            Ok(FieldValue::Array(arr?))
-        }
-        serde_yaml::Value::Mapping(map) => {
-            let mut obj = std::collections::HashMap::new();
-            for (k, v) in map {
-                let key = k.as_str().ok_or_else(|| {
-                    NoteError::Frontmatter("non-string key".into())
-                })?;
-                obj.insert(key.into(), yaml_value_to_field_value(v)?);
-            }
-            Ok(FieldValue::Object(obj))
-        }
-        serde_yaml::Value::Tagged(_) => {
-            Err(NoteError::Frontmatter("tagged values not supported".into()))
-        }
-    }
 }
 
 #[derive(Debug)]
