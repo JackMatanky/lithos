@@ -68,7 +68,7 @@ fn create_test_note(index: usize) -> Note {
     let id = NoteId::new();
     let path = format!("notes/test-{index:04}.md");
 
-    let mut note = Note::new(id, path).expect("valid path");
+    let mut note = Note::new(id, &path).expect("valid path");
 
     note.add_link(
         Link::new_wikilink(
@@ -86,7 +86,7 @@ fn create_test_note(index: usize) -> Note {
             Target::External {
                 url: "https://example.com".into(),
             },
-            Some("Example".to_owned()),
+            Some("Example"),
             None,
             SourceByteOffset::new(50),
         )
@@ -100,7 +100,7 @@ fn create_test_note(index: usize) -> Note {
     note.add_heading(
         Heading::new(
             HeadingLevel::try_new(1).expect("valid level"),
-            "Main Title".to_owned(),
+            "Main Title",
             SourceByteOffset::new(0),
         )
         .expect("valid heading"),
@@ -108,7 +108,7 @@ fn create_test_note(index: usize) -> Note {
     note.add_heading(
         Heading::new(
             HeadingLevel::try_new(2).expect("valid level"),
-            "Subsection".to_owned(),
+            "Subsection",
             SourceByteOffset::new(10),
         )
         .expect("valid heading"),
@@ -137,7 +137,7 @@ fn create_test_note(index: usize) -> Note {
 
     note.add_section(Section::new(
         None,
-        "Test section content".to_owned(),
+        "Test section content",
         SourceByteRange::new(
             SourceByteOffset::new(0),
             SourceByteOffset::new(100),

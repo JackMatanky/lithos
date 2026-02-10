@@ -11,7 +11,7 @@ use super::{
     aggregate::Note,
     error::NoteError,
     frontmatter::Frontmatter,
-    link::{EmbedType, Link, Target},
+    link::{Anchor, EmbedType, Link, Target},
     list::{List, ListItem, ListType},
     structure::{Heading, HeadingLevel},
     task::Task,
@@ -150,7 +150,7 @@ impl<'config> NoteParser<'config> {
     /// # use lithos_core::note::{aggregate::{Note, NoteId}, parser::NoteParser};
     /// # use lithos_core::config::task::TaskConfig;
     /// let config = TaskConfig::default();
-    /// let mut note = Note::new(NoteId::new(), "test.md".to_string()).unwrap();
+    /// let mut note = Note::new(NoteId::new(), "test.md").unwrap();
     /// let parser = NoteParser::new(&config);
     ///
     /// parser.apply(&mut note, "# Heading\n- [ ] #task Review PR").unwrap();
@@ -485,27 +485,28 @@ impl<'config> ParseState<'config> {
             return Ok(());
         };
 
-        let link = Self::build_link(link_state)?;
+        let link = Self::build_link(&link_state)?;
         self.links.push(link);
         Ok(())
     }
 
-    fn build_link(state: LinkState) -> Result<Link, NoteError> {
-        use super::link::Anchor;
-
-        // Parse target and anchor from dest_url
-        let (target_str, anchor) =
-            if let Some((target, anchor_part)) = state.target.split_once('#') {
-                let anchor =
-                    if let Some(block_ref) = anchor_part.strip_prefix('^') {
-                        Some(Anchor::BlockRef(block_ref.into()))
-                    } else {
-                        Some(Anchor::Heading(anchor_part.into()))
-                    };
-                (target, anchor)
+    fn build_link(state: &LinkState) -> Result<Link, NoteError> {
+        let raw_target = state.target.as_ref();
+        let anchor_info = if let Some(pothole_idx) = raw_target.find('#') {
+            let (target, anchor_part) = raw_target.split_at(pothole_idx);
+            let anchor = if let Some(block_ref) = anchor_part.strip_prefix("#^")
+            {
+                Some(Anchor::BlockRef(block_ref.into()))
             } else {
-                (state.target.as_ref(), None)
+                let anchor_part = anchor_part.strip_prefix('#').unwrap_or("");
+                Some(Anchor::Heading(anchor_part.into()))
             };
+            (target, anchor)
+        } else {
+            (raw_target, None)
+        };
+
+        let (target_str, anchor) = anchor_info;
 
         if state.is_embed {
             // ![[embed]] syntax
@@ -515,7 +516,7 @@ impl<'config> ParseState<'config> {
                     raw: target_str.into(),
                 },
                 embed_type,
-                state.alias,
+                state.alias.as_deref(),
                 state.position,
             )
         } else if state.is_wikilink {
@@ -524,7 +525,7 @@ impl<'config> ParseState<'config> {
                 Target::Unresolved {
                     raw: target_str.into(),
                 },
-                state.alias,
+                state.alias.as_deref(),
                 anchor,
                 state.position,
             )
@@ -539,7 +540,12 @@ impl<'config> ParseState<'config> {
                     raw: target_str.into(),
                 }
             };
-            Link::new_markdown_link(target, state.alias, anchor, state.position)
+            Link::new_markdown_link(
+                target,
+                state.alias.as_deref(),
+                anchor,
+                state.position,
+            )
         }
     }
 
@@ -777,7 +783,7 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "- [ ] #task Review PR\n";
 
-        let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
+        let mut note = Note::new(NoteId::new(), "notes/test.md")?;
 
         parser.apply(&mut note, markdown)?;
 
@@ -796,7 +802,7 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "# Section 1\n\nContent\n\n## Section 2";
 
-        let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
+        let mut note = Note::new(NoteId::new(), "notes/test.md")?;
 
         parser.apply(&mut note, markdown)?;
 
@@ -971,7 +977,7 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "[[link1]] and [[link2]]";
 
-        let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
+        let mut note = Note::new(NoteId::new(), "notes/test.md")?;
 
         parser.apply(&mut note, markdown)?;
 
@@ -1053,7 +1059,7 @@ title: My Note
 
 # Heading";
 
-        let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
+        let mut note = Note::new(NoteId::new(), "notes/test.md")?;
 
         parser.apply(&mut note, markdown)?;
 

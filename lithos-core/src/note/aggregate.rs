@@ -17,6 +17,7 @@
 )]
 
 use rkyv::{Archive, Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::{
     error::NoteError,
@@ -44,7 +45,7 @@ use super::{
 /// # use lithos_core::note::aggregate::{Note, NoteId};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = NoteId::new();
-/// let path = "inbox/meeting-notes.md".to_string();
+/// let path = "inbox/meeting-notes.md";
 ///
 /// let note = Note::new(id, path)?;
 /// assert_eq!(note.path().as_str(), "inbox/meeting-notes.md");
@@ -100,13 +101,13 @@ impl Note {
     /// ```
     /// # use lithos_core::note::aggregate::{Note, NoteId};
     /// let id = NoteId::new();
-    /// let note = Note::new(id, "test.md".to_string()).unwrap();
+    /// let note = Note::new(id, "test.md").unwrap();
     /// ```
     #[inline]
-    pub fn new(id: NoteId, path: String) -> Result<Self, NoteError> {
+    pub fn new(id: NoteId, path: &str) -> Result<Self, NoteError> {
         Ok(Self {
             id,
-            path: NotePath::new(path)?,
+            path: NotePath::try_from(path)?,
             links: Vec::new(),
             tags: Vec::new(),
             headings: Vec::new(),
@@ -274,11 +275,20 @@ impl Note {
 pub struct NoteId(uuid::Uuid);
 
 impl NoteId {
-    /// Creates a new random `NoteId` (UUID v7).
+    /// Creates a new random note identifier (UUID v7).
     #[inline]
     #[must_use]
     pub fn new() -> Self {
-        Self(uuid::Uuid::now_v7())
+        Self(Uuid::now_v7())
+    }
+
+    /// Parses a note identifier from a string.
+    ///
+    /// # Errors
+    /// Returns [`uuid::Error`] if the string is not a valid UUID.
+    #[inline]
+    pub fn parse(id: &str) -> Result<Self, uuid::Error> {
+        Ok(Self(Uuid::parse_str(id)?))
     }
 }
 
@@ -320,7 +330,7 @@ impl From<NoteId> for uuid::Uuid {
 /// ```
 /// # use lithos_core::note::aggregate::NotePath;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let path = NotePath::new("daily/2024-01-01.md".to_string())?;
+/// let path = NotePath::new("daily/2024-01-01.md")?;
 /// assert_eq!(path.as_str(), "daily/2024-01-01.md");
 /// # Ok(())
 /// # }
@@ -347,13 +357,12 @@ impl NotePath {
     ///
     /// Returns [`NoteError::InvalidPath`] if the path is invalid.
     #[inline]
-    pub fn new(path: String) -> Result<Self, NoteError> {
+    pub fn new(path: &str) -> Result<Self, NoteError> {
         // Basic normalization: convert backslashes to forward slashes
-        // Avoid allocation if no backslashes
         let normalized = if path.contains('\\') {
-            path.replace('\\', "/")
+            std::borrow::Cow::Owned(path.replace('\\', "/"))
         } else {
-            path
+            std::borrow::Cow::Borrowed(path)
         };
 
         // Use core filesystem validator
@@ -376,7 +385,7 @@ impl TryFrom<&str> for NotePath {
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new(value.to_owned())
+        Self::new(value)
     }
 }
 
@@ -385,7 +394,7 @@ impl TryFrom<String> for NotePath {
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(value)
+        Self::new(&value)
     }
 }
 
@@ -439,7 +448,7 @@ mod tests {
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0001);
 
         pub fn base_note() -> Result<Note, NoteError> {
-            Note::new(NoteId::from(TEST_NOTE_ID), "note.md".to_owned())
+            Note::new(NoteId::from(TEST_NOTE_ID), "note.md")
         }
 
         pub fn wikilink(raw: &str, pos: u32) -> Result<Link, NoteError> {
@@ -563,19 +572,19 @@ mod tests {
 
         #[test]
         fn rejects_absolute_path() {
-            let result = Note::new(NoteId::new(), "/absolute.md".to_owned());
+            let result = Note::new(NoteId::new(), "/absolute.md");
             result.unwrap_err();
         }
 
         #[test]
         fn rejects_wrong_extension() {
-            let result = Note::new(NoteId::new(), "note.txt".to_owned());
+            let result = Note::new(NoteId::new(), "note.txt");
             result.unwrap_err();
         }
 
         #[test]
         fn accepts_valid_vault_path() -> Result<(), NoteError> {
-            let note = Note::new(NoteId::new(), "folder/note.md".to_owned())?;
+            let note = Note::new(NoteId::new(), "folder/note.md")?;
             assert_eq!(note.path().as_str(), "folder/note.md");
             Ok(())
         }

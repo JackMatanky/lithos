@@ -233,25 +233,11 @@ impl FieldValue {
         match value {
             serde_yaml::Value::Null => Ok(Self::String("".into())),
             serde_yaml::Value::Bool(b) => Ok(Self::Boolean(*b)),
-            serde_yaml::Value::Number(n) =>
-            {
-                #[expect(
-                    clippy::cast_precision_loss,
-                    reason = "i64 to f64 conversion is acceptable for \
-                              frontmatter numbers"
-                )]
-                #[expect(
-                    clippy::as_conversions,
-                    reason = "i64 to f64 is the correct conversion for \
-                              frontmatter numbers"
-                )]
-                if let Some(i) = n.as_i64() {
-                    Ok(Self::Number(i as f64))
-                } else if let Some(f) = n.as_f64() {
-                    Ok(Self::Number(f))
-                } else {
-                    Err("invalid number in YAML".into())
-                }
+            serde_yaml::Value::Number(n) => {
+                let f = n
+                    .as_f64()
+                    .ok_or_else(|| "invalid number in YAML".to_owned())?;
+                Ok(Self::Number(f))
             }
             serde_yaml::Value::String(s) => Ok(Self::String(s.clone().into())),
             serde_yaml::Value::Sequence(seq) => {
