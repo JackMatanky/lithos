@@ -22,10 +22,9 @@ use uuid::Uuid;
 /// use uuid::Uuid;
 ///
 /// let id = Uuid::now_v7();
-/// let event =
-///     NoteCreated::new(id, "projects/lithos.md".to_string(), 1234567890);
-/// assert_eq!(event.id, id, "Note id should match");
-/// assert_eq!(event.path, "projects/lithos.md", "Path should match");
+/// let event = NoteCreated::new(id, "projects/lithos.md", 1234567890);
+/// assert_eq!(event.id(), id, "Note id should match");
+/// assert_eq!(event.path(), "projects/lithos.md", "Path should match");
 /// ```
 #[derive(
     Debug,
@@ -42,23 +41,44 @@ use uuid::Uuid;
 #[non_exhaustive]
 pub struct NoteCreated {
     /// UUID v7 of the note.
-    pub id: Uuid,
-    /// Vault-relative path of the note.
-    pub path: String,
+    id: Uuid,
+    /// Vault-relative path of the note (immutable).
+    path: Box<str>,
     /// Unix timestamp when the note was created.
-    pub timestamp: i64,
+    timestamp: i64,
 }
 
 impl NoteCreated {
     /// Creates a new note created event.
     #[inline]
     #[must_use]
-    pub fn new(id: Uuid, path: String, timestamp: i64) -> Self {
+    pub fn new(id: Uuid, path: &str, timestamp: i64) -> Self {
         Self {
             id,
-            path,
+            path: path.into(),
             timestamp,
         }
+    }
+
+    /// Returns the note's UUID.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> Uuid {
+        self.id
+    }
+
+    /// Returns the note's vault-relative path.
+    #[inline]
+    #[must_use]
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// Returns the Unix timestamp when the note was created.
+    #[inline]
+    #[must_use]
+    pub const fn timestamp(&self) -> i64 {
+        self.timestamp
     }
 }
 
@@ -79,8 +99,8 @@ impl NoteCreated {
 ///
 /// let id = Uuid::now_v7();
 /// let event = FrontmatterValidated::new(id, 5, 1234567890);
-/// assert_eq!(event.note_id, id, "Note id should match");
-/// assert_eq!(event.field_count, 5, "Field count should match");
+/// assert_eq!(event.note_id(), id, "Note id should match");
+/// assert_eq!(event.field_count(), 5, "Field count should match");
 /// ```
 #[derive(
     Debug,
@@ -97,11 +117,11 @@ impl NoteCreated {
 #[non_exhaustive]
 pub struct FrontmatterValidated {
     /// Number of frontmatter fields validated.
-    pub field_count: usize,
+    field_count: usize,
     /// UUID v7 of the note containing this frontmatter.
-    pub note_id: Uuid,
+    note_id: Uuid,
     /// Unix timestamp when validation occurred.
-    pub timestamp: i64,
+    timestamp: i64,
 }
 
 impl FrontmatterValidated {
@@ -115,6 +135,27 @@ impl FrontmatterValidated {
             timestamp,
         }
     }
+
+    /// Returns the note's UUID.
+    #[inline]
+    #[must_use]
+    pub const fn note_id(&self) -> Uuid {
+        self.note_id
+    }
+
+    /// Returns the number of frontmatter fields validated.
+    #[inline]
+    #[must_use]
+    pub const fn field_count(&self) -> usize {
+        self.field_count
+    }
+
+    /// Returns the Unix timestamp when validation occurred.
+    #[inline]
+    #[must_use]
+    pub const fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
 }
 
 /// Domain events that can be emitted by the Note aggregate.
@@ -124,11 +165,11 @@ impl FrontmatterValidated {
 /// ```
 /// # use lithos_core::note::events::{NoteEvents, NoteCreated};
 /// # use uuid::Uuid;
-/// let inner = NoteCreated::new(Uuid::now_v7(), "test.md".into(), 0);
+/// let inner = NoteCreated::new(Uuid::now_v7(), "test.md", 0);
 /// let event = NoteEvents::NoteCreated(inner);
 ///
 /// match event {
-///     NoteEvents::NoteCreated(e) => println!("Note created: {}", e.path),
+///     NoteEvents::NoteCreated(e) => println!("Note created: {}", e.path()),
 ///     NoteEvents::FrontmatterValidated(_) => (),
 ///     _ => (),
 /// }
@@ -156,29 +197,28 @@ mod tests {
     fn frontmatter_validated_event_populates_fields() {
         let event = FrontmatterValidated::new(TEST_NOTE_ID, 3, 1_234_567_890);
 
-        assert_eq!(event.note_id, TEST_NOTE_ID, "Note ID should match input");
-        assert_eq!(event.field_count, 3, "Field count should match input");
+        assert_eq!(event.note_id(), TEST_NOTE_ID, "Note ID should match input");
+        assert_eq!(event.field_count(), 3, "Field count should match input");
         assert_eq!(
-            event.timestamp, 1_234_567_890,
+            event.timestamp(),
+            1_234_567_890,
             "Timestamp should match input"
         );
     }
 
     #[test]
     fn note_created_event_populates_fields() {
-        let event =
-            NoteCreated::new(TEST_NOTE_ID, "notes/test.md".to_owned(), 42);
+        let event = NoteCreated::new(TEST_NOTE_ID, "notes/test.md", 42);
 
-        assert_eq!(event.id, TEST_NOTE_ID, "Note ID should match input");
-        assert_eq!(event.path, "notes/test.md", "Path should match input");
-        assert_eq!(event.timestamp, 42, "Timestamp should match input");
+        assert_eq!(event.id(), TEST_NOTE_ID, "Note ID should match input");
+        assert_eq!(event.path(), "notes/test.md", "Path should match input");
+        assert_eq!(event.timestamp(), 42, "Timestamp should match input");
     }
 
     #[test]
     fn note_events_enum_wraps_variants() {
         let validated = FrontmatterValidated::new(TEST_NOTE_ID, 1, 10);
-        let created =
-            NoteCreated::new(TEST_NOTE_ID, "notes/test.md".to_owned(), 20);
+        let created = NoteCreated::new(TEST_NOTE_ID, "notes/test.md", 20);
 
         let wrapped_validated =
             NoteEvents::FrontmatterValidated(validated.clone());
