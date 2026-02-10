@@ -90,6 +90,81 @@ impl Paths {
     }
 }
 
+impl TryFrom<&super::raw::RawPathsConfig> for Paths {
+    type Error = ConfigError;
+
+    /// Create Paths from raw configuration, applying defaults for missing
+    /// values.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if any path is invalid.
+    #[inline]
+    fn try_from(raw: &super::raw::RawPathsConfig) -> Result<Self, Self::Error> {
+        let cache = raw
+            .cache_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Cache::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "cache_dir".into(),
+                        message: format!("invalid cache_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?
+            .unwrap_or_default();
+
+        let template = raw
+            .templates_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Template::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "templates_dir".into(),
+                        message: format!("invalid templates_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?
+            .unwrap_or_default();
+
+        let schema = raw
+            .schemas_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Schema::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "schemas_dir".into(),
+                        message: format!("invalid schemas_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?
+            .unwrap_or_default();
+
+        let property_bank = raw
+            .property_bank_file
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                PropertyBank::try_new(s.clone()).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "property_bank_file".into(),
+                        message: format!("invalid property_bank_file: {e}")
+                            .into(),
+                    }
+                })
+            })
+            .transpose()?
+            .unwrap_or_default();
+
+        Ok(Self::new(cache, template, schema, property_bank))
+    }
+}
+
 // ----------------------------------------------------------- //
 //                        Domain Types                         //
 // ----------------------------------------------------------- //

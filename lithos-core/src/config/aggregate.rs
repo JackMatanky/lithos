@@ -21,14 +21,12 @@
     reason = "Aggregate root requires mixed visibility for domain events"
 )]
 
-use std::path::PathBuf;
-
 use super::{
     error::ConfigError,
     events::{ConfigUpdated, Events},
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::{Cache, Paths, PropertyBank, Schema, Template},
+    paths::Paths,
     raw,
     task::TaskConfig,
     vault::{Metadata, VaultId, VaultRoot},
@@ -139,9 +137,7 @@ impl Config {
             .transpose()?
             .unwrap_or_default();
 
-        let fs = &raw.paths;
-
-        let paths = Self::make_resolved_paths(fs)?;
+        let paths = (&raw.paths).try_into()?;
 
         let frontmatter = raw
             .frontmatter
@@ -192,86 +188,6 @@ impl Config {
     #[inline]
     fn add_event(&mut self, event: Events) {
         self.pending_events.push(event);
-    }
-
-    /// Build resolved paths from merged config.
-    fn make_resolved_paths(
-        fs: &raw::RawPathsConfig,
-    ) -> Result<Paths, ConfigError> {
-        let cache = Self::opt_path_to_domain(
-            &fs.cache_dir,
-            Cache::try_new,
-            "cache_dir",
-        )?
-        .unwrap_or_default();
-
-        let template = Self::opt_path_to_domain(
-            &fs.templates_dir,
-            Template::try_new,
-            "templates_dir",
-        )?
-        .unwrap_or_default();
-
-        let schema = Self::opt_path_to_domain(
-            &fs.schemas_dir,
-            Schema::try_new,
-            "schemas_dir",
-        )?
-        .unwrap_or_default();
-
-        let property_bank = Self::opt_filename(
-            &fs.property_bank_file,
-            PropertyBank::try_new,
-            "property_bank_file",
-        )?
-        .unwrap_or_default();
-
-        Ok(Paths::new(cache, template, schema, property_bank))
-    }
-
-    /// Convert optional path string to domain type.
-    #[expect(
-        clippy::ref_option,
-        reason = "API consistency with Option<T> patterns"
-    )]
-    fn opt_path_to_domain<T>(
-        opt: &Option<String>,
-        constructor: fn(PathBuf) -> Result<T, ConfigError>,
-        field_name: &str,
-    ) -> Result<Option<T>, ConfigError> {
-        opt.as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                constructor(PathBuf::from(s)).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: field_name.to_owned().into(),
-                        message: format!("invalid path: {e}").into(),
-                    }
-                })
-            })
-            .transpose()
-    }
-
-    #[expect(
-        clippy::ref_option,
-        reason = "API consistency with Option<T> patterns"
-    )]
-    fn opt_filename<T>(
-        opt: &Option<String>,
-        constructor: fn(String) -> Result<T, ConfigError>,
-        field_name: &str,
-    ) -> Result<Option<T>, ConfigError> {
-        opt.as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                constructor(s.clone()).map_err(|e| {
-                    ConfigError::ValidationFailed {
-                        field: field_name.to_owned().into(),
-                        message: format!("invalid filename: {e}").into(),
-                    }
-                })
-            })
-            .transpose()
     }
 }
 
