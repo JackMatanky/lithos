@@ -860,7 +860,7 @@ impl Task {
 
     fn parse_date_field(
         text: &str,
-        spec: &config::task::DateFieldSpec,
+        spec: &config::task::DateSpec,
     ) -> Result<Option<DateTime<Utc>>, NoteError> {
         // Try inline syntax: [keyword:: date]
         let inline_pattern = format!("[{}::", spec.keyword().as_ref());
