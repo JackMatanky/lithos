@@ -10,11 +10,13 @@ use pulldown_cmark::{Event, Tag, TagEnd};
 use super::{
     aggregate::Note,
     error::NoteError,
+    frontmatter::Frontmatter,
     link::{EmbedType, Link, Target},
     list::{List, ListItem, ListType},
     structure::{Heading, HeadingLevel},
     task::Task,
     types::SourceByteOffset,
+    value::FieldValue,
 };
 use crate::{
     config::task::{StatusSymbol, TaskConfig},
@@ -37,7 +39,8 @@ use crate::{
 /// let parser = NoteParser::new(&config);
 ///
 /// let markdown = "# Heading\n- [ ] #task Review PR";
-/// let (lists, tasks, headings, links) = parser.parse_all(markdown).unwrap();
+/// let (lists, tasks, headings, links, _frontmatter) =
+///     parser.parse_all(markdown).unwrap();
 ///
 /// assert_eq!(tasks.len(), 1);
 /// assert_eq!(headings.len(), 1);
@@ -86,7 +89,7 @@ impl<'config> NoteParser<'config> {
     /// # use lithos_core::config::task::TaskConfig;
     /// let config = TaskConfig::default();
     /// let parser = NoteParser::new(&config);
-    /// let (lists, tasks, headings, links) =
+    /// let (lists, tasks, headings, links, _frontmatter) =
     ///     parser.parse_all("# Heading\n- [ ] task").unwrap();
     /// ```
     #[inline]
@@ -105,8 +108,8 @@ impl<'config> NoteParser<'config> {
     ///
     /// # Deprecated
     ///
-    /// Use [`parse_all`](Self::parse_all) instead to get headings and links as
-    /// well.
+    /// Use [`parse_all`](Self::parse_all) instead to get headings, links, and
+    /// frontmatter as well.
     ///
     /// # Errors
     ///
@@ -114,7 +117,8 @@ impl<'config> NoteParser<'config> {
     #[inline]
     #[deprecated(
         since = "0.1.0",
-        note = "Use parse_all() instead to get headings and links as well"
+        note = "Use parse_all() instead to get headings, links, and \
+                frontmatter as well"
     )]
     #[expect(
         clippy::type_complexity,
@@ -124,14 +128,16 @@ impl<'config> NoteParser<'config> {
         &self,
         markdown: &str,
     ) -> Result<(Vec<List>, Vec<Task>), NoteError> {
-        let (lists, tasks, _headings, _links) = self.parse_all(markdown)?;
+        let (lists, tasks, _headings, _links, _frontmatter) =
+            self.parse_all(markdown)?;
         Ok((lists, tasks))
     }
 
     /// Parses markdown and appends extracted elements to a note.
     ///
     /// This is the primary entry point for populating a [`Note`] aggregate
-    /// from markdown source. Extracts lists, tasks, headings, and links.
+    /// from markdown source. Extracts lists, tasks, headings, links, and
+    /// frontmatter.
     ///
     /// # Errors
     ///
@@ -156,7 +162,8 @@ impl<'config> NoteParser<'config> {
         note: &mut Note,
         markdown: &str,
     ) -> Result<(), NoteError> {
-        let (lists, tasks, headings, links) = self.parse_all(markdown)?;
+        let (lists, tasks, headings, links, frontmatter) =
+            self.parse_all(markdown)?;
         for list in lists {
             note.add_list(list);
         }
@@ -169,11 +176,15 @@ impl<'config> NoteParser<'config> {
         for link in links {
             note.add_link(link);
         }
+        if let Some(fm) = frontmatter {
+            note.set_frontmatter(Some(fm));
+        }
         Ok(())
     }
 }
 
-type ParseOutcome = (Vec<List>, Vec<Task>, Vec<Heading>, Vec<Link>);
+type ParseOutcome =
+    (Vec<List>, Vec<Task>, Vec<Heading>, Vec<Link>, Option<Frontmatter>);
 
 #[derive(Debug)]
 struct ParseState<'config> {
@@ -182,6 +193,9 @@ struct ParseState<'config> {
     tasks: Vec<Task>,
     headings: Vec<Heading>,
     links: Vec<Link>,
+    frontmatter: Option<Frontmatter>,
+    metadata_text: String,
+    in_metadata_block: bool,
     list_stack: Vec<List>,
     current_item: Option<ItemState>,
     current_heading: Option<HeadingState>,
@@ -196,6 +210,9 @@ impl<'config> ParseState<'config> {
             tasks: Vec::new(),
             headings: Vec::new(),
             links: Vec::new(),
+            frontmatter: None,
+            metadata_text: String::new(),
+            in_metadata_block: false,
             list_stack: Vec::new(),
             current_item: None,
             current_heading: None,
@@ -219,6 +236,16 @@ impl<'config> ParseState<'config> {
                 ..
             }) => self.start_heading(level, range.start)?,
             Event::End(TagEnd::Heading(_)) => self.end_heading()?,
+            Event::Start(Tag::MetadataBlock(
+                pulldown_cmark::MetadataBlockKind::YamlStyle,
+            )) => {
+                self.start_metadata_block();
+            }
+            Event::End(TagEnd::MetadataBlock(
+                pulldown_cmark::MetadataBlockKind::YamlStyle,
+            )) => {
+                self.end_metadata_block()?;
+            }
             Event::Start(Tag::Link {
                 link_type,
                 dest_url,
@@ -238,7 +265,9 @@ impl<'config> ParseState<'config> {
                 }
             }
             Event::Text(text) | Event::Code(text) => {
-                if let Some(link) = self.current_link.as_mut() {
+                if self.in_metadata_block {
+                    self.metadata_text.push_str(text.as_ref());
+                } else if let Some(link) = self.current_link.as_mut() {
                     // For wikilinks with alias, this is the alias text
                     if link.is_wikilink_with_alias {
                         link.alias = Some(text.as_ref().to_owned());
@@ -339,13 +368,16 @@ impl<'config> ParseState<'config> {
 
     #[expect(
         clippy::type_complexity,
-        reason = "Parse result is naturally a 4-tuple"
+        reason = "Parse result is naturally a 5-tuple"
     )]
-    fn finish(mut self) -> (Vec<List>, Vec<Task>, Vec<Heading>, Vec<Link>) {
+    fn finish(
+        mut self,
+    ) -> (Vec<List>, Vec<Task>, Vec<Heading>, Vec<Link>, Option<Frontmatter>)
+    {
         if !self.list_stack.is_empty() {
             self.lists.append(&mut self.list_stack);
         }
-        (self.lists, self.tasks, self.headings, self.links)
+        (self.lists, self.tasks, self.headings, self.links, self.frontmatter)
     }
 
     #[tracing::instrument(skip(self, level, position), level = "debug")]
@@ -507,6 +539,118 @@ impl<'config> ParseState<'config> {
                 }
             };
             Link::new_markdown_link(target, state.alias, anchor, state.position)
+        }
+    }
+
+    #[tracing::instrument(skip(self), level = "debug")]
+    fn start_metadata_block(&mut self) {
+        self.in_metadata_block = true;
+        self.metadata_text.clear();
+    }
+
+    #[tracing::instrument(skip(self), level = "debug")]
+    fn end_metadata_block(&mut self) -> Result<(), NoteError> {
+        self.in_metadata_block = false;
+
+        if self.metadata_text.is_empty() {
+            return Ok(());
+        }
+
+        // Parse YAML using serde_yaml
+        let yaml_value: serde_yaml::Value =
+            serde_yaml::from_str(&self.metadata_text).map_err(|e| {
+                NoteError::Frontmatter(format!("invalid YAML: {e}"))
+            })?;
+
+        // Convert to our FieldValue type
+        let fields = yaml_to_field_map(&yaml_value)?;
+
+        self.frontmatter = Some(Frontmatter::new(fields)?);
+        self.metadata_text.clear();
+
+        Ok(())
+    }
+}
+
+/// Convert `serde_yaml` Value to our `FieldValue` map.
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &Value is clearer than *value for YAML"
+)]
+fn yaml_to_field_map(
+    yaml: &serde_yaml::Value,
+) -> Result<std::collections::HashMap<Box<str>, FieldValue>, NoteError> {
+    let serde_yaml::Value::Mapping(map) = yaml else {
+        return Err(NoteError::Frontmatter(
+            "frontmatter must be a YAML mapping".into(),
+        ));
+    };
+
+    let mut fields = std::collections::HashMap::new();
+
+    for (key, value) in map {
+        let key_str = key
+            .as_str()
+            .ok_or_else(|| NoteError::Frontmatter("non-string key".into()))?;
+
+        let field_value = yaml_value_to_field_value(value)?;
+        fields.insert(key_str.into(), field_value);
+    }
+
+    Ok(fields)
+}
+
+/// Convert a single `serde_yaml` Value to `FieldValue`.
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &Value is clearer than *value for YAML"
+)]
+fn yaml_value_to_field_value(
+    value: &serde_yaml::Value,
+) -> Result<FieldValue, NoteError> {
+    match value {
+        serde_yaml::Value::Null => Ok(FieldValue::String("".into())),
+        serde_yaml::Value::Bool(b) => Ok(FieldValue::Boolean(*b)),
+        serde_yaml::Value::Number(n) =>
+        {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "i64 to f64 conversion is acceptable for frontmatter \
+                          numbers"
+            )]
+            #[expect(
+                clippy::as_conversions,
+                reason = "i64 to f64 is the correct conversion for \
+                          frontmatter numbers"
+            )]
+            if let Some(i) = n.as_i64() {
+                Ok(FieldValue::Number(i as f64))
+            } else if let Some(f) = n.as_f64() {
+                Ok(FieldValue::Number(f))
+            } else {
+                Err(NoteError::Frontmatter("invalid number".into()))
+            }
+        }
+        serde_yaml::Value::String(s) => {
+            Ok(FieldValue::String(s.clone().into()))
+        }
+        serde_yaml::Value::Sequence(seq) => {
+            let arr: Result<Vec<_>, _> =
+                seq.iter().map(yaml_value_to_field_value).collect();
+            Ok(FieldValue::Array(arr?))
+        }
+        serde_yaml::Value::Mapping(map) => {
+            let mut obj = std::collections::HashMap::new();
+            for (k, v) in map {
+                let key = k.as_str().ok_or_else(|| {
+                    NoteError::Frontmatter("non-string key".into())
+                })?;
+                obj.insert(key.into(), yaml_value_to_field_value(v)?);
+            }
+            Ok(FieldValue::Object(obj))
+        }
+        serde_yaml::Value::Tagged(_) => {
+            Err(NoteError::Frontmatter("tagged values not supported".into()))
         }
     }
 }
@@ -706,7 +850,8 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6";
 
-        let (lists, tasks, headings, _links) = parser.parse_all(markdown)?;
+        let (lists, tasks, headings, _links, _frontmatter) =
+            parser.parse_all(markdown)?;
         assert_eq!(lists.len(), 0, "expected no lists");
         assert_eq!(tasks.len(), 0, "expected no tasks");
         assert_eq!(headings.len(), 6, "expected 6 headings");
@@ -737,7 +882,8 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "# Heading with **bold** and *italic*";
 
-        let (_lists, _tasks, headings, _links) = parser.parse_all(markdown)?;
+        let (_lists, _tasks, headings, _links, _frontmatter) =
+            parser.parse_all(markdown)?;
         assert_eq!(headings.len(), 1);
         assert_eq!(headings[0].text(), "Heading with bold and italic");
         assert_eq!(headings[0].level().as_u8(), 1);
@@ -776,7 +922,8 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "[[target note]]";
 
-        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        let (_lists, _tasks, _headings, links, _frontmatter) =
+            parser.parse_all(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].style(), Style::WikiLink));
         assert_eq!(links[0].target().vault_path(), Some("target note"));
@@ -795,7 +942,8 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "[[target|display text]]";
 
-        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        let (_lists, _tasks, _headings, links, _frontmatter) =
+            parser.parse_all(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].style(), Style::WikiLink));
         assert_eq!(links[0].target().vault_path(), Some("target"));
@@ -814,7 +962,8 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "[[note#Section Title]]";
 
-        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        let (_lists, _tasks, _headings, links, _frontmatter) =
+            parser.parse_all(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert_eq!(links[0].target().vault_path(), Some("note"));
         assert!(
@@ -834,7 +983,8 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "[[note#^block123]]";
 
-        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        let (_lists, _tasks, _headings, links, _frontmatter) =
+            parser.parse_all(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert_eq!(links[0].target().vault_path(), Some("note"));
         assert!(
@@ -854,7 +1004,8 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "![[image.png]]";
 
-        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        let (_lists, _tasks, _headings, links, _frontmatter) =
+            parser.parse_all(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(links[0].is_embed());
         assert!(matches!(links[0].embed_type(), Some(EmbedType::Image)));
@@ -873,7 +1024,8 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "![[video.mp4]]";
 
-        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        let (_lists, _tasks, _headings, links, _frontmatter) =
+            parser.parse_all(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(links[0].is_embed());
         assert!(matches!(links[0].embed_type(), Some(EmbedType::Video)));
@@ -891,7 +1043,8 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "[link text](target.md)";
 
-        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        let (_lists, _tasks, _headings, links, _frontmatter) =
+            parser.parse_all(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].style(), Style::MdLink));
         assert_eq!(links[0].target().vault_path(), Some("target.md"));
@@ -909,7 +1062,8 @@ mod tests {
         let parser = NoteParser::new(&config);
         let markdown = "[example](https://example.com)";
 
-        let (_lists, _tasks, _headings, links) = parser.parse_all(markdown)?;
+        let (_lists, _tasks, _headings, links, _frontmatter) =
+            parser.parse_all(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].target(), Target::External { .. }));
 
@@ -927,6 +1081,93 @@ mod tests {
         parser.apply_to_note(&mut note, markdown)?;
 
         assert_eq!(note.links().count(), 2, "note should have 2 links");
+        Ok(())
+    }
+
+    #[test]
+    fn parses_frontmatter() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "---
+title: Test Note
+tags:
+  - rust
+  - markdown
+priority: 1
+---
+
+# Content";
+
+        let (_lists, _tasks, _headings, _links, frontmatter) =
+            parser.parse_all(markdown)?;
+        let fm = frontmatter.expect("should have frontmatter");
+
+        assert_eq!(fm.get("title").and_then(|v| v.as_str()), Some("Test Note"));
+        assert_eq!(
+            fm.get("priority")
+                .and_then(super::super::value::FieldValue::as_number),
+            Some(1.0f64)
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn parses_frontmatter_with_nested_objects() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "---
+metadata:
+  author: John Doe
+  version: 2
+---
+
+Content";
+
+        let (_lists, _tasks, _headings, _links, frontmatter) =
+            parser.parse_all(markdown)?;
+        let fm = frontmatter.expect("should have frontmatter");
+
+        // Check nested object access
+        let metadata = fm.get("metadata").expect("should have metadata");
+        assert!(metadata.as_object().is_some());
+
+        Ok(())
+    }
+
+    #[test]
+    fn no_frontmatter_when_missing() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "# Just a heading\n\nSome content";
+
+        let (_lists, _tasks, _headings, _links, frontmatter) =
+            parser.parse_all(markdown)?;
+        assert!(frontmatter.is_none(), "should not have frontmatter");
+
+        Ok(())
+    }
+
+    #[test]
+    fn apply_to_note_sets_frontmatter() -> Result<(), NoteError> {
+        let config = TaskConfig::default();
+        let parser = NoteParser::new(&config);
+        let markdown = "---
+title: My Note
+---
+
+# Heading";
+
+        let mut note = Note::new(NoteId::new(), "notes/test.md".to_owned())?;
+
+        parser.apply_to_note(&mut note, markdown)?;
+
+        let frontmatter =
+            note.frontmatter().expect("note should have frontmatter");
+        assert_eq!(
+            frontmatter.get("title").and_then(|v| v.as_str()),
+            Some("My Note")
+        );
         Ok(())
     }
 }
