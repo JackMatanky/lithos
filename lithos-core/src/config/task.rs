@@ -84,7 +84,7 @@ pub struct TaskConfig {
     /// Optional completed date field configuration.
     completed_field: Option<DateFieldSpec>,
     /// Custom task field specifications.
-    fields: HashMap<Box<str>, TaskFieldSpec>,
+    fields: HashMap<Box<str>, FieldSpec>,
     /// List of field names to be indexed.
     indexed_fields: Vec<Box<str>>,
 }
@@ -146,7 +146,7 @@ impl TaskConfig {
             for (name, spec) in entries {
                 fields.insert(
                     name.clone().into_boxed_str(),
-                    TaskFieldSpec::from_raw(&name, spec)?,
+                    FieldSpec::from_raw(&name, spec)?,
                 );
             }
         }
@@ -231,7 +231,7 @@ impl TaskConfig {
     #[inline]
     #[must_use]
     /// Return the custom fields map.
-    pub fn fields(&self) -> &HashMap<Box<str>, TaskFieldSpec> {
+    pub fn fields(&self) -> &HashMap<Box<str>, FieldSpec> {
         &self.fields
     }
 
@@ -245,7 +245,7 @@ impl TaskConfig {
     #[inline]
     /// Look up a field specification by name.
     #[must_use]
-    pub fn field_spec(&self, name: &str) -> Option<&TaskFieldSpec> {
+    pub fn field_spec(&self, name: &str) -> Option<&FieldSpec> {
         self.fields.get(name)
     }
 }
@@ -264,25 +264,25 @@ impl TaskConfig {
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub enum TaskFieldSpec {
+pub enum FieldSpec {
     /// Integer field with optional range bounds.
     Integer {
         /// Field name identifier.
-        name: TaskSpecName,
+        name: SpecName,
         /// Optional bounds.
         bounds: Bounds<i64>,
     },
     /// Floating point field with optional range bounds.
     Float {
         /// Field name identifier.
-        name: TaskSpecName,
+        name: SpecName,
         /// Optional bounds.
         bounds: Bounds<f64>,
     },
     /// String field with optional regex pattern validation.
     String {
         /// Field name identifier.
-        name: TaskSpecName,
+        name: SpecName,
         /// Optional validation pattern.
         pattern: Option<String>,
         /// Pre-compiled regex pattern for validation.
@@ -293,20 +293,20 @@ pub enum TaskFieldSpec {
     /// Categorical field with a fixed set of allowed values.
     Enum {
         /// Field name identifier.
-        name: TaskSpecName,
+        name: SpecName,
         /// List of allowed values.
         values: Vec<Box<str>>,
     },
     /// Date/time field with a specific Chrono format.
     DateTime {
         /// Field name identifier.
-        name: TaskSpecName,
+        name: SpecName,
         /// Chrono format string.
         format: String,
     },
 }
 
-impl TaskFieldSpec {
+impl FieldSpec {
     #[inline]
     #[allow(clippy::too_many_lines, reason = "Complex ingestion logic")]
     /// Build a task field spec from raw input.
@@ -317,7 +317,7 @@ impl TaskFieldSpec {
         name: &str,
         raw: RawTaskFieldSpec,
     ) -> Result<Self, ConfigError> {
-        let name = TaskSpecName::try_new(name)?;
+        let name = SpecName::try_new(name)?;
         match raw {
             RawTaskFieldSpec::Enum {
                 values,
@@ -413,7 +413,7 @@ impl TaskFieldSpec {
         clippy::pattern_type_mismatch,
         reason = "Ergonomic enum pattern for accessing shared field"
     )]
-    pub fn name(&self) -> &TaskSpecName {
+    pub fn name(&self) -> &SpecName {
         match self {
             Self::String {
                 name,
@@ -478,7 +478,7 @@ impl TaskFieldSpec {
 
     fn validate_integer(
         value: &serde_json::Value,
-        name: &TaskSpecName,
+        name: &SpecName,
         bounds: &Bounds<i64>,
     ) -> Result<(), ConfigError> {
         let number =
@@ -500,7 +500,7 @@ impl TaskFieldSpec {
 
     fn validate_float(
         value: &serde_json::Value,
-        name: &TaskSpecName,
+        name: &SpecName,
         bounds: &Bounds<f64>,
     ) -> Result<(), ConfigError> {
         let number =
@@ -522,7 +522,7 @@ impl TaskFieldSpec {
 
     fn validate_string(
         value: &serde_json::Value,
-        name: &TaskSpecName,
+        name: &SpecName,
         pattern: Option<&Regex>,
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
@@ -543,7 +543,7 @@ impl TaskFieldSpec {
 
     fn validate_enum(
         value: &serde_json::Value,
-        name: &TaskSpecName,
+        name: &SpecName,
         values: &[Box<str>],
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
@@ -566,7 +566,7 @@ impl TaskFieldSpec {
 
     fn validate_datetime(
         value: &serde_json::Value,
-        name: &TaskSpecName,
+        name: &SpecName,
         format: &str,
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
@@ -861,9 +861,9 @@ impl From<TaskTag> for String {
     rkyv::Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
-pub struct TaskSpecName(Box<str>);
+pub struct SpecName(Box<str>);
 
-impl TaskSpecName {
+impl SpecName {
     #[inline]
     /// Creates a validated task spec name.
     ///
@@ -900,9 +900,9 @@ impl TaskSpecName {
     }
 }
 
-impl From<TaskSpecName> for String {
+impl From<SpecName> for String {
     #[inline]
-    fn from(name: TaskSpecName) -> Self {
+    fn from(name: SpecName) -> Self {
         name.0.into_string()
     }
 }
@@ -922,7 +922,7 @@ impl From<TaskSpecName> for String {
 #[non_exhaustive]
 pub struct DateFieldSpec {
     /// Field name used in text.
-    keyword: TaskSpecName,
+    keyword: SpecName,
     /// Optional emoji marker (e.g., 📅).
     emoji: Option<char>,
     /// Chrono format string (e.g., `%Y-%m-%d`).
@@ -936,7 +936,7 @@ impl DateFieldSpec {
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if the spec is invalid.
     pub fn from_raw(raw: RawDateFieldSpec) -> Result<Self, ConfigError> {
-        let keyword = TaskSpecName::try_new(raw.keyword)?;
+        let keyword = SpecName::try_new(raw.keyword)?;
         validate_chrono_format(&raw.format, "task.dates.format")?;
         Ok(Self {
             keyword,
@@ -948,7 +948,7 @@ impl DateFieldSpec {
     #[inline]
     #[must_use]
     /// Return the field keyword.
-    pub fn keyword(&self) -> &TaskSpecName {
+    pub fn keyword(&self) -> &SpecName {
         &self.keyword
     }
 
@@ -980,7 +980,7 @@ impl TryFrom<RawTaskConfig> for TaskConfig {
     }
 }
 
-impl PartialEq for TaskFieldSpec {
+impl PartialEq for FieldSpec {
     #[inline]
     #[expect(clippy::pattern_type_mismatch, reason = "Enum pattern matching")]
     fn eq(&self, other: &Self) -> bool {
@@ -1042,7 +1042,7 @@ impl PartialEq for TaskFieldSpec {
     }
 }
 
-impl Eq for TaskFieldSpec {
+impl Eq for FieldSpec {
     #[inline]
     fn assert_receiver_is_total_eq(&self) {
         // Default implementation is fine
