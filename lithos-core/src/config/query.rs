@@ -11,10 +11,6 @@ use super::{
     vault::VaultId,
 };
 
-// ============================================================================
-// Query Implementation
-// ============================================================================
-
 /// Query implementation for configuration read operations.
 ///
 /// This struct provides the primary interface for retrieving persisted
@@ -102,6 +98,10 @@ where
             .map_err(|error| ConfigQueryError::Storage(error.into()))
     }
 }
+
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
 
 #[cfg(test)]
 #[expect(

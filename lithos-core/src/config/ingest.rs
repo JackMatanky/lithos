@@ -60,6 +60,10 @@ fn global_config_path_from_env() -> Option<PathBuf> {
     std::env::var_os("LITHOS_GLOBAL_CONFIG").map(PathBuf::from)
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
