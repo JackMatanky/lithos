@@ -267,16 +267,16 @@ impl<'config> ParseState<'config> {
             }
             Event::Text(text) | Event::Code(text) => {
                 if self.in_metadata_block {
-                    self.metadata_text.push_str(text.as_ref());
+                    self.metadata_text.push_str(&text);
                 } else if let Some(link) = self.current_link.as_mut() {
                     // For wikilinks with alias, this is the alias text
                     if link.is_wikilink_with_alias {
-                        link.alias = Some(text.as_ref().to_owned());
+                        link.alias = Some(text.to_string());
                     }
                 } else if let Some(heading) = self.current_heading.as_mut() {
-                    heading.text.push_str(text.as_ref());
+                    heading.text.push_str(&text);
                 } else if let Some(item) = self.current_item.as_mut() {
-                    item.text.push_str(text.as_ref());
+                    item.text.push_str(&text);
                 } else {
                     // Text not in a heading, link, or list item - ignore for
                     // now
