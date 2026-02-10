@@ -418,150 +418,6 @@ impl RelativePath {
     }
 }
 
-/// A validated filename.
-///
-/// This type ensures that filenames are non-empty and do not contain
-/// path separators, ensuring they stay within their parent directory.
-///
-/// # Invariants
-///
-/// - Must not be empty.
-/// - Must not contain `/` or `\`.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
-#[non_exhaustive]
-pub struct FileName(
-    /// Internal filename storage.
-    Box<str>,
-);
-
-impl FileName {
-    /// Creates a validated file name.
-    ///
-    /// # Errors
-    /// Returns [`ConfigError::ValidationFailed`] if the name is empty or
-    /// contains path separators (`/` or `\`).
-    #[inline]
-    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
-        let value = value.into();
-        Self::validate_non_empty("file_name", &value)?;
-        if value.contains('/') || value.contains('\\') {
-            return Err(ConfigError::ValidationFailed {
-                field: "file_name".to_owned().into(),
-                message: "file name must not contain path separators"
-                    .to_owned()
-                    .into(),
-            });
-        }
-        Ok(Self(value))
-    }
-
-    /// Return the file name as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    fn validate_non_empty(
-        field: &'static str,
-        value: &str,
-    ) -> Result<(), ConfigError> {
-        if value.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: field.to_owned().into(),
-                message: format!("{field} cannot be empty").into(),
-            });
-        }
-        Ok(())
-    }
-}
-
-// ----------------------------------------------------------- //
-//               Standard Trait Implementations                //
-// ----------------------------------------------------------- //
-
-impl From<FileName> for PropertyBank {
-    #[inline]
-    fn from(value: FileName) -> Self {
-        Self(value)
-    }
-}
-
-impl From<PropertyBank> for FileName {
-    #[inline]
-    fn from(value: PropertyBank) -> Self {
-        value.0
-    }
-}
-
-impl TryFrom<String> for RelativePath {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, ConfigError> {
-        Self::try_new(PathBuf::from(value))
-    }
-}
-
-impl From<RelativePath> for String {
-    #[inline]
-    fn from(value: RelativePath) -> Self {
-        value.0.to_string_lossy().into_owned()
-    }
-}
-
-impl TryFrom<String> for FileName {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-impl From<FileName> for String {
-    #[inline]
-    fn from(value: FileName) -> Self {
-        value.0.into()
-    }
-}
-
-impl TryFrom<String> for PropertyBank {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_new(value)
-    }
-}
-
-impl From<PropertyBank> for String {
-    #[inline]
-    fn from(value: PropertyBank) -> Self {
-        value.0.into()
-    }
-}
-
-impl std::fmt::Display for RelativePath {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_string_lossy())
-    }
-}
-
 /// A validated absolute path.
 ///
 /// This type ensures that paths are fully resolved and absolute on the
@@ -638,6 +494,165 @@ impl AbsolutePath {
     }
 }
 
+/// A validated filename.
+///
+/// This type ensures that filenames are non-empty and do not contain
+/// path separators, ensuring they stay within their parent directory.
+///
+/// # Invariants
+///
+/// - Must not be empty.
+/// - Must not contain `/` or `\`.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct FileName(
+    /// Internal filename storage.
+    Box<str>,
+);
+
+impl FileName {
+    /// Creates a validated file name.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] if the name is empty or
+    /// contains path separators (`/` or `\`).
+    #[inline]
+    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
+        let value = value.into();
+        Self::validate_non_empty("file_name", &value)?;
+        if value.contains('/') || value.contains('\\') {
+            return Err(ConfigError::ValidationFailed {
+                field: "file_name".to_owned().into(),
+                message: "file name must not contain path separators"
+                    .to_owned()
+                    .into(),
+            });
+        }
+        Ok(Self(value))
+    }
+
+    /// Return the file name as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn validate_non_empty(
+        field: &'static str,
+        value: &str,
+    ) -> Result<(), ConfigError> {
+        if value.is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: field.to_owned().into(),
+                message: format!("{field} cannot be empty").into(),
+            });
+        }
+        Ok(())
+    }
+}
+
+// ----------------------------------------------------------- //
+//               Standard Trait Implementations                //
+// ----------------------------------------------------------- //
+
+// --- PropertyBank ---
+
+impl From<FileName> for PropertyBank {
+    #[inline]
+    fn from(value: FileName) -> Self {
+        Self(value)
+    }
+}
+
+impl TryFrom<String> for PropertyBank {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+impl From<PropertyBank> for String {
+    #[inline]
+    fn from(value: PropertyBank) -> Self {
+        value.0.into()
+    }
+}
+
+impl std::fmt::Display for PropertyBank {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+// --- FileName ---
+
+impl From<PropertyBank> for FileName {
+    #[inline]
+    fn from(value: PropertyBank) -> Self {
+        value.0
+    }
+}
+
+impl TryFrom<String> for FileName {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+impl From<FileName> for String {
+    #[inline]
+    fn from(value: FileName) -> Self {
+        value.0.into()
+    }
+}
+
+// --- RelativePath ---
+
+impl TryFrom<String> for RelativePath {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, ConfigError> {
+        Self::try_new(PathBuf::from(value))
+    }
+}
+
+impl From<RelativePath> for String {
+    #[inline]
+    fn from(value: RelativePath) -> Self {
+        value.0.to_string_lossy().into_owned()
+    }
+}
+
+impl std::fmt::Display for RelativePath {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_string_lossy())
+    }
+}
+
+// --- AbsolutePath ---
+
 impl TryFrom<String> for AbsolutePath {
     type Error = ConfigError;
 
@@ -658,13 +673,6 @@ impl std::fmt::Display for AbsolutePath {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.to_string_lossy())
-    }
-}
-
-impl std::fmt::Display for PropertyBank {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
     }
 }
 
