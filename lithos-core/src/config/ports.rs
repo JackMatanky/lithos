@@ -88,6 +88,11 @@ pub trait Command: Send + Sync {
         vault_id: VaultId,
         version: Version,
     ) -> Result<(), Self::Error>;
+
+    // TODO: Add `load_vault_id_by_path` method for looking up existing vault
+    // IDs from the vault_path_by_id table. This enables detecting when a
+    // vault already exists at a given path, avoiding creating duplicate
+    // VaultIds.
 }
 
 /// Query port for configuration read operations.
