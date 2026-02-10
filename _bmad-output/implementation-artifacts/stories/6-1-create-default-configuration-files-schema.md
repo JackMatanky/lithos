@@ -65,7 +65,7 @@ so that I can understand configuration options and customize settings confidentl
 - VaultConfig: filesystem + cache_dir + optional(frontmatter + logging)
 - Result: vault_metadata + logging + global_filesystem + vault_filesystem + frontmatter
 
-**Key Fields**: schemas_dir, templates_dir, property_bank_filename, cache_dir, log_level, frontmatter keys (alias_key, date_created_key, date_modified_key, file_class_key, title_key), vault metadata (schema_version, name, vault_path)
+**Key Fields**: schemas_dir, templates_dir, property_bank_file, cache_dir, log_level, frontmatter keys (alias_key, date_created_key, date_modified_key, file_class_key, title_key), vault metadata (schema_version, name, vault_path)
 
 **File Locations**: `crates/domain/src/config/{aggregate,global,vault}.rs` - verify ALL fields in schema, especially nested structures
 

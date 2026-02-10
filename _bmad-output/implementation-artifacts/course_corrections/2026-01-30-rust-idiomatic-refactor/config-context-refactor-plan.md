@@ -545,7 +545,7 @@ Used in: schema, template
 ```rust
 pub struct SchemaOverrides {
     pub schemas_dir: Option<SchemasDir>,  // ← INDIVIDUAL FIELDS
-    pub property_bank_filename: Option<FileName>,
+    pub property_bank_file: Option<FileName>,
 }
 
 // Merge logic:
@@ -1645,7 +1645,7 @@ pub struct RawFilesystemConfig {
 
     /// Property bank filename (can override at any layer).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub property_bank_filename: Option<String>,
+    pub property_bank_file: Option<String>,
 
     /// Templates directory (can override at any layer).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1859,7 +1859,7 @@ impl Config {
             .transpose()?
             .unwrap_or_default();
 
-        let property_bank_filename = raw.filesystem.property_bank_filename
+        let property_bank_file = raw.filesystem.property_bank_file
             .map(FileName::try_new)
             .transpose()?
             .unwrap_or_default();
@@ -1869,7 +1869,7 @@ impl Config {
             .transpose()?
             .unwrap_or_default();
 
-        let schema = Schema::new(schemas_dir, property_bank_filename);
+        let schema = Schema::new(schemas_dir, property_bank_file);
         let template = Template::new(templates_dir);
 
         let vault_filesystem = ResolvedVaultPaths {

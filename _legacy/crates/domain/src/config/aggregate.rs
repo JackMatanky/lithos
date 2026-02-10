@@ -565,7 +565,7 @@ mod tests {
                 assert_eq!(
                     config.vault_filesystem().schema.property_bank_filename,
                     default_filesystem.schema.property_bank_filename,
-                    "Should fall back to default property_bank_filename"
+                    "Should fall back to default property_bank_file name"
                 );
                 assert_eq!(
                     config.logging().log_level,

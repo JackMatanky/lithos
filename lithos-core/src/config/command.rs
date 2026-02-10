@@ -13,10 +13,6 @@ use super::{
     vault::{Vault, VaultId, VaultRoot},
 };
 
-// ============================================================================
-// Command Implementation
-// ============================================================================
-
 /// Command implementation for configuration write operations.
 ///
 /// This struct handles all mutations to the configuration state,
@@ -26,18 +22,72 @@ use super::{
 /// # Examples
 ///
 /// ```rust
-/// # use lithos_core::config::{command::Command, vault::VaultId, vault::VaultRoot, aggregate::ConfigVersion, aggregate::Config, global::Global};
+/// # use lithos_core::config::{
+/// #     aggregate::{Config, ConfigVersion},
+/// #     command::Command,
+/// #     global::Global,
+/// #     vault::{Vault, VaultId, VaultRoot},
+/// #     ports,
+/// # };
 /// # struct MockPort;
-/// # impl lithos_core::config::ports::Command for MockPort {
+/// #
+/// # impl ports::Command for MockPort {
 /// #     type Error = std::io::Error;
-/// #     fn load_active_version(&self, _: VaultId) -> Result<Option<ConfigVersion>, Self::Error> { Ok(None) }
-/// #     fn load_global(&self) -> Result<Option<Global>, Self::Error> { Ok(None) }
-/// #     fn load_vault(&self, _: VaultId) -> Result<Option<lithos_core::config::vault::Vault>, Self::Error> { Ok(None) }
-/// #     fn save_global(&self, _: &Global) -> Result<(), Self::Error> { Ok(()) }
-/// #     fn save_merged(&self, _: VaultId, _: ConfigVersion, _: &Config) -> Result<(), Self::Error> { Ok(()) }
-/// #     fn save_vault(&self, _: VaultId, _: &lithos_core::config::vault::Vault) -> Result<(), Self::Error> { Ok(()) }
-/// #     fn save_vault_path_mapping(&self, _: VaultId, _: &VaultRoot) -> Result<(), Self::Error> { Ok(()) }
-/// #     fn set_active_version(&self, _: VaultId, _: ConfigVersion) -> Result<(), Self::Error> { Ok(()) }
+/// #
+/// #     fn load_active_version(
+/// #         &self,
+/// #         _: VaultId,
+/// #     ) -> Result<Option<ConfigVersion>, Self::Error> {
+/// #         Ok(None)
+/// #     }
+/// #
+/// #     fn load_global(&self) -> Result<Option<Global>, Self::Error> {
+/// #         Ok(None)
+/// #     }
+/// #
+/// #     fn load_vault(
+/// #         &self,
+/// #         _: VaultId,
+/// #     ) -> Result<Option<Vault>, Self::Error> {
+/// #         Ok(None)
+/// #     }
+/// #
+/// #     fn save_global(&self, _: &Global) -> Result<(), Self::Error> {
+/// #         Ok(())
+/// #     }
+/// #
+/// #     fn save_merged(
+/// #         &self,
+/// #         _: VaultId,
+/// #         _: ConfigVersion,
+/// #         _: &Config,
+/// #     ) -> Result<(), Self::Error> {
+/// #         Ok(())
+/// #     }
+/// #
+/// #     fn save_vault(
+/// #         &self,
+/// #         _: VaultId,
+/// #         _: &Vault,
+/// #     ) -> Result<(), Self::Error> {
+/// #         Ok(())
+/// #     }
+/// #
+/// #     fn save_vault_path_mapping(
+/// #         &self,
+/// #         _: VaultId,
+/// #         _: &VaultRoot,
+/// #     ) -> Result<(), Self::Error> {
+/// #         Ok(())
+/// #     }
+/// #
+/// #     fn set_active_version(
+/// #         &self,
+/// #         _: VaultId,
+/// #         _: ConfigVersion,
+/// #     ) -> Result<(), Self::Error> {
+/// #         Ok(())
+/// #     }
 /// # }
 /// let cmd = Command::new(MockPort);
 /// ```
@@ -231,10 +281,6 @@ where
         Ok(candidate)
     }
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 #[cfg(test)]
 #[expect(

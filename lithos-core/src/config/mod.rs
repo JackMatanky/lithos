@@ -22,7 +22,11 @@
 //!
 //! ```rust
 //! # use std::path::Path;
-//! # use lithos_core::config::{aggregate::Config, vault::VaultId, vault::VaultRoot, ingest};
+//! # use lithos_core::config::{
+//! #     aggregate::Config,
+//! #     vault::{VaultId, VaultRoot},
+//! #     ingest
+//! # };
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let vault_root = Path::new("/path/to/vault");
 //! let vault_id = VaultId::new();

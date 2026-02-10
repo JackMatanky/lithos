@@ -51,12 +51,12 @@ use super::{
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Vault {
+    /// Overridden logging settings.
+    logging: Option<Logging>,
     /// Overridden paths settings.
     paths: Paths,
     /// Overridden frontmatter settings.
     frontmatter: Option<Frontmatter>,
-    /// Overridden logging settings.
-    logging: Option<Logging>,
     /// Overridden task settings.
     task: Option<TaskConfig>,
 }
@@ -66,15 +66,15 @@ impl Vault {
     #[inline]
     #[must_use]
     pub const fn new(
+        logging: Option<Logging>,
         paths: Paths,
         frontmatter: Option<Frontmatter>,
-        logging: Option<Logging>,
         task: Option<TaskConfig>,
     ) -> Self {
         Self {
+            logging,
             paths,
             frontmatter,
-            logging,
             task,
         }
     }
@@ -93,18 +93,18 @@ impl Vault {
         self.frontmatter.as_ref()
     }
 
-    /// Return the overridden logging settings, if set.
-    #[inline]
-    #[must_use]
-    pub fn logging(&self) -> Option<&Logging> {
-        self.logging.as_ref()
-    }
-
     /// Return the overridden task settings, if set.
     #[inline]
     #[must_use]
     pub fn task(&self) -> Option<&TaskConfig> {
         self.task.as_ref()
+    }
+
+    /// Return the overridden logging settings, if set.
+    #[inline]
+    #[must_use]
+    pub fn logging(&self) -> Option<&Logging> {
+        self.logging.as_ref()
     }
 }
 
@@ -265,12 +265,12 @@ impl Default for Metadata {
 pub struct Paths {
     /// Overridden cache settings.
     pub cache: Option<Cache>,
+    /// Overridden template settings.
+    pub template: Option<Template>,
     /// Overridden schema settings.
     pub schema: Option<Schema>,
     /// Overridden property bank filename.
     pub property_bank: Option<PropertyBank>,
-    /// Overridden template settings.
-    pub template: Option<Template>,
 }
 
 impl Paths {
@@ -279,15 +279,15 @@ impl Paths {
     #[must_use]
     pub const fn new(
         cache: Option<Cache>,
+        template: Option<Template>,
         schema: Option<Schema>,
         property_bank: Option<PropertyBank>,
-        template: Option<Template>,
     ) -> Self {
         Self {
             cache,
+            template,
             schema,
             property_bank,
-            template,
         }
     }
 }
@@ -544,10 +544,6 @@ impl std::fmt::Display for SchemaVersion {
     }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -582,7 +578,7 @@ mod tests {
             let paths = Paths::default();
             let logging = Logging::new(LogLevel::Debug);
             let vault =
-                Vault::new(paths.clone(), None, Some(logging.clone()), None);
+                Vault::new(Some(logging.clone()), paths.clone(), None, None);
 
             assert_eq!(vault.paths(), &paths);
             assert_eq!(vault.logging(), Some(&logging));

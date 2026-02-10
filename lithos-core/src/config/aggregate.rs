@@ -59,7 +59,11 @@ use super::{
 ///
 /// ```rust
 /// # use std::path::Path;
-/// # use lithos_core::config::{aggregate::Config, vault::VaultId, vault::VaultRoot, ingest};
+/// # use lithos_core::config::{
+/// #     aggregate::Config,
+/// #     vault::{VaultId, VaultRoot},
+/// #     ingest
+/// # };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # let vault_root_path = Path::new("/tmp/vault");
 /// # let vault_id = VaultId::new();
@@ -104,12 +108,12 @@ impl Default for Config {
     #[inline]
     fn default() -> Self {
         Self {
-            frontmatter: Frontmatter::default(),
-            paths: Paths::default(),
-            logging: Logging::default(),
-            pending_events: vec![],
-            task: TaskConfig::default(),
             vault_metadata: Metadata::default(),
+            logging: Logging::default(),
+            paths: Paths::default(),
+            frontmatter: Frontmatter::default(),
+            task: TaskConfig::default(),
+            pending_events: vec![],
         }
     }
 }
@@ -132,19 +136,19 @@ impl Config {
     ) -> Result<Self, ConfigError> {
         let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
 
+        let logging = raw
+            .logging
+            .as_ref()
+            .map(|x| x.clone().try_into())
+            .transpose()?
+            .unwrap_or_default();
+
         let fs = &raw.paths;
 
         let paths = Self::make_resolved_paths(fs)?;
 
         let frontmatter = raw
             .frontmatter
-            .as_ref()
-            .map(|x| x.clone().try_into())
-            .transpose()?
-            .unwrap_or_default();
-
-        let logging = raw
-            .logging
             .as_ref()
             .map(|x| x.clone().try_into())
             .transpose()?
@@ -205,6 +209,13 @@ impl Config {
         )?
         .unwrap_or_default();
 
+        let template = Self::opt_path_to_domain(
+            &fs.templates_dir,
+            Template::try_new,
+            "templates_dir",
+        )?
+        .unwrap_or_default();
+
         let schema = Self::opt_path_to_domain(
             &fs.schemas_dir,
             Schema::try_new,
@@ -213,20 +224,13 @@ impl Config {
         .unwrap_or_default();
 
         let property_bank = Self::opt_filename(
-            &fs.property_bank_filename,
+            &fs.property_bank_file,
             PropertyBank::try_new,
-            "property_bank_filename",
+            "property_bank_file",
         )?
         .unwrap_or_default();
 
-        let template = Self::opt_path_to_domain(
-            &fs.templates_dir,
-            Template::try_new,
-            "templates_dir",
-        )?
-        .unwrap_or_default();
-
-        Ok(Paths::new(cache, schema, property_bank, template))
+        Ok(Paths::new(cache, template, schema, property_bank))
     }
 
     /// Convert optional path string to domain type.
@@ -404,10 +408,6 @@ pub struct ActiveMergedConfig {
     pub version: ConfigVersion,
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
@@ -436,9 +436,7 @@ mod tests {
                 paths: raw::RawPathsConfig {
                     schemas_dir: Some("schemas".to_owned()),
                     templates_dir: Some("custom_templates".to_owned()),
-                    property_bank_filename: Some(
-                        "property_bank.json".to_owned(),
-                    ),
+                    property_bank_file: Some("property_bank.json".to_owned()),
                     cache_dir: Some(".lithos".to_owned()),
                 },
                 frontmatter: Some(RawFrontmatter {
@@ -615,7 +613,7 @@ mod tests {
                 paths: raw::RawPathsConfig {
                     cache_dir: Some(".lithos-cache".to_owned()),
                     schemas_dir: Some("my-schemas".to_owned()),
-                    property_bank_filename: Some("bank.json".to_owned()),
+                    property_bank_file: Some("bank.json".to_owned()),
                     templates_dir: Some("my-templates".to_owned()),
                 },
                 ..Default::default()
