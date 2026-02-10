@@ -1,6 +1,6 @@
 //! Task configuration schema and validation.
 //!
-//! This module provides the [`TaskConfig`] aggregate and supporting types
+//! This module provides the [`Task`] aggregate and supporting types
 //! for defining how Markdown-based tasks are recognized and indexed.
 
 #![expect(
@@ -50,9 +50,9 @@ use crate::bounds::Bounds;
 /// # Examples
 ///
 /// ```rust
-/// use lithos_core::config::task::TaskConfig;
+/// use lithos_core::config::task::Task;
 ///
-/// let config = TaskConfig::default();
+/// let config = Task::default();
 /// assert!(config.enabled());
 /// ```
 #[derive(
@@ -68,10 +68,15 @@ use crate::bounds::Bounds;
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[serde(try_from = "RawTaskConfig")]
 #[non_exhaustive]
-pub struct TaskConfig {
+pub struct Task {
     /// Whether task processing is enabled.
     enabled: bool,
     /// Configured task promotion tags.
+    #[expect(
+        clippy::struct_field_names,
+        reason = "task_tags is more descriptive and matches the config field \
+                  name"
+    )]
     task_tags: Vec<TaskTag>,
     /// Status mappings for checkboxes.
     status: CheckboxStatus,
@@ -89,7 +94,7 @@ pub struct TaskConfig {
     indexed_fields: Vec<Box<str>>,
 }
 
-impl Default for TaskConfig {
+impl Default for Task {
     #[inline]
     #[expect(
         clippy::disallowed_methods,
@@ -101,7 +106,7 @@ impl Default for TaskConfig {
     }
 }
 
-impl TaskConfig {
+impl Task {
     #[inline]
     /// Builds a validated task configuration from raw input.
     ///
@@ -971,7 +976,7 @@ impl DateSpec {
 //               Standard Trait Implementations                //
 // ----------------------------------------------------------- //
 
-impl TryFrom<RawTaskConfig> for TaskConfig {
+impl TryFrom<RawTaskConfig> for Task {
     type Error = ConfigError;
 
     #[inline]
@@ -1174,7 +1179,7 @@ mod tests {
     #[test]
     fn task_config_from_raw_full_valid() {
         let raw = fixtures::sample_raw_task_config();
-        let config = TaskConfig::from_raw(raw).unwrap();
+        let config = Task::from_raw(raw).unwrap();
 
         assert!(config.enabled());
         assert_eq!(config.task_tags().len(), 1);
@@ -1192,7 +1197,7 @@ mod tests {
         });
         raw.fields = Some(fields);
 
-        let result = TaskConfig::from_raw(raw);
+        let result = Task::from_raw(raw);
         assert!(
             result.is_err(),
             "Expected validation error for invalid bounds"
@@ -1269,7 +1274,7 @@ max = 1.0
             }),
         };
 
-        let result = TaskConfig::from_raw(raw);
+        let result = Task::from_raw(raw);
         assert!(result.is_err(), "Expected validation error for unknown field");
     }
 }

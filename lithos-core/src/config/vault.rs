@@ -16,7 +16,7 @@ use super::{
     frontmatter::Frontmatter,
     logging::Logging,
     paths::{Cache, PropertyBank, Schema, Template},
-    task::TaskConfig,
+    task::Task,
 };
 
 // ----------------------------------------------------------- //
@@ -58,7 +58,7 @@ pub struct Vault {
     /// Overridden frontmatter settings.
     frontmatter: Option<Frontmatter>,
     /// Overridden task settings.
-    task: Option<TaskConfig>,
+    task: Option<Task>,
 }
 
 impl Vault {
@@ -69,7 +69,7 @@ impl Vault {
         logging: Option<Logging>,
         paths: Paths,
         frontmatter: Option<Frontmatter>,
-        task: Option<TaskConfig>,
+        task: Option<Task>,
     ) -> Self {
         Self {
             logging,
@@ -96,7 +96,7 @@ impl Vault {
     /// Return the overridden task settings, if set.
     #[inline]
     #[must_use]
-    pub fn task(&self) -> Option<&TaskConfig> {
+    pub fn task(&self) -> Option<&Task> {
         self.task.as_ref()
     }
 

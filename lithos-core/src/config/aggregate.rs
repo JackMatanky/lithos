@@ -28,7 +28,7 @@ use super::{
     logging::Logging,
     paths::Paths,
     raw,
-    task::TaskConfig,
+    task::Task,
     vault::{Metadata, VaultId, VaultRoot},
 };
 
@@ -91,7 +91,7 @@ pub struct Config {
     /// Merged frontmatter configuration.
     pub frontmatter: Frontmatter,
     /// Merged task configuration.
-    pub task: TaskConfig,
+    pub task: Task,
     /// Domain events pending emission (not persisted).
     #[serde(skip)]
     #[rkyv(with = rkyv::with::Skip)]
@@ -135,7 +135,7 @@ impl Config {
         let task = raw
             .task
             .as_ref()
-            .map(|x| TaskConfig::from_raw(x.clone()))
+            .map(|x| Task::from_raw(x.clone()))
             .transpose()?
             .unwrap_or_default();
 
@@ -358,7 +358,7 @@ mod tests {
                 logging: Logging::default(),
                 paths: Paths::default(),
                 frontmatter: Frontmatter::default(),
-                task: TaskConfig::default(),
+                task: Task::default(),
                 pending_events: vec![],
             }
         }
