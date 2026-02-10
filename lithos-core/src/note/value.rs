@@ -218,6 +218,63 @@ impl FieldValue {
         }
     }
 
+    /// Converts a `serde_yaml::Value` into a `FieldValue`.
+    ///
+    /// This is used when parsing YAML frontmatter. Tagged YAML values are not
+    /// supported and will return an error.
+    ///
+    /// # Errors
+    /// Returns error if:
+    /// - Number cannot be converted to f64
+    /// - YAML map contains non-string keys
+    /// - YAML contains tagged values
+    #[inline]
+    pub fn from_yaml(value: &serde_yaml::Value) -> Result<Self, String> {
+        match value {
+            serde_yaml::Value::Null => Ok(Self::String("".into())),
+            serde_yaml::Value::Bool(b) => Ok(Self::Boolean(*b)),
+            serde_yaml::Value::Number(n) =>
+            {
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "i64 to f64 conversion is acceptable for \
+                              frontmatter numbers"
+                )]
+                #[expect(
+                    clippy::as_conversions,
+                    reason = "i64 to f64 is the correct conversion for \
+                              frontmatter numbers"
+                )]
+                if let Some(i) = n.as_i64() {
+                    Ok(Self::Number(i as f64))
+                } else if let Some(f) = n.as_f64() {
+                    Ok(Self::Number(f))
+                } else {
+                    Err("invalid number in YAML".into())
+                }
+            }
+            serde_yaml::Value::String(s) => Ok(Self::String(s.clone().into())),
+            serde_yaml::Value::Sequence(seq) => {
+                let arr: Result<Vec<_>, _> =
+                    seq.iter().map(Self::from_yaml).collect();
+                Ok(Self::Array(arr?))
+            }
+            serde_yaml::Value::Mapping(map) => {
+                let mut obj = HashMap::new();
+                for (k, v) in map {
+                    let key = k.as_str().ok_or_else(|| {
+                        "non-string key in YAML map".to_owned()
+                    })?;
+                    obj.insert(key.into(), Self::from_yaml(v)?);
+                }
+                Ok(Self::Object(obj))
+            }
+            serde_yaml::Value::Tagged(_) => {
+                Err("tagged YAML values not supported".into())
+            }
+        }
+    }
+
     /// Convert this `FieldValue` to a JSON string for indexing.
     ///
     /// This provides a stable string representation for metadata indexes.
