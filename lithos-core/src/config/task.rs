@@ -268,21 +268,21 @@ pub enum FieldSpec {
     /// Integer field with optional range bounds.
     Integer {
         /// Field name identifier.
-        name: SpecName,
+        name: FieldName,
         /// Optional bounds.
         bounds: Bounds<i64>,
     },
     /// Floating point field with optional range bounds.
     Float {
         /// Field name identifier.
-        name: SpecName,
+        name: FieldName,
         /// Optional bounds.
         bounds: Bounds<f64>,
     },
     /// String field with optional regex pattern validation.
     String {
         /// Field name identifier.
-        name: SpecName,
+        name: FieldName,
         /// Optional validation pattern.
         pattern: Option<String>,
         /// Pre-compiled regex pattern for validation.
@@ -293,14 +293,14 @@ pub enum FieldSpec {
     /// Categorical field with a fixed set of allowed values.
     Enum {
         /// Field name identifier.
-        name: SpecName,
+        name: FieldName,
         /// List of allowed values.
         values: Vec<Box<str>>,
     },
     /// Date/time field with a specific Chrono format.
     DateTime {
         /// Field name identifier.
-        name: SpecName,
+        name: FieldName,
         /// Chrono format string.
         format: String,
     },
@@ -317,7 +317,7 @@ impl FieldSpec {
         name: &str,
         raw: RawTaskFieldSpec,
     ) -> Result<Self, ConfigError> {
-        let name = SpecName::try_new(name)?;
+        let name = FieldName::try_new(name)?;
         match raw {
             RawTaskFieldSpec::Enum {
                 values,
@@ -413,7 +413,7 @@ impl FieldSpec {
         clippy::pattern_type_mismatch,
         reason = "Ergonomic enum pattern for accessing shared field"
     )]
-    pub fn name(&self) -> &SpecName {
+    pub fn name(&self) -> &FieldName {
         match self {
             Self::String {
                 name,
@@ -478,7 +478,7 @@ impl FieldSpec {
 
     fn validate_integer(
         value: &serde_json::Value,
-        name: &SpecName,
+        name: &FieldName,
         bounds: &Bounds<i64>,
     ) -> Result<(), ConfigError> {
         let number =
@@ -500,7 +500,7 @@ impl FieldSpec {
 
     fn validate_float(
         value: &serde_json::Value,
-        name: &SpecName,
+        name: &FieldName,
         bounds: &Bounds<f64>,
     ) -> Result<(), ConfigError> {
         let number =
@@ -522,7 +522,7 @@ impl FieldSpec {
 
     fn validate_string(
         value: &serde_json::Value,
-        name: &SpecName,
+        name: &FieldName,
         pattern: Option<&Regex>,
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
@@ -543,7 +543,7 @@ impl FieldSpec {
 
     fn validate_enum(
         value: &serde_json::Value,
-        name: &SpecName,
+        name: &FieldName,
         values: &[Box<str>],
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
@@ -566,7 +566,7 @@ impl FieldSpec {
 
     fn validate_datetime(
         value: &serde_json::Value,
-        name: &SpecName,
+        name: &FieldName,
         format: &str,
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
@@ -861,9 +861,9 @@ impl From<TaskTag> for String {
     rkyv::Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
-pub struct SpecName(Box<str>);
+pub struct FieldName(Box<str>);
 
-impl SpecName {
+impl FieldName {
     #[inline]
     /// Creates a validated task spec name.
     ///
@@ -900,9 +900,9 @@ impl SpecName {
     }
 }
 
-impl From<SpecName> for String {
+impl From<FieldName> for String {
     #[inline]
-    fn from(name: SpecName) -> Self {
+    fn from(name: FieldName) -> Self {
         name.0.into_string()
     }
 }
@@ -922,7 +922,7 @@ impl From<SpecName> for String {
 #[non_exhaustive]
 pub struct DateFieldSpec {
     /// Field name used in text.
-    keyword: SpecName,
+    keyword: FieldName,
     /// Optional emoji marker (e.g., 📅).
     emoji: Option<char>,
     /// Chrono format string (e.g., `%Y-%m-%d`).
@@ -936,7 +936,7 @@ impl DateFieldSpec {
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if the spec is invalid.
     pub fn from_raw(raw: RawDateFieldSpec) -> Result<Self, ConfigError> {
-        let keyword = SpecName::try_new(raw.keyword)?;
+        let keyword = FieldName::try_new(raw.keyword)?;
         validate_chrono_format(&raw.format, "task.dates.format")?;
         Ok(Self {
             keyword,
@@ -948,7 +948,7 @@ impl DateFieldSpec {
     #[inline]
     #[must_use]
     /// Return the field keyword.
-    pub fn keyword(&self) -> &SpecName {
+    pub fn keyword(&self) -> &FieldName {
         &self.keyword
     }
 
