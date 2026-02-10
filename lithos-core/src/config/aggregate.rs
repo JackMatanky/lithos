@@ -29,7 +29,7 @@ use super::{
     paths::Paths,
     raw,
     task::TaskConfig,
-    vault::{Metadata, VaultId, VaultRoot},
+    vault::{AppVersion, Metadata, VaultId, VaultName, VaultRoot},
 };
 
 // ----------------------------------------------------------- //
@@ -100,9 +100,27 @@ pub struct Config {
 
 impl Default for Config {
     #[inline]
+    #[expect(
+        clippy::disallowed_methods,
+        clippy::expect_used,
+        reason = "Default values are guaranteed valid for testing"
+    )]
     fn default() -> Self {
+        // Create a test vault root for defaults
+        let test_root = VaultRoot::try_new("/test-vault".into())
+            .expect("test vault root must be valid");
+        let test_name = VaultName::from_root(&test_root);
+        let test_version = AppVersion::try_new(env!("CARGO_PKG_VERSION"))
+            .expect("package version is non-empty");
+
         Self {
-            vault_metadata: Metadata::default(),
+            vault_metadata: Metadata::new(
+                VaultId::new(),
+                test_root,
+                Some(test_name),
+                Some(test_version),
+            )
+            .expect("default metadata must be valid"),
             logging: Logging::default(),
             paths: Paths::default(),
             frontmatter: Frontmatter::default(),
