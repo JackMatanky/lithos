@@ -286,6 +286,76 @@ impl FieldValue {
     }
 }
 
+// =============================================================================
+// Error Types
+// =============================================================================
+
+/// Error type for [`FieldValue`] conversion operations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldValueError {
+    /// Type mismatch between expected and actual value.
+    TypeMismatch {
+        /// Expected value type.
+        expected: FieldValueType,
+        /// Actual value type.
+        actual: FieldValueType,
+    },
+    /// Invalid date timestamp.
+    InvalidDateTimestamp {
+        /// The problematic timestamp.
+        timestamp: i64,
+    },
+    /// Array element type mismatch.
+    ArrayElementTypeMismatch {
+        /// Index of the problematic element.
+        index: usize,
+        /// Expected element type.
+        expected: FieldValueType,
+        /// Actual element type.
+        actual: FieldValueType,
+    },
+}
+
+impl core::fmt::Display for FieldValueError {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match *self {
+            Self::TypeMismatch {
+                expected,
+                actual,
+            } => {
+                write!(f, "type mismatch: expected {expected}, found {actual}")
+            }
+            Self::InvalidDateTimestamp {
+                timestamp,
+            } => {
+                write!(f, "invalid date timestamp: {timestamp}")
+            }
+            Self::ArrayElementTypeMismatch {
+                index,
+                expected,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "array element type mismatch at index {index}: expected \
+                     {expected}, found {actual}"
+                )
+            }
+        }
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Default trait methods are sufficient for this simple error type"
+)]
+impl std::error::Error for FieldValueError {}
+
+// =============================================================================
+// Trait Definitions
+// =============================================================================
+
 /// Fallible, strict conversions from [`FieldValue`].
 ///
 /// This is intentionally a *local* trait (instead of `TryFrom<&FieldValue>`) to
@@ -335,48 +405,9 @@ pub trait FromFieldValueRef<'value>: Sized {
     ) -> Result<Self, FieldValueError>;
 }
 
-/// Error type for [`FieldValue`] conversion operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FieldValueError {
-    /// Type mismatch between expected and actual value.
-    TypeMismatch {
-        /// Expected value type.
-        expected: FieldValueType,
-        /// Actual value type.
-        actual: FieldValueType,
-    },
-    /// Invalid date timestamp.
-    InvalidDateTimestamp {
-        /// The problematic timestamp.
-        timestamp: i64,
-    },
-    /// Array element type mismatch.
-    ArrayElementTypeMismatch {
-        /// Index of the problematic element.
-        index: usize,
-        /// Expected element type.
-        expected: FieldValueType,
-        /// Actual element type.
-        actual: FieldValueType,
-    },
-}
-
-#[allow(
-    clippy::missing_trait_methods,
-    clippy::match_ref_pats,
-    reason = "Default trait methods are not needed for this simple error type"
-)]
-#[allow(clippy::all)]
-impl core::fmt::Display for FieldValueError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-#[allow(clippy::all)]
-impl std::error::Error for FieldValueError {}
-
-// Implementations for common types
+// =============================================================================
+// Trait Implementations
+// =============================================================================
 impl FromFieldValue for bool {
     #[inline]
     fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
