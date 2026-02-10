@@ -259,7 +259,7 @@ components:
 
 **Structs:**
 - 49 structs documented
-- List: Config, ConfigVersion, Global, Vault, Paths, Cache, PropertyBank, Schema, Template, RelativePath, Metadata, VaultId, VaultRoot, Logging, TaskConfig, TrustedVaults, TrustedVaultPath, TaskFieldSpec, TaskTag, CheckboxStatus, DateFieldSpec, StatusSymbol, TaskFieldKeyword, StatusName, FrontmatterKey, RawConfig, RawPaths, RawLogging, RawTaskConfig, RawFrontmatter, RawTaskFieldSpec, RawDateFieldSpec, Command, Query
+- List: Config, ConfigVersion, Global, Vault, Paths, Cache, PropertyBank, Schema, Template, RelativePath, Metadata, VaultId, VaultRoot, Logging, TaskConfig, TrustedVaults, TrustedVaultPath, TaskFieldSpec, TaskTag, CheckboxStatus, DateSpec, StatusSymbol, TaskFieldKeyword, StatusName, FrontmatterKey, RawConfig, RawPaths, RawLogging, RawTaskConfig, RawFrontmatter, RawTaskFieldSpec, RawDateFieldSpec, Command, Query
 
 **Enums:**
 - 10 enums documented

@@ -76,13 +76,13 @@ pub struct TaskConfig {
     /// Status mappings for checkboxes.
     status: CheckboxStatus,
     /// Optional due date field configuration.
-    due_field: Option<DateFieldSpec>,
+    due_field: Option<DateSpec>,
     /// Optional created date field configuration.
-    created_field: Option<DateFieldSpec>,
+    created_field: Option<DateSpec>,
     /// Optional reminder date field configuration.
-    reminder_field: Option<DateFieldSpec>,
+    reminder_field: Option<DateSpec>,
     /// Optional completed date field configuration.
-    completed_field: Option<DateFieldSpec>,
+    completed_field: Option<DateSpec>,
     /// Custom task field specifications.
     fields: HashMap<Box<str>, FieldSpec>,
     /// List of field names to be indexed.
@@ -131,10 +131,10 @@ impl TaskConfig {
         let (due_field, completed_field, created_field, reminder_field) =
             match raw.dates {
                 Some(dates) => (
-                    dates.due.map(DateFieldSpec::from_raw).transpose()?,
-                    dates.completed.map(DateFieldSpec::from_raw).transpose()?,
-                    dates.created.map(DateFieldSpec::from_raw).transpose()?,
-                    dates.reminder.map(DateFieldSpec::from_raw).transpose()?,
+                    dates.due.map(DateSpec::from_raw).transpose()?,
+                    dates.completed.map(DateSpec::from_raw).transpose()?,
+                    dates.created.map(DateSpec::from_raw).transpose()?,
+                    dates.reminder.map(DateSpec::from_raw).transpose()?,
                 ),
                 None => (None, None, None, None),
             };
@@ -203,28 +203,28 @@ impl TaskConfig {
     #[inline]
     #[must_use]
     /// Return the due date field spec, if configured.
-    pub fn due_field(&self) -> Option<&DateFieldSpec> {
+    pub fn due_field(&self) -> Option<&DateSpec> {
         self.due_field.as_ref()
     }
 
     #[inline]
     #[must_use]
     /// Return the created date field spec, if configured.
-    pub fn created_field(&self) -> Option<&DateFieldSpec> {
+    pub fn created_field(&self) -> Option<&DateSpec> {
         self.created_field.as_ref()
     }
 
     #[inline]
     #[must_use]
     /// Return the reminder date field spec, if configured.
-    pub fn reminder_field(&self) -> Option<&DateFieldSpec> {
+    pub fn reminder_field(&self) -> Option<&DateSpec> {
         self.reminder_field.as_ref()
     }
 
     #[inline]
     #[must_use]
     /// Return the completed date field spec, if configured.
-    pub fn completed_field(&self) -> Option<&DateFieldSpec> {
+    pub fn completed_field(&self) -> Option<&DateSpec> {
         self.completed_field.as_ref()
     }
 
@@ -920,7 +920,7 @@ impl From<FieldName> for String {
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
-pub struct DateFieldSpec {
+pub struct DateSpec {
     /// Field name used in text.
     keyword: FieldName,
     /// Optional emoji marker (e.g., 📅).
@@ -929,7 +929,7 @@ pub struct DateFieldSpec {
     format: Box<str>,
 }
 
-impl DateFieldSpec {
+impl DateSpec {
     #[inline]
     /// Build a date field spec from raw input.
     ///

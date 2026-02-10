@@ -29,7 +29,7 @@ max = 10  # Integer inferred from min/max
 
 #### Improvement 2: First-Class Date Fields with Emoji Support
 - **Before**: Dates treated like any custom field
-- **After**: Dedicated `task.dates.*` section with `DateFieldSpec` type
+- **After**: Dedicated `task.dates.*` section with `DateSpec` type
 - **Benefit**: Obsidian plugin compatibility (emoji support), specialized query optimization
 
 **Example**:
@@ -93,7 +93,7 @@ Improvements:
 
 Changes:
 - Updated config examples (no type= keys, added task.dates section)
-- Added DateFieldSpec domain type
+- Added DateSpec domain type
 - Updated RawTaskFieldSpec to use untagged enum
 - Replaced Date variant with DateTime variant
 - Updated TaskConfig with first-class date field accessors
@@ -153,7 +153,7 @@ From `UPDATES-REQUIRED.md`:
 ## Key Architectural Decisions Locked In
 
 ### Context Boundaries
-- **Config context**: Cross-cutting infrastructure (exports TaskConfig, DateFieldSpec, TaskFieldKeyword)
+- **Config context**: Cross-cutting infrastructure (exports TaskConfig, DateSpec, TaskFieldKeyword)
 - **Note context**: Owns FieldValue, imports TaskConfig for validation
 - **Schema context**: Owns VaultRelPath (directory validation only)
 
@@ -169,7 +169,7 @@ From `UPDATES-REQUIRED.md`:
 
 ### Task Configuration Patterns
 - **Type inference**: `#[serde(untagged)]` enum for field specs
-- **First-class dates**: Dedicated `DateFieldSpec` for temporal fields (not generic custom fields)
+- **First-class dates**: Dedicated `DateSpec` for temporal fields (not generic custom fields)
 - **Emoji support**: Backward compatibility with Obsidian Dataview/Tasks/Reminder plugins
 - **Format flexibility**: Chrono format strings (user-controlled precision)
 

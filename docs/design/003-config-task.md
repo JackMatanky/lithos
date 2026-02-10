@@ -474,7 +474,7 @@ impl<T: PartialOrd> Bounds<T> {
 }
 ```
 
-#### `DateFieldSpec` (Domain)
+#### `DateSpec` (Domain)
 
 - **Purpose**: Validated specification for first-class temporal fields (due, created, reminder, completed)
 - **Key rules**: Valid chrono format string, optional emoji
@@ -483,7 +483,7 @@ impl<T: PartialOrd> Bounds<T> {
 
 ```rust
 #[derive(Debug, Clone)]
-pub struct DateFieldSpec {
+pub struct DateSpec {
     keyword: TaskFieldKeyword,
     emoji: Option<char>,
     format: Box<str>,  // chrono format string
@@ -518,7 +518,7 @@ pub enum TaskFieldSpec {
     },
     DateTime {
         keyword: TaskFieldKeyword,
-        format: Box<str>,  // No emoji here - only in DateFieldSpec
+        format: Box<str>,  // No emoji here - only in DateSpec
     },
 }
 ```
@@ -562,10 +562,10 @@ pub struct TaskConfig {
     status: CheckboxStatus,
 
     // First-class temporal fields (Obsidian compatibility)
-    due_field: Option<DateFieldSpec>,
-    created_field: Option<DateFieldSpec>,
-    reminder_field: Option<DateFieldSpec>,
-    completed_field: Option<DateFieldSpec>,
+    due_field: Option<DateSpec>,
+    created_field: Option<DateSpec>,
+    reminder_field: Option<DateSpec>,
+    completed_field: Option<DateSpec>,
 
     // Custom metadata fields (type-inferred)
     fields: HashMap<Box<str>, TaskFieldSpec>,
@@ -658,17 +658,17 @@ pub enum RawTaskFieldSpec {
     - _Behavior_: Checks if text contains any configured task tag
   - `status(&self) -> &CheckboxStatus`
     - _Behavior_: Returns status symbol ↔ name mapping
-  - `due_field(&self) -> Option<&DateFieldSpec>`
+  - `due_field(&self) -> Option<&DateSpec>`
     - _Behavior_: Returns configured due date field spec (with keyword, emoji, format)
-  - `created_field(&self) -> Option<&DateFieldSpec>`
+  - `created_field(&self) -> Option<&DateSpec>`
     - _Behavior_: Returns configured created date field spec
-  - `reminder_field(&self) -> Option<&DateFieldSpec>`
+  - `reminder_field(&self) -> Option<&DateSpec>`
     - _Behavior_: Returns configured reminder date field spec
-  - `completed_field(&self) -> Option<&DateFieldSpec>`
+  - `completed_field(&self) -> Option<&DateSpec>`
     - _Behavior_: Returns configured completed date field spec
   - `field_spec(&self, field_name: &str) -> Option<&TaskFieldSpec>`
     - _Behavior_: Returns configured field spec for validation
-  - `parse_date_value(&self, text: &str, spec: &DateFieldSpec) -> Result<chrono::NaiveDateTime, ConfigError>`
+  - `parse_date_value(&self, text: &str, spec: &DateSpec) -> Result<chrono::NaiveDateTime, ConfigError>`
     - _Behavior_: Parses date text using spec's format string; supports both inline `[due:: 2026-02-10]` and emoji `📅 2026-02-10` formats
     - _Errors_: Parse failure, invalid format
   - `indexed_fields(&self) -> &[Box<str>]`
@@ -682,11 +682,11 @@ pub enum RawTaskFieldSpec {
   - Enum values non-empty
   - Date field keywords unique (no collision with custom fields)
 
-#### Component: `DateFieldSpec`
+#### Component: `DateSpec`
 
 - **Responsibility**: Validated specification for first-class temporal fields
 - **Public Interface** (internal to config context):
-  - `DateFieldSpec::from_raw(raw: RawDateFieldSpec) -> Result<Self, ConfigError>`
+  - `DateSpec::from_raw(raw: RawDateFieldSpec) -> Result<Self, ConfigError>`
     - _Behavior_: Validates keyword, emoji, and chrono format string
     - _Errors_: Invalid keyword, invalid format string, emoji not single char
   - `keyword(&self) -> &TaskFieldKeyword`
@@ -1037,7 +1037,7 @@ impl Default for TaskConfig {
 #### Decision: First-Class Date Fields with Emoji Support (Not Generic Custom Fields)
 
 - **Context**: Temporal fields (due, created, reminder, completed) are critical for task management; how to model?
-- **Choice**: Dedicated `task.dates.*` config section with `DateFieldSpec` domain type
+- **Choice**: Dedicated `task.dates.*` config section with `DateSpec` domain type
 - **Alternatives Considered**:
   - _Generic DateTime fields_: Treat like any custom field. **Rejected** - loses semantic meaning (queries can't optimize for "due dates")
   - _Hardcoded date fields_: No user configuration. **Rejected** - breaks Obsidian plugin compatibility (users need custom keywords/emojis)
@@ -1046,7 +1046,7 @@ impl Default for TaskConfig {
   - **Obsidian compatibility**: Users migrating from Dataview/Tasks/Reminder plugins need emoji support (`📅 2026-02-10`)
   - **Query optimization**: First-class fields enable specialized indexing (temporal range queries)
   - **Validation**: Format strings validated at config load (catches invalid chrono patterns early)
-  - **Flexibility**: Users can disable date fields (all `Option<DateFieldSpec>`)
+  - **Flexibility**: Users can disable date fields (all `Option<DateSpec>`)
 
 #### Decision: Unified DateTime Type (Not Separate Date/Time/DateTime)
 
@@ -1108,14 +1108,14 @@ impl Default for TaskConfig {
 #### Decision: Remove emoji from Custom DateTime Fields (First-Class Dates Only)
 
 - **Context**: Should custom datetime fields (`task.fields.*`) support emoji syntax?
-- **Choice**: No emoji in `TaskFieldSpec::DateTime`; emoji only in first-class `DateFieldSpec` (`task.dates.*`)
+- **Choice**: No emoji in `TaskFieldSpec::DateTime`; emoji only in first-class `DateSpec` (`task.dates.*`)
 - **Alternatives Considered**:
   - _Emoji everywhere_: All datetime fields support emoji. **Rejected** - confusing (why do custom fields need emojis?)
   - _Emoji as separate config_: `emoji_map` global section. **Rejected** - overcomplicates config
 - **Rationale**:
   - **Clear separation**: First-class dates (`due`, `created`, `reminder`, `completed`) = Obsidian compatibility (emojis)
   - **Custom fields = generic**: User-defined datetime fields are for domain-specific needs (no plugin compatibility required)
-  - **Simpler types**: `TaskFieldSpec::DateTime { keyword, format }` vs `DateFieldSpec { keyword, emoji, format }`
+  - **Simpler types**: `TaskFieldSpec::DateTime { keyword, format }` vs `DateSpec { keyword, emoji, format }`
   - **Consistency**: Emoji support is a feature of first-class temporal fields (not all datetime values)
 
 ## 5. Operational Readiness (The "Reality Check")
@@ -1211,12 +1211,12 @@ fn load_task_config(raw: RawTaskConfig) -> Result<TaskConfig, ConfigError> {
 | 2026-02-08 | "How does Note context get FieldValue?"               | Note converts serde_json::Value → note::value::FieldValue after config validation  |
 | 2026-02-08 | "What if user config has typos in field names?"       | Unknown fields trigger warnings; indexed_fields validated                          |
 | 2026-02-08 | "Type inference: Remove explicit `type=` key"         | Use `#[serde(untagged)]` - structure implies type (min/max → Integer)              |
-| 2026-02-08 | "First-class date fields for Obsidian compatibility"  | Add `task.dates.*` section with emoji support, dedicated `DateFieldSpec` type      |
+| 2026-02-08 | "First-class date fields for Obsidian compatibility"  | Add `task.dates.*` section with emoji support, dedicated `DateSpec` type      |
 | 2026-02-08 | "TaskFieldKeyword newtype for type safety"            | Add validated newtype: alphanumeric + `_-`, non-empty, <= 64 chars                 |
 | 2026-02-08 | "Unified DateTime type vs separate Date/Time/DateTime"| Single `DateTime` variant - format string determines precision (aligns with chrono)|
 | 2026-02-08 | "Bounds<T> newtype for min/max validation"            | Add `Bounds<T>` enum - enforces `min <= max` invariant, DRY for Integer/Float     |
 | 2026-02-08 | "Boolean type ambiguous with String fallback"         | Drop Boolean variant - use Enum with 2 values (`["true", "false"]`)               |
-| 2026-02-08 | "Emoji in custom DateTime fields?"                    | Remove emoji from `TaskFieldSpec::DateTime` - only for first-class `DateFieldSpec`|
+| 2026-02-08 | "Emoji in custom DateTime fields?"                    | Remove emoji from `TaskFieldSpec::DateTime` - only for first-class `DateSpec`|
 
 ## 8. References
 

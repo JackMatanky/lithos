@@ -361,7 +361,7 @@ Status: ✅ Core types exist and are used in persistence/aggregate.
 Status: ✅ Fully implemented, matches design spec
 
 - [x] Add `lithos-core/src/config/task.rs` with `TaskConfig`, `TaskTag`, `TaskFieldKeyword`, `StatusName`, `StatusSymbol`.
-- [x] Implement `Bounds<T>`, `DateFieldSpec`, `TaskFieldSpec` with validation + regex compile + chrono format checks.
+- [x] Implement `Bounds<T>`, `DateSpec`, `TaskFieldSpec` with validation + regex compile + chrono format checks.
 - [x] Add `TaskConfig::from_raw` and default config matching current checkbox behavior.
 - [x] Add validation and parsing helpers (`field_spec`, `parse_date_value`, status mapping lookups).
 - [x] Add unit tests for task tags, status mapping, bounds, regex, date parsing, and indexed fields.
@@ -1171,7 +1171,7 @@ pub struct StatusName(String);
 
 **Verdict**: ⚠️ **CONFIRMED BUT OUT OF SCOPE** - Not in Phase 0.5 task list
 
-### Issue 0.5.10: DateFieldSpec.format Uses String (Not Box<str>)
+### Issue 0.5.10: DateSpec.format Uses String (Not Box<str>)
 
 **Note**: Also NOT in official Phase 0.5 list:
 
@@ -1264,7 +1264,7 @@ indexed_fields: Vec<String>,
 ### Out of Scope (Not in Phase 0.5)
 
 - StatusName Box<str>
-- DateFieldSpec.format Box<str>
+- DateSpec.format Box<str>
 - TaskFieldSpec.Enum.values Vec<Box<str>>
 - TaskConfig fields HashMap<Box<str>, ...>
 
