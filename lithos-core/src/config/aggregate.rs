@@ -388,7 +388,7 @@ pub struct Record {
     pub config: Config,
 }
 
-/// Active merged config pointer for a vault.
+/// Active config pointer for a vault.
 #[derive(
     Debug,
     Clone,
@@ -401,7 +401,7 @@ pub struct Record {
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub struct ActiveMergedConfig {
+pub struct ActiveConfig {
     /// Vault identifier.
     pub vault_id: VaultId,
     /// Active merged version.
