@@ -18,7 +18,9 @@ use regex::Regex;
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{error::NoteError, types::SourceByteOffset, value::FieldValue};
+use super::{
+    error::NoteError, tag::Tag, types::SourceByteOffset, value::FieldValue,
+};
 use crate::config::task::{
     DateFieldSpec, StatusName, StatusSymbol, TaskConfig, TaskFieldSpec,
 };
@@ -64,7 +66,7 @@ pub struct Task {
     status: StatusName,
     text: String,
     position: SourceByteOffset,
-    tags: Vec<Box<str>>,
+    tags: Vec<Tag>,
     metadata: TaskMetadata,
     created_at: Option<TaskTimestamp>,
     due_at: Option<TaskTimestamp>,
@@ -101,7 +103,7 @@ impl Task {
             .clone();
 
         let text = Self::extract_clean_text(raw_text, config)?;
-        let tags = Self::extract_tags(raw_text);
+        let tags = Self::extract_tags(raw_text)?;
         let (created_at, due_at, reminder_at, completed_at) =
             Self::parse_temporal_fields(raw_text, config)?;
         let metadata = Self::parse_metadata(raw_text, config)?;
@@ -158,7 +160,7 @@ impl Task {
     /// Returns the collection of tags associated with this task.
     #[inline]
     #[must_use]
-    pub fn tags(&self) -> &[Box<str>] {
+    pub fn tags(&self) -> &[Tag] {
         &self.tags
     }
 
@@ -229,10 +231,10 @@ impl Task {
         Ok(text.to_owned())
     }
 
-    fn extract_tags(raw_text: &str) -> Vec<Box<str>> {
+    fn extract_tags(raw_text: &str) -> Result<Vec<Tag>, NoteError> {
         TAG_REGEX
             .find_iter(raw_text)
-            .map(|mat| mat.as_str().to_owned().into_boxed_str())
+            .map(|mat| Tag::new(mat.as_str()))
             .collect()
     }
 
@@ -708,7 +710,7 @@ static TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
         clippy::disallowed_methods,
         reason = "Internal regex compilation"
     )]
-    Regex::new("#([a-zA-Z0-9_-]+)").expect("Invalid tag regex")
+    Regex::new(r"#[a-zA-Z0-9_\-/]+").expect("Invalid tag regex")
 });
 
 #[expect(
@@ -864,18 +866,24 @@ mod tests {
     }
 
     #[test]
-    fn from_checkbox_collects_tags() {
+    fn from_checkbox_collects_hierarchical_tags() {
         let config = TaskConfig::default();
         let task = Task::from_checkbox(
-            "#task #work Fix bug",
+            "#task Fix #work/project/urgent issue",
             StatusSymbol::try_new(' ').expect("valid status"),
             SourceByteOffset::new(0),
             &config,
         )
         .expect("task should parse");
 
-        assert!(task.tags().iter().any(|tag| tag.as_ref() == "#task"));
-        assert!(task.tags().iter().any(|tag| tag.as_ref() == "#work"));
+        // Verify hierarchical tags are properly extracted
+        assert!(task.tags().iter().any(|tag| tag.full_path() == "task"));
+        assert!(
+            task.tags()
+                .iter()
+                .any(|tag| tag.full_path() == "work/project/urgent")
+        );
+        assert_eq!(task.tags().len(), 2);
     }
 
     #[test]

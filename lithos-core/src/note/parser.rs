@@ -49,6 +49,7 @@ use crate::{
 #[non_exhaustive]
 pub struct NoteParser<'config> {
     config: &'config TaskConfig,
+    markdown_parser: MarkdownParser,
 }
 
 impl<'config> NoteParser<'config> {
@@ -58,6 +59,7 @@ impl<'config> NoteParser<'config> {
     pub const fn new(config: &'config TaskConfig) -> Self {
         Self {
             config,
+            markdown_parser: MarkdownParser::with_obsidian_features(),
         }
     }
 
@@ -94,10 +96,9 @@ impl<'config> NoteParser<'config> {
     /// ```
     #[inline]
     pub fn parse_all(&self, markdown: &str) -> Result<ParseOutcome, NoteError> {
-        let parser = MarkdownParser::with_obsidian_features();
         let mut state = ParseState::new(self.config);
 
-        for (event, range) in parser.parse_offsets(markdown) {
+        for (event, range) in self.markdown_parser.parse_offsets(markdown) {
             state.handle_event(event, range)?;
         }
 
@@ -351,14 +352,14 @@ impl<'config> ParseState<'config> {
             }
 
             list.add_item(ListItem::Checkbox {
-                text: raw_text.to_owned().into_boxed_str(),
+                text: raw_text.into(),
                 status,
                 position: item.position,
                 task_id,
             });
         } else {
             list.add_item(ListItem::Plain {
-                text: raw_text.to_owned().into_boxed_str(),
+                text: raw_text.into(),
                 position: item.position,
             });
         }
