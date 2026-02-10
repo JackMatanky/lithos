@@ -546,7 +546,7 @@ mod tests {
             note.add_event(NoteEvents::NoteCreated(
                 crate::note::events::NoteCreated::new(
                     NoteId::from(TEST_NOTE_ID).into(),
-                    "note.md".to_owned(),
+                    "note.md",
                     0,
                 ),
             ));
