@@ -40,14 +40,14 @@ use super::{
 )]
 #[non_exhaustive]
 pub struct Global {
-    /// Paths configuration for global defaults.
-    paths: Paths,
-    /// Frontmatter configuration for global defaults.
-    frontmatter: Frontmatter,
     /// Logging configuration for global defaults.
     logging: Logging,
+    /// Paths configuration for global defaults.
+    paths: Paths,
     /// Trusted vaults configuration.
     trusted_vaults: Option<TrustedVaults>,
+    /// Frontmatter configuration for global defaults.
+    frontmatter: Frontmatter,
     /// Task configuration overrides.
     task: Option<TaskConfig>,
 }
@@ -56,10 +56,10 @@ impl Default for Global {
     #[inline]
     fn default() -> Self {
         Self {
-            paths: Paths::default(),
-            frontmatter: Frontmatter::default(),
             logging: Logging::default(),
+            paths: Paths::default(),
             trusted_vaults: None,
+            frontmatter: Frontmatter::default(),
             task: None,
         }
     }
@@ -70,17 +70,17 @@ impl Global {
     #[must_use]
     /// Create a global configuration.
     pub fn new(
-        paths: Paths,
-        frontmatter: Frontmatter,
         logging: Logging,
+        paths: Paths,
         trusted_vaults: Option<TrustedVaults>,
+        frontmatter: Frontmatter,
         task: Option<TaskConfig>,
     ) -> Self {
         Self {
-            paths,
-            frontmatter,
             logging,
+            paths,
             trusted_vaults,
+            frontmatter,
             task,
         }
     }
@@ -94,20 +94,6 @@ impl Global {
 
     #[inline]
     #[must_use]
-    /// Return global frontmatter settings.
-    pub fn frontmatter(&self) -> &Frontmatter {
-        &self.frontmatter
-    }
-
-    #[inline]
-    #[must_use]
-    /// Return global logging settings.
-    pub fn logging(&self) -> &Logging {
-        &self.logging
-    }
-
-    #[inline]
-    #[must_use]
     /// Return trusted vaults configuration.
     pub fn trusted_vaults(&self) -> Option<&TrustedVaults> {
         self.trusted_vaults.as_ref()
@@ -115,9 +101,23 @@ impl Global {
 
     #[inline]
     #[must_use]
+    /// Return global frontmatter settings.
+    pub fn frontmatter(&self) -> &Frontmatter {
+        &self.frontmatter
+    }
+
+    #[inline]
+    #[must_use]
     /// Return global task configuration defaults.
     pub fn task(&self) -> Option<&TaskConfig> {
         self.task.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return global logging settings.
+    pub fn logging(&self) -> &Logging {
+        &self.logging
     }
 }
 
@@ -130,16 +130,24 @@ impl Global {
 ///
 /// ```rust
 /// # use std::collections::HashMap;
-/// # use lithos_core::config::global::{TrustedVaults, TrustedVaultPath, TrustedVaultList, TrustedVaultMap};
+/// # use lithos_core::config::global::{
+/// #     TrustedVaults,
+/// #     TrustedVaultPath,
+/// #     TrustedVaultList,
+/// #     TrustedVaultMap
+/// # };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // List format
 /// let list = TrustedVaults::List(TrustedVaultList::new(vec![
-///     TrustedVaultPath::try_new("/vaults/alpha".into())?
+///     TrustedVaultPath::try_new("/vaults/alpha".into())?,
 /// ]));
 ///
 /// // Map format
 /// let mut map = HashMap::new();
-/// map.insert("beta".into(), TrustedVaultPath::try_new("/vaults/beta".into())?);
+/// map.insert(
+///     "beta".into(),
+///     TrustedVaultPath::try_new("/vaults/beta".into())?,
+/// );
 /// let map = TrustedVaults::Map(TrustedVaultMap::new(map));
 /// # Ok(())
 /// # }

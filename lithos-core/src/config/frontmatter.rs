@@ -37,16 +37,16 @@ use super::error::ConfigError;
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Frontmatter {
+    /// Key used for file class/type in frontmatter.
+    file_class_key: FrontmatterKey,
     /// Key used for aliases in frontmatter.
     alias_key: FrontmatterKey,
+    /// Key used for title in frontmatter.
+    title_key: FrontmatterKey,
     /// Key used for creation date in frontmatter.
     date_created_key: FrontmatterKey,
     /// Key used for modification date in frontmatter.
     date_modified_key: FrontmatterKey,
-    /// Key used for file class/type in frontmatter.
-    file_class_key: FrontmatterKey,
-    /// Key used for title in frontmatter.
-    title_key: FrontmatterKey,
 }
 
 impl Default for Frontmatter {
@@ -58,16 +58,16 @@ impl Default for Frontmatter {
     )]
     fn default() -> Self {
         Self {
+            file_class_key: FrontmatterKey::try_new("file_class")
+                .expect("default file class key must be valid"),
             alias_key: FrontmatterKey::try_new("aliases")
                 .expect("default alias key must be valid"),
+            title_key: FrontmatterKey::try_new("title")
+                .expect("default title key must be valid"),
             date_created_key: FrontmatterKey::try_new("date_created")
                 .expect("default created key must be valid"),
             date_modified_key: FrontmatterKey::try_new("date_modified")
                 .expect("default modified key must be valid"),
-            file_class_key: FrontmatterKey::try_new("file_class")
-                .expect("default file class key must be valid"),
-            title_key: FrontmatterKey::try_new("title")
-                .expect("default title key must be valid"),
         }
     }
 }
@@ -77,19 +77,26 @@ impl Frontmatter {
     #[inline]
     #[must_use]
     pub fn new(
+        file_class_key: FrontmatterKey,
         alias_key: FrontmatterKey,
+        title_key: FrontmatterKey,
         date_created_key: FrontmatterKey,
         date_modified_key: FrontmatterKey,
-        file_class_key: FrontmatterKey,
-        title_key: FrontmatterKey,
     ) -> Self {
         Self {
+            file_class_key,
             alias_key,
+            title_key,
             date_created_key,
             date_modified_key,
-            file_class_key,
-            title_key,
         }
+    }
+
+    /// Return the file class key.
+    #[inline]
+    #[must_use]
+    pub const fn file_class_key(&self) -> &FrontmatterKey {
+        &self.file_class_key
     }
 
     /// Return the alias key.
@@ -97,6 +104,13 @@ impl Frontmatter {
     #[must_use]
     pub const fn alias_key(&self) -> &FrontmatterKey {
         &self.alias_key
+    }
+
+    /// Return the title key.
+    #[inline]
+    #[must_use]
+    pub const fn title_key(&self) -> &FrontmatterKey {
+        &self.title_key
     }
 
     /// Return the date created key.
@@ -111,20 +125,6 @@ impl Frontmatter {
     #[must_use]
     pub const fn date_modified_key(&self) -> &FrontmatterKey {
         &self.date_modified_key
-    }
-
-    /// Return the file class key.
-    #[inline]
-    #[must_use]
-    pub const fn file_class_key(&self) -> &FrontmatterKey {
-        &self.file_class_key
-    }
-
-    /// Return the title key.
-    #[inline]
-    #[must_use]
-    pub const fn title_key(&self) -> &FrontmatterKey {
-        &self.title_key
     }
 }
 
@@ -193,16 +193,16 @@ impl FrontmatterKey {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 #[non_exhaustive]
 pub struct RawFrontmatter {
+    /// Frontmatter key for file classification.
+    pub file_class_key: Option<String>,
     /// Frontmatter key for aliases.
     pub alias_key: Option<String>,
+    /// Frontmatter key for title.
+    pub title_key: Option<String>,
     /// Frontmatter key for created date.
     pub date_created_key: Option<String>,
     /// Frontmatter key for modified date.
     pub date_modified_key: Option<String>,
-    /// Frontmatter key for file classification.
-    pub file_class_key: Option<String>,
-    /// Frontmatter key for title.
-    pub title_key: Option<String>,
 }
 
 // ============================================================================
@@ -248,11 +248,11 @@ impl TryFrom<RawFrontmatter> for Frontmatter {
         };
 
         Ok(Self {
+            file_class_key,
             alias_key,
+            title_key,
             date_created_key,
             date_modified_key,
-            file_class_key,
-            title_key,
         })
     }
 }
@@ -289,10 +289,6 @@ fn validate_non_empty(
     }
     Ok(())
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 #[cfg(test)]
 #[expect(

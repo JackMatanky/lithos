@@ -74,7 +74,7 @@ So that configuration changes are validated and the domain enforces configuratio
  - [x] Define Vault struct: `#[derive(Debug, Clone, PartialEq)] pub struct Vault { pub filesystem: FileSystem, pub frontmatter: Frontmatter, pub log_level: String }` (aliased as VaultConfig in lib.rs)
  - [x] Define Global struct: `#[derive(Debug, Clone, PartialEq)] pub struct Global { pub filesystem: FileSystem, pub frontmatter: Frontmatter, pub log_level: String }` (aliased as GlobalConfig in lib.rs)
  - [x] Define merged Config struct: `#[derive(Debug, Clone, PartialEq)] pub struct Config { pub filesystem: FileSystem, pub frontmatter: Frontmatter, pub log_level: String }` (FileSystem and Frontmatter aliased as FileSystemConfig and FrontmatterConfig in lib.rs)
- - [x] Define FileSystem struct: `#[derive(Debug, Clone, PartialEq)] pub struct FileSystem { pub vault_path: String, pub templates_dir: String, pub schemas_dir: String, pub property_bank_filename: String, pub cache_dir: String }` (aliased as FileSystemConfig in lib.rs)
+ - [x] Define FileSystem struct: `#[derive(Debug, Clone, PartialEq)] pub struct FileSystem { pub vault_path: String, pub templates_dir: String, pub schemas_dir: String, pub property_bank_file: String, pub cache_dir: String }` (aliased as FileSystemConfig in lib.rs)
  - [x] Define Frontmatter struct: `#[derive(Debug, Clone, PartialEq)] pub struct Frontmatter { pub file_class_key: String, pub title_key: String, pub alias_key: String, pub date_created_key: String, pub date_modified_key: String }` (aliased as FrontmatterConfig in lib.rs)
  - [x] Implement Config::build() method: `pub fn merge(global: &Global, vault: Vault) -> Result<Self, ConfigError>` with Vault > Global precedence (using aliased names GlobalConfig, VaultConfig)
 - [x] Implement Config::validate() method for business rule validation, returns `Result<(), ConfigError>`
@@ -136,7 +136,7 @@ So that configuration changes are validated and the domain enforces configuratio
 ### Task 9.1: Refactor Config Architecture to Global → Vault Design (REFACTOR Phase - NEW TASK)
 - [ ] **ARCHITECTURAL REFACTOR:** Update Config domain to implement revised Global → Vault two-tier system
 - [ ] **MODULARIZATION:** Create focused embedded structs by concern:
-  - `Schema` struct (schemas_dir, property_bank_filename) - schema configuration
+  - `Schema` struct (schemas_dir, property_bank_file) - schema configuration
   - `Template` struct (templates_dir) - template configuration
   - `Logging` struct (log_level) - logging configuration with validation
 - [ ] **STRUCT REFACTOR:** Split `FileSystem` into `GlobalFilesystem` + `VaultFilesystemConfig` using embedded structs
@@ -178,7 +178,7 @@ So that configuration changes are validated and the domain enforces configuratio
 **Core Entity Structure:**
   - **SettingValue Enum**: Unified representation for all configuration value types (aliased as ConfigValue)
   - **VaultMetadata Struct**: Vault schema version (optional, defaults to binary version) + name (optional, defaults to directory basename)
-  - **VaultFilesystem Struct**: Vault-scoped directories (cache_dir, schemas_dir, templates_dir, property_bank_filename)
+  - **VaultFilesystem Struct**: Vault-scoped directories (cache_dir, schemas_dir, templates_dir, property_bank_file)
   - **GlobalFilesystem Struct**: Global template/schema library directories
   - **TrustedVaults Struct**: Flexible vault discovery (list OR map format, validated)
   - **Vault Struct**: Vault-specific configuration with optional overrides
@@ -478,7 +478,7 @@ crates/domain/src/
 
 **Struct Organization:**
 - `VaultMetadata`: Schema version + name defaults
-- `Schema`: Schema configuration (schemas_dir, property_bank_filename)
+- `Schema`: Schema configuration (schemas_dir, property_bank_file)
 - `Template`: Template configuration (templates_dir)
 - `Logging`: Log level configuration
 - `VaultFilesystem`: Vault-scoped configuration (Schema + Template + cache_dir)
@@ -495,21 +495,21 @@ crates/domain/src/
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Schema {
     pub schemas_dir: String,
-    pub property_bank_filename: String,
+    pub property_bank_file: String,
 }
 
 impl Default for Schema {
     fn default() -> Self {
         Self {
             schemas_dir: defaults::filesystem::SCHEMAS_DIR.to_string(),
-            property_bank_filename: defaults::filesystem::PROPERTY_BANK_FILENAME.to_string(),
+            property_bank_file: defaults::filesystem::property_bank_file.to_string(),
         }
     }
 }
 
 impl Schema {
     pub fn property_bank_path(&self) -> String {
-        format!("{}/{}", self.schemas_dir, self.property_bank_filename)
+        format!("{}/{}", self.schemas_dir, self.property_bank_file)
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
@@ -518,7 +518,7 @@ impl Schema {
     }
 }
 ```
-*Benefits:* Focused on schema concerns, property_bank_filename belongs with schemas_dir, self-contained validation.
+*Benefits:* Focused on schema concerns, property_bank_file belongs with schemas_dir, self-contained validation.
 
 **2. Template Configuration Struct**
 ```rust
@@ -582,7 +582,7 @@ impl Logging {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Schema {
     pub schemas_dir: String,
-    pub property_bank_filename: String,
+    pub property_bank_file: String,
 }
 
 // Direct string literals eliminate redundant defaults constants
@@ -590,13 +590,13 @@ pub struct Schema {
 // #[derive(Default)]
 // pub struct Schema {
 //     pub schemas_dir: String = "schemas".to_string(),
-//     pub property_bank_filename: String = "property_bank.json".to_string(),
+//     pub property_bank_file: String = "property_bank.json".to_string(),
 // }
 impl Default for Schema {
     fn default() -> Self {
         Self {
             schemas_dir: "schemas".to_string(),
-            property_bank_filename: "property_bank.json".to_string(),
+            property_bank_file: "property_bank.json".to_string(),
         }
     }
 }
@@ -622,7 +622,7 @@ impl Template {
 // #[derive(Default)]
 // pub struct Schema {
 //     pub schemas_dir: String = "schemas".to_string(),
-//     pub property_bank_filename: String = "property_bank.json".to_string(),
+//     pub property_bank_file: String = "property_bank.json".to_string(),
 // }
 ```
 *Benefits:* Current derive provides type defaults automatically. Custom field defaults require manual impls. RFC 3681 proposes field-level default syntax but is not yet implemented.
@@ -631,14 +631,14 @@ impl Template {
 ```rust
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VaultFilesystemConfig {
-    pub schema: Schema,            // schemas_dir, property_bank_filename
+    pub schema: Schema,            // schemas_dir, property_bank_file
     pub template: Template,        // templates_dir
     pub cache_dir: String,         // Vault-specific only
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobalFilesystem {
-    pub schema: Schema,            // schemas_dir, property_bank_filename
+    pub schema: Schema,            // schemas_dir, property_bank_file
     pub template: Template,        // templates_dir
 }
 
@@ -810,7 +810,7 @@ fn merge_filesystem(global_fs: Option<&GlobalFilesystem>, vault_fs: &VaultFilesy
     // Schema configuration (vault overrides global)
     let schema = Schema {
         schemas_dir: vault_fs.schema.schemas_dir.clone(),
-        property_bank_filename: vault_fs.schema.property_bank_filename.clone(),
+        property_bank_file: vault_fs.schema.property_bank_file.clone(),
     };
 
     // Template configuration (vault overrides global)

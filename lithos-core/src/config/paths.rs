@@ -54,12 +54,12 @@ use super::error::ConfigError;
 pub struct Paths {
     /// Resolved cache settings.
     pub cache: Cache,
+    /// Resolved template settings.
+    pub template: Template,
     /// Resolved schema settings.
     pub schema: Schema,
     /// Resolved property bank filename.
     pub property_bank: PropertyBank,
-    /// Resolved template settings.
-    pub template: Template,
 }
 
 impl Paths {
@@ -68,15 +68,15 @@ impl Paths {
     #[must_use]
     pub const fn new(
         cache: Cache,
+        template: Template,
         schema: Schema,
         property_bank: PropertyBank,
-        template: Template,
     ) -> Self {
         Self {
             cache,
+            template,
             schema,
             property_bank,
-            template,
         }
     }
 
@@ -569,10 +569,6 @@ impl std::fmt::Display for PropertyBank {
     }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
@@ -631,9 +627,9 @@ mod tests {
             let property_bank = super::fixtures::sample_property_bank();
             let paths = Paths::new(
                 Cache::default(),
+                Template::default(),
                 schema,
                 property_bank,
-                Template::default(),
             );
 
             let path = paths.property_bank_path();

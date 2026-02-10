@@ -24,22 +24,22 @@ use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawConfig {
+    /// Logging configuration.
+    pub logging: Option<RawLogging>,
+
     /// Path configuration (deeply mergeable across layers).
     #[serde(default)]
     pub paths: RawPathsConfig,
 
-    /// Frontmatter configuration.
-    pub frontmatter: Option<RawFrontmatter>,
-
-    /// Logging configuration.
-    pub logging: Option<RawLogging>,
-
-    /// Task configuration.
-    pub task: Option<RawTaskConfig>,
-
     /// Trusted vaults (global-only, ignored at vault layer).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trusted_vaults: Option<RawTrustedVaults>,
+
+    /// Frontmatter configuration.
+    pub frontmatter: Option<RawFrontmatter>,
+
+    /// Task configuration.
+    pub task: Option<RawTaskConfig>,
 }
 
 /// Raw path configuration input.
@@ -50,17 +50,17 @@ pub struct RawPathsConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_dir: Option<String>,
 
+    /// Templates directory (can override at any layer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub templates_dir: Option<String>,
+
     /// Schema directory (can override at any layer).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub schemas_dir: Option<String>,
 
     /// Property bank filename (can override at any layer).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub property_bank_filename: Option<String>,
-
-    /// Templates directory (can override at any layer).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub templates_dir: Option<String>,
+    pub property_bank_file: Option<String>,
 }
 
 /// Raw task configuration input.
@@ -85,12 +85,12 @@ pub struct RawTaskConfig {
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawTaskDates {
+    /// Configuration for the 'created' date field.
+    pub created: Option<RawDateFieldSpec>,
     /// Configuration for the 'due' date field.
     pub due: Option<RawDateFieldSpec>,
     /// Configuration for the 'completed' date field.
     pub completed: Option<RawDateFieldSpec>,
-    /// Configuration for the 'created' date field.
-    pub created: Option<RawDateFieldSpec>,
     /// Configuration for the 'reminder' date field.
     pub reminder: Option<RawDateFieldSpec>,
 }
@@ -202,10 +202,6 @@ pub enum RawTrustedVaults {
     Map(HashMap<String, String>),
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,7 +279,7 @@ mod tests {
 
             assert!(raw.paths.cache_dir.is_none());
             assert!(raw.paths.schemas_dir.is_none());
-            assert!(raw.paths.property_bank_filename.is_none());
+            assert!(raw.paths.property_bank_file.is_none());
             assert!(raw.paths.templates_dir.is_none());
             assert!(raw.frontmatter.is_none());
             assert!(raw.logging.is_none());
@@ -307,7 +303,7 @@ mod tests {
 
             assert!(fs.cache_dir.is_none());
             assert!(fs.schemas_dir.is_none());
-            assert!(fs.property_bank_filename.is_none());
+            assert!(fs.property_bank_file.is_none());
             assert!(fs.templates_dir.is_none());
         }
 
@@ -346,7 +342,7 @@ mod tests {
                 paths: RawPathsConfig {
                     cache_dir: Some(".cache".to_owned()),
                     schemas_dir: Some("schemas".to_owned()),
-                    property_bank_filename: Some("bank.json".to_owned()),
+                    property_bank_file: Some("bank.json".to_owned()),
                     templates_dir: Some("templates".to_owned()),
                 },
                 frontmatter: None,

@@ -26,11 +26,13 @@ pub trait Command: Send + Sync {
         &self,
         vault_id: VaultId,
     ) -> Result<Option<ConfigVersion>, Self::Error>;
+
     /// Loads the persisted global configuration, if present.
     ///
     /// # Errors
     /// Returns a storage-specific error on failure.
     fn load_global(&self) -> Result<Option<Global>, Self::Error>;
+
     /// Loads the persisted vault configuration, if present.
     ///
     /// # Errors
@@ -39,11 +41,13 @@ pub trait Command: Send + Sync {
         &self,
         vault_id: VaultId,
     ) -> Result<Option<Vault>, Self::Error>;
+
     /// Persists the global configuration.
     ///
     /// # Errors
     /// Returns a storage-specific error on failure.
     fn save_global(&self, config: &Global) -> Result<(), Self::Error>;
+
     /// Persists a merged configuration snapshot.
     ///
     /// # Errors
@@ -54,6 +58,7 @@ pub trait Command: Send + Sync {
         version: ConfigVersion,
         config: &Config,
     ) -> Result<(), Self::Error>;
+
     /// Persists vault-specific configuration.
     ///
     /// # Errors
@@ -63,6 +68,7 @@ pub trait Command: Send + Sync {
         vault_id: VaultId,
         config: &Vault,
     ) -> Result<(), Self::Error>;
+
     /// Persists the vault ID to root path mapping.
     ///
     /// # Errors
@@ -72,6 +78,7 @@ pub trait Command: Send + Sync {
         vault_id: VaultId,
         vault_root: &VaultRoot,
     ) -> Result<(), Self::Error>;
+
     /// Sets the active merged configuration version for a vault.
     ///
     /// # Errors
@@ -102,6 +109,7 @@ pub trait Query: Send + Sync {
         &self,
         vault_id: VaultId,
     ) -> Result<Option<ConfigVersion>, Self::Error>;
+
     /// Fetches a merged configuration snapshot as owned data.
     ///
     /// # Errors
@@ -111,6 +119,7 @@ pub trait Query: Send + Sync {
         vault_id: VaultId,
         version: ConfigVersion,
     ) -> Result<Option<Config>, Self::Error>;
+
     /// Fetches a merged configuration snapshot for zero-copy access.
     ///
     /// # Errors
