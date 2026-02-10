@@ -157,7 +157,7 @@ pub struct Metadata {
     /// Human-readable name of the vault.
     name: String,
     /// Version of the vault schema/Lithos that created it.
-    version: SchemaVersion,
+    version: AppVersion,
 }
 
 impl Metadata {
@@ -171,7 +171,7 @@ impl Metadata {
         id: VaultId,
         root: VaultRoot,
         name: Option<String>,
-        version: Option<SchemaVersion>,
+        version: Option<AppVersion>,
     ) -> Result<Self, ConfigError> {
         let name = name.unwrap_or_else(|| {
             root.as_path().file_name().map_or_else(
@@ -179,15 +179,15 @@ impl Metadata {
                 |n| n.to_string_lossy().into_owned(),
             )
         });
-        let version = match version {
-            Some(v) => v,
-            None => SchemaVersion::try_new(env!("CARGO_PKG_VERSION")).map_err(
-                |e| ConfigError::ValidationFailed {
-                    field: "version".to_owned().into(),
-                    message: format!("default version invalid: {e}").into(),
-                },
-            )?,
-        };
+        let version =
+            match version {
+                Some(v) => v,
+                None => AppVersion::try_new(env!("CARGO_PKG_VERSION"))
+                    .map_err(|e| ConfigError::ValidationFailed {
+                        field: "version".to_owned().into(),
+                        message: format!("default version invalid: {e}").into(),
+                    })?,
+            };
 
         Ok(Self {
             id,
@@ -221,7 +221,7 @@ impl Metadata {
     /// Return the vault version.
     #[inline]
     #[must_use]
-    pub fn version(&self) -> &SchemaVersion {
+    pub fn version(&self) -> &AppVersion {
         &self.version
     }
 }
@@ -238,7 +238,7 @@ impl Default for Metadata {
             id: VaultId::default(),
             root: VaultRoot::default(),
             name: "unnamed".to_owned(),
-            version: SchemaVersion::try_new(env!("CARGO_PKG_VERSION"))
+            version: AppVersion::try_new(env!("CARGO_PKG_VERSION"))
                 .expect("package version is non-empty"),
         }
     }
@@ -474,10 +474,10 @@ impl TryFrom<String> for VaultPathKey {
     }
 }
 
-/// Version identifier for vault configuration or schema.
+/// Version identifier for the Lithos application.
 ///
 /// This type ensures that version strings are not empty and represent
-/// a valid schema version.
+/// a valid application version.
 #[derive(
     Debug,
     Clone,
@@ -493,10 +493,10 @@ impl TryFrom<String> for VaultPathKey {
 #[rkyv(derive(Debug))]
 #[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
-pub struct SchemaVersion(Box<str>);
+pub struct AppVersion(Box<str>);
 
-impl SchemaVersion {
-    /// Creates a new schema version.
+impl AppVersion {
+    /// Creates a new application version.
     ///
     /// # Errors
     /// Returns [`ConfigError::ValidationFailed`] if the version string is
@@ -521,29 +521,31 @@ impl SchemaVersion {
     }
 }
 
-impl TryFrom<String> for SchemaVersion {
+impl TryFrom<String> for AppVersion {
     type Error = ConfigError;
 
     #[inline]
-    fn try_from(value: String) -> Result<Self, ConfigError> {
+    fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::try_new(value)
     }
 }
 
-impl From<SchemaVersion> for String {
+impl From<AppVersion> for String {
     #[inline]
-    fn from(version: SchemaVersion) -> Self {
+    fn from(version: AppVersion) -> Self {
         version.0.into_string()
     }
 }
 
-impl std::fmt::Display for SchemaVersion {
+impl std::fmt::Display for AppVersion {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
+// ----------------------------------------------------------- //
+//                            Tests                            //
 // ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
