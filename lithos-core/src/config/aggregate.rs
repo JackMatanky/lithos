@@ -29,7 +29,7 @@ use super::{
     paths::Paths,
     raw,
     task::TaskConfig,
-    vault::{AppVersion, Metadata, VaultId, VaultName, VaultRoot},
+    vault::{Metadata, VaultId, VaultRoot},
 };
 
 // ----------------------------------------------------------- //
@@ -96,38 +96,6 @@ pub struct Config {
     #[serde(skip)]
     #[rkyv(with = rkyv::with::Skip)]
     pending_events: Vec<Events>,
-}
-
-impl Default for Config {
-    #[inline]
-    #[expect(
-        clippy::disallowed_methods,
-        clippy::expect_used,
-        reason = "Default values are guaranteed valid for testing"
-    )]
-    fn default() -> Self {
-        // Create a test vault root for defaults
-        let test_root = VaultRoot::try_new("/test-vault".into())
-            .expect("test vault root must be valid");
-        let test_name = VaultName::from_root(&test_root);
-        let test_version = AppVersion::try_new(env!("CARGO_PKG_VERSION"))
-            .expect("package version is non-empty");
-
-        Self {
-            vault_metadata: Metadata::new(
-                VaultId::new(),
-                test_root,
-                Some(test_name),
-                Some(test_version),
-            )
-            .expect("default metadata must be valid"),
-            logging: Logging::default(),
-            paths: Paths::default(),
-            frontmatter: Frontmatter::default(),
-            task: TaskConfig::default(),
-            pending_events: vec![],
-        }
-    }
 }
 
 impl Config {
@@ -357,7 +325,11 @@ mod tests {
         use std::path::PathBuf;
 
         use super::super::*;
-        use crate::config::{frontmatter::RawFrontmatter, logging::RawLogging};
+        use crate::config::{
+            frontmatter::RawFrontmatter,
+            logging::RawLogging,
+            vault::{AppVersion, VaultName},
+        };
 
         pub fn vault_id() -> VaultId {
             VaultId::new()
@@ -365,6 +337,30 @@ mod tests {
 
         pub fn vault_root(path: &str) -> VaultRoot {
             VaultRoot::try_new(PathBuf::from(path)).expect("vault_root")
+        }
+
+        /// Create a Config with test values. Only available in tests.
+        pub fn test_config() -> Config {
+            let test_root = VaultRoot::try_new("/test-vault".into())
+                .expect("test vault root must be valid");
+            let test_name = VaultName::from_root(&test_root);
+            let test_version = AppVersion::try_new(env!("CARGO_PKG_VERSION"))
+                .expect("package version is non-empty");
+
+            Config {
+                vault_metadata: Metadata::new(
+                    VaultId::new(),
+                    test_root,
+                    Some(test_name),
+                    Some(test_version),
+                )
+                .expect("test metadata must be valid"),
+                logging: Logging::default(),
+                paths: Paths::default(),
+                frontmatter: Frontmatter::default(),
+                task: TaskConfig::default(),
+                pending_events: vec![],
+            }
         }
 
         pub fn merged_config_with_sample_overrides() -> Config {
@@ -399,7 +395,7 @@ mod tests {
         }
 
         pub fn config_with_cleared_events() -> Config {
-            let mut config = Config::default();
+            let mut config = test_config();
             let _ = config.take_events();
             config
         }

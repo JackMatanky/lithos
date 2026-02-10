@@ -105,39 +105,105 @@ where
 
 #[cfg(test)]
 #[expect(
+    clippy::disallowed_methods,
     clippy::arbitrary_source_item_ordering,
-    reason = "Test modules group fixtures and test logic for readability"
+    reason = "Test fixtures use expect for setup; test modules organized for \
+              readability"
 )]
 mod tests {
     use super::*;
     use crate::{
-        config::{
-            aggregate::{Config, Version},
-            global::Global,
-            ports as config_ports,
-            vault::VaultId,
-        },
+        config::{aggregate::Version, global::Global},
         db::{Database, DbError},
     };
 
     mod fixtures {
         use tempfile::{TempDir, tempdir};
 
-        use crate::db::Database;
+        use crate::{
+            config::{
+                aggregate::Config,
+                raw::RawConfig,
+                vault::{VaultId, VaultRoot},
+            },
+            db::Database,
+        };
 
-        type TestDbResult =
-            Result<(TempDir, Database), Box<dyn std::error::Error>>;
-
-        pub fn test_db() -> TestDbResult {
-            let dir = tempdir()?;
+        pub fn test_db() -> (TempDir, Database) {
+            let dir = tempdir().expect("tempdir must succeed");
             let path = dir.path().join("config.redb");
-            let db = Database::open(&path)?;
-            Ok((dir, db))
+            let db = Database::open(&path).expect("database must open");
+            (dir, db)
+        }
+
+        /// Create a Config with test values. Only available in tests.
+        pub fn test_config() -> Config {
+            let test_root = VaultRoot::try_new("/test-vault".into())
+                .expect("test vault root must be valid");
+            let vault_id = VaultId::new();
+
+            // Use Config::build with empty raw config
+            Config::build(&RawConfig::default(), vault_id, test_root)
+                .expect("test config must be valid")
         }
     }
 
     struct DbPort<'db> {
         db: &'db Database,
+    }
+
+    mod load {
+        use super::*;
+
+        #[test]
+        fn get_returns_none_when_active_missing() {
+            // Arrange - unwrap permitted for test setup
+            let (_dir, db) = fixtures::test_db();
+            db.put("config", "global", &Global::default())
+                .expect("must put global config");
+            let qry = Query::new(DbPort::new(&db));
+
+            // Act
+            let result = qry.get(VaultId::new()).expect("query must succeed");
+
+            // Assert - explicit assertion
+            assert!(
+                result.is_none(),
+                "Expected None when active version missing"
+            );
+        }
+    }
+
+    mod borrowing {
+        use super::*;
+
+        #[test]
+        fn with_archived_executes_closure_on_archived_data() {
+            // Arrange - unwrap permitted for test setup
+            let (_dir, db) = fixtures::test_db();
+            let vault_id = VaultId::new();
+            let config = fixtures::test_config();
+
+            // Setup: version 1 active with default config
+            db.put("merged_config_versions", &format!("{vault_id}:1"), &config)
+                .expect("must put config version");
+            db.put(
+                "merged_config_active",
+                &vault_id.to_string(),
+                &Version::initial(),
+            )
+            .expect("must set active version");
+
+            let qry = Query::new(DbPort::new(&db));
+
+            // Act
+            let result = qry
+                .with_archived(vault_id, |_archived| true)
+                .expect("query must succeed");
+
+            // Assert - explicit assertion
+            assert_eq!(result, Some(true));
+        }
     }
 
     impl<'db> DbPort<'db> {
@@ -179,61 +245,6 @@ mod tests {
         {
             let key = format!("{vault_id}:{}", version.value());
             self.db.get::<Config, _, _>("merged_config_versions", &key, f)
-        }
-    }
-
-    mod load {
-        use super::*;
-
-        #[test]
-        #[expect(
-            clippy::panic_in_result_fn,
-            reason = "Test uses assert! which can panic."
-        )]
-        fn get_returns_none_when_active_missing()
-        -> Result<(), Box<dyn std::error::Error>> {
-            let (_dir, db) = fixtures::test_db()?;
-            db.put("config", "global", &Global::default())?;
-            let qry = Query::new(DbPort::new(&db));
-
-            let result = qry.get(VaultId::new())?;
-            assert!(
-                result.is_none(),
-                "Expected None when active version missing"
-            );
-            Ok(())
-        }
-    }
-
-    mod borrowing {
-        use super::*;
-
-        #[test]
-        #[expect(
-            clippy::panic_in_result_fn,
-            reason = "Test uses assert_eq! which can panic."
-        )]
-        fn with_archived_executes_closure_on_archived_data()
-        -> Result<(), Box<dyn std::error::Error>> {
-            let (_dir, db) = fixtures::test_db()?;
-            let vault_id = VaultId::new();
-            let version = Version::try_from(1)?;
-            let config = Config::default();
-
-            // Setup: version 1 active with default config
-            db.put(
-                "merged_config_versions",
-                &format!("{vault_id}:1"),
-                &config,
-            )?;
-            db.put("merged_config_active", &vault_id.to_string(), &version)?;
-
-            let qry = Query::new(DbPort::new(&db));
-
-            let result = qry.with_archived(vault_id, |_archived| true)?;
-
-            assert_eq!(result, Some(true));
-            Ok(())
         }
     }
 }
