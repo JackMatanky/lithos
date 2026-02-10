@@ -233,7 +233,16 @@ impl FieldValue {
         match self {
             Self::String(s) => {
                 out.push('"');
-                out.push_str(&s.replace('"', "\\\""));
+                // Manual escaping to avoid allocation when no quotes present
+                for ch in s.chars() {
+                    if ch == '"' {
+                        out.push_str("\\\"");
+                    } else if ch == '\\' {
+                        out.push_str("\\\\");
+                    } else {
+                        out.push(ch);
+                    }
+                }
                 out.push('"');
             }
             Self::Number(n) => {
