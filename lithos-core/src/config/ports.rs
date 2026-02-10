@@ -4,7 +4,7 @@
 //! decoupling domain logic from storage implementation details (like Redb).
 
 use super::{
-    aggregate::{Config, ConfigVersion},
+    aggregate::{Config, Version},
     global::Global,
     vault::{Vault, VaultId, VaultRoot},
 };
@@ -25,7 +25,7 @@ pub trait Command: Send + Sync {
     fn load_active_version(
         &self,
         vault_id: VaultId,
-    ) -> Result<Option<ConfigVersion>, Self::Error>;
+    ) -> Result<Option<Version>, Self::Error>;
 
     /// Loads the persisted global configuration, if present.
     ///
@@ -55,7 +55,7 @@ pub trait Command: Send + Sync {
     fn save_merged(
         &self,
         vault_id: VaultId,
-        version: ConfigVersion,
+        version: Version,
         config: &Config,
     ) -> Result<(), Self::Error>;
 
@@ -86,7 +86,7 @@ pub trait Command: Send + Sync {
     fn set_active_version(
         &self,
         vault_id: VaultId,
-        version: ConfigVersion,
+        version: Version,
     ) -> Result<(), Self::Error>;
 }
 
@@ -108,7 +108,7 @@ pub trait Query: Send + Sync {
     fn get_active_version(
         &self,
         vault_id: VaultId,
-    ) -> Result<Option<ConfigVersion>, Self::Error>;
+    ) -> Result<Option<Version>, Self::Error>;
 
     /// Fetches a merged configuration snapshot as owned data.
     ///
@@ -117,7 +117,7 @@ pub trait Query: Send + Sync {
     fn get_merged_owned(
         &self,
         vault_id: VaultId,
-        version: ConfigVersion,
+        version: Version,
     ) -> Result<Option<Config>, Self::Error>;
 
     /// Fetches a merged configuration snapshot for zero-copy access.
@@ -127,7 +127,7 @@ pub trait Query: Send + Sync {
     fn with_archived_merged<F, R>(
         &self,
         vault_id: VaultId,
-        version: ConfigVersion,
+        version: Version,
         f: F,
     ) -> Result<Option<R>, Self::Error>
     where

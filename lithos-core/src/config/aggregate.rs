@@ -2,7 +2,7 @@
 //!
 //! This module provides the [`Config`] aggregate, which represents the
 //! fully-merged and validated configuration state for a vault. It also
-//! defines [`ConfigVersion`] for tracking configuration history.
+//! defines [`Version`] for tracking configuration history.
 //!
 //! # Invariants
 //!
@@ -290,14 +290,14 @@ impl Config {
 ///
 /// # Invariants
 ///
-/// - A `ConfigVersion` must be greater than zero.
+/// - A `Version` must be greater than zero.
 ///
 /// # Examples
 ///
 /// ```rust
-/// use lithos_core::config::aggregate::ConfigVersion;
+/// use lithos_core::config::aggregate::Version;
 ///
-/// let version = ConfigVersion::initial();
+/// let version = Version::initial();
 /// assert_eq!(version.value(), 1);
 ///
 /// let next = version.next().unwrap();
@@ -318,9 +318,9 @@ impl Config {
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub struct ConfigVersion(u64);
+pub struct Version(u64);
 
-impl ConfigVersion {
+impl Version {
     #[inline]
     #[must_use]
     /// Return the initial version value.
@@ -350,7 +350,7 @@ impl ConfigVersion {
     }
 }
 
-impl TryFrom<u64> for ConfigVersion {
+impl TryFrom<u64> for Version {
     type Error = ConfigError;
 
     #[inline]
@@ -381,7 +381,7 @@ pub struct MergedConfigRecord {
     /// Vault identifier.
     pub vault_id: VaultId,
     /// Merged config version.
-    pub version: ConfigVersion,
+    pub version: Version,
     /// Unix timestamp for creation.
     pub created_at: i64,
     /// Merged configuration snapshot.
@@ -405,7 +405,7 @@ pub struct ActiveMergedConfig {
     /// Vault identifier.
     pub vault_id: VaultId,
     /// Active merged version.
-    pub version: ConfigVersion,
+    pub version: Version,
 }
 
 // ----------------------------------------------------------- //
@@ -479,29 +479,29 @@ mod tests {
         use super::*;
 
         #[test]
-        fn config_version_initial_is_one() {
-            assert_eq!(ConfigVersion::initial().value(), 1);
+        fn version_initial_is_one() {
+            assert_eq!(Version::initial().value(), 1);
         }
 
         #[test]
-        fn config_version_next_increments_value()
+        fn version_next_increments_value()
         -> Result<(), Box<dyn std::error::Error>> {
-            let v1 = ConfigVersion::initial();
+            let v1 = Version::initial();
             let v2 = v1.next()?;
             assert_eq!(v2.value(), 2);
             Ok(())
         }
 
         #[test]
-        fn config_version_try_from_rejects_zero() {
-            let result = ConfigVersion::try_from(0);
+        fn version_try_from_rejects_zero() {
+            let result = Version::try_from(0);
             result.unwrap_err();
         }
 
         #[test]
-        fn config_version_try_from_accepts_positive()
+        fn version_try_from_accepts_positive()
         -> Result<(), Box<dyn std::error::Error>> {
-            let v = ConfigVersion::try_from(42)?;
+            let v = Version::try_from(42)?;
             assert_eq!(v.value(), 42);
             Ok(())
         }

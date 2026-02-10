@@ -112,7 +112,7 @@ mod tests {
     use super::*;
     use crate::{
         config::{
-            aggregate::{Config, ConfigVersion},
+            aggregate::{Config, Version},
             global::Global,
             ports as config_ports,
             vault::VaultId,
@@ -155,14 +155,14 @@ mod tests {
         fn get_active_version(
             &self,
             vault_id: VaultId,
-        ) -> Result<Option<ConfigVersion>, DbError> {
+        ) -> Result<Option<Version>, DbError> {
             self.db.get_owned("merged_config_active", &vault_id.to_string())
         }
 
         fn get_merged_owned(
             &self,
             vault_id: VaultId,
-            version: ConfigVersion,
+            version: Version,
         ) -> Result<Option<Config>, DbError> {
             let key = format!("{vault_id}:{}", version.value());
             self.db.get_owned("merged_config_versions", &key)
@@ -171,7 +171,7 @@ mod tests {
         fn with_archived_merged<F, R>(
             &self,
             vault_id: VaultId,
-            version: ConfigVersion,
+            version: Version,
             f: F,
         ) -> Result<Option<R>, DbError>
         where
@@ -217,7 +217,7 @@ mod tests {
         -> Result<(), Box<dyn std::error::Error>> {
             let (_dir, db) = fixtures::test_db()?;
             let vault_id = VaultId::new();
-            let version = ConfigVersion::try_from(1)?;
+            let version = Version::try_from(1)?;
             let config = Config::default();
 
             // Setup: version 1 active with default config

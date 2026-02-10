@@ -5,7 +5,7 @@
 //! the merged snapshots.
 
 use super::{
-    aggregate::{Config, ConfigVersion},
+    aggregate::{Config, Version},
     error::{ConfigCommandError, ConfigError},
     global::Global,
     ingest,
@@ -23,7 +23,7 @@ use super::{
 ///
 /// ```rust
 /// # use lithos_core::config::{
-/// #     aggregate::{Config, ConfigVersion},
+/// #     aggregate::{Config, Version},
 /// #     command::Command,
 /// #     global::Global,
 /// #     vault::{Vault, VaultId, VaultRoot},
@@ -37,7 +37,7 @@ use super::{
 /// #     fn load_active_version(
 /// #         &self,
 /// #         _: VaultId,
-/// #     ) -> Result<Option<ConfigVersion>, Self::Error> {
+/// #     ) -> Result<Option<Version>, Self::Error> {
 /// #         Ok(None)
 /// #     }
 /// #
@@ -59,7 +59,7 @@ use super::{
 /// #     fn save_merged(
 /// #         &self,
 /// #         _: VaultId,
-/// #         _: ConfigVersion,
+/// #         _: Version,
 /// #         _: &Config,
 /// #     ) -> Result<(), Self::Error> {
 /// #         Ok(())
@@ -84,7 +84,7 @@ use super::{
 /// #     fn set_active_version(
 /// #         &self,
 /// #         _: VaultId,
-/// #         _: ConfigVersion,
+/// #         _: Version,
 /// #     ) -> Result<(), Self::Error> {
 /// #         Ok(())
 /// #     }
@@ -174,7 +174,7 @@ where
     ///    defaults.
     /// 3. **Validation**: Transforms merged raw data into an "Always Valid"
     ///    [`Config`].
-    /// 4. **Versioning**: Generates a new [`ConfigVersion`].
+    /// 4. **Versioning**: Generates a new [`Version`].
     /// 5. **Persistence**: Saves the new snapshot and updates the active
     ///    pointer.
     ///
@@ -186,7 +186,7 @@ where
         &self,
         vault_id: VaultId,
         vault_root: &VaultRoot,
-    ) -> Result<ConfigVersion, ConfigCommandError> {
+    ) -> Result<Version, ConfigCommandError> {
         // Build merged config using the simplified API
         let raw_merged = ingest::build_merged_raw(vault_root.as_path())?;
         let merged = Config::build(&raw_merged, vault_id, vault_root.clone())
@@ -218,7 +218,7 @@ where
     pub fn activate_version(
         &self,
         vault_id: VaultId,
-        version: ConfigVersion,
+        version: Version,
     ) -> Result<(), ConfigCommandError> {
         self.command_port
             .set_active_version(vault_id, version)
@@ -236,7 +236,7 @@ where
         &self,
         vault_id: VaultId,
         steps: u32,
-    ) -> Result<ConfigVersion, ConfigCommandError> {
+    ) -> Result<Version, ConfigCommandError> {
         let active = self
             .command_port
             .load_active_version(vault_id)
@@ -260,7 +260,7 @@ where
             ));
         }
 
-        let target = ConfigVersion::try_from(target)?;
+        let target = Version::try_from(target)?;
         self.activate_version(vault_id, target)?;
         Ok(target)
     }
@@ -268,15 +268,15 @@ where
     fn next_version(
         &self,
         vault_id: VaultId,
-    ) -> Result<ConfigVersion, ConfigCommandError> {
+    ) -> Result<Version, ConfigCommandError> {
         let candidate = self
             .command_port
             .load_active_version(vault_id)
             .map_err(|error| ConfigCommandError::Storage(error.into()))?
-            .map(ConfigVersion::next)
+            .map(Version::next)
             .transpose()
             .map_err(ConfigCommandError::Domain)?
-            .unwrap_or_else(ConfigVersion::initial);
+            .unwrap_or_else(Version::initial);
 
         Ok(candidate)
     }
@@ -332,7 +332,7 @@ mod tests {
         fn load_active_version(
             &self,
             vault_id: VaultId,
-        ) -> Result<Option<ConfigVersion>, Self::Error> {
+        ) -> Result<Option<Version>, Self::Error> {
             self.db.get_owned("merged_config_active", &vault_id.to_string())
         }
 
@@ -362,7 +362,7 @@ mod tests {
         fn save_merged(
             &self,
             vault_id: VaultId,
-            version: ConfigVersion,
+            version: Version,
             config: &Config,
         ) -> Result<(), Self::Error> {
             let key = format!("{vault_id}:{}", version.value());
@@ -372,7 +372,7 @@ mod tests {
         fn set_active_version(
             &self,
             vault_id: VaultId,
-            version: ConfigVersion,
+            version: Version,
         ) -> Result<(), Self::Error> {
             self.db.put("merged_config_active", &vault_id.to_string(), &version)
         }
@@ -461,14 +461,14 @@ mod tests {
             db.put(
                 "merged_config_active",
                 &vault_id.to_string(),
-                &ConfigVersion::try_from(2)?,
+                &Version::try_from(2)?,
             )?;
 
             // Rollback 1 step
             let target = cmd.rollback(vault_id, 1)?;
             assert_eq!(target.value(), 1);
 
-            let active: Option<ConfigVersion> =
+            let active: Option<Version> =
                 db.get_owned("merged_config_active", &vault_id.to_string())?;
             assert_eq!(active.expect("active version should exist").value(), 1);
             Ok(())
@@ -484,11 +484,11 @@ mod tests {
             let (_dir, db) = fixtures::test_db()?;
             let cmd = Command::new(DbPort::new(&db));
             let vault_id = VaultId::new();
-            let version = ConfigVersion::try_from(5)?;
+            let version = Version::try_from(5)?;
 
             cmd.activate_version(vault_id, version)?;
 
-            let active: Option<ConfigVersion> =
+            let active: Option<Version> =
                 db.get_owned("merged_config_active", &vault_id.to_string())?;
             assert_eq!(active.expect("active version should exist"), version);
             Ok(())
@@ -510,7 +510,7 @@ mod tests {
             let version = cmd.rebuild_merged(vault_id, &vault_root)?;
             assert_eq!(version.value(), 1);
 
-            let active: Option<ConfigVersion> =
+            let active: Option<Version> =
                 db.get_owned("merged_config_active", &vault_id.to_string())?;
             assert_eq!(active.expect("active version should exist"), version);
 
