@@ -20,10 +20,6 @@
     clippy::partial_pub_fields,
     reason = "Aggregate root requires mixed visibility for domain events"
 )]
-#![expect(
-    clippy::exhaustive_structs,
-    reason = "rkyv generates exhaustive archived structs"
-)]
 
 use std::path::PathBuf;
 
@@ -365,48 +361,50 @@ impl TryFrom<u64> for Version {
     }
 }
 
-/// Persisted configuration record with version metadata.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[non_exhaustive]
-pub struct Record {
-    /// Vault identifier.
-    pub vault_id: VaultId,
-    /// Merged config version.
-    pub version: Version,
-    /// Unix timestamp for creation.
-    pub created_at: i64,
-    /// Merged configuration snapshot.
-    pub config: Config,
-}
+// Persisted configuration record with version metadata.
+// DEPRECATED: Not used in current CQRS design. Retained for potential future
+// use. #[derive(
+//     Debug,
+//     Clone,
+//     PartialEq,
+//     serde::Serialize,
+//     serde::Deserialize,
+//     rkyv::Archive,
+//     rkyv::Serialize,
+//     rkyv::Deserialize,
+// )]
+// #[non_exhaustive]
+// pub struct Record {
+//     /// Vault identifier.
+//     pub vault_id: VaultId,
+//     /// Merged config version.
+//     pub version: Version,
+//     /// Unix timestamp for creation.
+//     pub created_at: i64,
+//     /// Merged configuration snapshot.
+//     pub config: Config,
+// }
 
-/// Active config pointer for a vault.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct ActiveConfig {
-    /// Vault identifier.
-    pub vault_id: VaultId,
-    /// Active merged version.
-    pub version: Version,
-}
+// Active config pointer for a vault.
+// DEPRECATED: Not used in current CQRS design. Retained for potential future
+// use. #[derive(
+//     Debug,
+//     Clone,
+//     PartialEq,
+//     serde::Serialize,
+//     serde::Deserialize,
+//     rkyv::Archive,
+//     rkyv::Serialize,
+//     rkyv::Deserialize,
+// )]
+// #[rkyv(derive(Debug))]
+// #[non_exhaustive]
+// pub struct ActiveConfig {
+//     /// Vault identifier.
+//     pub vault_id: VaultId,
+//     /// Active merged version.
+//     pub version: Version,
+// }
 
 // ----------------------------------------------------------- //
 //                            Tests                            //

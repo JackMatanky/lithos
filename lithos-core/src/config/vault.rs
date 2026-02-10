@@ -155,7 +155,7 @@ pub struct Metadata {
     /// Absolute path to the vault root on disk.
     root: VaultRoot,
     /// Human-readable name of the vault.
-    name: String,
+    name: VaultName,
     /// Version of the vault schema/Lithos that created it.
     version: AppVersion,
 }
@@ -170,15 +170,10 @@ impl Metadata {
     pub fn new(
         id: VaultId,
         root: VaultRoot,
-        name: Option<String>,
+        name: Option<VaultName>,
         version: Option<AppVersion>,
     ) -> Result<Self, ConfigError> {
-        let name = name.unwrap_or_else(|| {
-            root.as_path().file_name().map_or_else(
-                || "unnamed".to_owned(),
-                |n| n.to_string_lossy().into_owned(),
-            )
-        });
+        let name = name.unwrap_or_else(|| VaultName::from_root(&root));
         let version =
             match version {
                 Some(v) => v,
@@ -215,7 +210,7 @@ impl Metadata {
     #[inline]
     #[must_use]
     pub fn name(&self) -> &str {
-        &self.name
+        self.name.as_str()
     }
 
     /// Return the vault version.
@@ -227,6 +222,13 @@ impl Metadata {
 }
 
 impl Default for Metadata {
+    /// Creates a new `Metadata` with a freshly generated `VaultId`.
+    ///
+    /// # Warning
+    ///
+    /// This creates a **new** vault identity each time. For existing vaults,
+    /// use [`Metadata::new()`] with the vault ID loaded from the database
+    /// via `load_vault_id_by_path`.
     #[inline]
     #[expect(
         clippy::expect_used,
@@ -235,9 +237,9 @@ impl Default for Metadata {
     )]
     fn default() -> Self {
         Self {
-            id: VaultId::default(),
+            id: VaultId::new(),
             root: VaultRoot::default(),
-            name: "unnamed".to_owned(),
+            name: VaultName::from_root(&VaultRoot::default()),
             version: AppVersion::try_new(env!("CARGO_PKG_VERSION"))
                 .expect("package version is non-empty"),
         }
@@ -396,6 +398,13 @@ impl VaultRoot {
     pub fn as_path(&self) -> &Path {
         &self.0
     }
+
+    /// Return this path as a string suitable for DB key lookups.
+    #[inline]
+    #[must_use]
+    pub fn as_key(&self) -> String {
+        self.as_path().to_string_lossy().into_owned()
+    }
 }
 
 impl TryFrom<String> for VaultRoot {
@@ -423,54 +432,6 @@ impl Default for VaultRoot {
     )]
     fn default() -> Self {
         Self::try_new(PathBuf::from("/")).expect("root path is non-empty")
-    }
-}
-
-/// A string-based key representing a vault path for indexing.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct VaultPathKey(String);
-
-impl VaultPathKey {
-    /// Create a path key from a vault root.
-    #[inline]
-    #[must_use]
-    pub fn from_root(root: &VaultRoot) -> Self {
-        Self(root.as_path().to_string_lossy().into_owned())
-    }
-
-    /// Return the key as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<String> for VaultPathKey {
-    type Error = ConfigError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value.is_empty() {
-            return Err(ConfigError::ValidationFailed {
-                field: "vault_path_key".to_owned().into(),
-                message: "key cannot be empty".to_owned().into(),
-            });
-        }
-        Ok(Self(value))
     }
 }
 
@@ -544,8 +505,99 @@ impl std::fmt::Display for AppVersion {
     }
 }
 
-// ----------------------------------------------------------- //
-//                            Tests                            //
+/// A validated vault name.
+///
+/// This type ensures that vault names are not empty and are user-friendly.
+/// The name can be explicitly provided or derived from the vault root path.
+///
+/// # Invariants
+///
+/// - Must not be empty.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct VaultName(Box<str>);
+
+impl VaultName {
+    /// Creates a validated vault name from explicit user input.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] if the name is empty.
+    #[inline]
+    pub fn try_new<T: Into<Box<str>>>(value: T) -> Result<Self, ConfigError> {
+        let value = value.into();
+        if value.is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: "name".into(),
+                message: "vault name cannot be empty".into(),
+            });
+        }
+        Ok(Self(value))
+    }
+
+    /// Derives a vault name from the last component of the vault root path.
+    #[inline]
+    #[must_use]
+    pub fn from_root(root: &VaultRoot) -> Self {
+        let name = root.as_path().file_name().map_or_else(
+            || "unnamed".to_owned(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        Self(name.into_boxed_str())
+    }
+
+    /// Return the name as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for VaultName {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+impl From<&str> for VaultName {
+    #[inline]
+    fn from(value: &str) -> Self {
+        // Safe because &str is always non-empty when converted from string
+        // literal
+        Self(value.to_owned().into_boxed_str())
+    }
+}
+
+impl From<VaultName> for String {
+    #[inline]
+    fn from(name: VaultName) -> Self {
+        name.0.into_string()
+    }
+}
+
+impl std::fmt::Display for VaultName {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 // ----------------------------------------------------------- //
 //                            Tests                            //
 // ----------------------------------------------------------- //
@@ -654,30 +706,6 @@ mod tests {
                 result.is_err(),
                 "Expected validation failure for empty vault_path"
             );
-        }
-    }
-
-    mod conversions {
-        use super::*;
-
-        #[test]
-        #[expect(
-            clippy::panic_in_result_fn,
-            reason = "Test uses assert_eq! which can panic."
-        )]
-        fn vault_path_key_from_root_preserves_path()
-        -> Result<(), Box<dyn std::error::Error>> {
-            let root = VaultRoot::try_new(PathBuf::from("/vault/alpha"))?;
-            let key = VaultPathKey::from_root(&root);
-            assert_eq!(key.as_str(), "/vault/alpha");
-            Ok(())
-        }
-
-        #[test]
-        fn vault_path_key_try_from_rejects_empty() {
-            let result = VaultPathKey::try_from(String::new());
-            let _: ConfigError =
-                result.expect_err("VaultPathKey should reject empty string");
         }
     }
 

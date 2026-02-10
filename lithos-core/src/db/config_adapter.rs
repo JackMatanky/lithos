@@ -90,7 +90,7 @@ impl Command for CommandAdapter<'_> {
         vault_id: VaultId,
         vault_root: &VaultRoot,
     ) -> Result<(), Self::Error> {
-        let path_key = vault_path_key(vault_root);
+        let path_key = vault_root.as_key();
         self.db.put("vault_id_by_path", &path_key, &vault_id)?;
         self.db.put("vault_path_by_id", &vault_id.to_string(), vault_root)
     }
@@ -149,10 +149,7 @@ impl Query for QueryAdapter<'_> {
     }
 }
 
+#[inline]
 fn merged_version_key(vault_id: VaultId, version: Version) -> String {
     format!("{}:{}", vault_id, version.value())
-}
-
-fn vault_path_key(root: &VaultRoot) -> String {
-    root.as_path().to_string_lossy().into_owned()
 }

@@ -57,7 +57,12 @@ fn build_merged_raw_impl(
 }
 
 fn global_config_path_from_env() -> Option<PathBuf> {
-    std::env::var_os("LITHOS_GLOBAL_CONFIG").map(PathBuf::from)
+    // Placeholder for environment variable support.
+    // TODO: Implement via `figment::providers::Env` with LITHOS_ prefix.
+    // Reserved for future use.
+    // Example implementation:
+    // std::env::var_os("LITHOS_GLOBAL_CONFIG").map(PathBuf::from)
+    None
 }
 
 // ----------------------------------------------------------- //
