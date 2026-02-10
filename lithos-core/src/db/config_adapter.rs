@@ -2,7 +2,7 @@
 
 use crate::{
     config::{
-        aggregate::{Config, ConfigVersion},
+        aggregate::{Config, Version},
         global::Global,
         ports::{Command, Query},
         vault::{Vault, VaultId, VaultRoot},
@@ -33,7 +33,7 @@ impl Command for CommandAdapter<'_> {
     fn load_active_version(
         &self,
         vault_id: VaultId,
-    ) -> Result<Option<ConfigVersion>, Self::Error> {
+    ) -> Result<Option<Version>, Self::Error> {
         self.db.get_owned("merged_config_active", &vault_id.to_string())
     }
 
@@ -59,7 +59,7 @@ impl Command for CommandAdapter<'_> {
     fn save_merged(
         &self,
         vault_id: VaultId,
-        version: ConfigVersion,
+        version: Version,
         config: &Config,
     ) -> Result<(), Self::Error> {
         let key = merged_version_key(vault_id, version);
@@ -79,7 +79,7 @@ impl Command for CommandAdapter<'_> {
     fn set_active_version(
         &self,
         vault_id: VaultId,
-        version: ConfigVersion,
+        version: Version,
     ) -> Result<(), Self::Error> {
         self.db.put("merged_config_active", &vault_id.to_string(), &version)
     }
@@ -120,7 +120,7 @@ impl Query for QueryAdapter<'_> {
     fn get_active_version(
         &self,
         vault_id: VaultId,
-    ) -> Result<Option<ConfigVersion>, Self::Error> {
+    ) -> Result<Option<Version>, Self::Error> {
         self.db.get_owned("merged_config_active", &vault_id.to_string())
     }
 
@@ -128,7 +128,7 @@ impl Query for QueryAdapter<'_> {
     fn get_merged_owned(
         &self,
         vault_id: VaultId,
-        version: ConfigVersion,
+        version: Version,
     ) -> Result<Option<Config>, Self::Error> {
         let key = merged_version_key(vault_id, version);
         self.db.get_owned("merged_config_versions", &key)
@@ -138,7 +138,7 @@ impl Query for QueryAdapter<'_> {
     fn with_archived_merged<F, R>(
         &self,
         vault_id: VaultId,
-        version: ConfigVersion,
+        version: Version,
         f: F,
     ) -> Result<Option<R>, Self::Error>
     where
@@ -149,7 +149,7 @@ impl Query for QueryAdapter<'_> {
     }
 }
 
-fn merged_version_key(vault_id: VaultId, version: ConfigVersion) -> String {
+fn merged_version_key(vault_id: VaultId, version: Version) -> String {
     format!("{}:{}", vault_id, version.value())
 }
 
