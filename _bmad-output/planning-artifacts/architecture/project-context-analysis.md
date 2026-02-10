@@ -109,7 +109,8 @@ These requirements drive a port-based CQRS architecture with bounded contexts, s
 
 - **Logical Boundaries:** Enforced via visibility modifiers and port-based CQRS
 - **Business Contexts:** note, schema, template are isolated (no cross-imports)
-- **Cross-Cutting Infrastructure:** config, db, fs, patterns available to all contexts
+- **Cross-Cutting Context:** config (user-configurable business rules) available to all contexts
+- **Pure Infrastructure:** db, fs, patterns (generic utilities) available to all contexts
 - **Port Pattern:** Each context defines storage port trait, CQRS types generic over port
 - **Zero-Copy:** GAT-enabled ports allow closure-based archived reads
 - **Testing:** Port traits enable test substitution (FakeStore implementations)

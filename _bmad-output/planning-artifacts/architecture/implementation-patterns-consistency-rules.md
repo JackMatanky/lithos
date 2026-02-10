@@ -906,7 +906,7 @@ let validated: Frontmatter = raw.try_into()?;          // Validate (explicit)
 
 ---
 
-#### Shape 3: Stored\* Types (Storage Optimization, Optional)
+#### Shape 3: `Stored*` Types (Storage Optimization, Optional)
 
 **Purpose:** Only when domain shape is inefficient for storage (rarely needed).
 
@@ -1240,7 +1240,8 @@ When implementing port-based CQRS, verify:
 **Inter-Module Communication:**
 
 - **Context Isolation:** Business contexts (note, schema, template) do not import each other.
-- **Cross-Cutting Infrastructure:** Config, db, fs, patterns are available to all contexts.
+- **Cross-Cutting Context:** Config (user-configurable business rules) is available to all contexts.
+- **Pure Infrastructure:** db, fs, patterns (generic utilities) are available to all contexts.
 - **Orchestration:** Cross-context workflows happen in CLI layer or dedicated app module.
 
 **Dependency Flow Rules:**

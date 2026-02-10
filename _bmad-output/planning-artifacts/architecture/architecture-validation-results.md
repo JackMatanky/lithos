@@ -52,7 +52,7 @@ Performance targets (<500ms for individual ops) are architecturally enforced by 
 
 **Context Boundaries:**
 - Business contexts (note, schema, template) isolated
-- Cross-cutting infrastructure (config, db, fs, patterns) available to all
+- Cross-cutting context (config) and pure infrastructure (db, fs, patterns) available to all
 - Enforcement via architecture tests + code review
 - Config is explicitly cross-cutting (not a business context)
 

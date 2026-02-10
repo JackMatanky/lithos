@@ -39,7 +39,8 @@ We have pivoted to a **Single-Crate Core Architecture** to prioritize:
 
 - **`lithos-core`:** Single library crate containing Domain, Infrastructure, and Storage logic.
   - **Business Contexts:** note, schema, template (isolated from each other)
-  - **Cross-Cutting:** config, db, fs, patterns (available to all contexts)
+  - **Cross-Cutting Context:** config (user-configurable business rules)
+  - **Pure Infrastructure:** db, fs, patterns (generic utilities)
   - **Boundaries:** Enforced via:
     - Visibility modifiers (`pub(crate)`, `pub`)
     - Port-based CQRS (traits with GATs)

@@ -40,16 +40,16 @@ section: "Architecture Decisions"
 
 - **Engine:** Redb (Pure-Rust, ACID KV) with **rkyv** zero-copy serialization.
 - **Access Pattern:** Port-based CQRS with GAT-enabled zero-copy reads
-  - Each context defines **split storage ports**: `<Context>QueryPort` and `<Context>CommandPort` (e.g., `SchemaQueryPort`, `SchemaCommandPort`)
+  - Each context defines **split storage ports**: `<Context>::ports::Query` and `<Context>::ports::Command` (e.g., `schema::ports::Query`, `schema::ports::Command`)
   - Concrete CQRS types generic over respective ports: `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`
   - Default adapters: `RedbSchemaQueryAdapter<'db>` and `RedbSchemaCommandAdapter<'db>` implement ports with zero-copy primitives
   - Type aliases hide generic complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>`
   - Enables test substitution via `FakeSchemaQueryPort` while maintaining zero-copy performance
   - **Port Split Benefits:** Read-only test fakes don't implement writes, prevents interface bloat, enables future flexibility (cache reads, DB writes)
 - **Three-Shape Serialization Model:** Following ADR 003 Appendix A pattern:
-  - **Raw\* (serde derives):** Unvalidated input from filesystem (YAML/JSON), tolerant parsing with nullable fields for better error messages
+  - **`Raw*` (serde derives):** Unvalidated input from filesystem (YAML/JSON), tolerant parsing with nullable fields for better error messages
   - **Domain (rkyv + serde feature-gated):** Validated entities with invariants, **has rkyv derives** for zero-copy database operations, used throughout application
-  - **Stored\* (rkyv derives, optional):** Storage-optimized representation, only created when domain shape inefficient (wrapper newtypes, deep nesting, Arc sharing issues)
+  - **`Stored*` (rkyv derives, optional):** Storage-optimized representation, only created when domain shape inefficient (wrapper newtypes, deep nesting, Arc sharing issues)
   - **Default Strategy:** Store domain types directly (they already have rkyv derives); only introduce `Stored*` when performance profiling reveals inefficiency
   - Keep conversions mechanical and co-located in storage adapters
   - Treat changes to `Stored*` as migration decisions (stable on-disk format)
@@ -85,7 +85,7 @@ Storage capabilities defined via **separate traits** with GATs (Generic Associat
 
 ```rust
 // Defined in <context>/ports.rs
-pub trait SchemaQueryPort {
+pub trait Query {
     type Error: std::error::Error;
     type Archived<'a> where Self: 'a;  // GAT for zero-copy archived view
 
@@ -108,7 +108,7 @@ pub trait SchemaQueryPort {
 
 ```rust
 // Defined in <context>/ports.rs
-pub trait SchemaCommandPort {
+pub trait Command {
     type Error: std::error::Error;
 
     fn save(&self, schema: &Schema) -> Result<(), Self::Error>;
@@ -296,12 +296,12 @@ impl<'db> RedbSchemaCommand<'db> {
 └─────────────────────────────────────────┘
 ```
 
-**When to Create Stored\* Types:**
+**When to Create `Stored*` Types:**
 
 Only introduce `Stored*` when profiling reveals:
 - Wrapper newtypes (SchemaName) complicate database indexing
 - Deep nesting causes excessive alignment copy overhead
-- Arc<T> sharing doesn't serialize efficiently
+- `Arc<T>` sharing doesn't serialize efficiently
 - Storage layout differs significantly from domain representation
 
 **Default Strategy:** Store domain types directly (they already have rkyv derives for zero-copy).
