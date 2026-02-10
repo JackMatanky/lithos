@@ -34,6 +34,32 @@ impl MarkdownParser {
         }
     }
 
+    /// Create a parser with full Obsidian feature support.
+    ///
+    /// Enables:
+    /// - `WikiLinks`: `[[link]]`, `[[link|alias]]`, `![[embed]]`
+    /// - Frontmatter: YAML metadata blocks
+    /// - Tables: GFM tables
+    /// - Footnotes: Markdown footnotes
+    /// - Math: Inline `$...$` and display `$$...$$`
+    /// - Strikethrough: `~~text~~`
+    /// - Heading Attributes: `# Title {#id .class}`
+    /// - Task Lists: `- [ ] task`
+    #[inline]
+    #[must_use]
+    pub const fn with_obsidian_features() -> Self {
+        Self {
+            options: Options::ENABLE_TASKLISTS
+                .union(Options::ENABLE_WIKILINKS)
+                .union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
+                .union(Options::ENABLE_HEADING_ATTRIBUTES)
+                .union(Options::ENABLE_TABLES)
+                .union(Options::ENABLE_FOOTNOTES)
+                .union(Options::ENABLE_STRIKETHROUGH)
+                .union(Options::ENABLE_MATH),
+        }
+    }
+
     /// Return the underlying pulldown-cmark options.
     #[inline]
     #[must_use]
