@@ -3,12 +3,18 @@
 //! This module provides the [`Config`] aggregate, which represents the
 //! fully-merged and validated configuration state for a vault. It also
 //! defines [`ConfigVersion`] for tracking configuration history.
-//!   vault configurations are missing specific fields.
+//!
+//! # Invariants
+//!
+//! - **Always Valid**: Once constructed, `Config` is guaranteed to be
+//!   internally consistent and valid for use throughout the system.
 //! - **Immutability**: Once built, the configuration is immutable and serves as
 //!   the "Source of Truth" for the current execution context.
 //! - **Validation**: All paths and enums are strictly validated during the
 //!   build phase. Construction of a [`Config`] instance is impossible without
 //!   satisfying all domain constraints.
+//! - **Layered Configuration**: The aggregate enforces a clear precedence
+//!   hierarchy for settings (vault overrides → global → system defaults).
 
 #![expect(
     clippy::partial_pub_fields,
