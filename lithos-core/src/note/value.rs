@@ -11,6 +11,8 @@
 
 use std::collections::HashMap;
 
+use chrono::{DateTime, Utc};
+
 /// Shared primitive for dynamic note values (frontmatter and task metadata).
 ///
 /// This enum represents the set of supported value types in the note domain.
@@ -281,6 +283,197 @@ impl FieldValue {
                 out.push('}');
             }
         }
+    }
+}
+
+/// Fallible, strict conversions from [`FieldValue`].
+///
+/// This is intentionally a *local* trait (instead of `TryFrom<&FieldValue>`) to
+/// avoid Rust's orphan rules (we can't implement foreign traits for foreign
+/// types like `bool`, `f64`, `String`, etc.).
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::value::{FieldValue, FromFieldValue, FieldValueError};
+/// let val = FieldValue::Boolean(true);
+/// let result = bool::from_value(&val).unwrap();
+/// assert!(result);
+/// ```
+pub trait FromFieldValue: Sized {
+    /// Attempts to extract a value of type `Self` from a [`FieldValue`].
+    ///
+    /// Returns a structured error when the value is present but incompatible.
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured error describing why the conversion failed.
+    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError>;
+}
+
+/// Fallible, strict conversions from a borrowed [`FieldValue`].
+///
+/// This exists to support *non-owning* access patterns like `&str` and slices.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::value::{FieldValue, FromFieldValueRef, FieldValueError};
+/// let val = FieldValue::String("borrowed".into());
+/// let result = <&str>::from_value_ref(&val).unwrap();
+/// assert_eq!(result, "borrowed");
+/// ```
+pub trait FromFieldValueRef<'value>: Sized {
+    /// Attempts to extract a value of type `Self` from a borrowed
+    /// [`FieldValue`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured error describing why the conversion failed.
+    fn from_value_ref(
+        value: &'value FieldValue,
+    ) -> Result<Self, FieldValueError>;
+}
+
+/// Error type for [`FieldValue`] conversion operations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldValueError {
+    /// Type mismatch between expected and actual value.
+    TypeMismatch {
+        /// Expected value type.
+        expected: FieldValueType,
+        /// Actual value type.
+        actual: FieldValueType,
+    },
+    /// Invalid date timestamp.
+    InvalidDateTimestamp {
+        /// The problematic timestamp.
+        timestamp: i64,
+    },
+    /// Array element type mismatch.
+    ArrayElementTypeMismatch {
+        /// Index of the problematic element.
+        index: usize,
+        /// Expected element type.
+        expected: FieldValueType,
+        /// Actual element type.
+        actual: FieldValueType,
+    },
+}
+
+#[allow(
+    clippy::missing_trait_methods,
+    clippy::match_ref_pats,
+    reason = "Default trait methods are not needed for this simple error type"
+)]
+#[allow(clippy::all)]
+impl core::fmt::Display for FieldValueError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+#[allow(clippy::all)]
+impl std::error::Error for FieldValueError {}
+
+// Implementations for common types
+impl FromFieldValue for bool {
+    #[inline]
+    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+        value.as_bool().ok_or_else(|| FieldValueError::TypeMismatch {
+            expected: FieldValueType::Boolean,
+            actual: value.value_type(),
+        })
+    }
+}
+
+impl FromFieldValue for f64 {
+    #[inline]
+    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+        value.as_number().ok_or_else(|| FieldValueError::TypeMismatch {
+            expected: FieldValueType::Number,
+            actual: value.value_type(),
+        })
+    }
+}
+
+impl FromFieldValue for Box<str> {
+    #[inline]
+    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+        value.as_str().map(Into::into).ok_or_else(|| {
+            FieldValueError::TypeMismatch {
+                expected: FieldValueType::String,
+                actual: value.value_type(),
+            }
+        })
+    }
+}
+
+impl FromFieldValue for DateTime<Utc> {
+    #[inline]
+    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+        use chrono::TimeZone as _;
+        let ts =
+            value.as_date().ok_or_else(|| FieldValueError::TypeMismatch {
+                expected: FieldValueType::Date,
+                actual: value.value_type(),
+            })?;
+        Utc.timestamp_opt(ts, 0).single().ok_or({
+            FieldValueError::InvalidDateTimestamp {
+                timestamp: ts,
+            }
+        })
+    }
+}
+
+impl FromFieldValue for Vec<Box<str>> {
+    #[inline]
+    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+        if let Some(arr) = value.as_array() {
+            let mut out = Vec::with_capacity(arr.len());
+            for (index, item) in arr.iter().enumerate() {
+                let Some(s) = item.as_str() else {
+                    return Err(FieldValueError::ArrayElementTypeMismatch {
+                        index,
+                        expected: FieldValueType::String,
+                        actual: item.value_type(),
+                    });
+                };
+                out.push(s.into());
+            }
+            return Ok(out);
+        }
+
+        value.as_str().map(|s| vec![s.into()]).ok_or_else(|| {
+            FieldValueError::TypeMismatch {
+                expected: FieldValueType::Array,
+                actual: value.value_type(),
+            }
+        })
+    }
+}
+
+impl<'value> FromFieldValueRef<'value> for &'value str {
+    #[inline]
+    fn from_value_ref(
+        value: &'value FieldValue,
+    ) -> Result<Self, FieldValueError> {
+        value.as_str().ok_or_else(|| FieldValueError::TypeMismatch {
+            expected: FieldValueType::String,
+            actual: value.value_type(),
+        })
+    }
+}
+
+impl<'value> FromFieldValueRef<'value> for &'value [FieldValue] {
+    #[inline]
+    fn from_value_ref(
+        value: &'value FieldValue,
+    ) -> Result<Self, FieldValueError> {
+        value.as_array().ok_or_else(|| FieldValueError::TypeMismatch {
+            expected: FieldValueType::Array,
+            actual: value.value_type(),
+        })
     }
 }
 
