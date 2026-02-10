@@ -16,7 +16,7 @@ use super::{
     logging::Logging,
     paths::{AbsolutePath, Paths},
     raw::RawTrustedVaults,
-    task::TaskConfig,
+    task::Task,
 };
 
 /// System-wide configuration settings.
@@ -53,7 +53,7 @@ pub struct Global {
     /// Frontmatter configuration for global defaults.
     frontmatter: Frontmatter,
     /// Task configuration overrides.
-    task: Option<TaskConfig>,
+    task: Option<Task>,
 }
 
 impl Default for Global {
@@ -78,7 +78,7 @@ impl Global {
         paths: Paths,
         trusted_vaults: Option<TrustedVaults>,
         frontmatter: Frontmatter,
-        task: Option<TaskConfig>,
+        task: Option<Task>,
     ) -> Self {
         Self {
             logging,
@@ -113,7 +113,7 @@ impl Global {
     #[inline]
     #[must_use]
     /// Return global task configuration defaults.
-    pub fn task(&self) -> Option<&TaskConfig> {
+    pub fn task(&self) -> Option<&Task> {
         self.task.as_ref()
     }
 
