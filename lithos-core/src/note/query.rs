@@ -321,23 +321,23 @@ impl super::ports::Query for Query<'_> {
         key: &str,
         value: &str,
     ) -> Result<Vec<Note>, NoteQueryError> {
-        let combined_key = format!("{key}:{value}");
-        let ids = self
-            .db
-            .multimap_get("frontmatter_kv_to_id", &combined_key)
-            .map_err(NoteQueryError::Storage)?;
+        use std::fmt::Write as _;
 
-        let mut notes = Vec::with_capacity(ids.len());
-        for id_str in ids {
-            if let Some(note) = self
-                .db
-                .get_owned::<Note>("notes", &id_str)
-                .map_err(NoteQueryError::Storage)?
-            {
-                notes.push(note);
-            }
-        }
-        Ok(notes)
+        // Pre-allocate to avoid format!() allocation in hot path
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut combined_key =
+            String::with_capacity(key.len() + value.len() + 1);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut combined_key, "{key}:{value}");
+
+        self.find_notes_by_task_index("frontmatter_kv", &combined_key)
     }
 
     /// Access a note as archived data (zero-copy).
