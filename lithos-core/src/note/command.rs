@@ -16,6 +16,10 @@ use super::{
 };
 use crate::db::Database;
 
+/// Index data extracted from a note for cleanup operations.
+/// Contains (path, tags) tuple needed to remove old index entries.
+type IndexData = (String, Vec<String>);
+
 /// Command implementation for Note write operations.
 ///
 /// Implements the [`crate::note::ports::Command`] trait using the [`Database`]
@@ -48,6 +52,35 @@ impl<'db> Command<'db> {
         Self {
             db,
         }
+    }
+
+    /// Helper: Extract path and tags from archived note for index cleanup.
+    ///
+    /// This is used by both `update()` and `delete()` to get the old index data
+    /// before modifying the note. The allocations here are necessary because
+    /// the data must outlive the read transaction.
+    ///
+    /// # Errors
+    /// Returns `NoteCommandError::Storage` if the database read fails.
+    fn get_note_index_data(
+        &self,
+        id_str: &str,
+    ) -> Result<Option<IndexData>, NoteCommandError> {
+        self.db
+            .get::<Note, _, (String, Vec<String>)>(
+                "notes",
+                id_str,
+                |archived| {
+                    let path = archived.path().as_str().to_owned();
+                    let tags: Vec<String> = archived
+                        .tags()
+                        .iter()
+                        .map(|t| t.full_path().as_str().to_owned())
+                        .collect();
+                    (path, tags)
+                },
+            )
+            .map_err(NoteCommandError::Storage)
     }
 }
 
@@ -83,22 +116,7 @@ impl super::ports::Command for Command<'_> {
         let id_str = id.to_string();
 
         // 1. Get old data for index cleanup using zero-copy read
-        let old_data = self
-            .db
-            .get::<Note, _, (String, Vec<String>)>(
-                "notes",
-                &id_str,
-                |archived| {
-                    let path = archived.path().as_str().to_owned();
-                    let tags: Vec<String> = archived
-                        .tags()
-                        .iter()
-                        .map(|t| t.full_path().as_str().to_owned())
-                        .collect();
-                    (path, tags)
-                },
-            )
-            .map_err(NoteCommandError::Storage)?;
+        let old_data = self.get_note_index_data(&id_str)?;
 
         if let Some((path, tags)) = old_data {
             self.db.batch_write(|batch| {
@@ -129,22 +147,7 @@ impl super::ports::Command for Command<'_> {
         let id_str = Uuid::from(note.id()).to_string();
 
         // 1. Get old data for index cleanup using zero-copy read
-        let old_data = self
-            .db
-            .get::<Note, _, (String, Vec<String>)>(
-                "notes",
-                &id_str,
-                |archived| {
-                    let path = archived.path().as_str().to_owned();
-                    let tags: Vec<String> = archived
-                        .tags()
-                        .iter()
-                        .map(|t| t.full_path().as_str().to_owned())
-                        .collect();
-                    (path, tags)
-                },
-            )
-            .map_err(NoteCommandError::Storage)?;
+        let old_data = self.get_note_index_data(&id_str)?;
 
         self.db.batch_write(|batch| {
             if let Some((old_path, old_tags)) = old_data {
