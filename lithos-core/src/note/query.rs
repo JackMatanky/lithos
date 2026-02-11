@@ -196,10 +196,10 @@ impl super::ports::Query for Query<'_> {
         &self,
         completed_date: i64,
     ) -> Result<Vec<Note>, NoteQueryError> {
-        self.find_notes_by_task_index(
-            "tasks_by_completed_date",
-            &completed_date.to_string(),
-        )
+        // Use itoa for zero-allocation integer formatting
+        let mut buffer = itoa::Buffer::new();
+        let date_str = buffer.format(completed_date);
+        self.find_notes_by_task_index("tasks_by_completed_date", date_str)
     }
 
     /// Finds notes by task created date using the `tasks_by_created_date`
@@ -214,10 +214,10 @@ impl super::ports::Query for Query<'_> {
         &self,
         created_date: i64,
     ) -> Result<Vec<Note>, NoteQueryError> {
-        self.find_notes_by_task_index(
-            "tasks_by_created_date",
-            &created_date.to_string(),
-        )
+        // Use itoa for zero-allocation integer formatting
+        let mut buffer = itoa::Buffer::new();
+        let date_str = buffer.format(created_date);
+        self.find_notes_by_task_index("tasks_by_created_date", date_str)
     }
 
     /// Finds notes by task due date using the `tasks_by_due_date` index.
@@ -231,10 +231,10 @@ impl super::ports::Query for Query<'_> {
         &self,
         due_date: i64,
     ) -> Result<Vec<Note>, NoteQueryError> {
-        self.find_notes_by_task_index(
-            "tasks_by_due_date",
-            &due_date.to_string(),
-        )
+        // Use itoa for zero-allocation integer formatting
+        let mut buffer = itoa::Buffer::new();
+        let date_str = buffer.format(due_date);
+        self.find_notes_by_task_index("tasks_by_due_date", date_str)
     }
 
     /// Finds notes by task priority using the `tasks_by_priority` index.
@@ -248,10 +248,10 @@ impl super::ports::Query for Query<'_> {
         &self,
         priority: f64,
     ) -> Result<Vec<Note>, NoteQueryError> {
-        self.find_notes_by_task_index(
-            "tasks_by_priority",
-            &priority.to_string(),
-        )
+        // Use ryu for zero-allocation float formatting
+        let mut buffer = ryu::Buffer::new();
+        let priority_str = buffer.format(priority);
+        self.find_notes_by_task_index("tasks_by_priority", priority_str)
     }
 
     /// Finds notes by task project using the `tasks_by_project` index.
