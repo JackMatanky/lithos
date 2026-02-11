@@ -21,8 +21,9 @@ use uuid::Uuid;
 use super::{
     error::NoteError, tag::Tag, types::SourceByteOffset, value::FieldValue,
 };
-use crate::config::task::{
-    DateFieldSpec, StatusName, StatusSymbol, TaskConfig, TaskFieldSpec,
+use crate::config::{
+    task::{StatusName, StatusSymbol, Task as TaskConfig},
+    value::{DateSpec, FieldSpec},
 };
 
 /// Task entity within a Note.
@@ -35,7 +36,7 @@ use crate::config::task::{
 ///
 /// ```
 /// # use lithos_core::note::{task::Task, types::SourceByteOffset};
-/// # use lithos_core::config::task::{TaskConfig, StatusSymbol};
+/// # use lithos_core::config::task::{Task as TaskConfig, StatusSymbol};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = TaskConfig::default();
 /// let status = StatusSymbol::try_new(' ')?;
@@ -126,7 +127,7 @@ impl Task {
     #[inline]
     #[must_use]
     pub fn should_promote(text: &str, config: &TaskConfig) -> bool {
-        config.has_task_tag(text)
+        config.tags().iter().any(|tag| text.contains(tag.as_str()))
     }
 
     /// Returns the unique task identifier.
@@ -211,7 +212,7 @@ impl Task {
         let mut stripped = true;
         while stripped {
             stripped = false;
-            for tag in config.task_tags() {
+            for tag in config.tags() {
                 if let Some(rest) = text.strip_prefix(tag.as_str()) {
                     text = rest.trim_start();
                     stripped = true;
@@ -246,22 +247,22 @@ impl Task {
         config: &TaskConfig,
     ) -> Result<TemporalFields, NoteError> {
         let created_at = config
-            .created_field()
+            .created()
             .map(|spec| Self::parse_date_field(text, spec, config))
             .transpose()?
             .flatten();
         let due_at = config
-            .due_field()
+            .due()
             .map(|spec| Self::parse_date_field(text, spec, config))
             .transpose()?
             .flatten();
         let reminder_at = config
-            .reminder_field()
+            .reminder()
             .map(|spec| Self::parse_date_field(text, spec, config))
             .transpose()?
             .flatten();
         let completed_at = config
-            .completed_field()
+            .completed()
             .map(|spec| Self::parse_date_field(text, spec, config))
             .transpose()?
             .flatten();
@@ -271,31 +272,42 @@ impl Task {
 
     fn parse_date_field(
         text: &str,
-        spec: &DateFieldSpec,
-        config: &TaskConfig,
+        spec: &DateSpec,
+        _config: &TaskConfig,
     ) -> Result<Option<TaskTimestamp>, NoteError> {
-        if let Some(value) = find_inline_field(text, spec.keyword().as_str()) {
-            let naive =
-                config.parse_date_value(value, spec).map_err(|error| {
+        let parse_date_str = |value: &str| -> Result<TaskTimestamp, NoteError> {
+            if let Ok(naive) =
+                chrono::NaiveDateTime::parse_from_str(value, spec.format())
+            {
+                return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
+            }
+
+            let date = chrono::NaiveDate::parse_from_str(value, spec.format())
+                .map_err(|error| {
                     NoteError::Task(format!(
                         "invalid date for field '{}': {error}",
                         spec.keyword().as_str()
                     ))
                 })?;
-            return Ok(Some(TaskTimestamp::new(naive.and_utc().timestamp())));
+
+            let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
+                NoteError::Task(format!(
+                    "invalid time for date in field '{}'",
+                    spec.keyword().as_str()
+                ))
+            })?;
+
+            Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
+        };
+
+        if let Some(value) = find_inline_field(text, spec.keyword().as_str()) {
+            return parse_date_str(value).map(Some);
         }
 
         if let Some(emoji) = spec.emoji()
             && let Some(value) = find_emoji_field(text, emoji)
         {
-            let naive =
-                config.parse_date_value(value, spec).map_err(|error| {
-                    NoteError::Task(format!(
-                        "invalid date for field '{}': {error}",
-                        spec.keyword().as_str()
-                    ))
-                })?;
-            return Ok(Some(TaskTimestamp::new(naive.and_utc().timestamp())));
+            return parse_date_str(value).map(Some);
         }
 
         Ok(None)
@@ -320,7 +332,7 @@ impl Task {
             }
 
             if let Some(spec) = config.field_spec(keyword) {
-                let json_value = parse_metadata_value(raw_value, spec)?;
+                let json_value = Self::parse_metadata_value(raw_value, spec)?;
                 spec.validate_raw_value(&json_value).map_err(|error| {
                     NoteError::Task(format!(
                         "invalid metadata field '{keyword}': {error}"
@@ -340,18 +352,63 @@ impl Task {
     }
 
     fn is_temporal_keyword(keyword: &str, config: &TaskConfig) -> bool {
-        config
-            .created_field()
-            .is_some_and(|spec| spec.keyword().as_str() == keyword)
+        config.created().is_some_and(|spec| spec.keyword().as_str() == keyword)
             || config
-                .due_field()
+                .due()
                 .is_some_and(|spec| spec.keyword().as_str() == keyword)
             || config
-                .reminder_field()
+                .reminder()
                 .is_some_and(|spec| spec.keyword().as_str() == keyword)
             || config
-                .completed_field()
+                .completed()
                 .is_some_and(|spec| spec.keyword().as_str() == keyword)
+    }
+
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on &TaskFieldSpec keeps call sites concise."
+    )]
+    fn parse_metadata_value(
+        raw_value: &str,
+        spec: &FieldSpec,
+    ) -> Result<serde_json::Value, NoteError> {
+        match spec {
+            FieldSpec::Integer {
+                ..
+            } => {
+                let value = raw_value.parse::<i64>().map_err(|error| {
+                    NoteError::Task(format!(
+                        "invalid integer value '{raw_value}': {error}"
+                    ))
+                })?;
+                Ok(serde_json::Value::Number(value.into()))
+            }
+            FieldSpec::Float {
+                ..
+            } => {
+                let value = raw_value.parse::<f64>().map_err(|error| {
+                    NoteError::Task(format!(
+                        "invalid float value '{raw_value}': {error}"
+                    ))
+                })?;
+                let number =
+                    serde_json::Number::from_f64(value).ok_or_else(|| {
+                        NoteError::Task(format!(
+                            "invalid float value '{raw_value}'"
+                        ))
+                    })?;
+                Ok(serde_json::Value::Number(number))
+            }
+            FieldSpec::Enum {
+                ..
+            }
+            | FieldSpec::String {
+                ..
+            }
+            | FieldSpec::DateTime {
+                ..
+            } => Ok(serde_json::Value::String(raw_value.to_owned())),
+        }
     }
 }
 
@@ -717,53 +774,6 @@ static TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 #[expect(
-    clippy::pattern_type_mismatch,
-    reason = "Matching on &TaskFieldSpec keeps call sites concise."
-)]
-fn parse_metadata_value(
-    raw_value: &str,
-    spec: &TaskFieldSpec,
-) -> Result<serde_json::Value, NoteError> {
-    match spec {
-        TaskFieldSpec::Integer {
-            ..
-        } => {
-            let value = raw_value.parse::<i64>().map_err(|error| {
-                NoteError::Task(format!(
-                    "invalid integer value '{raw_value}': {error}"
-                ))
-            })?;
-            Ok(serde_json::Value::Number(value.into()))
-        }
-        TaskFieldSpec::Float {
-            ..
-        } => {
-            let value = raw_value.parse::<f64>().map_err(|error| {
-                NoteError::Task(format!(
-                    "invalid float value '{raw_value}': {error}"
-                ))
-            })?;
-            let number =
-                serde_json::Number::from_f64(value).ok_or_else(|| {
-                    NoteError::Task(format!(
-                        "invalid float value '{raw_value}'"
-                    ))
-                })?;
-            Ok(serde_json::Value::Number(number))
-        }
-        TaskFieldSpec::Enum {
-            ..
-        }
-        | TaskFieldSpec::String {
-            ..
-        }
-        | TaskFieldSpec::DateTime {
-            ..
-        } => Ok(serde_json::Value::String(raw_value.to_owned())),
-    }
-}
-
-#[expect(
     clippy::string_slice,
     reason = "Indices are validated by match_indices."
 )]
@@ -813,17 +823,18 @@ fn find_emoji_field(text: &str, emoji: char) -> Option<&str> {
 )]
 mod tests {
     use super::*;
-    use crate::config::raw::{RawTaskConfig, RawTaskFieldSpec};
+    use crate::config::{
+        raw::{RawFieldSpec, RawTaskConfig},
+        task::Task as TaskConfig,
+    };
 
     fn config_with_fields() -> TaskConfig {
         let mut fields = HashMap::new();
-        fields.insert("priority".to_owned(), RawTaskFieldSpec::Integer {
-            keyword: "priority".to_owned(),
+        fields.insert("priority".to_owned(), RawFieldSpec::Integer {
             min: None,
             max: None,
         });
-        fields.insert("project".to_owned(), RawTaskFieldSpec::String {
-            keyword: "project".to_owned(),
+        fields.insert("project".to_owned(), RawFieldSpec::String {
             pattern: None,
         });
 

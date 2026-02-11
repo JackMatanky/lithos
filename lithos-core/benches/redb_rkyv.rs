@@ -48,7 +48,12 @@ use criterion::{
     criterion_main,
 };
 use lithos_core::{
-    config::task::{StatusSymbol, TaskConfig},
+    config::{
+        aggregate::Config,
+        raw::RawConfig,
+        task::StatusSymbol,
+        vault::{VaultId, VaultRoot},
+    },
     db::Database,
     note::{
         aggregate::{Note, NoteId},
@@ -114,14 +119,20 @@ fn create_test_note(index: usize) -> Note {
         .expect("valid heading"),
     );
 
-    let task_config = TaskConfig::default();
+    let config = Config::build(
+        &RawConfig::default(),
+        VaultId::new(),
+        VaultRoot::try_new(std::path::PathBuf::from("/vault"))
+            .expect("valid vault root"),
+    )
+    .expect("config");
     let status = StatusSymbol::try_new(' ').expect("valid status");
     note.add_task(
         Task::from_checkbox(
             "Do something",
             status,
             SourceByteOffset::new(15),
-            &task_config,
+            config.task(),
         )
         .expect("valid task"),
     );
@@ -130,7 +141,7 @@ fn create_test_note(index: usize) -> Note {
             "Already done",
             StatusSymbol::try_new('x').expect("valid status"),
             SourceByteOffset::new(16),
-            &task_config,
+            config.task(),
         )
         .expect("valid task"),
     );

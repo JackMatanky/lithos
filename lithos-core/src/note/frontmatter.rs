@@ -214,7 +214,7 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Option<&str> {
-        self.get(config.frontmatter.title_key().as_str())
+        self.get(config.frontmatter().title().as_str())
             .and_then(FieldValue::as_str)
     }
 
@@ -225,7 +225,7 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Option<&str> {
-        self.get(config.frontmatter.file_class_key().as_str())
+        self.get(config.frontmatter().file_class().as_str())
             .and_then(FieldValue::as_str)
     }
 
@@ -236,7 +236,7 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Vec<Box<str>> {
-        self.get(config.frontmatter.alias_key().as_str())
+        self.get(config.frontmatter().alias().as_str())
             .and_then(as_string_array_lossy)
             .unwrap_or_default()
     }
@@ -467,35 +467,27 @@ mod tests {
 
         pub fn config_with_custom_frontmatter_keys() -> Config {
             use crate::config::{
-                frontmatter::{Frontmatter as FmConfig, FrontmatterKey},
-                global::{Global, Paths as GlobalPaths},
-                logging::Logging,
-                vault::{Vault, VaultId, VaultRoot},
+                frontmatter::RawFrontmatter,
+                raw::RawConfig,
+                vault::{VaultId, VaultRoot},
             };
 
-            let frontmatter = FmConfig::new(
-                FrontmatterKey::try_new("names").expect("alias_key"),
-                FrontmatterKey::try_new("date_created").expect("date_created"),
-                FrontmatterKey::try_new("date_modified")
-                    .expect("date_modified"),
-                FrontmatterKey::try_new("kind").expect("file_class"),
-                FrontmatterKey::try_new("subject").expect("title"),
-            );
-
-            let global = Global::new(
-                GlobalPaths::default(),
-                frontmatter,
-                Logging::default(),
-                None,
-                None,
-            );
+            let raw = RawConfig {
+                frontmatter: Some(RawFrontmatter {
+                    alias_key: Some("names".to_owned()),
+                    date_created_key: Some("date_created".to_owned()),
+                    date_modified_key: Some("date_modified".to_owned()),
+                    file_class_key: Some("kind".to_owned()),
+                    title_key: Some("subject".to_owned()),
+                }),
+                ..Default::default()
+            };
 
             crate::config::aggregate::Config::build(
-                Some(&global),
+                &raw,
                 VaultId::new(),
                 VaultRoot::try_new(std::path::PathBuf::from("/v"))
                     .expect("vault_root"),
-                &Vault::default(),
             )
             .expect("Config build should succeed")
         }

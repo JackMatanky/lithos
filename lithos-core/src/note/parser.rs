@@ -19,7 +19,7 @@ use super::{
     value::FieldValue,
 };
 use crate::{
-    config::task::{StatusSymbol, TaskConfig},
+    config::{aggregate::Config, task::StatusSymbol},
     fs::MarkdownParser,
 };
 
@@ -27,15 +27,16 @@ use crate::{
 ///
 /// `NoteParser` uses `pulldown-cmark` to traverse a markdown document and
 /// extract structural elements such as headings, lists, tasks, and links.
-/// It is bound to a specific [`TaskConfig`] which defines the rules for
+/// It is bound to a specific [`Config`] which defines the rules for
 /// task promotion and metadata parsing.
 ///
 /// # Examples
 ///
 /// ```
+/// # use std::path::PathBuf;
 /// # use lithos_core::note::parser::NoteParser;
-/// # use lithos_core::config::task::TaskConfig;
-/// let config = TaskConfig::default();
+/// # use lithos_core::config::{aggregate::Config, raw::RawConfig, vault::{VaultId, VaultRoot}};
+/// # let config = Config::build(&RawConfig::default(), VaultId::new(), VaultRoot::try_new(PathBuf::from("/vault")).unwrap()).unwrap();
 /// let parser = NoteParser::new(&config);
 ///
 /// let markdown = "# Heading\n- [ ] #task Review PR";
@@ -48,15 +49,15 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct NoteParser<'config> {
-    config: &'config TaskConfig,
+    config: &'config Config,
     markdown_parser: MarkdownParser,
 }
 
 impl<'config> NoteParser<'config> {
-    /// Creates a new [`NoteParser`] bound to the provided task configuration.
+    /// Creates a new [`NoteParser`] bound to the provided configuration.
     #[inline]
     #[must_use]
-    pub const fn new(config: &'config TaskConfig) -> Self {
+    pub const fn new(config: &'config Config) -> Self {
         Self {
             config,
             markdown_parser: MarkdownParser::with_obsidian_features(),
@@ -72,9 +73,10 @@ impl<'config> NoteParser<'config> {
     /// # Examples
     ///
     /// ```
+    /// # use std::path::PathBuf;
     /// # use lithos_core::note::parser::NoteParser;
-    /// # use lithos_core::config::task::TaskConfig;
-    /// let config = TaskConfig::default();
+    /// # use lithos_core::config::{aggregate::Config, raw::RawConfig, vault::{VaultId, VaultRoot}};
+    /// # let config = Config::build(&RawConfig::default(), VaultId::new(), VaultRoot::try_new(PathBuf::from("/vault")).unwrap()).unwrap();
     /// let parser = NoteParser::new(&config);
     /// let (lists, tasks) = parser.parse_lists_and_tasks("- [ ] task").unwrap();
     /// ```
@@ -87,9 +89,10 @@ impl<'config> NoteParser<'config> {
     /// # Examples
     ///
     /// ```
+    /// # use std::path::PathBuf;
     /// # use lithos_core::note::parser::NoteParser;
-    /// # use lithos_core::config::task::TaskConfig;
-    /// let config = TaskConfig::default();
+    /// # use lithos_core::config::{aggregate::Config, raw::RawConfig, vault::{VaultId, VaultRoot}};
+    /// # let config = Config::build(&RawConfig::default(), VaultId::new(), VaultRoot::try_new(PathBuf::from("/vault")).unwrap()).unwrap();
     /// let parser = NoteParser::new(&config);
     /// let (lists, tasks, headings, links, _frontmatter) =
     ///     parser.parse_all("# Heading\n- [ ] task").unwrap();
@@ -147,9 +150,10 @@ impl<'config> NoteParser<'config> {
     /// # Examples
     ///
     /// ```
+    /// # use std::path::PathBuf;
     /// # use lithos_core::note::{aggregate::{Note, NoteId}, parser::NoteParser};
-    /// # use lithos_core::config::task::TaskConfig;
-    /// let config = TaskConfig::default();
+    /// # use lithos_core::config::{aggregate::Config, raw::RawConfig, vault::{VaultId, VaultRoot}};
+    /// # let config = Config::build(&RawConfig::default(), VaultId::new(), VaultRoot::try_new(PathBuf::from("/vault")).unwrap()).unwrap();
     /// let mut note = Note::new(NoteId::new(), "test.md").unwrap();
     /// let parser = NoteParser::new(&config);
     ///
@@ -189,7 +193,7 @@ type ParseOutcome =
 
 #[derive(Debug)]
 struct ParseState<'config> {
-    config: &'config TaskConfig,
+    config: &'config Config,
     lists: Vec<List>,
     tasks: Vec<Task>,
     headings: Vec<Heading>,
@@ -204,7 +208,7 @@ struct ParseState<'config> {
 }
 
 impl<'config> ParseState<'config> {
-    fn new(config: &'config TaskConfig) -> Self {
+    fn new(config: &'config Config) -> Self {
         Self {
             config,
             lists: Vec::new(),
@@ -340,12 +344,12 @@ impl<'config> ParseState<'config> {
         let raw_text = item.text.trim();
         if let Some(status) = item.status {
             let mut task_id = None;
-            if Task::should_promote(raw_text, self.config) {
+            if Task::should_promote(raw_text, self.config.task()) {
                 let task = Task::from_checkbox(
                     raw_text,
                     status,
                     item.position,
-                    self.config,
+                    self.config.task(),
                 )?;
                 task_id = Some(task.id());
                 self.tasks.push(task);
@@ -700,10 +704,32 @@ fn status_symbol_from_marker(checked: bool) -> Result<StatusSymbol, NoteError> {
 )]
 mod tests {
     use super::*;
-    use crate::note::{
-        aggregate::NoteId,
-        link::{Anchor, EmbedType, Style, Target},
+    use crate::{
+        config::{
+            aggregate::Config,
+            raw::RawConfig,
+            vault::{VaultId, VaultRoot},
+        },
+        note::{
+            aggregate::NoteId,
+            link::{Anchor, EmbedType, Style, Target},
+        },
     };
+
+    fn test_config() -> Config {
+        let raw = RawConfig::default();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test fixture uses expect for deterministic setup"
+        )]
+        Config::build(
+            &raw,
+            VaultId::new(),
+            VaultRoot::try_new(std::path::PathBuf::from("/vault"))
+                .expect("vault root"),
+        )
+        .expect("failed to build test config")
+    }
 
     #[test]
     #[expect(
@@ -715,7 +741,7 @@ mod tests {
         reason = "Testing backward compatibility of deprecated method"
     )]
     fn parses_checkbox_list_and_promotes_tasks() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "- [ ] #task Review PR [priority:: 1]\n- [x] Buy milk\n";
 
@@ -756,7 +782,7 @@ mod tests {
         reason = "Testing backward compatibility of deprecated method"
     )]
     fn captures_list_depths() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "1. First\n   - [ ] #task Nested\n";
 
@@ -779,7 +805,7 @@ mod tests {
 
     #[test]
     fn apply_appends_lists_and_tasks() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "- [ ] #task Review PR\n";
 
@@ -798,7 +824,7 @@ mod tests {
         reason = "Test asserts exact count before indexing"
     )]
     fn apply_appends_headings() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "# Section 1\n\nContent\n\n## Section 2";
 
@@ -819,7 +845,7 @@ mod tests {
         reason = "Test asserts exact count before indexing"
     )]
     fn parses_wikilink_simple() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "[[target note]]";
 
@@ -839,7 +865,7 @@ mod tests {
         reason = "Test asserts exact count before indexing"
     )]
     fn parses_wikilink_with_alias() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "[[target|display text]]";
 
@@ -859,7 +885,7 @@ mod tests {
         reason = "Test asserts exact count before indexing"
     )]
     fn parses_wikilink_with_heading_anchor() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "[[note#Section Title]]";
 
@@ -880,7 +906,7 @@ mod tests {
         reason = "Test asserts exact count before indexing"
     )]
     fn parses_wikilink_with_blockref_anchor() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "[[note#^block123]]";
 
@@ -901,7 +927,7 @@ mod tests {
         reason = "Test asserts exact count before indexing"
     )]
     fn parses_embed_image() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "![[image.png]]";
 
@@ -921,7 +947,7 @@ mod tests {
         reason = "Test asserts exact count before indexing"
     )]
     fn parses_embed_video() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "![[video.mp4]]";
 
@@ -940,7 +966,7 @@ mod tests {
         reason = "Test asserts exact count before indexing"
     )]
     fn parses_standard_markdown_link() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "[link text](target.md)";
 
@@ -959,7 +985,7 @@ mod tests {
         reason = "Test asserts exact count before indexing"
     )]
     fn parses_external_url_link() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "[example](https://example.com)";
 
@@ -973,7 +999,7 @@ mod tests {
 
     #[test]
     fn apply_appends_links() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "[[link1]] and [[link2]]";
 
@@ -987,7 +1013,7 @@ mod tests {
 
     #[test]
     fn parses_frontmatter() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "---
 title: Test Note
@@ -1003,10 +1029,12 @@ priority: 1
             parser.parse_all(markdown)?;
         let fm = frontmatter.expect("should have frontmatter");
 
-        assert_eq!(fm.get("title").and_then(|v| v.as_str()), Some("Test Note"));
         assert_eq!(
-            fm.get("priority")
-                .and_then(super::super::value::FieldValue::as_number),
+            fm.get("title").and_then(FieldValue::as_str),
+            Some("Test Note")
+        );
+        assert_eq!(
+            fm.get("priority").and_then(FieldValue::as_number),
             Some(1.0f64)
         );
 
@@ -1015,7 +1043,7 @@ priority: 1
 
     #[test]
     fn parses_frontmatter_with_nested_objects() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "---
 metadata:
@@ -1038,7 +1066,7 @@ Content";
 
     #[test]
     fn no_frontmatter_when_missing() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "# Just a heading\n\nSome content";
 
@@ -1051,7 +1079,7 @@ Content";
 
     #[test]
     fn apply_sets_frontmatter() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "---
 title: My Note
@@ -1066,7 +1094,7 @@ title: My Note
         let frontmatter =
             note.frontmatter().expect("note should have frontmatter");
         assert_eq!(
-            frontmatter.get("title").and_then(|v| v.as_str()),
+            frontmatter.get("title").and_then(FieldValue::as_str),
             Some("My Note")
         );
         Ok(())
@@ -1074,7 +1102,7 @@ title: My Note
 
     #[test]
     fn code_blocks_do_not_produce_tasks() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "```rust
 // - [ ] #task This is in a code block
@@ -1098,7 +1126,7 @@ title: My Note
 
     #[test]
     fn code_blocks_do_not_produce_headings() -> Result<(), NoteError> {
-        let config = TaskConfig::default();
+        let config = test_config();
         let parser = NoteParser::new(&config);
         let markdown = "```markdown
 # Heading in code block
