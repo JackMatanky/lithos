@@ -421,11 +421,10 @@ mod tests {
 
             let id = Uuid::from(note.id());
 
-            // Store the note in the database
-            db.put("notes", &id.to_string(), &note)
-                .map_err(|e| e.to_string())?;
+            // Store the note in the database using UUID-native method
+            db.put_by_uuid("notes", id, &note).map_err(|e| e.to_string())?;
 
-            // Index by path
+            // Index by path (multimap still requires string key)
             db.multimap_insert("path_to_id", "notes/a.md", &id.to_string())
                 .map_err(|e| e.to_string())?;
 
@@ -487,9 +486,9 @@ mod tests {
                     NoteQueryError::Domain(NoteError::Storage(e.to_string()))
                 })?;
             let temp_id = Uuid::from(temp_note.id());
-            db.put("notes", &temp_id.to_string(), &temp_note)
+            db.put_by_uuid("notes", temp_id, &temp_note)
                 .map_err(NoteQueryError::Storage)?;
-            db.delete("notes", &temp_id.to_string())
+            db.delete_by_uuid("notes", temp_id)
                 .map_err(NoteQueryError::Storage)?;
 
             let qry = Query::new(&db);
