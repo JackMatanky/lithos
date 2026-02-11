@@ -186,7 +186,7 @@ impl Template {
     pub fn compose(
         base: &Self,
         composition: &Composition,
-        templates: &HashMap<String, Template>,
+        templates: &HashMap<&str, &Template>,
     ) -> Result<Self, TemplateError> {
         composition.validate(base)?;
         composition.detect_cycles(templates)?;
@@ -814,8 +814,11 @@ mod tests {
             .collect(),
         };
 
-        let templates =
+        // Build borrowed HashMap for API
+        let templates_owned: HashMap<String, Template> =
             [("base".to_owned(), base.clone())].into_iter().collect();
+        let templates: HashMap<&str, &Template> =
+            templates_owned.iter().map(|(k, v)| (k.as_str(), v)).collect();
 
         Template::compose(&base, &composition, &templates)
             .expect("Expected compose to succeed")

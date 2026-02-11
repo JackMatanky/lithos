@@ -71,7 +71,7 @@ pub struct Composition {
 
 /// Internal context for DFS cycle detection.
 struct DfsContext<'context> {
-    templates: &'context HashMap<String, Template>,
+    templates: &'context HashMap<&'context str, &'context Template>,
     visited: &'context mut HashSet<String>,
     stack: &'context mut HashSet<String>,
 }
@@ -179,7 +179,7 @@ impl Composition {
     #[inline]
     pub fn detect_cycles(
         &self,
-        templates: &HashMap<String, Template>,
+        templates: &HashMap<&str, &Template>,
     ) -> Result<(), TemplateError> {
         let mut visited = HashSet::new();
         let mut stack = HashSet::new();
@@ -334,13 +334,17 @@ mod tests {
             use fixtures::TemplateTestBuilder;
 
             // GIVEN a template that extends itself
-            let mut templates = HashMap::new();
+            let mut templates_owned = HashMap::new();
             let base = build_template(
                 TemplateTestBuilder::new("A")
                     .with_content("content")
                     .extending("A"),
             );
-            templates.insert("A".to_owned(), base);
+            templates_owned.insert("A".to_owned(), base);
+
+            // Convert to borrowed HashMap for API
+            let templates: HashMap<&str, &Template> =
+                templates_owned.iter().map(|(k, v)| (k.as_str(), v)).collect();
 
             let composition = Composition {
                 additional_sections: Vec::new(),
@@ -367,11 +371,15 @@ mod tests {
             use fixtures::TemplateTestBuilder;
 
             // GIVEN a base template with a self-include
-            let mut templates = HashMap::new();
+            let mut templates_owned = HashMap::new();
             let base = build_template(
                 TemplateTestBuilder::new("A").with_content("content"),
             );
-            templates.insert("A".to_owned(), base);
+            templates_owned.insert("A".to_owned(), base);
+
+            // Convert to borrowed HashMap for API
+            let templates: HashMap<&str, &Template> =
+                templates_owned.iter().map(|(k, v)| (k.as_str(), v)).collect();
 
             let composition = Composition {
                 additional_sections: Vec::new(),
