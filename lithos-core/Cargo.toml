@@ -55,6 +55,11 @@ name = "note_ingest"
 harness = false
 path = "benches/note_ingest.rs"
 
+[[bench]]
+name = "allocation_optimizations"
+harness = false
+path = "benches/allocation_optimizations.rs"
+
 [features]
 default = []
 # Serde support for domain types (Proposal 10)
