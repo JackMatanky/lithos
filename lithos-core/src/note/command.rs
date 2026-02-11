@@ -279,9 +279,9 @@ mod tests {
 
         pub fn stored_note(
             db: &Database,
-            id: &str,
+            id: Uuid,
         ) -> Result<Option<Note>, String> {
-            db.get_owned::<Note>("notes", id).map_err(|e| e.to_string())
+            db.get_owned_by_uuid::<Note>("notes", id).map_err(|e| e.to_string())
         }
 
         pub fn path_index_ids(
@@ -312,9 +312,9 @@ mod tests {
             let cmd = Command::new(&db);
 
             let note = fixtures::create_note(&cmd, "notes/a.md")?;
-            let id_str = Uuid::from(note.id()).to_string();
+            let id = Uuid::from(note.id());
 
-            let stored_note = fixtures::stored_note(&db, &id_str)
+            let stored_note = fixtures::stored_note(&db, id)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?
                 .expect("Stored note should exist");
             assert_eq!(
@@ -332,12 +332,12 @@ mod tests {
             let cmd = Command::new(&db);
 
             let note = fixtures::create_note(&cmd, "notes/a.md")?;
-            let id_str = Uuid::from(note.id()).to_string();
+            let id = Uuid::from(note.id());
 
             let ids = fixtures::path_index_ids(&db, note.path().as_str())
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(
-                ids.contains(&id_str),
+                ids.contains(&id.to_string()),
                 "Path index should contain created note id"
             );
             Ok(())
@@ -350,7 +350,7 @@ mod tests {
             let cmd = Command::new(&db);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
-            let id_str = Uuid::from(note.id()).to_string();
+            let id = Uuid::from(note.id());
             let old_path = note.path().as_str().to_owned();
             let path = fixtures::parse_path("notes/b.md")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
@@ -362,7 +362,7 @@ mod tests {
             let old_ids = fixtures::path_index_ids(&db, &old_path)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(
-                !old_ids.contains(&id_str),
+                !old_ids.contains(&id.to_string()),
                 "Old path index should not contain updated note id"
             );
             Ok(())
@@ -375,7 +375,7 @@ mod tests {
             let cmd = Command::new(&db);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
-            let id_str = Uuid::from(note.id()).to_string();
+            let id = Uuid::from(note.id());
             let path = fixtures::parse_path("notes/b.md")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             note.set_path(path);
@@ -386,7 +386,7 @@ mod tests {
             let new_ids = fixtures::path_index_ids(&db, "notes/b.md")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(
-                new_ids.contains(&id_str),
+                new_ids.contains(&id.to_string()),
                 "New path index should contain updated note id"
             );
             Ok(())
@@ -399,7 +399,7 @@ mod tests {
             let cmd = Command::new(&db);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
-            let id_str = Uuid::from(note.id()).to_string();
+            let id = Uuid::from(note.id());
             let tag = fixtures::parse_tag("#project")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             let tag_key = tag.full_path().to_owned();
@@ -411,7 +411,7 @@ mod tests {
             let tag_ids = fixtures::tag_index_ids(&db, &tag_key)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(
-                tag_ids.contains(&id_str),
+                tag_ids.contains(&id.to_string()),
                 "Tag index should contain updated note id"
             );
             Ok(())
@@ -424,7 +424,7 @@ mod tests {
             let cmd = Command::new(&db);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
-            let id_str = Uuid::from(note.id()).to_string();
+            let id = Uuid::from(note.id());
             let path = fixtures::parse_path("notes/b.md")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             note.set_path(path);
@@ -432,7 +432,7 @@ mod tests {
             let result = fixtures::update_note(&cmd, note);
             assert!(result.is_ok(), "Update should succeed: {result:?}");
 
-            let stored_note = fixtures::stored_note(&db, &id_str)
+            let stored_note = fixtures::stored_note(&db, id)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?
                 .expect("Updated note should exist");
             assert_eq!(
@@ -450,7 +450,7 @@ mod tests {
             let cmd = Command::new(&db);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
-            let id_str = Uuid::from(note.id()).to_string();
+            let id = Uuid::from(note.id());
             let tag = fixtures::parse_tag("#project")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             note.add_tag(tag);
@@ -458,7 +458,7 @@ mod tests {
             let result = fixtures::update_note(&cmd, note);
             assert!(result.is_ok(), "Update should succeed: {result:?}");
 
-            let stored_note = fixtures::stored_note(&db, &id_str)
+            let stored_note = fixtures::stored_note(&db, id)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?
                 .expect("Updated note should exist");
             assert_eq!(
@@ -477,12 +477,11 @@ mod tests {
 
             let note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
-            let id_str = id.to_string();
 
             let result = fixtures::delete_note(&cmd, id);
             assert!(result.is_ok(), "Delete should succeed: {result:?}");
 
-            let stored = fixtures::stored_note(&db, &id_str)
+            let stored = fixtures::stored_note(&db, id)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(stored.is_none(), "Deleted note should not exist");
             Ok(())
@@ -496,7 +495,6 @@ mod tests {
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
-            let id_str = id.to_string();
             let tag = fixtures::parse_tag("#project")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             note.add_tag(tag);
@@ -515,7 +513,7 @@ mod tests {
             let path_ids = fixtures::path_index_ids(&db, note.path().as_str())
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(
-                !path_ids.contains(&id_str),
+                !path_ids.contains(&id.to_string()),
                 "Path index should not contain deleted note id"
             );
             Ok(())
@@ -529,7 +527,6 @@ mod tests {
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
-            let id_str = id.to_string();
             let tag = fixtures::parse_tag("#project")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             let tag_key = tag.full_path().to_owned();
@@ -549,7 +546,7 @@ mod tests {
             let tag_ids = fixtures::tag_index_ids(&db, &tag_key)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(
-                !tag_ids.contains(&id_str),
+                !tag_ids.contains(&id.to_string()),
                 "Tag index should not contain deleted note id"
             );
             Ok(())
@@ -563,7 +560,7 @@ mod tests {
             let cmd = Command::new(&db);
 
             let note = fixtures::create_note(&cmd, "notes/existing.md")?;
-            let id_str = Uuid::from(note.id()).to_string();
+            let id = Uuid::from(note.id());
 
             let delete_result =
                 fixtures::delete_note(&cmd, fixtures::TEST_MISSING_ID);
@@ -572,7 +569,7 @@ mod tests {
                 "Deleting missing note should be a no-op: {delete_result:?}"
             );
 
-            let stored = fixtures::stored_note(&db, &id_str)
+            let stored = fixtures::stored_note(&db, id)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(stored.is_some(), "Existing note should remain");
             Ok(())
@@ -586,7 +583,7 @@ mod tests {
             let cmd = Command::new(&db);
 
             let mut note = fixtures::create_note(&cmd, "notes/test.md")?;
-            let id_str = Uuid::from(note.id()).to_string();
+            let id = Uuid::from(note.id());
             let old_tag = fixtures::parse_tag("#old-tag")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             let old_key = old_tag.full_path().to_owned();
@@ -613,7 +610,7 @@ mod tests {
             let old_tag_ids = fixtures::tag_index_ids(&db, &old_key)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(
-                !old_tag_ids.contains(&id_str),
+                !old_tag_ids.contains(&id.to_string()),
                 "Old tag index should not contain note after update"
             );
             Ok(())
@@ -627,7 +624,7 @@ mod tests {
             let cmd = Command::new(&db);
 
             let mut note = fixtures::create_note(&cmd, "notes/test.md")?;
-            let id_str = Uuid::from(note.id()).to_string();
+            let id = Uuid::from(note.id());
             let old_tag = fixtures::parse_tag("#old-tag")
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             note.add_tag(old_tag);
@@ -654,7 +651,7 @@ mod tests {
             let new_tag_ids = fixtures::tag_index_ids(&db, &new_key)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(
-                new_tag_ids.contains(&id_str),
+                new_tag_ids.contains(&id.to_string()),
                 "New tag index should contain note after update"
             );
             Ok(())
