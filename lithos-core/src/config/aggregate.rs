@@ -197,7 +197,7 @@ impl Config {
         };
 
         config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
-            "merged".to_owned(),
+            "merged",
             chrono::Utc::now().timestamp(),
         )));
 
@@ -523,8 +523,7 @@ mod tests {
         fn add_event_records_pending_event() {
             let mut config = fixtures::config_with_cleared_events();
             config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
-                "test".to_owned(),
-                0,
+                "test", 0,
             )));
             assert_eq!(config.pending_events().len(), 1);
         }
@@ -533,8 +532,7 @@ mod tests {
         fn take_events_clears_pending_events() {
             let mut config = fixtures::config_with_cleared_events();
             config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
-                "test".to_owned(),
-                0,
+                "test", 0,
             )));
             let _ = config.take_events();
             assert!(config.pending_events().is_empty());

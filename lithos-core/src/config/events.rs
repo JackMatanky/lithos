@@ -38,7 +38,7 @@ pub enum Events {
 /// ```rust
 /// use lithos_core::config::events::ConfigUpdated;
 ///
-/// let event = ConfigUpdated::new("vault".to_string(), 1234567890);
+/// let event = ConfigUpdated::new("vault", 1234567890);
 /// assert_eq!(event.timestamp, 1234567890);
 /// assert_eq!(event.source, "vault");
 /// ```
@@ -66,9 +66,9 @@ impl ConfigUpdated {
     /// Creates a new configuration updated event.
     #[inline]
     #[must_use]
-    pub fn new(source: String, timestamp: i64) -> Self {
+    pub fn new(source: &str, timestamp: i64) -> Self {
         Self {
-            source,
+            source: source.into(),
             timestamp,
         }
     }

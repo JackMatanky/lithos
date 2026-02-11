@@ -74,7 +74,7 @@ mod tests {
 
         pub fn schema_fixture(id: Uuid, name: &str) -> Result<Schema, String> {
             let schema_name =
-                SchemaName::new(name.to_owned()).map_err(|e| e.to_string())?;
+                SchemaName::new(name).map_err(|e| e.to_string())?;
             Schema::new(id, schema_name, vec![]).map_err(|e| e.to_string())
         }
     }

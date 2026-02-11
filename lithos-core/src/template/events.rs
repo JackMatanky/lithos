@@ -14,7 +14,7 @@ use uuid::Uuid;
 /// use uuid::Uuid;
 ///
 /// let id = Uuid::now_v7();
-/// let event = TemplateCreated::new(id, "daily-note".to_string(), 1234567890);
+/// let event = TemplateCreated::new(id, "daily-note", 1234567890);
 /// assert_eq!(event.id, id, "Template id should match");
 /// assert_eq!(event.name, "daily-note", "Template name should match");
 /// ```
@@ -41,10 +41,10 @@ impl TemplateCreated {
     /// Creates a new template created event.
     #[inline]
     #[must_use]
-    pub fn new(id: Uuid, name: String, timestamp: i64) -> Self {
+    pub fn new(id: Uuid, name: &str, timestamp: i64) -> Self {
         Self {
             id,
-            name,
+            name: name.into(),
             timestamp,
         }
     }
