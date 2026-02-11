@@ -216,7 +216,7 @@ jobs:
         run: echo "🚀 Deployment readiness confirmed."
       - name: Notify on Failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const { owner, repo } = context.repo;
