@@ -134,7 +134,10 @@ where
     /// # Errors
     /// Returns [`ConfigCommandError::Storage`] if persistence fails.
     #[inline]
-    #[instrument(skip(self, config), fields(operation = "save_vault", vault_id = %vault_id))]
+    #[instrument(
+        skip(self, config),
+        fields(operation = "save_vault", vault_id = %vault_id)
+    )]
     pub fn save_vault(
         &self,
         vault_id: VaultId,
@@ -166,7 +169,11 @@ where
     /// # Errors
     /// Returns `ConfigCommandError` if storage fails.
     #[inline]
-    #[instrument(skip(self), level = "debug", fields(operation = "load_vault", vault_id = %vault_id))]
+    #[instrument(
+        skip(self),
+        level = "debug",
+        fields(operation = "load_vault", vault_id = %vault_id)
+    )]
     pub fn load_vault(
         &self,
         vault_id: VaultId,
@@ -192,7 +199,10 @@ where
     /// Returns [`ConfigCommandError`] if ingestion, validation, or persistence
     /// fails.
     #[inline]
-    #[instrument(skip(self, vault_root), fields(operation = "rebuild_merged", vault_id = %vault_id))]
+    #[instrument(
+        skip(self, vault_root),
+        fields(operation = "rebuild_merged", vault_id = %vault_id)
+    )]
     pub fn rebuild_merged(
         &self,
         vault_id: VaultId,
@@ -226,7 +236,14 @@ where
     /// Returns `ConfigCommandError` if the version does not exist or the
     /// storage operation fails.
     #[inline]
-    #[instrument(skip(self), fields(operation = "activate_version", vault_id = %vault_id, version = %version))]
+    #[instrument(
+        skip(self),
+        fields(
+            operation = "activate_version",
+            vault_id = %vault_id,
+            version = %version
+        )
+    )]
     pub fn activate_version(
         &self,
         vault_id: VaultId,
@@ -244,7 +261,10 @@ where
     /// Returns `ConfigCommandError` if rollback would underflow or storage
     /// access fails.
     #[inline]
-    #[instrument(skip(self), fields(operation = "rollback_version", vault_id = %vault_id, steps = %steps))]
+    #[instrument(
+        skip(self),
+        fields(operation = "rollback_version", vault_id = %vault_id, steps = %steps)
+    )]
     pub fn rollback(
         &self,
         vault_id: VaultId,

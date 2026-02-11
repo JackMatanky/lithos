@@ -55,7 +55,11 @@ where
     /// Returns [`ConfigQueryError`] if storage access fails or the data is
     /// corrupted.
     #[inline]
-    #[instrument(skip(self), level = "debug", fields(operation = "get_config", vault_id = %vault_id))]
+    #[instrument(
+        skip(self),
+        level = "debug",
+        fields(operation = "get_config", vault_id = %vault_id)
+    )]
     pub fn get(
         &self,
         vault_id: VaultId,
@@ -80,7 +84,11 @@ where
     /// Returns `ConfigQueryError` if the active version lookup or archived
     /// access fails.
     #[inline]
-    #[instrument(skip(self, f), level = "debug", fields(operation = "with_archived_config", vault_id = %vault_id))]
+    #[instrument(
+        skip(self, f),
+        level = "debug",
+        fields(operation = "with_archived_config", vault_id = %vault_id)
+    )]
     pub fn with_archived<R, F>(
         &self,
         vault_id: VaultId,

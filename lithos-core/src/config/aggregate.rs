@@ -152,7 +152,11 @@ impl Config {
     /// # Errors
     /// Returns `ConfigError` if validation fails for any field.
     #[inline]
-    #[instrument(skip(raw, vault_root), level = "debug", fields(operation = "build_config", vault_id = %vault_id))]
+    #[instrument(
+        skip(raw, vault_root),
+        level = "debug",
+        fields(operation = "build_config", vault_id = %vault_id)
+    )]
     pub fn build(
         raw: &raw::RawConfig,
         vault_id: VaultId,
