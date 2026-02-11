@@ -18,6 +18,8 @@ chrono.workspace = true
 blake3.workspace = true
 rand.workspace = true
 regex.workspace = true
+itoa = "1.0"
+ryu = "1.0"
 
 # Error Handling (sync-first, no async)
 thiserror.workspace = true
