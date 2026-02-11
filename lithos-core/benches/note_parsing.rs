@@ -146,7 +146,7 @@ fn sample_markdown() -> &'static str {
 ///
 /// # Expected Characteristics
 ///
-/// - **Latency**: ~3.5 µs (from BASELINE.md)
+/// - **Latency**: ~3.5 µs (from RESULTS.md)
 /// - **Throughput**: ~26 MiB/s
 /// - **Scaling**: O(n) in markdown length
 ///

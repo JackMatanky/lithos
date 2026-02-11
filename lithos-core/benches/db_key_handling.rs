@@ -2,8 +2,8 @@
 //!
 //! # Summary
 //!
-//! Tracks P0 allocation optimizations (Tasks 1 & 2 from `TODO_ALLOCATIONS.md`)
-//! by comparing optimized UUID/key formatting strategies against baseline
+//! Tracks allocation optimizations for database key construction and UUID
+//! handling by comparing optimized strategies against baseline
 //! string-allocation approaches.
 //!
 //! # Motivation
@@ -60,7 +60,7 @@
 //!
 //! # Interpreting Results
 //!
-//! **Expected impact (from BASELINE.md)**:
+//! **Expected impact (from RESULTS.md)**:
 //! - UUID-native methods: 7-9% faster than string conversion
 //! - Saves 36 bytes per UUID operation (not measured, but validated by latency)
 //!
@@ -81,14 +81,13 @@
 //!
 //! - **Development**: Run when changing database key handling or UUID methods
 //! - **Validation**: Check ratios remain consistent after refactors
-//! - **Documentation**: Update `docs/benchmarks/BASELINE.md` if ratios shift
-//!   significantly
+//! - **Documentation**: Update `RESULTS.md` if ratios shift significantly
 //!
 //! # Maintenance Contract
 //!
 //! **Update when**:
 //! - Database API changes (new UUID methods, key formatting strategy)
-//! - `TODO_ALLOCATIONS.md` P0 tasks completed or revised
+//! - Allocation optimization work affects database operations
 //! - Database layer internals change (key namespace strategy)
 //!
 //! **Adding benchmarks**:
@@ -133,10 +132,10 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 // ============================================================================
-// UUID Handling Strategies (P0 Task 2)
+// UUID Handling Strategies (Optimization Tracking)
 // ============================================================================
 
-/// Benchmarks UUID-native methods vs string conversion (P0 Task 2).
+/// Benchmarks UUID-native methods vs string conversion (optimization tracking).
 ///
 /// # Purpose
 ///
@@ -167,7 +166,7 @@ use uuid::Uuid;
 ///
 /// - **Native**: 250-450 ns per operation
 /// - **Via-string**: 280-500 ns per operation
-/// - **Improvement**: 7-9% faster for native (from BASELINE.md)
+/// - **Improvement**: 7-9% faster for native (from RESULTS.md)
 ///
 /// # Interpreting Changes
 ///
@@ -274,10 +273,10 @@ fn bench_uuid_handling(c: &mut Criterion) {
 }
 
 // ============================================================================
-// Key Formatting Strategies (P0 Task 1)
+// Key Formatting Strategies (Optimization Tracking)
 // ============================================================================
 
-/// Benchmarks key formatting with pre-allocated buffer (P0 Task 1).
+/// Benchmarks key formatting with pre-allocated buffer (optimization tracking).
 ///
 /// # Purpose
 ///

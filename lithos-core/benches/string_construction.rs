@@ -2,15 +2,15 @@
 //!
 //! # Summary
 //!
-//! Tracks P0/P1 allocation optimizations (Tasks 5 & 6 from
-//! `TODO_ALLOCATIONS.md`) by comparing zero-allocation numeric formatting and
-//! ergonomic constructor APIs against baseline string-allocation approaches.
+//! Tracks allocation optimizations for string construction and API design by
+//! comparing zero-allocation numeric formatting and ergonomic constructor APIs
+//! against baseline string-allocation approaches.
 //!
 //! # Motivation
 //!
 //! Hot-path profiling identified `.to_string()` calls in query formatting and
-//! constructor APIs forcing unnecessary allocations at call sites. P0 Task 5
-//! introduced `itoa`/`ryu` buffers for stack-based formatting; P1 Task 6
+//! constructor APIs forcing unnecessary allocations at call sites. Allocation
+//! optimizations introduced `itoa`/`ryu` buffers for stack-based formatting and
 //! changed constructors from `String` to `&str` parameters. This suite
 //! validates improvements and tracks API quality.
 //!
@@ -59,7 +59,7 @@
 //!
 //! # Interpreting Results
 //!
-//! **Expected improvements (from BASELINE.md)**:
+//! **Expected improvements (from RESULTS.md)**:
 //! - `itoa`: 9.7x faster than `.to_string()` for integers
 //! - `ryu`: 17% faster than `.to_string()` for floats
 //! - `&str` constructors: 30-32% faster than `String` (forced allocation)
@@ -81,7 +81,7 @@
 //!
 //! - **Development**: Run when changing numeric formatting or constructor APIs
 //! - **Validation**: Check ratios after library updates (itoa, ryu upgrades)
-//! - **Documentation**: Update BASELINE.md if ratios shift significantly
+//! - **Documentation**: Update RESULTS.md if ratios shift significantly
 //!
 //! # Maintenance Contract
 //!
@@ -145,10 +145,11 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 // ============================================================================
-// Numeric Formatting (P0 Task 5)
+// Numeric Formatting (Optimization Tracking)
 // ============================================================================
 
-/// Benchmarks numeric formatting: itoa/ryu vs .`to_string()` (P0 Task 5).
+/// Benchmarks numeric formatting: itoa/ryu vs .`to_string()` (optimization
+/// tracking).
 ///
 /// # Purpose
 ///
@@ -164,8 +165,8 @@ use uuid::Uuid;
 ///
 /// # Expected Characteristics
 ///
-/// - **itoa**: ~740 Melem/s (9.7x faster than .`to_string()`)
-/// - **ryu**: ~36 Melem/s (17% faster than .`to_string()`)
+/// - **itoa**: ~740 Melem/s (9.7x faster than .`to_string()` per RESULTS.md)
+/// - **ryu**: ~36 Melem/s (17% faster than .`to_string()` per RESULTS.md)
 /// - **Ratio stability**: Very stable (formatting is deterministic)
 ///
 /// # Interpreting Changes
@@ -226,10 +227,11 @@ fn bench_numeric_formatting(c: &mut Criterion) {
 }
 
 // ============================================================================
-// Constructor APIs (P1 Task 6)
+// Constructor APIs (Optimization Tracking)
 // ============================================================================
 
-/// Benchmarks constructor APIs: &str vs String parameters (P1 Task 6).
+/// Benchmarks constructor APIs: &str vs String parameters (optimization
+/// tracking).
 ///
 /// # Purpose
 ///
@@ -246,7 +248,7 @@ fn bench_numeric_formatting(c: &mut Criterion) {
 ///
 /// - **&str variants**: 10-25 ns per call (small types), ~1 µs (Template)
 /// - **String variants**: 30-36 ns per call (adds .`to_owned()` overhead)
-/// - **Improvement**: 30-32% faster for &str (from BASELINE.md)
+/// - **Improvement**: 30-32% faster for &str (from RESULTS.md)
 ///
 /// # Notes for Future
 ///
@@ -335,7 +337,7 @@ fn bench_constructor_apis(c: &mut Criterion) {
 // Aggregate Workflow
 // ============================================================================
 
-/// Benchmarks aggregate workflow combining Tasks 2, 5, and 6 optimizations.
+/// Benchmarks aggregate workflow combining multiple optimizations.
 ///
 /// # Purpose
 ///

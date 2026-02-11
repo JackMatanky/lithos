@@ -15,32 +15,32 @@ optimizations documented in `TODO_ALLOCATIONS.md`.
 
 ### Database Operations
 
-| Operation | Optimized Time | Baseline Time | Improvement |
-|-----------|----------------|---------------|-------------|
-| `get_by_uuid` (native) | 420.07 ns | 451.68 ns (via string) | ~7% faster |
-| `put_by_uuid` (native) | 3.64 ms | 3.99 ms (via string) | ~9% faster |
+| Operation              | Optimized Time | Baseline Time          | Improvement |
+| ---------------------- | -------------- | ---------------------- | ----------- |
+| `get_by_uuid` (native) | 420.07 ns      | 451.68 ns (via string) | ~7% faster  |
+| `put_by_uuid` (native) | 3.64 ms        | 3.99 ms (via string)   | ~9% faster  |
 
 **Key insight**: UUID-native methods save 31-350 µs per operation by avoiding string
 allocation (36 bytes per UUID formatting).
 
 ### Numeric Formatting
 
-| Operation | Optimized (itoa/ryu) | Baseline (.to_string()) | Improvement |
-|-----------|----------------------|-------------------------|-------------|
-| Integer formatting (100 items) | 134.73 ns | 1.31 µs | **~9.7x faster** |
-| Float formatting (100 items) | 2.76 µs | 3.23 µs | **~17% faster** |
+| Operation                      | Optimized (itoa/ryu) | Baseline (.to_string()) | Improvement      |
+| ------------------------------ | -------------------- | ----------------------- | ---------------- |
+| Integer formatting (100 items) | 134.73 ns            | 1.31 µs                 | **~9.7x faster** |
+| Float formatting (100 items)   | 2.76 µs              | 3.23 µs                 | **~17% faster**  |
 
 **Key insight**: `itoa::Buffer` provides nearly 10x improvement for integer formatting;
 `ryu::Buffer` provides 17% improvement for floats. Both are zero-allocation.
 
 ### Constructor API Ergonomics
 
-| Constructor | `&str` API | `String` API | Improvement |
-|-------------|-----------|--------------|-------------|
-| `SchemaName::new()` | 22.22 ns | 32.63 ns | ~32% faster |
-| `PropertyName::new()` | 25.21 ns | 36.44 ns | ~31% faster |
-| `DateSpec::try_new()` | 10.77 ns | 11.11 ns | ~3% faster |
-| `Template::new()` | 1.06 µs | 1.07 µs | ~1% faster |
+| Constructor           | `&str` API | `String` API | Improvement |
+| --------------------- | ---------- | ------------ | ----------- |
+| `SchemaName::new()`   | 22.22 ns   | 32.63 ns     | ~32% faster |
+| `PropertyName::new()` | 25.21 ns   | 36.44 ns     | ~31% faster |
+| `DateSpec::try_new()` | 10.77 ns   | 11.11 ns     | ~3% faster  |
+| `Template::new()`     | 1.06 µs    | 1.07 µs      | ~1% faster  |
 
 **Key insight**: `&str` parameters save 10-11 ns per constructor call by avoiding
 forced string allocations at call sites. Larger types (Template) show minimal
@@ -100,6 +100,7 @@ numeric_formatting/format_floats_to_string (BASELINE)
 ```
 
 **Optimization impact**:
+
 - `itoa::Buffer`: 9.7x faster than `.to_string()` for integers
 - `ryu::Buffer`: 17% faster than `.to_string()` for floats
 - Both are zero-allocation (stack-based)
