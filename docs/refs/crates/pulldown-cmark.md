@@ -119,9 +119,11 @@ for (event, range) in parser.into_offset_iter() {
 
 **Important:** `into_offset_iter()` consumes the parser and returns `(Event, Range<usize>)` pairs.
 
-## Core Iterator: [`Parser`](https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/struct.Parser.html) API
+## Parser API
 
-### Basic Construction
+### [`Parser`](https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/struct.Parser.html) - Core Iterator
+
+#### Basic Construction
 
 ```rust
 use pulldown_cmark::Parser;
@@ -143,7 +145,7 @@ let parser = Parser::new_ext("~~strikethrough~~", options);
 - `Parser::new_ext(text: &str, options: Options)` - With extensions
 - `Parser::new_with_broken_link_callback(...)` - Custom link resolution
 
-### Key Methods
+#### Key Methods
 
 ```rust
 impl<'a> Parser<'a> {
@@ -155,7 +157,7 @@ impl<'a> Parser<'a> {
 }
 ```
 
-## Extension Flags: [`Options`](https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/struct.Options.html)
+### [`Options`](https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/struct.Options.html) - Extension Flags
 
 ```rust
 use pulldown_cmark::Options;
@@ -168,73 +170,27 @@ options.insert(Options::ENABLE_STRIKETHROUGH);
 options.insert(Options::ENABLE_TASKLISTS);
 options.insert(Options::ENABLE_FOOTNOTES);
 
-// Metadata/frontmatter
-options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);  // ---\nkey: value\n---
-options.insert(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS);  // +++\nkey: value\n+++
-
-// WikiLinks (Obsidian/MediaWiki style)
-options.insert(Options::ENABLE_WIKILINKS);  // [[link]], [[link|alias]], ![[embed]]
-
-// Heading attributes
-options.insert(Options::ENABLE_HEADING_ATTRIBUTES);  // # Title {#id .class}
-
-// Math support
-options.insert(Options::ENABLE_MATH);  // $inline$ and $$display$$
-
-// Definition lists
-options.insert(Options::ENABLE_DEFINITION_LIST);  // term\n: definition
-
-// Superscript/subscript
-options.insert(Options::ENABLE_SUPERSCRIPT);  // ^super^
-options.insert(Options::ENABLE_SUBSCRIPT);  // ~sub~
-
-// Other
+// Other extensions
 options.insert(Options::ENABLE_SMART_PUNCTUATION);
+options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+options.insert(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS);
 options.insert(Options::ENABLE_OLD_FOOTNOTES);
-options.insert(Options::ENABLE_GFM);  // Enables tables, strikethrough, tasklists
+options.insert(Options::ENABLE_MATH);
+options.insert(Options::ENABLE_GFM);
 ```
-
-**Complete Option List (v0.13.0):**
-
-| Option                                    | Syntax                  | Use Case                 |
-| ----------------------------------------- | ----------------------- | ------------------------ |
-| `ENABLE_TABLES`                           | `\| col \|`             | GFM tables               |
-| `ENABLE_FOOTNOTES`                        | `[^1]`                  | Academic references      |
-| `ENABLE_STRIKETHROUGH`                    | `~~text~~`              | Deleted text             |
-| `ENABLE_TASKLISTS`                        | `- [ ] task`            | Task management          |
-| `ENABLE_SMART_PUNCTUATION`                | `"quotes"` → `"quotes"` | Typography               |
-| `ENABLE_HEADING_ATTRIBUTES`               | `# H1 {#id}`            | Custom IDs/classes       |
-| `ENABLE_YAML_STYLE_METADATA_BLOCKS`       | `---\ntitle: x\n---`    | Frontmatter              |
-| `ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS` | `+++\ntitle: x\n+++`    | Alt frontmatter          |
-| `ENABLE_OLD_FOOTNOTES`                    | Legacy syntax           | Compatibility            |
-| `ENABLE_MATH`                             | `$e^{i\pi}$`            | LaTeX math               |
-| `ENABLE_GFM`                              | (composite)             | GitHub Flavored Markdown |
-| `ENABLE_DEFINITION_LIST`                  | `term\n: def`           | Glossaries               |
-| `ENABLE_SUPERSCRIPT`                      | `^super^`               | Exponents                |
-| `ENABLE_SUBSCRIPT`                        | `~sub~`                 | Chemical formulas        |
-| `ENABLE_WIKILINKS`                        | `[[link]]`              | Wiki-style linking       |
 
 **Common Patterns:**
 
 ```rust
-// All GFM features (tables, strikethrough, tasklists)
+// All GFM features
 let options = Options::ENABLE_GFM;
 
 // Multiple extensions
 let options = Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES;
-
-// Obsidian-style features
-let options = Options::ENABLE_WIKILINKS
-    | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
-    | Options::ENABLE_TASKLISTS
-    | Options::ENABLE_TABLES
-    | Options::ENABLE_MATH;
-
-// All available options
-let options = Options::all();
 ```
 
-**Extension Note:** Extensions are not part of CommonMark spec. Only enable what you need to avoid parsing overhead.
+**Extension Note:** Extensions are not part of CommonMark spec. Only enable what you need.
 
 ## Event Types
 
@@ -288,12 +244,7 @@ Events:
 ```rust
 pub enum Tag<'a> {
     Paragraph,
-    Heading {
-        level: HeadingLevel,
-        id: Option<CowStr<'a>>,
-        classes: Vec<CowStr<'a>>,
-        attrs: Vec<(CowStr<'a>, Option<CowStr<'a>>)>
-    },
+    Heading { level: HeadingLevel, id: Option<CowStr<'a>>, classes: Vec<CowStr<'a>>, attrs: Vec<(CowStr<'a>, Option<CowStr<'a>>)> },
     BlockQuote(Option<BlockQuoteKind>),
     CodeBlock(CodeBlockKind<'a>),
     HtmlBlock,
@@ -310,20 +261,8 @@ pub enum Tag<'a> {
     Emphasis,
     Strong,
     Strikethrough,
-    Superscript,  // ^text^
-    Subscript,    // ~text~
-    Link {
-        link_type: LinkType,
-        dest_url: CowStr<'a>,
-        title: CowStr<'a>,
-        id: CowStr<'a>
-    },
-    Image {
-        link_type: LinkType,
-        dest_url: CowStr<'a>,
-        title: CowStr<'a>,
-        id: CowStr<'a>
-    },
+    Link { link_type: LinkType, dest_url: CowStr<'a>, title: CowStr<'a>, id: CowStr<'a> },
+    Image { link_type: LinkType, dest_url: CowStr<'a>, title: CowStr<'a>, id: CowStr<'a> },
     MetadataBlock(MetadataBlockKind),
 }
 ```
@@ -367,8 +306,6 @@ pub enum TagEnd {
     Emphasis,
     Strong,
     Strikethrough,
-    Superscript,
-    Subscript,
     Link,
     Image,
     MetadataBlock(MetadataBlockKind),
@@ -452,95 +389,10 @@ fn analyze_document(markdown: &str) -> DocumentStructure {
 }
 ```
 
-### Count Document Statistics
-
-```rust
-use pulldown_cmark::{Parser, Event, Tag, TagEnd};
-
-#[derive(Debug, Default)]
-struct DocumentStats {
-    word_count: usize,
-    heading_count: usize,
-    link_count: usize,
-    image_count: usize,
-    code_block_count: usize,
-    paragraph_count: usize,
-}
-
-fn count_stats(markdown: &str) -> DocumentStats {
-    let parser = Parser::new(markdown);
-    let mut stats = DocumentStats::default();
-    let mut in_text = false;
-
-    for event in parser {
-        match event {
-            Event::Start(Tag::Heading { .. }) => {
-                stats.heading_count += 1;
-            }
-            Event::Start(Tag::Link { .. }) => {
-                stats.link_count += 1;
-            }
-            Event::Start(Tag::Image { .. }) => {
-                stats.image_count += 1;
-            }
-            Event::Start(Tag::CodeBlock(_)) => {
-                stats.code_block_count += 1;
-            }
-            Event::Start(Tag::Paragraph) => {
-                stats.paragraph_count += 1;
-            }
-            Event::Text(text) => {
-                // Count words (split on whitespace)
-                stats.word_count += text.split_whitespace().count();
-            }
-            _ => {}
-        }
-    }
-
-    stats
-}
-```
-
-### Extract Frontmatter
-
-```rust
-use pulldown_cmark::{Parser, Event, Tag, TagEnd, Options, MetadataBlockKind};
-use serde_yaml::Value;
-
-fn extract_frontmatter(markdown: &str) -> Option<Value> {
-    let parser = Parser::new_ext(
-        markdown,
-        Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
-    );
-
-    let mut in_metadata = false;
-    let mut yaml_text = String::new();
-
-    for event in parser {
-        match event {
-            Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) => {
-                in_metadata = true;
-            }
-            Event::Text(text) if in_metadata => {
-                yaml_text.push_str(&text);
-            }
-            Event::End(TagEnd::MetadataBlock(MetadataBlockKind::YamlStyle)) if in_metadata => {
-                return serde_yaml::from_str(&yaml_text).ok();
-            }
-            _ => {}
-        }
-    }
-
-    None
-}
-```
-
-**Note:** Frontmatter blocks must appear at the document start (before any other content). See the [`MetadataBlockKind`](#metadatablockkind) section for more details.
-
 ### Validating Document Structure
 
 ```rust
-use pulldown_cmark::{Parser, Event, Tag, TagEnd, HeadingLevel};
+use pulldown_cmark::{Parser, Event, Tag, TagEnd};
 
 #[derive(Debug)]
 struct ValidationResult {
@@ -737,6 +589,8 @@ code here
 ```
 ````
 
+````
+
 Produces: `CodeBlock(Fenced("rust"))`
 
 ### [`LinkType`](https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/enum.LinkType.html)
@@ -752,72 +606,8 @@ pub enum LinkType {
     ShortcutUnknown,     // [text] (unknown)
     Autolink,            // <url>
     Email,               // <email>
-    WikiLink {           // [[link]] or [[link|alias]]
-        has_pothole: bool,  // true if pipe separator present (|)
-    },
 }
-```
-
-**WikiLink Parsing Details:**
-
-When `ENABLE_WIKILINKS` is enabled, the parser natively handles:
-
-| Syntax              | LinkType                          | dest_url         | Text Event       | Usage                  |
-| ------------------- | --------------------------------- | ---------------- | ---------------- | ---------------------- |
-| `[[target]]`        | `WikiLink { has_pothole: false }` | `"target"`       | `"target"`       | Basic link             |
-| `[[target\|alias]]` | `WikiLink { has_pothole: true }`  | `"target"`       | `"alias"`        | Link with display text |
-| `[[note#heading]]`  | `WikiLink { has_pothole: false }` | `"note#heading"` | `"note#heading"` | Heading anchor         |
-| `[[note#^block]]`   | `WikiLink { has_pothole: false }` | `"note#^block"`  | `"note#^block"`  | Block reference        |
-| `![[embed]]`        | Image with `WikiLink`             | `"embed"`        | `"embed"`        | Embedded content       |
-
-**Example: Parsing WikiLinks**
-
-```rust
-use pulldown_cmark::{Parser, Event, Tag, LinkType, Options};
-
-let md = "[[target|display]] and ![[image.png]]";
-let parser = Parser::new_ext(md, Options::ENABLE_WIKILINKS);
-
-for event in parser {
-    match event {
-        Event::Start(Tag::Link { link_type, dest_url, .. }) => {
-            if let LinkType::WikiLink { has_pothole } = link_type {
-                println!("WikiLink to: {}, has alias: {}", dest_url, has_pothole);
-                // dest_url = "target", has_pothole = true
-            }
-        }
-        Event::Start(Tag::Image { link_type, dest_url, .. }) => {
-            if let LinkType::WikiLink { .. } = link_type {
-                println!("Embed: {}", dest_url);
-                // This is ![[embed]] syntax
-            }
-        }
-        Event::Text(text) => {
-            // For [[target|alias]], text will be "alias"
-            println!("Display text: {}", text);
-        }
-        _ => {}
-    }
-}
-```
-
-**Anchor Parsing:**
-
-```rust
-// Parse anchors from dest_url
-fn parse_wikilink_anchor(dest_url: &str) -> (&str, Option<Anchor>) {
-    if let Some((target, anchor_part)) = dest_url.split_once('#') {
-        let anchor = if let Some(block_ref) = anchor_part.strip_prefix('^') {
-            Anchor::BlockRef(block_ref)  // [[note#^blockid]]
-        } else {
-            Anchor::Heading(anchor_part)  // [[note#heading]]
-        };
-        (target, Some(anchor))
-    } else {
-        (dest_url, None)
-    }
-}
-```
+````
 
 ### [`Alignment`](https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/enum.Alignment.html)
 
@@ -856,77 +646,6 @@ pub enum MetadataBlockKind {
 ```
 
 **Extension:** Front matter metadata blocks (YAML, TOML).
-
-**Parsing Frontmatter:**
-
-When `ENABLE_YAML_STYLE_METADATA_BLOCKS` is enabled, the parser extracts frontmatter at the document start:
-
-```rust
-use pulldown_cmark::{Parser, Event, Tag, TagEnd, Options, MetadataBlockKind};
-
-let md = r#"---
-title: My Note
-tags: [rust, markdown]
----
-
-# Content"#;
-
-let parser = Parser::new_ext(md, Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
-
-for event in parser {
-    match event {
-        Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) => {
-            println!("Frontmatter start");
-        }
-        Event::Text(text) => {
-            // Raw YAML text: "title: My Note\ntags: [rust, markdown]\n"
-            println!("YAML content: {}", text);
-        }
-        Event::End(TagEnd::MetadataBlock(MetadataBlockKind::YamlStyle)) => {
-            println!("Frontmatter end");
-        }
-        _ => {}
-    }
-}
-```
-
-**Integration with YAML Parser:**
-
-```rust
-use pulldown_cmark::{Parser, Event, Tag, Options, MetadataBlockKind};
-use serde_yaml::Value;
-
-fn extract_frontmatter(markdown: &str) -> Option<Value> {
-    let parser = Parser::new_ext(
-        markdown,
-        Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
-    );
-
-    let mut in_metadata = false;
-    let mut yaml_text = String::new();
-
-    for event in parser {
-        match event {
-            Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) => {
-                in_metadata = true;
-            }
-            Event::Text(text) if in_metadata => {
-                yaml_text.push_str(&text);
-            }
-            Event::End(TagEnd::MetadataBlock(_)) if in_metadata => {
-                return serde_yaml::from_str(&yaml_text).ok();
-            }
-            _ => {}
-        }
-    }
-
-    None
-}
-```
-
-**Position in Document:**
-
-Metadata blocks must appear at the **start** of the document (before any other content). The parser only recognizes them in the first position.
 
 ## Performance Best Practices
 
@@ -980,31 +699,12 @@ html::write_html(writer, parser)?;
 **Only Enable Needed Extensions:**
 
 ```rust
-// ❌ BAD: Kitchen sink (5-10% overhead)
+// ❌ BAD: Kitchen sink
 let options = Options::all();
 
-// ✅ GOOD: Minimal (baseline performance)
+// ✅ GOOD: Minimal
 let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH;
-
-// ✅ ACCEPTABLE: Targeted feature set
-let options = Options::ENABLE_WIKILINKS
-    | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
-    | Options::ENABLE_TASKLISTS;
 ```
-
-**Performance Impact by Option:**
-
-| Option                              | Overhead | Notes                         |
-| ----------------------------------- | -------- | ----------------------------- |
-| `ENABLE_TASKLISTS`                  | ~1%      | Minimal overhead              |
-| `ENABLE_WIKILINKS`                  | ~2%      | Requires bracket scanning     |
-| `ENABLE_TABLES`                     | ~2-3%    | Complex state machine         |
-| `ENABLE_YAML_STYLE_METADATA_BLOCKS` | ~1%      | Only scans document start     |
-| `ENABLE_MATH`                       | ~2%      | Dollar sign scanning          |
-| `ENABLE_HEADING_ATTRIBUTES`         | ~1%      | Brace scanning after headings |
-| All options                         | ~8-10%   | Cumulative impact             |
-
-**Recommendation:** Profile with your actual documents. Most Obsidian vaults need 5-8 options enabled (~5% total overhead).
 
 **SIMD Acceleration (x64):**
 
@@ -1021,34 +721,6 @@ pulldown-cmark = { version = "0.13", features = ["simd"] }
 lto = true
 codegen-units = 1
 panic = "abort"
-```
-
-### 4. Options Configuration Strategy
-
-**Feature Set Presets:**
-
-```rust
-// CommonMark only (baseline)
-let basic = Options::empty();
-
-// GFM (GitHub Flavored Markdown)
-let gfm = Options::ENABLE_GFM;  // Tables + Strikethrough + Tasklists
-
-// Obsidian-compatible
-let obsidian = Options::ENABLE_WIKILINKS
-    | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
-    | Options::ENABLE_TASKLISTS
-    | Options::ENABLE_TABLES
-    | Options::ENABLE_FOOTNOTES
-    | Options::ENABLE_STRIKETHROUGH
-    | Options::ENABLE_MATH
-    | Options::ENABLE_HEADING_ATTRIBUTES;
-
-// Academic writing
-let academic = Options::ENABLE_FOOTNOTES
-    | Options::ENABLE_MATH
-    | Options::ENABLE_TABLES
-    | Options::ENABLE_SMART_PUNCTUATION;
 ```
 
 ### 4. Event Processing Patterns
@@ -1078,102 +750,6 @@ for i in 0..events.len() {
         // Check next event
         if let Some(next) = events.get(i + 1) {
             // ...
-        }
-    }
-}
-```
-
-## Critical Event Patterns
-
-### Distinguishing Link Types
-
-```rust
-use pulldown_cmark::{Parser, Event, Tag, LinkType, Options};
-
-fn categorize_links(markdown: &str) {
-    let parser = Parser::new_ext(
-        markdown,
-        Options::ENABLE_WIKILINKS | Options::ENABLE_TABLES
-    );
-
-    for event in parser {
-        if let Event::Start(Tag::Link { link_type, dest_url, .. }) = event {
-            match link_type {
-                LinkType::WikiLink { has_pothole: false } => {
-                    println!("WikiLink: [[{}]]", dest_url);
-                }
-                LinkType::WikiLink { has_pothole: true } => {
-                    println!("WikiLink with alias: [[{}|...]]", dest_url);
-                }
-                LinkType::Inline => {
-                    println!("Markdown link: []({})", dest_url);
-                }
-                LinkType::Autolink => {
-                    println!("Autolink: <{}>", dest_url);
-                }
-                _ => {}
-            }
-        }
-
-        // Embeds are Image events with WikiLink type
-        if let Event::Start(Tag::Image { link_type, dest_url, .. }) = event {
-            if let LinkType::WikiLink { .. } = link_type {
-                println!("Embed: ![[{}]]", dest_url);
-            }
-        }
-    }
-}
-```
-
-### Context-Aware Text Extraction
-
-```rust
-use pulldown_cmark::{Parser, Event, Tag, TagEnd};
-
-struct TextExtractor {
-    in_code_block: bool,
-    in_link: bool,
-    in_heading: bool,
-}
-
-impl TextExtractor {
-    fn extract(&mut self, event: Event) -> Option<String> {
-        match event {
-            // Track context
-            Event::Start(Tag::CodeBlock(_)) => {
-                self.in_code_block = true;
-                None
-            }
-            Event::End(TagEnd::CodeBlock) => {
-                self.in_code_block = false;
-                None
-            }
-            Event::Start(Tag::Link { .. }) => {
-                self.in_link = true;
-                None
-            }
-            Event::End(TagEnd::Link) => {
-                self.in_link = false;
-                None
-            }
-            Event::Start(Tag::Heading { .. }) => {
-                self.in_heading = true;
-                None
-            }
-            Event::End(TagEnd::Heading(_)) => {
-                self.in_heading = false;
-                None
-            }
-
-            // Extract text based on context
-            Event::Text(text) => {
-                if !self.in_code_block && !self.in_link {
-                    Some(text.to_string())
-                } else {
-                    None
-                }
-            }
-            _ => None
         }
     }
 }
@@ -1252,6 +828,40 @@ fn prefix_image_urls(markdown: &str, prefix: &str) -> Vec<Event> {
 }
 ```
 
+## Comparison with Other Parsers
+
+### pulldown-cmark vs comrak vs markdown-rs
+
+**pulldown-cmark:**
+
+- Pull parsing (iterator-based)
+- Zero-copy text via `CowStr`
+- No AST unless you build it
+- Minimal memory footprint
+- Best for streaming/transformation
+
+**comrak:**
+
+- AST-based parsing
+- Full AST always built
+- Easier AST manipulation
+- Higher memory usage
+- Better for complex transformations
+
+**markdown-rs:**
+
+- Push parsing (callback-based)
+- More complex state management
+- Lower-level control
+
+**When to Use pulldown-cmark:**
+
+- Memory-constrained environments
+- Streaming processing
+- Simple transformations via iterators
+- When you only need events, not full AST
+- Performance-critical applications
+
 ## Gotchas and Common Issues
 
 ### 1. Consecutive Text Events
@@ -1260,17 +870,114 @@ fn prefix_image_urls(markdown: &str, prefix: &str) -> Vec<Event> {
 
 **Solution:** Use `TextMergeStream`:
 
-```rust
+````rust
 use pulldown_cmark::{Parser, TextMergeStream};
 
-let markdown = "text with **bold**";
-let parser = Parser::new(markdown);
-let merged = TextMergeStream::new(parser);
 
-// Now consecutive Text events are merged
-for event in merged {
-    // Process merged text
+### Extract Front Matter
+
+```rust
+use pulldown_cmark::{Parser, Event, Tag, Options, MetadataBlockKind};
+
+fn extract_front_matter(markdown: &str) -> Option<String> {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+    let parser = Parser::new_ext(markdown, options);
+
+    let mut in_metadata = false;
+    let mut metadata = String::new();
+
+    for event in parser {
+        match event {
+            Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) => {
+                in_metadata = true;
+            }
+            Event::Text(text) if in_metadata => {
+                metadata.push_str(&text);
+            }
+            Event::End(TagEnd::MetadataBlock(_)) => {
+                in_metadata = false;
+                return Some(metadata);
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
+````
+
+### Count Document Statistics
+
+````rust
+use pulldown_cmark::{Parser, Event, Tag, TagEnd, TextMergeStream};
+
+#[derive(Debug, Default)]
+struct DocumentStats {
+    word_count: usize,
+    heading_count: usize,
+    link_count: usize,
+    code_block_count: usize,
+    list_count: usize,
+    paragraph_count: usize,
+}
+
+fn count_stats(markdown: &str) -> DocumentStats {
+    let parser = Parser::new(markdown);
+    let merged = TextMergeStream::new(parser);
+    let mut stats = DocumentStats::default();
+
+    for event in merged {
+        match event {
+            Event::Text(text) => {
+                stats.word_count += text.split_whitespace().count();
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                stats.heading_count += 1;
+            }
+            Event::Start(Tag::Link { .. }) => {
+                stats.link_count += 1;
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                stats.code_block_count += 1;
+
+
+## HTML Rendering (Optional)
+
+**Note:** This project primarily focuses on parsing. HTML rendering is available but not the primary use case.
+
+### Basic HTML Output
+
+```rust
+use pulldown_cmark::{Parser, html};
+
+let markdown = "# Hello\n\n*world*";
+let parser = Parser::new(markdown);
+
+let mut html_output = String::new();
+html::push_html(&mut html_output, parser);
+// Output: "<h1>Hello</h1>\n<p><em>world</em></p>\n"
+````
+
+**See Official Docs:** https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/html/index.html for complete HTML rendering API. }
+Event::Start(Tag::List(_)) => {
+stats.list_count += 1;
+}
+}
+Event::End(TagEnd::CodeBlock) => {
+in_code = false;
+blocks.push(current_block.clone());
+}
+_ => {}
+}
+}
+
+    blocks
+
+}
+
+```
+let merged = TextMergeStream::new(Parser::new(markdown));
 ```
 
 ### 2. Event Lifetime Tied to Source
@@ -1339,112 +1046,12 @@ let parser = Parser::new("| col |");
 let parser = Parser::new_ext("| col |", Options::ENABLE_TABLES);
 ```
 
-### 6. WikiLink Alias Detection
-
-**Problem:** Need to distinguish `[[target]]` from `[[target|alias]]`.
-
-**Solution:** Check `has_pothole` flag and next Text event:
-
-```rust
-use pulldown_cmark::{Parser, Event, Tag, LinkType, Options};
-
-let md = "[[target|alias text]]";
-let mut parser = Parser::new_ext(md, Options::ENABLE_WIKILINKS);
-let mut events = parser.collect::<Vec<_>>();
-
-// Event sequence:
-// 1. Start(Link { WikiLink { has_pothole: true }, dest_url: "target", ... })
-// 2. Text("alias text")  ← This is the display text, not the target!
-// 3. End(Link)
-
-// Correct parsing:
-for (i, event) in events.iter().enumerate() {
-    if let Event::Start(Tag::Link { link_type, dest_url, .. }) = event {
-        if let LinkType::WikiLink { has_pothole: true } = link_type {
-            let target = dest_url.to_string();  // "target"
-
-            // Next event is the alias text
-            if let Some(Event::Text(alias)) = events.get(i + 1) {
-                println!("Target: {}, Alias: {}", target, alias);
-            }
-        }
-    }
-}
-```
-
-### 7. Frontmatter Position Sensitivity
-
-**Problem:** Frontmatter only recognized at document start.
-
-**Incorrect:**
-
-```markdown
-# Heading
-
----
-
-## title: This won't be parsed as frontmatter
-```
-
-**Correct:**
-
-```markdown
----
-title: This will be parsed
----
-
-# Heading
-```
-
-### 8. Math Delimiter Conflicts
-
-**Problem:** Dollar signs in text may trigger math parsing.
-
-**Solution:** Be careful with `ENABLE_MATH` if documents contain prices:
-
-```rust
-// With ENABLE_MATH, this triggers math mode:
-// "Price: $100 to $200"  → InlineMath("100 to ")
-
-// Solutions:
-// 1. Disable ENABLE_MATH if not needed
-// 2. Escape: "Price: \$100"
-// 3. Use alternative syntax: "Price: 100 USD"
-```
-
-### 9. WikiLink Anchor Parsing
-
-**Problem:** Need to extract heading vs block reference anchors.
-
-**Solution:** Parse `dest_url` after '#':
-
-```rust
-fn parse_wikilink_anchor(dest_url: &str) -> (&str, Option<Anchor>) {
-    match dest_url.split_once('#') {
-        Some((target, anchor)) => {
-            let anchor_type = if anchor.starts_with('^') {
-                Anchor::BlockRef(&anchor[1..])  // [[note#^blockid]]
-            } else {
-                Anchor::Heading(anchor)  // [[note#heading]]
-            };
-            (target, Some(anchor_type))
-        }
-        None => (dest_url, None)
-    }
-}
-
-enum Anchor<'a> {
-    Heading(&'a str),
-    BlockRef(&'a str),
-}
-```
-
 ## Integration Examples
 
 ### With Syntax Highlighting (syntect)
 
 ```rust
-use pulldown_cmark::{Parser, Event, Tag, TagEnd, CodeBlockKind, CowStr, html};
+use pulldown_cmark::{Parser, Event, Tag, CodeBlockKind, CowStr, html};
 use syntect::easy::HighlightLines;
 use syntect::parsing::SyntaxSet;
 use syntect::highlighting::ThemeSet;
@@ -1456,39 +1063,7 @@ fn render_with_highlighting(markdown: &str) -> String {
     let theme = &ts.themes["base16-ocean.dark"];
 
     let parser = Parser::new(markdown);
-    let mut in_code_block = false;
-    let mut code_lang = String::new();
-    let mut code_content = String::new();
-
-    let transformed = parser.map(|event| match event {
-        Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(lang))) => {
-            in_code_block = true;
-            code_lang = lang.to_string();
-            code_content.clear();
-            event
-        }
-        Event::Text(text) if in_code_block => {
-            code_content.push_str(&text);
-            event
-        }
-        Event::End(TagEnd::CodeBlock) if in_code_block => {
-            in_code_block = false;
-            // Syntax highlight code_content here with syntect
-            event
-        }
-        _ => event
-    });
-
-    let mut output = String::new();
-    html::push_html(&mut output, transformed);
-    output
-}
-```
-
-### Markdown to Plain Text
-
-```rust
-use pulldown_cmark::{Parser, Event, TagEnd, TextMergeStream};
+    let mut in_code_block = false;, TagEnd};
 
 fn markdown_to_text(markdown: &str) -> String {
     let parser = Parser::new(markdown);
@@ -1735,7 +1310,9 @@ fn extract_table(markdown: &str) -> Option<Table> {
         }
     }
 
-    table
+    tablet output = String::new();
+    html::push_html(&mut output, transformed);
+    output
 }
 ```
 
@@ -1790,6 +1367,36 @@ fn generate_toc(markdown: &str) -> Vec<TocEntry> {
 }
 ```
 
+### Markdown to Plain Text
+
+```rust
+use pulldown_cmark::{Parser, Event, TextMergeStream};
+
+fn markdown_to_text(markdown: &str) -> String {
+    let parser = Parser::new(markdown);
+    let merged = TextMergeStream::new(parser);
+    let mut output = String::new();
+
+    for event in merged {
+        match event {
+            Event::Text(text) | Event::Code(text) => {
+                output.push_str(&text);
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                output.push('\n');
+            }
+            Event::End(TagEnd::Paragraph) |
+            Event::End(TagEnd::Heading(_)) => {
+                output.push_str("\n\n");
+            }
+            _ => {}
+        }
+    }
+
+    output
+}
+```
+
 ## Testing Strategies
 
 ### Event Snapshot Testing
@@ -1841,41 +1448,15 @@ fuzz_target!(|data: &[u8]| {
 });
 ```
 
-## Additional Notes
+## Additional Resources
 
-### Comparison with Other Parsers: `pulldown-cmark` vs `comrak` vs `markdown-rs`
+- **CommonMark Spec:** https://spec.commonmark.org/
+- **GitHub Flavored Markdown:** https://github.github.com/gfm/
+- **Pull Parsing Concept:** https://www.xmlpull.org/history/index.html
+- **Benchmarks:** https://github.com/pulldown-cmark/pulldown-cmark/tree/master/benches
+- **Migration Guide:** https://github.com/pulldown-cmark/pulldown-cmark/blob/master/CHANGELOG.md
 
-#### `pulldown-cmark`
-
-- Pull parsing (iterator-based)
-- Zero-copy text via `CowStr`
-- No AST unless you build it
-- Minimal memory footprint
-- Best for streaming/transformation
-
-**When to Use pulldown-cmark:**
-
-- Memory-constrained environments
-- Streaming processing
-- Simple transformations via iterators
-- When you only need events, not full AST
-- Performance-critical applications
-
-#### `comrak`
-
-- AST-based parsing
-- Full AST always built
-- Easier AST manipulation
-- Higher memory usage
-- Better for complex transformations
-
-#### `markdown-rs`
-
-- Push parsing (callback-based)
-- More complex state management
-- Lower-level control
-
-### `pulldown-cmark` Version Notes
+## Version Notes
 
 **Version 0.13.0** (Current)
 
@@ -1892,11 +1473,3 @@ fuzz_target!(|data: &[u8]| {
 - Some option names changed
 
 **Migration:** Check CHANGELOG for detailed migration guide.
-
-### Resources
-
-- **CommonMark Spec:** https://spec.commonmark.org/
-- **GitHub Flavored Markdown:** https://github.github.com/gfm/
-- **Pull Parsing Concept:** https://www.xmlpull.org/history/index.html
-- **Benchmarks:** https://github.com/pulldown-cmark/pulldown-cmark/tree/master/benches
-- **Migration Guide:** https://github.com/pulldown-cmark/pulldown-cmark/blob/master/CHANGELOG.md
