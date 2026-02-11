@@ -86,12 +86,20 @@ Update the output file with final section:
 
 1. [Original source file] - [description of changes]
 2. [Output documentation file] - [description]
+3. [Output directory] - Created `{output_folder}/rustdoc-generated/` if not exists
+4. [Reports directory] - Created `{output_folder}/rustdoc-reports/` if not exists
 
 ### How to Use This Documentation
 
 1. **Review the generated doc comments** in the output file
 2. **Copy documentation** into your source files
-3. **Run `cargo doc`** to generate HTML documentation
+3. **VERIFY APPLICATION** - Check that docs are actually in your code:
+   ```bash
+   # Count doc comments in target files
+   grep -r "///\|//!" src/ --include="*.rs"
+   # Verify syntax by generating docs
+   cargo doc --no-deps
+   ```
 4. **Run `cargo test --doc`** to verify all examples compile
 5. **Address any remaining validation issues**
 
@@ -203,7 +211,7 @@ Display completion message:
 ## Output Location
 
 All documentation saved to:
-`{output_folder}/rustdoc-{project_name}.md`
+`{output_folder}/rustdoc-generated/rustdoc-{project_name}-{target-file-or-folder}.md`
 
 ## Next Steps
 
