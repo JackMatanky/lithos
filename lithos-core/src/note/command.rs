@@ -60,6 +60,26 @@ impl<'db> Command<'db> {
     /// before modifying the note. The allocations here are necessary because
     /// the data must outlive the read transaction.
     ///
+    /// # Allocation Constraint
+    ///
+    /// This method necessarily allocates owned strings for path and tags
+    /// because:
+    /// 1. Read transaction creates archived data with closure-scoped lifetime
+    /// 2. Index updates require a separate write transaction
+    /// 3. Cannot borrow archived data across transaction boundary
+    /// 4. Must extract owned data before read transaction ends
+    ///
+    /// This is a **fundamental constraint** of the redb transaction model.
+    /// Attempted alternatives (reading within write transaction) violate Rust
+    /// borrowing rules: cannot call `batch.multimap_remove()` while inside
+    /// `batch.get()` closure.
+    ///
+    /// **Cost**: ~250-450 bytes per note mutation (1 path + N tags × ~20
+    /// bytes). **Frequency**: Write operations only (cold path relative to
+    /// reads). **Decision**: Accept as necessary architectural cost.
+    ///
+    /// See `TODO_ALLOCATIONS.md` Issue #6 for detailed analysis.
+    ///
     /// # Errors
     /// Returns `NoteCommandError::Storage` if the database read fails.
     fn get_note_index_data(
