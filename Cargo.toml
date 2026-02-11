@@ -146,9 +146,11 @@ strip = true
 
 [profile.dev]
 opt-level = 0
-debug = true
+debug = 1
+split-debuginfo = "packed"
 
 [profile.test]
 opt-level = 0
-debug = true
+debug = 1
+split-debuginfo = "packed"
 inherits = "dev"
