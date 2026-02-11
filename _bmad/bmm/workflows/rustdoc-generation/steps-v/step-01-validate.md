@@ -53,6 +53,7 @@ If a directory:
 ### 2. Load Documentation Standards
 
 Read: `{project-root}/_bmad/_memory/tech-writer-sidecar/documentation-standards.md`
+Read: `{project-root}/_bmad/bmm/workflows/rustdoc-generation/knowledge/rustdoc-standards.md`
 
 ### 3. Validate Crate-Level Documentation
 
@@ -164,7 +165,29 @@ For each trait:
 - No implementation example
 - Methods not documented
 
-### 9. Validate Markdown Formatting
+### 9. Validate Doc Comment Application
+
+CRITICAL: Verify that doc comments are actually applied to source files:
+
+**Application Verification:**
+- [ ] Check target files contain expected `///` and `//!` comments
+- [ ] Verify line numbers match expected locations
+- [ ] Confirm no unintended side effects
+- [ ] Check compilation still succeeds
+
+**Verification Commands:**
+```bash
+# Count doc comments in target
+grep -c "///\|//!" {target_file}
+
+# Generate docs to verify syntax
+cargo doc --no-deps
+
+# Test examples compile
+cargo test --doc
+```
+
+### 10. Validate Markdown Formatting
 
 For all documentation:
 
@@ -175,9 +198,9 @@ For all documentation:
 - [ ] Reference-style links preferred
 - [ ] Proper heading hierarchy
 
-### 10. Generate Validation Report
+### 11. Generate Validation Report
 
-Create comprehensive report at: `{output_folder}/rustdoc-validation-{project_name}.md`
+Create comprehensive report at: `{output_folder}/rustdoc-reports/rustdoc-validation-{project-name}-{target-file-or-folder}.md`
 
 ```yaml
 ---
@@ -194,6 +217,10 @@ compliance:
     enums: [count pass/fail]
     functions: [count pass/fail]
     traits: [count pass/fail]
+  verification:
+    docCommentsApplied: [✅/❌]
+    syntaxValid: [✅/❌]
+    examplesCompile: [✅/❌]
 ---
 
 # Rustdoc Validation Report
@@ -215,6 +242,24 @@ compliance:
 | Enums | [n] | [x] | [x] | [x]% |
 | Functions | [n] | [x] | [x] | [x]% |
 | Traits | [n] | [x] | [x] | [x]% |
+
+## Verification Status
+
+### Doc Comment Application
+- **Status:** [PASS/FAIL]
+- **Doc comments found:** [count]
+- **Expected:** [count]
+- **Missing:** [count]
+
+### Syntax Verification
+- **Status:** [PASS/FAIL]
+- **`cargo doc` result:** [success/failure]
+- **Compilation errors:** [count]
+
+### Example Compilation
+- **Status:** [PASS/FAIL]
+- **`cargo test --doc` result:** [success/failure]
+- **Failed examples:** [count]
 
 ## Critical Issues (Must Fix)
 
@@ -244,7 +289,7 @@ compliance:
 4. Run `cargo test --doc` to verify examples
 ```
 
-### 11. Present Validation Results
+### 12. Present Validation Results
 
 Show {user_name}:
 
@@ -264,14 +309,14 @@ Show {user_name}:
 - Traits: [pass]/[total]
 
 **Report saved to:**
-`{output_folder}/rustdoc-validation-{project_name}.md`
+`{output_folder}/rustdoc-reports/rustdoc-validation-{project-name}-{target-file-or-folder}.md`
 
 What would you like to do?
 - **[F]ix Issues** - Edit mode to fix identified issues
 - **[D]etails** - See full validation report
 - **[Q]uit** - End validation"
 
-### 12. Handle User Choice
+### 13. Handle User Choice
 
 **IF F:**
 - Load `steps-e/step-01-assess.md` (edit mode)

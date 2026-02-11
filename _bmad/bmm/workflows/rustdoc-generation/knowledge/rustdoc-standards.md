@@ -7,7 +7,8 @@
 **Syntax:** Inner doc comments `//!`
 
 **Structure:**
-```rust
+
+````rust
 //! [One-line summary]
 //!
 //! [Detailed description]
@@ -24,9 +25,10 @@
 //!
 //! let instance = Type::new();
 //! ```
-```
+````
 
 **Checklist:**
+
 - [ ] `//!` syntax (not `///`)
 - [ ] Summary line (search result text)
 - [ ] Features section (if applicable)
@@ -40,6 +42,7 @@
 **Syntax:** Inner doc comments `//!` at file top
 
 **Structure:**
+
 ```rust
 //! [One-line summary]
 //!
@@ -50,6 +53,7 @@
 ```
 
 **Checklist:**
+
 - [ ] `//!` at file top
 - [ ] NOT inside `mod { }` blocks
 - [ ] Summary line
@@ -63,7 +67,8 @@
 **Syntax:** Outer doc comments `///`
 
 **Structure:**
-```rust
+
+````rust
 /// [What it represents]
 ///
 /// [When to use]
@@ -79,9 +84,10 @@ pub struct Struct {
     /// [Field description]
     pub field: Type,
 }
-```
+````
 
 **Checklist:**
+
 - [ ] `///` syntax
 - [ ] Summary: what it represents
 - [ ] All public fields documented
@@ -96,7 +102,8 @@ pub struct Struct {
 **Syntax:** Outer doc comments `///`
 
 **Structure:**
-```rust
+
+````rust
 /// [What it represents]
 ///
 /// # Examples
@@ -117,9 +124,10 @@ pub enum Enum {
     /// The data represents [what].
     Second(Data),
 }
-```
+````
 
 **Checklist:**
+
 - [ ] `///` syntax
 - [ ] Summary: what it represents
 - [ ] All variants documented
@@ -134,7 +142,8 @@ pub enum Enum {
 **Syntax:** Outer doc comments `///`
 
 **Structure:**
-```rust
+
+````rust
 /// [Third-person singular summary]
 ///
 /// [Detailed explanation if needed]
@@ -159,9 +168,10 @@ pub enum Enum {
 /// let result = function()?;
 /// ```
 pub fn function() -> Result<T> {}
-```
+````
 
 **Checklist:**
+
 - [ ] `///` syntax
 - [ ] Summary: third-person singular ("Returns")
 - [ ] NO "Parameters:" section
@@ -179,7 +189,8 @@ pub fn function() -> Result<T> {}
 **Syntax:** Outer doc comments `///`
 
 **Structure:**
-```rust
+
+````rust
 /// [What behavior is enabled]
 ///
 /// [Contract for implementors]
@@ -197,9 +208,10 @@ pub trait Trait {
     /// [Method description]
     fn method(&self);
 }
-```
+````
 
 **Checklist:**
+
 - [ ] `///` syntax
 - [ ] Summary: enabled behavior
 - [ ] Contract documented
@@ -213,16 +225,17 @@ pub trait Trait {
 
 Always use these exact heading texts:
 
-| Heading | Use When |
-|---------|----------|
-| `# Examples` | Always (plural even if one) |
-| `# Panics` | Function can panic |
-| `# Errors` | Function returns Result |
-| `# Safety` | unsafe fn or unsafe trait |
-| `# Aborts` | Rare - process abort |
-| `# Undefined Behavior` | unsafe with UB risk |
+| Heading                | Use When                    |
+| ---------------------- | --------------------------- |
+| `# Examples`           | Always (plural even if one) |
+| `# Panics`             | Function can panic          |
+| `# Errors`             | Function returns Result     |
+| `# Safety`             | unsafe fn or unsafe trait   |
+| `# Aborts`             | Rare - process abort        |
+| `# Undefined Behavior` | unsafe with UB risk         |
 
 **Anti-Patterns:**
+
 - ❌ `# Example` (use plural `# Examples`)
 - ❌ `## Examples` (use single `#`)
 - ❌ `Parameters:` (never use)
@@ -233,6 +246,7 @@ Always use these exact heading texts:
 ## Intra-Doc Links
 
 **Syntax:**
+
 ```rust
 /// The [`String`] passed in...
 /// See [`crate::module::Type`]
@@ -241,6 +255,7 @@ Always use these exact heading texts:
 ```
 
 **Patterns:**
+
 - Same type: `[`method`]: #method.method_name`
 - Same module: `[`Type`]: struct.Type.html`
 - Parent module: `[`Type`]: ../enum.Type.html`
@@ -251,15 +266,17 @@ Always use these exact heading texts:
 ## Doc Test Best Practices
 
 **Basic Example:**
-```rust
+
+````rust
 /// ```
 /// let x = 5;
 /// assert_eq!(x, 5);
 /// ```
-```
+````
 
 **With Error Handling:**
-```rust
+
+````rust
 /// ```
 /// # use std::error::Error;
 /// # fn main() -> Result<(), Box<dyn Error>> {
@@ -267,14 +284,15 @@ Always use these exact heading texts:
 /// # Ok(())
 /// # }
 /// ```
-```
+````
 
 **Ignored (non-compiling):**
-```rust
+
+````rust
 /// ```ignore
 /// this_code_wont_compile();
 /// ```
-```
+````
 
 ---
 
