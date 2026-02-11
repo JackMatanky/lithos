@@ -90,10 +90,10 @@ impl super::ports::Query for Query<'_> {
 
         // We need all templates for cycle detection and include resolution
         let all_templates_list = self.list()?;
-        let all_templates: HashMap<String, Template> = all_templates_list
-            .into_iter()
-            .map(|t| (t.name().to_owned(), t))
-            .collect();
+
+        // Use borrowed keys to avoid allocating template names
+        let all_templates: HashMap<&str, &Template> =
+            all_templates_list.iter().map(|t| (t.name(), t)).collect();
 
         Template::compose(&base, composition, &all_templates)
     }
