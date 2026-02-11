@@ -580,11 +580,17 @@ mod tests {
 
     #[test]
     fn task_tag_requires_hash_prefix() {
-        let tag1 = TaskTag::try_new("#work");
-        tag1.unwrap();
+        let tag_valid = TaskTag::try_new("#work");
+        assert!(
+            tag_valid.is_ok(),
+            "TaskTag '#work' should be valid, but got: {tag_valid:?}"
+        );
 
-        let tag2 = TaskTag::try_new("work");
-        tag2.unwrap_err();
+        let tag_invalid = TaskTag::try_new("work");
+        assert!(
+            tag_invalid.is_err(),
+            "TaskTag without hash prefix should be invalid"
+        );
     }
 
     #[test]
@@ -594,18 +600,33 @@ mod tests {
         mapping.insert("other".to_owned(), ' '); // Duplicate symbol
 
         let result = CheckboxStatus::from_raw(mapping);
-        result.unwrap_err();
+        assert!(
+            result.is_err(),
+            "CheckboxStatus should reject duplicate symbols"
+        );
     }
 
     #[test]
     fn task_config_from_raw_full_valid() {
         let raw = fixtures::sample_raw_task_config();
-        let config = Task::from_raw(raw).unwrap();
+        let config_res = Task::from_raw(raw);
+        assert!(
+            config_res.is_ok(),
+            "Task::from_raw should succeed with sample config, but got: \
+             {config_res:?}"
+        );
+        let config = config_res.unwrap();
 
-        assert!(config.enabled());
-        assert_eq!(config.tags().len(), 1);
-        assert_eq!(config.due().unwrap().keyword().as_str(), "due");
-        assert_eq!(config.fields().len(), 1);
+        assert!(config.enabled(), "Task processing should be enabled");
+        let tags_len = config.tags().len();
+        assert_eq!(tags_len, 1, "Expected 1 task tag, got {tags_len}");
+        assert_eq!(
+            config.due().unwrap().keyword().as_str(),
+            "due",
+            "Expected 'due' keyword"
+        );
+        let fields_len = config.fields().len();
+        assert_eq!(fields_len, 1, "Expected 1 custom field, got {fields_len}");
     }
 
     #[test]
@@ -622,7 +643,7 @@ mod tests {
         let result = Task::from_raw(raw);
         assert!(
             result.is_err(),
-            "Expected validation error for invalid bounds"
+            "Expected validation error for invalid field bounds"
         );
     }
 
@@ -640,6 +661,9 @@ mod tests {
         };
 
         let result = Task::from_raw(raw);
-        assert!(result.is_err(), "Expected validation error for unknown field");
+        assert!(
+            result.is_err(),
+            "Expected validation error for unknown indexed field"
+        );
     }
 }
