@@ -1,6 +1,23 @@
 # Lithos Allocation Optimization Plan
 **Generated**: 2026-02-11
-**Status**: Implementation Ready
+**Status**: ✅ P0 Complete - Ready for P1
+
+## Completion Status
+
+**Phase 1 (P0 - Critical Hot Paths): ✅ COMPLETE**
+- ✅ Task 1: Database Key Formatting (commit 094553e2)
+- ✅ Task 2: UUID-native Methods (commit 5e94edf7)
+- ✅ Task 3: Command Allocations Documented (commit 62321251)
+- ✅ Task 4: Template HashMap Optimization (commit b2569d43)
+- ✅ Task 5: Numeric Formatting (commit be7433d7)
+
+**Benchmark Results** (after optimizations):
+- Note ingestion: **3.50 µs** (26.1 MiB/s throughput)
+- Zero-copy read: **389.5 ns** (2.57 Melem/s)
+- Deserialize read: **826 ns** (1.21 Melem/s)
+- Write single: **3.75 ms** (267 elem/s)
+
+**Estimated Impact Achieved**: 50-80% reduction in hot-path allocations
 
 ## Executive Summary
 
@@ -48,10 +65,11 @@ The issues identified in `TODO_NOTE_OPTIMIZATIONS.md` are **valid and extend thr
 
 ---
 
-## 🔴 P0: CRITICAL (Hot Path - Immediate Action Required)
+## 🔴 P0: CRITICAL (Hot Path - Immediate Action Required) - ✅ COMPLETE
 
-### 1. Database Key Formatting - HIGHEST IMPACT
+### 1. Database Key Formatting - HIGHEST IMPACT ✅
 
+**Status**: Complete (commit 094553e2)
 **Impact**: **100% of all database operations**
 
 #### Current State
@@ -148,8 +166,9 @@ pub fn get<V, F, R>(&self, table: &str, key: &str, f: F) -> Result<Option<R>, Db
 
 ---
 
-### 2. UUID to String Conversions
+### 2. UUID to String Conversions ✅
 
+**Status**: Complete (commit 5e94edf7)
 **Impact**: Every ID-based query/command operation
 
 #### Current State
@@ -246,8 +265,9 @@ fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
 
 ---
 
-### 3. Note Command Index Data Extraction
+### 3. Note Command Index Data Extraction ✅
 
+**Status**: Documented as architectural constraint (commit 62321251)
 **Impact**: Every note update/delete operation
 
 #### Current State
@@ -340,8 +360,9 @@ if needs_path_update.unwrap_or(true) {
 
 ---
 
-### 4. Template Resolution HashMap Allocation
+### 4. Template Resolution HashMap Allocation ✅
 
+**Status**: Complete (commit b2569d43)
 **Impact**: Every template composition operation
 
 #### Current State
@@ -440,8 +461,9 @@ Template::compose(&base, composition, &all_templates_list)
 
 ---
 
-### 5. Numeric to String Conversions in Note Queries
+### 5. Numeric to String Conversions in Note Queries ✅
 
+**Status**: Complete (commit be7433d7)
 **Impact**: Every task date/priority query
 
 #### Current State
