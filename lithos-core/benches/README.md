@@ -100,6 +100,54 @@ cargo bench --bench db_storage -- --save-baseline before_changes
 cargo bench --bench db_storage -- --baseline before_changes
 ```
 
+## Benchmark Methodology
+
+### Test Data Model
+
+All benchmarks use controlled test data to ensure reproducibility:
+
+**Standard Test Note Structure** (used in storage benchmarks):
+- **Links**: 2 links (1 wikilink, 1 markdown link)
+- **Tags**: 3 hierarchical tags (e.g., `#status/active`, `#priority/high`)
+- **Headings**: 2 headings (H1, H2)
+- **Tasks**: 2 tasks (1 incomplete `- [ ]`, 1 complete `- [x]`)
+- **Sections**: 1 section with content
+- **Frontmatter**: Minimal HashMap (empty or 1-2 fields)
+- **Serialized Size**: ~1.5-2 KB per note
+
+**Simple Parsing Note** (used in note_parsing):
+- 1 heading, 3 tasks, 2 list items
+- ~100 bytes total
+
+### Benchmark Configuration
+
+**Criterion Settings** (consistent across all benchmarks):
+- **Sample Size**: 100 iterations (10 for expensive batch operations)
+- **Warmup**: 3 seconds per benchmark
+- **Measurement Time**: 5 seconds (30 seconds for batch writes)
+- **Confidence Interval**: 95%
+- **Throughput Reporting**: Operations per second (or elements/second for batches)
+
+### Statistical Analysis
+
+Criterion automatically provides:
+- **Time**: Mean, min, max with confidence intervals
+- **Throughput**: Operations per second
+- **Regression**: Change from previous run (if baseline exists)
+- **Outlier Detection**:
+  - **Low Mild**: Faster than expected (system optimization, cache effects)
+  - **High Mild**: Slower than expected (GC pauses, OS scheduling)
+  - **High Severe**: Significantly slower (I/O contention, memory pressure)
+
+### Hardware Considerations
+
+Baseline numbers assume:
+- **CPU**: Apple Silicon (M3 Max in original baselines)
+- **Storage**: SSD with good random read performance
+- **Memory**: 16GB+ (test datasets fit in memory)
+
+**Important**: Absolute numbers vary by hardware. Focus on relative performance ratios (e.g., zero-copy vs deserialization) rather than raw nanoseconds when comparing across machines.
+
 ## Benchmark Organization Principles
 
 Each benchmark file follows these principles:
@@ -114,16 +162,33 @@ Each benchmark file follows these principles:
 
 ### Focus on Trends, Not Absolutes
 Raw numbers vary by CPU, filesystem, and SSD. What matters:
-- Relative performance (optimized vs baseline)
-- Regression detection (new code vs old code)
-- Scaling behavior (batch size, complexity)
+- **Relative performance** (optimized vs baseline)
+- **Regression detection** (new code vs old code)
+- **Scaling behavior** (batch size, complexity)
 
 ### Regression Signals
 Watch for:
-- Zero-copy approaching deserialization performance
+- Zero-copy read approaching deserialization (ratio < 1.5x)
 - Batch transactions approaching individual transaction performance
 - UUID-native approaching string conversion performance
-- Numeric formatting optimizations losing gains
+- Numeric formatting optimizations losing gains (itoa < 5x faster)
+
+### What Performance Levels Mean
+
+**Nanoseconds (ns)** - Hot path operations:
+- Constructor calls, key formatting, UUID conversion
+- Single-digit improvements matter in tight loops
+- Optimizations compound when called thousands of times per session
+
+**Microseconds (µs)** - Interactive operations:
+- Parsing operations, numeric formatting loops
+- 10-20% improvements accumulate across session
+- Suitable for real-time operations (LSP, autocomplete)
+
+**Milliseconds (ms)** - Database operations:
+- Database writes (transaction + fsync overhead dominates)
+- Focus on reducing write count, not per-op cost
+- Batch when possible to amortize transaction overhead
 
 ### Expected Ranges
 See `RESULTS.md` for detailed baseline numbers, optimization history, and interpretation guidelines.
