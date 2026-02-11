@@ -45,7 +45,21 @@ impl WriteBatch {
                 >,
             >,
     {
-        let namespaced_key = format!("{table}:{key}");
+        use std::fmt::Write as _;
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key =
+            String::with_capacity(table.len() + key.len() + 1);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "{table}:{key}");
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(value)
             .map_err(|e| DbError::Serialization(e.to_string()))?;
@@ -63,7 +77,21 @@ impl WriteBatch {
     /// Returns `DbError` if the underlying redb table operation fails.
     #[inline]
     pub fn delete(&mut self, table: &str, key: &str) -> Result<bool, DbError> {
-        let namespaced_key = format!("{table}:{key}");
+        use std::fmt::Write as _;
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key =
+            String::with_capacity(table.len() + key.len() + 1);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "{table}:{key}");
 
         let existed = {
             let mut table_ref = self.tx.open_table(DATA_TABLE)?;
@@ -84,11 +112,25 @@ impl WriteBatch {
         key: &str,
         value: &str,
     ) -> Result<(), DbError> {
+        use std::fmt::Write as _;
+
         use redb::MultimapTableDefinition;
 
         let table_def: MultimapTableDefinition<&str, &str> =
             MultimapTableDefinition::new(table);
-        let namespaced_key = format!("multimap:{key}");
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key = String::with_capacity(9 + key.len());
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "multimap:{key}");
 
         {
             let mut tbl = self.tx.open_multimap_table(table_def)?;
@@ -109,11 +151,25 @@ impl WriteBatch {
         key: &str,
         value: &str,
     ) -> Result<bool, DbError> {
+        use std::fmt::Write as _;
+
         use redb::MultimapTableDefinition;
 
         let table_def: MultimapTableDefinition<&str, &str> =
             MultimapTableDefinition::new(table);
-        let namespaced_key = format!("multimap:{key}");
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key = String::with_capacity(9 + key.len());
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "multimap:{key}");
 
         let removed = {
             let mut tbl = self.tx.open_multimap_table(table_def)?;
