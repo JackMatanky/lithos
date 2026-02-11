@@ -660,6 +660,26 @@ impl CheckboxStatus {
     pub fn name_for_symbol(&self, symbol: StatusSymbol) -> Option<&StatusName> {
         self.by_symbol.get(&symbol)
     }
+
+    #[inline]
+    #[must_use]
+    /// Returns an iterator over the status name and symbol pairs.
+    pub fn iter(
+        &self,
+    ) -> std::collections::hash_map::Iter<'_, StatusName, StatusSymbol> {
+        self.by_name.iter()
+    }
+}
+
+impl<'status> IntoIterator for &'status CheckboxStatus {
+    type IntoIter =
+        std::collections::hash_map::Iter<'status, StatusName, StatusSymbol>;
+    type Item = (&'status StatusName, &'status StatusSymbol);
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
 }
 
 /// Validated status name (e.g., `complete`).
