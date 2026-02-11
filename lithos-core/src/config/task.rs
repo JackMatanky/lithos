@@ -72,26 +72,21 @@ pub struct Task {
     /// Whether task processing is enabled.
     enabled: bool,
     /// Configured task promotion tags.
-    #[expect(
-        clippy::struct_field_names,
-        reason = "task_tags is more descriptive and matches the config field \
-                  name"
-    )]
-    task_tags: Vec<TaskTag>,
+    tags: Vec<TaskTag>,
     /// Status mappings for checkboxes.
     status: CheckboxStatus,
     /// Optional due date field configuration.
-    due_field: Option<DateSpec>,
+    due: Option<DateSpec>,
     /// Optional created date field configuration.
-    created_field: Option<DateSpec>,
+    created: Option<DateSpec>,
     /// Optional reminder date field configuration.
-    reminder_field: Option<DateSpec>,
+    reminder: Option<DateSpec>,
     /// Optional completed date field configuration.
-    completed_field: Option<DateSpec>,
+    completed: Option<DateSpec>,
     /// Custom task field specifications.
     fields: HashMap<Box<str>, FieldSpec>,
     /// List of field names to be indexed.
-    indexed_fields: Vec<Box<str>>,
+    indexed: Vec<Box<str>>,
 }
 
 impl Default for Task {
@@ -116,7 +111,7 @@ impl Task {
     /// indexed fields).
     pub fn from_raw(raw: RawTaskConfig) -> Result<Self, ConfigError> {
         let enabled = raw.enabled.unwrap_or(true);
-        let task_tags = match raw.task_tags {
+        let tags = match raw.task_tags {
             Some(tags) => tags
                 .into_iter()
                 .map(TaskTag::try_new)
@@ -133,16 +128,15 @@ impl Task {
             CheckboxStatus::from_raw(mapping)?
         };
 
-        let (due_field, completed_field, created_field, reminder_field) =
-            match raw.dates {
-                Some(dates) => (
-                    dates.due.map(DateSpec::from_raw).transpose()?,
-                    dates.completed.map(DateSpec::from_raw).transpose()?,
-                    dates.created.map(DateSpec::from_raw).transpose()?,
-                    dates.reminder.map(DateSpec::from_raw).transpose()?,
-                ),
-                None => (None, None, None, None),
-            };
+        let (due, completed, created, reminder) = match raw.dates {
+            Some(dates) => (
+                dates.due.map(DateSpec::from_raw).transpose()?,
+                dates.completed.map(DateSpec::from_raw).transpose()?,
+                dates.created.map(DateSpec::from_raw).transpose()?,
+                dates.reminder.map(DateSpec::from_raw).transpose()?,
+            ),
+            None => (None, None, None, None),
+        };
 
         let mut fields = HashMap::new();
         if let Some(raw_fields) = raw.fields {
@@ -156,7 +150,7 @@ impl Task {
             }
         }
 
-        let mut indexed_fields = Vec::new();
+        let mut indexed = Vec::new();
         if let Some(indexing) = raw.indexing
             && let Some(fields_list) = indexing.indexed_fields
         {
@@ -167,20 +161,20 @@ impl Task {
                         message: format!("unknown field: {field_name}").into(),
                     });
                 }
-                indexed_fields.push(field_name.into_boxed_str());
+                indexed.push(field_name.into_boxed_str());
             }
         }
 
         Ok(Self {
             enabled,
-            task_tags,
+            tags,
             status,
-            due_field,
-            created_field,
-            reminder_field,
-            completed_field,
+            due,
+            created,
+            reminder,
+            completed,
             fields,
-            indexed_fields,
+            indexed,
         })
     }
 
@@ -194,8 +188,8 @@ impl Task {
     #[inline]
     #[must_use]
     /// Return the list of task promotion tags.
-    pub fn task_tags(&self) -> &[TaskTag] {
-        &self.task_tags
+    pub fn tags(&self) -> &[TaskTag] {
+        &self.tags
     }
 
     #[inline]
@@ -208,29 +202,29 @@ impl Task {
     #[inline]
     #[must_use]
     /// Return the due date field spec, if configured.
-    pub fn due_field(&self) -> Option<&DateSpec> {
-        self.due_field.as_ref()
+    pub fn due(&self) -> Option<&DateSpec> {
+        self.due.as_ref()
     }
 
     #[inline]
     #[must_use]
     /// Return the created date field spec, if configured.
-    pub fn created_field(&self) -> Option<&DateSpec> {
-        self.created_field.as_ref()
+    pub fn created(&self) -> Option<&DateSpec> {
+        self.created.as_ref()
     }
 
     #[inline]
     #[must_use]
     /// Return the reminder date field spec, if configured.
-    pub fn reminder_field(&self) -> Option<&DateSpec> {
-        self.reminder_field.as_ref()
+    pub fn reminder(&self) -> Option<&DateSpec> {
+        self.reminder.as_ref()
     }
 
     #[inline]
     #[must_use]
     /// Return the completed date field spec, if configured.
-    pub fn completed_field(&self) -> Option<&DateSpec> {
-        self.completed_field.as_ref()
+    pub fn completed(&self) -> Option<&DateSpec> {
+        self.completed.as_ref()
     }
 
     #[inline]
@@ -243,8 +237,8 @@ impl Task {
     #[inline]
     #[must_use]
     /// Return the list of indexed field names.
-    pub fn indexed_fields(&self) -> &[Box<str>] {
-        &self.indexed_fields
+    pub fn indexed(&self) -> &[Box<str>] {
+        &self.indexed
     }
 
     #[inline]
@@ -1182,8 +1176,8 @@ mod tests {
         let config = Task::from_raw(raw).unwrap();
 
         assert!(config.enabled());
-        assert_eq!(config.task_tags().len(), 1);
-        assert_eq!(config.due_field().unwrap().keyword().as_str(), "due");
+        assert_eq!(config.tags().len(), 1);
+        assert_eq!(config.due().unwrap().keyword().as_str(), "due");
         assert_eq!(config.fields().len(), 1);
     }
 
