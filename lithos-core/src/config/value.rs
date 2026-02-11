@@ -632,29 +632,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn field_name_requires_valid_format() {
-        let name_simple = FieldName::try_new("valid_name");
+    fn field_name_accepts_valid_alphanumeric() {
+        let name = FieldName::try_new("valid_name");
         assert!(
-            name_simple.is_ok(),
-            "FieldName 'valid_name' should be valid, but got: {name_simple:?}"
+            name.is_ok(),
+            "FieldName 'valid_name' should be valid, but got: {name:?}"
         );
+    }
 
-        let name_hyphen = FieldName::try_new("valid-name-123");
+    #[test]
+    fn field_name_accepts_hyphens_and_numbers() {
+        let name = FieldName::try_new("valid-name-123");
         assert!(
-            name_hyphen.is_ok(),
-            "FieldName 'valid-name-123' should be valid, but got: \
-             {name_hyphen:?}"
+            name.is_ok(),
+            "FieldName 'valid-name-123' should be valid, but got: {name:?}"
         );
+    }
 
-        let name_empty = FieldName::try_new("");
-        assert!(
-            name_empty.is_err(),
-            "FieldName with empty string should be invalid"
-        );
+    #[test]
+    fn field_name_rejects_empty_string() {
+        let name = FieldName::try_new("");
+        assert!(name.is_err(), "FieldName with empty string should be invalid");
+    }
 
-        let name_space = FieldName::try_new("invalid name!");
+    #[test]
+    fn field_name_rejects_spaces_and_special_chars() {
+        let name = FieldName::try_new("invalid name!");
         assert!(
-            name_space.is_err(),
+            name.is_err(),
             "FieldName with spaces/special chars should be invalid"
         );
     }
@@ -674,62 +679,74 @@ mod tests {
     }
 
     #[test]
-    fn field_spec_parses_typed_specs() {
-        let toml_int = r#"
+    fn field_spec_parses_integer_spec() {
+        let toml_str = r#"
 type = "integer"
 min = 0
 max = 10
 "#;
-        let spec_int: RawFieldSpec =
-            toml::from_str(toml_int).expect("Should parse Integer type");
+        let spec: RawFieldSpec =
+            toml::from_str(toml_str).expect("Should parse Integer type");
         assert!(
-            matches!(spec_int, RawFieldSpec::Integer { .. }),
-            "Expected Integer spec, got {spec_int:?}"
+            matches!(spec, RawFieldSpec::Integer { .. }),
+            "Expected Integer spec, got {spec:?}"
         );
+    }
 
-        let toml_enum = r#"
+    #[test]
+    fn field_spec_parses_enum_spec() {
+        let toml_str = r#"
 type = "enum"
 values = ["a", "b"]
 "#;
-        let spec_enum: RawFieldSpec =
-            toml::from_str(toml_enum).expect("Should parse Enum type");
+        let spec: RawFieldSpec =
+            toml::from_str(toml_str).expect("Should parse Enum type");
         assert!(
-            matches!(spec_enum, RawFieldSpec::Enum { .. }),
-            "Expected Enum spec, got {spec_enum:?}"
+            matches!(spec, RawFieldSpec::Enum { .. }),
+            "Expected Enum spec, got {spec:?}"
         );
+    }
 
-        let toml_date = r#"
+    #[test]
+    fn field_spec_parses_datetime_spec() {
+        let toml_str = r#"
 type = "datetime"
 format = "%Y-%m-%d"
 "#;
-        let spec_date: RawFieldSpec =
-            toml::from_str(toml_date).expect("Should parse DateTime type");
+        let spec: RawFieldSpec =
+            toml::from_str(toml_str).expect("Should parse DateTime type");
         assert!(
-            matches!(spec_date, RawFieldSpec::DateTime { .. }),
-            "Expected DateTime spec, got {spec_date:?}"
+            matches!(spec, RawFieldSpec::DateTime { .. }),
+            "Expected DateTime spec, got {spec:?}"
         );
+    }
 
+    #[test]
+    fn field_spec_parses_string_spec() {
         let toml_str = r#"
 type = "string"
 pattern = "^[a-z]+$"
 "#;
-        let spec_str: RawFieldSpec =
+        let spec: RawFieldSpec =
             toml::from_str(toml_str).expect("Should parse String type");
         assert!(
-            matches!(spec_str, RawFieldSpec::String { .. }),
-            "Expected String spec, got {spec_str:?}"
+            matches!(spec, RawFieldSpec::String { .. }),
+            "Expected String spec, got {spec:?}"
         );
+    }
 
-        let toml_float = r#"
+    #[test]
+    fn field_spec_parses_float_spec() {
+        let toml_str = r#"
 type = "float"
 min = 0.0
 max = 1.0
 "#;
-        let spec_float: RawFieldSpec =
-            toml::from_str(toml_float).expect("Should parse Float type");
+        let spec: RawFieldSpec =
+            toml::from_str(toml_str).expect("Should parse Float type");
         assert!(
-            matches!(spec_float, RawFieldSpec::Float { .. }),
-            "Expected Float spec, got {spec_float:?}"
+            matches!(spec, RawFieldSpec::Float { .. }),
+            "Expected Float spec, got {spec:?}"
         );
     }
 }

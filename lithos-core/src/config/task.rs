@@ -579,18 +579,18 @@ mod tests {
     }
 
     #[test]
-    fn task_tag_requires_hash_prefix() {
-        let tag_valid = TaskTag::try_new("#work");
+    fn task_tag_accepts_valid_prefix() {
+        let tag = TaskTag::try_new("#work");
         assert!(
-            tag_valid.is_ok(),
-            "TaskTag '#work' should be valid, but got: {tag_valid:?}"
+            tag.is_ok(),
+            "TaskTag '#work' should be valid, but got: {tag:?}"
         );
+    }
 
-        let tag_invalid = TaskTag::try_new("work");
-        assert!(
-            tag_invalid.is_err(),
-            "TaskTag without hash prefix should be invalid"
-        );
+    #[test]
+    fn task_tag_rejects_missing_hash_prefix() {
+        let tag = TaskTag::try_new("work");
+        assert!(tag.is_err(), "TaskTag without hash prefix should be invalid");
     }
 
     #[test]
@@ -607,30 +607,45 @@ mod tests {
     }
 
     #[test]
-    fn task_config_from_raw_full_valid() {
+    fn task_config_from_raw_is_enabled_by_default() {
         let raw = fixtures::sample_raw_task_config();
-        let config_res = Task::from_raw(raw);
-        assert!(
-            config_res.is_ok(),
-            "Task::from_raw should succeed with sample config, but got: \
-             {config_res:?}"
-        );
-        let config = config_res.unwrap();
-
+        let config =
+            Task::from_raw(raw).expect("Task::from_raw should succeed");
         assert!(config.enabled(), "Task processing should be enabled");
+    }
+
+    #[test]
+    fn task_config_from_raw_parses_tags() {
+        let raw = fixtures::sample_raw_task_config();
+        let config =
+            Task::from_raw(raw).expect("Task::from_raw should succeed");
         let tags_len = config.tags().len();
         assert_eq!(tags_len, 1, "Expected 1 task tag, got {tags_len}");
+    }
+
+    #[test]
+    fn task_config_from_raw_parses_due_field() {
+        let raw = fixtures::sample_raw_task_config();
+        let config =
+            Task::from_raw(raw).expect("Task::from_raw should succeed");
         assert_eq!(
-            config.due().unwrap().keyword().as_str(),
+            config.due().expect("due field should exist").keyword().as_str(),
             "due",
             "Expected 'due' keyword"
         );
+    }
+
+    #[test]
+    fn task_config_from_raw_parses_fields() {
+        let raw = fixtures::sample_raw_task_config();
+        let config =
+            Task::from_raw(raw).expect("Task::from_raw should succeed");
         let fields_len = config.fields().len();
         assert_eq!(fields_len, 1, "Expected 1 custom field, got {fields_len}");
     }
 
     #[test]
-    fn task_config_from_raw_invalid_bounds() {
+    fn task_config_from_raw_rejects_invalid_bounds() {
         use crate::config::raw::RawFieldSpec;
         let mut raw = fixtures::sample_raw_task_config();
         let mut fields = HashMap::new();
