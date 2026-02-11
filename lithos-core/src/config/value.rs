@@ -618,3 +618,89 @@ fn parse_datetime_value(
         message: "invalid date time".to_owned().into(),
     })
 }
+
+// ----------------------------------------------------------- //
+//                            Tests                            //
+// ----------------------------------------------------------- //
+
+#[cfg(test)]
+#[expect(
+    clippy::assertions_on_result_states,
+    clippy::disallowed_methods,
+    clippy::shadow_unrelated,
+    reason = "Test modules have relaxed rules for unwrapping and shadowing"
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_name_requires_valid_format() {
+        let name = FieldName::try_new("valid_name");
+        assert!(name.is_ok());
+
+        let name = FieldName::try_new("valid-name-123");
+        assert!(name.is_ok());
+
+        let name = FieldName::try_new("");
+        assert!(name.is_err());
+
+        let name = FieldName::try_new("invalid name!");
+        assert!(name.is_err());
+    }
+
+    #[test]
+    fn bounds_rejects_min_greater_than_max() {
+        // This is now tested in bounds.rs, but keeping a check here for
+        // FieldSpec context
+        let result = Bounds::from_options(Some(10i64), Some(0i64));
+        assert!(matches!(
+            result,
+            Some(Err(crate::bounds::BoundsError::InvalidRange))
+        ));
+    }
+
+    #[test]
+    fn field_spec_parses_typed_specs() {
+        let toml_str = r#"
+type = "integer"
+min = 0
+max = 10
+"#;
+        let spec: RawFieldSpec =
+            toml::from_str(toml_str).expect("Should parse Integer type");
+        assert!(matches!(spec, RawFieldSpec::Integer { .. }));
+
+        let toml_str = r#"
+type = "enum"
+values = ["a", "b"]
+"#;
+        let spec: RawFieldSpec =
+            toml::from_str(toml_str).expect("Should parse Enum type");
+        assert!(matches!(spec, RawFieldSpec::Enum { .. }));
+
+        let toml_str = r#"
+type = "datetime"
+format = "%Y-%m-%d"
+"#;
+        let spec: RawFieldSpec =
+            toml::from_str(toml_str).expect("Should parse DateTime type");
+        assert!(matches!(spec, RawFieldSpec::DateTime { .. }));
+
+        let toml_str = r#"
+type = "string"
+pattern = "^[a-z]+$"
+"#;
+        let spec: RawFieldSpec =
+            toml::from_str(toml_str).expect("Should parse String type");
+        assert!(matches!(spec, RawFieldSpec::String { .. }));
+
+        let toml_str = r#"
+type = "float"
+min = 0.0
+max = 1.0
+"#;
+        let spec: RawFieldSpec =
+            toml::from_str(toml_str).expect("Should parse Float type");
+        assert!(matches!(spec, RawFieldSpec::Float { .. }));
+    }
+}

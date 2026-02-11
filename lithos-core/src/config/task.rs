@@ -627,68 +627,6 @@ mod tests {
     }
 
     #[test]
-    fn bounds_rejects_min_greater_than_max() {
-        use crate::bounds::Bounds;
-        // This is now tested in bounds.rs, but keeping a task-specific check
-        let result = Bounds::from_options(Some(10i64), Some(0i64));
-        assert!(matches!(
-            result,
-            Some(Err(crate::bounds::BoundsError::InvalidRange))
-        ));
-    }
-
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        clippy::shadow_unrelated,
-        reason = "Test utilities"
-    )]
-    fn task_field_spec_parses_typed_specs() {
-        use crate::config::raw::RawFieldSpec;
-        let toml = r#"
-type = "integer"
-min = 0
-max = 10
-"#;
-        let spec: RawFieldSpec =
-            toml::from_str(toml).expect("Should parse Integer type");
-        assert!(matches!(spec, RawFieldSpec::Integer { .. }));
-
-        let toml = r#"
-type = "enum"
-values = ["a", "b"]
-"#;
-        let spec: RawFieldSpec =
-            toml::from_str(toml).expect("Should parse Enum type");
-        assert!(matches!(spec, RawFieldSpec::Enum { .. }));
-
-        let toml = r#"
-type = "datetime"
-format = "%Y-%m-%d"
-"#;
-        let spec: RawFieldSpec =
-            toml::from_str(toml).expect("Should parse DateTime type");
-        assert!(matches!(spec, RawFieldSpec::DateTime { .. }));
-
-        let toml = r#"
-type = "string"
-pattern = "^[a-z]+$"
-"#;
-        let spec: RawFieldSpec =
-            toml::from_str(toml).expect("Should parse String type");
-        assert!(matches!(spec, RawFieldSpec::String { .. }));
-
-        let toml = r#"
-type = "float"
-min = 0.0
-max = 1.0
-"#;
-        let spec: RawFieldSpec =
-            toml::from_str(toml).expect("Should parse Float type");
-        assert!(matches!(spec, RawFieldSpec::Float { .. }));
-    }
-
-    #[test]
     fn task_config_rejects_unknown_indexed_field() {
         let raw = RawTaskConfig {
             enabled: None,
