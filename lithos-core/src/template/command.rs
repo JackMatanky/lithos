@@ -33,11 +33,12 @@ impl super::ports::Command for Command<'_> {
     /// Returns `TemplateError` if creation fails.
     #[inline]
     fn create(&self, template: &Template) -> Result<(), TemplateError> {
+        // Note: Still need id_str for multimap_insert (not UUID-based yet)
         let id_str = template.id().to_string();
         let name = template.name().to_owned();
 
         self.db
-            .put("templates", &id_str, template)
+            .put_by_uuid("templates", template.id(), template)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         self.db
@@ -53,12 +54,13 @@ impl super::ports::Command for Command<'_> {
     /// Returns `TemplateError` if deletion fails.
     #[inline]
     fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
+        // Note: Still need id_str for multimap_remove (not UUID-based yet)
         let id_str = id.to_string();
 
         // 1. Get template first to clean up indexes
         let template = self
             .db
-            .get_owned::<Template>("templates", &id_str)
+            .get_owned_by_uuid::<Template>("templates", id)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         if let Some(t) = template {
@@ -69,7 +71,7 @@ impl super::ports::Command for Command<'_> {
 
             // 3. Delete template
             self.db
-                .delete("templates", &id_str)
+                .delete_by_uuid("templates", id)
                 .map_err(|e| TemplateError::Storage(e.to_string()))?;
         }
 
@@ -82,13 +84,14 @@ impl super::ports::Command for Command<'_> {
     /// Returns `TemplateError` if update fails.
     #[inline]
     fn update(&self, template: &Template) -> Result<(), TemplateError> {
+        // Note: Still need id_str for multimap operations (not UUID-based yet)
         let id_str = template.id().to_string();
         let name = template.name().to_owned();
 
         // 1. Get old template to find what changed
         let old_template = self
             .db
-            .get_owned::<Template>("templates", &id_str)
+            .get_owned_by_uuid::<Template>("templates", template.id())
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         if let Some(old) = old_template {
@@ -105,7 +108,7 @@ impl super::ports::Command for Command<'_> {
 
         // 3. Save new template
         self.db
-            .put("templates", &id_str, template)
+            .put_by_uuid("templates", template.id(), template)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         Ok(())
