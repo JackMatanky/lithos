@@ -28,7 +28,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -54,12 +54,12 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2026-01-11
           components: rustfmt, clippy
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v3
       - uses: swatinem/rust-cache@v2
       - name: Run Quality Gates
         run: mise run quality
@@ -68,7 +68,7 @@ jobs:
     name: Secrets Detection
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Gitleaks
@@ -89,12 +89,12 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2026-01-11
           components: rustfmt, clippy
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v3
         env:
           MISE_RUST_VERSION: ${{ matrix.rust-version }}
       - uses: swatinem/rust-cache@v2
@@ -120,12 +120,12 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2026-01-11
           components: rustfmt, clippy
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v3
       - uses: swatinem/rust-cache@v2
       - name: Run Burn-In Loop
         run: mise run test:burn-in 10 "test"
@@ -136,12 +136,12 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2026-01-11
           components: rustfmt, clippy
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v3
       - uses: swatinem/rust-cache@v2
       - name: Generate Coverage
         timeout-minutes: 20
@@ -160,8 +160,8 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v2
+      - uses: actions/checkout@v6
+      - uses: jdx/mise-action@v3
       - name: Cargo Deny
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
@@ -173,8 +173,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true')
     steps:
-      - uses: actions/checkout@v4
-      - uses: jdx/mise-action@v2
+      - uses: actions/checkout@v6
+      - uses: jdx/mise-action@v3
       - uses: swatinem/rust-cache@v2
       - name: Run Benchmarks
         uses: boa-dev/criterion-compare-action@v3
@@ -190,12 +190,12 @@ jobs:
   #     matrix:
   #       target: [wasm32-unknown-unknown, x86_64-unknown-linux-gnu]
   #   steps:
-  #     - uses: actions/checkout@v4
+  #     - uses: actions/checkout@v6
   #     - uses: dtolnay/rust-toolchain@master
   #       with:
   #         toolchain: stable
   #         targets: ${{ matrix.target }}
-  #     - uses: jdx/mise-action@v2
+  #     - uses: jdx/mise-action@v3
   #     - uses: swatinem/rust-cache@v2
   #     - name: Check Compilation
   #       run: cargo check --target ${{ matrix.target }}
@@ -216,7 +216,7 @@ jobs:
         run: echo "🚀 Deployment readiness confirmed."
       - name: Notify on Failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const { owner, repo } = context.repo;
