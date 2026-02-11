@@ -18,7 +18,11 @@ use criterion::{
     Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
 use lithos_core::{
-    config::task::TaskConfig,
+    config::{
+        aggregate::Config,
+        raw::RawConfig,
+        vault::{VaultId, VaultRoot},
+    },
     note::{
         aggregate::{Note, NoteId},
         parser::NoteParser,
@@ -37,7 +41,13 @@ fn sample_markdown() -> &'static str {
 }
 
 fn bench_note_ingest(c: &mut Criterion) {
-    let config = TaskConfig::default();
+    let config = Config::build(
+        &RawConfig::default(),
+        VaultId::new(),
+        VaultRoot::try_new(std::path::PathBuf::from("/vault"))
+            .expect("valid vault root"),
+    )
+    .expect("config");
     let markdown = sample_markdown();
 
     let mut group = c.benchmark_group("note_ingest");

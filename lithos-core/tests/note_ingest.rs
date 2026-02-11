@@ -1,7 +1,11 @@
 //! Integration tests for markdown ingestion.
 
 use lithos_core::{
-    config::task::TaskConfig,
+    config::{
+        aggregate::Config,
+        raw::RawConfig,
+        vault::{VaultId, VaultRoot},
+    },
     note::{
         aggregate::{Note, NoteId},
         list::{List, ListItem, ListType},
@@ -25,7 +29,11 @@ mod tests {
     )]
     fn ingest_markdown_promotes_tasks_and_tracks_lists()
     -> Result<(), Box<dyn std::error::Error>> {
-        let config = TaskConfig::default();
+        let config = Config::build(
+            &RawConfig::default(),
+            VaultId::new(),
+            VaultRoot::try_new(std::path::PathBuf::from("/vault"))?,
+        )?;
         let markdown = concat!(
             "# Title\n\n",
             "- [ ] #task Review PR [priority:: 1]\n",
