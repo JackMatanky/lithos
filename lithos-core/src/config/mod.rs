@@ -113,6 +113,8 @@ pub mod logging;
 pub mod raw;
 /// Task configuration schema and validation.
 pub mod task;
+/// Field specification and value validation types.
+pub mod value;
 
 // ============================================================================
 // Concrete Implementation Aliases (Redb)
