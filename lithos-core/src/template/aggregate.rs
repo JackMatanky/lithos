@@ -212,7 +212,7 @@ impl Template {
 
         template.add_event(Events::TemplateCreated(TemplateCreated::new(
             id,
-            name,
+            &name,
             chrono::Utc::now().timestamp(),
         )));
 
@@ -281,7 +281,7 @@ impl Template {
     ///     pattern: None,
     /// });
     /// let template = Template::new(
-    ///     "daily".to_string(),
+    ///     "daily",
     ///     "# {{title}}".to_string(),
     ///     variables,
     ///     None,
@@ -294,13 +294,13 @@ impl Template {
     /// ```
     #[inline]
     pub fn new(
-        name: String,
+        name: &str,
         content: String,
         variables: HashMap<String, VariableDefinition>,
         extends: Option<String>,
         metadata: Metadata,
     ) -> Result<Self, TemplateError> {
-        Self::validate_name(&name)?;
+        Self::validate_name(name)?;
         validate_content(&content)?;
         Self::validate_variable_definitions(&variables)?;
 
@@ -310,7 +310,7 @@ impl Template {
             extends,
             id,
             metadata,
-            name: name.clone(),
+            name: name.to_owned(),
             pending_events: vec![],
             syntax: PlaceholderSyntax::default(),
             variables,
@@ -413,7 +413,7 @@ impl Template {
     /// # use std::collections::HashMap;
     /// # fn main() -> Result<(), lithos_core::template::error::TemplateError> {
     /// let template = Template::new(
-    ///     "basic".to_string(),
+    ///     "basic",
     ///     "Hello {{name}}".to_string(),
     ///     HashMap::new(),
     ///     None,
@@ -542,7 +542,7 @@ mod tests {
 
         pub fn base_template() -> Result<Template, TemplateError> {
             Template::new(
-                "base".to_owned(),
+                "base",
                 "Hello".to_owned(),
                 HashMap::new(),
                 None,
@@ -650,7 +650,7 @@ mod tests {
         #[test]
         fn should_reject_template_when_name_is_empty() {
             let result = Template::new(
-                String::new(),
+                "",
                 "content".to_owned(),
                 HashMap::new(),
                 None,
@@ -663,7 +663,7 @@ mod tests {
         #[test]
         fn should_reject_template_when_name_contains_spaces() {
             let result = Template::new(
-                "Invalid Name".to_owned(),
+                "Invalid Name",
                 "content".to_owned(),
                 HashMap::new(),
                 None,
@@ -676,7 +676,7 @@ mod tests {
         #[test]
         fn should_reject_template_when_name_contains_invalid_characters() {
             let result = Template::new(
-                "name!".to_owned(),
+                "name!",
                 "content".to_owned(),
                 HashMap::new(),
                 None,
@@ -693,7 +693,7 @@ mod tests {
         fn should_reject_template_when_name_is_too_long() {
             let invalid_long_name = "a".repeat(65);
             let result = Template::new(
-                invalid_long_name,
+                &invalid_long_name,
                 "content".to_owned(),
                 HashMap::new(),
                 None,
@@ -709,7 +709,7 @@ mod tests {
         fn should_reject_template_when_unbalanced_placeholders() {
             // GIVEN: a template with unbalanced placeholders
             let result = Template::new(
-                "unbalanced".to_owned(),
+                "unbalanced",
                 "{{open but no close".to_owned(),
                 HashMap::new(),
                 None,
@@ -743,7 +743,7 @@ mod tests {
             // GIVEN: a generated valid identifier
             // WHEN: constructing a template with the identifier
             let result = Template::new(
-                name.clone(),
+                &name,
                 "content".to_owned(),
                 HashMap::new(),
                 None,
@@ -774,7 +774,7 @@ mod tests {
     )]
     fn composed_template_with_sections() -> Template {
         let base = Template::new(
-            "base".to_owned(),
+            "base",
             "Base: {{v}}".to_owned(),
             [("v".to_owned(), VariableDefinition::Boolean {
                 default: None,
@@ -876,7 +876,7 @@ mod tests {
     fn apply_sections_handles_missing_variable() {
         // GIVEN: a template without variables
         let base = Template::new(
-            "b".to_owned(),
+            "b",
             "no var".to_owned(),
             HashMap::new(),
             None,

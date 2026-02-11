@@ -102,7 +102,7 @@ impl PropertySpecDef {
         match self {
             Self::Bool(_) => Ok(PropertySpec::Bool(BoolSpec::default())),
             Self::Date(def) => {
-                Ok(PropertySpec::Date(DateSpec::try_new(def.format)?))
+                Ok(PropertySpec::Date(DateSpec::try_new(&def.format)?))
             }
             Self::File(def) => Ok(PropertySpec::File(FileSpec::try_new(
                 def.directory,
@@ -391,14 +391,14 @@ impl DateSpec {
     /// # Errors
     /// Returns `SchemaError::InvalidDateFormat` if the format is empty.
     #[inline]
-    pub fn try_new(format: String) -> Result<Self, SchemaError> {
+    pub fn try_new(format: &str) -> Result<Self, SchemaError> {
         if format.is_empty() {
             return Err(SchemaError::InvalidDateFormat(
                 "Format cannot be empty".to_owned(),
             ));
         }
         Ok(Self {
-            format: format.into_boxed_str(),
+            format: format.into(),
         })
     }
 
@@ -1388,7 +1388,7 @@ mod tests {
             reason = "Test uses expect for deterministic DateSpec setup."
         )]
         fn date_spec_accepts_valid_date() {
-            let spec = DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ".to_owned())
+            let spec = DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ")
                 .expect("Expected valid DateSpec");
             let result = spec.validate_str("2024-01-15T14:30:00Z");
             assert!(
@@ -1403,7 +1403,7 @@ mod tests {
             reason = "Test uses expect for deterministic DateSpec setup."
         )]
         fn date_spec_rejects_invalid_date() {
-            let spec = DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ".to_owned())
+            let spec = DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ")
                 .expect("Expected valid DateSpec");
             let result = spec.validate_str("not-a-date");
             assert!(

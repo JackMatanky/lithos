@@ -175,7 +175,7 @@ mod tests {
             let run_result = runner.run(&strategy, |names| {
                 let parse_name =
                     |raw: String| -> Result<SchemaName, TestCaseError> {
-                        match SchemaName::new(raw) {
+                        match SchemaName::new(&raw) {
                             Ok(name) => Ok(name),
                             Err(e) => Err(TestCaseError::fail(format!(
                                 "Invalid generated schema name: {e}"
@@ -232,7 +232,7 @@ mod tests {
             let run_result = runner.run(&strategy, |names| {
                 let parse_name =
                     |raw: String| -> Result<SchemaName, TestCaseError> {
-                        match SchemaName::new(raw) {
+                        match SchemaName::new(&raw) {
                             Ok(name) => Ok(name),
                             Err(e) => Err(TestCaseError::fail(format!(
                                 "Invalid generated schema name: {e}"

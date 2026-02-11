@@ -43,7 +43,7 @@ use crate::patterns;
 /// # use uuid::Uuid;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut bank = PropertyBank::new();
-/// let name = PropertyName::new("is_active".to_string())?;
+/// let name = PropertyName::new("is_active")?;
 /// let spec = PropertySpec::Bool(BoolSpec::default());
 /// let id = Uuid::now_v7();
 /// let property = Property::new(id, name, true, false, spec)?;
@@ -93,7 +93,7 @@ pub struct PropertyBank {
 /// use uuid::Uuid;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// let name = SchemaName::new("project-note".into())?;
+/// let name = SchemaName::new("project-note")?;
 /// let schema = Schema::new(Uuid::now_v7(), name, vec![])?;
 /// assert!(
 ///     schema.properties().is_empty(),
@@ -138,16 +138,16 @@ pub struct Schema {
 /// use lithos_core::schema::aggregate::SchemaName;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// let name = SchemaName::new("project-note".to_string())?;
+/// let name = SchemaName::new("project-note")?;
 /// assert_eq!(&name.0, "project-note", "Schema name should match");
 ///
-/// let name2 = SchemaName::new("daily_note".to_string())?;
+/// let name2 = SchemaName::new("daily_note")?;
 /// assert_eq!(&name2.0, "daily_note", "Schema name should match");
 ///
-/// let name3 = SchemaName::new("MySchema".to_string())?;
+/// let name3 = SchemaName::new("MySchema")?;
 /// assert_eq!(&name3.0, "MySchema", "Schema name should match");
 ///
-/// let invalid = SchemaName::new("".to_string());
+/// let invalid = SchemaName::new("");
 /// assert!(invalid.is_err(), "Empty name should be rejected");
 /// # Ok(())
 /// # }
@@ -204,7 +204,7 @@ impl TryFrom<&str> for SchemaName {
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new(value.to_owned())
+        Self::new(value)
     }
 }
 
@@ -213,7 +213,7 @@ impl TryFrom<String> for SchemaName {
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(value)
+        Self::new(&value)
     }
 }
 
@@ -352,7 +352,7 @@ impl PropertyBank {
     ///
     /// let mut bank = PropertyBank::new();
     ///
-    /// let name = PropertyName::new("is_active".to_string())?;
+    /// let name = PropertyName::new("is_active")?;
     /// let spec = PropertySpec::Bool(BoolSpec::default());
     /// let id = Uuid::now_v7();
     /// let property = Property::new(id, name, true, false, spec)?;
@@ -424,7 +424,7 @@ impl Schema {
     /// use uuid::Uuid;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let name = SchemaName::new("test".into())?;
+    /// let name = SchemaName::new("test")?;
     /// let schema = Schema::new(Uuid::now_v7(), name, vec![])?;
     /// assert!(
     ///     schema.get("missing").is_none(),
@@ -469,7 +469,7 @@ impl Schema {
     /// use uuid::Uuid;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let name = SchemaName::new("project-note".to_string())?;
+    /// let name = SchemaName::new("project-note")?;
     /// let schema = Schema::new(Uuid::now_v7(), name, vec![])?;
     /// assert_eq!(&schema.name().0, "project-note", "Schema name should match");
     /// # Ok(())
@@ -484,7 +484,6 @@ impl Schema {
         name: SchemaName,
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
-        let name_str = name.to_string();
         let mut schema = Self {
             id,
             name,
@@ -494,7 +493,7 @@ impl Schema {
 
         schema.add_event(Events::SchemaCreated(SchemaCreated::new(
             id,
-            name_str,
+            schema.name.as_ref(),
             chrono::Utc::now().timestamp(),
         )));
 
@@ -529,9 +528,9 @@ impl SchemaName {
     /// # Errors
     /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub fn new(name: String) -> Result<Self, SchemaError> {
-        Self::validate(&name)?;
-        Ok(Self(name))
+    pub fn new(name: &str) -> Result<Self, SchemaError> {
+        Self::validate(name)?;
+        Ok(Self(name.into()))
     }
 
     /// Validates a schema name string.
@@ -587,10 +586,10 @@ mod tests {
         use super::*;
 
         pub fn sample_schema() -> Result<Schema, SchemaError> {
-            let name = SchemaName::new("status".to_owned())?;
+            let name = SchemaName::new("status")?;
             let property = Property::new(
                 TEST_PROPERTY_ID_C,
-                PropertyName::new("flag".to_owned())?,
+                PropertyName::new("flag")?,
                 true,
                 false,
                 PropertySpec::Bool(BoolSpec::default()),
@@ -603,7 +602,7 @@ mod tests {
             let mut bank = PropertyBank::new();
             let property = Property::new(
                 TEST_PROPERTY_ID_A,
-                PropertyName::new("flag".to_owned())?,
+                PropertyName::new("flag")?,
                 true,
                 false,
                 PropertySpec::Bool(BoolSpec::default()),
@@ -633,8 +632,7 @@ mod tests {
             // GIVEN: a PropertyBank and an existing property
             let mut bank = PropertyBank::new();
             let spec = PropertySpec::String(StringSpec::default());
-            let name =
-                PropertyName::new("test".to_owned()).expect("Valid name");
+            let name = PropertyName::new("test").expect("Valid name");
             let prop =
                 Property::new(TEST_PROPERTY_ID_A, name, false, false, spec)
                     .expect("Valid property");
@@ -685,8 +683,7 @@ mod tests {
             // GIVEN: a PropertyBank with a registered property
             let mut bank = PropertyBank::new();
             let spec1 = PropertySpec::String(StringSpec::default());
-            let name =
-                PropertyName::new("test".to_owned()).expect("Valid name");
+            let name = PropertyName::new("test").expect("Valid name");
             let prop1 = Property::new(
                 TEST_PROPERTY_ID_A,
                 name.clone(),

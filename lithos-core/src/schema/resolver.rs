@@ -117,7 +117,7 @@ impl Resolver {
     ) -> Result<Property, SchemaError> {
         match raw_prop {
             RawProperty::Inline(inline) => {
-                let name = PropertyName::new(inline.name)?;
+                let name = PropertyName::new(&inline.name)?;
                 let spec = inline.spec.try_into_validated()?;
                 Ok(Property::new(
                     inline.id,
@@ -173,8 +173,7 @@ mod tests {
         use super::*;
 
         pub fn parent_property() -> Property {
-            let name =
-                PropertyName::new("parent".to_owned()).expect("valid name");
+            let name = PropertyName::new("parent").expect("valid name");
             Property::new(
                 TEST_PROPERTY_ID_PARENT,
                 name,
@@ -186,8 +185,7 @@ mod tests {
         }
 
         pub fn status_property() -> Property {
-            let name =
-                PropertyName::new("status".to_owned()).expect("valid name");
+            let name = PropertyName::new("status").expect("valid name");
             Property::new(
                 TEST_PROPERTY_ID_STATUS,
                 name,
@@ -199,7 +197,7 @@ mod tests {
         }
 
         pub fn excluded_property() -> Property {
-            let name = PropertyName::new("p".to_owned()).expect("valid name");
+            let name = PropertyName::new("p").expect("valid name");
             Property::new(
                 TEST_PROPERTY_ID_EXCLUDE,
                 name,
@@ -211,15 +209,13 @@ mod tests {
         }
 
         pub fn parent_schema_with_property(property: Property) -> Schema {
-            let name = SchemaName::new("parent".to_owned())
-                .expect("valid schema name");
+            let name = SchemaName::new("parent").expect("valid schema name");
             Schema::new(TEST_SCHEMA_ID_PARENT, name, vec![property])
                 .expect("valid schema")
         }
 
         pub fn child_raw_schema() -> RawSchema {
-            let name =
-                SchemaName::new("child".to_owned()).expect("valid schema name");
+            let name = SchemaName::new("child").expect("valid schema name");
             RawSchema::new(
                 TEST_SCHEMA_ID_CHILD,
                 name,
@@ -232,8 +228,7 @@ mod tests {
         pub fn child_raw_schema_with_excludes(
             exclude_name: PropertyName,
         ) -> RawSchema {
-            let name =
-                SchemaName::new("child".to_owned()).expect("valid schema name");
+            let name = SchemaName::new("child").expect("valid schema name");
             let mut excludes = HashSet::new();
             excludes.insert(exclude_name);
             RawSchema::new(
@@ -273,8 +268,7 @@ mod tests {
             let bank = PropertyBank::new();
             let property = excluded_property();
             let parent_schema = parent_schema_with_property(property);
-            let exclude_name =
-                PropertyName::new("p".to_owned()).expect("valid name");
+            let exclude_name = PropertyName::new("p").expect("valid name");
             let raw = child_raw_schema_with_excludes(exclude_name);
             Resolver::resolve(raw, Some(&parent_schema), &bank)
                 .expect("resolve schema")

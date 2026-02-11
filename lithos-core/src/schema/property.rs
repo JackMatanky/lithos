@@ -56,12 +56,9 @@ pub struct Property {
 /// ```
 /// # use lithos_core::schema::property::PropertyName;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let name = PropertyName::new("status".to_string())?;
+/// let name = PropertyName::new("status")?;
 /// assert_eq!(&name.0, "status", "Name should match input");
-/// assert!(
-///     PropertyName::new("".to_string()).is_err(),
-///     "Empty name should be rejected"
-/// );
+/// assert!(PropertyName::new("").is_err(), "Empty name should be rejected");
 /// # Ok(())
 /// # }
 /// ```
@@ -112,12 +109,21 @@ impl From<PropertyName> for String {
     }
 }
 
+impl TryFrom<&str> for PropertyName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
 impl TryFrom<String> for PropertyName {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(value)
+        Self::new(&value)
     }
 }
 
@@ -159,7 +165,7 @@ impl Property {
     /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
     /// # use uuid::Uuid;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("is_active".to_string())?;
+    /// let name = PropertyName::new("is_active")?;
     /// let spec = PropertySpec::Bool(BoolSpec::default());
     /// let id = Uuid::now_v7();
     ///
@@ -229,7 +235,7 @@ impl Property {
     /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
     /// # use uuid::Uuid;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("enabled".to_string())?;
+    /// let name = PropertyName::new("enabled")?;
     /// let spec = PropertySpec::Bool(BoolSpec::default());
     /// let property = Property::new(Uuid::now_v7(), name, true, false, spec)?;
     /// property.validate_value(&serde_json::json!(true))?;
@@ -263,9 +269,9 @@ impl PropertyName {
     /// # Errors
     /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub fn new(name: String) -> Result<Self, SchemaError> {
-        Self::validate(&name)?;
-        Ok(Self(name))
+    pub fn new(name: &str) -> Result<Self, SchemaError> {
+        Self::validate(name)?;
+        Ok(Self(name.into()))
     }
 
     /// Validates a property name string.
@@ -343,7 +349,7 @@ mod tests {
             /// Returns `SchemaError` if the property configuration is invalid.
             #[inline]
             pub fn build(self) -> Result<Property, SchemaError> {
-                let name = PropertyName::new(self.name)?;
+                let name = PropertyName::new(&self.name)?;
                 Property::new(
                     TEST_PROPERTY_ID,
                     name,
@@ -455,7 +461,7 @@ mod tests {
         )]
         fn required_scalar_property() -> Property {
             let spec = PropertySpec::String(StringSpec::default());
-            let name = PropertyName::new("status".to_owned())
+            let name = PropertyName::new("status")
                 .expect("Expected valid property name");
 
             Property::new(TEST_PROPERTY_ID, name, true, false, spec)
@@ -513,7 +519,7 @@ mod tests {
             #[case] name: &str,
         ) {
             assert!(
-                PropertyName::new(name.to_owned()).is_err(),
+                PropertyName::new(name).is_err(),
                 "Should reject invalid name: {name}"
             );
         }
@@ -530,7 +536,7 @@ mod tests {
         #[case("valid_name")]
         #[case("valid-name-123")]
         fn property_name_validates_regex_and_length(#[case] name: &str) {
-            let result = PropertyName::new(name.to_owned());
+            let result = PropertyName::new(name);
 
             assert!(result.is_ok(), "Expected {name} to pass, got: {result:?}");
         }
@@ -539,7 +545,7 @@ mod tests {
         /// Priority: P1.
         #[test]
         fn property_name_validates_format() {
-            let invalid = PropertyName::new("invalid_name!".into());
+            let invalid = PropertyName::new("invalid_name!");
             assert!(
                 invalid.is_err(),
                 "Expected invalid_name! to fail, got: {invalid:?}"
@@ -554,7 +560,7 @@ mod tests {
             let long_name = "a".repeat(65);
 
             // WHEN: creating a PropertyName
-            let res = PropertyName::new(long_name);
+            let res = PropertyName::new(&long_name);
 
             // THEN: it should return a PropertyNameTooLong error
             assert!(
@@ -569,7 +575,7 @@ mod tests {
         fn property_name_validates_non_empty() {
             // GIVEN: an empty name string
             // WHEN: creating a PropertyName
-            let res = PropertyName::new(String::new());
+            let res = PropertyName::new("");
 
             // THEN: it should return an EmptyPropertyName error
             assert!(
@@ -593,7 +599,7 @@ mod tests {
                 // WHEN creating a PropertyName
                 // THEN it must succeed
                 prop_assert!(
-                    PropertyName::new(name).is_ok(),
+                    PropertyName::new(&name).is_ok(),
                     "Expected valid name, got error"
                 );
             }
@@ -610,7 +616,7 @@ mod tests {
                 // WHEN creating a PropertyName (filtering for correct length)
                 // THEN it must fail
                 prop_assert!(
-                    PropertyName::new(name).is_err(),
+                    PropertyName::new(&name).is_err(),
                     "Expected invalid name to be rejected"
                 );
             }

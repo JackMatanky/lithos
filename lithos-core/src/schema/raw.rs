@@ -134,7 +134,7 @@ mod tests {
                   indicates invalid test data. Expect is idiomatic in setup."
     )]
     fn schema_name() -> SchemaName {
-        SchemaName::new("note".to_owned()).expect("valid schema name")
+        SchemaName::new("note").expect("valid schema name")
     }
 
     #[test]

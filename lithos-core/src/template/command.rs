@@ -133,7 +133,7 @@ mod tests {
 
         pub fn template_fixture(name: &str) -> Result<Template, String> {
             Template::new(
-                name.to_owned(),
+                name,
                 "Hello".to_owned(),
                 HashMap::new(),
                 None,

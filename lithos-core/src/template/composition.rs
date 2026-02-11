@@ -296,7 +296,7 @@ mod tests {
 
             pub fn build(self) -> Result<Template, TemplateError> {
                 Template::new(
-                    self.name,
+                    &self.name,
                     self.content,
                     self.variables,
                     self.extends,
