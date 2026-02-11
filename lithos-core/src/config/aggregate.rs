@@ -21,6 +21,8 @@
     reason = "Aggregate root requires mixed visibility for domain events"
 )]
 
+use tracing::instrument;
+
 use super::{
     error::ConfigError,
     events::{ConfigUpdated, Events},
@@ -109,6 +111,7 @@ impl Config {
     /// # Errors
     /// Returns `ConfigError` if validation fails for any field.
     #[inline]
+    #[instrument(skip(raw, vault_root), level = "debug", fields(operation = "build_config", vault_id = %vault_id))]
     pub fn build(
         raw: &raw::RawConfig,
         vault_id: VaultId,
@@ -245,6 +248,13 @@ impl Version {
                 message: "config version overflow".to_owned().into(),
             }
         })
+    }
+}
+
+impl std::fmt::Display for Version {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

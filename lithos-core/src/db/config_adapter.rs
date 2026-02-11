@@ -1,5 +1,7 @@
 //! Config port adapters for the database.
 
+use tracing::instrument;
+
 use crate::{
     config::{
         aggregate::{Config, Version},
@@ -30,6 +32,7 @@ impl Command for CommandAdapter<'_> {
     type Error = DbError;
 
     #[inline]
+    #[instrument(skip(self), fields(operation = "load_active_version", vault_id = %vault_id))]
     fn load_active_version(
         &self,
         vault_id: VaultId,
@@ -38,11 +41,13 @@ impl Command for CommandAdapter<'_> {
     }
 
     #[inline]
+    #[instrument(skip(self), fields(operation = "load_global"))]
     fn load_global(&self) -> Result<Option<Global>, Self::Error> {
         self.db.get_owned("config", "global")
     }
 
     #[inline]
+    #[instrument(skip(self), fields(operation = "load_vault", vault_id = %vault_id))]
     fn load_vault(
         &self,
         vault_id: VaultId,
@@ -51,11 +56,13 @@ impl Command for CommandAdapter<'_> {
     }
 
     #[inline]
+    #[instrument(skip(self, config), fields(operation = "save_global"))]
     fn save_global(&self, config: &Global) -> Result<(), Self::Error> {
         self.db.put("config", "global", config)
     }
 
     #[inline]
+    #[instrument(skip(self, config), fields(operation = "save_merged", vault_id = %vault_id, version = %version))]
     fn save_merged(
         &self,
         vault_id: VaultId,
@@ -67,6 +74,7 @@ impl Command for CommandAdapter<'_> {
     }
 
     #[inline]
+    #[instrument(skip(self, config), fields(operation = "save_vault", vault_id = %vault_id))]
     fn save_vault(
         &self,
         vault_id: VaultId,
@@ -76,6 +84,7 @@ impl Command for CommandAdapter<'_> {
     }
 
     #[inline]
+    #[instrument(skip(self), fields(operation = "set_active_version", vault_id = %vault_id, version = %version))]
     fn set_active_version(
         &self,
         vault_id: VaultId,
@@ -85,6 +94,7 @@ impl Command for CommandAdapter<'_> {
     }
 
     #[inline]
+    #[instrument(skip(self, vault_root), fields(operation = "save_vault_path_mapping", vault_id = %vault_id))]
     fn save_vault_path_mapping(
         &self,
         vault_id: VaultId,
@@ -117,6 +127,7 @@ impl Query for QueryAdapter<'_> {
     type Error = DbError;
 
     #[inline]
+    #[instrument(skip(self), level = "debug", fields(operation = "get_active_version", vault_id = %vault_id))]
     fn get_active_version(
         &self,
         vault_id: VaultId,
@@ -125,6 +136,7 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
+    #[instrument(skip(self), level = "debug", fields(operation = "get_merged_owned", vault_id = %vault_id, version = %version))]
     fn get_merged_owned(
         &self,
         vault_id: VaultId,
@@ -135,6 +147,7 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
+    #[instrument(skip(self, f), level = "debug", fields(operation = "with_archived_merged", vault_id = %vault_id, version = %version))]
     fn with_archived_merged<F, R>(
         &self,
         vault_id: VaultId,
