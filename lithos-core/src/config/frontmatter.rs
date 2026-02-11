@@ -3,8 +3,6 @@
 //! This module defines the [`Frontmatter`] keys used when parsing
 //! metadata from note files.
 
-#![allow(clippy::struct_field_names, reason = "Fields share '_key' suffix")]
-
 use super::error::ConfigError;
 
 // ----------------------------------------------------------- //
@@ -22,7 +20,7 @@ use super::error::ConfigError;
 /// use lithos_core::config::frontmatter::Frontmatter;
 ///
 /// let config = Frontmatter::default();
-/// assert_eq!(config.title_key().as_str(), "title");
+/// assert_eq!(config.title().as_str(), "title");
 /// ```
 #[derive(
     Debug,
@@ -38,15 +36,15 @@ use super::error::ConfigError;
 #[non_exhaustive]
 pub struct Frontmatter {
     /// Key used for file class/type in frontmatter.
-    file_class_key: FrontmatterKey,
+    file_class: FrontmatterKey,
     /// Key used for aliases in frontmatter.
-    alias_key: FrontmatterKey,
+    alias: FrontmatterKey,
     /// Key used for title in frontmatter.
-    title_key: FrontmatterKey,
+    title: FrontmatterKey,
     /// Key used for creation date in frontmatter.
-    date_created_key: FrontmatterKey,
+    date_created: FrontmatterKey,
     /// Key used for modification date in frontmatter.
-    date_modified_key: FrontmatterKey,
+    date_modified: FrontmatterKey,
 }
 
 impl Default for Frontmatter {
@@ -58,15 +56,15 @@ impl Default for Frontmatter {
     )]
     fn default() -> Self {
         Self {
-            file_class_key: FrontmatterKey::try_new("file_class")
+            file_class: FrontmatterKey::try_new("file_class")
                 .expect("default file class key must be valid"),
-            alias_key: FrontmatterKey::try_new("aliases")
+            alias: FrontmatterKey::try_new("aliases")
                 .expect("default alias key must be valid"),
-            title_key: FrontmatterKey::try_new("title")
+            title: FrontmatterKey::try_new("title")
                 .expect("default title key must be valid"),
-            date_created_key: FrontmatterKey::try_new("date_created")
+            date_created: FrontmatterKey::try_new("date_created")
                 .expect("default created key must be valid"),
-            date_modified_key: FrontmatterKey::try_new("date_modified")
+            date_modified: FrontmatterKey::try_new("date_modified")
                 .expect("default modified key must be valid"),
         }
     }
@@ -77,54 +75,54 @@ impl Frontmatter {
     #[inline]
     #[must_use]
     pub fn new(
-        file_class_key: FrontmatterKey,
-        alias_key: FrontmatterKey,
-        title_key: FrontmatterKey,
-        date_created_key: FrontmatterKey,
-        date_modified_key: FrontmatterKey,
+        file_class: FrontmatterKey,
+        alias: FrontmatterKey,
+        title: FrontmatterKey,
+        date_created: FrontmatterKey,
+        date_modified: FrontmatterKey,
     ) -> Self {
         Self {
-            file_class_key,
-            alias_key,
-            title_key,
-            date_created_key,
-            date_modified_key,
+            file_class,
+            alias,
+            title,
+            date_created,
+            date_modified,
         }
     }
 
     /// Return the file class key.
     #[inline]
     #[must_use]
-    pub const fn file_class_key(&self) -> &FrontmatterKey {
-        &self.file_class_key
+    pub const fn file_class(&self) -> &FrontmatterKey {
+        &self.file_class
     }
 
     /// Return the alias key.
     #[inline]
     #[must_use]
-    pub const fn alias_key(&self) -> &FrontmatterKey {
-        &self.alias_key
+    pub const fn alias(&self) -> &FrontmatterKey {
+        &self.alias
     }
 
     /// Return the title key.
     #[inline]
     #[must_use]
-    pub const fn title_key(&self) -> &FrontmatterKey {
-        &self.title_key
+    pub const fn title(&self) -> &FrontmatterKey {
+        &self.title
     }
 
     /// Return the date created key.
     #[inline]
     #[must_use]
-    pub const fn date_created_key(&self) -> &FrontmatterKey {
-        &self.date_created_key
+    pub const fn date_created(&self) -> &FrontmatterKey {
+        &self.date_created
     }
 
     /// Return the date modified key.
     #[inline]
     #[must_use]
-    pub const fn date_modified_key(&self) -> &FrontmatterKey {
-        &self.date_modified_key
+    pub const fn date_modified(&self) -> &FrontmatterKey {
+        &self.date_modified
     }
 }
 
@@ -216,43 +214,43 @@ impl TryFrom<RawFrontmatter> for Frontmatter {
     fn try_from(raw: RawFrontmatter) -> Result<Self, ConfigError> {
         let defaults = Frontmatter::default();
 
-        let alias_key = match raw.alias_key {
+        let alias = match raw.alias_key {
             Some(value) => {
                 FrontmatterKey::try_new_with_field("alias_key", value)?
             }
-            None => defaults.alias_key,
+            None => defaults.alias,
         };
-        let date_created_key = match raw.date_created_key {
+        let date_created = match raw.date_created_key {
             Some(value) => {
                 FrontmatterKey::try_new_with_field("date_created_key", value)?
             }
-            None => defaults.date_created_key,
+            None => defaults.date_created,
         };
-        let date_modified_key = match raw.date_modified_key {
+        let date_modified = match raw.date_modified_key {
             Some(value) => {
                 FrontmatterKey::try_new_with_field("date_modified_key", value)?
             }
-            None => defaults.date_modified_key,
+            None => defaults.date_modified,
         };
-        let file_class_key = match raw.file_class_key {
+        let file_class = match raw.file_class_key {
             Some(value) => {
                 FrontmatterKey::try_new_with_field("file_class_key", value)?
             }
-            None => defaults.file_class_key,
+            None => defaults.file_class,
         };
-        let title_key = match raw.title_key {
+        let title = match raw.title_key {
             Some(value) => {
                 FrontmatterKey::try_new_with_field("title_key", value)?
             }
-            None => defaults.title_key,
+            None => defaults.title,
         };
 
         Ok(Self {
-            file_class_key,
-            alias_key,
-            title_key,
-            date_created_key,
-            date_modified_key,
+            file_class,
+            alias,
+            title,
+            date_created,
+            date_modified,
         })
     }
 }

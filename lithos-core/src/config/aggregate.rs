@@ -66,7 +66,7 @@ use super::{
 /// // Access nested configuration values via sub-structs
 /// assert!(config.logging().level_str() == "info");
 /// assert_eq!(config.paths().schema.schemas_dir().as_path(), Path::new("schemas"));
-/// assert_eq!(config.frontmatter().title_key().as_str(), "title");
+/// assert_eq!(config.frontmatter().title().as_str(), "title");
 /// assert!(config.task().enabled());
 /// assert_eq!(config.task().task_tags()[0].as_str(), "#task");
 /// # Ok(())
