@@ -676,7 +676,7 @@ mod tests {
 
             let result = db.batch_write(|batch| {
                 batch.put("users", "temp", &temp_value)?;
-                Err(DbError::Transaction("intentional".to_owned()))
+                Err(DbError::Transaction(String::from("intentional")))
             });
 
             assert!(result.is_err());
