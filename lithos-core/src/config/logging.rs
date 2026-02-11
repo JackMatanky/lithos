@@ -25,7 +25,7 @@ use super::error::ConfigError;
 /// use lithos_core::config::logging::{LogLevel, Logging};
 ///
 /// let logging = Logging::new(LogLevel::Debug);
-/// assert_eq!(logging.log_level_str(), "debug");
+/// assert_eq!(logging.level_str(), "debug");
 /// ```
 #[derive(
     Debug,
@@ -66,14 +66,14 @@ impl Logging {
     /// Return the log level.
     #[inline]
     #[must_use]
-    pub fn log_level(&self) -> LogLevel {
+    pub fn level(&self) -> LogLevel {
         self.log_level
     }
 
     /// Return the log level as a string slice.
     #[inline]
     #[must_use]
-    pub fn log_level_str(&self) -> &'static str {
+    pub fn level_str(&self) -> &'static str {
         self.log_level.as_str()
     }
 }
@@ -216,6 +216,6 @@ mod tests {
     #[test]
     fn logging_accepts_valid_levels() {
         let logging = fixtures::sample_logging();
-        assert_eq!(logging.log_level_str(), "debug");
+        assert_eq!(logging.level_str(), "debug");
     }
 }

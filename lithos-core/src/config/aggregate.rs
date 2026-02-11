@@ -64,7 +64,7 @@ use super::{
 /// let config = Config::build(&raw, vault_id, vault_root)?;
 ///
 /// // Access nested configuration values via sub-structs
-/// assert!(config.logging().log_level_str() == "info");
+/// assert!(config.logging().level_str() == "info");
 /// assert_eq!(config.paths().schema.schemas_dir().as_path(), Path::new("schemas"));
 /// assert_eq!(config.frontmatter().title_key().as_str(), "title");
 /// assert!(config.task().enabled());
