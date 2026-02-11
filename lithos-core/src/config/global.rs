@@ -463,7 +463,7 @@ mod tests {
             let global = Global::default();
 
             assert_eq!(
-                global.logging().log_level_str(),
+                global.logging().level_str(),
                 "info",
                 "Default log level should be 'info'"
             );

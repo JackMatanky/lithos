@@ -59,7 +59,7 @@ fn config_cqrs_integration_flow() -> Result<(), Box<dyn std::error::Error>> {
         "Config should belong to the requested vault"
     );
     // Default log level is Info
-    assert_eq!(config.logging().log_level_str(), "info");
+    assert_eq!(config.logging().level_str(), "info");
 
     Ok(())
 }
