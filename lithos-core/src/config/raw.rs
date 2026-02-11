@@ -76,7 +76,7 @@ pub struct RawTaskConfig {
     /// Configuration for date fields in tasks.
     pub dates: Option<RawTaskDates>,
     /// Configuration for custom metadata fields in tasks.
-    pub fields: Option<HashMap<String, RawTaskFieldSpec>>,
+    pub fields: Option<HashMap<String, RawFieldSpec>>,
     /// Configuration for indexing task fields.
     pub indexing: Option<RawIndexingConfig>,
 }
@@ -107,13 +107,13 @@ pub struct RawDateFieldSpec {
     pub format: String,
 }
 
-/// Raw custom task field specification.
+/// Raw custom field specification.
 ///
 /// Type must be specified for disambiguation between similar-looking specs.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]
-pub enum RawTaskFieldSpec {
+pub enum RawFieldSpec {
     /// A categorical field with a predefined set of allowed values.
     #[serde(alias = "enum")]
     Enum {

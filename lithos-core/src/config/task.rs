@@ -551,12 +551,12 @@ mod tests {
     mod fixtures {
         use super::*;
         use crate::config::raw::{
-            RawDateFieldSpec, RawTaskDates, RawTaskFieldSpec,
+            RawDateFieldSpec, RawFieldSpec, RawTaskDates,
         };
 
         pub fn sample_raw_task_config() -> RawTaskConfig {
             let mut fields = HashMap::new();
-            fields.insert("priority".to_owned(), RawTaskFieldSpec::Integer {
+            fields.insert("priority".to_owned(), RawFieldSpec::Integer {
                 min: Some(0),
                 max: Some(5),
             });
@@ -610,10 +610,10 @@ mod tests {
 
     #[test]
     fn task_config_from_raw_invalid_bounds() {
-        use crate::config::raw::RawTaskFieldSpec;
+        use crate::config::raw::RawFieldSpec;
         let mut raw = fixtures::sample_raw_task_config();
         let mut fields = HashMap::new();
-        fields.insert("invalid".to_owned(), RawTaskFieldSpec::Integer {
+        fields.insert("invalid".to_owned(), RawFieldSpec::Integer {
             min: Some(10),
             max: Some(0), // min > max
         });
@@ -644,48 +644,48 @@ mod tests {
         reason = "Test utilities"
     )]
     fn task_field_spec_parses_typed_specs() {
-        use crate::config::raw::RawTaskFieldSpec;
+        use crate::config::raw::RawFieldSpec;
         let toml = r#"
 type = "integer"
 min = 0
 max = 10
 "#;
-        let spec: RawTaskFieldSpec =
+        let spec: RawFieldSpec =
             toml::from_str(toml).expect("Should parse Integer type");
-        assert!(matches!(spec, RawTaskFieldSpec::Integer { .. }));
+        assert!(matches!(spec, RawFieldSpec::Integer { .. }));
 
         let toml = r#"
 type = "enum"
 values = ["a", "b"]
 "#;
-        let spec: RawTaskFieldSpec =
+        let spec: RawFieldSpec =
             toml::from_str(toml).expect("Should parse Enum type");
-        assert!(matches!(spec, RawTaskFieldSpec::Enum { .. }));
+        assert!(matches!(spec, RawFieldSpec::Enum { .. }));
 
         let toml = r#"
 type = "datetime"
 format = "%Y-%m-%d"
 "#;
-        let spec: RawTaskFieldSpec =
+        let spec: RawFieldSpec =
             toml::from_str(toml).expect("Should parse DateTime type");
-        assert!(matches!(spec, RawTaskFieldSpec::DateTime { .. }));
+        assert!(matches!(spec, RawFieldSpec::DateTime { .. }));
 
         let toml = r#"
 type = "string"
 pattern = "^[a-z]+$"
 "#;
-        let spec: RawTaskFieldSpec =
+        let spec: RawFieldSpec =
             toml::from_str(toml).expect("Should parse String type");
-        assert!(matches!(spec, RawTaskFieldSpec::String { .. }));
+        assert!(matches!(spec, RawFieldSpec::String { .. }));
 
         let toml = r#"
 type = "float"
 min = 0.0
 max = 1.0
 "#;
-        let spec: RawTaskFieldSpec =
+        let spec: RawFieldSpec =
             toml::from_str(toml).expect("Should parse Float type");
-        assert!(matches!(spec, RawTaskFieldSpec::Float { .. }));
+        assert!(matches!(spec, RawFieldSpec::Float { .. }));
     }
 
     #[test]
