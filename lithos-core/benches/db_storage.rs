@@ -1,40 +1,151 @@
-//! redb + rkyv storage layer performance benchmarks.
+//! Storage layer performance benchmarks for redb + rkyv infrastructure.
 //!
-//! Measures core storage infrastructure performance including zero-copy reads,
-//! batch operations, transaction overhead, and cache effectiveness.
+//! # Summary
 //!
-//! # Benchmarks
+//! Benchmarks the core database storage layer to detect regressions in
+//! zero-copy reads, batch transaction performance, and cache effectiveness.
 //!
-//! - **Zero-copy reads**: Archived access without deserialization
-//! - **Full deserialization**: Owned value construction
-//! - **Single writes**: Individual transaction per operation
-//! - **Batch writes**: Multiple operations in single transaction
-//! - **Delete operations**: Key removal performance
-//! - **Cache effectiveness**: Hot vs cold read patterns
-//! - **Transaction overhead**: Batch vs individual transaction cost
+//! # Motivation
 //!
-//! # Relevance Contract
+//! Lithos's performance claims center on zero-copy archived access via rkyv and
+//! efficient bulk operations via redb transactions. This suite validates those
+//! claims and guards against regressions as the data model evolves. Historical
+//! context: Initial benchmarks in `redb_rkyv.rs` mixed concerns; this suite
+//! focuses purely on storage infrastructure.
 //!
-//! These benchmarks track storage infrastructure performance. Expect changes
-//! when:
-//! - On-disk encoding format, rkyv features, or validation approach changes
-//! - Transaction boundaries (where/when commits happen) change
-//! - Data model shape for `Note` changes (more fields, bigger strings, nested
-//!   vecs)
-//! - Namespacing strategy for keys changes
+//! # Scope
 //!
-//! # What to Look For
+//! **Included**:
+//! - Zero-copy archived reads (`get` with closure)
+//! - Full deserialization reads (`get_owned`)
+//! - Single-item writes (individual transactions)
+//! - Batch writes (multiple items per transaction)
+//! - Delete operations
+//! - Cache behavior (hot vs cold key access patterns)
+//! - Transaction overhead (batch vs individual commit cost)
 //!
-//! - **Trend, not absolutes**: Raw numbers depend on CPU, filesystem, and SSD
-//! - **Relative comparisons**: Archived reads should be faster than
-//!   deserialization
-//! - **Regression signals**:
-//!   - `read_zero_copy/*` gets close to `read_deserialize/*`
-//!   - `transaction_overhead/batch_txn` approaches `individual_txns`
-//!   - `write_batch/*` stops scaling roughly linearly with batch size
+//! **Excluded**:
+//! - Key formatting strategies (see `db_key_handling.rs`)
+//! - String allocation patterns (see `string_construction.rs`)
+//! - Domain-specific parsing (see `note_parsing.rs`)
+//! - Network I/O, file system traversal, concurrent access
+//!
+//! # Benchmark Style
+//!
+//! - **Micro-benchmarks**: Single operations measured in isolation
+//! - **Single-threaded**: No concurrent access (redb supports MVCC but suite
+//!   focuses on single-writer scenarios)
+//! - **Steady-state focus**: Cache-warm measurements (hot/cold benches
+//!   explicitly test cache behavior)
+//!
+//! # Methodology
+//!
+//! - **Harness**: Criterion.rs with default warm-up and sampling (100 samples,
+//!   3s warm-up)
+//! - **Black-boxing**: All read values passed through `black_box()` to prevent
+//!   optimization
+//! - **Setup separation**: Database population and test data creation occur
+//!   outside timed region
+//! - **Measurement focus**: Operation latency (time per element), not
+//!   throughput
+//!
+//! # Input Model
+//!
+//! - **Data**: Realistic `Note` aggregates with links, tags, tasks, headings,
+//!   sections (~200-500 bytes serialized)
+//! - **Determinism**: Fresh database per benchmark group; UUIDs are v7
+//!   (time-based) but measurements are stable
+//! - **Representativeness**: Note structure mirrors production workload (3
+//!   tags, 2 links, 2 tasks, 2 headings)
+//! - **Sizes**:
+//!   - Small: 100 notes (read benchmarks)
+//!   - Medium: 500 notes (batch write scaling)
+//!   - Large: 1000 notes (delete, transaction overhead)
+//!
+//! # Controls and Fairness
+//!
+//! - **Same inputs**: All read benchmarks use identical 100-note dataset
+//! - **Compilation**: Run with `--release` (criterion default), no special
+//!   target-cpu or LTO
+//! - **Environment**: Best-effort (no CPU pinning); results should be compared
+//!   within same machine/session
+//! - **Allocation**: Uses system allocator (no custom allocator configured)
+//!
+//! # Interpreting Results
+//!
+//! **Meaningful changes**:
+//! - ±10% in single operations: Investigate
+//! - ±20% in batch operations: Likely regression/improvement
+//! - Zero-copy approaching deserialization (within 2x): Red flag
+//!
+//! **Valid comparisons**:
+//! - Within-machine, same session: Reliable
+//! - Across machines: Trends only, not absolute numbers
+//! - CI vs local: Expect 20-30% variance due to environment
+//!
+//! **Noise sources**:
+//! - File system cache state (benchmarks use tmpfs-backed `TempDir`)
+//! - Background processes (close unnecessary applications)
+//! - Thermal throttling (long benchmark runs may show degradation)
+//!
+//! **Not justified conclusions**:
+//! - Production end-to-end latency (does not model network, concurrent access,
+//!   query complexity)
+//! - Memory usage patterns (criterion does not report allocations)
+//!
+//! # Reporting and Workflow
+//!
+//! - **Local development**: Run before/after changes, compare saved baselines
+//!   (`--save-baseline`, `--baseline`)
+//! - **PR workflow**: Run full suite, note regressions/improvements in PR
+//!   description
+//! - **CI**: Not currently automated (manual run on performance-sensitive
+//!   changes)
+//!
+//! # Maintenance Contract
+//!
+//! **Update when**:
+//! - Note domain model changes (new fields, removed fields, nesting changes)
+//! - Database layer API changes (method signatures, transaction model)
+//! - rkyv configuration changes (features, validation strategy)
+//! - New storage hot paths identified (add corresponding benchmarks)
+//!
+//! **Adding benchmarks**:
+//! - Group by operation type (read/write/delete/cache)
+//! - Use `Throughput::Elements(n)` for per-item measurements
+//! - Follow `bench_<operation>_<variant>` naming convention
+//! - Document input size and expected complexity in per-bench comment
+//!
+//! **Stability expectations**:
+//! - Results should be stable within ±5% across runs on same machine
+//! - Flaky benchmarks (>10% variance) must be investigated or removed
+//!
+//! # Known Limitations
+//!
+//! - **No contention modeling**: Single-threaded only, does not test concurrent
+//!   readers/writers
+//! - **No allocator comparison**: Uses system allocator; custom allocators not
+//!   tested
+//! - **Synthetic data**: Note structures are realistic but not from production
+//!   corpus
+//! - **Cache warm**: Does not model cold-start database opening overhead
+//!
+//! # Benchmark Index
+//!
+//! | Group                    | Focus                                     |
+//! | ------------------------ | ----------------------------------------- |
+//! | `read_zero_copy`         | Archived access without deserialization   |
+//! | `read_deserialize`       | Full owned value construction             |
+//! | `write_single`           | Individual transaction per write          |
+//! | `write_batch`            | Bulk operations in single transaction     |
+//! | `delete`                 | Key removal performance                   |
+//! | `cache_effectiveness`    | Hot vs cold access patterns               |
+//! | `transaction_overhead`   | Batch vs individual commit cost           |
 //!
 //! # Safety
-//! Benchmark code uses unwrap/expect for simplicity.
+//!
+//! Benchmark code uses `unwrap`/`expect` for simplicity (failures indicate test
+//! setup errors, not runtime conditions).
 
 #![allow(
     missing_docs,
@@ -191,6 +302,54 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
     (temp_dir, db, note_ids)
 }
 
+/// Benchmarks zero-copy archived read access (steady-state, hot cache).
+///
+/// # Purpose
+///
+/// Measures the cost of accessing rkyv-archived `Note` data without
+/// deserialization, validating Lithos's core zero-copy claim.
+///
+/// # What is Measured
+///
+/// - **Metric**: Latency per read operation (nanoseconds)
+/// - **Execution**: Single `get_by_uuid` call per iteration with closure access
+/// - **State**: Warm cache (same key read repeatedly)
+///
+/// # Inputs
+///
+/// - **Size**: 100 notes pre-populated in database
+/// - **Target**: Middle note (index 50) to avoid edge effects
+/// - **Determinism**: Fixed dataset, UUIDs generated at setup time
+///
+/// # Setup
+///
+/// - Database created with 100 realistic `Note` aggregates outside timed region
+/// - Target UUID selected before benchmark starts
+/// - Closure accesses archived data but does not deserialize
+///
+/// # Expected Characteristics
+///
+/// - **Complexity**: O(1) lookup (B-tree index)
+/// - **Dominant costs**: B-tree traversal, moka cache lookup, memory access
+/// - **Typical range**: 250-450 ns (depends on CPU, cache hierarchy)
+///
+/// # Interpreting Changes
+///
+/// - **>10% regression**: Investigate cache degradation or B-tree changes
+/// - **Approaching `read_deserialize`**: Zero-copy advantage eroding (critical
+///   issue)
+/// - **Noise level**: Expect ±5% variance across runs
+///
+/// # Limitations
+///
+/// - Does not model cold cache (database just opened)
+/// - Does not test large Notes (>1KB serialized)
+/// - Single-threaded only (no concurrent reader contention)
+///
+/// # Notes for Future
+///
+/// - Changing `Note` field layout may affect archived access patterns
+/// - Do not remove `black_box(archived)` or compiler will eliminate closure
 fn bench_zero_copy_read(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
@@ -214,6 +373,55 @@ fn bench_zero_copy_read(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmarks full deserialization to owned `Note` value (steady-state).
+///
+/// # Purpose
+///
+/// Measures the cost of constructing an owned `Note` from archived data,
+/// providing baseline comparison for zero-copy reads.
+///
+/// # What is Measured
+///
+/// - **Metric**: Latency per `get_owned` call (nanoseconds)
+/// - **Execution**: Full rkyv deserialization creating owned structures
+/// - **State**: Warm cache (same key read repeatedly)
+///
+/// # Inputs
+///
+/// - **Size**: Same 100-note dataset as `bench_zero_copy_read`
+/// - **Target**: Same middle note (index 50) for fair comparison
+/// - **Determinism**: Identical setup to zero-copy benchmark
+///
+/// # Comparison Fairness
+///
+/// - Uses same database and key as `bench_zero_copy_read`
+/// - Both access cached data (no disk I/O differences)
+/// - Only difference is deserialization vs archived access
+///
+/// # Expected Characteristics
+///
+/// - **Complexity**: O(n) in Note field count (recursive deserialization)
+/// - **Dominant costs**: Memory allocation, string copying, Vec construction
+/// - **Typical range**: 700-1000 ns (2-3x slower than zero-copy)
+///
+/// # Interpreting Changes
+///
+/// - **Approaching `read_zero_copy`**: Check if rkyv validation overhead
+///   increased
+/// - **Diverging from `read_zero_copy`**: May indicate more complex Note
+///   structure
+/// - **Sibling benchmarks**: Compare ratio with `read_zero_copy` (should stay
+///   ~2-3x)
+///
+/// # Limitations
+///
+/// - Does not model partial deserialization (accessing single fields)
+/// - Allocation costs may vary with allocator choice
+///
+/// # Notes for Future
+///
+/// - Adding nested collections to Note will increase deserialization cost
+///   non-linearly
 fn bench_full_deserialize(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
@@ -233,6 +441,28 @@ fn bench_full_deserialize(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmarks single-item write with individual transaction per operation.
+///
+/// # Purpose
+///
+/// Measures the cost of writing one Note with a dedicated transaction,
+/// providing baseline for batch write comparison.
+///
+/// # What is Measured
+///
+/// - **Metric**: Latency per `put_by_uuid` call including transaction commit
+/// - **Execution**: Create transaction → write → commit for each iteration
+///
+/// # Expected Characteristics
+///
+/// - **Complexity**: O(1) write + O(log n) index update + fsync overhead
+/// - **Dominant costs**: Transaction setup, fsync, B-tree balancing
+/// - **Typical range**: 3-5 ms (dominated by transaction commit)
+///
+/// # Interpreting Changes
+///
+/// - **>20% change**: Investigate transaction or fsync behavior
+/// - **Approaching `write_batch`**: Transaction overhead may have decreased
 fn bench_single_write(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("bench_write.db");
@@ -254,6 +484,30 @@ fn bench_single_write(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmarks batch writes (multiple items per transaction) at varying scales.
+///
+/// # Purpose
+///
+/// Measures transaction amortization benefit by testing 100/500/1000 item
+/// batches. Validates that batch operations scale linearly (not quadratically).
+///
+/// # What is Measured
+///
+/// - **Metric**: Total latency for batch, throughput in elements/second
+/// - **Execution**: Single transaction containing N writes + commit
+/// - **Scales**: 100, 500, 1000 items per batch
+///
+/// # Expected Characteristics
+///
+/// - **Complexity**: O(n log n) for n items (B-tree insertions)
+/// - **Scaling**: Should be roughly linear with batch size
+/// - **Typical**: 100 items ~= 200-300ms, 1000 items ~= 2-3s
+///
+/// # Regression Signals
+///
+/// - **Sub-linear scaling stops**: Indicates transaction overhead growth
+/// - **Super-linear scaling**: Check for quadratic algorithms or memory
+///   pressure
 fn bench_batch_write(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
 
@@ -297,6 +551,26 @@ fn bench_batch_write(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmarks single-item delete operations.
+///
+/// # Purpose
+///
+/// Measures delete latency to ensure removals perform comparably to writes.
+///
+/// # What is Measured
+///
+/// - **Metric**: Latency per `delete_by_uuid` call
+/// - **Execution**: Single delete per iteration from pre-populated 1000-note DB
+///
+/// # Inputs
+///
+/// - **Pre-population**: 1000 notes to avoid early depletion
+/// - **Pattern**: Rotating through all keys to avoid deletion order bias
+///
+/// # Expected Characteristics
+///
+/// - **Complexity**: O(log n) B-tree removal + transaction commit
+/// - **Typical**: Similar to single writes (~3-5 ms)
 fn bench_delete(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(1000);
 
@@ -319,6 +593,29 @@ fn bench_delete(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmarks cache effectiveness via hot vs cold access patterns.
+///
+/// # Purpose
+///
+/// Validates moka cache benefit by comparing repeated access to single key
+/// (hot) vs rotating access across all keys (cold).
+///
+/// # What is Measured
+///
+/// - **Hot read**: Same key every iteration (100% cache hit expected)
+/// - **Cold read**: Different key each iteration (cache misses expected)
+///
+/// # Expected Characteristics
+///
+/// - **Hot**: Should match `bench_zero_copy_read` (~250-450 ns)
+/// - **Cold**: Higher latency due to B-tree lookup (~400-600 ns)
+/// - **Ratio**: Hot should be 1.2-1.5x faster than cold
+///
+/// # Interpreting Changes
+///
+/// - **Hot approaching cold**: Cache not functioning (critical issue)
+/// - **Both slow**: Database layer regression
+/// - **Both fast**: Cache may be too large (masking cold case)
 fn bench_cache_effectiveness(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
 
@@ -359,6 +656,33 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmarks transaction overhead by comparing batch vs individual commits.
+///
+/// # Purpose
+///
+/// Isolates transaction commit cost by measuring same 100 writes with batch
+/// transaction vs 100 individual transactions.
+///
+/// # What is Measured
+///
+/// - **`individual_txns`**: 100 writes, each with own transaction/commit
+/// - **`batch_txn`**: 100 writes in single transaction, one commit
+///
+/// # Fairness
+///
+/// - Identical write operations (same Note structure, size, UUID generation)
+/// - Same database file creation (fresh DB for each variant)
+///
+/// # Expected Characteristics
+///
+/// - **`batch_txn`**: ~200-300ms (dominated by writes)
+/// - **`individual_txns`**: ~300-500ms (adds 100x commit overhead)
+/// - **Ratio**: Individual should be 1.5-2x slower than batch
+///
+/// # Interpreting Changes
+///
+/// - **Ratio decreasing**: Transaction commit becoming cheaper (or more cached)
+/// - **Ratio increasing**: Fsync or transaction overhead growing
 fn bench_transaction_overhead(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
 

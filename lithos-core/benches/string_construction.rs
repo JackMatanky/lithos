@@ -1,39 +1,121 @@
-//! String and numeric formatting API benchmarks.
+//! String construction and API-level formatting benchmarks.
 //!
-//! Measures performance of different approaches to string construction,
-//! numeric formatting, and constructor API design, tracking P0 Task 5 and
-//! P1 Task 6 from `TODO_ALLOCATIONS.md`.
+//! # Summary
 //!
-//! # Benchmarks
+//! Tracks P0/P1 allocation optimizations (Tasks 5 & 6 from
+//! `TODO_ALLOCATIONS.md`) by comparing zero-allocation numeric formatting and
+//! ergonomic constructor APIs against baseline string-allocation approaches.
 //!
-//! ## Numeric Formatting (P0 Task 5)
-//! - **Integer formatting**: `itoa::Buffer` (zero-allocation) vs `.to_string()`
-//! - **Float formatting**: `ryu::Buffer` (zero-allocation) vs `.to_string()`
+//! # Motivation
 //!
-//! ## Constructor APIs (P1 Task 6)
-//! - **`&str` parameters**: Caller controls allocation (optimized)
-//! - **`String` parameters**: Forced allocation at call site (baseline)
+//! Hot-path profiling identified `.to_string()` calls in query formatting and
+//! constructor APIs forcing unnecessary allocations at call sites. P0 Task 5
+//! introduced `itoa`/`ryu` buffers for stack-based formatting; P1 Task 6
+//! changed constructors from `String` to `&str` parameters. This suite
+//! validates improvements and tracks API quality.
 //!
-//! ## Aggregate Workflow
-//! - Combined impact of all optimizations in realistic usage
+//! # Scope
 //!
-//! # Expected Results
+//! **Included**:
+//! - Integer formatting: `itoa::Buffer` vs `.to_string()`
+//! - Float formatting: `ryu::Buffer` vs `.to_string()`
+//! - Constructor APIs: `&str` parameters vs `String` (forced allocation)
+//! - Aggregate workflow combining all optimizations
 //!
-//! Numeric formatting should show:
-//! - `itoa`: ~9.7x faster than `.to_string()` for integers
-//! - `ryu`: ~17% faster than `.to_string()` for floats
+//! **Excluded**:
+//! - Database key formatting (see `db_key_handling.rs`)
+//! - Storage-layer operations (see `db_storage.rs`)
+//! - Actual memory allocation measurement (uses latency as proxy)
 //!
-//! Constructor APIs should show:
-//! - `&str`: 30-32% faster than forced `String` allocation
-//! - Better ergonomics (caller chooses when to allocate)
+//! # Benchmark Style
 //!
-//! # Cross-Reference
+//! - **Micro-benchmarks**: Isolated formatting operations
+//! - **Comparative**: Each optimization paired with baseline
+//! - **Single-threaded**: No concurrent formatting scenarios
+//! - **Hot-loop**: 100 iterations per benchmark to amortize setup cost
 //!
-//! See `db_key_handling.rs` for database-specific string handling.
-//! See `docs/benchmarks/BASELINE.md` for detailed optimization impact analysis.
+//! # Methodology
+//!
+//! - **Harness**: Criterion.rs (default configuration)
+//! - **Throughput**: Reported as elements/second (100 operations per iteration)
+//! - **Black-boxing**: All formatted strings and inputs passed through
+//!   `black_box()`
+//! - **Buffer reuse**: Realistic pattern (single buffer reused across loop)
+//!
+//! # Input Model
+//!
+//! - **Integers**: Range 0-99 (covers 1-2 digit numbers, typical for queries)
+//! - **Floats**: Derived from integers + 0.5 (simple fractional values)
+//! - **Constructor strings**: Fixed literals ("my-schema", "my-property", etc.)
+//! - **Determinism**: Fixed inputs ensure reproducible results
+//! - **Sizes**: Small values (< 20 bytes) to isolate formatting overhead
+//!
+//! # Controls and Fairness
+//!
+//! - **Same inputs**: Optimized/baseline pairs format identical values
+//! - **Same work**: Constructors validate and allocate same structures
+//! - **No pre-allocation**: Baseline uses `.to_string()` fresh each time
+//! - **Realistic usage**: Buffer reuse pattern matches production code
+//!
+//! # Interpreting Results
+//!
+//! **Expected improvements (from BASELINE.md)**:
+//! - `itoa`: 9.7x faster than `.to_string()` for integers
+//! - `ryu`: 17% faster than `.to_string()` for floats
+//! - `&str` constructors: 30-32% faster than `String` (forced allocation)
+//!
+//! **Meaningful changes**:
+//! - **Ratio approaching 1.0**: Optimization benefit eroding
+//! - **Optimized slower**: Critical regression in formatting library
+//! - **>10% change**: Investigate compiler optimization changes
+//!
+//! **Valid comparisons**:
+//! - Within-group ratios: Highly stable (formatting is deterministic)
+//! - Across machines: Absolute numbers vary, ratios stable
+//!
+//! **Noise sources**:
+//! - CPU frequency scaling (lock CPU frequency for precision)
+//! - Background allocator activity (minimal for stack-based formatting)
+//!
+//! # Reporting and Workflow
+//!
+//! - **Development**: Run when changing numeric formatting or constructor APIs
+//! - **Validation**: Check ratios after library updates (itoa, ryu upgrades)
+//! - **Documentation**: Update BASELINE.md if ratios shift significantly
+//!
+//! # Maintenance Contract
+//!
+//! **Update when**:
+//! - Constructor signatures change (new parameters, different types)
+//! - Numeric formatting strategy changes (different libraries, inlining)
+//! - New domain types added requiring similar optimizations
+//!
+//! **Adding benchmarks**:
+//! - Always pair optimization with baseline for comparison
+//! - Use consistent naming: `<operation>_<strategy>` (e.g.,
+//!   `format_integers_itoa`)
+//! - Document expected improvement in per-bench comment
+//!
+//! # Known Limitations
+//!
+//! - **No allocation measurement**: Uses latency as proxy (consider dhat for
+//!   actual measurement)
+//! - **Small input range**: Does not test large numbers (>6 digits) or long
+//!   floats
+//! - **No Unicode**: String literals are ASCII-only
+//! - **No error paths**: Constructor benchmarks use valid inputs only
+//!
+//! # Benchmark Index
+//!
+//! | Group                  | Focus                                           |
+//! | ---------------------- | ----------------------------------------------- |
+//! | `numeric_formatting`   | itoa/ryu vs .`to_string()` (integers and floats) |
+//! | `constructor_apis`     | &str vs String parameters (domain constructors)|
+//! | `aggregate_workflow`   | Combined optimization impact                    |
 //!
 //! # Safety
-//! Benchmark code uses unwrap/expect for simplicity.
+//!
+//! Benchmark code uses `unwrap`/`expect` for simplicity.
 
 #![allow(
     missing_docs,
@@ -66,12 +148,32 @@ use uuid::Uuid;
 // Numeric Formatting (P0 Task 5)
 // ============================================================================
 
-/// Benchmarks zero-allocation numeric formatting using `itoa`/`ryu` vs
-/// `.to_string()`.
+/// Benchmarks numeric formatting: itoa/ryu vs .`to_string()` (P0 Task 5).
 ///
-/// # Optimization (Task 5)
-/// Replace `.to_string()` with `itoa::Buffer` for integers and `ryu::Buffer`
-/// for floats in query operations and display formatting.
+/// # Purpose
+///
+/// Validates that stack-based `itoa::Buffer` and `ryu::Buffer` outperform
+/// heap-allocating `.to_string()` for query parameter formatting.
+///
+/// # What is Measured
+///
+/// - **Throughput**: 100 conversions per iteration (reported as elem/sec)
+/// - **Variants**: itoa (integers), ryu (floats) vs .`to_string()` baselines
+/// - **Input**: Range 0-99 (1-2 digit numbers, typical for task
+///   priorities/dates)
+///
+/// # Expected Characteristics
+///
+/// - **itoa**: ~740 Melem/s (9.7x faster than .`to_string()`)
+/// - **ryu**: ~36 Melem/s (17% faster than .`to_string()`)
+/// - **Ratio stability**: Very stable (formatting is deterministic)
+///
+/// # Interpreting Changes
+///
+/// - **itoa approaching .`to_string()`**: Compiler may be optimizing
+///   .`to_string()` better
+/// - **ryu slower than .`to_string()`**: Check ryu library version or compiler
+///   opts
 fn bench_numeric_formatting(c: &mut Criterion) {
     let mut group = c.benchmark_group("numeric_formatting");
     group.throughput(Throughput::Elements(100));
@@ -127,12 +229,29 @@ fn bench_numeric_formatting(c: &mut Criterion) {
 // Constructor APIs (P1 Task 6)
 // ============================================================================
 
-/// Benchmarks constructor APIs using `&str` vs `String` parameters.
+/// Benchmarks constructor APIs: &str vs String parameters (P1 Task 6).
 ///
-/// # Optimization (Task 6)
-/// Change constructors from `new(name: String)` to `new(name: &str)` to
-/// avoid forcing caller allocations. Follows Rust idiom of accepting
-/// borrowed parameters.
+/// # Purpose
+///
+/// Validates that `&str` parameters avoid forcing allocations at call sites,
+/// improving both performance and ergonomics per Rust idioms.
+///
+/// # What is Measured
+///
+/// - **Latency**: Single constructor call per iteration
+/// - **Types**: `SchemaName`, `PropertyName`, `DateSpec`, Template
+/// - **Comparison**: Optimized (&str) vs baseline (allocate then pass)
+///
+/// # Expected Characteristics
+///
+/// - **&str variants**: 10-25 ns per call (small types), ~1 µs (Template)
+/// - **String variants**: 30-36 ns per call (adds .`to_owned()` overhead)
+/// - **Improvement**: 30-32% faster for &str (from BASELINE.md)
+///
+/// # Notes for Future
+///
+/// - Template shows minimal difference (dominated by `HashMap` initialization)
+/// - Small types (`SchemaName`, `PropertyName`) show clearest benefit
 fn bench_constructor_apis(c: &mut Criterion) {
     let mut group = c.benchmark_group("constructor_apis");
     group.throughput(Throughput::Elements(1));
@@ -216,13 +335,24 @@ fn bench_constructor_apis(c: &mut Criterion) {
 // Aggregate Workflow
 // ============================================================================
 
-/// Benchmarks a complete workflow that exercises multiple optimizations
-/// to measure cumulative impact.
+/// Benchmarks aggregate workflow combining Tasks 2, 5, and 6 optimizations.
 ///
-/// Combines:
-/// - Task 5: Numeric formatting (itoa/ryu)
-/// - Task 6: Constructor APIs (&str parameters)
-/// - Task 2: UUID-native database operations
+/// # Purpose
+///
+/// Measures cumulative impact of all optimizations in realistic usage pattern
+/// (construct domain objects, format queries, store in database).
+///
+/// # What is Measured
+///
+/// - **Workflow**: `SchemaName` + `PropertyName` + `DateSpec` creation, numeric
+///   formatting, Template storage
+/// - **Latency**: Full workflow per iteration (~3.5 ms, database-dominated)
+///
+/// # Expected Characteristics
+///
+/// - Dominated by database write (~3.6 ms)
+/// - Optimization savings (~100-200 ns) small relative to total
+/// - Validates optimizations compose correctly
 fn bench_aggregate_workflow(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("workflow.db");
