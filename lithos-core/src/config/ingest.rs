@@ -24,7 +24,11 @@ use super::{error::ConfigIngestError, raw::RawConfig};
 /// Returns [`ConfigIngestError`] if file reading, TOML parsing, or data
 /// extraction fails.
 #[inline]
-#[instrument(skip(vault_root), level = "debug", fields(operation = "build_merged_raw", vault_root = %vault_root.display()))]
+#[instrument(
+    skip(vault_root),
+    level = "debug",
+    fields(operation = "build_merged_raw", vault_root = %vault_root.display())
+)]
 pub fn build_merged_raw(
     vault_root: &Path,
 ) -> Result<RawConfig, ConfigIngestError> {
@@ -34,7 +38,11 @@ pub fn build_merged_raw(
 /// Internal implementation that accepts an optional global config path.
 /// Exposed for testing.
 #[inline]
-#[instrument(skip(vault_root, global_config_path), level = "debug", fields(operation = "build_merged_raw_impl", vault_root = %vault_root.display()))]
+#[instrument(
+    skip(vault_root, global_config_path),
+    level = "debug",
+    fields(operation = "build_merged_raw_impl", vault_root = %vault_root.display())
+)]
 fn build_merged_raw_impl(
     vault_root: &Path,
     global_config_path: Option<&Path>,
