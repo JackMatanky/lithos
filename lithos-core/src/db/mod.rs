@@ -133,7 +133,21 @@ impl Database {
             >,
         F: FnOnce(&rkyv::Archived<V>) -> R,
     {
-        let namespaced_key = format!("{table}:{key}");
+        use std::fmt::Write as _;
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key =
+            String::with_capacity(table.len() + key.len() + 1);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "{table}:{key}");
 
         let tx = self.inner.begin_read()?;
         let table_ref = tx.open_table(DATA_TABLE)?;
@@ -199,7 +213,21 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        let namespaced_key = format!("{table}:{key}");
+        use std::fmt::Write as _;
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key =
+            String::with_capacity(table.len() + key.len() + 1);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "{table}:{key}");
 
         let tx = self.inner.begin_read()?;
         let table_ref = tx.open_table(DATA_TABLE)?;
@@ -267,7 +295,21 @@ impl Database {
                 >,
             >,
     {
-        let namespaced_key = format!("{table}:{key}");
+        use std::fmt::Write as _;
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key =
+            String::with_capacity(table.len() + key.len() + 1);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "{table}:{key}");
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(value)
             .map_err(|e| DbError::Serialization(e.to_string()))?;
@@ -302,7 +344,21 @@ impl Database {
     /// ```
     #[inline]
     pub fn delete(&self, table: &str, key: &str) -> Result<bool, DbError> {
-        let namespaced_key = format!("{table}:{key}");
+        use std::fmt::Write as _;
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key =
+            String::with_capacity(table.len() + key.len() + 1);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "{table}:{key}");
 
         let tx = self.inner.begin_write()?;
         let existed = {
@@ -367,11 +423,25 @@ impl Database {
         key: &str,
         value: &str,
     ) -> Result<(), DbError> {
+        use std::fmt::Write as _;
+
         use redb::MultimapTableDefinition;
 
         let table_def: MultimapTableDefinition<&str, &str> =
             MultimapTableDefinition::new(table);
-        let namespaced_key = format!("multimap:{key}");
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key = String::with_capacity(9 + key.len());
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "multimap:{key}");
 
         let tx = self.inner.begin_write()?;
         {
@@ -396,11 +466,25 @@ impl Database {
         key: &str,
         value: &str,
     ) -> Result<bool, DbError> {
+        use std::fmt::Write as _;
+
         use redb::MultimapTableDefinition;
 
         let table_def: MultimapTableDefinition<&str, &str> =
             MultimapTableDefinition::new(table);
-        let namespaced_key = format!("multimap:{key}");
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key = String::with_capacity(9 + key.len());
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "multimap:{key}");
 
         let tx = self.inner.begin_write()?;
         let removed = {
@@ -425,11 +509,25 @@ impl Database {
         table: &str,
         key: &str,
     ) -> Result<Vec<String>, DbError> {
+        use std::fmt::Write as _;
+
         use redb::MultimapTableDefinition;
 
         let table_def: MultimapTableDefinition<&str, &str> =
             MultimapTableDefinition::new(table);
-        let namespaced_key = format!("multimap:{key}");
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key = String::with_capacity(9 + key.len());
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "multimap:{key}");
 
         let tx = self.inner.begin_read()?;
         let tbl = tx.open_multimap_table(table_def)?;
@@ -462,7 +560,20 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        let prefix = format!("{table}:");
+        use std::fmt::Write as _;
+
+        // Pre-allocate to avoid format!() overhead
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut prefix = String::with_capacity(table.len() + 1);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut prefix, "{table}:");
 
         let tx = self.inner.begin_read()?;
         let table_ref = tx.open_table(DATA_TABLE)?;
