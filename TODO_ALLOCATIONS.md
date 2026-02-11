@@ -20,7 +20,16 @@
 - Deserialize read: **826 ns** (1.21 Melem/s)
 - Write single: **3.75 ms** (267 elem/s)
 
+**Allocation Optimization Benchmarks** (commit 23b33259):
+- UUID-native get: **420 ns** vs 452 ns (string) = **7% faster**
+- UUID-native put: **3.64 ms** vs 3.99 ms (string) = **9% faster**
+- Integer formatting (itoa): **134 ns** vs 1.31 µs (.to_string()) = **9.7x faster**
+- Float formatting (ryu): **2.76 µs** vs 3.23 µs (.to_string()) = **17% faster**
+- &str constructors: **22-25 ns** vs 32-36 ns (String) = **30-32% faster**
+
 **Estimated Impact Achieved**: 50-80% reduction in hot-path allocations
+
+**Benchmark Documentation**: See `docs/benchmarks/BASELINE.md` for detailed results
 
 ## Executive Summary
 
