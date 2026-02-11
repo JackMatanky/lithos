@@ -160,7 +160,7 @@ impl Frontmatter {
     #[inline]
     #[must_use]
     pub fn title(&self, config: &crate::config::aggregate::Config) -> String {
-        self.get(config.frontmatter.title_key().as_str())
+        self.get(config.frontmatter().title_key().as_str())
             .and_then(FieldValue::as_str)
             .unwrap_or_default()
             .to_owned()
@@ -173,7 +173,7 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> String {
-        self.get(config.frontmatter.file_class_key().as_str())
+        self.get(config.frontmatter().file_class_key().as_str())
             .and_then(FieldValue::as_str)
             .unwrap_or_default()
             .to_owned()
@@ -186,7 +186,7 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Vec<String> {
-        self.get(config.frontmatter.alias_key().as_str())
+        self.get(config.frontmatter().alias_key().as_str())
             .and_then(FieldValue::as_string_array_lossy)
             .unwrap_or_default()
     }

@@ -54,12 +54,12 @@ fn config_cqrs_integration_flow() -> Result<(), Box<dyn std::error::Error>> {
 
     // 6. Verify Content
     assert_eq!(
-        config.vault_metadata.id(),
+        config.vault_metadata().id(),
         vault_id,
         "Config should belong to the requested vault"
     );
     // Default log level is Info
-    assert_eq!(config.logging.log_level_str(), "info");
+    assert_eq!(config.logging().log_level_str(), "info");
 
     Ok(())
 }

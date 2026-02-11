@@ -42,7 +42,7 @@
 //! )?;
 //!
 //! // 3. Use the validated configuration
-//! assert!(config.paths.cache.cache_dir().as_path().is_relative());
+//! assert!(config.paths().cache.cache_dir().as_path().is_relative());
 //! # Ok(())
 //! # }
 //! ```
