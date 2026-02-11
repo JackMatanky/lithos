@@ -369,6 +369,282 @@ impl Database {
         Ok(existed)
     }
 
+    /// Zero-copy read with UUID key (HOT PATH for LSP).
+    ///
+    /// Optimized version of [`get`](Self::get) that formats UUID inline
+    /// without allocating a separate UUID string.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Deserialization` - Data validation failed
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # use uuid::Uuid;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// let id = Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext));
+    /// // db.get_by_uuid::<MyType, _>("my_table", id, |archived| {
+    /// //     archived.field.clone()
+    /// // })?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn get_by_uuid<V, F, R>(
+        &self,
+        table: &str,
+        id: uuid::Uuid,
+        f: F,
+    ) -> Result<Option<R>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            >,
+        F: FnOnce(&rkyv::Archived<V>) -> R,
+    {
+        use std::fmt::Write as _;
+
+        // Pre-allocate for table:uuid format
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key = String::with_capacity(table.len() + 37);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "{table}:{id}");
+
+        let tx = self.inner.begin_read()?;
+        let table_ref = tx.open_table(DATA_TABLE)?;
+
+        match table_ref.get(namespaced_key.as_str())? {
+            Some(value) => {
+                let bytes: &[u8] = value.value();
+
+                let mut aligned = AlignedVec::<16>::new();
+                aligned.extend_from_slice(bytes);
+
+                let archived = rkyv::access::<
+                    rkyv::Archived<V>,
+                    rkyv::rancor::Error,
+                >(&aligned)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                let result = f(archived);
+                Ok(Some(result))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Full deserialization with UUID key (COLD PATH).
+    ///
+    /// Optimized version of [`get_owned`](Self::get_owned) that formats UUID
+    /// inline without allocating a separate UUID string.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Deserialization` - Data validation or deserialization failed
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # use uuid::Uuid;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// let id = Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext));
+    /// // let value: Option<MyType> = db.get_owned_by_uuid("my_table", id)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn get_owned_by_uuid<V>(
+        &self,
+        table: &str,
+        id: uuid::Uuid,
+    ) -> Result<Option<V>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        use std::fmt::Write as _;
+
+        // Pre-allocate for table:uuid format
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key = String::with_capacity(table.len() + 37);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "{table}:{id}");
+
+        let tx = self.inner.begin_read()?;
+        let table_ref = tx.open_table(DATA_TABLE)?;
+
+        match table_ref.get(namespaced_key.as_str())? {
+            Some(value) => {
+                let bytes: &[u8] = value.value();
+
+                let mut aligned = AlignedVec::<16>::new();
+                aligned.extend_from_slice(bytes);
+
+                let archived = rkyv::access::<
+                    rkyv::Archived<V>,
+                    rkyv::rancor::Error,
+                >(&aligned)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                let deserialized =
+                    rkyv::deserialize::<V, rkyv::rancor::Error>(archived)
+                        .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                Ok(Some(deserialized))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Insert or update a value with UUID key.
+    ///
+    /// Optimized version of [`put`](Self::put) that formats UUID inline
+    /// without allocating a separate UUID string.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Serialization` - Serialization failed
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # use uuid::Uuid;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// let id = Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext));
+    /// // db.put_by_uuid("my_table", id, &my_value)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn put_by_uuid<V>(
+        &self,
+        table: &str,
+        id: uuid::Uuid,
+        value: &V,
+    ) -> Result<(), DbError>
+    where
+        V: rkyv::Archive
+            + for<'ser> rkyv::Serialize<
+                rkyv::api::high::HighSerializer<
+                    rkyv::util::AlignedVec,
+                    rkyv::ser::allocator::ArenaHandle<'ser>,
+                    rkyv::rancor::Error,
+                >,
+            >,
+    {
+        use std::fmt::Write as _;
+
+        // Pre-allocate for table:uuid format
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key = String::with_capacity(table.len() + 37);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "{table}:{id}");
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(value)
+            .map_err(|e| DbError::Serialization(e.to_string()))?;
+
+        let tx = self.inner.begin_write()?;
+        {
+            let mut table_ref = tx.open_table(DATA_TABLE)?;
+            table_ref.insert(namespaced_key.as_str(), bytes.as_slice())?;
+        };
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Delete a value by UUID key.
+    ///
+    /// Optimized version of [`delete`](Self::delete) that formats UUID inline
+    /// without allocating a separate UUID string.
+    ///
+    /// Returns `true` if a value was deleted, `false` if key didn't exist.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # use uuid::Uuid;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// let id = Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext));
+    /// // let was_deleted = db.delete_by_uuid("my_table", id)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn delete_by_uuid(
+        &self,
+        table: &str,
+        id: uuid::Uuid,
+    ) -> Result<bool, DbError> {
+        use std::fmt::Write as _;
+
+        // Pre-allocate for table:uuid format
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "String length arithmetic is safe and will not overflow"
+        )]
+        let mut namespaced_key = String::with_capacity(table.len() + 37);
+
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "Writing to String is infallible"
+        )]
+        let _ = write!(&mut namespaced_key, "{table}:{id}");
+
+        let tx = self.inner.begin_write()?;
+        let existed = {
+            let mut table_ref = tx.open_table(DATA_TABLE)?;
+            table_ref.remove(namespaced_key.as_str())?.is_some()
+        };
+        tx.commit()?;
+        Ok(existed)
+    }
+
     /// Execute multiple writes in a batch with a single commit.
     ///
     /// The closure receives a [`WriteBatch`] for performing operations.

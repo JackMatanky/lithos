@@ -159,9 +159,8 @@ impl super::ports::Query for Query<'_> {
     /// Returns `NoteQueryError` if query execution fails.
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError> {
-        let id_str = id.to_string();
         self.db
-            .get_owned::<Note>("notes", &id_str)
+            .get_owned_by_uuid::<Note>("notes", id)
             .map_err(NoteQueryError::Storage)
     }
 
@@ -353,9 +352,8 @@ impl super::ports::Query for Query<'_> {
     where
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
     {
-        let id_str = id.to_string();
         self.db
-            .get::<Note, _, R>("notes", &id_str, f)
+            .get_by_uuid::<Note, _, R>("notes", id, f)
             .map_err(NoteQueryError::Storage)
     }
 }

@@ -37,8 +37,7 @@ impl super::ports::Query for Query<'_> {
     /// Returns `TemplateError` if query fails.
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
-        let id_str = id.to_string();
-        self.db.get_owned::<Template>("templates", &id_str).map_err(
+        self.db.get_owned_by_uuid::<Template>("templates", id).map_err(
             |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
         )
     }
