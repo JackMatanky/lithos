@@ -33,7 +33,7 @@ This directory contains focused performance benchmarks organized by concern.
 **When to run**: After changes to:
 - Database key formatting logic
 - UUID handling methods
-- P0 allocation optimizations (Tasks 1 & 2)
+- UUID optimization tracking
 
 **Key metrics**:
 - UUID-native should be 7-9% faster than string conversion
@@ -50,8 +50,7 @@ This directory contains focused performance benchmarks organized by concern.
 **When to run**: After changes to:
 - Constructor API signatures
 - Numeric formatting code
-- P0 Task 5 (numeric formatting)
-- P1 Task 6 (constructor APIs)
+- String/numeric optimization tracking
 
 **Key metrics**:
 - `itoa`: ~9.7x faster than `.to_string()` for integers
@@ -109,7 +108,7 @@ Each benchmark file follows these principles:
 2. **Clear Purpose**: File name describes what it measures, not implementation details
 3. **Minimal Overlap**: Each benchmark is in exactly one file
 4. **Cohesive Grouping**: Related benchmarks live together
-5. **Cross-Referenced**: Documentation links to related benchmarks and docs
+5. **Self-Contained**: Documentation within benchmarks, not dependent on external planning docs
 
 ## Interpreting Results
 
@@ -127,7 +126,7 @@ Watch for:
 - Numeric formatting optimizations losing gains
 
 ### Expected Ranges
-See `docs/benchmarks/BASELINE.md` for detailed baseline numbers and interpretation guidelines.
+See `RESULTS.md` for detailed baseline numbers, optimization history, and interpretation guidelines.
 
 ## Adding New Benchmarks
 
@@ -137,12 +136,11 @@ When adding a new benchmark:
 2. **Consider splitting**: If a file grows beyond ~500 lines or spans multiple concerns, split it
 3. **Update this README**: Document what the new benchmark measures
 4. **Update Cargo.toml**: Add `[[bench]]` entry if creating a new file
-5. **Cross-reference**: Link to related docs (`TODO_ALLOCATIONS.md`, ADRs, etc.)
+5. **Cross-reference**: Link to related docs in `docs/` (ADRs, crate references, etc.)
 
 ## Related Documentation
 
-- `docs/benchmarks/BASELINE.md` - Baseline performance numbers and interpretation
-- `TODO_ALLOCATIONS.md` - Allocation optimization plan and tracking
+- `RESULTS.md` - Performance baselines, optimization history, regression guidelines
 - `docs/refs/crates/rkyv.md` - rkyv serialization guidelines
 - `docs/refs/crates/redb.md` - redb database patterns
 
