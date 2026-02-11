@@ -559,7 +559,7 @@ mod tests {
                 db.get_owned("merged_config_versions", &key)?;
             let config = stored.expect("merged config should be persisted");
 
-            assert_eq!(config.logging.log_level_str(), "debug");
+            assert_eq!(config.logging().log_level_str(), "debug");
             Ok(())
         }
 
@@ -586,7 +586,7 @@ mod tests {
                 db.get_owned("merged_config_versions", &key)?;
             let config = stored.expect("merged config should be persisted");
 
-            assert_eq!(config.logging.log_level_str(), "info"); // default
+            assert_eq!(config.logging().log_level_str(), "info"); // default
             Ok(())
         }
 

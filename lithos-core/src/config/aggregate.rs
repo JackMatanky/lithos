@@ -16,11 +16,6 @@
 //! - **Layered Configuration**: The aggregate enforces a clear precedence
 //!   hierarchy for settings (vault overrides → global → system defaults).
 
-#![expect(
-    clippy::partial_pub_fields,
-    reason = "Aggregate root requires mixed visibility for domain events"
-)]
-
 use tracing::instrument;
 
 use super::{
@@ -69,11 +64,11 @@ use super::{
 /// let config = Config::build(&raw, vault_id, vault_root)?;
 ///
 /// // Access nested configuration values via sub-structs
-/// assert!(config.logging.log_level_str() == "info");
-/// assert_eq!(config.paths.schema.schemas_dir().as_path(), Path::new("schemas"));
-/// assert_eq!(config.frontmatter.title_key().as_str(), "title");
-/// assert!(config.task.enabled());
-/// assert_eq!(config.task.task_tags()[0].as_str(), "#task");
+/// assert!(config.logging().log_level_str() == "info");
+/// assert_eq!(config.paths().schema.schemas_dir().as_path(), Path::new("schemas"));
+/// assert_eq!(config.frontmatter().title_key().as_str(), "title");
+/// assert!(config.task().enabled());
+/// assert_eq!(config.task().task_tags()[0].as_str(), "#task");
 /// # Ok(())
 /// # }
 /// ```
@@ -90,15 +85,15 @@ use super::{
 #[non_exhaustive]
 pub struct Config {
     /// Vault metadata with versioning and naming.
-    pub vault_metadata: Metadata,
+    vault_metadata: Metadata,
     /// Merged logging configuration.
-    pub logging: Logging,
+    logging: Logging,
     /// Merged paths configuration.
-    pub paths: Paths,
+    paths: Paths,
     /// Merged frontmatter configuration.
-    pub frontmatter: Frontmatter,
+    frontmatter: Frontmatter,
     /// Merged task configuration.
-    pub task: Task,
+    task: Task,
     /// Domain events pending emission (not persisted).
     #[serde(skip)]
     #[rkyv(with = rkyv::with::Skip)]
@@ -106,6 +101,41 @@ pub struct Config {
 }
 
 impl Config {
+    /// Return the vault metadata.
+    #[inline]
+    #[must_use]
+    pub const fn vault_metadata(&self) -> &Metadata {
+        &self.vault_metadata
+    }
+
+    /// Return the logging configuration.
+    #[inline]
+    #[must_use]
+    pub const fn logging(&self) -> &Logging {
+        &self.logging
+    }
+
+    /// Return the paths configuration.
+    #[inline]
+    #[must_use]
+    pub const fn paths(&self) -> &Paths {
+        &self.paths
+    }
+
+    /// Return the frontmatter configuration.
+    #[inline]
+    #[must_use]
+    pub const fn frontmatter(&self) -> &Frontmatter {
+        &self.frontmatter
+    }
+
+    /// Return the task configuration.
+    #[inline]
+    #[must_use]
+    pub const fn task(&self) -> &Task {
+        &self.task
+    }
+
     /// Build validated Config from Figment-merged raw configuration.
     ///
     /// This is the **primary constructor** for `Config`. It takes a `RawConfig`
@@ -459,7 +489,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config.vault_metadata.root().as_path(),
+                config.vault_metadata().root().as_path(),
                 std::path::Path::new("/vault")
             );
         }
@@ -474,7 +504,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config.paths.schema.schemas_dir().as_path(),
+                config.paths().schema.schemas_dir().as_path(),
                 std::path::Path::new("schemas")
             );
         }
@@ -508,7 +538,7 @@ mod tests {
         fn defaults_apply_to_cache_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
-                config.paths.cache.cache_dir().as_path(),
+                config.paths().cache.cache_dir().as_path(),
                 std::path::Path::new(".cache")
             );
         }
@@ -517,7 +547,7 @@ mod tests {
         fn defaults_apply_to_templates_dir() {
             let config = fixtures::merged_config_with_empty_inputs();
             assert_eq!(
-                config.paths.template.templates_dir().as_path(),
+                config.paths().template.templates_dir().as_path(),
                 std::path::Path::new("templates")
             );
         }
@@ -526,7 +556,7 @@ mod tests {
         fn vault_templates_dir_overrides_global() {
             let merged = fixtures::merged_config_with_sample_overrides();
             assert_eq!(
-                merged.paths.template.templates_dir().as_path(),
+                merged.paths().template.templates_dir().as_path(),
                 std::path::Path::new("custom_templates")
             );
         }
@@ -545,11 +575,11 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config.paths.schema.schemas_dir().as_path(),
+                config.paths().schema.schemas_dir().as_path(),
                 std::path::Path::new("schemas")
             );
             assert_eq!(
-                config.paths.property_bank.as_str(),
+                config.paths().property_bank.as_str(),
                 "property_bank.json"
             );
         }
@@ -572,11 +602,11 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                config.paths.schema.schemas_dir().as_path(),
+                config.paths().schema.schemas_dir().as_path(),
                 std::path::Path::new("my-schemas")
             );
             assert_eq!(
-                config.paths.cache.cache_dir().as_path(),
+                config.paths().cache.cache_dir().as_path(),
                 std::path::Path::new(".lithos-cache")
             );
         }
