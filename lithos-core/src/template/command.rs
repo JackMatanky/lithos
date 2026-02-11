@@ -35,14 +35,13 @@ impl super::ports::Command for Command<'_> {
     fn create(&self, template: &Template) -> Result<(), TemplateError> {
         // Note: Still need id_str for multimap_insert (not UUID-based yet)
         let id_str = template.id().to_string();
-        let name = template.name().to_owned();
 
         self.db
             .put_by_uuid("templates", template.id(), template)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         self.db
-            .multimap_insert("template_name_to_id", &name, &id_str)
+            .multimap_insert("template_name_to_id", template.name(), &id_str)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         Ok(())
@@ -86,7 +85,6 @@ impl super::ports::Command for Command<'_> {
     fn update(&self, template: &Template) -> Result<(), TemplateError> {
         // Note: Still need id_str for multimap operations (not UUID-based yet)
         let id_str = template.id().to_string();
-        let name = template.name().to_owned();
 
         // 1. Get old template to find what changed
         let old_template = self
@@ -101,7 +99,11 @@ impl super::ports::Command for Command<'_> {
                     .multimap_remove("template_name_to_id", old.name(), &id_str)
                     .map_err(|e| TemplateError::Storage(e.to_string()))?;
                 self.db
-                    .multimap_insert("template_name_to_id", &name, &id_str)
+                    .multimap_insert(
+                        "template_name_to_id",
+                        template.name(),
+                        &id_str,
+                    )
                     .map_err(|e| TemplateError::Storage(e.to_string()))?;
             }
         }
