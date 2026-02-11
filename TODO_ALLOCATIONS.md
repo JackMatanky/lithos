@@ -1,6 +1,6 @@
 # Lithos Allocation Optimization Plan
 **Generated**: 2026-02-11
-**Status**: ✅ P0 Complete - Ready for P1
+**Status**: ✅ P0 + P1 Complete
 
 ## Completion Status
 
@@ -10,6 +10,9 @@
 - ✅ Task 3: Command Allocations Documented (commit 62321251)
 - ✅ Task 4: Template HashMap Optimization (commit b2569d43)
 - ✅ Task 5: Numeric Formatting (commit be7433d7)
+
+**Phase 2 (P1 - High Priority API/Ergonomics): ✅ COMPLETE**
+- ✅ Task 6: Constructor API Design (commit eb68d1cf)
 
 **Benchmark Results** (after optimizations):
 - Note ingestion: **3.50 µs** (26.1 MiB/s throughput)
@@ -550,8 +553,9 @@ fn find_by_task_completed_date(&self, completed_date: i64) -> Result<Vec<Note>, 
 
 ## 🟠 P1: HIGH PRIORITY (Write Path + API Design)
 
-### 6. Constructor API Design - String vs &str
+### 6. Constructor API Design - String vs &str ✅
 
+**Status**: Complete (commit eb68d1cf)
 **Impact**: Forces caller allocations, poor ergonomics
 
 #### Current State - Multiple constructors force `String` allocation
