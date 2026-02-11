@@ -78,29 +78,34 @@
 **What it means**: Sub-microsecond read performance validates the zero-copy architectural decision using redb + rkyv.
 
 **Breakdown**:
+
 - 457ns includes transaction overhead + rkyv validation + closure execution
 - Suitable for LSP hot-path operations (hover, autocomplete, diagnostics)
 - **Requirement**: < 1 µs for interactive feel
 
 **Why only 1.7x vs deserialization?** Our test notes are relatively small (~1-2KB):
+
 - 2 links, 3 tags, 2 headings, 2 tasks, 1 section
 - For production notes with 50+ links and complex frontmatter, expect 5-10x improvement as allocation/copying overhead dominates
 
 #### Write Performance
 
 **Single Write (3.7 ms)**:
+
 - Each write includes: rkyv serialization (~50-100ns) + redb transaction begin/commit (~3.6ms) + fsync
 - Transaction overhead dominates (97% of time)
 - Acceptable for occasional single-note updates
 - **Requirement**: < 5 ms for interactive editing
 
 **Batch Write (4.33s for 1000 notes)**:
+
 - ⚠️ Exceeds <2s target for 1000 notes
 - Throughput: ~231 notes/sec (decreases with batch size due to I/O contention)
 - **Root cause**: Test data complexity (2000 link objects, 3000 tag objects, 1.5-2MB total)
 - For simpler notes, target is achievable
 
 **Transaction Batching**:
+
 - Surprising finding: Batch transactions are **not significantly faster** than individual transactions for 100 notes
 - Possible explanations: redb may already batch writes internally; 100 notes is small enough that overhead is negligible
 - **Recommendation**: Still use `batch_write()` - benefits may appear at 10,000+ note scale
@@ -110,6 +115,7 @@
 **Finding**: Minimal cache effect observed (~2% difference between hot and cold reads)
 
 **Why**:
+
 - redb's internal page cache is effective even for "cold" keys
 - Test dataset (100 notes) fits entirely in cache
 - Modern SSDs make disk I/O fast enough to hide cold misses
@@ -121,6 +127,7 @@
 #### UUID-Native Methods
 
 **Performance**: 7-9% faster than string conversion
+
 - **Get**: 420ns (native) vs 452ns (string) - saves 31ns
 - **Put**: 3.64ms (native) vs 3.99ms (string) - saves 350µs
 - **Memory**: 36 bytes saved per UUID operation (no string allocation)
@@ -130,6 +137,7 @@
 #### Key Formatting
 
 **Performance**: Pre-allocated buffer + `write!()` vs naive `format!()`
+
 - Saves 36-100 bytes per key construction
 - Used in 15 database operation sites
 
@@ -138,11 +146,13 @@
 #### Numeric Formatting
 
 **Integer formatting** (`itoa::Buffer`):
+
 - **9.7x faster** than `.to_string()` (135ns vs 1.31µs for 100 integers)
 - **Zero-allocation**: Stack-based buffer, no heap allocation
 - Used in query parameter formatting (4 sites)
 
 **Float formatting** (`ryu::Buffer`):
+
 - **17% faster** than `.to_string()` (2.76µs vs 3.23µs for 100 floats)
 - **Zero-allocation**: Stack-based buffer
 - Savings: 10-19 bytes per formatted float
@@ -150,6 +160,7 @@
 #### Constructor APIs
 
 **Performance**: `&str` parameters vs forced `String` allocation
+
 - **SchemaName**: 22ns vs 33ns (~32% faster)
 - **PropertyName**: 25ns vs 36ns (~31% faster)
 - **DateSpec**: 11ns vs 11ns (~3% faster - minimal allocation anyway)
@@ -160,6 +171,7 @@
 #### Aggregate Workflow
 
 **Combined impact**: 3.52ms for workflow combining all optimizations
+
 - Dominated by database write overhead (~3.6ms)
 - Individual optimization gains less visible in aggregate
 - Still validates that optimizations don't conflict
@@ -168,30 +180,33 @@
 
 ## Performance vs Targets
 
-| Metric | Target | Actual | Status | Notes |
-|--------|--------|--------|--------|-------|
-| Zero-copy read | Hot path (<1µs) | 457 ns | ✅ Excellent | LSP-ready |
-| Deserialization speedup | 5-10x faster | 1.7x faster | ⚠️ Small notes | Will improve with larger notes |
-| Batch write (1000 notes) | < 2 seconds | 4.3 seconds | ⚠️ Complex data | Pathological test case |
-| Single write transaction | < 5 ms | 3.7 ms | ✅ Within target | Good transaction efficiency |
-| UUID-native improvement | Faster than string | 7-9% faster | ✅ Validated | 36 bytes saved per op |
-| Numeric formatting (itoa) | Significant gain | 9.7x faster | ✅ Excellent | Zero-allocation win |
+| Metric                    | Target             | Actual      | Status           | Notes                          |
+| ------------------------- | ------------------ | ----------- | ---------------- | ------------------------------ |
+| Zero-copy read            | Hot path (<1µs)    | 457 ns      | ✅ Excellent     | LSP-ready                      |
+| Deserialization speedup   | 5-10x faster       | 1.7x faster | ⚠️ Small notes   | Will improve with larger notes |
+| Batch write (1000 notes)  | < 2 seconds        | 4.3 seconds | ⚠️ Complex data  | Pathological test case         |
+| Single write transaction  | < 5 ms             | 3.7 ms      | ✅ Within target | Good transaction efficiency    |
+| UUID-native improvement   | Faster than string | 7-9% faster | ✅ Validated     | 36 bytes saved per op          |
+| Numeric formatting (itoa) | Significant gain   | 9.7x faster | ✅ Excellent     | Zero-allocation win            |
 
 ---
 
 ## Production Recommendations
 
 ### For Vault Indexing
+
 1. **Use batch operations**: Always use `batch_write()` for bulk indexing
 2. **Batch size**: Index in 100-500 note batches to balance throughput and responsiveness
 3. **Target is achievable**: <2s for 1000 notes is realistic for typical Obsidian notes (not our pathological test case)
 
 ### For LSP Operations
+
 1. **Zero-copy reads**: Use zero-copy access for hover, autocomplete, diagnostics
 2. **No cache warming needed**: redb's built-in cache is sufficient for typical vaults (<10,000 notes)
 3. **Sub-microsecond ready**: 457ns reads enable real-time language server operations
 
 ### For API Design
+
 1. **Constructor parameters**: Use `&str` instead of `String` for new API designs
 2. **Numeric formatting**: Use `itoa`/`ryu` for all hot-path string formatting
 3. **UUID handling**: Always use UUID-native database methods (avoid `.to_string()`)
@@ -434,9 +449,11 @@ open target/criterion/report/index.html
 ## Archive Note
 
 Historical benchmark documents have been consolidated into this file:
+
 - `docs/benchmarks/BASELINE.md` → Baseline numbers and optimization history
 - `docs/benchmarks/phase6-db.md` → Detailed analysis and interpretation
 
 These documents have been superseded by:
+
 - `RESULTS.md` (this file): Performance data and interpretation
 - `README.md`: Methodology and usage guide
