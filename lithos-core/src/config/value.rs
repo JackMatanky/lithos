@@ -25,7 +25,7 @@ use regex::Regex;
 
 use super::{
     error::ConfigError,
-    raw::{RawDateFieldSpec, RawTaskFieldSpec},
+    raw::{RawDateFieldSpec, RawFieldSpec},
 };
 use crate::bounds::Bounds;
 
@@ -98,11 +98,11 @@ impl FieldSpec {
     /// Returns `ConfigError::ValidationFailed` if the spec is invalid.
     pub fn from_raw(
         name: &str,
-        raw: RawTaskFieldSpec,
+        raw: RawFieldSpec,
     ) -> Result<Self, ConfigError> {
         let name = FieldName::try_new(name)?;
         match raw {
-            RawTaskFieldSpec::Enum {
+            RawFieldSpec::Enum {
                 values,
             } => {
                 if values.is_empty() {
@@ -120,7 +120,7 @@ impl FieldSpec {
                     values,
                 })
             }
-            RawTaskFieldSpec::Integer {
+            RawFieldSpec::Integer {
                 min,
                 max,
             } => {
@@ -136,7 +136,7 @@ impl FieldSpec {
                     bounds,
                 })
             }
-            RawTaskFieldSpec::Float {
+            RawFieldSpec::Float {
                 min,
                 max,
             } => {
@@ -152,7 +152,7 @@ impl FieldSpec {
                     bounds,
                 })
             }
-            RawTaskFieldSpec::DateTime {
+            RawFieldSpec::DateTime {
                 format,
             } => {
                 validate_chrono_format(&format, "fields.format")?;
@@ -161,7 +161,7 @@ impl FieldSpec {
                     format,
                 })
             }
-            RawTaskFieldSpec::String {
+            RawFieldSpec::String {
                 pattern,
             } => {
                 let mut compiled = None;
