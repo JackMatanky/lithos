@@ -84,12 +84,12 @@ impl<'db> Command<'db> {
     /// Returns `NoteCommandError::Storage` if the database read fails.
     fn get_note_index_data(
         &self,
-        id_str: &str,
+        id: Uuid,
     ) -> Result<Option<IndexData>, NoteCommandError> {
         self.db
-            .get::<Note, _, (String, Vec<String>)>(
+            .get_by_uuid::<Note, _, (String, Vec<String>)>(
                 "notes",
-                id_str,
+                id,
                 |archived| {
                     let path = archived.path().as_str().to_owned();
                     let tags: Vec<String> = archived
@@ -112,14 +112,14 @@ impl super::ports::Command for Command<'_> {
     #[inline]
     fn create(&self, path: &str) -> Result<Note, NoteCommandError> {
         let note = Note::new(NoteId::new(), path)?;
-        let id_str = Uuid::from(note.id()).to_string();
+        let id = Uuid::from(note.id());
 
         self.db.batch_write(|batch| {
-            batch.put("notes", &id_str, &note)?;
+            batch.put("notes", &id.to_string(), &note)?;
             batch.multimap_insert(
                 "path_to_id",
                 note.path().as_str(),
-                &id_str,
+                &id.to_string(),
             )?;
             Ok(())
         })?;
@@ -133,23 +133,25 @@ impl super::ports::Command for Command<'_> {
     /// Returns `NoteCommandError` if note deletion fails.
     #[inline]
     fn delete(&self, id: Uuid) -> Result<(), NoteCommandError> {
-        let id_str = id.to_string();
-
         // 1. Get old data for index cleanup using zero-copy read
-        let old_data = self.get_note_index_data(&id_str)?;
+        let old_data = self.get_note_index_data(id)?;
 
         if let Some((path, tags)) = old_data {
             self.db.batch_write(|batch| {
                 // 2. Remove from path index
-                batch.multimap_remove("path_to_id", &path, &id_str)?;
+                batch.multimap_remove("path_to_id", &path, &id.to_string())?;
 
                 // 3. Remove from tag indexes
                 for tag in tags {
-                    batch.multimap_remove("tags_to_notes", &tag, &id_str)?;
+                    batch.multimap_remove(
+                        "tags_to_notes",
+                        &tag,
+                        &id.to_string(),
+                    )?;
                 }
 
                 // 4. Delete note
-                batch.delete("notes", &id_str)?;
+                batch.delete("notes", &id.to_string())?;
 
                 Ok(())
             })?;
@@ -164,34 +166,42 @@ impl super::ports::Command for Command<'_> {
     /// Returns `NoteCommandError` if note update fails.
     #[inline]
     fn update(&self, note: Note) -> Result<Note, NoteCommandError> {
-        let id_str = Uuid::from(note.id()).to_string();
+        let id = Uuid::from(note.id());
 
         // 1. Get old data for index cleanup using zero-copy read
-        let old_data = self.get_note_index_data(&id_str)?;
+        let old_data = self.get_note_index_data(id)?;
 
         self.db.batch_write(|batch| {
             if let Some((old_path, old_tags)) = old_data {
                 // 2. Update path index if changed
                 if old_path != note.path().as_str() {
-                    batch.multimap_remove("path_to_id", &old_path, &id_str)?;
+                    batch.multimap_remove(
+                        "path_to_id",
+                        &old_path,
+                        &id.to_string(),
+                    )?;
                     batch.multimap_insert(
                         "path_to_id",
                         note.path().as_str(),
-                        &id_str,
+                        &id.to_string(),
                     )?;
                 }
 
                 // 3. Update tag index
                 // Remove old tags
                 for tag in old_tags {
-                    batch.multimap_remove("tags_to_notes", &tag, &id_str)?;
+                    batch.multimap_remove(
+                        "tags_to_notes",
+                        &tag,
+                        &id.to_string(),
+                    )?;
                 }
             } else {
                 // New note (even though it's update call), add path index
                 batch.multimap_insert(
                     "path_to_id",
                     note.path().as_str(),
-                    &id_str,
+                    &id.to_string(),
                 )?;
             }
 
@@ -200,12 +210,12 @@ impl super::ports::Command for Command<'_> {
                 batch.multimap_insert(
                     "tags_to_notes",
                     tag.full_path(),
-                    &id_str,
+                    &id.to_string(),
                 )?;
             }
 
             // 4. Save new note
-            batch.put("notes", &id_str, &note)?;
+            batch.put("notes", &id.to_string(), &note)?;
 
             Ok(())
         })?;
