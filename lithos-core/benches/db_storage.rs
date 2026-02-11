@@ -1,24 +1,33 @@
-//! redb + rkyv storage benchmarks.
+//! redb + rkyv storage layer performance benchmarks.
 //!
-//! # Relevance contract
+//! Measures core storage infrastructure performance including zero-copy reads,
+//! batch operations, transaction overhead, and cache effectiveness.
 //!
-//! These benchmarks exist to keep Lithos’s performance claims honest as the
-//! codebase evolves.
+//! # Benchmarks
 //!
-//! When you change any of the following, you should expect these benchmarks to
-//! move and you should update the doc comments’ “Expected results” accordingly:
-//! - On-disk encoding format, rkyv features, or validation approach
-//! - Transaction boundaries (e.g., where/when commits happen)
-//! - Data model shape for `Note` (more fields, bigger strings, more nested
+//! - **Zero-copy reads**: Archived access without deserialization
+//! - **Full deserialization**: Owned value construction
+//! - **Single writes**: Individual transaction per operation
+//! - **Batch writes**: Multiple operations in single transaction
+//! - **Delete operations**: Key removal performance
+//! - **Cache effectiveness**: Hot vs cold read patterns
+//! - **Transaction overhead**: Batch vs individual transaction cost
+//!
+//! # Relevance Contract
+//!
+//! These benchmarks track storage infrastructure performance. Expect changes
+//! when:
+//! - On-disk encoding format, rkyv features, or validation approach changes
+//! - Transaction boundaries (where/when commits happen) change
+//! - Data model shape for `Note` changes (more fields, bigger strings, nested
 //!   vecs)
-//! - Namespacing strategy for keys
+//! - Namespacing strategy for keys changes
 //!
-//! # What to look for
+//! # What to Look For
 //!
-//! - **Trend, not absolutes**: raw numbers depend on CPU, filesystem, and SSD.
-//! - **Relative comparisons** are the guardrail: archived-access reads should
-//!   be faster than full deserialization, and batched writes should dominate
-//!   per-op transactions.
+//! - **Trend, not absolutes**: Raw numbers depend on CPU, filesystem, and SSD
+//! - **Relative comparisons**: Archived reads should be faster than
+//!   deserialization
 //! - **Regression signals**:
 //!   - `read_zero_copy/*` gets close to `read_deserialize/*`
 //!   - `transaction_overhead/batch_txn` approaches `individual_txns`
@@ -37,8 +46,7 @@
     clippy::cast_possible_truncation,
     clippy::integer_division_remainder_used,
     clippy::excessive_nesting,
-    reason = "Criterion macros generate undocumented items; benchmark code \
-              uses simple control flow and asserts for clarity"
+    reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
 
 use std::collections::HashMap;
@@ -186,16 +194,19 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
 fn bench_zero_copy_read(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
-    let id_str = Uuid::from(test_id).to_string();
 
     let mut group = c.benchmark_group("read_zero_copy");
     group.throughput(Throughput::Elements(1));
 
     group.bench_function("get_zero_copy", |b| {
         b.iter(|| {
-            db.get::<Note, _, _>("notes", &id_str, |archived| {
-                black_box(archived);
-            })
+            db.get_by_uuid::<Note, _, _>(
+                "notes",
+                Uuid::from(test_id),
+                |archived| {
+                    black_box(archived);
+                },
+            )
             .expect("get note")
         });
     });
@@ -206,15 +217,15 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 fn bench_full_deserialize(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
-    let id_str = Uuid::from(test_id).to_string();
 
     let mut group = c.benchmark_group("read_deserialize");
     group.throughput(Throughput::Elements(1));
 
     group.bench_function("get_owned", |b| {
         b.iter(|| {
-            let note: Option<Note> =
-                db.get_owned("notes", &id_str).expect("get owned note");
+            let note: Option<Note> = db
+                .get_owned_by_uuid("notes", Uuid::from(test_id))
+                .expect("get owned note");
             black_box(note.expect("note exists"));
         });
     });
@@ -234,9 +245,9 @@ fn bench_single_write(c: &mut Criterion) {
     group.bench_function("put_single", |b| {
         b.iter(|| {
             let note = create_test_note(counter);
-            let id_str = Uuid::from(note.id()).to_string();
             counter = counter.wrapping_add(1);
-            db.put("notes", &id_str, &note).expect("put note");
+            db.put_by_uuid("notes", Uuid::from(note.id()), &note)
+                .expect("put note");
         });
     });
 
@@ -296,10 +307,11 @@ fn bench_delete(c: &mut Criterion) {
     group.bench_function("delete_single", |b| {
         b.iter(|| {
             let id = note_ids[index % note_ids.len()];
-            let id_str = Uuid::from(id).to_string();
             index = index.wrapping_add(1);
 
-            let existed = db.delete("notes", &id_str).expect("delete note");
+            let existed = db
+                .delete_by_uuid("notes", Uuid::from(id))
+                .expect("delete note");
             black_box(existed);
         });
     });
@@ -313,12 +325,16 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_effectiveness");
     group.throughput(Throughput::Elements(1));
 
-    let hot_id = Uuid::from(note_ids[0]).to_string();
+    let hot_id = note_ids[0];
     group.bench_function("hot_read", |b| {
         b.iter(|| {
-            db.get::<Note, _, _>("notes", &hot_id, |archived| {
-                black_box(archived);
-            })
+            db.get_by_uuid::<Note, _, _>(
+                "notes",
+                Uuid::from(hot_id),
+                |archived| {
+                    black_box(archived);
+                },
+            )
             .expect("get note")
         });
     });
@@ -326,13 +342,16 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     let mut cold_index: usize = 0;
     group.bench_function("cold_read", |b| {
         b.iter(|| {
-            let cold_id =
-                Uuid::from(note_ids[cold_index % note_ids.len()]).to_string();
+            let cold_id = note_ids[cold_index % note_ids.len()];
             cold_index = cold_index.wrapping_add(1);
 
-            db.get::<Note, _, _>("notes", &cold_id, |archived| {
-                black_box(archived);
-            })
+            db.get_by_uuid::<Note, _, _>(
+                "notes",
+                Uuid::from(cold_id),
+                |archived| {
+                    black_box(archived);
+                },
+            )
             .expect("get note")
         });
     });
@@ -360,8 +379,8 @@ fn bench_transaction_overhead(c: &mut Criterion) {
 
             for i in 0..batch_size {
                 let note = create_test_note(i as usize);
-                let id_str = Uuid::from(note.id()).to_string();
-                db.put("notes", &id_str, &note).expect("put note");
+                db.put_by_uuid("notes", Uuid::from(note.id()), &note)
+                    .expect("put note");
             }
         });
     });

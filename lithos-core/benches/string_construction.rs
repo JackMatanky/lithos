@@ -1,26 +1,36 @@
-//! Allocation optimization benchmarks tracking P0/P1 performance improvements.
+//! String and numeric formatting API benchmarks.
 //!
-//! This benchmark suite specifically tracks the optimizations documented in
-//! `TODO_ALLOCATIONS.md`. Each benchmark corresponds to a specific optimization
-//! task and measures the impact of that optimization.
+//! Measures performance of different approaches to string construction,
+//! numeric formatting, and constructor API design, tracking P0 Task 5 and
+//! P1 Task 6 from `TODO_ALLOCATIONS.md`.
 //!
-//! # Benchmark Groups
+//! # Benchmarks
 //!
-//! ## P0 Optimizations (Critical Hot Paths)
-//! - **`database_operations`**: Tests key formatting & UUID operations (Tasks 1
-//!   & 2)
-//! - **`numeric_formatting`**: Tests itoa/ryu vs `.to_string()` (Task 5)
+//! ## Numeric Formatting (P0 Task 5)
+//! - **Integer formatting**: `itoa::Buffer` (zero-allocation) vs `.to_string()`
+//! - **Float formatting**: `ryu::Buffer` (zero-allocation) vs `.to_string()`
 //!
-//! ## P1 Optimizations (API Ergonomics)
-//! - **`constructor_apis`**: Tests `&str` vs `String` constructor parameters
-//!   (Task 6)
+//! ## Constructor APIs (P1 Task 6)
+//! - **`&str` parameters**: Caller controls allocation (optimized)
+//! - **`String` parameters**: Forced allocation at call site (baseline)
+//!
+//! ## Aggregate Workflow
+//! - Combined impact of all optimizations in realistic usage
 //!
 //! # Expected Results
 //!
-//! All optimizations should show:
-//! - Reduced execution time (typically 10-30% improvement)
-//! - Lower memory allocations (measurable via profiling tools)
-//! - Better cache locality (measurable in aggregate operations)
+//! Numeric formatting should show:
+//! - `itoa`: ~9.7x faster than `.to_string()` for integers
+//! - `ryu`: ~17% faster than `.to_string()` for floats
+//!
+//! Constructor APIs should show:
+//! - `&str`: 30-32% faster than forced `String` allocation
+//! - Better ergonomics (caller chooses when to allocate)
+//!
+//! # Cross-Reference
+//!
+//! See `db_key_handling.rs` for database-specific string handling.
+//! See `docs/benchmarks/BASELINE.md` for detailed optimization impact analysis.
 //!
 //! # Safety
 //! Benchmark code uses unwrap/expect for simplicity.
@@ -53,126 +63,20 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 // ============================================================================
-// P0 Task 1 & 2: Database Operations (Key Formatting + UUID)
-// ============================================================================
-
-/// Benchmarks the optimized database operations including key formatting
-/// and UUID-native methods.
-///
-/// # Optimizations
-/// - Task 1: Replace `format!("{table}:{key}")` with pre-allocated buffers
-/// - Task 2: Add UUID-native methods (`get_by_uuid`, `put_by_uuid`, etc.)
-fn bench_database_operations(c: &mut Criterion) {
-    let temp_dir = TempDir::new().expect("create temp dir");
-    let db_path = temp_dir.path().join("db_ops.db");
-    let db = Database::open(&db_path).expect("open database");
-
-    // Pre-populate with some data
-    for i in 0..100u32 {
-        let key = format!("key-{i:04}");
-        let value = format!("value-{i}");
-        db.put("benchmark", &key, &value).expect("put");
-    }
-
-    let mut group = c.benchmark_group("database_operations");
-    group.throughput(Throughput::Elements(1));
-
-    // Test optimized get operation (Task 1: key formatting)
-    group.bench_function("get_with_string_key", |b| {
-        b.iter(|| {
-            db.get::<String, _, _>(
-                "benchmark",
-                black_box("key-0050"),
-                |archived| {
-                    black_box(archived);
-                },
-            )
-            .expect("get")
-        });
-    });
-
-    // Test optimized put operation (Task 1: key formatting)
-    let mut counter = 1000u32;
-    group.bench_function("put_with_string_key", |b| {
-        b.iter(|| {
-            let key = format!("key-{counter:04}");
-            counter += 1;
-            db.put("benchmark", &key, black_box(&"test_value".to_owned()))
-                .expect("put");
-        });
-    });
-
-    // Prepare UUID-keyed data for Task 2 benchmarks
-    let test_uuid = Uuid::now_v7();
-    db.put_by_uuid("templates", test_uuid, &"test_template".to_owned())
-        .expect("put");
-
-    // Test UUID-native get (Task 2: optimized)
-    group.bench_function("get_by_uuid_native", |b| {
-        b.iter(|| {
-            db.get_by_uuid::<String, _, _>(
-                "templates",
-                black_box(test_uuid),
-                |archived| {
-                    black_box(archived);
-                },
-            )
-            .expect("get")
-        });
-    });
-
-    // Test UUID-via-string get (Task 2: baseline for comparison)
-    group.bench_function("get_by_uuid_via_string", |b| {
-        b.iter(|| {
-            let id_str = black_box(test_uuid).to_string();
-            db.get::<String, _, _>("templates", &id_str, |archived| {
-                black_box(archived);
-            })
-            .expect("get")
-        });
-    });
-
-    // Test UUID-native put (Task 2: optimized)
-    group.bench_function("put_by_uuid_native", |b| {
-        b.iter(|| {
-            let uuid = Uuid::now_v7();
-            db.put_by_uuid(
-                "templates",
-                black_box(uuid),
-                &"benchmark_value".to_owned(),
-            )
-            .expect("put");
-        });
-    });
-
-    // Test UUID-via-string put (Task 2: baseline for comparison)
-    group.bench_function("put_by_uuid_via_string", |b| {
-        b.iter(|| {
-            let uuid = Uuid::now_v7();
-            let id_str = uuid.to_string();
-            db.put("templates", &id_str, &"benchmark_value".to_owned())
-                .expect("put");
-        });
-    });
-
-    group.finish();
-}
-
-// ============================================================================
-// P0 Task 5: Numeric Formatting
+// Numeric Formatting (P0 Task 5)
 // ============================================================================
 
 /// Benchmarks zero-allocation numeric formatting using `itoa`/`ryu` vs
 /// `.to_string()`.
 ///
-/// # Optimization
-/// Replace `.to_string()` with `itoa::Buffer` for integers
-/// and `ryu::Buffer` for floats in query operations.
+/// # Optimization (Task 5)
+/// Replace `.to_string()` with `itoa::Buffer` for integers and `ryu::Buffer`
+/// for floats in query operations and display formatting.
 fn bench_numeric_formatting(c: &mut Criterion) {
     let mut group = c.benchmark_group("numeric_formatting");
     group.throughput(Throughput::Elements(100));
 
-    // Benchmark optimized integer formatting (itoa) - Task 5
+    // Optimized: Integer formatting with itoa
     group.bench_function("format_integers_itoa", |b| {
         b.iter(|| {
             let mut buffer = itoa::Buffer::new();
@@ -183,7 +87,7 @@ fn bench_numeric_formatting(c: &mut Criterion) {
         });
     });
 
-    // Benchmark naive integer formatting (.to_string()) for comparison
+    // Baseline: Integer formatting with .to_string()
     group.bench_function("format_integers_to_string", |b| {
         b.iter(|| {
             for i in 0i64..100i64 {
@@ -193,7 +97,7 @@ fn bench_numeric_formatting(c: &mut Criterion) {
         });
     });
 
-    // Benchmark optimized float formatting (ryu) - Task 5
+    // Optimized: Float formatting with ryu
     group.bench_function("format_floats_ryu", |b| {
         b.iter(|| {
             let mut buffer = ryu::Buffer::new();
@@ -205,7 +109,7 @@ fn bench_numeric_formatting(c: &mut Criterion) {
         });
     });
 
-    // Benchmark naive float formatting (.to_string()) for comparison
+    // Baseline: Float formatting with .to_string()
     group.bench_function("format_floats_to_string", |b| {
         b.iter(|| {
             for i in 0u32..100u32 {
@@ -220,25 +124,25 @@ fn bench_numeric_formatting(c: &mut Criterion) {
 }
 
 // ============================================================================
-// P1 Task 6: Constructor APIs
+// Constructor APIs (P1 Task 6)
 // ============================================================================
 
 /// Benchmarks constructor APIs using `&str` vs `String` parameters.
 ///
-/// # Optimization
-/// Change constructors from `new(name: String)` to
-/// `new(name: &str)` to avoid forcing caller allocations.
+/// # Optimization (Task 6)
+/// Change constructors from `new(name: String)` to `new(name: &str)` to
+/// avoid forcing caller allocations. Follows Rust idiom of accepting
+/// borrowed parameters.
 fn bench_constructor_apis(c: &mut Criterion) {
     let mut group = c.benchmark_group("constructor_apis");
     group.throughput(Throughput::Elements(1));
 
-    // Benchmark SchemaName construction (optimized with `&str`) - Task 6
+    // Optimized: SchemaName with &str
     group.bench_function("schema_name_from_str", |b| {
         b.iter(|| SchemaName::new(black_box("my-schema")).expect("valid name"));
     });
 
-    // Benchmark SchemaName from String (shows caller cost if we hadn't
-    // optimized)
+    // Baseline: SchemaName from String (shows forced allocation cost)
     group.bench_function("schema_name_from_owned_string", |b| {
         b.iter(|| {
             let owned = black_box("my-schema").to_owned();
@@ -246,15 +150,14 @@ fn bench_constructor_apis(c: &mut Criterion) {
         });
     });
 
-    // Benchmark PropertyName construction (optimized with `&str`) - Task 6
+    // Optimized: PropertyName with &str
     group.bench_function("property_name_from_str", |b| {
         b.iter(|| {
             PropertyName::new(black_box("my-property")).expect("valid name")
         });
     });
 
-    // Benchmark PropertyName from String (shows caller cost if we hadn't
-    // optimized)
+    // Baseline: PropertyName from String
     group.bench_function("property_name_from_owned_string", |b| {
         b.iter(|| {
             let owned = black_box("my-property").to_owned();
@@ -262,14 +165,14 @@ fn bench_constructor_apis(c: &mut Criterion) {
         });
     });
 
-    // Benchmark DateSpec construction (optimized with `&str`) - Task 6
+    // Optimized: DateSpec with &str
     group.bench_function("date_spec_from_str", |b| {
         b.iter(|| {
             DateSpec::try_new(black_box("%Y-%m-%d")).expect("valid format")
         });
     });
 
-    // Benchmark DateSpec from String (shows caller cost if we hadn't optimized)
+    // Baseline: DateSpec from String
     group.bench_function("date_spec_from_owned_string", |b| {
         b.iter(|| {
             let owned = black_box("%Y-%m-%d").to_owned();
@@ -277,7 +180,7 @@ fn bench_constructor_apis(c: &mut Criterion) {
         });
     });
 
-    // Benchmark Template construction (optimized with `&str`) - Task 6
+    // Optimized: Template with &str
     group.bench_function("template_from_str", |b| {
         b.iter(|| {
             Template::new(
@@ -291,7 +194,7 @@ fn bench_constructor_apis(c: &mut Criterion) {
         });
     });
 
-    // Benchmark Template from String (shows caller cost if we hadn't optimized)
+    // Baseline: Template from String
     group.bench_function("template_from_owned_string", |b| {
         b.iter(|| {
             let owned = black_box("my-template").to_owned();
@@ -310,11 +213,16 @@ fn bench_constructor_apis(c: &mut Criterion) {
 }
 
 // ============================================================================
-// Aggregate Workflow Benchmark
+// Aggregate Workflow
 // ============================================================================
 
 /// Benchmarks a complete workflow that exercises multiple optimizations
 /// to measure cumulative impact.
+///
+/// Combines:
+/// - Task 5: Numeric formatting (itoa/ryu)
+/// - Task 6: Constructor APIs (&str parameters)
+/// - Task 2: UUID-native database operations
 fn bench_aggregate_workflow(c: &mut Criterion) {
     let temp_dir = TempDir::new().expect("create temp dir");
     let db_path = temp_dir.path().join("workflow.db");
@@ -323,7 +231,6 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
     let mut group = c.benchmark_group("aggregate_workflow");
     group.throughput(Throughput::Elements(1));
 
-    // Workflow combining Tasks 1, 2, 5, and 6
     group.bench_function("complete_optimized_workflow", |b| {
         b.iter(|| {
             // Task 6: Optimized constructors (&str)
@@ -334,7 +241,7 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
             let date_spec =
                 DateSpec::try_new("%Y-%m-%d").expect("valid format");
 
-            // Task 5: Optimized numeric formatting (used in queries)
+            // Task 5: Optimized numeric formatting
             let mut int_buffer = itoa::Buffer::new();
             let priority_str = int_buffer.format(black_box(42i64));
             black_box(priority_str);
@@ -368,7 +275,6 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    bench_database_operations,
     bench_numeric_formatting,
     bench_constructor_apis,
     bench_aggregate_workflow,

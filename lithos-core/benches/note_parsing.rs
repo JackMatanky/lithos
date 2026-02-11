@@ -1,4 +1,21 @@
-//! Markdown ingestion benchmarks for the note context.
+//! Markdown parsing benchmarks for the note context.
+//!
+//! Measures performance of transforming markdown text into structured `Note`
+//! domain objects, including frontmatter, tasks, links, tags, headings, and
+//! sections.
+//!
+//! # Benchmarks
+//!
+//! - **`ingest_markdown`**: Parse markdown string into Note aggregate
+//!
+//! # Expected Results
+//!
+//! Parsing performance depends on:
+//! - Markdown complexity (tasks, links, tags, headings)
+//! - Frontmatter presence and size
+//! - Number of inline elements
+//!
+//! Typical performance: ~3-5 µs for simple notes with a few elements.
 //!
 //! # Safety
 //! Benchmark code uses unwrap/expect for simplicity.
@@ -50,13 +67,13 @@ fn bench_note_ingest(c: &mut Criterion) {
     .expect("config");
     let markdown = sample_markdown();
 
-    let mut group = c.benchmark_group("note_ingest");
+    let mut group = c.benchmark_group("note_parsing");
     group.throughput(Throughput::Bytes(markdown.len() as u64));
 
     group.bench_function("ingest_markdown", |b| {
         b.iter(|| {
-            let mut note = Note::new(NoteId::new(), "notes/bench.md")
-                .expect("valid note path");
+            let mut note =
+                Note::new(NoteId::new(), "notes/bench.md").expect("valid note");
             NoteParser::new(&config)
                 .apply(&mut note, black_box(markdown))
                 .expect("ingest markdown");

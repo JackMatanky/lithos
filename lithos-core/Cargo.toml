@@ -46,19 +46,24 @@ tempfile.workspace = true
 criterion = { workspace = true, features = ["html_reports"] }
 
 [[bench]]
-name = "redb_rkyv"
+name = "db_storage"
 harness = false
-path = "benches/redb_rkyv.rs"
+path = "benches/db_storage.rs"
 
 [[bench]]
-name = "note_ingest"
+name = "db_key_handling"
 harness = false
-path = "benches/note_ingest.rs"
+path = "benches/db_key_handling.rs"
 
 [[bench]]
-name = "allocation_optimizations"
+name = "string_construction"
 harness = false
-path = "benches/allocation_optimizations.rs"
+path = "benches/string_construction.rs"
+
+[[bench]]
+name = "note_parsing"
+harness = false
+path = "benches/note_parsing.rs"
 
 [features]
 default = []
