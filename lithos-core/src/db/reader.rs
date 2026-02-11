@@ -552,9 +552,9 @@ mod tests {
                     db.multimap_get("tags", "work").expect("multimap_get");
 
                 assert_eq!(values.len(), 3);
-                assert!(values.contains(&"note1".to_owned()));
-                assert!(values.contains(&"note2".to_owned()));
-                assert!(values.contains(&"note3".to_owned()));
+                assert!(values.iter().any(|value| value == "note1"));
+                assert!(values.iter().any(|value| value == "note2"));
+                assert!(values.iter().any(|value| value == "note3"));
             }
 
             #[test]

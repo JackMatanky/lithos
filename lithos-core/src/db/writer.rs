@@ -593,8 +593,8 @@ mod tests {
                 let values_before =
                     db.multimap_get("tags", "work").expect("multimap_get");
                 assert_eq!(values_before.len(), 2);
-                assert!(values_before.contains(&"note1".to_owned()));
-                assert!(values_before.contains(&"note2".to_owned()));
+                assert!(values_before.iter().any(|value| value == "note1"));
+                assert!(values_before.iter().any(|value| value == "note2"));
 
                 let removed = db
                     .multimap_remove("tags", "work", "note1")
@@ -655,7 +655,9 @@ mod tests {
             assert_eq!(fetched_two, Some(value2));
 
             let tags = db.multimap_get("tags", "batch").expect("multimap_get");
-            assert_eq!(tags, vec!["one".to_owned()]);
+            assert_eq!(tags.len(), 1);
+            let tag = tags.first().unwrap();
+            assert_eq!(tag, "one");
         }
 
         #[test]
