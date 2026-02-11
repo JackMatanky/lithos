@@ -69,6 +69,12 @@ use super::{
 /// assert_eq!(config.frontmatter().title().as_str(), "title");
 /// assert!(config.task().enabled());
 /// assert_eq!(config.task().tags()[0].as_str(), "#task");
+///
+/// // Iterate over task status mappings
+/// let status_map = config.task().status();
+/// for (name, symbol) in status_map {
+///     println!("Status {} uses symbol {}", name.as_str(), symbol.value());
+/// }
 /// # Ok(())
 /// # }
 /// ```
