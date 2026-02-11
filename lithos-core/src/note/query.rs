@@ -280,10 +280,10 @@ impl super::ports::Query for Query<'_> {
         &self,
         reminder_date: i64,
     ) -> Result<Vec<Note>, NoteQueryError> {
-        self.find_notes_by_task_index(
-            "tasks_by_reminder_date",
-            &reminder_date.to_string(),
-        )
+        // Use itoa for zero-allocation integer formatting
+        let mut buffer = itoa::Buffer::new();
+        let date_str = buffer.format(reminder_date);
+        self.find_notes_by_task_index("tasks_by_reminder_date", date_str)
     }
 
     /// Finds notes by task status using the `tasks_by_status` index.
