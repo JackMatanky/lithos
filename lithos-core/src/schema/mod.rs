@@ -28,4 +28,9 @@ pub mod raw;
 /// Schema resolution service.
 pub mod resolver;
 
+use redb::TableDefinition;
+
+pub(crate) const SCHEMAS_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("schemas");
+
 // --- Public API ---
