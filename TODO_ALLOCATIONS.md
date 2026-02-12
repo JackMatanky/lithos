@@ -740,7 +740,7 @@ fn create(&self, template: &Template) -> Result<(), TemplateError> {
     let name = template.name().to_owned();    // ❌ ~20-50 bytes
 
     self.db.put("templates", &id_str, template)?;
-    self.db.multimap_insert("template_name_to_id", &name, &id_str)?;
+    self.db.multimap_insert("name_to_id", &name, &id_str)?;
     Ok(())
 }
 
@@ -750,7 +750,7 @@ fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
 
     if let Some(template) = self.db.get_owned::<Template>("templates", &id_str)? {
         let name = template.name().to_owned();  // ❌
-        self.db.multimap_remove("template_name_to_id", &name, &id_str)?;
+        self.db.multimap_remove("name_to_id", &name, &id_str)?;
         self.db.delete("templates", &id_str)?;
     }
     Ok(())
@@ -765,8 +765,8 @@ fn update(&self, template: &Template) -> Result<(), TemplateError> {
         let old_name = old_template.name().to_owned();  // ❌
 
         if old_name != new_name {
-            self.db.multimap_remove("template_name_to_id", &old_name, &id_str)?;
-            self.db.multimap_insert("template_name_to_id", &new_name, &id_str)?;
+            self.db.multimap_remove("name_to_id", &old_name, &id_str)?;
+            self.db.multimap_insert("name_to_id", &new_name, &id_str)?;
         }
     }
 
@@ -788,7 +788,7 @@ fn create(&self, template: &Template) -> Result<(), TemplateError> {
     // ✅ Zero-copy with preformatted read keys and UUID helpers
     self.db.put_by_uuid(TEMPLATES_TABLE, template.id(), template)?;
     self.db
-        .multimap_insert(TEMPLATE_NAME_TO_ID, template.name().as_str(), &template.id().to_string())?;
+        .multimap_insert(NAME_TO_ID, template.name().as_str(), &template.id().to_string())?;
     Ok(())
 }
 ```
