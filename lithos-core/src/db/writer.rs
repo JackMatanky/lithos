@@ -3,7 +3,7 @@
 //! This module contains all write and batch-write operations, keeping
 //! transactions properly scoped and centralized.
 
-use redb::MultimapTableDefinition;
+use redb::{MultimapTableDefinition, TableDefinition};
 
 use super::{
     DATA_TABLE, Database, DbError,
@@ -11,6 +11,62 @@ use super::{
 };
 
 impl Database {
+    /// Insert or update a value in a table definition.
+    ///
+    /// Serializes the value using rkyv and writes it to the database.
+    /// This replaces any existing value for the given key.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Serialization` - Serialization failed
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    #[inline]
+    pub fn put_in_table<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        key: &str,
+        value: &V,
+    ) -> Result<(), DbError>
+    where
+        V: rkyv::Archive
+            + for<'ser> rkyv::Serialize<
+                rkyv::api::high::HighSerializer<
+                    rkyv::util::AlignedVec,
+                    rkyv::ser::allocator::ArenaHandle<'ser>,
+                    rkyv::rancor::Error,
+                >,
+            >,
+    {
+        serialize_and_put_in_table::<V>(&self.inner, table, key, value)
+    }
+
+    /// Insert or update a value with UUID key in a table definition.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Serialization` - Serialization failed
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    #[inline]
+    pub fn put_by_uuid_in_table<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+        value: &V,
+    ) -> Result<(), DbError>
+    where
+        V: rkyv::Archive
+            + for<'ser> rkyv::Serialize<
+                rkyv::api::high::HighSerializer<
+                    rkyv::util::AlignedVec,
+                    rkyv::ser::allocator::ArenaHandle<'ser>,
+                    rkyv::rancor::Error,
+                >,
+            >,
+    {
+        let key = id.to_string();
+        serialize_and_put_in_table::<V>(&self.inner, table, &key, value)
+    }
+
     /// Insert or update a value.
     ///
     /// Serializes the value using rkyv and writes it to the database.
@@ -126,6 +182,22 @@ impl Database {
         delete_key(&self.inner, &namespaced_key)
     }
 
+    /// Delete a value by key in a table definition.
+    ///
+    /// Returns `true` if a value was deleted, `false` if key didn't exist.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    #[inline]
+    pub fn delete_in_table(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        key: &str,
+    ) -> Result<bool, DbError> {
+        delete_key_in_table(&self.inner, table, key)
+    }
+
     /// Delete a value by UUID key.
     ///
     /// Optimized version of [`delete`](Self::delete) that formats UUID inline
@@ -158,6 +230,23 @@ impl Database {
     ) -> Result<bool, DbError> {
         let namespaced_key = NamespacedKey::from_uuid(table, id);
         delete_key(&self.inner, &namespaced_key)
+    }
+
+    /// Delete a value by UUID key in a table definition.
+    ///
+    /// Returns `true` if a value was deleted, `false` if key didn't exist.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    #[inline]
+    pub fn delete_by_uuid_in_table(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        id: uuid::Uuid,
+    ) -> Result<bool, DbError> {
+        let key = id.to_string();
+        delete_key_in_table(&self.inner, table, &key)
     }
 
     /// Execute multiple writes in a batch with a single commit.
@@ -213,6 +302,21 @@ impl Database {
         multimap_insert_impl(&self.inner, table, &multimap_key, value)
     }
 
+    /// Insert a value into a multimap table definition (1:N relationship).
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    #[inline]
+    pub fn multimap_insert_in_table(
+        &self,
+        table: MultimapTableDefinition<&str, &str>,
+        key: &str,
+        value: &str,
+    ) -> Result<(), DbError> {
+        multimap_insert_in_table_impl(&self.inner, table, key, value)
+    }
+
     /// Remove a value from a multimap.
     ///
     /// Returns `true` if the value was removed, `false` if not found.
@@ -229,6 +333,23 @@ impl Database {
     ) -> Result<bool, DbError> {
         let multimap_key = MultimapKey::new(key);
         multimap_remove_impl(&self.inner, table, &multimap_key, value)
+    }
+
+    /// Remove a value from a multimap table definition.
+    ///
+    /// Returns `true` if the value was removed, `false` if not found.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Transaction` - Transaction or table operation failed
+    #[inline]
+    pub fn multimap_remove_in_table(
+        &self,
+        table: MultimapTableDefinition<&str, &str>,
+        key: &str,
+        value: &str,
+    ) -> Result<bool, DbError> {
+        multimap_remove_in_table_impl(&self.inner, table, key, value)
     }
 }
 
@@ -281,6 +402,33 @@ impl WriteBatch {
         serialize_and_put_tx::<V>(&mut self.tx, &namespaced_key, value)
     }
 
+    /// Insert or update a value within the batch transaction using a table
+    /// definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if serialization fails or if the underlying redb table
+    /// operation fails.
+    #[inline]
+    pub fn put_in_table<V>(
+        &mut self,
+        table: TableDefinition<&str, &[u8]>,
+        key: &str,
+        value: &V,
+    ) -> Result<(), DbError>
+    where
+        V: rkyv::Archive
+            + for<'ser> rkyv::Serialize<
+                rkyv::api::high::HighSerializer<
+                    rkyv::util::AlignedVec,
+                    rkyv::ser::allocator::ArenaHandle<'ser>,
+                    rkyv::rancor::Error,
+                >,
+            >,
+    {
+        serialize_and_put_in_table_tx::<V>(&mut self.tx, table, key, value)
+    }
+
     /// Delete a value by key within the batch transaction.
     ///
     /// # Errors
@@ -290,6 +438,21 @@ impl WriteBatch {
     pub fn delete(&mut self, table: &str, key: &str) -> Result<bool, DbError> {
         let namespaced_key = NamespacedKey::new(table, key);
         delete_key_tx(&mut self.tx, &namespaced_key)
+    }
+
+    /// Delete a value by key within the batch transaction using a table
+    /// definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb table operation fails.
+    #[inline]
+    pub fn delete_in_table(
+        &mut self,
+        table: TableDefinition<&str, &[u8]>,
+        key: &str,
+    ) -> Result<bool, DbError> {
+        delete_key_in_table_tx(&mut self.tx, table, key)
     }
 
     /// Insert a value into a multimap within the batch transaction.
@@ -308,6 +471,22 @@ impl WriteBatch {
         multimap_insert_tx(&mut self.tx, table, &multimap_key, value)
     }
 
+    /// Insert a value into a multimap within the batch transaction using a
+    /// table definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb multimap table operation fails.
+    #[inline]
+    pub fn multimap_insert_in_table(
+        &mut self,
+        table: MultimapTableDefinition<&str, &str>,
+        key: &str,
+        value: &str,
+    ) -> Result<(), DbError> {
+        multimap_insert_in_table_tx(&mut self.tx, table, key, value)
+    }
+
     /// Remove a value from a multimap within the batch transaction.
     ///
     /// # Errors
@@ -322,6 +501,22 @@ impl WriteBatch {
     ) -> Result<bool, DbError> {
         let multimap_key = MultimapKey::new(key);
         multimap_remove_tx(&mut self.tx, table, &multimap_key, value)
+    }
+
+    /// Remove a value from a multimap within the batch transaction using a
+    /// table definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb multimap table operation fails.
+    #[inline]
+    pub fn multimap_remove_in_table(
+        &mut self,
+        table: MultimapTableDefinition<&str, &str>,
+        key: &str,
+        value: &str,
+    ) -> Result<bool, DbError> {
+        multimap_remove_in_table_tx(&mut self.tx, table, key, value)
     }
 }
 
@@ -345,6 +540,29 @@ where
 {
     let mut tx = db.begin_write()?;
     serialize_and_put_tx::<V>(&mut tx, key, value)?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Serialize a value and write it under the provided key in a table definition.
+fn serialize_and_put_in_table<V>(
+    db: &redb::Database,
+    table: TableDefinition<&str, &[u8]>,
+    key: &str,
+    value: &V,
+) -> Result<(), DbError>
+where
+    V: rkyv::Archive
+        + for<'ser> rkyv::Serialize<
+            rkyv::api::high::HighSerializer<
+                rkyv::util::AlignedVec,
+                rkyv::ser::allocator::ArenaHandle<'ser>,
+                rkyv::rancor::Error,
+            >,
+        >,
+{
+    let mut tx = db.begin_write()?;
+    serialize_and_put_in_table_tx::<V>(&mut tx, table, key, value)?;
     tx.commit()?;
     Ok(())
 }
@@ -374,6 +592,33 @@ where
     Ok(())
 }
 
+/// Serialize a value and write it under the provided key in a table definition
+/// within a transaction.
+fn serialize_and_put_in_table_tx<V>(
+    tx: &mut redb::WriteTransaction,
+    table: TableDefinition<&str, &[u8]>,
+    key: &str,
+    value: &V,
+) -> Result<(), DbError>
+where
+    V: rkyv::Archive
+        + for<'ser> rkyv::Serialize<
+            rkyv::api::high::HighSerializer<
+                rkyv::util::AlignedVec,
+                rkyv::ser::allocator::ArenaHandle<'ser>,
+                rkyv::rancor::Error,
+            >,
+        >,
+{
+    let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(value)
+        .map_err(|e| DbError::Serialization(e.to_string()))?;
+    {
+        let mut table_ref = tx.open_table(table)?;
+        table_ref.insert(key, bytes.as_slice())?;
+    };
+    Ok(())
+}
+
 /// Delete a value by key.
 fn delete_key(
     db: &redb::Database,
@@ -381,6 +626,18 @@ fn delete_key(
 ) -> Result<bool, DbError> {
     let mut tx = db.begin_write()?;
     let existed = delete_key_tx(&mut tx, key)?;
+    tx.commit()?;
+    Ok(existed)
+}
+
+/// Delete a value by key in a table definition.
+fn delete_key_in_table(
+    db: &redb::Database,
+    table: TableDefinition<&str, &[u8]>,
+    key: &str,
+) -> Result<bool, DbError> {
+    let mut tx = db.begin_write()?;
+    let existed = delete_key_in_table_tx(&mut tx, table, key)?;
     tx.commit()?;
     Ok(existed)
 }
@@ -397,6 +654,19 @@ fn delete_key_tx(
     Ok(existed)
 }
 
+/// Delete a value by key in a table definition within a transaction.
+fn delete_key_in_table_tx(
+    tx: &mut redb::WriteTransaction,
+    table: TableDefinition<&str, &[u8]>,
+    key: &str,
+) -> Result<bool, DbError> {
+    let existed = {
+        let mut table_ref = tx.open_table(table)?;
+        table_ref.remove(key)?.is_some()
+    };
+    Ok(existed)
+}
+
 /// Insert a value into a multimap.
 fn multimap_insert_impl(
     db: &redb::Database,
@@ -406,6 +676,19 @@ fn multimap_insert_impl(
 ) -> Result<(), DbError> {
     let mut tx = db.begin_write()?;
     multimap_insert_tx(&mut tx, table, key, value)?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Insert a value into a multimap table definition.
+fn multimap_insert_in_table_impl(
+    db: &redb::Database,
+    table: MultimapTableDefinition<&str, &str>,
+    key: &str,
+    value: &str,
+) -> Result<(), DbError> {
+    let mut tx = db.begin_write()?;
+    multimap_insert_in_table_tx(&mut tx, table, key, value)?;
     tx.commit()?;
     Ok(())
 }
@@ -426,6 +709,20 @@ fn multimap_insert_tx(
     Ok(())
 }
 
+/// Insert a value into a multimap table definition in a transaction.
+fn multimap_insert_in_table_tx(
+    tx: &mut redb::WriteTransaction,
+    table: MultimapTableDefinition<&str, &str>,
+    key: &str,
+    value: &str,
+) -> Result<(), DbError> {
+    {
+        let mut tbl = tx.open_multimap_table(table)?;
+        tbl.insert(key, value)?;
+    };
+    Ok(())
+}
+
 /// Remove a value from a multimap.
 fn multimap_remove_impl(
     db: &redb::Database,
@@ -435,6 +732,19 @@ fn multimap_remove_impl(
 ) -> Result<bool, DbError> {
     let mut tx = db.begin_write()?;
     let removed = multimap_remove_tx(&mut tx, table, key, value)?;
+    tx.commit()?;
+    Ok(removed)
+}
+
+/// Remove a value from a multimap table definition.
+fn multimap_remove_in_table_impl(
+    db: &redb::Database,
+    table: MultimapTableDefinition<&str, &str>,
+    key: &str,
+    value: &str,
+) -> Result<bool, DbError> {
+    let mut tx = db.begin_write()?;
+    let removed = multimap_remove_in_table_tx(&mut tx, table, key, value)?;
     tx.commit()?;
     Ok(removed)
 }
@@ -451,6 +761,20 @@ fn multimap_remove_tx(
     let removed = {
         let mut tbl = tx.open_multimap_table(table_def)?;
         tbl.remove(key.as_str(), value)?
+    };
+    Ok(removed)
+}
+
+/// Remove a value from a multimap table definition in a transaction.
+fn multimap_remove_in_table_tx(
+    tx: &mut redb::WriteTransaction,
+    table: MultimapTableDefinition<&str, &str>,
+    key: &str,
+    value: &str,
+) -> Result<bool, DbError> {
+    let removed = {
+        let mut tbl = tx.open_multimap_table(table)?;
+        tbl.remove(key, value)?
     };
     Ok(removed)
 }
@@ -479,8 +803,17 @@ mod tests {
     mod write_operations {
         use super::*;
 
-        mod put {
+        mod tables {
             use super::*;
+
+            pub(super) const USERS_TABLE: TableDefinition<&str, &[u8]> =
+                TableDefinition::new("users");
+            pub(super) const TAGS_TABLE: MultimapTableDefinition<&str, &str> =
+                MultimapTableDefinition::new("tags");
+        }
+
+        mod put {
+            use super::{tables::USERS_TABLE, *};
 
             #[test]
             fn inserts_value() {
@@ -496,10 +829,27 @@ mod tests {
                     db.get_owned("users", "alice").expect("get_owned");
                 assert_eq!(fetched, Some(value));
             }
+
+            #[test]
+            fn inserts_value_in_table() {
+                let (_temp, db) = temp_db().expect("temp db");
+                let value = TestValue {
+                    id: 4,
+                    name: "Daria".to_owned(),
+                };
+
+                db.put_in_table(USERS_TABLE, "daria", &value)
+                    .expect("put_in_table");
+
+                let fetched: Option<TestValue> = db
+                    .get_owned_in_table(USERS_TABLE, "daria")
+                    .expect("get_owned_in_table");
+                assert_eq!(fetched, Some(value));
+            }
         }
 
         mod delete {
-            use super::*;
+            use super::{tables::USERS_TABLE, *};
 
             #[test]
             fn removes_value() {
@@ -532,10 +882,31 @@ mod tests {
                 let removed = db.delete("users", "missing").expect("delete");
                 assert!(!removed);
             }
+
+            #[test]
+            fn removes_value_in_table() {
+                let (_temp, db) = temp_db().expect("temp db");
+                let value = TestValue {
+                    id: 5,
+                    name: "Remy".to_owned(),
+                };
+
+                db.put_in_table(USERS_TABLE, "remy", &value)
+                    .expect("put_in_table");
+
+                let removed =
+                    db.delete_in_table(USERS_TABLE, "remy").expect("delete");
+                assert!(removed);
+
+                let fetched: Option<TestValue> = db
+                    .get_owned_in_table(USERS_TABLE, "remy")
+                    .expect("get_owned_in_table");
+                assert_eq!(fetched, None);
+            }
         }
 
         mod uuid_operations {
-            use super::*;
+            use super::{tables::USERS_TABLE, *};
 
             #[test]
             fn writes_and_reads_by_uuid() {
@@ -576,10 +947,82 @@ mod tests {
                     .expect("get_owned_by_uuid");
                 assert_eq!(fetched, None);
             }
+
+            #[test]
+            fn writes_and_reads_by_uuid_in_table() {
+                let (_temp, db) = temp_db().expect("temp db");
+                let id =
+                    uuid::Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext));
+                let value = TestValue {
+                    id: 12,
+                    name: "Nova".to_owned(),
+                };
+
+                db.put_by_uuid_in_table(USERS_TABLE, id, &value)
+                    .expect("put_by_uuid_in_table");
+
+                let fetched: Option<TestValue> = db
+                    .get_owned_in_table(USERS_TABLE, &id.to_string())
+                    .expect("get_owned_in_table");
+                assert_eq!(fetched, Some(value));
+            }
+
+            #[test]
+            fn delete_by_uuid_in_table_removes_value() {
+                let (_temp, db) = temp_db().expect("temp db");
+                let id =
+                    uuid::Uuid::new_v7(uuid::Timestamp::now(uuid::NoContext));
+                let value = TestValue {
+                    id: 13,
+                    name: "Quinn".to_owned(),
+                };
+
+                db.put_by_uuid_in_table(USERS_TABLE, id, &value)
+                    .expect("put_by_uuid_in_table");
+
+                let removed = db
+                    .delete_by_uuid_in_table(USERS_TABLE, id)
+                    .expect("delete_by_uuid_in_table");
+                assert!(removed);
+
+                let fetched: Option<TestValue> = db
+                    .get_owned_in_table(USERS_TABLE, &id.to_string())
+                    .expect("get_owned_in_table");
+                assert_eq!(fetched, None);
+            }
         }
 
         mod multimap {
-            use super::*;
+            use super::{tables::TAGS_TABLE, *};
+
+            #[test]
+            fn insert_and_remove_values_in_table() {
+                let (_temp, db) = temp_db().expect("temp db");
+
+                db.multimap_insert_in_table(TAGS_TABLE, "work", "note1")
+                    .expect("multimap_insert_in_table");
+                db.multimap_insert_in_table(TAGS_TABLE, "work", "note2")
+                    .expect("multimap_insert_in_table");
+
+                let values_before = db
+                    .multimap_get_in_table(TAGS_TABLE, "work")
+                    .expect("multimap_get_in_table");
+                assert_eq!(values_before.len(), 2);
+                assert!(values_before.iter().any(|value| value == "note1"));
+                assert!(values_before.iter().any(|value| value == "note2"));
+
+                let removed = db
+                    .multimap_remove_in_table(TAGS_TABLE, "work", "note1")
+                    .expect("multimap_remove_in_table");
+                assert!(removed);
+
+                let values_after = db
+                    .multimap_get_in_table(TAGS_TABLE, "work")
+                    .expect("multimap_get_in_table");
+                assert_eq!(values_after.len(), 1);
+                let value = values_after.first().expect("multimap value");
+                assert_eq!(value, "note2");
+            }
 
             #[test]
             fn insert_and_remove_values() {
@@ -626,8 +1069,19 @@ mod tests {
     mod batch_operations {
         use super::*;
 
+        mod tables {
+            use super::*;
+
+            pub(super) const USERS_TABLE: TableDefinition<&str, &[u8]> =
+                TableDefinition::new("users");
+            pub(super) const TAGS_TABLE: MultimapTableDefinition<&str, &str> =
+                MultimapTableDefinition::new("tags");
+        }
+
         #[test]
         fn batch_write_inserts_values() {
+            use tables::{TAGS_TABLE, USERS_TABLE};
+
             let (_temp, db) = temp_db().expect("temp db");
             let value1 = TestValue {
                 id: 20,
@@ -639,22 +1093,26 @@ mod tests {
             };
 
             db.batch_write(|batch| {
-                batch.put("users", "one", &value1)?;
-                batch.put("users", "two", &value2)?;
-                batch.multimap_insert("tags", "batch", "one")?;
+                batch.put_in_table(USERS_TABLE, "one", &value1)?;
+                batch.put_in_table(USERS_TABLE, "two", &value2)?;
+                batch.multimap_insert_in_table(TAGS_TABLE, "batch", "one")?;
                 Ok(())
             })
             .expect("batch_write");
 
-            let fetched_one: Option<TestValue> =
-                db.get_owned("users", "one").expect("get_owned");
+            let fetched_one: Option<TestValue> = db
+                .get_owned_in_table(USERS_TABLE, "one")
+                .expect("get_owned_in_table");
             assert_eq!(fetched_one, Some(value1));
 
-            let fetched_two: Option<TestValue> =
-                db.get_owned("users", "two").expect("get_owned");
+            let fetched_two: Option<TestValue> = db
+                .get_owned_in_table(USERS_TABLE, "two")
+                .expect("get_owned_in_table");
             assert_eq!(fetched_two, Some(value2));
 
-            let tags = db.multimap_get("tags", "batch").expect("multimap_get");
+            let tags = db
+                .multimap_get_in_table(TAGS_TABLE, "batch")
+                .expect("multimap_get_in_table");
             assert_eq!(tags.len(), 1);
             let tag = tags.first().unwrap();
             assert_eq!(tag, "one");
