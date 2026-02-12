@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::{
     aggregate::Template,
-    db_table::{TEMPLATE_NAME_TO_ID, TEMPLATES},
+    db_table::{NAME_TO_ID, TEMPLATES},
     error::TemplateError,
 };
 use crate::db::Database;
@@ -45,7 +45,7 @@ impl super::ports::Command for Command<'_> {
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         self.db
-            .multimap_insert(TEMPLATE_NAME_TO_ID, template.name(), &id_str)
+            .multimap_insert(NAME_TO_ID, template.name(), &id_str)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         Ok(())
@@ -69,7 +69,7 @@ impl super::ports::Command for Command<'_> {
         if let Some(t) = template {
             // 2. Remove from name index
             self.db
-                .multimap_remove(TEMPLATE_NAME_TO_ID, t.name(), &id_str)
+                .multimap_remove(NAME_TO_ID, t.name(), &id_str)
                 .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
             // 3. Delete template
@@ -100,14 +100,10 @@ impl super::ports::Command for Command<'_> {
             // 2. Update name index if changed
             if old.name() != template.name() {
                 self.db
-                    .multimap_remove(TEMPLATE_NAME_TO_ID, old.name(), &id_str)
+                    .multimap_remove(NAME_TO_ID, old.name(), &id_str)
                     .map_err(|e| TemplateError::Storage(e.to_string()))?;
                 self.db
-                    .multimap_insert(
-                        TEMPLATE_NAME_TO_ID,
-                        template.name(),
-                        &id_str,
-                    )
+                    .multimap_insert(NAME_TO_ID, template.name(), &id_str)
                     .map_err(|e| TemplateError::Storage(e.to_string()))?;
             }
         }
@@ -219,7 +215,7 @@ mod tests {
             let (_dir, db, _template, id_str) = created_template();
 
             let ids = db
-                .multimap_get(TEMPLATE_NAME_TO_ID, "daily")
+                .multimap_get(NAME_TO_ID, "daily")
                 .expect("Name index read should succeed");
             assert!(
                 ids.contains(&id_str),
@@ -236,7 +232,7 @@ mod tests {
         fn update_refreshes_name_index_when_name_changes() {
             let (_dir, db, id_str) = updated_template_name();
             let old_ids = db
-                .multimap_get(TEMPLATE_NAME_TO_ID, "daily")
+                .multimap_get(NAME_TO_ID, "daily")
                 .expect("Old name index read should succeed");
             assert!(
                 !old_ids.contains(&id_str),
@@ -254,7 +250,7 @@ mod tests {
             let (_dir, db, id_str) = updated_template_name();
 
             let new_ids = db
-                .multimap_get(TEMPLATE_NAME_TO_ID, "weekly")
+                .multimap_get(NAME_TO_ID, "weekly")
                 .expect("New name index read should succeed");
             assert!(
                 new_ids.contains(&id_str),
@@ -290,7 +286,7 @@ mod tests {
             cmd.delete(template.id()).expect("Delete should succeed");
 
             let ids = db
-                .multimap_get(TEMPLATE_NAME_TO_ID, "daily")
+                .multimap_get(NAME_TO_ID, "daily")
                 .expect("Name index read should succeed");
             assert!(
                 !ids.contains(&id_str),

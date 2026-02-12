@@ -28,8 +28,8 @@ pub(crate) mod db_table {
 
     pub(crate) const TEMPLATES: TableDefinition<&str, &[u8]> =
         TableDefinition::new("templates");
-    pub(crate) const TEMPLATE_NAME_TO_ID: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("template_name_to_id");
+    pub(crate) const NAME_TO_ID: MultimapTableDefinition<&str, &str> =
+        MultimapTableDefinition::new("name_to_id");
 }
 
 // --- Public API ---

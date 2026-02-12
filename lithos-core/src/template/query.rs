@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{
     db::Database,
-    template::db_table::{TEMPLATE_NAME_TO_ID, TEMPLATES},
+    template::db_table::{NAME_TO_ID, TEMPLATES},
 };
 
 /// Query implementation for Template read operations.
@@ -54,7 +54,7 @@ impl super::ports::Query for Query<'_> {
         &self,
         name: &str,
     ) -> Result<Option<Template>, TemplateError> {
-        let ids = self.db.multimap_get(TEMPLATE_NAME_TO_ID, name).map_err(
+        let ids = self.db.multimap_get(NAME_TO_ID, name).map_err(
             |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
         )?;
 
