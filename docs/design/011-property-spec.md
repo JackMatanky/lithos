@@ -4,7 +4,8 @@ status: Draft
 author: Jack Matanky
 ticket: TBD
 date_created: 2026-02-02
-tags: [schema, validation, refactor, security, performance]
+date_updated: 2026-02-12
+tags: [schema, validation, refactor, security, performance, type-driven-design]
 ---
 
 # Tech Spec: PropertySpec (Schema Property Specifications)
@@ -185,10 +186,15 @@ The contract is defined at schema-build time (from raw schema inputs); validatio
 
 `Raw*` naming is reserved for adapter-facing schema inputs (schema files being loaded via Serde). Validated spec types (`PropertySpec`) are domain/runtime types with invariants.
 
+This aligns with the broader schema context naming convention (see `008-schema-models.md`):
+
+- **Raw (wire/input)**: `RawSchema`, `RawPropertySpec` (serde-friendly, may be invalid)
+- **Domain (validated)**: `Schema`, `PropertySpec` (invariants enforced by construction)
+
 Design stance:
 
 1. Define a raw spec type `RawPropertySpec` in `schema::raw` and use it from raw schema inputs (`RawPropertyInline.spec`).
-2. Compile/validate that raw spec into the validated `PropertySpec` during schema/property construction.
+2. Compile/validate that raw spec into the validated `PropertySpec` during schema/property construction (see `SchemaResolver` in `010-schema-graph-resolver.md`).
 
 ### 2.3 Modularization Plan (Code Organization)
 
@@ -653,24 +659,35 @@ No PII, encryption, or access control concerns are introduced here.
 
 | Date       | Critique / Issue                                         | Resolution                                                                |
 | :--------- | :------------------------------------------------------- | :------------------------------------------------------------------------ |
-| 2026-02-02 | "This spec isn’t comprehensive enough."                  | Expanded with explicit contracts, data model, algorithms, and migration.  |
+| 2026-02-02 | "This spec isn't comprehensive enough."                  | Expanded with explicit contracts, data model, algorithms, and migration.  |
 | 2026-02-02 | "Directory restriction is a string prefix check."        | Specify component-based containment + traversal policy.                   |
 | 2026-02-02 | "NumberSpec does not reject NaN/∞."                      | Add explicit finite-first numeric validation policy.                      |
 | 2026-02-02 | "Regex cache compiles under a mutex and clones Regex."   | Specify `RwLock` + `Arc<Regex>` caching; compile outside locks.           |
 | 2026-02-02 | "Can type-driven development improve this?"              | Add internal helper types (`Bounds`, `VaultRelPath`, `PositiveF64`) plan. |
 | 2026-02-02 | "String enum_values could be list or key-value mapping." | Record as future extension; preserve current schema format for now.       |
+| 2026-02-12 | Naming convention inconsistent with broader schema context | Align with `Raw*` / domain type convention from `008-schema-models.md`   |
+| 2026-02-12 | Integration with SchemaResolver not documented           | Add cross-reference to `010-schema-graph-resolver.md` for resolution flow |
 
 ## 8. References
 
-- Rust API Guidelines: https://rust-lang.github.io/api-guidelines/
-- `std::convert::TryFrom`: https://doc.rust-lang.org/std/convert/trait.TryFrom.html
-- Serde enum representations: https://serde.rs/enum-representations.html
-- Chrono docs: https://docs.rs/chrono/latest/chrono/
-- `regex` docs: https://docs.rs/regex/latest/regex/
-- `std::sync::RwLock`: https://doc.rust-lang.org/std/sync/struct.RwLock.html
-- `std::path::Path`: https://doc.rust-lang.org/std/path/struct.Path.html
-- `f64` docs: https://doc.rust-lang.org/std/primitive.f64.html
-- OWASP Path Traversal: https://owasp.org/www-community/attacks/Path_Traversal
+### External References
+
+- [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
+- [`std::convert::TryFrom`](https://doc.rust-lang.org/std/convert/trait.TryFrom.html)
+- [Serde enum representations](https://serde.rs/enum-representations.html)
+- [Chrono docs](https://docs.rs/chrono/latest/chrono/)
+- [`regex` docs](https://docs.rs/regex/latest/regex/)
+- [`std::sync::RwLock`](https://doc.rust-lang.org/std/sync/struct.RwLock.html)
+- [`std::path::Path`](https://doc.rust-lang.org/std/path/struct.Path.html)
+- [`f64` docs](https://doc.rust-lang.org/std/primitive.f64.html)
+- [OWASP Path Traversal](https://owasp.org/www-community/attacks/Path_Traversal)
+
+### Internal References
+
+- `docs/design/008-schema-models.md` (domain models, `Raw*` / domain type convention)
+- `docs/design/009-schema-cqrs.md` (storage layer, persistence)
+- `docs/design/010-schema-graph-resolver.md` (resolution flow, `SchemaResolver`)
+- `docs/design/004-note-models.md` (`NotePath` validation for context boundary comparison)
 
 ## Appendix A: Idiomatic Rust Review Rubric (Ported From Earlier Plan)
 
