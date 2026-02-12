@@ -10,7 +10,13 @@
 
 use uuid::Uuid;
 
-use super::{aggregate::Note, error::NoteQueryError};
+use super::{
+    ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES_TABLE,
+    PATH_TO_ID, TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
+    TASKS_BY_DUE_DATE, TASKS_BY_PRIORITY, TASKS_BY_PROJECT,
+    TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS, aggregate::Note,
+    error::NoteQueryError,
+};
 use crate::db::Database;
 
 /// Query implementation for Note read operations.
@@ -51,19 +57,19 @@ impl<'db> Query<'db> {
     /// This consolidates the logic for task index lookups.
     fn find_notes_by_task_index(
         &self,
-        index_name: &str,
+        index_table: redb::MultimapTableDefinition<&str, &str>,
         index_key: &str,
     ) -> Result<Vec<Note>, NoteQueryError> {
         let note_refs = self
             .db
-            .multimap_get(index_name, index_key)
+            .multimap_get_in_table(index_table, index_key)
             .map_err(NoteQueryError::Storage)?;
 
         let mut notes = Vec::with_capacity(note_refs.len());
         for note_id_str in note_refs {
             if let Some(note) = self
                 .db
-                .get_owned::<Note>("notes", &note_id_str)
+                .get_owned_in_table::<Note>(NOTES_TABLE, &note_id_str)
                 .map_err(NoteQueryError::Storage)?
             {
                 notes.push(note);
@@ -87,12 +93,12 @@ impl super::ports::Query for Query<'_> {
     ) -> Result<Option<Note>, NoteQueryError> {
         let ids = self
             .db
-            .multimap_get("alias_to_id", alias)
+            .multimap_get_in_table(ALIAS_TO_ID, alias)
             .map_err(NoteQueryError::Storage)?;
 
         if let Some(id_str) = ids.first() {
             self.db
-                .get_owned::<Note>("notes", id_str)
+                .get_owned_in_table::<Note>(NOTES_TABLE, id_str)
                 .map_err(NoteQueryError::Storage)
         } else {
             Ok(None)
@@ -110,14 +116,14 @@ impl super::ports::Query for Query<'_> {
     ) -> Result<Vec<Note>, NoteQueryError> {
         let ids = self
             .db
-            .multimap_get("file_class_to_id", class)
+            .multimap_get_in_table(FILE_CLASS_TO_ID, class)
             .map_err(NoteQueryError::Storage)?;
 
         let mut notes = Vec::with_capacity(ids.len());
         for id_str in ids {
             if let Some(note) = self
                 .db
-                .get_owned::<Note>("notes", &id_str)
+                .get_owned_in_table::<Note>(NOTES_TABLE, &id_str)
                 .map_err(NoteQueryError::Storage)?
             {
                 notes.push(note);
@@ -137,14 +143,14 @@ impl super::ports::Query for Query<'_> {
     ) -> Result<Vec<Note>, NoteQueryError> {
         let ids = self
             .db
-            .multimap_get("folder_to_id", folder)
+            .multimap_get_in_table(FOLDER_TO_ID, folder)
             .map_err(NoteQueryError::Storage)?;
 
         let mut notes = Vec::with_capacity(ids.len());
         for id_str in ids {
             if let Some(note) = self
                 .db
-                .get_owned::<Note>("notes", &id_str)
+                .get_owned_in_table::<Note>(NOTES_TABLE, &id_str)
                 .map_err(NoteQueryError::Storage)?
             {
                 notes.push(note);
@@ -160,7 +166,7 @@ impl super::ports::Query for Query<'_> {
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError> {
         self.db
-            .get_owned_by_uuid::<Note>("notes", id)
+            .get_owned_in_table::<Note>(NOTES_TABLE, &id.to_string())
             .map_err(NoteQueryError::Storage)
     }
 
@@ -172,12 +178,12 @@ impl super::ports::Query for Query<'_> {
     fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteQueryError> {
         let ids = self
             .db
-            .multimap_get("path_to_id", path)
+            .multimap_get_in_table(PATH_TO_ID, path)
             .map_err(NoteQueryError::Storage)?;
 
         if let Some(id_str) = ids.first() {
             self.db
-                .get_owned::<Note>("notes", id_str)
+                .get_owned_in_table::<Note>(NOTES_TABLE, id_str)
                 .map_err(NoteQueryError::Storage)
         } else {
             Ok(None)
@@ -199,7 +205,7 @@ impl super::ports::Query for Query<'_> {
         // Use itoa for zero-allocation integer formatting
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(completed_date);
-        self.find_notes_by_task_index("tasks_by_completed_date", date_str)
+        self.find_notes_by_task_index(TASKS_BY_COMPLETED_DATE, date_str)
     }
 
     /// Finds notes by task created date using the `tasks_by_created_date`
@@ -217,7 +223,7 @@ impl super::ports::Query for Query<'_> {
         // Use itoa for zero-allocation integer formatting
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(created_date);
-        self.find_notes_by_task_index("tasks_by_created_date", date_str)
+        self.find_notes_by_task_index(TASKS_BY_CREATED_DATE, date_str)
     }
 
     /// Finds notes by task due date using the `tasks_by_due_date` index.
@@ -234,7 +240,7 @@ impl super::ports::Query for Query<'_> {
         // Use itoa for zero-allocation integer formatting
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(due_date);
-        self.find_notes_by_task_index("tasks_by_due_date", date_str)
+        self.find_notes_by_task_index(TASKS_BY_DUE_DATE, date_str)
     }
 
     /// Finds notes by task priority using the `tasks_by_priority` index.
@@ -251,7 +257,7 @@ impl super::ports::Query for Query<'_> {
         // Use ryu for zero-allocation float formatting
         let mut buffer = ryu::Buffer::new();
         let priority_str = buffer.format(priority);
-        self.find_notes_by_task_index("tasks_by_priority", priority_str)
+        self.find_notes_by_task_index(TASKS_BY_PRIORITY, priority_str)
     }
 
     /// Finds notes by task project using the `tasks_by_project` index.
@@ -265,7 +271,7 @@ impl super::ports::Query for Query<'_> {
         &self,
         project: &str,
     ) -> Result<Vec<Note>, NoteQueryError> {
-        self.find_notes_by_task_index("tasks_by_project", project)
+        self.find_notes_by_task_index(TASKS_BY_PROJECT, project)
     }
 
     /// Finds notes by task reminder date using the `tasks_by_reminder_date`
@@ -283,7 +289,7 @@ impl super::ports::Query for Query<'_> {
         // Use itoa for zero-allocation integer formatting
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(reminder_date);
-        self.find_notes_by_task_index("tasks_by_reminder_date", date_str)
+        self.find_notes_by_task_index(TASKS_BY_REMINDER_DATE, date_str)
     }
 
     /// Finds notes by task status using the `tasks_by_status` index.
@@ -297,7 +303,7 @@ impl super::ports::Query for Query<'_> {
         &self,
         status: &str,
     ) -> Result<Vec<Note>, NoteQueryError> {
-        self.find_notes_by_task_index("tasks_by_status", status)
+        self.find_notes_by_task_index(TASKS_BY_STATUS, status)
     }
 
     /// Lists all notes in the vault (owned).
@@ -306,7 +312,9 @@ impl super::ports::Query for Query<'_> {
     /// Returns `NoteQueryError` if query execution fails.
     #[inline]
     fn list(&self) -> Result<Vec<Note>, NoteQueryError> {
-        self.db.list_owned::<Note>("notes").map_err(NoteQueryError::Storage)
+        self.db
+            .list_owned_in_table::<Note>(NOTES_TABLE)
+            .map_err(NoteQueryError::Storage)
     }
 
     /// Queries notes by frontmatter key-value pair using the generic
@@ -336,7 +344,7 @@ impl super::ports::Query for Query<'_> {
         )]
         let _ = write!(&mut combined_key, "{key}:{value}");
 
-        self.find_notes_by_task_index("frontmatter_kv", &combined_key)
+        self.find_notes_by_task_index(FRONTMATTER_KV, &combined_key)
     }
 
     /// Access a note as archived data (zero-copy).
@@ -353,7 +361,7 @@ impl super::ports::Query for Query<'_> {
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
     {
         self.db
-            .get_by_uuid::<Note, _, R>("notes", id, f)
+            .get_in_table::<Note, _, R>(NOTES_TABLE, &id.to_string(), f)
             .map_err(NoteQueryError::Storage)
     }
 }
@@ -422,11 +430,16 @@ mod tests {
             let id = Uuid::from(note.id());
 
             // Store the note in the database using UUID-native method
-            db.put_by_uuid("notes", id, &note).map_err(|e| e.to_string())?;
+            db.put_by_uuid_in_table(NOTES_TABLE, id, &note)
+                .map_err(|e| e.to_string())?;
 
             // Index by path (multimap still requires string key)
-            db.multimap_insert("path_to_id", "notes/a.md", &id.to_string())
-                .map_err(|e| e.to_string())?;
+            db.multimap_insert_in_table(
+                PATH_TO_ID,
+                "notes/a.md",
+                &id.to_string(),
+            )
+            .map_err(|e| e.to_string())?;
 
             Ok((dir, db, id, fm))
         }
@@ -486,9 +499,9 @@ mod tests {
                     NoteQueryError::Domain(NoteError::Storage(e.to_string()))
                 })?;
             let temp_id = Uuid::from(temp_note.id());
-            db.put_by_uuid("notes", temp_id, &temp_note)
+            db.put_by_uuid_in_table(NOTES_TABLE, temp_id, &temp_note)
                 .map_err(NoteQueryError::Storage)?;
-            db.delete_by_uuid("notes", temp_id)
+            db.delete_by_uuid_in_table(NOTES_TABLE, temp_id)
                 .map_err(NoteQueryError::Storage)?;
 
             let qry = Query::new(&db);
@@ -529,10 +542,18 @@ mod tests {
                     NoteQueryError::Domain(NoteError::Storage(e.to_string()))
                 })?;
             let temp_id = Uuid::from(temp_note.id());
-            db.multimap_insert("path_to_id", "temp.md", &temp_id.to_string())
-                .map_err(NoteQueryError::Storage)?;
-            db.multimap_remove("path_to_id", "temp.md", &temp_id.to_string())
-                .map_err(NoteQueryError::Storage)?;
+            db.multimap_insert_in_table(
+                PATH_TO_ID,
+                "temp.md",
+                &temp_id.to_string(),
+            )
+            .map_err(NoteQueryError::Storage)?;
+            db.multimap_remove_in_table(
+                PATH_TO_ID,
+                "temp.md",
+                &temp_id.to_string(),
+            )
+            .map_err(NoteQueryError::Storage)?;
 
             let qry = Query::new(&db);
 

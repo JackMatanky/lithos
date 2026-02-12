@@ -11,6 +11,7 @@
 use uuid::Uuid;
 
 use super::{
+    NOTES_TABLE, PATH_TO_ID, TAGS_TO_NOTES,
     aggregate::{Note, NoteId},
     error::NoteCommandError,
 };
@@ -87,9 +88,9 @@ impl<'db> Command<'db> {
         id: Uuid,
     ) -> Result<Option<IndexData>, NoteCommandError> {
         self.db
-            .get_by_uuid::<Note, _, (String, Vec<String>)>(
-                "notes",
-                id,
+            .get_in_table::<Note, _, (String, Vec<String>)>(
+                NOTES_TABLE,
+                &id.to_string(),
                 |archived| {
                     let path = archived.path().as_str().to_owned();
                     let tags: Vec<String> = archived
@@ -115,9 +116,9 @@ impl super::ports::Command for Command<'_> {
         let id = Uuid::from(note.id());
 
         self.db.batch_write(|batch| {
-            batch.put("notes", &id.to_string(), &note)?;
-            batch.multimap_insert(
-                "path_to_id",
+            batch.put_in_table(NOTES_TABLE, &id.to_string(), &note)?;
+            batch.multimap_insert_in_table(
+                PATH_TO_ID,
                 note.path().as_str(),
                 &id.to_string(),
             )?;
@@ -139,19 +140,23 @@ impl super::ports::Command for Command<'_> {
         if let Some((path, tags)) = old_data {
             self.db.batch_write(|batch| {
                 // 2. Remove from path index
-                batch.multimap_remove("path_to_id", &path, &id.to_string())?;
+                batch.multimap_remove_in_table(
+                    PATH_TO_ID,
+                    &path,
+                    &id.to_string(),
+                )?;
 
                 // 3. Remove from tag indexes
                 for tag in tags {
-                    batch.multimap_remove(
-                        "tags_to_notes",
+                    batch.multimap_remove_in_table(
+                        TAGS_TO_NOTES,
                         &tag,
                         &id.to_string(),
                     )?;
                 }
 
                 // 4. Delete note
-                batch.delete("notes", &id.to_string())?;
+                batch.delete_in_table(NOTES_TABLE, &id.to_string())?;
 
                 Ok(())
             })?;
@@ -175,13 +180,13 @@ impl super::ports::Command for Command<'_> {
             if let Some((old_path, old_tags)) = old_data {
                 // 2. Update path index if changed
                 if old_path != note.path().as_str() {
-                    batch.multimap_remove(
-                        "path_to_id",
+                    batch.multimap_remove_in_table(
+                        PATH_TO_ID,
                         &old_path,
                         &id.to_string(),
                     )?;
-                    batch.multimap_insert(
-                        "path_to_id",
+                    batch.multimap_insert_in_table(
+                        PATH_TO_ID,
                         note.path().as_str(),
                         &id.to_string(),
                     )?;
@@ -190,16 +195,16 @@ impl super::ports::Command for Command<'_> {
                 // 3. Update tag index
                 // Remove old tags
                 for tag in old_tags {
-                    batch.multimap_remove(
-                        "tags_to_notes",
+                    batch.multimap_remove_in_table(
+                        TAGS_TO_NOTES,
                         &tag,
                         &id.to_string(),
                     )?;
                 }
             } else {
                 // New note (even though it's update call), add path index
-                batch.multimap_insert(
-                    "path_to_id",
+                batch.multimap_insert_in_table(
+                    PATH_TO_ID,
                     note.path().as_str(),
                     &id.to_string(),
                 )?;
@@ -207,15 +212,15 @@ impl super::ports::Command for Command<'_> {
 
             // Add new tags
             for tag in note.tags() {
-                batch.multimap_insert(
-                    "tags_to_notes",
+                batch.multimap_insert_in_table(
+                    TAGS_TO_NOTES,
                     tag.full_path(),
                     &id.to_string(),
                 )?;
             }
 
             // 4. Save new note
-            batch.put("notes", &id.to_string(), &note)?;
+            batch.put_in_table(NOTES_TABLE, &id.to_string(), &note)?;
 
             Ok(())
         })?;
@@ -281,21 +286,24 @@ mod tests {
             db: &Database,
             id: Uuid,
         ) -> Result<Option<Note>, String> {
-            db.get_owned_by_uuid::<Note>("notes", id).map_err(|e| e.to_string())
+            db.get_owned_in_table::<Note>(NOTES_TABLE, &id.to_string())
+                .map_err(|e| e.to_string())
         }
 
         pub fn path_index_ids(
             db: &Database,
             path: &str,
         ) -> Result<Vec<String>, String> {
-            db.multimap_get("path_to_id", path).map_err(|e| e.to_string())
+            db.multimap_get_in_table(PATH_TO_ID, path)
+                .map_err(|e| e.to_string())
         }
 
         pub fn tag_index_ids(
             db: &Database,
             tag: &str,
         ) -> Result<Vec<String>, String> {
-            db.multimap_get("tags_to_notes", tag).map_err(|e| e.to_string())
+            db.multimap_get_in_table(TAGS_TO_NOTES, tag)
+                .map_err(|e| e.to_string())
         }
     }
 
