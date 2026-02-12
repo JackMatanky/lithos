@@ -296,9 +296,7 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
             let note = create_test_note(i);
             let id_str = Uuid::from(note.id()).to_string();
             note_ids.push(note.id());
-            batch_db
-                .put_in_table(NOTES_TABLE, &id_str, &note)
-                .expect("insert note");
+            batch_db.put(NOTES_TABLE, &id_str, &note).expect("insert note");
         }
         Ok(())
     })
@@ -317,8 +315,7 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
 /// # What is Measured
 ///
 /// - **Metric**: Latency per read operation (nanoseconds)
-/// - **Execution**: Single `get_in_table` call per iteration with closure
-///   access
+/// - **Execution**: Single `get` call per iteration with closure access
 /// - **State**: Warm cache (same key read repeatedly)
 ///
 /// # Inputs
@@ -366,7 +363,7 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 
     group.bench_function("get_zero_copy", |b| {
         b.iter(|| {
-            db.get_in_table::<Note, _, _>(NOTES_TABLE, &test_key, |archived| {
+            db.get::<Note, _, _>(NOTES_TABLE, &test_key, |archived| {
                 black_box(archived);
             })
             .expect("get note")
@@ -435,9 +432,8 @@ fn bench_full_deserialize(c: &mut Criterion) {
 
     group.bench_function("get_owned", |b| {
         b.iter(|| {
-            let note: Option<Note> = db
-                .get_owned_in_table(NOTES_TABLE, &test_key)
-                .expect("get owned note");
+            let note: Option<Note> =
+                db.get_owned(NOTES_TABLE, &test_key).expect("get owned note");
             black_box(note.expect("note exists"));
         });
     });
@@ -454,8 +450,7 @@ fn bench_full_deserialize(c: &mut Criterion) {
 ///
 /// # What is Measured
 ///
-/// - **Metric**: Latency per `put_by_uuid_in_table` call including transaction
-///   commit
+/// - **Metric**: Latency per `put_by_uuid` call including transaction commit
 /// - **Execution**: Create transaction → write → commit for each iteration
 ///
 /// # Expected Characteristics
@@ -481,7 +476,7 @@ fn bench_single_write(c: &mut Criterion) {
         b.iter(|| {
             let note = create_test_note(counter);
             counter = counter.wrapping_add(1);
-            db.put_by_uuid_in_table(NOTES_TABLE, Uuid::from(note.id()), &note)
+            db.put_by_uuid(NOTES_TABLE, Uuid::from(note.id()), &note)
                 .expect("put note");
         });
     });
@@ -542,7 +537,7 @@ fn bench_batch_write(c: &mut Criterion) {
                             let note = create_test_note(i as usize);
                             let id_str = Uuid::from(note.id()).to_string();
                             batch_db
-                                .put_in_table(NOTES_TABLE, &id_str, &note)
+                                .put(NOTES_TABLE, &id_str, &note)
                                 .expect("put note");
                         }
                         Ok(())
@@ -564,7 +559,7 @@ fn bench_batch_write(c: &mut Criterion) {
 ///
 /// # What is Measured
 ///
-/// - **Metric**: Latency per `delete_by_uuid_in_table` call
+/// - **Metric**: Latency per `delete_by_uuid` call
 /// - **Execution**: Single delete per iteration from pre-populated 1000-note DB
 ///
 /// # Inputs
@@ -589,7 +584,7 @@ fn bench_delete(c: &mut Criterion) {
             index = index.wrapping_add(1);
 
             let existed = db
-                .delete_by_uuid_in_table(NOTES_TABLE, Uuid::from(id))
+                .delete_by_uuid(NOTES_TABLE, Uuid::from(id))
                 .expect("delete note");
             black_box(existed);
         });
@@ -632,13 +627,9 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     let hot_key = note_keys.first().expect("note key");
     group.bench_function("hot_read", |b| {
         b.iter(|| {
-            db.get_in_table::<Note, _, _>(
-                NOTES_TABLE,
-                hot_key.as_str(),
-                |archived| {
-                    black_box(archived);
-                },
-            )
+            db.get::<Note, _, _>(NOTES_TABLE, hot_key.as_str(), |archived| {
+                black_box(archived);
+            })
             .expect("get note")
         });
     });
@@ -649,7 +640,7 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
             let cold_id = note_keys[cold_index % note_keys.len()].as_str();
             cold_index = cold_index.wrapping_add(1);
 
-            db.get_in_table::<Note, _, _>(NOTES_TABLE, cold_id, |archived| {
+            db.get::<Note, _, _>(NOTES_TABLE, cold_id, |archived| {
                 black_box(archived);
             })
             .expect("get note")
@@ -706,12 +697,8 @@ fn bench_transaction_overhead(c: &mut Criterion) {
 
             for i in 0..batch_size {
                 let note = create_test_note(i as usize);
-                db.put_by_uuid_in_table(
-                    NOTES_TABLE,
-                    Uuid::from(note.id()),
-                    &note,
-                )
-                .expect("put note");
+                db.put_by_uuid(NOTES_TABLE, Uuid::from(note.id()), &note)
+                    .expect("put note");
             }
         });
     });
@@ -730,7 +717,7 @@ fn bench_transaction_overhead(c: &mut Criterion) {
                     let note = create_test_note(i as usize);
                     let id_str = Uuid::from(note.id()).to_string();
                     batch_db
-                        .put_in_table(NOTES_TABLE, &id_str, &note)
+                        .put(NOTES_TABLE, &id_str, &note)
                         .expect("put note");
                 }
                 Ok(())

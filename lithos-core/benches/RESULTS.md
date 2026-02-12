@@ -209,7 +209,7 @@
 
 1. **Constructor parameters**: Use `&str` instead of `String` for new API designs
 2. **Numeric formatting**: Use `itoa`/`ryu` for all hot-path string formatting
-3. **UUID handling**: Always use UUID-native database methods (avoid `.to_string()`)
+3. **UUID handling**: Use `put_by_uuid`/`delete_by_uuid` and preformat read keys to avoid repeated `.to_string()`
 
 ---
 
@@ -229,7 +229,7 @@
 
 #### Task 2: UUID-Native Methods (commit 5e94edf7)
 
-- **Change**: Added `get_by_uuid`, `put_by_uuid`, `delete_by_uuid` methods
+- **Change**: Added `put_by_uuid`/`delete_by_uuid` and preformatted read keys
 - **Impact**: All ID-based queries (8 allocation sites)
 - **Savings**: 36 bytes per UUID operation
 - **Performance**: 7-9% faster than string conversion
@@ -403,7 +403,7 @@ cargo bench --bench note_parsing
 
 ```bash
 # Single benchmark for smoke test
-cargo bench --bench db_key_handling -- uuid_handling/get_by_uuid_native --quick
+cargo bench --bench db_key_handling -- uuid_handling/get_preformatted_key --quick
 
 # Specific benchmark group
 cargo bench --bench db_storage read_zero_copy

@@ -211,35 +211,16 @@ fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
 
 #### Solution Options
 
-**Option A: Add UUID-native DB methods** (Recommended)
+**Option A: Use UUID helpers + preformatted read keys** (Recommended)
 
 ```rust
-// In db/mod.rs
-impl Database {
-    pub fn get_by_uuid<V, F, R>(&self, table: &str, id: Uuid, f: F)
-        -> Result<Option<R>, DbError>
-    where
-        V: Archive,
-        F: FnOnce(&V::Archived) -> R,
-    {
-        use std::fmt::Write;
-        let mut key = String::with_capacity(table.len() + 37);  // table + ":" + 36-char UUID
-        write!(&mut key, "{table}:{id}").unwrap();
+let key = id.to_string();
 
-        // Use existing get() implementation
-        self.get_raw(&key, f)
-    }
-
-    pub fn put_by_uuid<V>(&self, table: &str, id: Uuid, value: &V) -> Result<(), DbError>
-    where
-        V: Serialize<Strategy<Serialize, Serialize>>,
-    {
-        use std::fmt::Write;
-        let mut key = String::with_capacity(table.len() + 37);
-        write!(&mut key, "{table}:{id}").unwrap();
-        self.put_raw(&key, value)
-    }
-}
+db.put_by_uuid(TEMPLATES_TABLE, id, value)?;
+let result = db.get::<Template, _, _>(TEMPLATES_TABLE, &key, |archived| {
+    archived.name.as_str()
+})?;
+db.delete_by_uuid(TEMPLATES_TABLE, id)?;
 ```
 
 **Option B: Use uuid::fmt::Hyphenated with stack buffer**
@@ -249,7 +230,7 @@ fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
     use uuid::fmt::Hyphenated;
     let mut buffer = [0u8; 36];
     let id_str = Hyphenated::from_uuid(id).encode_lower(&mut buffer);
-    self.db.get_owned::<Template>("templates", id_str)
+    self.db.get_owned(TEMPLATES_TABLE, id_str)
 }
 ```
 
@@ -262,7 +243,7 @@ fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
 
 #### Recommended Approach
 
-**Option A** - Add UUID-native methods
+**Option A** - Use UUID helpers + preformatted read keys
 
 - Clean API
 - Centralizes formatting logic
@@ -804,9 +785,10 @@ Once those are fixed:
 
 ```rust
 fn create(&self, template: &Template) -> Result<(), TemplateError> {
-    // ✅ Zero-copy with get_by_uuid() and optimized DB layer
-    self.db.put_by_uuid("templates", template.id(), template)?;
-    self.db.multimap_insert_with_uuid("template_name_to_id", template.name().as_str(), template.id())?;
+    // ✅ Zero-copy with preformatted read keys and UUID helpers
+    self.db.put_by_uuid(TEMPLATES_TABLE, template.id(), template)?;
+    self.db
+        .multimap_insert(TEMPLATE_NAME_TO_ID, template.name().as_str(), &template.id().to_string())?;
     Ok(())
 }
 ```
@@ -925,10 +907,10 @@ test_schema.name.to_owned()
    - Impact: 100% of DB operations
    - Validation: Run benchmarks before/after
 
-2. ✅ **Task 3**: Add UUID-native DB methods
+2. ✅ **Task 3**: Add UUID helpers + preformatted read keys
    - Files: `db/mod.rs`, `db/batch.rs`
-   - Add: `get_by_uuid()`, `put_by_uuid()`, `delete_by_uuid()`, `multimap_*_uuid()` methods
-   - Update: All query.rs and command.rs to use new methods
+   - Add: `put_by_uuid()`, `delete_by_uuid()` methods
+   - Update: Query/command paths to use UUID helpers or preformatted read keys
    - Impact: All ID-based operations
    - Validation: All tests pass
 

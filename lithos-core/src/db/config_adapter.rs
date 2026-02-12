@@ -42,16 +42,13 @@ impl Command for CommandAdapter<'_> {
         &self,
         vault_id: VaultId,
     ) -> Result<Option<Version>, Self::Error> {
-        self.db.get_owned_in_table(
-            MERGED_CONFIG_ACTIVE_TABLE,
-            &vault_id.to_string(),
-        )
+        self.db.get_owned(MERGED_CONFIG_ACTIVE_TABLE, &vault_id.to_string())
     }
 
     #[inline]
     #[instrument(skip(self), fields(operation = "load_global"))]
     fn load_global(&self) -> Result<Option<Global>, Self::Error> {
-        self.db.get_owned_in_table(CONFIG_TABLE, "global")
+        self.db.get_owned(CONFIG_TABLE, "global")
     }
 
     #[inline]
@@ -63,13 +60,13 @@ impl Command for CommandAdapter<'_> {
         &self,
         vault_id: VaultId,
     ) -> Result<Option<Vault>, Self::Error> {
-        self.db.get_owned_in_table(CONFIG_TABLE, &vault_id.to_string())
+        self.db.get_owned(CONFIG_TABLE, &vault_id.to_string())
     }
 
     #[inline]
     #[instrument(skip(self, config), fields(operation = "save_global"))]
     fn save_global(&self, config: &Global) -> Result<(), Self::Error> {
-        self.db.put_in_table(CONFIG_TABLE, "global", config)
+        self.db.put(CONFIG_TABLE, "global", config)
     }
 
     #[inline]
@@ -88,7 +85,7 @@ impl Command for CommandAdapter<'_> {
         config: &Config,
     ) -> Result<(), Self::Error> {
         let key = merged_version_key(vault_id, version);
-        self.db.put_in_table(MERGED_CONFIG_VERSIONS_TABLE, &key, config)
+        self.db.put(MERGED_CONFIG_VERSIONS_TABLE, &key, config)
     }
 
     #[inline]
@@ -101,7 +98,7 @@ impl Command for CommandAdapter<'_> {
         vault_id: VaultId,
         config: &Vault,
     ) -> Result<(), Self::Error> {
-        self.db.put_in_table(CONFIG_TABLE, &vault_id.to_string(), config)
+        self.db.put(CONFIG_TABLE, &vault_id.to_string(), config)
     }
 
     #[inline]
@@ -118,11 +115,7 @@ impl Command for CommandAdapter<'_> {
         vault_id: VaultId,
         version: Version,
     ) -> Result<(), Self::Error> {
-        self.db.put_in_table(
-            MERGED_CONFIG_ACTIVE_TABLE,
-            &vault_id.to_string(),
-            &version,
-        )
+        self.db.put(MERGED_CONFIG_ACTIVE_TABLE, &vault_id.to_string(), &version)
     }
 
     #[inline]
@@ -136,12 +129,8 @@ impl Command for CommandAdapter<'_> {
         vault_root: &VaultRoot,
     ) -> Result<(), Self::Error> {
         let path_key = vault_root.as_key();
-        self.db.put_in_table(VAULT_ID_BY_PATH_TABLE, &path_key, &vault_id)?;
-        self.db.put_in_table(
-            VAULT_PATH_BY_ID_TABLE,
-            &vault_id.to_string(),
-            vault_root,
-        )
+        self.db.put(VAULT_ID_BY_PATH_TABLE, &path_key, &vault_id)?;
+        self.db.put(VAULT_PATH_BY_ID_TABLE, &vault_id.to_string(), vault_root)
     }
 }
 
@@ -175,10 +164,7 @@ impl Query for QueryAdapter<'_> {
         &self,
         vault_id: VaultId,
     ) -> Result<Option<Version>, Self::Error> {
-        self.db.get_owned_in_table(
-            MERGED_CONFIG_ACTIVE_TABLE,
-            &vault_id.to_string(),
-        )
+        self.db.get_owned(MERGED_CONFIG_ACTIVE_TABLE, &vault_id.to_string())
     }
 
     #[inline]
@@ -197,7 +183,7 @@ impl Query for QueryAdapter<'_> {
         version: Version,
     ) -> Result<Option<Config>, Self::Error> {
         let key = merged_version_key(vault_id, version);
-        self.db.get_owned_in_table(MERGED_CONFIG_VERSIONS_TABLE, &key)
+        self.db.get_owned(MERGED_CONFIG_VERSIONS_TABLE, &key)
     }
 
     #[inline]
@@ -220,11 +206,7 @@ impl Query for QueryAdapter<'_> {
         F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
     {
         let key = merged_version_key(vault_id, version);
-        self.db.get_in_table::<Config, _, _>(
-            MERGED_CONFIG_VERSIONS_TABLE,
-            &key,
-            f,
-        )
+        self.db.get::<Config, _, _>(MERGED_CONFIG_VERSIONS_TABLE, &key, f)
     }
 }
 
