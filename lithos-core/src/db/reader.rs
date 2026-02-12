@@ -5,7 +5,7 @@
 
 use redb::{
     MultimapTableDefinition, ReadableDatabase as _, ReadableTable as _,
-    TableDefinition,
+    TableDefinition, TableError,
 };
 use rkyv::util::AlignedVec;
 
@@ -387,7 +387,11 @@ where
     F: FnOnce(&rkyv::Archived<V>) -> R,
 {
     let tx = db.begin_read()?;
-    let table_ref = tx.open_table(table)?;
+    let table_ref = match tx.open_table(table) {
+        Ok(table_ref) => table_ref,
+        Err(TableError::TableDoesNotExist(_)) => return Ok(None),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
 
     match table_ref.get(key)? {
         Some(value) => {
@@ -464,7 +468,11 @@ where
         >,
 {
     let tx = db.begin_read()?;
-    let table_ref = tx.open_table(table)?;
+    let table_ref = match tx.open_table(table) {
+        Ok(table_ref) => table_ref,
+        Err(TableError::TableDoesNotExist(_)) => return Ok(None),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
 
     match table_ref.get(key)? {
         Some(value) => {
@@ -545,7 +553,11 @@ where
         >,
 {
     let tx = db.begin_read()?;
-    let table_ref = tx.open_table(table)?;
+    let table_ref = match tx.open_table(table) {
+        Ok(table_ref) => table_ref,
+        Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
 
     let mut results = Vec::new();
     for result in table_ref.iter()? {
@@ -597,7 +609,11 @@ fn multimap_get_in_table_impl(
     key: &str,
 ) -> Result<Vec<String>, DbError> {
     let tx = db.begin_read()?;
-    let tbl = tx.open_multimap_table(table)?;
+    let tbl = match tx.open_multimap_table(table) {
+        Ok(tbl) => tbl,
+        Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
 
     let mut values = Vec::new();
     let range = tbl.get(key)?;
