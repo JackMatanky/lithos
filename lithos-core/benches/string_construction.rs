@@ -397,12 +397,12 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
             )
             .expect("valid template");
 
-            db.put_by_uuid_in_table(TEMPLATES_TABLE, template_uuid, &template)
-                .expect("put_by_uuid_in_table");
+            db.put_by_uuid(TEMPLATES_TABLE, template_uuid, &template)
+                .expect("put_by_uuid");
 
             let retrieved: Option<Template> = db
-                .get_owned_in_table(TEMPLATES_TABLE, &template_uuid.to_string())
-                .expect("get_owned_in_table");
+                .get_owned(TEMPLATES_TABLE, &template_uuid.to_string())
+                .expect("get_owned");
 
             black_box((schema_name, prop_name, date_spec, retrieved));
         });

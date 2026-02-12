@@ -22,7 +22,7 @@ impl Database {
     /// - `DbError::Deserialization` - Data validation failed
     /// - `DbError::Transaction` - Transaction or table operation failed
     #[inline]
-    pub fn get_in_table<V, F, R>(
+    pub fn get<V, F, R>(
         &self,
         table: TableDefinition<&str, &[u8]>,
         key: &str,
@@ -36,7 +36,7 @@ impl Database {
             >,
         F: FnOnce(&rkyv::Archived<V>) -> R,
     {
-        read_archived_in_table::<V, _, _>(&self.inner, table, key, f)
+        read_archived::<V, _, _>(&self.inner, table, key, f)
     }
 
     /// Full deserialization from a specific table definition (COLD PATH).
@@ -46,7 +46,7 @@ impl Database {
     /// - `DbError::Deserialization` - Data validation or deserialization failed
     /// - `DbError::Transaction` - Transaction or table operation failed
     #[inline]
-    pub fn get_owned_in_table<V>(
+    pub fn get_owned<V>(
         &self,
         table: TableDefinition<&str, &[u8]>,
         key: &str,
@@ -61,7 +61,7 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        deserialize_owned_in_table::<V>(&self.inner, table, key)
+        deserialize_owned::<V>(&self.inner, table, key)
     }
 
     /// Get all values for a key from a multimap table definition.
@@ -73,12 +73,12 @@ impl Database {
     ///
     /// - `DbError::Transaction` - Transaction or table operation failed
     #[inline]
-    pub fn multimap_get_in_table(
+    pub fn multimap_get(
         &self,
         table: MultimapTableDefinition<&str, &str>,
         key: &str,
     ) -> Result<Vec<String>, DbError> {
-        multimap_get_in_table_impl(&self.inner, table, key)
+        multimap_get_impl(&self.inner, table, key)
     }
 
     /// List all values in a table definition (owned).
@@ -87,7 +87,7 @@ impl Database {
     ///
     /// Returns `DbError` if transaction or deserialization fails.
     #[inline]
-    pub fn list_owned_in_table<V>(
+    pub fn list_owned<V>(
         &self,
         table: TableDefinition<&str, &[u8]>,
     ) -> Result<Vec<V>, DbError>
@@ -108,7 +108,7 @@ impl Database {
 // Private helper functions for internal use
 
 /// Zero-copy read of archived data with closure from a table definition.
-fn read_archived_in_table<V, F, R>(
+fn read_archived<V, F, R>(
     db: &redb::Database,
     table: TableDefinition<&str, &[u8]>,
     key: &str,
@@ -149,7 +149,7 @@ where
 }
 
 /// Full deserialization of archived data into owned value from a table.
-fn deserialize_owned_in_table<V>(
+fn deserialize_owned<V>(
     db: &redb::Database,
     table: TableDefinition<&str, &[u8]>,
     key: &str,
@@ -235,7 +235,7 @@ where
 }
 
 /// Get all values for a multimap table definition.
-fn multimap_get_in_table_impl(
+fn multimap_get_impl(
     db: &redb::Database,
     table: MultimapTableDefinition<&str, &str>,
     key: &str,
@@ -291,16 +291,13 @@ mod tests {
                     id: 42,
                     name: "Alice".to_owned(),
                 };
-                db.put_in_table(USERS_TABLE, "alice", &value)
-                    .expect("put_in_table");
+                db.put(USERS_TABLE, "alice", &value).expect("put");
 
                 let result = db
-                    .get_in_table::<TestValue, _, _>(
-                        USERS_TABLE,
-                        "alice",
-                        |archived| archived.id.to_native(),
-                    )
-                    .expect("get_in_table");
+                    .get::<TestValue, _, _>(USERS_TABLE, "alice", |archived| {
+                        archived.id.to_native()
+                    })
+                    .expect("get");
 
                 assert_eq!(result, Some(42));
             }
@@ -313,16 +310,15 @@ mod tests {
                     id: 7,
                     name: "Existing".to_owned(),
                 };
-                db.put_in_table(USERS_TABLE, "existing", &value)
-                    .expect("put_in_table");
+                db.put(USERS_TABLE, "existing", &value).expect("put");
 
                 let result = db
-                    .get_in_table::<TestValue, _, _>(
+                    .get::<TestValue, _, _>(
                         USERS_TABLE,
                         "missing",
                         |archived| archived.id.to_native(),
                     )
-                    .expect("get_in_table");
+                    .expect("get");
 
                 assert_eq!(result, None);
             }
@@ -335,18 +331,13 @@ mod tests {
                     id: 99,
                     name: "Test".to_owned(),
                 };
-                db.put_in_table(USERS_TABLE, "test", &value)
-                    .expect("put_in_table");
+                db.put(USERS_TABLE, "test", &value).expect("put");
 
-                db.get_in_table::<TestValue, _, _>(
-                    USERS_TABLE,
-                    "test",
-                    |archived| {
-                        assert_eq!(archived.id.to_native(), 99);
-                        assert_eq!(archived.name.as_str(), "Test");
-                    },
-                )
-                .expect("get_in_table");
+                db.get::<TestValue, _, _>(USERS_TABLE, "test", |archived| {
+                    assert_eq!(archived.id.to_native(), 99);
+                    assert_eq!(archived.name.as_str(), "Test");
+                })
+                .expect("get");
             }
         }
 
@@ -361,12 +352,10 @@ mod tests {
                     id: 234,
                     name: "Casey".to_owned(),
                 };
-                db.put_in_table(USERS_TABLE, "casey", &original)
-                    .expect("put_in_table");
+                db.put(USERS_TABLE, "casey", &original).expect("put");
 
-                let result: Option<TestValue> = db
-                    .get_owned_in_table(USERS_TABLE, "casey")
-                    .expect("get_owned_in_table");
+                let result: Option<TestValue> =
+                    db.get_owned(USERS_TABLE, "casey").expect("get_owned");
 
                 assert_eq!(result, Some(original));
             }
@@ -379,12 +368,10 @@ mod tests {
                     id: 123,
                     name: "Bob".to_owned(),
                 };
-                db.put_in_table(USERS_TABLE, "bob", &original)
-                    .expect("put_in_table");
+                db.put(USERS_TABLE, "bob", &original).expect("put");
 
-                let result: Option<TestValue> = db
-                    .get_owned_in_table(USERS_TABLE, "bob")
-                    .expect("get_owned_in_table");
+                let result: Option<TestValue> =
+                    db.get_owned(USERS_TABLE, "bob").expect("get_owned");
 
                 assert_eq!(result, Some(original));
             }
@@ -397,12 +384,10 @@ mod tests {
                     id: 8,
                     name: "Existing".to_owned(),
                 };
-                db.put_in_table(USERS_TABLE, "existing", &value)
-                    .expect("put_in_table");
+                db.put(USERS_TABLE, "existing", &value).expect("put");
 
-                let result: Option<TestValue> = db
-                    .get_owned_in_table(USERS_TABLE, "missing")
-                    .expect("get_owned_in_table");
+                let result: Option<TestValue> =
+                    db.get_owned(USERS_TABLE, "missing").expect("get_owned");
 
                 assert_eq!(result, None);
             }
@@ -427,16 +412,15 @@ mod tests {
                     name: "Charlie".to_owned(),
                 };
 
-                db.put_by_uuid_in_table(NOTES_TABLE, id, &value)
-                    .expect("put_by_uuid_in_table");
+                db.put_by_uuid(NOTES_TABLE, id, &value).expect("put_by_uuid");
 
                 let result = db
-                    .get_in_table::<TestValue, _, _>(
+                    .get::<TestValue, _, _>(
                         NOTES_TABLE,
                         &id.to_string(),
                         |archived| archived.id.to_native(),
                     )
-                    .expect("get_in_table");
+                    .expect("get");
 
                 assert_eq!(result, Some(456));
             }
@@ -452,12 +436,12 @@ mod tests {
                     name: "David".to_owned(),
                 };
 
-                db.put_by_uuid_in_table(ITEMS_TABLE, id, &original)
-                    .expect("put_by_uuid_in_table");
+                db.put_by_uuid(ITEMS_TABLE, id, &original)
+                    .expect("put_by_uuid");
 
                 let result: Option<TestValue> = db
-                    .get_owned_in_table(ITEMS_TABLE, &id.to_string())
-                    .expect("get_owned_in_table");
+                    .get_owned(ITEMS_TABLE, &id.to_string())
+                    .expect("get_owned");
 
                 assert_eq!(result, Some(original));
             }
@@ -467,40 +451,18 @@ mod tests {
             use super::{tables::TAGS_TABLE, *};
 
             #[test]
-            fn multimap_get_in_table_returns_all_values() {
-                let (_temp, db) = temp_db().expect("temp db");
-
-                db.multimap_insert_in_table(TAGS_TABLE, "work", "note1")
-                    .expect("multimap_insert_in_table");
-                db.multimap_insert_in_table(TAGS_TABLE, "work", "note2")
-                    .expect("multimap_insert_in_table");
-                db.multimap_insert_in_table(TAGS_TABLE, "work", "note3")
-                    .expect("multimap_insert_in_table");
-
-                let values = db
-                    .multimap_get_in_table(TAGS_TABLE, "work")
-                    .expect("multimap_get_in_table");
-
-                assert_eq!(values.len(), 3);
-                assert!(values.iter().any(|value| value == "note1"));
-                assert!(values.iter().any(|value| value == "note2"));
-                assert!(values.iter().any(|value| value == "note3"));
-            }
-
-            #[test]
             fn multimap_get_returns_all_values() {
                 let (_temp, db) = temp_db().expect("temp db");
 
-                db.multimap_insert_in_table(TAGS_TABLE, "work", "note1")
-                    .expect("multimap_insert_in_table");
-                db.multimap_insert_in_table(TAGS_TABLE, "work", "note2")
-                    .expect("multimap_insert_in_table");
-                db.multimap_insert_in_table(TAGS_TABLE, "work", "note3")
-                    .expect("multimap_insert_in_table");
+                db.multimap_insert(TAGS_TABLE, "work", "note1")
+                    .expect("multimap_insert");
+                db.multimap_insert(TAGS_TABLE, "work", "note2")
+                    .expect("multimap_insert");
+                db.multimap_insert(TAGS_TABLE, "work", "note3")
+                    .expect("multimap_insert");
 
-                let values = db
-                    .multimap_get_in_table(TAGS_TABLE, "work")
-                    .expect("multimap_get_in_table");
+                let values =
+                    db.multimap_get(TAGS_TABLE, "work").expect("multimap_get");
 
                 assert_eq!(values.len(), 3);
                 assert!(values.iter().any(|value| value == "note1"));
@@ -512,12 +474,12 @@ mod tests {
             fn empty_multimap_returns_empty_vec() {
                 let (_temp, db) = temp_db().expect("temp db");
 
-                db.multimap_insert_in_table(TAGS_TABLE, "other", "note1")
-                    .expect("multimap_insert_in_table");
+                db.multimap_insert(TAGS_TABLE, "other", "note1")
+                    .expect("multimap_insert");
 
                 let values = db
-                    .multimap_get_in_table(TAGS_TABLE, "nonexistent")
-                    .expect("multimap_get_in_table");
+                    .multimap_get(TAGS_TABLE, "nonexistent")
+                    .expect("multimap_get");
 
                 assert_eq!(values.len(), 0);
             }
@@ -533,20 +495,19 @@ mod tests {
             fn lists_all_entries_in_table_def() {
                 let (_temp, db) = temp_db().expect("temp db");
 
-                db.put_in_table(USERS_TABLE, "alice", &TestValue {
+                db.put(USERS_TABLE, "alice", &TestValue {
                     id: 10,
                     name: "Alice".to_owned(),
                 })
-                .expect("put_in_table");
-                db.put_in_table(USERS_TABLE, "bob", &TestValue {
+                .expect("put");
+                db.put(USERS_TABLE, "bob", &TestValue {
                     id: 20,
                     name: "Bob".to_owned(),
                 })
-                .expect("put_in_table");
+                .expect("put");
 
-                let results: Vec<TestValue> = db
-                    .list_owned_in_table(USERS_TABLE)
-                    .expect("list_owned_in_table");
+                let results: Vec<TestValue> =
+                    db.list_owned(USERS_TABLE).expect("list_owned");
 
                 assert_eq!(results.len(), 2);
                 assert!(results.iter().any(|v| v.id == 10));
@@ -557,25 +518,24 @@ mod tests {
             fn lists_all_entries_in_table() {
                 let (_temp, db) = temp_db().expect("temp db");
 
-                db.put_in_table(USERS_TABLE, "alice", &TestValue {
+                db.put(USERS_TABLE, "alice", &TestValue {
                     id: 1,
                     name: "Alice".to_owned(),
                 })
-                .expect("put_in_table");
-                db.put_in_table(USERS_TABLE, "bob", &TestValue {
+                .expect("put");
+                db.put(USERS_TABLE, "bob", &TestValue {
                     id: 2,
                     name: "Bob".to_owned(),
                 })
-                .expect("put_in_table");
-                db.put_in_table(USERS_TABLE, "charlie", &TestValue {
+                .expect("put");
+                db.put(USERS_TABLE, "charlie", &TestValue {
                     id: 3,
                     name: "Charlie".to_owned(),
                 })
-                .expect("put_in_table");
+                .expect("put");
 
-                let results: Vec<TestValue> = db
-                    .list_owned_in_table(USERS_TABLE)
-                    .expect("list_owned_in_table");
+                let results: Vec<TestValue> =
+                    db.list_owned(USERS_TABLE).expect("list_owned");
 
                 assert_eq!(results.len(), 3);
                 assert!(results.iter().any(|v| v.id == 1));
@@ -587,23 +547,21 @@ mod tests {
             fn respects_table_prefix_boundaries() {
                 let (_temp, db) = temp_db().expect("temp db");
 
-                db.put_in_table(USERS_TABLE, "alice", &TestValue {
+                db.put(USERS_TABLE, "alice", &TestValue {
                     id: 1,
                     name: "Alice".to_owned(),
                 })
-                .expect("put_in_table");
-                db.put_in_table(NOTES_TABLE, "note1", &TestValue {
+                .expect("put");
+                db.put(NOTES_TABLE, "note1", &TestValue {
                     id: 100,
                     name: "Note".to_owned(),
                 })
-                .expect("put_in_table");
+                .expect("put");
 
-                let users: Vec<TestValue> = db
-                    .list_owned_in_table(USERS_TABLE)
-                    .expect("list_owned_in_table");
-                let notes: Vec<TestValue> = db
-                    .list_owned_in_table(NOTES_TABLE)
-                    .expect("list_owned_in_table");
+                let users: Vec<TestValue> =
+                    db.list_owned(USERS_TABLE).expect("list_owned");
+                let notes: Vec<TestValue> =
+                    db.list_owned(NOTES_TABLE).expect("list_owned");
 
                 assert_eq!(users.len(), 1);
                 assert_eq!(notes.len(), 1);

@@ -17,8 +17,7 @@
 //! # Scope
 //!
 //! **Included**:
-//! - UUID helper database methods (`put_by_uuid_in_table`,
-//!   `delete_by_uuid_in_table`)
+//! - UUID helper database methods (`put_by_uuid`, `delete_by_uuid`)
 //! - Preformatted UUID keys for read benchmarks
 //! - UUID-via-string baseline for comparison
 //! - Database key formatting (optimized `write!()` vs naive `format!()`)
@@ -146,8 +145,8 @@ const BENCHMARK_TABLE: TableDefinition<&str, &[u8]> =
 ///
 /// # Purpose
 ///
-/// Validates that UUID helper database methods (`put_by_uuid_in_table`,
-/// `delete_by_uuid_in_table`) and preformatted keys for reads outperform
+/// Validates that UUID helper database methods (`put_by_uuid`,
+/// `delete_by_uuid`) and preformatted keys for reads outperform
 /// UUID-to-string conversion by avoiding intermediate string allocation.
 ///
 /// # What is Measured
@@ -199,12 +198,8 @@ fn bench_uuid_handling(c: &mut Criterion) {
     // Pre-populate with test data
     let test_uuid = Uuid::now_v7();
     let test_key = test_uuid.to_string();
-    db.put_by_uuid_in_table(
-        TEMPLATES_TABLE,
-        test_uuid,
-        &"test_value".to_owned(),
-    )
-    .expect("put_by_uuid_in_table");
+    db.put_by_uuid(TEMPLATES_TABLE, test_uuid, &"test_value".to_owned())
+        .expect("put_by_uuid");
 
     let mut group = c.benchmark_group("uuid_handling");
     group.throughput(Throughput::Elements(1));
@@ -213,14 +208,10 @@ fn bench_uuid_handling(c: &mut Criterion) {
     group.bench_function("get_preformatted_key", |b| {
         b.iter(|| {
             let id_str = black_box(test_key.as_str());
-            db.get_in_table::<String, _, _>(
-                TEMPLATES_TABLE,
-                id_str,
-                |archived| {
-                    black_box(archived);
-                },
-            )
-            .expect("get_in_table")
+            db.get::<String, _, _>(TEMPLATES_TABLE, id_str, |archived| {
+                black_box(archived);
+            })
+            .expect("get")
         });
     });
 
@@ -228,14 +219,10 @@ fn bench_uuid_handling(c: &mut Criterion) {
     group.bench_function("get_format_each_time", |b| {
         b.iter(|| {
             let id_str = black_box(test_uuid).to_string();
-            db.get_in_table::<String, _, _>(
-                TEMPLATES_TABLE,
-                &id_str,
-                |archived| {
-                    black_box(archived);
-                },
-            )
-            .expect("get_in_table")
+            db.get::<String, _, _>(TEMPLATES_TABLE, &id_str, |archived| {
+                black_box(archived);
+            })
+            .expect("get")
         });
     });
 
@@ -243,12 +230,12 @@ fn bench_uuid_handling(c: &mut Criterion) {
     group.bench_function("put_by_uuid_native", |b| {
         b.iter(|| {
             let uuid = Uuid::now_v7();
-            db.put_by_uuid_in_table(
+            db.put_by_uuid(
                 TEMPLATES_TABLE,
                 black_box(uuid),
                 &"benchmark_value".to_owned(),
             )
-            .expect("put_by_uuid_in_table");
+            .expect("put_by_uuid");
         });
     });
 
@@ -257,12 +244,8 @@ fn bench_uuid_handling(c: &mut Criterion) {
         b.iter(|| {
             let uuid = Uuid::now_v7();
             let id_str = uuid.to_string();
-            db.put_in_table(
-                TEMPLATES_TABLE,
-                &id_str,
-                &"benchmark_value".to_owned(),
-            )
-            .expect("put_in_table");
+            db.put(TEMPLATES_TABLE, &id_str, &"benchmark_value".to_owned())
+                .expect("put");
         });
     });
 
@@ -270,11 +253,11 @@ fn bench_uuid_handling(c: &mut Criterion) {
     group.bench_function("delete_by_uuid_native", |b| {
         b.iter(|| {
             let uuid = Uuid::now_v7();
-            db.put_by_uuid_in_table(TEMPLATES_TABLE, uuid, &"temp".to_owned())
+            db.put_by_uuid(TEMPLATES_TABLE, uuid, &"temp".to_owned())
                 .expect("setup");
             let existed = db
-                .delete_by_uuid_in_table(TEMPLATES_TABLE, black_box(uuid))
-                .expect("delete_by_uuid_in_table");
+                .delete_by_uuid(TEMPLATES_TABLE, black_box(uuid))
+                .expect("delete_by_uuid");
             black_box(existed);
         });
     });
@@ -284,11 +267,9 @@ fn bench_uuid_handling(c: &mut Criterion) {
         b.iter(|| {
             let uuid = Uuid::now_v7();
             let id_str = uuid.to_string();
-            db.put_in_table(TEMPLATES_TABLE, &id_str, &"temp".to_owned())
+            db.put(TEMPLATES_TABLE, &id_str, &"temp".to_owned())
                 .expect("setup");
-            let existed = db
-                .delete_in_table(TEMPLATES_TABLE, &id_str)
-                .expect("delete_in_table");
+            let existed = db.delete(TEMPLATES_TABLE, &id_str).expect("delete");
             black_box(existed);
         });
     });
@@ -344,7 +325,7 @@ fn bench_key_formatting(c: &mut Criterion) {
     for i in 0..100u32 {
         let key = format!("key-{i:04}");
         let value = format!("value-{i}");
-        db.put_in_table(BENCHMARK_TABLE, &key, &value).expect("put_in_table");
+        db.put(BENCHMARK_TABLE, &key, &value).expect("put");
     }
 
     let mut group = c.benchmark_group("key_formatting");
@@ -353,14 +334,14 @@ fn bench_key_formatting(c: &mut Criterion) {
     // Optimized: Current implementation uses pre-allocated buffer
     group.bench_function("get_with_string_key", |b| {
         b.iter(|| {
-            db.get_in_table::<String, _, _>(
+            db.get::<String, _, _>(
                 BENCHMARK_TABLE,
                 black_box("key-0050"),
                 |archived| {
                     black_box(archived);
                 },
             )
-            .expect("get_in_table")
+            .expect("get")
         });
     });
 
@@ -370,12 +351,8 @@ fn bench_key_formatting(c: &mut Criterion) {
         b.iter(|| {
             let key = format!("key-{counter:04}");
             counter += 1;
-            db.put_in_table(
-                BENCHMARK_TABLE,
-                &key,
-                black_box(&"test_value".to_owned()),
-            )
-            .expect("put_in_table");
+            db.put(BENCHMARK_TABLE, &key, black_box(&"test_value".to_owned()))
+                .expect("put");
         });
     });
 
