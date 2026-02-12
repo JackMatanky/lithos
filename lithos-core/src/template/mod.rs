@@ -23,4 +23,11 @@ pub mod validation;
 /// Template variable definitions.
 pub mod variable;
 
+use redb::{MultimapTableDefinition, TableDefinition};
+
+pub(crate) const TEMPLATES_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("templates");
+pub(crate) const TEMPLATE_NAME_TO_ID: MultimapTableDefinition<&str, &str> =
+    MultimapTableDefinition::new("template_name_to_id");
+
 // --- Public API ---
