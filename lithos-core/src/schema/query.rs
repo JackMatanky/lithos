@@ -5,7 +5,7 @@
 
 use uuid::Uuid;
 
-use super::{aggregate::Schema, error::SchemaError};
+use super::{SCHEMAS_TABLE, aggregate::Schema, error::SchemaError};
 use crate::db::Database;
 
 /// Query implementation for Schema read operations.
@@ -49,9 +49,9 @@ impl super::ports::Query for Query<'_> {
     /// Returns `SchemaError` if query fails.
     #[inline]
     fn find_by_name(&self, name: &str) -> Result<Option<Schema>, SchemaError> {
-        self.db.get_owned("schemas", name).map_err(|e: crate::db::DbError| {
-            SchemaError::Storage(e.to_string())
-        })
+        self.db.get_owned_in_table(SCHEMAS_TABLE, name).map_err(
+            |e: crate::db::DbError| SchemaError::Storage(e.to_string()),
+        )
     }
 
     /// List all available schemas.
@@ -61,7 +61,7 @@ impl super::ports::Query for Query<'_> {
     #[inline]
     fn list(&self) -> Result<Vec<Schema>, SchemaError> {
         self.db
-            .list_owned::<Schema>("schemas")
+            .list_owned_in_table::<Schema>(SCHEMAS_TABLE)
             .map_err(|e| SchemaError::Storage(e.to_string()))
     }
 }
