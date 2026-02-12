@@ -16,7 +16,7 @@ bench = false
 lithos-core.workspace = true
 clap.workspace = true
 miette.workspace = true
-anyhow.workspace = true
+# anyhow.workspace = true  # COMMENTED: Completely unused - codebase uses thiserror exclusively
 tracing.workspace = true
 
 # Note: tokio removed per Phase 5 - sync-first design

@@ -21,16 +21,16 @@ description = "A CLI-first templating and schema system for Obsidian vaults"
 
 [workspace.dependencies]
 # Core Runtime
-tokio = { version = "1.49", features = ["full"] }
+tokio = { version = "1.49", features = ["macros"] }
 async-trait = "0.1"
 
 # API & CLI
-clap = { version = "4.5", features = ["derive", "env"] }
+clap = { version = "4.5", features = ["env"] }
 miette = { version = "7.6", features = ["fancy"] }
 
 # Data & Persistence
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
 serde_yaml = "0.9"
 toml = "0.8"
 redb = "3.1"
@@ -41,7 +41,7 @@ uuid = { version = "1.19", features = ["v7", "v5", "serde"] }
 minijinja = "2.14"
 pulldown-cmark = "0.13"
 figment = { version = "0.10", features = ["toml", "env"] }
-anyhow = "1.0"
+# anyhow = "1.0"  # Completely unused - codebase uses thiserror exclusively
 thiserror = "2.0"
 tracing = "0.1"
 
@@ -139,10 +139,10 @@ disallowed_methods = "deny"
 
 [profile.release]
 opt-level = 3
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true
+lto = "fat"           # OPTIMIZED: Full LTO for maximum binary size reduction
+codegen-units = 1       # OPTIMIZED: Maximum optimization per compilation unit
+panic = "abort"         # OPTIMIZED: Remove panic handling overhead
+strip = "symbols"        # OPTIMIZED: Remove debug symbols
 
 [profile.dev]
 opt-level = 0
