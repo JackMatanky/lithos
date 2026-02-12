@@ -35,17 +35,13 @@
 
 pub mod config_adapter;
 mod error;
-mod keys;
 mod reader;
 mod writer;
 
 use std::path::Path;
 
 pub use error::DbError;
-use redb::TableDefinition;
 pub use writer::WriteBatch;
-
-const DATA_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("data");
 
 /// Concrete database type wrapping redb.
 ///

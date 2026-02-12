@@ -10,15 +10,16 @@
 //!
 //! Early profiling revealed database key construction
 //! (`format!("{table}:{key}")`) and UUID-to-string conversion allocated 36-100
-//! bytes per operation. P0 optimizations introduced UUID-native methods and
-//! pre-allocated key buffers. This suite validates those optimizations and
-//! guards against regressions.
+//! bytes per operation. P0 optimizations introduced UUID helper methods for
+//! writes/deletes and pre-allocated key buffers. This suite validates those
+//! optimizations and guards against regressions.
 //!
 //! # Scope
 //!
 //! **Included**:
-//! - UUID-native database methods (`get_by_uuid`, `put_by_uuid`,
-//!   `delete_by_uuid`)
+//! - UUID helper database methods (`put_by_uuid_in_table`,
+//!   `delete_by_uuid_in_table`)
+//! - Preformatted UUID keys for read benchmarks
 //! - UUID-via-string baseline for comparison
 //! - Database key formatting (optimized `write!()` vs naive `format!()`)
 //!
@@ -106,7 +107,7 @@
 //!
 //! | Group            | Focus                                           |
 //! | ---------------- | ----------------------------------------------- |
-//! | `uuid_handling`  | UUID-native vs string conversion (get/put/delete) |
+//! | `uuid_handling`  | UUID helpers vs string conversion (get/put/delete) |
 //! | `key_formatting` | Optimized key construction                      |
 //!
 //! # Safety
@@ -128,8 +129,14 @@ use criterion::{
     Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
 use lithos_core::db::Database;
+use redb::TableDefinition;
 use tempfile::TempDir;
 use uuid::Uuid;
+
+const TEMPLATES_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("templates");
+const BENCHMARK_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("benchmark");
 
 // ============================================================================
 // UUID Handling Strategies (Optimization Tracking)
@@ -139,14 +146,14 @@ use uuid::Uuid;
 ///
 /// # Purpose
 ///
-/// Validates that UUID-native database methods (`get_by_uuid`, `put_by_uuid`,
-/// `delete_by_uuid`) outperform UUID-to-string-to-key conversion by avoiding
-/// intermediate 36-byte string allocation.
+/// Validates that UUID helper database methods (`put_by_uuid_in_table`,
+/// `delete_by_uuid_in_table`) and preformatted keys for reads outperform
+/// UUID-to-string conversion by avoiding intermediate string allocation.
 ///
 /// # What is Measured
 ///
 /// - **Metric**: Latency per operation (get/put/delete)
-/// - **Variants**: Native (direct UUID formatting) vs via-string (baseline)
+/// - **Variants**: Preformatted keys vs per-iteration UUID-to-string baseline
 /// - **Execution**: Six paired benchmarks (get/put/delete × 2 strategies)
 ///
 /// # Inputs
@@ -164,14 +171,14 @@ use uuid::Uuid;
 ///
 /// # Expected Characteristics
 ///
-/// - **Native**: 250-450 ns per operation
+/// - **Preformatted**: 250-450 ns per operation
 /// - **Via-string**: 280-500 ns per operation
-/// - **Improvement**: 7-9% faster for native (from RESULTS.md)
+/// - **Improvement**: 7-9% faster for preformatted (from RESULTS.md)
 ///
 /// # Interpreting Changes
 ///
 /// - **Ratio < 1.05**: Optimization benefit eroding (investigate)
-/// - **Native slower**: Critical regression in UUID-native implementation
+/// - **Preformatted slower**: Critical regression in UUID handling
 /// - **Both slow**: General database layer regression
 /// - **Check with**: `db_storage.rs` benchmarks for broader context
 ///
@@ -191,34 +198,44 @@ fn bench_uuid_handling(c: &mut Criterion) {
 
     // Pre-populate with test data
     let test_uuid = Uuid::now_v7();
-    db.put_by_uuid("templates", test_uuid, &"test_value".to_owned())
-        .expect("put");
+    let test_key = test_uuid.to_string();
+    db.put_by_uuid_in_table(
+        TEMPLATES_TABLE,
+        test_uuid,
+        &"test_value".to_owned(),
+    )
+    .expect("put_by_uuid_in_table");
 
     let mut group = c.benchmark_group("uuid_handling");
     group.throughput(Throughput::Elements(1));
 
-    // Optimized: UUID-native get
-    group.bench_function("get_by_uuid_native", |b| {
+    // Optimized: preformatted key get
+    group.bench_function("get_preformatted_key", |b| {
         b.iter(|| {
-            db.get_by_uuid::<String, _, _>(
-                "templates",
-                black_box(test_uuid),
+            let id_str = black_box(test_key.as_str());
+            db.get_in_table::<String, _, _>(
+                TEMPLATES_TABLE,
+                id_str,
                 |archived| {
                     black_box(archived);
                 },
             )
-            .expect("get")
+            .expect("get_in_table")
         });
     });
 
     // Baseline: UUID → String → get
-    group.bench_function("get_by_uuid_via_string", |b| {
+    group.bench_function("get_format_each_time", |b| {
         b.iter(|| {
             let id_str = black_box(test_uuid).to_string();
-            db.get::<String, _, _>("templates", &id_str, |archived| {
-                black_box(archived);
-            })
-            .expect("get")
+            db.get_in_table::<String, _, _>(
+                TEMPLATES_TABLE,
+                &id_str,
+                |archived| {
+                    black_box(archived);
+                },
+            )
+            .expect("get_in_table")
         });
     });
 
@@ -226,12 +243,12 @@ fn bench_uuid_handling(c: &mut Criterion) {
     group.bench_function("put_by_uuid_native", |b| {
         b.iter(|| {
             let uuid = Uuid::now_v7();
-            db.put_by_uuid(
-                "templates",
+            db.put_by_uuid_in_table(
+                TEMPLATES_TABLE,
                 black_box(uuid),
                 &"benchmark_value".to_owned(),
             )
-            .expect("put");
+            .expect("put_by_uuid_in_table");
         });
     });
 
@@ -240,8 +257,12 @@ fn bench_uuid_handling(c: &mut Criterion) {
         b.iter(|| {
             let uuid = Uuid::now_v7();
             let id_str = uuid.to_string();
-            db.put("templates", &id_str, &"benchmark_value".to_owned())
-                .expect("put");
+            db.put_in_table(
+                TEMPLATES_TABLE,
+                &id_str,
+                &"benchmark_value".to_owned(),
+            )
+            .expect("put_in_table");
         });
     });
 
@@ -249,11 +270,11 @@ fn bench_uuid_handling(c: &mut Criterion) {
     group.bench_function("delete_by_uuid_native", |b| {
         b.iter(|| {
             let uuid = Uuid::now_v7();
-            db.put_by_uuid("templates", uuid, &"temp".to_owned())
+            db.put_by_uuid_in_table(TEMPLATES_TABLE, uuid, &"temp".to_owned())
                 .expect("setup");
             let existed = db
-                .delete_by_uuid("templates", black_box(uuid))
-                .expect("delete");
+                .delete_by_uuid_in_table(TEMPLATES_TABLE, black_box(uuid))
+                .expect("delete_by_uuid_in_table");
             black_box(existed);
         });
     });
@@ -263,8 +284,11 @@ fn bench_uuid_handling(c: &mut Criterion) {
         b.iter(|| {
             let uuid = Uuid::now_v7();
             let id_str = uuid.to_string();
-            db.put("templates", &id_str, &"temp".to_owned()).expect("setup");
-            let existed = db.delete("templates", &id_str).expect("delete");
+            db.put_in_table(TEMPLATES_TABLE, &id_str, &"temp".to_owned())
+                .expect("setup");
+            let existed = db
+                .delete_in_table(TEMPLATES_TABLE, &id_str)
+                .expect("delete_in_table");
             black_box(existed);
         });
     });
@@ -320,7 +344,7 @@ fn bench_key_formatting(c: &mut Criterion) {
     for i in 0..100u32 {
         let key = format!("key-{i:04}");
         let value = format!("value-{i}");
-        db.put("benchmark", &key, &value).expect("put");
+        db.put_in_table(BENCHMARK_TABLE, &key, &value).expect("put_in_table");
     }
 
     let mut group = c.benchmark_group("key_formatting");
@@ -329,14 +353,14 @@ fn bench_key_formatting(c: &mut Criterion) {
     // Optimized: Current implementation uses pre-allocated buffer
     group.bench_function("get_with_string_key", |b| {
         b.iter(|| {
-            db.get::<String, _, _>(
-                "benchmark",
+            db.get_in_table::<String, _, _>(
+                BENCHMARK_TABLE,
                 black_box("key-0050"),
                 |archived| {
                     black_box(archived);
                 },
             )
-            .expect("get")
+            .expect("get_in_table")
         });
     });
 
@@ -346,8 +370,12 @@ fn bench_key_formatting(c: &mut Criterion) {
         b.iter(|| {
             let key = format!("key-{counter:04}");
             counter += 1;
-            db.put("benchmark", &key, black_box(&"test_value".to_owned()))
-                .expect("put");
+            db.put_in_table(
+                BENCHMARK_TABLE,
+                &key,
+                black_box(&"test_value".to_owned()),
+            )
+            .expect("put_in_table");
         });
     });
 
