@@ -120,23 +120,25 @@ pub mod value;
 // Concrete Implementation Aliases (Redb)
 // ============================================================================
 
-use redb::TableDefinition;
+pub(crate) mod db_table {
+    use redb::TableDefinition;
+
+    pub(crate) const CONFIG: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("config");
+    pub(crate) const MERGED_CONFIG_VERSIONS: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("merged_config_versions");
+    pub(crate) const MERGED_CONFIG_ACTIVE: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("merged_config_active");
+    pub(crate) const VAULT_ID_BY_PATH: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("vault_id_by_path");
+    pub(crate) const VAULT_PATH_BY_ID: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("vault_path_by_id");
+}
 
 use crate::db::{
     Database,
     config_adapter::{CommandAdapter, QueryAdapter},
 };
-
-pub(crate) const CONFIG_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("config");
-pub(crate) const MERGED_CONFIG_VERSIONS_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("merged_config_versions");
-pub(crate) const MERGED_CONFIG_ACTIVE_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("merged_config_active");
-pub(crate) const VAULT_ID_BY_PATH_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("vault_id_by_path");
-pub(crate) const VAULT_PATH_BY_ID_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("vault_path_by_id");
 
 /// Redb-backed config command alias.
 pub type RedbConfigCommand<'db> = command::Command<CommandAdapter<'db>>;

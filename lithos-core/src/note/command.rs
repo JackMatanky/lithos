@@ -11,8 +11,8 @@
 use uuid::Uuid;
 
 use super::{
-    NOTES_TABLE, PATH_TO_ID, TAGS_TO_NOTES,
     aggregate::{Note, NoteId},
+    db_table::{NOTES, PATH_TO_ID, TAGS_TO_NOTES},
     error::NoteCommandError,
 };
 use crate::db::Database;
@@ -89,7 +89,7 @@ impl<'db> Command<'db> {
     ) -> Result<Option<IndexData>, NoteCommandError> {
         self.db
             .get::<Note, _, (String, Vec<String>)>(
-                NOTES_TABLE,
+                NOTES,
                 &id.to_string(),
                 |archived| {
                     let path = archived.path().as_str().to_owned();
@@ -116,7 +116,7 @@ impl super::ports::Command for Command<'_> {
         let id = Uuid::from(note.id());
 
         self.db.batch_write(|batch| {
-            batch.put(NOTES_TABLE, &id.to_string(), &note)?;
+            batch.put(NOTES, &id.to_string(), &note)?;
             batch.multimap_insert(
                 PATH_TO_ID,
                 note.path().as_str(),
@@ -152,7 +152,7 @@ impl super::ports::Command for Command<'_> {
                 }
 
                 // 4. Delete note
-                batch.delete(NOTES_TABLE, &id.to_string())?;
+                batch.delete(NOTES, &id.to_string())?;
 
                 Ok(())
             })?;
@@ -216,7 +216,7 @@ impl super::ports::Command for Command<'_> {
             }
 
             // 4. Save new note
-            batch.put(NOTES_TABLE, &id.to_string(), &note)?;
+            batch.put(NOTES, &id.to_string(), &note)?;
 
             Ok(())
         })?;
@@ -282,7 +282,7 @@ mod tests {
             db: &Database,
             id: Uuid,
         ) -> Result<Option<Note>, String> {
-            db.get_owned::<Note>(NOTES_TABLE, &id.to_string())
+            db.get_owned::<Note>(NOTES, &id.to_string())
                 .map_err(|e| e.to_string())
         }
 

@@ -11,10 +11,13 @@
 use uuid::Uuid;
 
 use super::{
-    ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES_TABLE,
-    PATH_TO_ID, TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
-    TASKS_BY_DUE_DATE, TASKS_BY_PRIORITY, TASKS_BY_PROJECT,
-    TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS, aggregate::Note,
+    aggregate::Note,
+    db_table::{
+        ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
+        PATH_TO_ID, TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
+        TASKS_BY_DUE_DATE, TASKS_BY_PRIORITY, TASKS_BY_PROJECT,
+        TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
+    },
     error::NoteQueryError,
 };
 use crate::db::Database;
@@ -69,7 +72,7 @@ impl<'db> Query<'db> {
         for note_id_str in note_refs {
             if let Some(note) = self
                 .db
-                .get_owned::<Note>(NOTES_TABLE, &note_id_str)
+                .get_owned::<Note>(NOTES, &note_id_str)
                 .map_err(NoteQueryError::Storage)?
             {
                 notes.push(note);
@@ -98,7 +101,7 @@ impl super::ports::Query for Query<'_> {
 
         if let Some(id_str) = ids.first() {
             self.db
-                .get_owned::<Note>(NOTES_TABLE, id_str)
+                .get_owned::<Note>(NOTES, id_str)
                 .map_err(NoteQueryError::Storage)
         } else {
             Ok(None)
@@ -123,7 +126,7 @@ impl super::ports::Query for Query<'_> {
         for id_str in ids {
             if let Some(note) = self
                 .db
-                .get_owned::<Note>(NOTES_TABLE, &id_str)
+                .get_owned::<Note>(NOTES, &id_str)
                 .map_err(NoteQueryError::Storage)?
             {
                 notes.push(note);
@@ -150,7 +153,7 @@ impl super::ports::Query for Query<'_> {
         for id_str in ids {
             if let Some(note) = self
                 .db
-                .get_owned::<Note>(NOTES_TABLE, &id_str)
+                .get_owned::<Note>(NOTES, &id_str)
                 .map_err(NoteQueryError::Storage)?
             {
                 notes.push(note);
@@ -166,7 +169,7 @@ impl super::ports::Query for Query<'_> {
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError> {
         self.db
-            .get_owned::<Note>(NOTES_TABLE, &id.to_string())
+            .get_owned::<Note>(NOTES, &id.to_string())
             .map_err(NoteQueryError::Storage)
     }
 
@@ -183,7 +186,7 @@ impl super::ports::Query for Query<'_> {
 
         if let Some(id_str) = ids.first() {
             self.db
-                .get_owned::<Note>(NOTES_TABLE, id_str)
+                .get_owned::<Note>(NOTES, id_str)
                 .map_err(NoteQueryError::Storage)
         } else {
             Ok(None)
@@ -312,7 +315,7 @@ impl super::ports::Query for Query<'_> {
     /// Returns `NoteQueryError` if query execution fails.
     #[inline]
     fn list(&self) -> Result<Vec<Note>, NoteQueryError> {
-        self.db.list_owned::<Note>(NOTES_TABLE).map_err(NoteQueryError::Storage)
+        self.db.list_owned::<Note>(NOTES).map_err(NoteQueryError::Storage)
     }
 
     /// Queries notes by frontmatter key-value pair using the generic
@@ -359,7 +362,7 @@ impl super::ports::Query for Query<'_> {
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
     {
         self.db
-            .get::<Note, _, R>(NOTES_TABLE, &id.to_string(), f)
+            .get::<Note, _, R>(NOTES, &id.to_string(), f)
             .map_err(NoteQueryError::Storage)
     }
 }
@@ -428,8 +431,7 @@ mod tests {
             let id = Uuid::from(note.id());
 
             // Store the note in the database using UUID-native method
-            db.put_by_uuid(NOTES_TABLE, id, &note)
-                .map_err(|e| e.to_string())?;
+            db.put_by_uuid(NOTES, id, &note).map_err(|e| e.to_string())?;
 
             // Index by path (multimap still requires string key)
             db.multimap_insert(PATH_TO_ID, "notes/a.md", &id.to_string())
@@ -493,9 +495,9 @@ mod tests {
                     NoteQueryError::Domain(NoteError::Storage(e.to_string()))
                 })?;
             let temp_id = Uuid::from(temp_note.id());
-            db.put_by_uuid(NOTES_TABLE, temp_id, &temp_note)
+            db.put_by_uuid(NOTES, temp_id, &temp_note)
                 .map_err(NoteQueryError::Storage)?;
-            db.delete_by_uuid(NOTES_TABLE, temp_id)
+            db.delete_by_uuid(NOTES, temp_id)
                 .map_err(NoteQueryError::Storage)?;
 
             let qry = Query::new(&db);

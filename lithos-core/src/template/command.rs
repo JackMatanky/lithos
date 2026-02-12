@@ -6,7 +6,8 @@
 use uuid::Uuid;
 
 use super::{
-    TEMPLATE_NAME_TO_ID, TEMPLATES_TABLE, aggregate::Template,
+    aggregate::Template,
+    db_table::{TEMPLATE_NAME_TO_ID, TEMPLATES},
     error::TemplateError,
 };
 use crate::db::Database;
@@ -40,7 +41,7 @@ impl super::ports::Command for Command<'_> {
         let id_str = template.id().to_string();
 
         self.db
-            .put_by_uuid(TEMPLATES_TABLE, template.id(), template)
+            .put_by_uuid(TEMPLATES, template.id(), template)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         self.db
@@ -62,7 +63,7 @@ impl super::ports::Command for Command<'_> {
         // 1. Get template first to clean up indexes
         let template = self
             .db
-            .get_owned::<Template>(TEMPLATES_TABLE, &id.to_string())
+            .get_owned::<Template>(TEMPLATES, &id.to_string())
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         if let Some(t) = template {
@@ -73,7 +74,7 @@ impl super::ports::Command for Command<'_> {
 
             // 3. Delete template
             self.db
-                .delete_by_uuid(TEMPLATES_TABLE, id)
+                .delete_by_uuid(TEMPLATES, id)
                 .map_err(|e| TemplateError::Storage(e.to_string()))?;
         }
 
@@ -92,7 +93,7 @@ impl super::ports::Command for Command<'_> {
         // 1. Get old template to find what changed
         let old_template = self
             .db
-            .get_owned::<Template>(TEMPLATES_TABLE, &template.id().to_string())
+            .get_owned::<Template>(TEMPLATES, &template.id().to_string())
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         if let Some(old) = old_template {
@@ -113,7 +114,7 @@ impl super::ports::Command for Command<'_> {
 
         // 3. Save new template
         self.db
-            .put_by_uuid(TEMPLATES_TABLE, template.id(), template)
+            .put_by_uuid(TEMPLATES, template.id(), template)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         Ok(())
@@ -198,7 +199,7 @@ mod tests {
         fn create_persists_template_and_name_index() {
             let (_dir, db, _template, id_str) = created_template();
             let stored = db
-                .get_owned::<Template>(TEMPLATES_TABLE, &id_str)
+                .get_owned::<Template>(TEMPLATES, &id_str)
                 .expect("Read after create should succeed");
             let stored_template = stored.expect("Stored template should exist");
             assert_eq!(
@@ -272,7 +273,7 @@ mod tests {
             let cmd = Command::new(&db);
             cmd.delete(template.id()).expect("Delete should succeed");
             let stored = db
-                .get_owned::<Template>(TEMPLATES_TABLE, &id_str)
+                .get_owned::<Template>(TEMPLATES, &id_str)
                 .expect("Read after delete should succeed");
             assert!(stored.is_none(), "Deleted template should not exist");
         }
