@@ -141,8 +141,12 @@ use lithos_core::{
     },
     template::aggregate::Template,
 };
+use redb::TableDefinition;
 use tempfile::TempDir;
 use uuid::Uuid;
+
+const TEMPLATES_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("templates");
 
 // ============================================================================
 // Numeric Formatting (Optimization Tracking)
@@ -393,10 +397,12 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
             )
             .expect("valid template");
 
-            db.put_by_uuid("templates", template_uuid, &template).expect("put");
+            db.put_by_uuid_in_table(TEMPLATES_TABLE, template_uuid, &template)
+                .expect("put_by_uuid_in_table");
 
-            let retrieved: Option<Template> =
-                db.get_owned_by_uuid("templates", template_uuid).expect("get");
+            let retrieved: Option<Template> = db
+                .get_owned_in_table(TEMPLATES_TABLE, &template_uuid.to_string())
+                .expect("get_owned_in_table");
 
             black_box((schema_name, prop_name, date_spec, retrieved));
         });

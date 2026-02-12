@@ -184,8 +184,11 @@ use lithos_core::{
         types::{SourceByteOffset, SourceByteRange},
     },
 };
+use redb::TableDefinition;
 use tempfile::TempDir;
 use uuid::Uuid;
+
+const NOTES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("notes");
 
 /// Creates a realistic `Note` value with nested structures.
 fn create_test_note(index: usize) -> Note {
@@ -293,7 +296,9 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
             let note = create_test_note(i);
             let id_str = Uuid::from(note.id()).to_string();
             note_ids.push(note.id());
-            batch_db.put("notes", &id_str, &note).expect("insert note");
+            batch_db
+                .put_in_table(NOTES_TABLE, &id_str, &note)
+                .expect("insert note");
         }
         Ok(())
     })
@@ -312,7 +317,8 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
 /// # What is Measured
 ///
 /// - **Metric**: Latency per read operation (nanoseconds)
-/// - **Execution**: Single `get_by_uuid` call per iteration with closure access
+/// - **Execution**: Single `get_in_table` call per iteration with closure
+///   access
 /// - **State**: Warm cache (same key read repeatedly)
 ///
 /// # Inputs
@@ -353,19 +359,16 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
 fn bench_zero_copy_read(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
+    let test_key = Uuid::from(test_id).to_string();
 
     let mut group = c.benchmark_group("read_zero_copy");
     group.throughput(Throughput::Elements(1));
 
     group.bench_function("get_zero_copy", |b| {
         b.iter(|| {
-            db.get_by_uuid::<Note, _, _>(
-                "notes",
-                Uuid::from(test_id),
-                |archived| {
-                    black_box(archived);
-                },
-            )
+            db.get_in_table::<Note, _, _>(NOTES_TABLE, &test_key, |archived| {
+                black_box(archived);
+            })
             .expect("get note")
         });
     });
@@ -425,6 +428,7 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 fn bench_full_deserialize(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
+    let test_key = Uuid::from(test_id).to_string();
 
     let mut group = c.benchmark_group("read_deserialize");
     group.throughput(Throughput::Elements(1));
@@ -432,7 +436,7 @@ fn bench_full_deserialize(c: &mut Criterion) {
     group.bench_function("get_owned", |b| {
         b.iter(|| {
             let note: Option<Note> = db
-                .get_owned_by_uuid("notes", Uuid::from(test_id))
+                .get_owned_in_table(NOTES_TABLE, &test_key)
                 .expect("get owned note");
             black_box(note.expect("note exists"));
         });
@@ -450,7 +454,8 @@ fn bench_full_deserialize(c: &mut Criterion) {
 ///
 /// # What is Measured
 ///
-/// - **Metric**: Latency per `put_by_uuid` call including transaction commit
+/// - **Metric**: Latency per `put_by_uuid_in_table` call including transaction
+///   commit
 /// - **Execution**: Create transaction → write → commit for each iteration
 ///
 /// # Expected Characteristics
@@ -476,7 +481,7 @@ fn bench_single_write(c: &mut Criterion) {
         b.iter(|| {
             let note = create_test_note(counter);
             counter = counter.wrapping_add(1);
-            db.put_by_uuid("notes", Uuid::from(note.id()), &note)
+            db.put_by_uuid_in_table(NOTES_TABLE, Uuid::from(note.id()), &note)
                 .expect("put note");
         });
     });
@@ -537,7 +542,7 @@ fn bench_batch_write(c: &mut Criterion) {
                             let note = create_test_note(i as usize);
                             let id_str = Uuid::from(note.id()).to_string();
                             batch_db
-                                .put("notes", &id_str, &note)
+                                .put_in_table(NOTES_TABLE, &id_str, &note)
                                 .expect("put note");
                         }
                         Ok(())
@@ -559,7 +564,7 @@ fn bench_batch_write(c: &mut Criterion) {
 ///
 /// # What is Measured
 ///
-/// - **Metric**: Latency per `delete_by_uuid` call
+/// - **Metric**: Latency per `delete_by_uuid_in_table` call
 /// - **Execution**: Single delete per iteration from pre-populated 1000-note DB
 ///
 /// # Inputs
@@ -584,7 +589,7 @@ fn bench_delete(c: &mut Criterion) {
             index = index.wrapping_add(1);
 
             let existed = db
-                .delete_by_uuid("notes", Uuid::from(id))
+                .delete_by_uuid_in_table(NOTES_TABLE, Uuid::from(id))
                 .expect("delete note");
             black_box(existed);
         });
@@ -618,16 +623,18 @@ fn bench_delete(c: &mut Criterion) {
 /// - **Both fast**: Cache may be too large (masking cold case)
 fn bench_cache_effectiveness(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
+    let note_keys: Vec<String> =
+        note_ids.iter().map(|id| Uuid::from(*id).to_string()).collect();
 
     let mut group = c.benchmark_group("cache_effectiveness");
     group.throughput(Throughput::Elements(1));
 
-    let hot_id = note_ids[0];
+    let hot_key = note_keys.first().expect("note key");
     group.bench_function("hot_read", |b| {
         b.iter(|| {
-            db.get_by_uuid::<Note, _, _>(
-                "notes",
-                Uuid::from(hot_id),
+            db.get_in_table::<Note, _, _>(
+                NOTES_TABLE,
+                hot_key.as_str(),
                 |archived| {
                     black_box(archived);
                 },
@@ -639,16 +646,12 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     let mut cold_index: usize = 0;
     group.bench_function("cold_read", |b| {
         b.iter(|| {
-            let cold_id = note_ids[cold_index % note_ids.len()];
+            let cold_id = note_keys[cold_index % note_keys.len()].as_str();
             cold_index = cold_index.wrapping_add(1);
 
-            db.get_by_uuid::<Note, _, _>(
-                "notes",
-                Uuid::from(cold_id),
-                |archived| {
-                    black_box(archived);
-                },
-            )
+            db.get_in_table::<Note, _, _>(NOTES_TABLE, cold_id, |archived| {
+                black_box(archived);
+            })
             .expect("get note")
         });
     });
@@ -703,8 +706,12 @@ fn bench_transaction_overhead(c: &mut Criterion) {
 
             for i in 0..batch_size {
                 let note = create_test_note(i as usize);
-                db.put_by_uuid("notes", Uuid::from(note.id()), &note)
-                    .expect("put note");
+                db.put_by_uuid_in_table(
+                    NOTES_TABLE,
+                    Uuid::from(note.id()),
+                    &note,
+                )
+                .expect("put note");
             }
         });
     });
@@ -722,7 +729,9 @@ fn bench_transaction_overhead(c: &mut Criterion) {
                 for i in 0..batch_size {
                     let note = create_test_note(i as usize);
                     let id_str = Uuid::from(note.id()).to_string();
-                    batch_db.put("notes", &id_str, &note).expect("put note");
+                    batch_db
+                        .put_in_table(NOTES_TABLE, &id_str, &note)
+                        .expect("put note");
                 }
                 Ok(())
             })
