@@ -23,7 +23,7 @@ ryu = "1.0"
 
 # Error Handling (sync-first, no async)
 thiserror.workspace = true
-anyhow.workspace = true
+# anyhow.workspace = true  # Completely unused - codebase uses thiserror exclusively
 tracing.workspace = true
 miette.workspace = true
 

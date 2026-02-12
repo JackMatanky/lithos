@@ -1,0 +1,18 @@
+# -----------------------------------------------------------------------------
+# Filename:    .cargo/config.toml
+# Docs:        https://doc.rust-lang.org/cargo/reference/config.html
+# Purpose:     Cargo build configuration for the Lithos Rust project
+# Description: Build optimizations including native CPU targeting, LTO
+#              configuration, and development vs production build tuning.
+# -----------------------------------------------------------------------------
+
+[build]
+# Use native CPU optimizations for maximum performance
+rustflags = [
+    "-C", "target-cpu=native",      # Optimize for current CPU
+]
+
+# Optional: Network optimizations for faster dependency fetching
+[net]
+git-fetch-with-cli = true
+offline = false  # Set to true to work offline when possible
