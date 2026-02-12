@@ -126,8 +126,9 @@ mod tests {
     use super::*;
     use crate::{
         config::{
-            CONFIG_TABLE, MERGED_CONFIG_ACTIVE_TABLE,
-            MERGED_CONFIG_VERSIONS_TABLE, aggregate::Version, global::Global,
+            aggregate::Version,
+            db_table::{CONFIG, MERGED_CONFIG_ACTIVE, MERGED_CONFIG_VERSIONS},
+            global::Global,
         },
         db::{Database, DbError},
     };
@@ -174,7 +175,7 @@ mod tests {
         fn get_returns_none_when_active_missing() {
             // Arrange - unwrap permitted for test setup
             let (_dir, db) = fixtures::test_db();
-            db.put(CONFIG_TABLE, "global", &Global::default())
+            db.put(CONFIG, "global", &Global::default())
                 .expect("must put global config");
             let qry = Query::new(DbPort::new(&db));
 
@@ -200,14 +201,10 @@ mod tests {
             let config = fixtures::test_config();
 
             // Setup: version 1 active with default config
+            db.put(MERGED_CONFIG_VERSIONS, &format!("{vault_id}:1"), &config)
+                .expect("must put config version");
             db.put(
-                MERGED_CONFIG_VERSIONS_TABLE,
-                &format!("{vault_id}:1"),
-                &config,
-            )
-            .expect("must put config version");
-            db.put(
-                MERGED_CONFIG_ACTIVE_TABLE,
+                MERGED_CONFIG_ACTIVE,
                 &vault_id.to_string(),
                 &Version::initial(),
             )
@@ -241,7 +238,7 @@ mod tests {
             &self,
             vault_id: VaultId,
         ) -> Result<Option<Version>, DbError> {
-            self.db.get_owned(MERGED_CONFIG_ACTIVE_TABLE, &vault_id.to_string())
+            self.db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())
         }
 
         fn get_merged_owned(
@@ -250,7 +247,7 @@ mod tests {
             version: Version,
         ) -> Result<Option<Config>, DbError> {
             let key = format!("{vault_id}:{}", version.value());
-            self.db.get_owned(MERGED_CONFIG_VERSIONS_TABLE, &key)
+            self.db.get_owned(MERGED_CONFIG_VERSIONS, &key)
         }
 
         fn with_archived_merged<F, R>(
@@ -263,7 +260,7 @@ mod tests {
             F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
         {
             let key = format!("{vault_id}:{}", version.value());
-            self.db.get::<Config, _, _>(MERGED_CONFIG_VERSIONS_TABLE, &key, f)
+            self.db.get::<Config, _, _>(MERGED_CONFIG_VERSIONS, &key, f)
         }
     }
 }

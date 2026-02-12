@@ -328,9 +328,11 @@ mod tests {
     use super::*;
     use crate::{
         config::{
-            CONFIG_TABLE, MERGED_CONFIG_ACTIVE_TABLE,
-            MERGED_CONFIG_VERSIONS_TABLE, VAULT_ID_BY_PATH_TABLE,
-            VAULT_PATH_BY_ID_TABLE, ports as config_ports,
+            db_table::{
+                CONFIG, MERGED_CONFIG_ACTIVE, MERGED_CONFIG_VERSIONS,
+                VAULT_ID_BY_PATH, VAULT_PATH_BY_ID,
+            },
+            ports as config_ports,
         },
         db::{Database, DbError},
     };
@@ -370,22 +372,22 @@ mod tests {
             &self,
             vault_id: VaultId,
         ) -> Result<Option<Version>, Self::Error> {
-            self.db.get_owned(MERGED_CONFIG_ACTIVE_TABLE, &vault_id.to_string())
+            self.db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())
         }
 
         fn load_global(&self) -> Result<Option<Global>, Self::Error> {
-            self.db.get_owned(CONFIG_TABLE, "global")
+            self.db.get_owned(CONFIG, "global")
         }
 
         fn load_vault(
             &self,
             vault_id: VaultId,
         ) -> Result<Option<Vault>, Self::Error> {
-            self.db.get_owned(CONFIG_TABLE, &vault_id.to_string())
+            self.db.get_owned(CONFIG, &vault_id.to_string())
         }
 
         fn save_global(&self, config: &Global) -> Result<(), Self::Error> {
-            self.db.put(CONFIG_TABLE, "global", config)
+            self.db.put(CONFIG, "global", config)
         }
 
         fn save_vault(
@@ -393,7 +395,7 @@ mod tests {
             vault_id: VaultId,
             config: &Vault,
         ) -> Result<(), Self::Error> {
-            self.db.put(CONFIG_TABLE, &vault_id.to_string(), config)
+            self.db.put(CONFIG, &vault_id.to_string(), config)
         }
 
         fn save_merged(
@@ -403,7 +405,7 @@ mod tests {
             config: &Config,
         ) -> Result<(), Self::Error> {
             let key = format!("{vault_id}:{}", version.value());
-            self.db.put(MERGED_CONFIG_VERSIONS_TABLE, &key, config)
+            self.db.put(MERGED_CONFIG_VERSIONS, &key, config)
         }
 
         fn set_active_version(
@@ -411,11 +413,7 @@ mod tests {
             vault_id: VaultId,
             version: Version,
         ) -> Result<(), Self::Error> {
-            self.db.put(
-                MERGED_CONFIG_ACTIVE_TABLE,
-                &vault_id.to_string(),
-                &version,
-            )
+            self.db.put(MERGED_CONFIG_ACTIVE, &vault_id.to_string(), &version)
         }
 
         fn save_vault_path_mapping(
@@ -424,15 +422,11 @@ mod tests {
             vault_root: &VaultRoot,
         ) -> Result<(), Self::Error> {
             self.db.put(
-                VAULT_ID_BY_PATH_TABLE,
+                VAULT_ID_BY_PATH,
                 vault_root.as_path().to_string_lossy().as_ref(),
                 &vault_id,
             )?;
-            self.db.put(
-                VAULT_PATH_BY_ID_TABLE,
-                &vault_id.to_string(),
-                vault_root,
-            )
+            self.db.put(VAULT_PATH_BY_ID, &vault_id.to_string(), vault_root)
         }
     }
 
@@ -452,7 +446,7 @@ mod tests {
             let global = Global::default();
             cmd.save_global(&global)?;
 
-            let stored = db.get_owned::<Global>(CONFIG_TABLE, "global")?;
+            let stored = db.get_owned::<Global>(CONFIG, "global")?;
             let stored_global =
                 stored.ok_or("Stored global config should exist")?;
             assert_eq!(
@@ -477,7 +471,7 @@ mod tests {
             cmd.save_vault(vault_id, &vault)?;
 
             let stored =
-                db.get_owned::<Vault>(CONFIG_TABLE, &vault_id.to_string())?;
+                db.get_owned::<Vault>(CONFIG, &vault_id.to_string())?;
             let stored_vault =
                 stored.ok_or("Stored vault config should exist")?;
             assert_eq!(
@@ -504,7 +498,7 @@ mod tests {
 
             // Setup: Version 1 and 2
             db.put(
-                MERGED_CONFIG_ACTIVE_TABLE,
+                MERGED_CONFIG_ACTIVE,
                 &vault_id.to_string(),
                 &Version::try_from(2)?,
             )?;
@@ -513,8 +507,8 @@ mod tests {
             let target = cmd.rollback(vault_id, 1)?;
             assert_eq!(target.value(), 1);
 
-            let active: Option<Version> = db
-                .get_owned(MERGED_CONFIG_ACTIVE_TABLE, &vault_id.to_string())?;
+            let active: Option<Version> =
+                db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
             assert_eq!(active.expect("active version should exist").value(), 1);
             Ok(())
         }
@@ -533,8 +527,8 @@ mod tests {
 
             cmd.activate_version(vault_id, version)?;
 
-            let active: Option<Version> = db
-                .get_owned(MERGED_CONFIG_ACTIVE_TABLE, &vault_id.to_string())?;
+            let active: Option<Version> =
+                db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
             assert_eq!(active.expect("active version should exist"), version);
             Ok(())
         }
@@ -555,8 +549,8 @@ mod tests {
             let version = cmd.rebuild_merged(vault_id, &vault_root)?;
             assert_eq!(version.value(), 1);
 
-            let active: Option<Version> = db
-                .get_owned(MERGED_CONFIG_ACTIVE_TABLE, &vault_id.to_string())?;
+            let active: Option<Version> =
+                db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
             assert_eq!(active.expect("active version should exist"), version);
 
             Ok(())
@@ -588,7 +582,7 @@ mod tests {
             // THEN: config is read from file and persisted
             let key = format!("{vault_id}:{}", version.value());
             let stored: Option<Config> =
-                db.get_owned(MERGED_CONFIG_VERSIONS_TABLE, &key)?;
+                db.get_owned(MERGED_CONFIG_VERSIONS, &key)?;
             let config = stored.expect("merged config should be persisted");
 
             assert_eq!(config.logging().level_str(), "debug");
@@ -615,7 +609,7 @@ mod tests {
             // THEN: defaults are applied
             let key = format!("{vault_id}:{}", version.value());
             let stored: Option<Config> =
-                db.get_owned(MERGED_CONFIG_VERSIONS_TABLE, &key)?;
+                db.get_owned(MERGED_CONFIG_VERSIONS, &key)?;
             let config = stored.expect("merged config should be persisted");
 
             assert_eq!(config.logging().level_str(), "info"); // default
@@ -641,7 +635,7 @@ mod tests {
 
             // THEN: vault path mapping is saved
             let stored_root: Option<VaultRoot> =
-                db.get_owned(VAULT_PATH_BY_ID_TABLE, &vault_id.to_string())?;
+                db.get_owned(VAULT_PATH_BY_ID, &vault_id.to_string())?;
             assert_eq!(
                 stored_root.expect("vault root should be mapped"),
                 vault_root
@@ -689,7 +683,7 @@ mod tests {
             let vault_id = VaultId::new();
             let vault = Vault::default();
 
-            db.put(CONFIG_TABLE, &vault_id.to_string(), &vault)?;
+            db.put(CONFIG, &vault_id.to_string(), &vault)?;
 
             let loaded = cmd.load_vault(vault_id)?;
             assert_eq!(loaded, Some(vault));

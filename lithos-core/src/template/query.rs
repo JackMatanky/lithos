@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{
     db::Database,
-    template::{TEMPLATE_NAME_TO_ID, TEMPLATES_TABLE},
+    template::db_table::{TEMPLATE_NAME_TO_ID, TEMPLATES},
 };
 
 /// Query implementation for Template read operations.
@@ -40,7 +40,7 @@ impl super::ports::Query for Query<'_> {
     /// Returns `TemplateError` if query fails.
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
-        self.db.get_owned(TEMPLATES_TABLE, &id.to_string()).map_err(
+        self.db.get_owned(TEMPLATES, &id.to_string()).map_err(
             |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
         )
     }
@@ -59,7 +59,7 @@ impl super::ports::Query for Query<'_> {
         )?;
 
         if let Some(id_str) = ids.first() {
-            self.db.get_owned::<Template>(TEMPLATES_TABLE, id_str).map_err(
+            self.db.get_owned::<Template>(TEMPLATES, id_str).map_err(
                 |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
             )
         } else {
@@ -73,7 +73,7 @@ impl super::ports::Query for Query<'_> {
     /// Returns `TemplateError` if query fails.
     #[inline]
     fn list(&self) -> Result<Vec<Template>, TemplateError> {
-        self.db.list_owned::<Template>(TEMPLATES_TABLE).map_err(
+        self.db.list_owned::<Template>(TEMPLATES).map_err(
             |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
         )
     }

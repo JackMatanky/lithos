@@ -3,7 +3,7 @@
 //! This module implements the Command port trait for Schema write operations,
 //! using the Database layer for persistence.
 
-use super::{SCHEMAS_TABLE, aggregate::Schema, error::SchemaError};
+use super::{aggregate::Schema, db_table::SCHEMAS, error::SchemaError};
 use crate::db::Database;
 
 /// Command implementation for Schema write operations.
@@ -30,7 +30,7 @@ impl<'db> Command<'db> {
     #[inline]
     pub fn delete(&self, name: &str) -> Result<(), SchemaError> {
         self.db
-            .delete(SCHEMAS_TABLE, name)
+            .delete(SCHEMAS, name)
             .map_err(|e| SchemaError::Storage(e.to_string()))?;
         Ok(())
     }
@@ -45,9 +45,9 @@ impl<'db> Command<'db> {
         let name = schema.name().as_ref();
 
         // Save to database
-        self.db.put(SCHEMAS_TABLE, name, schema).map_err(
-            |e: crate::db::DbError| SchemaError::Storage(e.to_string()),
-        )
+        self.db.put(SCHEMAS, name, schema).map_err(|e: crate::db::DbError| {
+            SchemaError::Storage(e.to_string())
+        })
     }
 }
 
@@ -106,7 +106,7 @@ mod tests {
             cmd.save(&schema).expect("Save should succeed");
 
             let stored = db
-                .get_owned::<Schema>(SCHEMAS_TABLE, "note")
+                .get_owned::<Schema>(SCHEMAS, "note")
                 .expect("Read after save should succeed");
             let stored_schema = stored.expect("Stored schema should exist");
             assert_eq!(
@@ -137,7 +137,7 @@ mod tests {
             cmd.delete("project").expect("Delete should succeed");
 
             let stored = db
-                .get_owned::<Schema>(SCHEMAS_TABLE, "project")
+                .get_owned::<Schema>(SCHEMAS, "project")
                 .expect("Read after delete should succeed");
             assert!(stored.is_none(), "Deleted schema should not exist");
         }
