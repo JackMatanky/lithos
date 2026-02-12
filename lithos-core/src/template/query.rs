@@ -10,7 +10,10 @@ use uuid::Uuid;
 use super::{
     aggregate::Template, composition::Composition, error::TemplateError,
 };
-use crate::db::Database;
+use crate::{
+    db::Database,
+    template::{TEMPLATE_NAME_TO_ID, TEMPLATES_TABLE},
+};
 
 /// Query implementation for Template read operations.
 ///
@@ -37,7 +40,7 @@ impl super::ports::Query for Query<'_> {
     /// Returns `TemplateError` if query fails.
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
-        self.db.get_owned_by_uuid::<Template>("templates", id).map_err(
+        self.db.get_owned_in_table(TEMPLATES_TABLE, &id.to_string()).map_err(
             |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
         )
     }
@@ -51,14 +54,17 @@ impl super::ports::Query for Query<'_> {
         &self,
         name: &str,
     ) -> Result<Option<Template>, TemplateError> {
-        let ids = self.db.multimap_get("template_name_to_id", name).map_err(
-            |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
-        )?;
+        let ids =
+            self.db.multimap_get_in_table(TEMPLATE_NAME_TO_ID, name).map_err(
+                |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
+            )?;
 
         if let Some(id_str) = ids.first() {
-            self.db.get_owned::<Template>("templates", id_str).map_err(
-                |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
-            )
+            self.db
+                .get_owned_in_table::<Template>(TEMPLATES_TABLE, id_str)
+                .map_err(|e: crate::db::DbError| {
+                    TemplateError::Storage(e.to_string())
+                })
         } else {
             Ok(None)
         }
@@ -70,7 +76,7 @@ impl super::ports::Query for Query<'_> {
     /// Returns `TemplateError` if query fails.
     #[inline]
     fn list(&self) -> Result<Vec<Template>, TemplateError> {
-        self.db.list_owned::<Template>("templates").map_err(
+        self.db.list_owned_in_table::<Template>(TEMPLATES_TABLE).map_err(
             |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
         )
     }

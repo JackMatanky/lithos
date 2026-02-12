@@ -5,7 +5,10 @@
 
 use uuid::Uuid;
 
-use super::{aggregate::Template, error::TemplateError};
+use super::{
+    TEMPLATE_NAME_TO_ID, TEMPLATES_TABLE, aggregate::Template,
+    error::TemplateError,
+};
 use crate::db::Database;
 
 /// Command implementation for Template write operations.
@@ -37,11 +40,15 @@ impl super::ports::Command for Command<'_> {
         let id_str = template.id().to_string();
 
         self.db
-            .put_by_uuid("templates", template.id(), template)
+            .put_by_uuid_in_table(TEMPLATES_TABLE, template.id(), template)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         self.db
-            .multimap_insert("template_name_to_id", template.name(), &id_str)
+            .multimap_insert_in_table(
+                TEMPLATE_NAME_TO_ID,
+                template.name(),
+                &id_str,
+            )
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         Ok(())
@@ -59,18 +66,22 @@ impl super::ports::Command for Command<'_> {
         // 1. Get template first to clean up indexes
         let template = self
             .db
-            .get_owned_by_uuid::<Template>("templates", id)
+            .get_owned_in_table::<Template>(TEMPLATES_TABLE, &id.to_string())
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         if let Some(t) = template {
             // 2. Remove from name index
             self.db
-                .multimap_remove("template_name_to_id", t.name(), &id_str)
+                .multimap_remove_in_table(
+                    TEMPLATE_NAME_TO_ID,
+                    t.name(),
+                    &id_str,
+                )
                 .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
             // 3. Delete template
             self.db
-                .delete_by_uuid("templates", id)
+                .delete_by_uuid_in_table(TEMPLATES_TABLE, id)
                 .map_err(|e| TemplateError::Storage(e.to_string()))?;
         }
 
@@ -89,18 +100,25 @@ impl super::ports::Command for Command<'_> {
         // 1. Get old template to find what changed
         let old_template = self
             .db
-            .get_owned_by_uuid::<Template>("templates", template.id())
+            .get_owned_in_table::<Template>(
+                TEMPLATES_TABLE,
+                &template.id().to_string(),
+            )
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         if let Some(old) = old_template {
             // 2. Update name index if changed
             if old.name() != template.name() {
                 self.db
-                    .multimap_remove("template_name_to_id", old.name(), &id_str)
+                    .multimap_remove_in_table(
+                        TEMPLATE_NAME_TO_ID,
+                        old.name(),
+                        &id_str,
+                    )
                     .map_err(|e| TemplateError::Storage(e.to_string()))?;
                 self.db
-                    .multimap_insert(
-                        "template_name_to_id",
+                    .multimap_insert_in_table(
+                        TEMPLATE_NAME_TO_ID,
                         template.name(),
                         &id_str,
                     )
@@ -110,7 +128,7 @@ impl super::ports::Command for Command<'_> {
 
         // 3. Save new template
         self.db
-            .put_by_uuid("templates", template.id(), template)
+            .put_by_uuid_in_table(TEMPLATES_TABLE, template.id(), template)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         Ok(())
@@ -195,7 +213,7 @@ mod tests {
         fn create_persists_template_and_name_index() {
             let (_dir, db, _template, id_str) = created_template();
             let stored = db
-                .get_owned::<Template>("templates", &id_str)
+                .get_owned_in_table::<Template>(TEMPLATES_TABLE, &id_str)
                 .expect("Read after create should succeed");
             let stored_template = stored.expect("Stored template should exist");
             assert_eq!(
@@ -215,7 +233,7 @@ mod tests {
             let (_dir, db, _template, id_str) = created_template();
 
             let ids = db
-                .multimap_get("template_name_to_id", "daily")
+                .multimap_get_in_table(TEMPLATE_NAME_TO_ID, "daily")
                 .expect("Name index read should succeed");
             assert!(
                 ids.contains(&id_str),
@@ -232,7 +250,7 @@ mod tests {
         fn update_refreshes_name_index_when_name_changes() {
             let (_dir, db, id_str) = updated_template_name();
             let old_ids = db
-                .multimap_get("template_name_to_id", "daily")
+                .multimap_get_in_table(TEMPLATE_NAME_TO_ID, "daily")
                 .expect("Old name index read should succeed");
             assert!(
                 !old_ids.contains(&id_str),
@@ -250,7 +268,7 @@ mod tests {
             let (_dir, db, id_str) = updated_template_name();
 
             let new_ids = db
-                .multimap_get("template_name_to_id", "weekly")
+                .multimap_get_in_table(TEMPLATE_NAME_TO_ID, "weekly")
                 .expect("New name index read should succeed");
             assert!(
                 new_ids.contains(&id_str),
@@ -269,7 +287,7 @@ mod tests {
             let cmd = Command::new(&db);
             cmd.delete(template.id()).expect("Delete should succeed");
             let stored = db
-                .get_owned::<Template>("templates", &id_str)
+                .get_owned_in_table::<Template>(TEMPLATES_TABLE, &id_str)
                 .expect("Read after delete should succeed");
             assert!(stored.is_none(), "Deleted template should not exist");
         }
@@ -286,7 +304,7 @@ mod tests {
             cmd.delete(template.id()).expect("Delete should succeed");
 
             let ids = db
-                .multimap_get("template_name_to_id", "daily")
+                .multimap_get_in_table(TEMPLATE_NAME_TO_ID, "daily")
                 .expect("Name index read should succeed");
             assert!(
                 !ids.contains(&id_str),
