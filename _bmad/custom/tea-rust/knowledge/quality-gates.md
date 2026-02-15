@@ -77,4 +77,4 @@ pub mod production_only_code {
 ## RELATED MODULES
 
 - See `ci.md` for integration into the pipeline
-- See `benchmarks.md` for performance measuring
+- See `test-benchmarks.md` for performance measuring

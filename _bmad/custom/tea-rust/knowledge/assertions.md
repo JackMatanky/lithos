@@ -360,6 +360,6 @@ fn example() {
 
 ## RELATED MODULES
 
-- See `unit.md` for test structure
+- See `test-unit.md` for test structure
 - See `naming.md` for naming conventions
 - See `anti-patterns.md` for comprehensive anti-patterns

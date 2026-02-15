@@ -345,5 +345,5 @@ proptest! {
 ## RELATED MODULES
 
 - See `fixtures.md` for fixture strategies
-- See `unit.md` for unit testing patterns
+- See `test-unit.md` for unit testing patterns
 - See `anti-patterns.md` for comprehensive anti-patterns

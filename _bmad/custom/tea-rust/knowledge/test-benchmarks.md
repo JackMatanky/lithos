@@ -12,7 +12,7 @@
 
 - [ ] Benchmarks are representative of real-world usage
 - [ ] Uses `criterion` for statistical significance
-- [ black_box` is used to prevent compiler optimizations from skewing results
+- [ ] `black_box` is used to prevent compiler optimizations from skewing results
 - [ ] Warmup and measurement phases are configured appropriately
 
 ### Memory Profiling
@@ -105,4 +105,4 @@ fn test_memory_efficiency() {
 ## RELATED MODULES
 
 - See `anti-patterns.md` for performance anti-patterns
-- See `unit.md` for standard unit testing
+- See `test-unit.md` for standard unit testing

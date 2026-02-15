@@ -241,7 +241,7 @@ mise run tw    # test:watch
 
 ## RELATED MODULES
 
-- See `unit.md` for unit testing
-- See `integration.md` for integration testing
-- See `e2e.md` for E2E testing
+- See `test-unit.md` for unit testing
+- See `test-integration.md` for integration testing
+- See `test-e2e.md` for E2E testing
 - See `anti-patterns.md` for comprehensive anti-patterns
