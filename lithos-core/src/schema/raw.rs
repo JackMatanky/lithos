@@ -17,9 +17,7 @@ use std::collections::HashSet;
 use uuid::Uuid;
 
 use super::{
-    aggregate::SchemaName,
     error::SchemaError,
-    property::PropertyName,
     property_spec::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec,
         PropertySpecType, StringSpec,
@@ -209,7 +207,6 @@ pub struct StringSpecDef {
 /// # Examples
 /// ```ignore
 /// use lithos_core::schema::raw::{RawSchema, RawProperty, RawPropertyInline};
-/// use lithos_core::schema::aggregate::SchemaName;
 /// use lithos_core::schema::raw::{RawPropertySpec, BoolSpecDef};
 /// use std::collections::HashSet;
 /// use uuid::Uuid;
@@ -217,7 +214,7 @@ pub struct StringSpecDef {
 ///
 /// let schema = RawSchema::new(
 ///     Uuid::now_v7(),
-///     SchemaName::new("note")?,
+///     "note".to_owned(),
 ///     None,
 ///     HashSet::new(),
 ///     vec![RawProperty::Inline(RawPropertyInline {
@@ -238,12 +235,12 @@ pub struct RawSchema {
     /// Unique identity for the schema definition.
     pub id: Uuid,
     /// Unique schema name.
-    pub name: SchemaName,
+    pub name: String,
     /// Optional parent schema name for inheritance.
-    pub extends: Option<SchemaName>,
+    pub extends: Option<String>,
     /// Property names to exclude from parent schema.
     #[serde(default)]
-    pub excludes: HashSet<PropertyName>,
+    pub excludes: HashSet<String>,
     /// List of raw property definitions.
     pub properties: Vec<RawProperty>,
 }
@@ -254,9 +251,9 @@ impl RawSchema {
     #[must_use]
     pub fn new(
         id: Uuid,
-        name: SchemaName,
-        extends: Option<SchemaName>,
-        excludes: HashSet<PropertyName>,
+        name: String,
+        extends: Option<String>,
+        excludes: HashSet<String>,
         properties: Vec<RawProperty>,
     ) -> Self {
         Self {
@@ -317,13 +314,8 @@ mod tests {
     const TEST_PROPERTY_ID: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0602);
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture uses expect for deterministic setup. Failure \
-                  indicates invalid test data. Expect is idiomatic in setup."
-    )]
-    fn schema_name() -> SchemaName {
-        SchemaName::new("note").expect("valid schema name")
+    fn schema_name() -> String {
+        "note".to_owned()
     }
 
     #[test]

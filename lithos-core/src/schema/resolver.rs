@@ -21,7 +21,7 @@ use super::{
 ///
 /// ```
 /// # use lithos_core::schema::raw::RawSchema;
-/// # use lithos_core::schema::aggregate::{SchemaName, PropertyBank};
+/// # use lithos_core::schema::aggregate::PropertyBank;
 /// # use lithos_core::schema::resolver::Resolver;
 /// # use std::collections::HashSet;
 /// # use uuid::Uuid;
@@ -29,7 +29,7 @@ use super::{
 /// let bank = PropertyBank::new();
 /// let raw = RawSchema::new(
 ///     Uuid::now_v7(),
-///     SchemaName::new("test")?,
+///     "test".to_owned(),
 ///     None,
 ///     HashSet::new(),
 ///     Vec::new(),
@@ -61,11 +61,15 @@ impl Resolver {
         let mut raw_by_name = HashMap::with_capacity(raw_schemas.len());
 
         for raw in raw_schemas {
-            if raw_by_name.contains_key(&raw.name) {
-                return Err(SchemaError::AlreadyExists(raw.name.to_string()));
+            let name = SchemaName::try_from(raw.name.as_str())?;
+            let extends =
+                raw.extends.as_deref().map(SchemaName::try_from).transpose()?;
+
+            if raw_by_name.contains_key(&name) {
+                return Err(SchemaError::AlreadyExists(name.to_string()));
             }
-            graph.add_node(raw.name.clone(), raw.extends.clone());
-            raw_by_name.insert(raw.name.clone(), raw);
+            graph.add_node(name.clone(), extends);
+            raw_by_name.insert(name, raw);
         }
 
         let order = graph.resolve_order()?;
@@ -79,10 +83,11 @@ impl Resolver {
                     "Schema definition missing for {name}"
                 ))
             })?;
-            let parent = raw
-                .extends
+            let parent_name =
+                raw.extends.as_deref().map(SchemaName::try_from).transpose()?;
+            let parent = parent_name
                 .as_ref()
-                .and_then(|parent_name| resolved_by_name.get(parent_name));
+                .and_then(|parent_key| resolved_by_name.get(parent_key));
             let schema = Self::resolve(raw, parent, bank)?;
             resolved_by_name.insert(schema.name().clone(), schema.clone());
             resolved.push(schema);
@@ -106,6 +111,15 @@ impl Resolver {
         }
     }
 
+    fn parse_excludes(
+        excludes: &HashSet<String>,
+    ) -> Result<HashSet<PropertyName>, SchemaError> {
+        excludes
+            .iter()
+            .map(|name| PropertyName::try_from(name.as_str()))
+            .collect()
+    }
+
     /// Resolve a `RawSchema` into a fully resolved Schema.
     ///
     /// Merges properties from parent, applies excludes, and resolves
@@ -125,12 +139,9 @@ impl Resolver {
         bank: &PropertyBank,
     ) -> Result<Schema, SchemaError> {
         let mut resolved_props = HashMap::new();
+        let excludes = Self::parse_excludes(&raw.excludes)?;
 
-        Self::merge_parent_properties(
-            &mut resolved_props,
-            parent,
-            &raw.excludes,
-        );
+        Self::merge_parent_properties(&mut resolved_props, parent, &excludes);
         Self::resolve_own_properties(
             &mut resolved_props,
             raw.properties,
@@ -142,8 +153,10 @@ impl Resolver {
         // Sort for determinism
         final_props.sort_by(|a, b| a.name().as_str().cmp(b.name().as_str()));
 
+        let name = SchemaName::try_from(raw.name.as_str())?;
+
         // Create the Schema entity using the identity of its raw definition
-        Schema::new(SchemaId::from_uuid(raw.id), raw.name, final_props)
+        Schema::new(SchemaId::from_uuid(raw.id), name, final_props)
     }
 
     fn resolve_own_properties(
@@ -350,30 +363,28 @@ mod tests {
             ])
         }
 
-        pub fn child_raw_schema() -> Result<RawSchema, SchemaError> {
-            let name = SchemaName::new("child")?;
-            Ok(RawSchema::new(
+        pub fn child_raw_schema() -> RawSchema {
+            RawSchema::new(
                 TEST_SCHEMA_ID_CHILD,
-                name,
+                "child".to_owned(),
                 None,
                 HashSet::new(),
                 Vec::new(),
-            ))
+            )
         }
 
         pub fn child_raw_schema_with_excludes(
-            exclude_name: PropertyName,
-        ) -> Result<RawSchema, SchemaError> {
-            let name = SchemaName::new("child")?;
+            exclude_name: &PropertyName,
+        ) -> RawSchema {
             let mut excludes = HashSet::new();
-            excludes.insert(exclude_name);
-            Ok(RawSchema::new(
+            excludes.insert(exclude_name.as_str().to_owned());
+            RawSchema::new(
                 TEST_SCHEMA_ID_CHILD,
-                name,
+                "child".to_owned(),
                 None,
                 excludes,
                 Vec::new(),
-            ))
+            )
         }
 
         pub fn property_bank_with(
@@ -389,7 +400,7 @@ mod tests {
             let bank = PropertyBank::new();
             let property = parent_property()?;
             let parent_schema = parent_schema_with_property(property.clone())?;
-            let raw = child_raw_schema()?;
+            let raw = child_raw_schema();
             Resolver::resolve(raw, Some(&parent_schema), &bank)
         }
 
@@ -407,7 +418,7 @@ mod tests {
             let property = excluded_property()?;
             let parent_schema = parent_schema_with_property(property)?;
             let exclude_name = PropertyName::new("p")?;
-            let raw = child_raw_schema_with_excludes(exclude_name)?;
+            let raw = child_raw_schema_with_excludes(&exclude_name);
             Resolver::resolve(raw, Some(&parent_schema), &bank)
         }
     }
