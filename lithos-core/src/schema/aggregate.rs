@@ -22,12 +22,8 @@ use std::{
 use regex::Regex;
 use uuid::Uuid;
 
-// Re-export PropertyBank types from bank module for backward
-// Re-export PropertyBank types from bank module for backward
-// compatibility. This maintains the existing public API after extraction
-// to bank.rs.
-pub use super::bank::{BankVersion, PropertyBank, PropertyBankId};
 use super::{
+    bank::BankVersion,
     error::SchemaError,
     events::{Events, SchemaCreated},
     property::{Property, PropertyName},
@@ -608,84 +604,6 @@ impl Timestamp {
     #[must_use]
     pub const fn as_secs(self) -> i64 {
         self.0
-    }
-}
-
-// ----------------------------------------------------------- //
-//                        Storage Keys                         //
-// ----------------------------------------------------------- //
-
-/// Normalized schema name for storage indexing.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct SchemaNameKey(Box<str>);
-
-impl SchemaNameKey {
-    /// Returns the normalized key as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<&SchemaName> for SchemaNameKey {
-    #[inline]
-    fn from(name: &SchemaName) -> Self {
-        // Names are already validated lowercase via ALPHANUMERIC_NAME_LOWER
-        // regex
-        Self(name.as_str().into())
-    }
-}
-
-/// Normalized property name for storage indexing.
-///
-/// Used for composite indexes and property lookups in storage projections.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct PropertyNameKey(Box<str>);
-
-impl PropertyNameKey {
-    /// Returns the normalized key as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<&super::property::PropertyName> for PropertyNameKey {
-    #[inline]
-    fn from(name: &super::property::PropertyName) -> Self {
-        // Names are already validated lowercase via ALPHANUMERIC_NAME_LOWER
-        // regex
-        Self(name.as_str().into())
     }
 }
 

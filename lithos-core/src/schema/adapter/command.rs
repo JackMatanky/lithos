@@ -5,9 +5,8 @@ use tracing::instrument;
 use crate::{
     db::{Database, DbError},
     schema::{
-        aggregate::{
-            PropertyBank, ResolutionMetadata, Schema, SchemaId, SchemaNameKey,
-        },
+        aggregate::{ResolutionMetadata, Schema, SchemaId},
+        bank::PropertyBank,
         db_table::{
             PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
         },
@@ -46,11 +45,10 @@ impl Command for CommandAdapter<'_> {
     ) -> Result<(), Self::Error> {
         let id = schema.id();
         let id_uuid = id.into_uuid();
-        let name_key = SchemaNameKey::from(schema.name());
 
         if let Some(existing) = self
             .db
-            .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name_key.as_str())?
+            .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, schema.name().as_str())?
             && existing != id
         {
             return Err(DbError::Transaction(format!(
@@ -61,7 +59,7 @@ impl Command for CommandAdapter<'_> {
 
         self.db.put_by_uuid(SCHEMA_BY_ID, id_uuid, schema)?;
         self.db.put_by_uuid(SCHEMA_METADATA, id_uuid, metadata)?;
-        self.db.put(SCHEMA_ID_BY_NAME, name_key.as_str(), &id)?;
+        self.db.put(SCHEMA_ID_BY_NAME, schema.name().as_str(), &id)?;
         Ok(())
     }
 
@@ -78,9 +76,8 @@ impl Command for CommandAdapter<'_> {
 
         for pair in schemas {
             let schema = &pair.0;
-            let name_key = SchemaNameKey::from(schema.name());
             if let Some(_existing) =
-                name_index.insert(name_key.clone(), schema.id())
+                name_index.insert(schema.name().clone(), schema.id())
             {
                 return Err(DbError::Transaction(format!(
                     "schema name already exists in batch: {}",
@@ -88,10 +85,10 @@ impl Command for CommandAdapter<'_> {
                 )));
             }
 
-            if let Some(existing) = self
-                .db
-                .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name_key.as_str())?
-                && existing != schema.id()
+            if let Some(existing) = self.db.get_owned::<SchemaId>(
+                SCHEMA_ID_BY_NAME,
+                schema.name().as_str(),
+            )? && existing != schema.id()
             {
                 return Err(DbError::Transaction(format!(
                     "schema name already exists: {}",
@@ -106,13 +103,12 @@ impl Command for CommandAdapter<'_> {
                 let metadata = &pair.1;
                 let id_uuid = schema.id().into_uuid();
                 let id_key = id_uuid.to_string();
-                let name_key = SchemaNameKey::from(schema.name());
 
                 batch.put(SCHEMA_BY_ID, id_key.as_str(), schema)?;
                 batch.put(SCHEMA_METADATA, id_key.as_str(), metadata)?;
                 batch.put(
                     SCHEMA_ID_BY_NAME,
-                    name_key.as_str(),
+                    schema.name().as_str(),
                     &schema.id(),
                 )?;
             }
@@ -130,8 +126,7 @@ impl Command for CommandAdapter<'_> {
         let key = id_uuid.to_string();
 
         if let Some(schema) = self.db.get_owned::<Schema>(SCHEMA_BY_ID, &key)? {
-            let name_key = SchemaNameKey::from(schema.name());
-            self.db.delete(SCHEMA_ID_BY_NAME, name_key.as_str())?;
+            self.db.delete(SCHEMA_ID_BY_NAME, schema.name().as_str())?;
         }
 
         self.db.delete_by_uuid(SCHEMA_BY_ID, id_uuid)?;

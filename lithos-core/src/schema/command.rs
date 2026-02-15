@@ -4,7 +4,8 @@
 //! through the schema command port.
 
 use super::{
-    aggregate::{PropertyBank, ResolutionMetadata, Schema, SchemaId},
+    aggregate::{ResolutionMetadata, Schema, SchemaId},
+    bank::PropertyBank,
     error::SchemaCommandError,
     ports as schema_ports,
 };
@@ -38,9 +39,9 @@ where
     /// Returns `SchemaCommandError` if deletion fails.
     #[inline]
     pub fn delete(&self, id: SchemaId) -> Result<(), SchemaCommandError> {
-        self.command_port
-            .delete(id)
-            .map_err(|error| SchemaCommandError::Storage(error.into()))
+        self.command_port.delete(id).map_err(|error| {
+            SchemaCommandError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 
     /// Save a schema to persistence.
@@ -53,9 +54,13 @@ where
         schema: &Schema,
         metadata: &ResolutionMetadata,
     ) -> Result<(), SchemaCommandError> {
-        self.command_port
-            .save_with_metadata(schema, metadata)
-            .map_err(|error| SchemaCommandError::Storage(error.into()))
+        self.command_port.save_with_metadata(schema, metadata).map_err(
+            |error| {
+                SchemaCommandError::Storage(Into::<crate::db::DbError>::into(
+                    error,
+                ))
+            },
+        )
     }
 
     /// Save multiple schemas and metadata entries as a batch.
@@ -67,9 +72,9 @@ where
         &self,
         schemas: &[(Schema, ResolutionMetadata)],
     ) -> Result<(), SchemaCommandError> {
-        self.command_port
-            .save_batch(schemas)
-            .map_err(|error| SchemaCommandError::Storage(error.into()))
+        self.command_port.save_batch(schemas).map_err(|error| {
+            SchemaCommandError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 
     /// Save the `PropertyBank` to persistence.
@@ -81,9 +86,9 @@ where
         &self,
         bank: &PropertyBank,
     ) -> Result<(), SchemaCommandError> {
-        self.command_port
-            .save_property_bank(bank)
-            .map_err(|error| SchemaCommandError::Storage(error.into()))
+        self.command_port.save_property_bank(bank).map_err(|error| {
+            SchemaCommandError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 }
 
@@ -128,9 +133,8 @@ mod tests {
     use super::*;
     use crate::schema::{
         RedbSchemaCommand,
-        aggregate::{
-            BankVersion, SchemaId, SchemaName, SchemaNameKey, Timestamp,
-        },
+        aggregate::{SchemaId, SchemaName, Timestamp},
+        bank::BankVersion,
         db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA},
     };
 
@@ -182,9 +186,11 @@ mod tests {
                 .expect("Metadata read should succeed");
             assert!(stored_metadata.is_some(), "Metadata should be stored");
 
-            let name_key = SchemaNameKey::from(schema.name());
             let indexed = db
-                .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name_key.as_str())
+                .get_owned::<SchemaId>(
+                    SCHEMA_ID_BY_NAME,
+                    schema.name().as_str(),
+                )
                 .expect("Index lookup should succeed");
             assert_eq!(
                 indexed,
@@ -241,9 +247,8 @@ mod tests {
 
             let name = SchemaName::new("project")
                 .expect("Failed to create schema name");
-            let name_key = SchemaNameKey::from(&name);
             let indexed = db
-                .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name_key.as_str())
+                .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name.as_str())
                 .expect("Index lookup should succeed");
             assert!(indexed.is_none(), "Deleted schema should be unindexed");
         }

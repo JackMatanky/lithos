@@ -31,7 +31,7 @@ use super::{
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::schema::aggregate::PropertyBank;
+/// # use lithos_core::schema::bank::PropertyBank;
 /// # use lithos_core::schema::property::{
 /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
 /// # };
@@ -116,7 +116,7 @@ impl PropertyBank {
     ///
     /// ```
     /// use lithos_core::schema::{
-    ///     aggregate::PropertyBank,
+    ///     bank::PropertyBank,
     ///     property::{
     ///         Cardinality, Multiplicity, Property, PropertyId, PropertyName,
     ///     },
@@ -195,7 +195,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_core::schema::aggregate::PropertyBank;
+    /// use lithos_core::schema::bank::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     ///
@@ -228,7 +228,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_core::schema::aggregate::PropertyBank;
+    /// use lithos_core::schema::bank::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     ///

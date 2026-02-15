@@ -3,8 +3,9 @@
 //! This module defines the command and query trait interfaces for the Schema
 //! aggregate and PropertyBank registry.
 
-use super::aggregate::{
-    PropertyBank, ResolutionMetadata, Schema, SchemaId, SchemaName,
+use super::{
+    aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName},
+    bank::PropertyBank,
 };
 
 /// Command port for Schema write operations.

@@ -16,7 +16,7 @@ use lithos_core::{
     db::Database,
     schema::{
         RedbSchemaCommand, RedbSchemaQuery,
-        aggregate::{PropertyBank, PropertyBankId},
+        bank::{PropertyBank, PropertyBankId},
         property::{
             Cardinality, Multiplicity, Property, PropertyId, PropertyName,
         },

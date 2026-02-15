@@ -3,10 +3,8 @@
 use crate::{
     db::{Database, DbError},
     schema::{
-        aggregate::{
-            PropertyBank, PropertyBankId, ResolutionMetadata, Schema, SchemaId,
-            SchemaName, SchemaNameKey,
-        },
+        aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName},
+        bank::{PropertyBank, PropertyBankId},
         db_table::{
             PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
         },
@@ -69,8 +67,7 @@ impl Query for QueryAdapter<'_> {
         &self,
         name: &SchemaName,
     ) -> Result<Option<SchemaId>, Self::Error> {
-        let name_key = SchemaNameKey::from(name);
-        self.db.get_owned(SCHEMA_ID_BY_NAME, name_key.as_str())
+        self.db.get_owned(SCHEMA_ID_BY_NAME, name.as_str())
     }
 
     #[inline]
@@ -98,10 +95,8 @@ impl Query for QueryAdapter<'_> {
     where
         F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
     {
-        let name_key = SchemaNameKey::from(name);
-        if let Some(id) = self
-            .db
-            .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name_key.as_str())?
+        if let Some(id) =
+            self.db.get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name.as_str())?
         {
             self.with_archived_by_id(id, f)
         } else {

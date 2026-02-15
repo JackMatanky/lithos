@@ -18,9 +18,9 @@ use std::collections::{HashMap, HashSet};
 
 use super::{
     aggregate::{
-        PropertyBank, ResolutionMetadata, Schema, SchemaHash, SchemaId,
-        SchemaName, Timestamp,
+        ResolutionMetadata, Schema, SchemaHash, SchemaId, SchemaName, Timestamp,
     },
+    bank::PropertyBank,
     error::SchemaError,
     property::{
         Cardinality, Multiplicity, Property, PropertyId, PropertyName,
@@ -39,7 +39,7 @@ use super::{
 ///
 /// ```
 /// # use lithos_core::schema::raw::RawSchema;
-/// # use lithos_core::schema::aggregate::PropertyBank;
+/// # use lithos_core::schema::bank::PropertyBank;
 /// # use lithos_core::schema::resolver::SchemaResolver;
 /// # use std::collections::HashSet;
 /// # use uuid::Uuid;

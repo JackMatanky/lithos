@@ -4,9 +4,8 @@
 //! through the schema query port.
 
 use super::{
-    aggregate::{
-        PropertyBank, ResolutionMetadata, Schema, SchemaId, SchemaName,
-    },
+    aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName},
+    bank::PropertyBank,
     error::SchemaQueryError,
     ports as schema_ports,
 };
@@ -43,9 +42,9 @@ where
         &self,
         id: SchemaId,
     ) -> Result<Option<Schema>, SchemaQueryError> {
-        self.query_port
-            .find_by_id(id)
-            .map_err(|error| SchemaQueryError::Storage(error.into()))
+        self.query_port.find_by_id(id).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 
     /// Find a schema by its unique name.
@@ -57,10 +56,9 @@ where
         &self,
         name: &SchemaName,
     ) -> Result<Option<Schema>, SchemaQueryError> {
-        let id = self
-            .query_port
-            .lookup_id_by_name(name)
-            .map_err(|error| SchemaQueryError::Storage(error.into()))?;
+        let id = self.query_port.lookup_id_by_name(name).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })?;
         let Some(id) = id else {
             return Ok(None);
         };
@@ -73,9 +71,9 @@ where
     /// Returns `SchemaQueryError` if query fails.
     #[inline]
     pub fn list(&self) -> Result<Vec<Schema>, SchemaQueryError> {
-        self.query_port
-            .list()
-            .map_err(|error| SchemaQueryError::Storage(error.into()))
+        self.query_port.list().map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 
     /// Access a schema by ID as archived data.
@@ -91,9 +89,9 @@ where
     where
         F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
     {
-        self.query_port
-            .with_archived_by_id(id, f)
-            .map_err(|error| SchemaQueryError::Storage(error.into()))
+        self.query_port.with_archived_by_id(id, f).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 
     /// Access a schema by name as archived data.
@@ -109,9 +107,9 @@ where
     where
         F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
     {
-        self.query_port
-            .with_archived_by_name(name, f)
-            .map_err(|error| SchemaQueryError::Storage(error.into()))
+        self.query_port.with_archived_by_name(name, f).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 
     /// List all resolution metadata entries.
@@ -122,9 +120,9 @@ where
     pub fn list_metadata(
         &self,
     ) -> Result<Vec<ResolutionMetadata>, SchemaQueryError> {
-        self.query_port
-            .list_metadata()
-            .map_err(|error| SchemaQueryError::Storage(error.into()))
+        self.query_port.list_metadata().map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 
     /// Find resolution metadata by schema ID.
@@ -136,9 +134,9 @@ where
         &self,
         id: SchemaId,
     ) -> Result<Option<ResolutionMetadata>, SchemaQueryError> {
-        self.query_port
-            .find_metadata_by_id(id)
-            .map_err(|error| SchemaQueryError::Storage(error.into()))
+        self.query_port.find_metadata_by_id(id).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 
     /// Find the `PropertyBank` registry.
@@ -149,9 +147,9 @@ where
     pub fn find_property_bank(
         &self,
     ) -> Result<Option<PropertyBank>, SchemaQueryError> {
-        self.query_port
-            .find_property_bank()
-            .map_err(|error| SchemaQueryError::Storage(error.into()))
+        self.query_port.find_property_bank().map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 }
 
@@ -197,7 +195,8 @@ mod tests {
     use super::*;
     use crate::schema::{
         RedbSchemaCommand, RedbSchemaQuery,
-        aggregate::{BankVersion, SchemaName, Timestamp},
+        aggregate::{SchemaName, Timestamp},
+        bank::BankVersion,
     };
 
     mod queries {
