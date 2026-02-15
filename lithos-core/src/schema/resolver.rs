@@ -3,6 +3,16 @@
 //! Resolves raw schemas into fully resolved Schema entities by merging parent
 //! properties, applying excludes, resolving $ref pointers through the
 //! `PropertyBank`, and enforcing inheritance ordering.
+//!
+//! # Design
+//!
+//! SchemaResolver is a stateful service that encapsulates:
+//! - Inheritance graph building and topological sorting
+//! - Schema resolution with parent property merging
+//! - Internal caching of resolved schemas for parent lookups
+//!
+//! This unified design prevents invalid usage patterns (can't resolve before
+//! ordering) and enables efficient incremental resolution.
 
 use std::collections::{HashMap, HashSet};
 
@@ -17,9 +27,11 @@ use super::{
     raw::{RawProperty, RawPropertyRef, RawSchema},
 };
 
-/// Domain Service: Resolves a raw schema into a final Schema entity.
+/// Domain Service: Resolves raw schemas into fully resolved Schema entities.
 ///
-/// Merges parent properties, applies excludes, and resolves `$ref` pointers.
+/// `SchemaResolver` is a stateful service that maintains an internal cache of
+/// resolved schemas and the inheritance graph. This design prevents invalid
+/// usage patterns and enables efficient parent lookups during resolution.
 ///
 /// # Examples
 ///
@@ -31,6 +43,8 @@ use super::{
 /// # use uuid::Uuid;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let bank = PropertyBank::new();
+/// let mut resolver = SchemaResolver::new(&bank);
+///
 /// let raw = RawSchema::new(
 ///     Uuid::now_v7(),
 ///     "test".to_owned(),
@@ -39,15 +53,32 @@ use super::{
 ///     Vec::new(),
 /// );
 ///
-/// let schema = SchemaResolver::resolve(raw, None, &bank)?;
-/// assert_eq!(schema.name().as_str(), "test", "Schema name should match");
+/// let results = resolver.resolve_all(vec![raw])?;
+/// assert_eq!(results[0].0.name().as_str(), "test");
 /// # Ok(())
 /// # }
 /// ```
-#[non_exhaustive]
-pub struct SchemaResolver;
+pub struct SchemaResolver<'bank> {
+    bank: &'bank PropertyBank,
+    graph: InheritanceGraph,
+    resolved_cache: HashMap<SchemaId, Schema>,
+}
 
-impl SchemaResolver {
+impl<'bank> SchemaResolver<'bank> {
+    /// Create a new resolver with a `PropertyBank` reference.
+    ///
+    /// The resolver maintains internal state (graph and resolved cache) that
+    /// persists across resolution calls.
+    #[inline]
+    #[must_use]
+    pub fn new(bank: &'bank PropertyBank) -> Self {
+        Self {
+            bank,
+            graph: InheritanceGraph::new(),
+            resolved_cache: HashMap::new(),
+        }
+    }
+
     /// Resolve a set of raw schemas into fully resolved schemas.
     ///
     /// Builds an inheritance graph, determines deterministic resolution order,
@@ -58,50 +89,75 @@ impl SchemaResolver {
     /// or invalid properties).
     #[inline]
     pub fn resolve_all(
+        &mut self,
         raw_schemas: Vec<RawSchema>,
-        bank: &PropertyBank,
     ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError> {
-        let mut graph = InheritanceGraph::new();
-        let mut raw_by_name = HashMap::with_capacity(raw_schemas.len());
+        // Clear previous state
+        self.graph = InheritanceGraph::new();
+        self.resolved_cache.clear();
 
+        let mut raw_by_id = HashMap::with_capacity(raw_schemas.len());
+        let mut name_to_id = HashMap::with_capacity(raw_schemas.len());
+
+        // Build graph with SchemaId as primary key
         for raw in raw_schemas {
+            let id = SchemaId::from_uuid(raw.id);
             let name = SchemaName::try_from(raw.name.as_str())?;
-            let extends =
-                raw.extends.as_deref().map(SchemaName::try_from).transpose()?;
 
-            if raw_by_name.contains_key(&name) {
+            // Check for duplicate names
+            if name_to_id.contains_key(&name) {
                 return Err(SchemaError::AlreadyExists(name.to_string()));
             }
-            graph.add_node(name.clone(), extends);
-            raw_by_name.insert(name, raw);
+
+            // Resolve parent ID from parent name (if extends specified)
+            let parent_id = match raw.extends.as_ref() {
+                Some(parent_name_str) => {
+                    let parent_name =
+                        SchemaName::try_from(parent_name_str.as_str())?;
+                    name_to_id.get(&parent_name).copied()
+                }
+                None => None,
+            };
+
+            self.graph.add_node(id, name.clone(), parent_id);
+            name_to_id.insert(name, id);
+            raw_by_id.insert(id, raw);
         }
 
-        let order = graph.resolve_order(|_| false)?;
-        let mut resolved_by_name: HashMap<SchemaName, Schema> =
-            HashMap::with_capacity(order.len());
+        let order = self.graph.resolve_order(|_| false)?;
         let mut resolved = Vec::with_capacity(order.len());
 
-        for name in order {
-            let raw = raw_by_name.remove(&name).ok_or_else(|| {
+        for id in order {
+            let raw = raw_by_id.remove(&id).ok_or_else(|| {
+                let name = self
+                    .graph
+                    .names
+                    .get(&id)
+                    .map_or("unknown", super::aggregate::SchemaName::as_str);
                 SchemaError::NotFound(format!(
                     "Schema definition missing for {name}"
                 ))
             })?;
-            let parent_name =
-                raw.extends.as_deref().map(SchemaName::try_from).transpose()?;
-            let parent = parent_name
-                .as_ref()
-                .and_then(|parent_key| resolved_by_name.get(parent_key));
-            let schema = Self::resolve(raw, parent, bank)?;
+
+            let parent = if let Some(parent_id) =
+                self.graph.edges.get(&id).and_then(|p| *p)
+            {
+                self.resolved_cache.get(&parent_id)
+            } else {
+                None
+            };
+
+            let schema = self.resolve_single(raw, parent)?;
             let parent_hash = parent.map(SchemaHash::compute);
             let metadata = ResolutionMetadata::new(
                 schema.id(),
                 Timestamp::now(),
                 parent_hash,
-                bank.version(),
+                self.bank.version(),
                 None,
             );
-            resolved_by_name.insert(schema.name().clone(), schema.clone());
+
+            self.resolved_cache.insert(schema.id(), schema.clone());
             resolved.push((schema, metadata));
         }
 
@@ -110,69 +166,91 @@ impl SchemaResolver {
 
     /// Resolve only changed schemas (incremental resolution).
     ///
+    /// Requires existing metadata for staleness detection and parent hash
+    /// lookups. The `parent_loader` function is called to load parent schemas
+    /// that are not in the changed set.
+    ///
     /// # Errors
     /// Returns `SchemaError` if resolution fails.
     #[inline]
     pub fn resolve_changed<F>(
+        &mut self,
         raw_schemas: Vec<RawSchema>,
         existing_metadata: &[ResolutionMetadata],
-        bank: &PropertyBank,
         parent_loader: F,
     ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError>
     where
-        F: Fn(&SchemaName) -> Result<Option<Schema>, SchemaError>,
+        F: Fn(&SchemaId) -> Result<Option<Schema>, SchemaError>,
     {
+        // Clear previous state
+        self.graph = InheritanceGraph::new();
+        self.resolved_cache.clear();
+
         let file_mtimes: HashMap<SchemaId, Option<Timestamp>> =
             existing_metadata
                 .iter()
                 .map(|meta| (meta.schema_id(), meta.file_modified()))
                 .collect();
 
-        let mut graph = InheritanceGraph::new();
-        let mut raw_by_name = HashMap::with_capacity(raw_schemas.len());
+        let mut raw_by_id = HashMap::with_capacity(raw_schemas.len());
+        let mut name_to_id = HashMap::with_capacity(raw_schemas.len());
 
+        // Build graph with SchemaId as primary key
         for raw in raw_schemas {
+            let id = SchemaId::from_uuid(raw.id);
             let name = SchemaName::try_from(raw.name.as_str())?;
-            let extends =
-                raw.extends.as_deref().map(SchemaName::try_from).transpose()?;
 
-            if raw_by_name.contains_key(&name) {
+            if name_to_id.contains_key(&name) {
                 return Err(SchemaError::AlreadyExists(name.to_string()));
             }
-            graph.add_node(name.clone(), extends);
-            raw_by_name.insert(name, raw);
+
+            let parent_id = match raw.extends.as_ref() {
+                Some(parent_name_str) => {
+                    let parent_name =
+                        SchemaName::try_from(parent_name_str.as_str())?;
+                    name_to_id.get(&parent_name).copied()
+                }
+                None => None,
+            };
+
+            self.graph.add_node(id, name.clone(), parent_id);
+            name_to_id.insert(name, id);
+            raw_by_id.insert(id, raw);
         }
 
-        let order = graph.resolve_order(|name| {
+        let order = self.graph.resolve_order(|id| {
             // Check if parent exists externally via loader
-            matches!(parent_loader(name), Ok(Some(_)))
+            matches!(parent_loader(id), Ok(Some(_)))
         })?;
 
-        let mut resolved_by_name: HashMap<SchemaName, Schema> =
-            HashMap::with_capacity(order.len());
         let mut resolved = Vec::with_capacity(order.len());
 
-        for name in order {
-            let raw = raw_by_name.remove(&name).ok_or_else(|| {
+        for id in order {
+            let raw = raw_by_id.remove(&id).ok_or_else(|| {
+                let name = self
+                    .graph
+                    .names
+                    .get(&id)
+                    .map_or("unknown", super::aggregate::SchemaName::as_str);
                 SchemaError::NotFound(format!(
                     "Schema definition missing for {name}"
                 ))
             })?;
-            let parent_name =
-                raw.extends.as_deref().map(SchemaName::try_from).transpose()?;
 
-            let parent = if let Some(parent_key) = parent_name.as_ref() {
-                if let Some(p) = resolved_by_name.get(parent_key) {
+            let parent = if let Some(parent_id) =
+                self.graph.edges.get(&id).and_then(|p| *p)
+            {
+                if let Some(p) = self.resolved_cache.get(&parent_id) {
                     Some(p.clone())
                 } else {
-                    // Not in current batch, try loader
-                    parent_loader(parent_key)?
+                    // Not in current batch, try external loader
+                    parent_loader(&parent_id)?
                 }
             } else {
                 None
             };
 
-            let schema = Self::resolve(raw, parent.as_ref(), bank)?;
+            let schema = self.resolve_single(raw, parent.as_ref())?;
             let parent_hash = parent.as_ref().map(SchemaHash::compute);
             let file_modified =
                 file_mtimes.get(&schema.id()).copied().flatten();
@@ -180,10 +258,11 @@ impl SchemaResolver {
                 schema.id(),
                 Timestamp::now(),
                 parent_hash,
-                bank.version(),
+                self.bank.version(),
                 file_modified,
             );
-            resolved_by_name.insert(schema.name().clone(), schema.clone());
+
+            self.resolved_cache.insert(schema.id(), schema.clone());
             resolved.push((schema, metadata));
         }
 
@@ -191,15 +270,14 @@ impl SchemaResolver {
     }
 
     fn merge_parent_properties(
-        resolved_props: &mut HashMap<String, Property>,
+        resolved_props: &mut HashMap<PropertyName, Property>,
         parent: Option<&Schema>,
         excludes: &HashSet<PropertyName>,
     ) {
         if let Some(p) = parent {
             for prop in p.properties() {
                 if !excludes.contains(prop.name()) {
-                    resolved_props
-                        .insert(prop.name().to_string(), prop.clone());
+                    resolved_props.insert(prop.name().clone(), prop.clone());
                 }
             }
         }
@@ -214,33 +292,28 @@ impl SchemaResolver {
             .collect()
     }
 
-    /// Resolve a `RawSchema` into a fully resolved Schema.
+    /// Resolve a single `RawSchema` into a fully resolved Schema.
     ///
     /// Merges properties from parent, applies excludes, and resolves
-    /// references.
+    /// references through the `PropertyBank`.
     ///
     /// # Arguments
     /// * `raw` - The raw schema definition.
     /// * `parent` - The fully resolved parent schema (if any).
-    /// * `bank` - The property bank for resolving references.
     ///
     /// # Errors
     /// Returns `SchemaError` if resolution fails (e.g. property not found).
-    #[inline]
-    pub fn resolve(
+    fn resolve_single(
+        &self,
         raw: RawSchema,
         parent: Option<&Schema>,
-        bank: &PropertyBank,
     ) -> Result<Schema, SchemaError> {
-        let mut resolved_props = HashMap::new();
+        let mut resolved_props: HashMap<PropertyName, Property> =
+            HashMap::new();
         let excludes = Self::parse_excludes(&raw.excludes)?;
 
         Self::merge_parent_properties(&mut resolved_props, parent, &excludes);
-        Self::resolve_own_properties(
-            &mut resolved_props,
-            raw.properties,
-            bank,
-        )?;
+        self.resolve_own_properties(&mut resolved_props, raw.properties)?;
 
         let mut final_props: Vec<Property> =
             resolved_props.into_values().collect();
@@ -254,20 +327,20 @@ impl SchemaResolver {
     }
 
     fn resolve_own_properties(
-        resolved_props: &mut HashMap<String, Property>,
+        &self,
+        resolved_props: &mut HashMap<PropertyName, Property>,
         raw_properties: Vec<RawProperty>,
-        bank: &PropertyBank,
     ) -> Result<(), SchemaError> {
         for raw_prop in raw_properties {
-            let prop = Self::resolve_single_property(raw_prop, bank)?;
-            resolved_props.insert(prop.name().to_string(), prop);
+            let prop = self.resolve_single_property(raw_prop)?;
+            resolved_props.insert(prop.name().clone(), prop);
         }
         Ok(())
     }
 
     fn resolve_single_property(
+        &self,
         raw_prop: RawProperty,
-        bank: &PropertyBank,
     ) -> Result<Property, SchemaError> {
         match raw_prop {
             RawProperty::Inline(inline) => {
@@ -297,12 +370,12 @@ impl SchemaResolver {
                 let prop_ref = PropertyRef::try_from(ref_path.as_str())?;
                 match prop_ref {
                     PropertyRef::ById(id) => {
-                        bank.get_by_id(id).cloned().ok_or_else(|| {
+                        self.bank.get_by_id(id).cloned().ok_or_else(|| {
                             SchemaError::PropertyRefNotFound(ref_path.clone())
                         })
                     }
                     PropertyRef::ByName(name) => {
-                        bank.get_by_name(&name).cloned().ok_or_else(|| {
+                        self.bank.get_by_name(&name).cloned().ok_or_else(|| {
                             SchemaError::PropertyRefNotFound(ref_path.clone())
                         })
                     }
@@ -312,9 +385,14 @@ impl SchemaResolver {
     }
 }
 
+/// Internal inheritance graph structure.
+///
+/// Stores child → parent relationships using `SchemaId` as the primary key,
+/// with a separate lookup map for names (used in error messages).
 #[derive(Debug, Clone, PartialEq)]
 struct InheritanceGraph {
-    nodes: HashMap<SchemaName, Option<SchemaName>>,
+    edges: HashMap<SchemaId, Option<SchemaId>>,
+    names: HashMap<SchemaId, SchemaName>,
 }
 
 impl Default for InheritanceGraph {
@@ -326,15 +404,22 @@ impl Default for InheritanceGraph {
 
 impl InheritanceGraph {
     #[inline]
-    fn add_node(&mut self, name: SchemaName, extends: Option<SchemaName>) {
-        self.nodes.insert(name, extends);
+    fn add_node(
+        &mut self,
+        id: SchemaId,
+        name: SchemaName,
+        extends: Option<SchemaId>,
+    ) {
+        self.edges.insert(id, extends);
+        self.names.insert(id, name);
     }
 
     #[inline]
     #[must_use]
     fn new() -> Self {
         Self {
-            nodes: HashMap::new(),
+            edges: HashMap::new(),
+            names: HashMap::new(),
         }
     }
 
@@ -342,21 +427,32 @@ impl InheritanceGraph {
     fn resolve_order<F>(
         &self,
         external_parent_exists: F,
-    ) -> Result<Vec<SchemaName>, SchemaError>
+    ) -> Result<Vec<SchemaId>, SchemaError>
     where
-        F: Fn(&SchemaName) -> bool,
+        F: Fn(&SchemaId) -> bool,
     {
         let mut sorted = Vec::new();
         let mut visited = HashSet::new();
         let mut temp_visited = HashSet::new();
 
-        let mut keys: Vec<_> = self.nodes.keys().cloned().collect();
-        keys.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        // Sort by name for determinism
+        let mut keys: Vec<_> = self.edges.keys().copied().collect();
+        keys.sort_by(|a, b| {
+            let name_a = self
+                .names
+                .get(a)
+                .map_or("", super::aggregate::SchemaName::as_str);
+            let name_b = self
+                .names
+                .get(b)
+                .map_or("", super::aggregate::SchemaName::as_str);
+            name_a.cmp(name_b)
+        });
 
-        for name in keys {
-            if !visited.contains(&name) {
+        for id in keys {
+            if !visited.contains(&id) {
                 self.visit(
-                    &name,
+                    id,
                     &mut visited,
                     &mut temp_visited,
                     &mut sorted,
@@ -369,11 +465,16 @@ impl InheritanceGraph {
     }
 
     fn validate_not_temporarily_visited(
-        name: &SchemaName,
-        temp_visited: &HashSet<SchemaName>,
+        &self,
+        id: SchemaId,
+        temp_visited: &HashSet<SchemaId>,
     ) -> Result<(), SchemaError> {
-        if temp_visited.contains(name) {
-            return Err(SchemaError::CircularInheritance(name.to_string()));
+        if temp_visited.contains(&id) {
+            let name = self
+                .names
+                .get(&id)
+                .map_or("unknown", super::aggregate::SchemaName::as_str);
+            return Err(SchemaError::CircularInheritance(name.to_owned()));
         }
         Ok(())
     }
@@ -384,34 +485,34 @@ impl InheritanceGraph {
     )]
     fn visit<F>(
         &self,
-        name: &SchemaName,
-        visited: &mut HashSet<SchemaName>,
-        temp_visited: &mut HashSet<SchemaName>,
-        sorted: &mut Vec<SchemaName>,
+        id: SchemaId,
+        visited: &mut HashSet<SchemaId>,
+        temp_visited: &mut HashSet<SchemaId>,
+        sorted: &mut Vec<SchemaId>,
         external_parent_exists: &F,
     ) -> Result<(), SchemaError>
     where
-        F: Fn(&SchemaName) -> bool,
+        F: Fn(&SchemaId) -> bool,
     {
-        Self::validate_not_temporarily_visited(name, temp_visited)?;
+        self.validate_not_temporarily_visited(id, temp_visited)?;
 
-        if visited.contains(name) {
+        if visited.contains(&id) {
             return Ok(());
         }
 
-        temp_visited.insert(name.clone());
+        temp_visited.insert(id);
 
         self.visit_parent(
-            name,
+            id,
             visited,
             temp_visited,
             sorted,
             external_parent_exists,
         )?;
 
-        temp_visited.remove(name);
-        visited.insert(name.clone());
-        sorted.push(name.clone());
+        temp_visited.remove(&id);
+        visited.insert(id);
+        sorted.push(id);
 
         Ok(())
     }
@@ -422,28 +523,32 @@ impl InheritanceGraph {
     )]
     fn visit_parent<F>(
         &self,
-        name: &SchemaName,
-        visited: &mut HashSet<SchemaName>,
-        temp_visited: &mut HashSet<SchemaName>,
-        sorted: &mut Vec<SchemaName>,
+        id: SchemaId,
+        visited: &mut HashSet<SchemaId>,
+        temp_visited: &mut HashSet<SchemaId>,
+        sorted: &mut Vec<SchemaId>,
         external_parent_exists: &F,
     ) -> Result<(), SchemaError>
     where
-        F: Fn(&SchemaName) -> bool,
+        F: Fn(&SchemaId) -> bool,
     {
-        if let Some(parent_opt) = self.nodes.get(name)
-            && let Some(parent) = parent_opt.as_ref()
-        {
-            if self.nodes.contains_key(parent) {
+        if let Some(&Some(parent_id)) = self.edges.get(&id) {
+            if self.edges.contains_key(&parent_id) {
                 self.visit(
-                    parent,
+                    parent_id,
                     visited,
                     temp_visited,
                     sorted,
                     external_parent_exists,
                 )?;
-            } else if !external_parent_exists(parent) {
-                return Err(SchemaError::ParentNotFound(parent.to_string()));
+            } else if !external_parent_exists(&parent_id) {
+                let parent_name = self
+                    .names
+                    .get(&parent_id)
+                    .map_or("unknown", super::aggregate::SchemaName::as_str);
+                return Err(SchemaError::ParentNotFound(
+                    parent_name.to_owned(),
+                ));
             } else {
                 // If external parent exists, we don't visit it (it's assumed
                 // resolved externally)
@@ -538,7 +643,8 @@ mod tests {
             let property = parent_property()?;
             let parent_schema = parent_schema_with_property(property.clone())?;
             let raw = child_raw_schema();
-            SchemaResolver::resolve(raw, Some(&parent_schema), &bank)
+            let resolver = SchemaResolver::new(&bank);
+            resolver.resolve_single(raw, Some(&parent_schema))
         }
 
         pub fn resolved_ref_property() -> Result<Property, SchemaError> {
@@ -547,7 +653,8 @@ mod tests {
             let raw = RawProperty::Ref(RawPropertyRef {
                 ref_path: "status".to_owned(),
             });
-            SchemaResolver::resolve_single_property(raw, &bank)
+            let resolver = SchemaResolver::new(&bank);
+            resolver.resolve_single_property(raw)
         }
 
         pub fn resolved_schema_with_excludes() -> Result<Schema, SchemaError> {
@@ -556,7 +663,8 @@ mod tests {
             let parent_schema = parent_schema_with_property(property)?;
             let exclude_name = PropertyName::new("p")?;
             let raw = child_raw_schema_with_excludes(&exclude_name);
-            SchemaResolver::resolve(raw, Some(&parent_schema), &bank)
+            let resolver = SchemaResolver::new(&bank);
+            resolver.resolve_single(raw, Some(&parent_schema))
         }
     }
 
@@ -613,7 +721,8 @@ mod tests {
                 ref_path: "missing".to_owned(),
             });
 
-            let result = SchemaResolver::resolve_single_property(raw, &bank);
+            let resolver = SchemaResolver::new(&bank);
+            let result = resolver.resolve_single_property(raw);
 
             assert!(
                 matches!(result, Err(SchemaError::PropertyRefNotFound(_))),
@@ -637,9 +746,21 @@ mod tests {
             SchemaName::new(lit)
         }
 
+        fn schema_id_from_name(name: &str) -> SchemaId {
+            // Generate deterministic ID from name for testing
+            let hash = {
+                use std::hash::{Hash as _, Hasher as _};
+                let mut hasher =
+                    std::collections::hash_map::DefaultHasher::new();
+                name.hash(&mut hasher);
+                hasher.finish()
+            };
+            SchemaId::from_uuid(uuid::Uuid::from_u128(u128::from(hash)))
+        }
+
         fn resolve_order(
             graph: &InheritanceGraph,
-        ) -> Result<Vec<SchemaName>, SchemaError> {
+        ) -> Result<Vec<SchemaId>, SchemaError> {
             graph.resolve_order(|_| false)
         }
 
@@ -669,12 +790,28 @@ mod tests {
                 prop_assume!(unique_names.len() >= 2);
 
                 let mut graph = InheritanceGraph::new();
+                let mut name_to_id = std::collections::HashMap::new();
+
+                // First pass: assign IDs
+                for name_raw in &unique_names {
+                    let name = parse_name(name_raw)?;
+                    let id = schema_id_from_name(name_raw);
+                    name_to_id.insert(name, id);
+                }
+
+                // Second pass: build graph
                 for (name_raw, next_raw) in
                     unique_names.iter().zip(unique_names.iter().cycle().skip(1))
                 {
                     let name = parse_name(name_raw)?;
+                    let id = *name_to_id
+                        .get(&name)
+                        .expect("name was inserted in first pass");
                     let next_name = parse_name(next_raw)?;
-                    graph.add_node(name, Some(next_name));
+                    let next_id = *name_to_id
+                        .get(&next_name)
+                        .expect("next_name was inserted in first pass");
+                    graph.add_node(id, name, Some(next_id));
                 }
 
                 let res = graph.resolve_order(|_| false);
@@ -717,11 +854,12 @@ mod tests {
                     .collect();
 
                 let mut graph = InheritanceGraph::new();
-                let mut previous: Option<SchemaName> = None;
+                let mut previous: Option<SchemaId> = None;
                 for name_str in &unique_names {
                     let name = parse_name(name_str)?;
-                    graph.add_node(name.clone(), previous.clone());
-                    previous = Some(name);
+                    let id = schema_id_from_name(name_str);
+                    graph.add_node(id, name, previous);
+                    previous = Some(id);
                 }
 
                 let order =
@@ -751,9 +889,11 @@ mod tests {
             let mut graph = InheritanceGraph::new();
             let a = schema_name_literal("a")?;
             let b = schema_name_literal("b")?;
+            let id_a = schema_id_from_name("a");
+            let id_b = schema_id_from_name("b");
 
-            graph.add_node(a.clone(), Some(b.clone()));
-            graph.add_node(b, Some(a));
+            graph.add_node(id_a, a, Some(id_b));
+            graph.add_node(id_b, b, Some(id_a));
 
             let res = graph.resolve_order(|_| false);
 
@@ -793,13 +933,15 @@ mod tests {
             let mut graph = InheritanceGraph::new();
             let child = schema_name_literal("child")?;
             let parent = schema_name_literal("parent")?;
+            let id_child = schema_id_from_name("child");
+            let id_parent = schema_id_from_name("parent");
 
-            graph.add_node(child.clone(), Some(parent.clone()));
-            graph.add_node(parent.clone(), None);
+            graph.add_node(id_child, child, Some(id_parent));
+            graph.add_node(id_parent, parent, None);
 
             let order = resolve_order(&graph)?;
 
-            if order == vec![parent, child] {
+            if order == vec![id_parent, id_child] {
                 Ok(())
             } else {
                 Err(SchemaError::ValidationFailed(
