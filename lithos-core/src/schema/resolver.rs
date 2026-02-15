@@ -1,4 +1,4 @@
-//! `Resolver` domain service for schema resolution.
+//! `SchemaResolver` domain service for schema resolution.
 //!
 //! Resolves raw schemas into fully resolved Schema entities by merging parent
 //! properties, applying excludes, resolving $ref pointers through the
@@ -22,7 +22,7 @@ use super::{
 /// ```
 /// # use lithos_core::schema::raw::RawSchema;
 /// # use lithos_core::schema::aggregate::PropertyBank;
-/// # use lithos_core::schema::resolver::Resolver;
+/// # use lithos_core::schema::resolver::SchemaResolver;
 /// # use std::collections::HashSet;
 /// # use uuid::Uuid;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,15 +35,15 @@ use super::{
 ///     Vec::new(),
 /// );
 ///
-/// let schema = Resolver::resolve(raw, None, &bank)?;
+/// let schema = SchemaResolver::resolve(raw, None, &bank)?;
 /// assert_eq!(schema.name().as_str(), "test", "Schema name should match");
 /// # Ok(())
 /// # }
 /// ```
 #[non_exhaustive]
-pub struct Resolver;
+pub struct SchemaResolver;
 
-impl Resolver {
+impl SchemaResolver {
     /// Resolve a set of raw schemas into fully resolved schemas.
     ///
     /// Builds an inheritance graph, determines deterministic resolution order,
@@ -401,7 +401,7 @@ mod tests {
             let property = parent_property()?;
             let parent_schema = parent_schema_with_property(property.clone())?;
             let raw = child_raw_schema();
-            Resolver::resolve(raw, Some(&parent_schema), &bank)
+            SchemaResolver::resolve(raw, Some(&parent_schema), &bank)
         }
 
         pub fn resolved_ref_property() -> Result<Property, SchemaError> {
@@ -410,7 +410,7 @@ mod tests {
             let raw = RawProperty::Ref(RawPropertyRef {
                 ref_path: "status".to_owned(),
             });
-            Resolver::resolve_single_property(raw, &bank)
+            SchemaResolver::resolve_single_property(raw, &bank)
         }
 
         pub fn resolved_schema_with_excludes() -> Result<Schema, SchemaError> {
@@ -419,7 +419,7 @@ mod tests {
             let parent_schema = parent_schema_with_property(property)?;
             let exclude_name = PropertyName::new("p")?;
             let raw = child_raw_schema_with_excludes(&exclude_name);
-            Resolver::resolve(raw, Some(&parent_schema), &bank)
+            SchemaResolver::resolve(raw, Some(&parent_schema), &bank)
         }
     }
 
@@ -476,7 +476,7 @@ mod tests {
                 ref_path: "missing".to_owned(),
             });
 
-            let result = Resolver::resolve_single_property(raw, &bank);
+            let result = SchemaResolver::resolve_single_property(raw, &bank);
 
             assert!(
                 matches!(result, Err(SchemaError::PropertyNotFound(_))),
