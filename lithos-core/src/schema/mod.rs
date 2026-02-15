@@ -7,6 +7,8 @@
 
 /// Schema aggregate roots and main entities.
 pub mod aggregate;
+/// PropertyBank domain aggregate for centralized property registration.
+pub mod bank;
 /// Schema command implementations (CQRS write operations).
 pub mod command;
 /// Schema errors.
