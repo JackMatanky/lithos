@@ -175,6 +175,6 @@ Initial benchmarks of this pattern (vs direct DB usage) show negligible overhead
 | **Object Safety** | If `dyn` is truly needed, provide a separate `ObjectSafeStore` trait for the cold tier only. |
 
 ## References
-- [Core Architectural Decisions](../../_bmad-output/planning-artifacts/architecture/core-architectural-decisions.md)
+- [Core Architectural Decisions](../../_bmad-output/planning-artifacts/architecture/03-core-architectural-decisions.md)
 - [ADR 003: Domain Serialization Strategy](./0003-domain-serialization.md)
 - [Design Doc 012: Concrete CQRS Generic Over Port](../../docs/design/012-cqrs-concrete-over-port.md)

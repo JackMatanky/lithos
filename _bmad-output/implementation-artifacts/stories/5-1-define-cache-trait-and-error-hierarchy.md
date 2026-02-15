@@ -314,7 +314,7 @@ This story follows strict Test-Driven Development (TDD) methodology aligned with
 - [Source: project-context.md#Documentation-as-Agent-Glue] - Trait documentation requirements with examples
 - [Source: project-context.md#Testing-Rules] - Mockall usage and testing patterns
 - [Source: Epic 5 Implementation Notes] - Cache architecture pattern and library choices
-- [Source: architecture/core-architectural-decisions.md] - Storage engine and serialization strategy
+- [Source: architecture/03-core-architectural-decisions.md] - Storage engine and serialization strategy
 - [Source: ADR 006] - Redb + rkyv storage foundation
 - [Source: ADR 005] - Error handling and diagnostics strategy
 
