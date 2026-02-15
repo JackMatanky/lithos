@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use super::{
     aggregate::SchemaName, property::PropertyName,
-    property_spec::PropertySpecDef,
+    property_spec::RawPropertySpec,
 };
 
 /// Raw schema definition (Input).
@@ -21,7 +21,7 @@ use super::{
 /// ```ignore
 /// use lithos_core::schema::raw::{RawSchema, RawProperty, RawPropertyInline};
 /// use lithos_core::schema::aggregate::SchemaName;
-/// use lithos_core::schema::property_spec::{PropertySpecDef, BoolSpecDef};
+/// use lithos_core::schema::property_spec::{RawPropertySpec, BoolSpecDef};
 /// use std::collections::HashSet;
 /// use uuid::Uuid;
 /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -36,7 +36,7 @@ use super::{
 ///         name: "archived".to_string(),
 ///         required: false,
 ///         array: false,
-///         spec: PropertySpecDef::Bool(BoolSpecDef::default()),
+///         spec: RawPropertySpec::Bool(BoolSpecDef::default()),
 ///     })],
 /// );
 /// assert_eq!(schema.properties.len(), 1, "Schema should contain one property");
@@ -106,7 +106,7 @@ pub struct RawPropertyInline {
     #[serde(default)]
     pub array: bool,
     /// Type-specific validation constraints.
-    pub spec: PropertySpecDef,
+    pub spec: RawPropertySpec,
 }
 
 /// Reference variant of a raw property.
@@ -176,7 +176,7 @@ mod tests {
             name: "archived".to_owned(),
             required: false,
             array: false,
-            spec: PropertySpecDef::Bool(BoolSpecDef::default()),
+            spec: RawPropertySpec::Bool(BoolSpecDef::default()),
         };
         let inline_variant = RawProperty::Inline(inline);
 
