@@ -40,6 +40,7 @@ mod writer;
 use std::path::Path;
 
 pub use error::DbError;
+use redb::ReadableDatabase as _;
 pub use writer::WriteBatch;
 
 /// Concrete database type wrapping redb.
@@ -78,6 +79,16 @@ impl Database {
         Ok(Self {
             inner,
         })
+    }
+
+    /// Begin a new read-only transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError::Transaction` if the transaction cannot be started.
+    #[inline]
+    pub fn begin_read(&self) -> Result<redb::ReadTransaction, DbError> {
+        self.inner.begin_read().map_err(|e| DbError::Transaction(e.to_string()))
     }
 }
 

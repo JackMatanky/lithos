@@ -3,8 +3,6 @@
 //! This module defines the [`Command`] and [`Query`] trait interfaces,
 //! decoupling domain logic from storage implementation details (like Redb).
 
-use std::ops::Deref;
-
 use super::{
     aggregate::{Config, Version},
     global::Global,
@@ -93,11 +91,6 @@ pub trait Query: Send + Sync {
     /// Storage error type for query operations.
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// RAII Guard that holds the archived data and dereferences to it.
-    type Guard<'archived>: Deref<Target = rkyv::Archived<Config>> + 'archived
-    where
-        Self: 'archived;
-
     /// Fetches the active merged configuration version for a vault.
     ///
     /// # Errors
@@ -107,18 +100,11 @@ pub trait Query: Send + Sync {
         vault_id: VaultId,
     ) -> Result<Option<Version>, Self::Error>;
 
-    /// Fetches a merged configuration snapshot for zero-copy access via a GAT
-    /// Guard.
+    /// Fetches a merged configuration snapshot as owned data (COLD PATH).
     ///
-    /// # Errors
-    /// Returns a storage-specific error if the lookup or access fails.
-    fn get_archived(
-        &self,
-        vault_id: VaultId,
-        version: Version,
-    ) -> Result<Option<Self::Guard<'_>>, Self::Error>;
-
-    /// Fetches a merged configuration snapshot as owned data.
+    /// Use this for operations that need to move/store the config, or when
+    /// the closure pattern is inconvenient. For hot paths, prefer
+    /// [`with_archived`](Self::with_archived).
     ///
     /// # Errors
     /// Returns a storage-specific error if the lookup or deserialization fails.
@@ -127,4 +113,21 @@ pub trait Query: Send + Sync {
         vault_id: VaultId,
         version: Version,
     ) -> Result<Option<Config>, Self::Error>;
+
+    /// Zero-copy access to archived configuration via closure (HOT PATH).
+    ///
+    /// The closure receives a reference to the archived data within the
+    /// transaction scope, ensuring safety without unsafe code. This is the
+    /// recommended method for performance-critical reads (e.g., LSP queries).
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the lookup or access fails.
+    fn with_archived<R, F>(
+        &self,
+        vault_id: VaultId,
+        version: Version,
+        f: F,
+    ) -> Result<Option<R>, Self::Error>
+    where
+        F: for<'archived> FnOnce(&'archived rkyv::Archived<Config>) -> R;
 }
