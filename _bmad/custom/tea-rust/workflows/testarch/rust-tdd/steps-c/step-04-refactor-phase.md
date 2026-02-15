@@ -18,6 +18,7 @@ Plan refactor improvements while preserving test pass status.
 
 ### 2. Safety Checks
 - Confirm all tests remain green after refactor
+- Verify zero clippy warnings (or justified suppressions via `#[expect]`) in new code and tests
 
 ### 3. Update Plan
 - Append refactor notes to output
