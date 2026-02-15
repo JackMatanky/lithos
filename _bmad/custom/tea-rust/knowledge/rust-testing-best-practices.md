@@ -5,6 +5,7 @@
 ### Unit Testing Patterns
 
 #### Test Organization
+
 ```rust
 // Preferred test module organization
 #[cfg(test)]
@@ -48,6 +49,7 @@ mod tests {
 ```
 
 #### Test Data Management
+
 ```rust
 // Use builder patterns for test data
 pub struct NoteTestBuilder {
@@ -74,6 +76,7 @@ static LARGE_TEST_DATASET: Lazy<Vec<Note>> = Lazy::new(|| {
 ### Property-Based Testing
 
 #### Proptest Integration
+
 ```rust
 use proptest::prelude::*;
 
@@ -99,6 +102,7 @@ proptest! {
 ```
 
 #### Custom Test Generators
+
 ```rust
 use proptest::strategy::{Strategy, Just, BoxedStrategy};
 
@@ -117,6 +121,7 @@ impl Arbitrary for NoteTitle {
 ### Mock Testing Patterns
 
 #### Trait-Based Mocking
+
 ```rust
 #[cfg(test)]
 pub mod mocks {
@@ -164,6 +169,7 @@ pub mod mocks {
 ### Integration Testing
 
 #### Database Integration
+
 ```rust
 #[cfg(test)]
 mod integration_tests {
@@ -193,6 +199,7 @@ mod integration_tests {
 ### Criterion Benchmarks
 
 #### Basic Benchmark Structure
+
 ```rust
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
@@ -218,6 +225,7 @@ criterion_main!(benches);
 ```
 
 #### Comparative Benchmarks
+
 ```rust
 fn benchmark_search_algorithms(c: &mut Criterion) {
     let notes: Vec<Note> = (0..1000).map(|i| create_test_note(i)).collect();
@@ -242,6 +250,7 @@ fn benchmark_search_algorithms(c: &mut Criterion) {
 ### Memory Profiling
 
 #### Allocation Tracking
+
 ```rust
 #[test]
 fn test_memory_efficiency() {
@@ -270,6 +279,7 @@ fn test_memory_efficiency() {
 ### Coverage Requirements
 
 #### Meaningful Coverage Targets
+
 ```yaml
 coverage_targets:
   critical_paths: "100%"
@@ -284,6 +294,7 @@ coverage_quality:
 ```
 
 #### Coverage Exclusions
+
 ```rust
 // Exclude certain code from coverage if justified
 #[cfg(not(test))]
@@ -305,6 +316,7 @@ mod coverage_tests {
 ### Performance Requirements
 
 #### Performance Benchmarks
+
 ```yaml
 performance_requirements:
   note_creation:
@@ -322,6 +334,7 @@ performance_requirements:
 ```
 
 #### Regression Detection
+
 ```rust
 pub struct PerformanceRegressionDetector {
     baselines: HashMap<String, PerformanceBaseline>,
@@ -350,6 +363,7 @@ impl PerformanceRegressionDetector {
 ## Error Testing
 
 #### Comprehensive Error Testing
+
 ```rust
 #[test]
 fn test_all_error_variants() {
@@ -376,6 +390,7 @@ fn test_all_error_variants() {
 ```
 
 #### Error Recovery Testing
+
 ```rust
 #[test]
 fn test_error_recovery_mechanisms() {
@@ -398,6 +413,7 @@ fn test_error_recovery_mechanisms() {
 ## CI/CD Integration
 
 ### Quality Gate Configuration
+
 ```yaml
 ci_quality_gates:
   test_execution:
@@ -417,6 +433,7 @@ ci_quality_gates:
 ```
 
 ### Automated Testing Pipeline
+
 ```bash
 #!/bin/bash
 # Comprehensive testing pipeline

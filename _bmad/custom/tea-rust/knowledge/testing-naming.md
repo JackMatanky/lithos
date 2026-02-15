@@ -1,6 +1,7 @@
 # TEA Knowledge: Test Naming Conventions
 
 ## CONTEXT
+
 - **Applies to**: All test functions (`#[test] fn ...`)
 - **Purpose**: Clear, descriptive names that explain behavior
 - **Pattern**: `action_expected_condition` (Verb-First)
@@ -11,11 +12,11 @@
 [unit_of_work]_[expected_behavior]_[state_under_test]
 ```
 
-| Component | Description | Examples |
-|-----------|-------------|----------|
-| **Action** (Verb) | What is being tested | `returns`, `rejects`, `validates`, `parses`, `calculates` |
-| **Expected** | The expected outcome | `error`, `ok`, `true`, `false`, `value` |
-| **Condition** | The state/circumstance | `when_invalid`, `with_empty_input`, `for_large_values` |
+| Component         | Description            | Examples                                                  |
+| ----------------- | ---------------------- | --------------------------------------------------------- |
+| **Action** (Verb) | What is being tested   | `returns`, `rejects`, `validates`, `parses`, `calculates` |
+| **Expected**      | The expected outcome   | `error`, `ok`, `true`, `false`, `value`                   |
+| **Condition**     | The state/circumstance | `when_invalid`, `with_empty_input`, `for_large_values`    |
 
 ## DECISION TREE: Test Name Structure
 
@@ -71,6 +72,7 @@ What is being tested?
 ## VALIDATION CHECKLIST
 
 ### Test Function Names
+
 - [ ] Follows `action_expected_condition` pattern
 - [ ] Does NOT start with `test_` (redundant)
 - [ ] Does NOT use generic names (`test_foo`, `test_basic`, `test_1`)
@@ -78,12 +80,14 @@ What is being tested?
 - [ ] Uses lowercase with underscores (snake_case)
 
 ### Test Module Names
+
 - [ ] Uses singular form: `constructor` (not `constructors`)
 - [ ] Uses standard module names from the canonical list
 - [ ] Groups related tests logically
 - [ ] Does NOT mix concerns in one module
 
 ### Submodule Names (Per Function)
+
 - [ ] Named after the function being tested
 - [ ] Improves IDE navigation
 - [ ] Provides structured test output
@@ -91,23 +95,27 @@ What is being tested?
 ## ANTI-PATTERNS (FLAG THESE)
 
 ### Critical Issues
+
 - ❌ `#[test] fn test_foo()` → Use descriptive behavior name
 - ❌ `#[test] fn test()` → No description at all
 - ❌ `#[test] fn test_basic_functionality()` → Too vague
 - ❌ `#[test] fn test_returns_ok_and_updates_state()` → Multiple behaviors (use "and")
 
 ### Naming Conventions
+
 - ❌ `testValidInput` → Must use snake_case
 - ❌ `TestValidInput` → Must be lowercase
 - ❌ `VALID_INPUT_TEST` → No ALL_CAPS
 - ❌ `test_1`, `test_2` → Numbered tests
 
 ### Redundancy
+
 - ❌ `test_validate_function()` → "test" prefix redundant
 - ❌ `should_test_parsing()` → "test" in name redundant
 - ❌ `unit_test_for_parser()` → "unit_test" redundant
 
 ### Module Issues
+
 - ❌ `mod tests_for_validation()` → Use `mod validation`
 - ❌ `mod test_constructors()` → Use `mod constructor`
 - ❌ Module mixing unit and property tests → Separate them
@@ -115,6 +123,7 @@ What is being tested?
 ## CORRECT EXAMPLES
 
 ### Test Function Names
+
 ```rust
 // ✅ GOOD: Clear what is being tested
 #[test]
@@ -144,6 +153,7 @@ fn returns_ok_and_updates_db() { }  // Two behaviors
 ```
 
 ### Module Organization
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -191,6 +201,7 @@ mod tests {
 ```
 
 ### Command Modules
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -226,6 +237,7 @@ mod tests {
 ```
 
 ### Query Modules
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -263,74 +275,79 @@ mod tests {
 ## CANONICAL MODULE NAMES
 
 ### Core Structure
-| Module Name | Use When Testing |
-|-------------|------------------|
-| `constructor` | `new`, `try_new`, constructors |
-| `builder` | Builder APIs, fluent construction |
-| `defaults` | `Default` impls and baseline config |
-| `validation` | Field/rule validation failures/success |
-| `invariants` | Cross-field consistency rules |
-| `integrity` | Structural consistency checks |
-| `state` | State transitions, lifecycle flags |
-| `accessors` | Getters, derived values |
-| `conversions` | `From`/`TryFrom`/`Into` |
-| `borrowing` | Zero-copy/borrowed accessors, guards |
-| `formatting` | `Display`/`Debug` output |
-| `equality` | `Eq`/`PartialEq` expectations |
-| `ordering` | `Ord`/`PartialOrd` behavior |
-| `hashing` | `Hash` behavior as map/set key |
-| `cloning` | `Clone` behavior |
+
+| Module Name   | Use When Testing                       |
+| ------------- | -------------------------------------- |
+| `constructor` | `new`, `try_new`, constructors         |
+| `builder`     | Builder APIs, fluent construction      |
+| `defaults`    | `Default` impls and baseline config    |
+| `validation`  | Field/rule validation failures/success |
+| `invariants`  | Cross-field consistency rules          |
+| `integrity`   | Structural consistency checks          |
+| `state`       | State transitions, lifecycle flags     |
+| `accessors`   | Getters, derived values                |
+| `conversions` | `From`/`TryFrom`/`Into`                |
+| `borrowing`   | Zero-copy/borrowed accessors, guards   |
+| `formatting`  | `Display`/`Debug` output               |
+| `equality`    | `Eq`/`PartialEq` expectations          |
+| `ordering`    | `Ord`/`PartialOrd` behavior            |
+| `hashing`     | `Hash` behavior as map/set key         |
+| `cloning`     | `Clone` behavior                       |
 
 ### Commands
-| Module Name | Use When Testing |
-|-------------|------------------|
-| `create` | Create command behavior |
-| `update` | Update command behavior |
-| `delete` | Delete command behavior |
-| `upsert` | Insert/update semantics |
-| `rename` | Rename/retitle flows |
-| `link` | Link/relationship creation |
-| `unlink` | Link/relationship removal |
-| `assign` | Ownership/association addition |
-| `unassign` | Ownership/association removal |
-| `merge` | Merge command semantics |
-| `event_emission` | Events emitted by commands |
-| `persistence` | DB effects specific to commands |
+
+| Module Name      | Use When Testing                |
+| ---------------- | ------------------------------- |
+| `create`         | Create command behavior         |
+| `update`         | Update command behavior         |
+| `delete`         | Delete command behavior         |
+| `upsert`         | Insert/update semantics         |
+| `rename`         | Rename/retitle flows            |
+| `link`           | Link/relationship creation      |
+| `unlink`         | Link/relationship removal       |
+| `assign`         | Ownership/association addition  |
+| `unassign`       | Ownership/association removal   |
+| `merge`          | Merge command semantics         |
+| `event_emission` | Events emitted by commands      |
+| `persistence`    | DB effects specific to commands |
 
 ### Queries
-| Module Name | Use When Testing |
-|-------------|------------------|
-| `find_by_id` | Lookup by id |
-| `find_by_name` | Lookup by name |
-| `find_by_path` | Lookup by path |
-| `find_by_tag` | Lookup by tag |
-| `load` | Load/aggregate query results |
-| `list` | List subset/default list |
-| `list_all` | List everything |
-| `list_by_parent` | List by parent/owner |
-| `search` | General search |
-| `search_text` | Free-text search |
-| `resolve` | Derived/linked results |
-| `indices` | Index-driven lookup behavior |
-| `pagination` | Limits/offsets/cursors |
+
+| Module Name      | Use When Testing             |
+| ---------------- | ---------------------------- |
+| `find_by_id`     | Lookup by id                 |
+| `find_by_name`   | Lookup by name               |
+| `find_by_path`   | Lookup by path               |
+| `find_by_tag`    | Lookup by tag                |
+| `load`           | Load/aggregate query results |
+| `list`           | List subset/default list     |
+| `list_all`       | List everything              |
+| `list_by_parent` | List by parent/owner         |
+| `search`         | General search               |
+| `search_text`    | Free-text search             |
+| `resolve`        | Derived/linked results       |
+| `indices`        | Index-driven lookup behavior |
+| `pagination`     | Limits/offsets/cursors       |
 
 ### Special
-| Module Name | Use When Testing |
-|-------------|------------------|
-| `fixtures` | Shared setup helpers only |
-| `proptests` | All proptest suites |
+
+| Module Name | Use When Testing          |
+| ----------- | ------------------------- |
+| `fixtures`  | Shared setup helpers only |
+| `proptests` | All proptest suites       |
 
 ## QUICK REFERENCE
 
-| Aspect | Pattern | Example |
-|--------|---------|---------|
-| Test name | `action_expected_condition` | `returns_error_when_invalid` |
-| Module name | Singular, descriptive | `validation`, `constructor` |
-| Submodule | Function name | `mod process_note` |
-| Command | Action verb | `mod create`, `mod update` |
-| Query | Query verb | `mod find_by_id`, `mod search` |
+| Aspect      | Pattern                     | Example                        |
+| ----------- | --------------------------- | ------------------------------ |
+| Test name   | `action_expected_condition` | `returns_error_when_invalid`   |
+| Module name | Singular, descriptive       | `validation`, `constructor`    |
+| Submodule   | Function name               | `mod process_note`             |
+| Command     | Action verb                 | `mod create`, `mod update`     |
+| Query       | Query verb                  | `mod find_by_id`, `mod search` |
 
 ## RELATED MODULES
+
 - See `testing-unit.md` for unit testing location rules
 - See `testing-assertions.md` for assertion patterns
 - See `testing-anti-patterns.md` for comprehensive anti-patterns

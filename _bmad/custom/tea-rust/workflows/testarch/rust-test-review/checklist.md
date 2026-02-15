@@ -8,4 +8,5 @@
 - [ ] Error paths covered
 - [ ] Flaky tests addressed
 - [ ] Anti-patterns removed
+- [ ] Rust style and linting standards adhered to
 - [ ] Fixes applied (not only suggestions)

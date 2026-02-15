@@ -1,6 +1,7 @@
 # TEA Knowledge: Property-Based Testing (proptest)
 
 ## CONTEXT
+
 - **Tool**: `proptest` - Property-based testing for Rust
 - **Purpose**: Edge case discovery, invariant verification
 - **Best for**: Mathematical properties, parsers, state machines
@@ -34,22 +35,26 @@ Are you testing...
 ## VALIDATION CHECKLIST
 
 ### Strategy Design
+
 - [ ] Uses appropriate strategy for data type
 - [ ] Regex strategies for string patterns
 - [ ] `prop_compose!` for complex strategies
 - [ ] `prop_filter` for valid ranges
 
 ### Determinism
+
 - [ ] Uses deterministic seeds (default or explicit)
 - [ ] Uses `.prop_with_config()` for config
 - [ ] Tests are reproducible
 
 ### Assertions
+
 - [ ] Uses `prop_assert!` family (not `assert!`)
 - [ ] Error messages include property being tested
 - [ ] Shrinking will produce minimal failing case
 
 ### Test Organization
+
 - [ ] Property tests in `proptests` submodule
 - [ ] Mixed with example-based tests (not replacing)
 - [ ] Clear property description in test name
@@ -57,17 +62,20 @@ Are you testing...
 ## ANTI-PATTERNS (FLAG THESE)
 
 ### Strategy Issues
+
 - ❌ **No filtering** → Generates invalid inputs
 - ❌ **Too broad strategies** → Wastes time on irrelevant cases
 - ❌ **Complex strategies without `prop_compose!`** → Hard to read
 - ❌ **Non-deterministic seeds** → Unreproducible failures
 
 ### Assertion Issues
+
 - ❌ **Using `assert!` instead of `prop_assert!`** → Poor error messages
 - ❌ **No property description** → What invariant is being tested?
 - ❌ **Testing specific examples** → Use `#[test]` for examples
 
 ### Organization Issues
+
 - ❌ **Only property tests** → Combine with example-based tests
 - ❌ **Properties testing implementation** → Test behavior/invariants
 - ❌ **Too many cases** → Slows test suite (proptest has default limits)
@@ -75,6 +83,7 @@ Are you testing...
 ## CORRECT EXAMPLES
 
 ### Basic Property Test
+
 ```rust
 use proptest::prelude::*;
 
@@ -89,6 +98,7 @@ proptest! {
 ```
 
 ### With Regex Strategy
+
 ```rust
 proptest! {
     #[test]
@@ -121,6 +131,7 @@ proptest! {
 ```
 
 ### Composite Strategy with prop_compose
+
 ```rust
 use proptest::prelude::*;
 
@@ -161,6 +172,7 @@ proptest! {
 ```
 
 ### Round-trip Serialization
+
 ```rust
 proptest! {
     #[test]
@@ -182,6 +194,7 @@ proptest! {
 ```
 
 ### State Machine Testing
+
 ```rust
 #[derive(Debug, Clone)]
 enum VaultOperation {
@@ -222,6 +235,7 @@ proptest! {
 ```
 
 ### With Deterministic Seed
+
 ```rust
 use proptest::test_runner::Config;
 
@@ -237,6 +251,7 @@ proptest! {
 ```
 
 ### Mixed with Example-Based Tests
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -270,16 +285,16 @@ mod tests {
 
 ## QUICK REFERENCE
 
-| Pattern | Syntax |
-|---------|--------|
-| Basic test | `proptest! { #[test] fn name(s: String) { ... } }` |
-| Regex strategy | `"[a-z]+"` |
-| Filter | `strategy.prop_filter("name", \|s\| condition)` |
-| Compose | `prop_compose! { fn name()(...)` |
-| Any value | `any::<Type>()` |
-| Collection | `prop::collection::vec(strategy, 1..100)` |
-| One of | `prop_oneof![a, b, c]` |
-| Assertion | `prop_assert!(condition, "msg")` |
+| Pattern        | Syntax                                             |
+| -------------- | -------------------------------------------------- |
+| Basic test     | `proptest! { #[test] fn name(s: String) { ... } }` |
+| Regex strategy | `"[a-z]+"`                                         |
+| Filter         | `strategy.prop_filter("name", \|s\| condition)`    |
+| Compose        | `prop_compose! { fn name()(...)`                   |
+| Any value      | `any::<Type>()`                                    |
+| Collection     | `prop::collection::vec(strategy, 1..100)`          |
+| One of         | `prop_oneof![a, b, c]`                             |
+| Assertion      | `prop_assert!(condition, "msg")`                   |
 
 ## CONFIGURATION
 
@@ -302,18 +317,19 @@ proptest! {
 
 ## WHEN TO USE
 
-| Scenario | Use proptest? |
-|----------|---------------|
-| Round-trip serialization | Yes |
-| Parser/tokenizer | Yes |
-| Input validation | Yes |
-| State machines | Yes |
-| Graph consistency | Yes |
-| Mathematical properties | Yes |
-| Business logic examples | No (use `#[test]`) |
-| Simple assertions | No (use `#[test]`) |
+| Scenario                 | Use proptest?      |
+| ------------------------ | ------------------ |
+| Round-trip serialization | Yes                |
+| Parser/tokenizer         | Yes                |
+| Input validation         | Yes                |
+| State machines           | Yes                |
+| Graph consistency        | Yes                |
+| Mathematical properties  | Yes                |
+| Business logic examples  | No (use `#[test]`) |
+| Simple assertions        | No (use `#[test]`) |
 
 ## RELATED MODULES
+
 - See `testing-fixtures.md` for fixture strategies
 - See `testing-unit.md` for unit testing patterns
 - See `testing-anti-patterns.md` for comprehensive anti-patterns

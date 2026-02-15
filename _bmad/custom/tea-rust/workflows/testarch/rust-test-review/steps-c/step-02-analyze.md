@@ -13,9 +13,10 @@ Identify quality gaps and anti-patterns across target tests.
 ## MANDATORY SEQUENCE
 1. Analyze tests for GWT comments, edge cases, and errors
 2. Validate doc comment usage matches test type
-3. Check for anti-patterns and flaky test risks
-4. Map issues (high/medium/low)
-5. Record findings
+3. Check for style and linting standard violations (rustfmt, clippy)
+4. Check for anti-patterns and flaky test risks
+5. Map issues (high/medium/low)
+6. Record findings
 
 ## Menu
 Select: [C] Continue

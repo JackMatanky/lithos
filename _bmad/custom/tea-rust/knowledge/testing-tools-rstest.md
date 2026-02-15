@@ -1,6 +1,7 @@
 # TEA Knowledge: rstest Patterns
 
 ## CONTEXT
+
 - **Tool**: `rstest` - Parameterized testing and fixtures for Rust
 - **Purpose**: Reduce boilerplate, improve test clarity
 - **Crates**: `rstest`, `rstest_reuse`
@@ -31,56 +32,66 @@ Are you...
 ## VALIDATION CHECKLIST
 
 ### Parameterized Tests
+
 - [ ] Uses `#[rstest]` attribute
 - [ ] Uses `#[case::descriptive_name(...)]` for named cases
 - [ ] Each case has a meaningful name (not just `#[case(...)]`)
 - [ ] Test parameters match case arguments
 
 ### Fixtures
+
 - [ ] Uses `#[fixture]` attribute
 - [ ] Fixture functions are descriptive
 - [ ] Fixtures can be composed (fixture using fixture)
 - [ ] Uses `#[default(...)]` for fixture parameters
 
 ### Once Fixtures
+
 - [ ] Uses `#[once]` for expensive shared setup
 - [ ] Returns `Arc<T>` or reference for shared access
 - [ ] Does not mutate shared state
 
 ### Values Combinations
+
 - [ ] Uses `#[values(...)]` for combinatorial testing
 - [ ] Understands this generates N×M test cases
 - [ ] Not overused (explosion of test cases)
 
 ### Async Support
+
 - [ ] Uses `#[future]` for async fixtures
 - [ ] Properly awaits fixtures in test
 
 ## ANTI-PATTERNS (FLAG THESE)
 
 ### Case Naming
+
 - ❌ `#[case("foo", true)]` → Use `#[case::valid_foo("foo", true)]`
 - ❌ `#[case(1, 2, 3)]` → No description of what case tests
 - ❌ Generic names like `case_1`, `case_2` → Use descriptive names
 
 ### Fixture Issues
+
 - ❌ Fixtures with side effects → Should be pure
 - ❌ Mutable shared fixtures → Use independent fixtures
 - ❌ Overly complex fixture chains → Keep it simple
 - ❌ `#[once]` fixtures that should be per-test → Use without `#[once]`
 
 ### Parameter Issues
+
 - ❌ Too many parameters → Use struct/fixture
 - ❌ Unrelated parameters in one test → Split tests
 - ❌ `#[values]` explosion → 10×10 = 100 tests, be careful
 
 ### Usage Issues
+
 - ❌ Using rstest for single test case → Standard `#[test]` is fine
 - ❌ Not using `#[default(...)]` when applicable → Provides flexibility
 
 ## CORRECT EXAMPLES
 
 ### Basic Parameterized Test
+
 ```rust
 use rstest::*;
 
@@ -97,6 +108,7 @@ fn string_length_matches_expected(
 ```
 
 ### Validation Testing
+
 ```rust
 #[rstest]
 #[case::valid_simple("hello", true)]
@@ -124,6 +136,7 @@ fn identifier_validation(
 ```
 
 ### Fixtures
+
 ```rust
 #[fixture]
 fn valid_note_id() -> Uuid {
@@ -161,6 +174,7 @@ fn extracts_note_id(test_note: Note) {
 ```
 
 ### Fixtures with Defaults
+
 ```rust
 #[fixture]
 fn note_with_tags(
@@ -195,6 +209,7 @@ fn test_with_custom_tags(
 ```
 
 ### Once Fixtures (Shared Setup)
+
 ```rust
 use std::sync::Arc;
 
@@ -221,6 +236,7 @@ fn test_query(shared_database: &Arc<Database>) {
 ```
 
 ### Combinatorial Testing with #[values]
+
 ```rust
 #[rstest]
 fn state_transitions(
@@ -234,6 +250,7 @@ fn state_transitions(
 ```
 
 ### Async Fixtures
+
 ```rust
 #[fixture]
 async fn async_database() -> Database {
@@ -249,6 +266,7 @@ async fn test_async_insert(#[future] async_database: Database) {
 ```
 
 ### Template Reuse (rstest_reuse)
+
 ```rust
 use rstest::rstest;
 use rstest_reuse::{self, *};
@@ -277,30 +295,31 @@ fn test_wrapping_add(a: i32, b: i32, expected: i32) {
 
 ## QUICK REFERENCE
 
-| Pattern | Syntax |
-|---------|--------|
-| Basic case | `#[case::name(args...)]` |
-| Fixture | `#[fixture] fn name() -> T` |
-| Fixture with params | `#[default(value)] param: Type` |
-| Once fixture | `#[fixture] #[once]` |
-| Async fixture | `#[future]` + `.await` |
-| Values | `#[values(a, b, c)] param: Type` |
-| Template | `#[template] #[rstest]` |
-| Apply template | `#[apply(template_name)]` |
+| Pattern             | Syntax                           |
+| ------------------- | -------------------------------- |
+| Basic case          | `#[case::name(args...)]`         |
+| Fixture             | `#[fixture] fn name() -> T`      |
+| Fixture with params | `#[default(value)] param: Type`  |
+| Once fixture        | `#[fixture] #[once]`             |
+| Async fixture       | `#[future]` + `.await`           |
+| Values              | `#[values(a, b, c)] param: Type` |
+| Template            | `#[template] #[rstest]`          |
+| Apply template      | `#[apply(template_name)]`        |
 
 ## WHEN TO USE
 
-| Scenario | Use rstest? | Pattern |
-|----------|-------------|---------|
-| Single test | No | `#[test]` |
-| Multiple similar tests | Yes | `#[case::name(...)]` |
-| Shared setup | Yes | `#[fixture]` |
-| Expensive shared setup | Yes | `#[once]` |
-| Combinatorial testing | Yes | `#[values(...)]` |
-| Async setup | Yes | `#[future]` |
-| Template reuse | Yes | `rstest_reuse` |
+| Scenario               | Use rstest? | Pattern              |
+| ---------------------- | ----------- | -------------------- |
+| Single test            | No          | `#[test]`            |
+| Multiple similar tests | Yes         | `#[case::name(...)]` |
+| Shared setup           | Yes         | `#[fixture]`         |
+| Expensive shared setup | Yes         | `#[once]`            |
+| Combinatorial testing  | Yes         | `#[values(...)]`     |
+| Async setup            | Yes         | `#[future]`          |
+| Template reuse         | Yes         | `rstest_reuse`       |
 
 ## RELATED MODULES
+
 - See `testing-fixtures.md` for fixture strategies
 - See `testing-unit.md` for unit testing patterns
 - See `testing-anti-patterns.md` for comprehensive anti-patterns

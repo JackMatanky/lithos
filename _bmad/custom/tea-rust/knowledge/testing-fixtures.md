@@ -1,6 +1,7 @@
 # TEA Knowledge: Test Fixture Strategies
 
 ## CONTEXT
+
 - **Applies to**: Test data setup and helper functions
 - **Purpose**: Reproducible, isolated test data
 - **Location**: Inline in `#[cfg(test)]` modules
@@ -34,33 +35,39 @@ What kind of test data do you need?
 ## VALIDATION CHECKLIST
 
 ### Inline Fixtures
+
 - [ ] Used for simple, test-specific data
 - [ ] Not extracted to helper unless reused
 - [ ] Clear what the data represents
 
 ### Helper Functions
+
 - [ ] Simple functions (not macros)
 - [ ] Document purpose in doc comment
 - [ ] Accept parameters for customization
 - [ ] Return ready-to-use test objects
 
 ### rstest Fixtures
+
 - [ ] Uses `#[fixture]` attribute
 - [ ] Named descriptively
 - [ ] Can be composed (fixtures using fixtures)
 - [ ] Uses `#[once]` for expensive shared setup
 
 ### Filesystem Fixtures
+
 - [ ] Uses `tempfile::TempDir` (not hardcoded paths)
 - [ ] Creates fresh temp dir per test
 - [ ] Relies on RAII cleanup (no manual deletion)
 
 ### Property Test Data
+
 - [ ] Uses `proptest` strategies
 - [ ] Has deterministic seeds
 - [ ] Filters for valid ranges
 
 ### Golden/Reference Files
+
 - [ ] Stored in `tests/fixtures/` or `docs/refs/`
 - [ ] Version controlled
 - [ ] Documented update process
@@ -68,22 +75,26 @@ What kind of test data do you need?
 ## ANTI-PATTERNS (FLAG THESE)
 
 ### Location Issues
+
 - ❌ **External test utility crates** → All fixtures inline
 - ❌ **Shared test modules between crates** → Each crate independent
 - ❌ **Test data in `src/`** → Keep test data in `tests/` or inline
 
 ### Fixture Complexity
+
 - ❌ **Complex builder patterns** → Use simple helper functions
 - ❌ **Macros for fixtures** → Use functions
 - ❌ **Overly generic fixtures** → Specific fixtures per test context
 
 ### Filesystem Issues
+
 - ❌ **Hardcoded paths** → Use `tempfile::TempDir`
 - ❌ **Manual cleanup (fs::remove_file)** → Use RAII (Drop)
 - ❌ **Shared temp directories** → Fresh TempDir per test
 - ❌ **Tests depending on existing files** → Create in temp dir
 
 ### State Issues
+
 - ❌ **Shared mutable state** → Independent fixtures per test
 - ❌ **Static variables** → Use fixtures
 - ❌ **Database not reset** → Fresh in-memory DB per test
@@ -91,6 +102,7 @@ What kind of test data do you need?
 ## CORRECT EXAMPLES
 
 ### Inline Fixtures
+
 ```rust
 #[test]
 fn validates_single_character_name() {
@@ -109,6 +121,7 @@ fn rejects_empty_name() {
 ```
 
 ### Helper Functions
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -149,6 +162,7 @@ mod tests {
 ```
 
 ### rstest Fixtures
+
 ```rust
 use rstest::*;
 
@@ -180,6 +194,7 @@ fn validates_test_note(test_note: Note) {
 ```
 
 ### rstest with Defaults
+
 ```rust
 #[fixture]
 fn note_with_tags(
@@ -214,6 +229,7 @@ fn test_with_custom_tags(
 ```
 
 ### Once Fixtures (Shared Setup)
+
 ```rust
 #[fixture]
 #[once]
@@ -238,6 +254,7 @@ fn test_query(shared_database: &Arc<Database>) {
 ```
 
 ### Filesystem Fixtures
+
 ```rust
 use tempfile::TempDir;
 use std::fs;
@@ -260,6 +277,7 @@ fn writes_file_successfully() -> std::io::Result<()> {
 ```
 
 ### Vault Fixture Pattern
+
 ```rust
 #[fixture]
 fn temp_vault() -> TempDir {
@@ -290,6 +308,7 @@ fn indexes_vault_contents(temp_vault: TempDir) {
 ```
 
 ### Property Test Data
+
 ```rust
 use proptest::prelude::*;
 
@@ -327,27 +346,28 @@ proptest! {
 
 ## FIXTURE SCOPE REFERENCE
 
-| Scope | When to Use | Example |
-|-------|-------------|---------|
-| **Inline** | One-time use, simple data | `let name = "test"` |
-| **Helper fn** | Reused in same module | `fn note_fixture() -> Note` |
-| **rstest** | Complex setup, dependencies | `#[fixture] fn test_note()` |
-| **rstest once** | Expensive shared setup | `#[fixture] #[once] fn db()` |
-| **TempDir** | Filesystem operations | `TempDir::new().unwrap()` |
-| **Golden files** | Reference data | `tests/fixtures/data.json` |
+| Scope            | When to Use                 | Example                      |
+| ---------------- | --------------------------- | ---------------------------- |
+| **Inline**       | One-time use, simple data   | `let name = "test"`          |
+| **Helper fn**    | Reused in same module       | `fn note_fixture() -> Note`  |
+| **rstest**       | Complex setup, dependencies | `#[fixture] fn test_note()`  |
+| **rstest once**  | Expensive shared setup      | `#[fixture] #[once] fn db()` |
+| **TempDir**      | Filesystem operations       | `TempDir::new().unwrap()`    |
+| **Golden files** | Reference data              | `tests/fixtures/data.json`   |
 
 ## QUICK REFERENCE
 
-| Pattern | Usage |
-|---------|-------|
-| Inline fixtures | Simple, test-specific data |
-| Helper functions | Reused in multiple tests |
-| rstest fixtures | Complex setup with dependencies |
-| Once fixtures | Expensive shared resources |
-| TempDir | Filesystem isolation |
-| Proptest | Deterministic random data |
+| Pattern          | Usage                           |
+| ---------------- | ------------------------------- |
+| Inline fixtures  | Simple, test-specific data      |
+| Helper functions | Reused in multiple tests        |
+| rstest fixtures  | Complex setup with dependencies |
+| Once fixtures    | Expensive shared resources      |
+| TempDir          | Filesystem isolation            |
+| Proptest         | Deterministic random data       |
 
 ## RELATED MODULES
+
 - See `testing-unit.md` for test structure
 - See `testing-tools-rstest.md` for rstest patterns
 - See `testing-tools-proptest.md` for property testing

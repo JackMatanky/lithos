@@ -1,6 +1,7 @@
 # TEA Knowledge: Rust Integration Testing
 
 ## CONTEXT
+
 - **Applies to**: Tests in `lithos-core/tests/` directory
 - **Location**: External to the library crate
 - **Purpose**: Testing public API, port contracts, adapter implementations
@@ -32,33 +33,39 @@ Does the test require...
 ## VALIDATION CHECKLIST
 
 ### Test Location
+
 - [ ] Test is in `lithos-core/tests/` directory (not `src/`)
 - [ ] Test file name follows `*_test.rs` or describes the component (e.g., `adapter_test.rs`)
 - [ ] Test uses public API only (no access to private items)
 
 ### Test Structure
+
 - [ ] Uses `use lithos_core::*;` to import the library
 - [ ] Tests one port/adapter or one integration scenario per file
 - [ ] Organized into modules by functionality
 
 ### I/O and Side Effects
+
 - [ ] Uses `tempfile::TempDir` for filesystem operations
 - [ ] Uses in-memory or temporary database instances
 - [ ] Cleans up resources via RAII (Drop implementations)
 - [ ] No hardcoded paths or environment-dependent resources
 
 ### Port Testing
+
 - [ ] Tests both success and error paths for port operations
 - [ ] Verifies side effects (data persisted correctly)
 - [ ] Tests transaction rollback behavior where applicable
 - [ ] Uses real adapters (not mocks) for integration tests
 
 ### Mock Usage
+
 - [ ] Uses `mockall` for mocking external dependencies
 - [ ] Sets clear expectations on mocks (`expect_*` methods)
 - [ ] Verifies mock expectations were met (`times(1)`, etc.)
 
 ### Performance
+
 - [ ] Integration tests complete in < 100ms median
 - [ ] Uses `#[serial]` or test groups for tests that cannot run in parallel
 - [ ] Avoids unnecessary I/O operations
@@ -66,22 +73,26 @@ Does the test require...
 ## ANTI-PATTERNS (FLAG THESE)
 
 ### Location Issues
+
 - ❌ **Integration test in `src/`** → Move to `tests/` directory
 - ❌ **Testing private functions** → Either make public or move to unit test
 - ❌ **Mixed concerns in one test file** → Split by component/adapter
 
 ### I/O Issues
+
 - ❌ **Hardcoded file paths** → Use `tempfile::TempDir`
 - ❌ **Manual cleanup (fs::remove_file)** → Use RAII (TempDir drops automatically)
 - ❌ **Tests depending on specific filesystem state** → Create fresh temp dir per test
 - ❌ **Network calls without mocking** → Mock external services
 
 ### Isolation Issues
+
 - ❌ **Shared database between tests** → Use fresh in-memory DB per test
 - ❌ **Tests depending on execution order** → Each test must be independent
 - ❌ **Static/shared mutable state** → Use fixtures, not globals
 
 ### Mock Issues
+
 - ❌ **Mocks without expectations set** → Always set `expect_*`
 - ❌ **Over-mocking (mocking everything)** → Only mock external boundaries
 - ❌ **Not verifying mock calls** → Check `times()` and call `verify()`
@@ -89,6 +100,7 @@ Does the test require...
 ## CORRECT EXAMPLES
 
 ### Basic Integration Test
+
 ```rust
 // lithos-core/tests/storage_adapter_test.rs
 use lithos_core::*;
@@ -113,6 +125,7 @@ fn persists_note_to_database() {
 ```
 
 ### Port Contract Test
+
 ```rust
 // lithos-core/tests/port_contract_test.rs
 use lithos_core::ports::*;
@@ -134,6 +147,7 @@ fn storage_port_contract_honors_transactions() {
 ```
 
 ### With Mockall
+
 ```rust
 use lithos_core::ports::*;
 use mockall::predicate::*;
@@ -166,6 +180,7 @@ fn service_retries_on_timeout() {
 ```
 
 ### Test Groups (Serial Execution)
+
 ```rust
 // For tests that cannot run in parallel
 use serial_test::serial;
@@ -182,6 +197,7 @@ fn test_database_migration() {
 ## CQRS INTEGRATION TESTING
 
 ### Command Testing
+
 ```rust
 #[test]
 fn create_schema_command_persists_valid_schema() {
@@ -196,6 +212,7 @@ fn create_schema_command_persists_valid_schema() {
 ```
 
 ### Query Testing
+
 ```rust
 #[test]
 fn find_schema_by_id_returns_correct_schema() {
@@ -209,6 +226,7 @@ fn find_schema_by_id_returns_correct_schema() {
 ```
 
 ## RELATED MODULES
+
 - See `testing-unit.md` for unit testing patterns
 - See `testing-tools-nextest.md` for test runner configuration
 - See `testing-fixtures.md` for fixture strategies
