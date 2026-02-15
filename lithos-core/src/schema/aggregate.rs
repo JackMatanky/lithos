@@ -129,6 +129,27 @@ pub struct Schema {
     pending_events: Vec<Events>,
 }
 
+/// Resolution metadata for incremental schema resolution.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct ResolutionMetadata {
+    schema_id: SchemaId,
+    resolved_at: Timestamp,
+    parent_hash: Option<SchemaHash>,
+    bank_version: BankVersion,
+    file_modified: Option<Timestamp>,
+}
+
 /// Unique identity for a schema.
 #[derive(
     Debug,
@@ -455,6 +476,28 @@ impl SchemaHash {
     pub const fn as_u64(self) -> u64 {
         self.0
     }
+
+    /// Compute a stable content hash for a schema.
+    #[inline]
+    #[must_use]
+    pub fn compute(schema: &Schema) -> Self {
+        use std::{
+            collections::hash_map::DefaultHasher,
+            hash::{Hash as _, Hasher as _},
+        };
+
+        let mut hasher = DefaultHasher::new();
+
+        schema.name().as_str().hash(&mut hasher);
+        for prop in schema.properties() {
+            prop.name().as_str().hash(&mut hasher);
+            prop.cardinality().hash(&mut hasher);
+            prop.multiplicity().hash(&mut hasher);
+            prop.spec().hash(&mut hasher);
+        }
+
+        Self::from_u64(hasher.finish())
+    }
 }
 
 /// Unix timestamp (seconds since epoch).
@@ -497,6 +540,89 @@ impl Timestamp {
     #[must_use]
     pub const fn as_secs(self) -> i64 {
         self.0
+    }
+}
+
+impl ResolutionMetadata {
+    /// Create a new resolution metadata snapshot.
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        schema_id: SchemaId,
+        resolved_at: Timestamp,
+        parent_hash: Option<SchemaHash>,
+        bank_version: BankVersion,
+        file_modified: Option<Timestamp>,
+    ) -> Self {
+        Self {
+            schema_id,
+            resolved_at,
+            parent_hash,
+            bank_version,
+            file_modified,
+        }
+    }
+
+    /// Returns the schema id associated with this metadata.
+    #[inline]
+    #[must_use]
+    pub const fn schema_id(&self) -> SchemaId {
+        self.schema_id
+    }
+
+    /// Returns the resolution timestamp.
+    #[inline]
+    #[must_use]
+    pub const fn resolved_at(&self) -> Timestamp {
+        self.resolved_at
+    }
+
+    /// Returns the stored parent hash.
+    #[inline]
+    #[must_use]
+    pub const fn parent_hash(&self) -> Option<SchemaHash> {
+        self.parent_hash
+    }
+
+    /// Returns the property bank version.
+    #[inline]
+    #[must_use]
+    pub const fn bank_version(&self) -> BankVersion {
+        self.bank_version
+    }
+
+    /// Returns the file modification timestamp, if any.
+    #[inline]
+    #[must_use]
+    pub const fn file_modified(&self) -> Option<Timestamp> {
+        self.file_modified
+    }
+
+    /// Returns true if this metadata is stale relative to current values.
+    #[inline]
+    #[must_use]
+    pub fn is_stale(
+        &self,
+        current_bank_version: BankVersion,
+        current_parent_hash: Option<SchemaHash>,
+        current_file_mtime: Option<Timestamp>,
+    ) -> bool {
+        if self.bank_version.is_older_than(current_bank_version) {
+            return true;
+        }
+
+        if self.parent_hash != current_parent_hash {
+            return true;
+        }
+
+        if let Some(stored_mtime) = self.file_modified
+            && let Some(current_mtime) = current_file_mtime
+            && stored_mtime < current_mtime
+        {
+            return true;
+        }
+
+        false
     }
 }
 
