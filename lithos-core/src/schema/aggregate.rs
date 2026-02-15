@@ -316,6 +316,8 @@ impl ResolutionMetadata {
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     serde::Serialize,
     serde::Deserialize,
@@ -327,6 +329,13 @@ impl ResolutionMetadata {
 #[serde(transparent)]
 #[non_exhaustive]
 pub struct SchemaId(Uuid);
+
+impl std::fmt::Display for SchemaId {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl SchemaId {
     /// Creates a new UUID v7-based `SchemaId`.
