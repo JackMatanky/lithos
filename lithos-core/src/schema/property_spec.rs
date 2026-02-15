@@ -9,11 +9,14 @@
               types. Spec suffix is descriptive"
 )]
 
-mod regex_cache;
-
-use std::path::{Component, Path};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    path::{Component, Path},
+    sync::{Arc, OnceLock, RwLock},
+};
 
 use super::error::SchemaError;
+use crate::bounds::{Bounds, BoundsError};
 
 // === Public API ===
 //
@@ -267,7 +270,7 @@ impl FileSpec {
         file_class: Option<String>,
     ) -> Result<Self, SchemaError> {
         let directory = match directory {
-            Some(dir) => Some(VaultRelPath::try_new(dir)?),
+            Some(dir) => Some(VaultRelPath::try_new(&dir)?),
             None => None,
         };
 
@@ -310,7 +313,6 @@ impl FileSpec {
     Debug,
     Clone,
     PartialEq,
-    Default,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -321,6 +323,16 @@ impl FileSpec {
 pub struct NumberSpec {
     bounds: Bounds<FiniteF64>,
     step: Option<Step>,
+}
+
+impl Default for NumberSpec {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            bounds: Bounds::Unbounded,
+            step: None,
+        }
+    }
 }
 
 impl NumberSpec {
@@ -344,11 +356,15 @@ impl NumberSpec {
             None => None,
         };
 
-        let bounds = Bounds::try_new(min, max).map_err(|e| match e {
-            BoundsError::MinGreaterThanMax => SchemaError::ValidationFailed(
-                "min cannot be greater than max".to_owned(),
-            ),
-        })?;
+        let bounds = match Bounds::from_options(min, max) {
+            None => Bounds::Unbounded,
+            Some(Ok(bounds)) => bounds,
+            Some(Err(BoundsError::InvalidRange)) => {
+                return Err(SchemaError::ValidationFailed(
+                    "min cannot be greater than max".to_owned(),
+                ));
+            }
+        };
 
         let step = match step {
             Some(v) => Some(Step::try_new(v)?),
@@ -378,20 +394,13 @@ impl NumberSpec {
             ))
         })?;
 
-        if let Err(violation) = self.bounds.check(finite) {
-            let min = self.bounds.min.map(FiniteF64::get);
-            let max = self.bounds.max.map(FiniteF64::get);
-            return Err(match violation {
-                BoundsViolation::BelowMin {
-                    ..
-                }
-                | BoundsViolation::AboveMax {
-                    ..
-                } => SchemaError::NumberOutOfRange {
-                    value,
-                    min,
-                    max,
-                },
+        if !self.bounds.validate(finite) {
+            let min = self.bounds.min().map(FiniteF64::get);
+            let max = self.bounds.max().map(FiniteF64::get);
+            return Err(SchemaError::NumberOutOfRange {
+                value,
+                min,
+                max,
             });
         }
         Ok(())
@@ -417,7 +426,7 @@ impl NumberSpec {
         }
 
         if let Some(step) = self.step {
-            let base = self.bounds.min.map_or(0.0f64, FiniteF64::get);
+            let base = self.bounds.min().map_or(0.0f64, FiniteF64::get);
             let offset = (value - base).abs();
             let remainder = offset % step.get();
 
@@ -437,7 +446,6 @@ impl NumberSpec {
     Debug,
     Clone,
     PartialEq,
-    Default,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -449,6 +457,17 @@ pub struct StringSpec {
     enum_values: Option<Vec<Box<str>>>,
     length: Bounds<usize>,
     pattern: Option<Box<str>>,
+}
+
+impl Default for StringSpec {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            enum_values: None,
+            length: Bounds::Unbounded,
+            pattern: None,
+        }
+    }
 }
 
 impl StringSpec {
@@ -464,19 +483,19 @@ impl StringSpec {
         pattern: Option<String>,
         enum_values: Option<Vec<String>>,
     ) -> Result<Self, SchemaError> {
-        let length =
-            Bounds::try_new(min_length, max_length).map_err(|e| match e {
-                BoundsError::MinGreaterThanMax => {
-                    SchemaError::ValidationFailed(
-                        "min_length cannot be greater than max_length"
-                            .to_owned(),
-                    )
-                }
-            })?;
+        let length = match Bounds::from_options(min_length, max_length) {
+            None => Bounds::Unbounded,
+            Some(Ok(bounds)) => bounds,
+            Some(Err(BoundsError::InvalidRange)) => {
+                return Err(SchemaError::ValidationFailed(
+                    "min_length cannot be greater than max_length".to_owned(),
+                ));
+            }
+        };
 
         let pattern = match pattern {
             Some(p) => {
-                regex_cache::get_cached_regex(&p)?;
+                get_cached_regex(&p)?;
                 Some(p.into_boxed_str())
             }
             None => None,
@@ -526,28 +545,30 @@ impl StringSpec {
     #[inline]
     pub fn validate_length(&self, value: &str) -> Result<(), SchemaError> {
         let len = value.len();
-        if let Err(violation) = self.length.check(len) {
-            return Err(match violation {
-                BoundsViolation::BelowMin {
-                    min,
-                } => SchemaError::StringTooShort {
+        if !self.length.validate(len) {
+            if let Some(min) = self.length.min()
+                && len < min
+            {
+                return Err(SchemaError::StringTooShort {
                     min,
                     actual: len,
-                },
-                BoundsViolation::AboveMax {
-                    max,
-                } => SchemaError::StringTooLong {
+                });
+            }
+            if let Some(max) = self.length.max()
+                && len > max
+            {
+                return Err(SchemaError::StringTooLong {
                     max,
                     actual: len,
-                },
-            });
+                });
+            }
         }
         Ok(())
     }
 
     fn validate_pattern(&self, value: &str) -> Result<(), SchemaError> {
         if let Some(pattern) = self.pattern.as_ref() {
-            let re = regex_cache::get_cached_regex(pattern)?;
+            let re = get_cached_regex(pattern)?;
             if !re.is_match(value) {
                 return Err(SchemaError::ValidationFailed(format!(
                     "Value {value} does not match pattern {pattern}"
@@ -559,84 +580,6 @@ impl StringSpec {
 }
 
 // --- Internal helper types (type-driven invariants) ---
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BoundsError {
-    MinGreaterThanMax,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum BoundsViolation<T> {
-    BelowMin {
-        min: T,
-    },
-    AboveMax {
-        max: T,
-    },
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-struct Bounds<T> {
-    min: Option<T>,
-    max: Option<T>,
-}
-
-impl<T> Default for Bounds<T> {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            min: None,
-            max: None,
-        }
-    }
-}
-
-impl<T> Bounds<T>
-where
-    T: Copy + PartialOrd,
-{
-    #[inline]
-    fn try_new(min: Option<T>, max: Option<T>) -> Result<Self, BoundsError> {
-        if let (Some(min), Some(max)) = (min, max)
-            && min > max
-        {
-            return Err(BoundsError::MinGreaterThanMax);
-        }
-        Ok(Self {
-            min,
-            max,
-        })
-    }
-
-    #[inline]
-    fn check(&self, value: T) -> Result<(), BoundsViolation<T>> {
-        if let Some(min) = self.min
-            && value < min
-        {
-            return Err(BoundsViolation::BelowMin {
-                min,
-            });
-        }
-        if let Some(max) = self.max
-            && value > max
-        {
-            return Err(BoundsViolation::AboveMax {
-                max,
-            });
-        }
-        Ok(())
-    }
-}
 
 #[derive(
     Debug,
@@ -709,6 +652,7 @@ impl Step {
     Clone,
     PartialEq,
     Eq,
+    Hash,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -721,9 +665,9 @@ struct VaultRelPath(Box<str>);
 
 impl VaultRelPath {
     #[inline]
-    fn try_new(path: String) -> Result<Self, SchemaError> {
-        validate_vault_rel_path(&path)?;
-        Ok(Self(path.into_boxed_str()))
+    fn try_new(path: &str) -> Result<Self, SchemaError> {
+        validate_vault_rel_path(path)?;
+        Ok(Self(path.into()))
     }
 
     #[inline]
@@ -732,6 +676,7 @@ impl VaultRelPath {
     }
 }
 
+#[inline]
 fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
     if path.is_empty() {
         return Err(SchemaError::InvalidDirectoryPath(
@@ -766,6 +711,46 @@ fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
     }
 
     Ok(())
+}
+
+type RegexCache = HashMap<String, Arc<regex::Regex>>;
+type RegexCacheLock = RwLock<RegexCache>;
+
+static REGEX_CACHE: OnceLock<RegexCacheLock> = OnceLock::new();
+
+fn get_cached_regex(pattern: &str) -> Result<Arc<regex::Regex>, SchemaError> {
+    let cache = REGEX_CACHE.get_or_init(|| RwLock::new(RegexCache::new()));
+
+    // Fast path: read lock.
+    {
+        let guard = match cache.read() {
+            Ok(guard) => guard,
+            Err(e) => e.into_inner(),
+        };
+
+        if let Some(re) = guard.get(pattern) {
+            return Ok(Arc::clone(re));
+        }
+    }
+
+    // Slow path: compile without holding any locks.
+    let compiled = Arc::new(regex::Regex::new(pattern).map_err(|e| {
+        SchemaError::InvalidRegex(format!("Invalid pattern {pattern}: {e}"))
+    })?);
+
+    // Insert (or reuse) under a write lock.
+    let mut guard = match cache.write() {
+        Ok(guard) => guard,
+        Err(e) => e.into_inner(),
+    };
+
+    match guard.entry(pattern.to_owned()) {
+        Entry::Occupied(entry) => Ok(Arc::clone(entry.get())),
+        Entry::Vacant(entry) => {
+            entry.insert(Arc::clone(&compiled));
+            Ok(compiled)
+        }
+    }
 }
 
 #[cfg(test)]
