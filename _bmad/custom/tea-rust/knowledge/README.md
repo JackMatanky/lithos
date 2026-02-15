@@ -6,11 +6,11 @@ This directory contains modular knowledge files for the TEA agent to reference w
 
 ### Test Types
 
-| Module                  | Purpose                                  | Load When                   |
-| ----------------------- | ---------------------------------------- | --------------------------- |
-| `test-unit.md`          | Unit testing patterns and location rules | Reviewing unit tests        |
-| `test-integration.md`   | Integration testing with I/O             | Reviewing integration tests |
-| `test-e2e.md`           | End-to-end CLI testing                   | Reviewing E2E tests         |
+| Module                | Purpose                                  | Load When                   |
+| --------------------- | ---------------------------------------- | --------------------------- |
+| `test-unit.md`        | Unit testing patterns and location rules | Reviewing unit tests        |
+| `test-integration.md` | Integration testing with I/O             | Reviewing integration tests |
+| `test-e2e.md`         | End-to-end CLI testing                   | Reviewing E2E tests         |
 
 ### Code Quality
 
@@ -21,10 +21,14 @@ This directory contains modular knowledge files for the TEA agent to reference w
 | `linting.md`         | Linter warning management       | Reviewing clippy/fmt issues |
 | `fixtures.md`        | Fixture strategies              | Reviewing test setup        |
 | `anti-patterns.md`   | Patterns to detect and reject   | Always load for test review |
+| `test-policy.md`     | Testing rules and policies      | General authoring guidance  |
+| `test-safety.md`     | Safety and determinism          | Architecture compliance     |
+| `test-doc-tests.md`  | Doc-test best practices         | Public API documentation    |
+| `test-coverage.md`   | Coverage analysis tools         | Measuring test quality      |
 | `mocks.md`           | Mocking and isolation           | Complex dependency testing  |
 | `test-benchmarks.md` | Performance measuring           | Reviewing performance tests |
 | `quality-gates.md`   | Coverage/Performance targets    | Assessing test suite health |
-| `ci.md`              | CI/CD pipeline integration      | Pipeline configuration      |
+| `ci.md`              | CI/CD and Mise commands         | Pipeline configuration      |
 
 ### Tools
 
@@ -51,14 +55,14 @@ When generating tests, load all modules for comprehensive guidance.
 
 ### For Specific Questions
 
-| Question                       | Load Module                         |
-| ------------------------------ | ----------------------------------- |
+| Question                       | Load Module                    |
+| ------------------------------ | ------------------------------ |
 | "Where should this test go?"   | `test-unit.md` (decision tree) |
-| "Is this a good test name?"    | `naming.md`                         |
-| "How should I assert this?"    | `assertions.md`                     |
-| "What's wrong with this test?" | `anti-patterns.md`                  |
-| "How do I set up test data?"   | `fixtures.md`                       |
-| "Should I use rstest?"         | `tools-rstest.md`                   |
+| "Is this a good test name?"    | `naming.md`                    |
+| "How should I assert this?"    | `assertions.md`                |
+| "What's wrong with this test?" | `anti-patterns.md`             |
+| "How do I set up test data?"   | `fixtures.md`                  |
+| "Should I use rstest?"         | `tools-rstest.md`              |
 
 ## Structure of Each Module
 
