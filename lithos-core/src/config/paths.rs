@@ -487,13 +487,13 @@ impl RelativePath {
     ) -> Result<(), ConfigError> {
         if path.as_os_str().is_empty() {
             return Err(ConfigError::ValidationFailed {
-                field: field.to_owned().into(),
+                field: field.into(),
                 message: format!("{field} cannot be empty").into(),
             });
         }
         if path.is_absolute() {
             return Err(ConfigError::ValidationFailed {
-                field: field.to_owned().into(),
+                field: field.into(),
                 message: format!("{field} must be vault-relative").into(),
             });
         }
@@ -502,7 +502,7 @@ impl RelativePath {
             .any(|component| component == std::path::Component::ParentDir)
         {
             return Err(ConfigError::ValidationFailed {
-                field: field.to_owned().into(),
+                field: field.into(),
                 message: format!("{field} must not contain parent components")
                     .into(),
             });
@@ -571,13 +571,13 @@ impl AbsolutePath {
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         if path.as_os_str().is_empty() {
             return Err(ConfigError::ValidationFailed {
-                field: "absolute_path".to_owned().into(),
-                message: "path cannot be empty".to_owned().into(),
+                field: "absolute_path".into(),
+                message: "path cannot be empty".into(),
             });
         }
         if !path.is_absolute() {
             return Err(ConfigError::ValidationFailed {
-                field: "absolute_path".to_owned().into(),
+                field: "absolute_path".into(),
                 message: format!(
                     "path must be absolute: {}",
                     path.to_string_lossy()
@@ -637,7 +637,7 @@ impl FileName {
         Self::validate_non_empty("file_name", &value)?;
         if value.contains('/') || value.contains('\\') {
             return Err(ConfigError::ValidationFailed {
-                field: "file_name".to_owned().into(),
+                field: "file_name".into(),
                 message: "file name must not contain path separators"
                     .to_owned()
                     .into(),
@@ -659,7 +659,7 @@ impl FileName {
     ) -> Result<(), ConfigError> {
         if value.is_empty() {
             return Err(ConfigError::ValidationFailed {
-                field: field.to_owned().into(),
+                field: field.into(),
                 message: format!("{field} cannot be empty").into(),
             });
         }

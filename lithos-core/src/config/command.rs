@@ -276,8 +276,8 @@ where
             .map_err(|error| ConfigCommandError::Storage(error.into()))?
             .ok_or_else(|| {
                 ConfigCommandError::Domain(ConfigError::ValidationFailed {
-                    field: "config_version".to_owned().into(),
-                    message: "no active version".to_owned().into(),
+                    field: "config_version".into(),
+                    message: "no active version".into(),
                 })
             })?;
 
@@ -287,8 +287,8 @@ where
         if target == 0 {
             return Err(ConfigCommandError::Domain(
                 ConfigError::ValidationFailed {
-                    field: "config_version".to_owned().into(),
-                    message: "rollback underflow".to_owned().into(),
+                    field: "config_version".into(),
+                    message: "rollback underflow".into(),
                 },
             ));
         }

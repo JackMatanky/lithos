@@ -179,7 +179,7 @@ impl Metadata {
                 Some(v) => v,
                 None => AppVersion::try_new(env!("CARGO_PKG_VERSION"))
                     .map_err(|e| ConfigError::ValidationFailed {
-                        field: "version".to_owned().into(),
+                        field: "version".into(),
                         message: format!("default version invalid: {e}").into(),
                     })?,
             };
@@ -360,8 +360,8 @@ impl VaultRoot {
     pub fn try_new(path: PathBuf) -> Result<Self, ConfigError> {
         if path.as_os_str().is_empty() {
             return Err(ConfigError::ValidationFailed {
-                field: "vault_root".to_owned().into(),
-                message: "path cannot be empty".to_owned().into(),
+                field: "vault_root".into(),
+                message: "path cannot be empty".into(),
             });
         }
         Ok(Self(path))
@@ -442,8 +442,8 @@ impl AppVersion {
         let value = value.into();
         if value.is_empty() {
             return Err(ConfigError::ValidationFailed {
-                field: "version".to_owned().into(),
-                message: "version cannot be empty".to_owned().into(),
+                field: "version".into(),
+                message: "version cannot be empty".into(),
             });
         }
         Ok(Self(value))
