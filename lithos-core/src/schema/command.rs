@@ -4,7 +4,7 @@
 //! through the schema command port.
 
 use super::{
-    aggregate::{Schema, SchemaId},
+    aggregate::{ResolutionMetadata, Schema, SchemaId},
     error::SchemaCommandError,
     ports as schema_ports,
 };
@@ -48,9 +48,27 @@ where
     /// # Errors
     /// Returns `SchemaCommandError` if saving fails.
     #[inline]
-    pub fn save(&self, schema: &Schema) -> Result<(), SchemaCommandError> {
+    pub fn save_with_metadata(
+        &self,
+        schema: &Schema,
+        metadata: &ResolutionMetadata,
+    ) -> Result<(), SchemaCommandError> {
         self.command_port
-            .save(schema)
+            .save_with_metadata(schema, metadata)
+            .map_err(|error| SchemaCommandError::Storage(error.into()))
+    }
+
+    /// Save multiple schemas and metadata entries as a batch.
+    ///
+    /// # Errors
+    /// Returns `SchemaCommandError` if saving fails.
+    #[inline]
+    pub fn save_batch(
+        &self,
+        schemas: &[(Schema, ResolutionMetadata)],
+    ) -> Result<(), SchemaCommandError> {
+        self.command_port
+            .save_batch(schemas)
             .map_err(|error| SchemaCommandError::Storage(error.into()))
     }
 }
@@ -96,8 +114,10 @@ mod tests {
     use super::*;
     use crate::schema::{
         RedbSchemaCommand,
-        aggregate::{SchemaId, SchemaName, SchemaNameKey},
-        db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
+        aggregate::{
+            BankVersion, SchemaId, SchemaName, SchemaNameKey, Timestamp,
+        },
+        db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA},
     };
 
     mod persistence {
@@ -118,7 +138,15 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")
                     .expect("Failed to create schema fixture");
 
-            cmd.save(&schema).expect("Save should succeed");
+            let metadata = ResolutionMetadata::new(
+                schema.id(),
+                Timestamp::now(),
+                None,
+                BankVersion::initial(),
+                None,
+            );
+            cmd.save_with_metadata(&schema, &metadata)
+                .expect("Save should succeed");
 
             let id_key = schema.id().as_uuid().to_string();
             let stored = db
@@ -130,6 +158,15 @@ mod tests {
                 "note",
                 "Stored schema name should match"
             );
+
+            let metadata_key = schema.id().as_uuid().to_string();
+            let stored_metadata = db
+                .get_owned::<ResolutionMetadata>(
+                    SCHEMA_METADATA,
+                    metadata_key.as_str(),
+                )
+                .expect("Metadata read should succeed");
+            assert!(stored_metadata.is_some(), "Metadata should be stored");
 
             let name_key = SchemaNameKey::from(schema.name());
             let indexed = db
@@ -159,7 +196,15 @@ mod tests {
             )
             .expect("Failed to create schema fixture");
             let schema_id = schema.id();
-            cmd.save(&schema).expect("Save should succeed");
+            let metadata = ResolutionMetadata::new(
+                schema.id(),
+                Timestamp::now(),
+                None,
+                BankVersion::initial(),
+                None,
+            );
+            cmd.save_with_metadata(&schema, &metadata)
+                .expect("Save should succeed");
 
             cmd.delete(schema_id).expect("Delete should succeed");
 
@@ -169,6 +214,17 @@ mod tests {
                 .expect("Read after delete should succeed");
             assert!(stored.is_none(), "Deleted schema should not exist");
 
+            let stored_metadata = db
+                .get_owned::<ResolutionMetadata>(
+                    SCHEMA_METADATA,
+                    id_key.as_str(),
+                )
+                .expect("Read metadata after delete should succeed");
+            assert!(
+                stored_metadata.is_none(),
+                "Deleted schema metadata removed"
+            );
+
             let name = SchemaName::new("project")
                 .expect("Failed to create schema name");
             let name_key = SchemaNameKey::from(&name);
@@ -176,6 +232,63 @@ mod tests {
                 .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name_key.as_str())
                 .expect("Index lookup should succeed");
             assert!(indexed.is_none(), "Deleted schema should be unindexed");
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn save_batch_persists_schemas_and_metadata() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test db");
+            let cmd = RedbSchemaCommand::new_redb(&db);
+
+            let schema_a =
+                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")
+                    .expect("Failed to create schema fixture");
+            let schema_b = fixtures::schema_fixture(
+                fixtures::TEST_SCHEMA_ID_PROJECT,
+                "project",
+            )
+            .expect("Failed to create schema fixture");
+
+            let metadata_a = ResolutionMetadata::new(
+                schema_a.id(),
+                Timestamp::now(),
+                None,
+                BankVersion::initial(),
+                None,
+            );
+            let metadata_b = ResolutionMetadata::new(
+                schema_b.id(),
+                Timestamp::now(),
+                None,
+                BankVersion::initial(),
+                None,
+            );
+
+            cmd.save_batch(&[
+                (schema_a.clone(), metadata_a.clone()),
+                (schema_b.clone(), metadata_b.clone()),
+            ])
+            .expect("Batch save should succeed");
+
+            let schema_key = schema_a.id().as_uuid().to_string();
+            let stored_schema = db
+                .get_owned::<Schema>(SCHEMA_BY_ID, &schema_key)
+                .expect("Read after batch save should succeed");
+            assert!(stored_schema.is_some(), "Schema should be stored");
+
+            let metadata_key = schema_b.id().as_uuid().to_string();
+            let stored_metadata = db
+                .get_owned::<ResolutionMetadata>(
+                    SCHEMA_METADATA,
+                    metadata_key.as_str(),
+                )
+                .expect("Metadata read should succeed");
+            assert!(stored_metadata.is_some(), "Metadata should be stored");
         }
     }
 }
