@@ -44,6 +44,18 @@ pub struct PropertyBankUpdated {
     pub timestamp: Timestamp,
 }
 
+impl PropertyBankUpdated {
+    /// Creates a new property bank updated event.
+    #[inline]
+    #[must_use]
+    pub fn new(property_count: usize, timestamp: Timestamp) -> Self {
+        Self {
+            property_count,
+            timestamp,
+        }
+    }
+}
+
 /// Schema created domain event.
 ///
 /// Published when a new schema is created, allowing other bounded contexts
@@ -87,31 +99,6 @@ pub struct SchemaCreated {
     pub timestamp: Timestamp,
 }
 
-/// Domain events for the Schema context.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Events {
-    /// Property bank was updated.
-    PropertyBankUpdated(PropertyBankUpdated),
-    /// Schema was created.
-    SchemaCreated(SchemaCreated),
-}
-
-impl PropertyBankUpdated {
-    /// Creates a new property bank updated event.
-    #[inline]
-    #[must_use]
-    pub fn new(property_count: usize, timestamp: Timestamp) -> Self {
-        Self {
-            property_count,
-            timestamp,
-        }
-    }
-}
-
 impl SchemaCreated {
     /// Creates a new schema created event.
     #[inline]
@@ -123,6 +110,19 @@ impl SchemaCreated {
             timestamp,
         }
     }
+}
+
+/// Domain events for the Schema context.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Events {
+    /// Property bank was updated.
+    PropertyBankUpdated(PropertyBankUpdated),
+    /// Schema was created.
+    SchemaCreated(SchemaCreated),
 }
 
 #[cfg(test)]
