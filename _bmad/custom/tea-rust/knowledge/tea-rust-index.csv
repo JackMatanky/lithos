@@ -10,6 +10,10 @@ naming,Rust Test Naming,Test naming conventions and patterns,"rust,testing,namin
 assertions,Rust Test Assertions,Assertion patterns and error messaging,"rust,testing,assertions",assertions.md
 linting,Linter Warning Management,Clippy standards and suppression policies for tests,"rust,testing,linting,clippy",linting.md
 fixtures,Rust Test Fixtures,Fixture setup strategies and isolation guidance,"rust,testing,fixtures",fixtures.md
+test-doc-tests,Doc-Tests Guide,Executable examples and living documentation patterns,"rust,testing,doc-tests",test-doc-tests.md
+test-safety,Safety & Determinism,Sync-first architecture and deterministic testing rules,"rust,testing,safety,determinism",test-safety.md
+test-coverage,Coverage Tools,Guide to llvm-cov and tarpaulin usage,"rust,testing,coverage",test-coverage.md
+test-policy,Testing Policies,Behavioral rules and snapshot testing policy,"rust,testing,policy",test-policy.md
 mocks,Mocking Patterns,Trait-based and automock patterns,"rust,testing,mocks",mocks.md
 benchmarks,Performance & Benchmarking,Criterion benchmarks and memory profiling,"rust,testing,benchmarks,performance",test-benchmarks.md
 quality-gates,Quality Gates,Coverage and performance thresholds,"rust,testing,quality-gates",quality-gates.md
