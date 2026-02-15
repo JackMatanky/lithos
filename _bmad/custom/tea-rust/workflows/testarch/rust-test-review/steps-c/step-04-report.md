@@ -1,7 +1,7 @@
 ---
 name: "step-04-report"
 description: "Finalize review report"
-outputFile: "{output_folder}/tea-rust/test-review.md"
+outputFile: "{test_review_output}/rust-test-review.md"
 ---
 
 # Step 4: Final Report

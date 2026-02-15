@@ -2,6 +2,7 @@
 name: "step-02-scenarios"
 description: "Define integration/E2E scenarios"
 nextStepFile: "./step-03-plan.md"
+outputFile: "{integration_output}/rust-integration-plan.md"
 ---
 
 # Step 2: Scenarios

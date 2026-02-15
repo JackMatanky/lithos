@@ -1,7 +1,7 @@
 ---
 name: "step-04-summary"
 description: "Finalize benchmark plan"
-outputFile: "{output_folder}/tea-rust/benchmark-plan.md"
+outputFile: "{benchmark_output}/rust-benchmark-plan.md"
 ---
 
 # Step 4: Summary

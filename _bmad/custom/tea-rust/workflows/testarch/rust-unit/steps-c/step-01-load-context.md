@@ -2,7 +2,7 @@
 name: "step-01-load-context"
 description: "Load config and target scope for unit testing"
 nextStepFile: "./step-02-inventory.md"
-outputFile: "{output_folder}/tea-rust/unit-test-plan.md"
+outputFile: "{test_design_output}/rust-unit-test-plan.md"
 templateFile: "../templates/unit-plan-template.md"
 knowledgeIndex: "{project-root}/_bmad/custom/tea-rust/knowledge/tea-rust-index.csv"
 configSource: "{project-root}/_bmad/custom/tea-rust/config.yaml"

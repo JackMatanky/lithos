@@ -2,7 +2,7 @@
 name: "step-04-refactor-phase"
 description: "Refactor plan to improve quality while keeping tests green"
 nextStepFile: "./step-05-integrate.md"
-outputFile: "{output_folder}/tea-rust/tdd-plan.md"
+outputFile: "{test_design_output}/rust-tdd-plan.md"
 ---
 
 # Step 4: Refactor Phase

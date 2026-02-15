@@ -1,7 +1,7 @@
 ---
 name: "step-05-integrate"
 description: "Finalize integration and verification"
-outputFile: "{output_folder}/tea-rust/tdd-plan.md"
+outputFile: "{test_design_output}/rust-tdd-plan.md"
 ---
 
 # Step 5: Integrate and Verify

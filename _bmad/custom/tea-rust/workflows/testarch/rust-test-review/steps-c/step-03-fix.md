@@ -2,7 +2,7 @@
 name: "step-03-fix"
 description: "Apply fixes like a senior dev"
 nextStepFile: "./step-04-report.md"
-outputFile: "{output_folder}/tea-rust/test-review.md"
+outputFile: "{test_review_output}/rust-test-review.md"
 ---
 
 # Step 3: Apply Fixes

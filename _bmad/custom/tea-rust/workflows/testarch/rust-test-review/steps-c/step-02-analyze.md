@@ -2,7 +2,7 @@
 name: "step-02-analyze"
 description: "Analyze tests and identify issues"
 nextStepFile: "./step-03-fix.md"
-outputFile: "{output_folder}/tea-rust/test-review.md"
+outputFile: "{test_review_output}/rust-test-review.md"
 ---
 
 # Step 2: Analyze Tests

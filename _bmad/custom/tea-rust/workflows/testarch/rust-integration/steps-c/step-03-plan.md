@@ -2,6 +2,7 @@
 name: "step-03-plan"
 description: "Plan setup/teardown and doc comments"
 nextStepFile: "./step-04-summary.md"
+outputFile: "{integration_output}/rust-integration-plan.md"
 ---
 
 # Step 3: Plan Execution

@@ -2,7 +2,7 @@
 name: "step-03-green-phase"
 description: "Document minimal implementation plan to satisfy tests"
 nextStepFile: "./step-04-refactor-phase.md"
-outputFile: "{output_folder}/tea-rust/tdd-plan.md"
+outputFile: "{test_design_output}/rust-tdd-plan.md"
 ---
 
 # Step 3: Green Phase (Minimal Implementation)

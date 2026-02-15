@@ -2,7 +2,7 @@
 name: "step-03-plan"
 description: "Define baselines and regression thresholds"
 nextStepFile: "./step-04-summary.md"
-outputFile: "{output_folder}/tea-rust/benchmark-plan.md"
+outputFile: "{benchmark_output}/rust-benchmark-plan.md"
 ---
 
 # Step 3: Baselines and Thresholds
