@@ -5,11 +5,9 @@ Owner: Jack
 Scope: lithos-core/src/schema/
 
 Goal
-- Align schema context with updated design docs and idiomatic Rust patterns.
-- Introduce typed IDs/newtypes, replace boolean flags with semantic enums, and
-  normalize events/ports/query/command interfaces.
-- Preserve raw input DTOs as primitives (Uuid + bool flags) and map at the
-  resolver boundary.
+- Align schema context with design docs and idiomatic Rust patterns.
+- Enforce type-driven domain invariants while keeping raw inputs tolerant.
+- Fully implement incremental resolution and CQRS metadata support.
 
 Alignment Targets
 - docs/design/008-schema-models.md (domain models, newtypes, metadata)
@@ -18,10 +16,11 @@ Alignment Targets
 - docs/design/011-property-spec.md (raw spec shape, validation behavior, modularization)
 
 Alignment Checklist (must be true at completion)
-- Domain models match 008: newtypes, private fields, semantic enums, metadata types.
-- CQRS surface matches 009: UUID-first storage, name index, metadata tier, errors split.
-- Resolver matches 010: unified SchemaResolver, deterministic ordering, typed refs.
-- PropertySpec matches 011: raw spec type naming, modularization, validation rules.
+- Raw inputs are tolerant: RawSchema and RawProperty use String-based fields; validation happens in resolver.
+- Domain models match 008: private-field newtypes, semantic enums, SchemaHash, BankVersion, Timestamp, ResolutionMetadata.
+- Resolver matches 010: unified SchemaResolver, deterministic ordering, typed PropertyRef, resolve_all + resolve_changed.
+- CQRS matches 009: UUID-first storage, name index, metadata table, save_with_metadata + list_metadata + archive access.
+- PropertySpec matches 011: RawPropertySpec in schema::raw, modularized property_spec, validation rules enforced.
 
 Constraints
 - Context isolation: schema must not import note/template domains.
@@ -34,65 +33,61 @@ Constraints
 
 Phases
 
-Phase 1: Baseline test coverage (StringSpec UTF-8 bytes)
+Phase 1: Baseline PropertySpec coverage (StringSpec UTF-8 bytes)
 - Add tests to lock in UTF-8 byte-length semantics for StringSpec.
 - Target file: lithos-core/src/schema/property_spec.rs
-- Exit criteria: tests cover multibyte example (e.g., "caf\u{00e9}").
+- Exit criteria: tests cover multibyte example (e.g., "cafe\u{00e9}").
 
-Phase 2: Core newtypes + semantic enums + schema module updates
-- Add newtypes: SchemaId, PropertyId, BankVersion, SchemaHash, Timestamp.
-- Add enums: Cardinality, Multiplicity.
-- Update Property, PropertyBank, Schema to use newtypes/enums.
-- Update resolver/graph/command/query/ports/events for typed IDs/names.
-- Update docs/tests/fixtures to use newtypes and as_str().
-- Exit criteria: no raw Uuid/required/array usage in domain types; raw layer
-  stays primitive; schema modules compile; hooks pass.
+Phase 2: Domain model alignment and invariants
+- Ensure SchemaName/PropertyName enforce lowercase-only pattern per design (update patterns and tests).
+- Keep private-field newtypes and semantic enums (Cardinality, Multiplicity).
+- Add SchemaHash compute helper and ResolutionMetadata type (if missing).
+- Exit criteria: domain types match 008 exactly; tests updated for lowercase rules.
 
-Phase 3: RawPropertySpec rename/move
-- Rename RawPropertySpec to PropertySpecDef (or equivalent per design spec).
-- Move raw spec definitions to schema/property_spec module layout.
-- Update raw schema DTOs to reference the renamed type.
-- Update resolver adapters and tests accordingly.
-- Exit criteria: compilation success; raw DTOs unchanged (primitives retained).
+Phase 3: Raw input layer alignment
+- Make RawSchema fields tolerant: name, extends, excludes use String-based types.
+- Keep RawPropertyInline fields primitive (String name, bool flags, RawPropertySpec).
+- Retain RawPropertyRef as string at adapter boundary only; parse into typed PropertyRef before domain resolver.
+- Exit criteria: raw types can be deserialized even when invalid; resolver owns validation.
 
-Phase 4: PropertySpec modularization
-- Split PropertySpec definitions into focused submodules.
-- Ensure public API is stable and re-exported from property_spec mod.
-- Move tests alongside submodules or keep consolidated if preferred by style.
-- Exit criteria: no regressions; consistent module organization.
+Phase 4: Resolver alignment (SchemaResolver)
+- Rename Resolver to SchemaResolver and keep graph internal.
+- Use HashMap<PropertyName, Property> working set (no String keys).
+- Add resolve_changed and return ResolutionMetadata with parent hash + bank version.
+- Remove $ref string parsing from resolver; accept PropertyRef from adapters.
+- Exit criteria: deterministic order, typed refs, incremental API available.
 
-Phase 5: Storage boundary alignment
-- Ensure ports traits remain CQRS-split with typed IDs/names.
-- Align schema storage keys and query patterns for newtypes.
-- Update any serialization helpers for newtypes (if required).
-- Exit criteria: storage adapters compile and pass tests.
+Phase 5: CQRS metadata + UUID-first storage alignment
+- Add schema_metadata table and ResolutionMetadata persistence.
+- Implement save_with_metadata and save_batch in Command and ports.
+- Implement list_metadata/find_metadata_by_id/lookup_id_by_name in Query and ports.
+- Ensure SchemaId is the canonical storage key with SchemaNameKey index.
+- Exit criteria: CQRS API matches 009 and metadata round-trips.
 
-Phase 6: Error and validation refinements
-- Replace generic errors with structured variants where needed.
-- Ensure validation errors include context for newtypes.
-- Document panics/errors in public APIs.
-- Exit criteria: clippy missing-docs clean; error types are explicit.
+Phase 6: PropertySpec modularization
+- Split property_spec into submodules (validated, invariants, path, regex_cache).
+- Keep RawPropertySpec in schema::raw; remove any PropertySpecDef remnants.
+- Ensure validate methods use borrowed &str and path component semantics.
+- Exit criteria: module layout matches 011; no behavior regressions.
 
-Phase 7: Event model stabilization
-- Confirm event payloads reflect newtypes and timestamps.
-- Add/adjust event tests or docs.
-- Ensure pending event emission remains consistent.
-- Exit criteria: event consumers compile; doc examples pass.
+Phase 7: Error model alignment
+- Add structured errors per design: ParentNotFound, PropertyRefNotFound, DuplicateProperty.
+- Align SchemaCommandError/SchemaQueryError variants with 009 (NotFound/Corruption/Conflict).
+- Exit criteria: error variants are structured and used consistently.
 
-Phase 8: CLI / integration alignment (if applicable)
-- Update CLI commands and parsing to use SchemaName/PropertyName as needed.
-- Update any integration tests or fixtures referencing schema IDs/names.
+Phase 8: Event model + tests
+- Ensure events reflect newtypes and timestamps only (no raw primitives).
+- Update tests/docs to follow new constraints (lowercase names, typed refs).
+- Exit criteria: event tests green and docs updated.
+
+Phase 9: CLI and integration alignment
+- Update CLI parsing to construct SchemaName/PropertyName from raw strings.
+- Update fixtures to reflect lowercase-only names and new CQRS APIs.
 - Exit criteria: CLI build/tests green.
 
-Phase 9: Test cleanup and coverage checks
-- Remove outdated fixtures or duplicated helpers.
-- Add missing tests for newtype conversion behaviors.
-- Ensure required doc tests run when doc examples changed.
-- Exit criteria: coverage for critical paths is maintained or improved.
-
 Phase 10: Documentation and ADRs
-- Update schema docs and references to newtypes/enums.
-- Add ADR if a nontrivial architectural choice was made.
+- Update schema docs to match final APIs and behaviors.
+- Add ADRs for storage migrations or format changes (if any).
 - Exit criteria: adr:validate green; docs consistent.
 
 Phase 11: Final verification
@@ -102,10 +97,10 @@ Phase 11: Final verification
 
 Current Status
 - Phase 1: complete.
-- Phase 2: complete; newtypes/enums/ports/events updated, tests/docs aligned.
-- Next: Phase 3 (RawPropertySpec rename/move).
+- Phase 2: partially complete (newtypes/enums done; lowercase-only validation pending).
+- Next: Phase 3 (raw input layer alignment).
 
 Notes
-- Raw DTOs stay primitive (Uuid + bool required/array). Resolver maps them to
-  Cardinality/Multiplicity.
+- Raw DTOs should be tolerant and string-based; validation belongs in resolver.
+- $ref parsing is adapter responsibility; domain resolves typed PropertyRef only.
 - Use #[expect] only when necessary and with descriptive reasons.
