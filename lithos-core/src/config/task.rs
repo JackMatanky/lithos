@@ -425,7 +425,7 @@ impl From<StatusName> for String {
     rkyv::Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
-pub struct StatusSymbol(char);
+pub struct StatusSymbol(u8);
 
 impl StatusSymbol {
     #[inline]
@@ -435,8 +435,14 @@ impl StatusSymbol {
     /// Returns [`ConfigError::ValidationFailed`] if the symbol is not a
     /// printable ASCII character.
     pub fn try_new(value: char) -> Result<Self, ConfigError> {
-        if value == ' ' || value.is_ascii_graphic() {
-            return Ok(Self(value));
+        if (value == ' ' || value.is_ascii_graphic()) && value.is_ascii() {
+            let byte = u8::try_from(value).map_err(|e| {
+                ConfigError::ValidationFailed {
+                    field: "task.status".to_owned().into(),
+                    message: format!("invalid status symbol: {e}").into(),
+                }
+            })?;
+            return Ok(Self(byte));
         }
         Err(ConfigError::ValidationFailed {
             field: "task.status".to_owned().into(),
@@ -448,7 +454,7 @@ impl StatusSymbol {
     #[must_use]
     /// Return the underlying status symbol.
     pub fn value(self) -> char {
-        self.0
+        char::from(self.0)
     }
 }
 
