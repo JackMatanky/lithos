@@ -5,7 +5,7 @@
 
 use super::{
     aggregate::{Schema, SchemaId},
-    error::SchemaError,
+    error::SchemaCommandError,
     ports as schema_ports,
 };
 
@@ -30,28 +30,28 @@ impl<C> Command<C> {
 impl<C> Command<C>
 where
     C: schema_ports::Command,
-    C::Error: std::error::Error,
+    C::Error: Into<crate::db::DbError>,
 {
     /// Delete a schema by ID.
     ///
     /// # Errors
-    /// Returns `SchemaError` if deletion fails.
+    /// Returns `SchemaCommandError` if deletion fails.
     #[inline]
-    pub fn delete(&self, id: SchemaId) -> Result<(), SchemaError> {
+    pub fn delete(&self, id: SchemaId) -> Result<(), SchemaCommandError> {
         self.command_port
             .delete(id)
-            .map_err(|error| SchemaError::Storage(error.to_string()))
+            .map_err(|error| SchemaCommandError::Storage(error.into()))
     }
 
     /// Save a schema to persistence.
     ///
     /// # Errors
-    /// Returns `SchemaError` if saving fails.
+    /// Returns `SchemaCommandError` if saving fails.
     #[inline]
-    pub fn save(&self, schema: &Schema) -> Result<(), SchemaError> {
+    pub fn save(&self, schema: &Schema) -> Result<(), SchemaCommandError> {
         self.command_port
             .save(schema)
-            .map_err(|error| SchemaError::Storage(error.to_string()))
+            .map_err(|error| SchemaCommandError::Storage(error.into()))
     }
 }
 

@@ -3,6 +3,8 @@
 //! This module defines schema-specific errors using thiserror for
 //! structured error handling.
 
+use crate::db::DbError;
+
 /// Schema-related errors.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
@@ -149,6 +151,42 @@ pub enum SchemaError {
     Storage(String),
 }
 
+/// Schema command errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaCommandError {
+    /// Domain validation failed.
+    #[error("domain validation failed: {0}")]
+    Domain(#[from] SchemaError),
+
+    /// Storage error.
+    #[error("storage error: {0}")]
+    Storage(#[from] DbError),
+
+    /// Conflict during save/delete operations.
+    #[error("conflict: {reason}")]
+    Conflict {
+        /// Reason for the conflict.
+        reason: Box<str>,
+    },
+}
+
+/// Schema query errors.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaQueryError {
+    /// Storage error.
+    #[error("storage error: {0}")]
+    Storage(#[from] DbError),
+
+    /// Data corruption detected in storage.
+    #[error("data corruption: {reason}")]
+    Corruption {
+        /// Reason for corruption.
+        reason: Box<str>,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
@@ -159,6 +197,18 @@ mod tests {
     fn schema_error_is_send_and_sync() {
         fn is_send_sync<T: Send + Sync>() {}
         is_send_sync::<SchemaError>();
+    }
+
+    #[test]
+    fn schema_command_error_is_send_and_sync() {
+        fn is_send_sync<T: Send + Sync>() {}
+        is_send_sync::<SchemaCommandError>();
+    }
+
+    #[test]
+    fn schema_query_error_is_send_and_sync() {
+        fn is_send_sync<T: Send + Sync>() {}
+        is_send_sync::<SchemaQueryError>();
     }
 
     #[rstest]

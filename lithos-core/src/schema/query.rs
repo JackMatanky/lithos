@@ -5,7 +5,7 @@
 
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
-    error::SchemaError,
+    error::SchemaQueryError,
     ports as schema_ports,
 };
 
@@ -30,35 +30,35 @@ impl<Q> Query<Q> {
 impl<Q> Query<Q>
 where
     Q: schema_ports::Query,
-    Q::Error: std::error::Error,
+    Q::Error: Into<crate::db::DbError>,
 {
     /// Find a schema by its ID.
     ///
     /// # Errors
-    /// Returns `SchemaError` if query fails.
+    /// Returns `SchemaQueryError` if query fails.
     #[inline]
     pub fn find_by_id(
         &self,
         id: SchemaId,
-    ) -> Result<Option<Schema>, SchemaError> {
+    ) -> Result<Option<Schema>, SchemaQueryError> {
         self.query_port
             .find_by_id(id)
-            .map_err(|error| SchemaError::Storage(error.to_string()))
+            .map_err(|error| SchemaQueryError::Storage(error.into()))
     }
 
     /// Find a schema by its unique name.
     ///
     /// # Errors
-    /// Returns `SchemaError` if query fails.
+    /// Returns `SchemaQueryError` if query fails.
     #[inline]
     pub fn find_by_name(
         &self,
         name: &SchemaName,
-    ) -> Result<Option<Schema>, SchemaError> {
+    ) -> Result<Option<Schema>, SchemaQueryError> {
         let id = self
             .query_port
             .lookup_id_by_name(name)
-            .map_err(|error| SchemaError::Storage(error.to_string()))?;
+            .map_err(|error| SchemaQueryError::Storage(error.into()))?;
         let Some(id) = id else {
             return Ok(None);
         };
@@ -68,49 +68,49 @@ where
     /// List all available schemas.
     ///
     /// # Errors
-    /// Returns `SchemaError` if query fails.
+    /// Returns `SchemaQueryError` if query fails.
     #[inline]
-    pub fn list(&self) -> Result<Vec<Schema>, SchemaError> {
+    pub fn list(&self) -> Result<Vec<Schema>, SchemaQueryError> {
         self.query_port
             .list()
-            .map_err(|error| SchemaError::Storage(error.to_string()))
+            .map_err(|error| SchemaQueryError::Storage(error.into()))
     }
 
     /// Access a schema by ID as archived data.
     ///
     /// # Errors
-    /// Returns `SchemaError` if query fails.
+    /// Returns `SchemaQueryError` if query fails.
     #[inline]
     pub fn with_archived_by_id<F, R>(
         &self,
         id: SchemaId,
         f: F,
-    ) -> Result<Option<R>, SchemaError>
+    ) -> Result<Option<R>, SchemaQueryError>
     where
         F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
     {
         self.query_port
             .with_archived_by_id(id, f)
-            .map_err(|error| SchemaError::Storage(error.to_string()))
+            .map_err(|error| SchemaQueryError::Storage(error.into()))
     }
 
     /// Access a schema by name as archived data.
     ///
     /// # Errors
-    /// Returns `SchemaError` if query fails.
+    /// Returns `SchemaQueryError` if query fails.
     #[inline]
     pub fn with_archived_by_name<F, R>(
         &self,
         name: &SchemaName,
         f: F,
-    ) -> Result<Option<R>, SchemaError>
+    ) -> Result<Option<R>, SchemaQueryError>
     where
         F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
     {
         let id = self
             .query_port
             .lookup_id_by_name(name)
-            .map_err(|error| SchemaError::Storage(error.to_string()))?;
+            .map_err(|error| SchemaQueryError::Storage(error.into()))?;
         let Some(id) = id else {
             return Ok(None);
         };
