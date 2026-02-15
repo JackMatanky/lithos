@@ -281,7 +281,7 @@ fn validate_non_empty(
 ) -> Result<(), ConfigError> {
     if value.is_empty() {
         return Err(ConfigError::ValidationFailed {
-            field: field.to_owned().into(),
+            field: field.into(),
             message: format!("{field} cannot be empty").into(),
         });
     }

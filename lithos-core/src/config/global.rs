@@ -351,8 +351,8 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
             RawTrustedVaults::List(list) => {
                 if list.is_empty() {
                     return Err(ConfigError::ValidationFailed {
-                        field: "trusted_vaults".to_owned().into(),
-                        message: "list cannot be empty".to_owned().into(),
+                        field: "trusted_vaults".into(),
+                        message: "list cannot be empty".into(),
                     });
                 }
                 let paths = list
@@ -364,8 +364,8 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
             RawTrustedVaults::Map(map) => {
                 if map.is_empty() {
                     return Err(ConfigError::ValidationFailed {
-                        field: "trusted_vaults".to_owned().into(),
-                        message: "map cannot be empty".to_owned().into(),
+                        field: "trusted_vaults".into(),
+                        message: "map cannot be empty".into(),
                     });
                 }
                 let paths = map

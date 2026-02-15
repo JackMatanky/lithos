@@ -645,7 +645,9 @@ impl SchemaNameKey {
 impl From<&SchemaName> for SchemaNameKey {
     #[inline]
     fn from(name: &SchemaName) -> Self {
-        Self(name.as_str().to_lowercase().into_boxed_str())
+        // Names are already validated lowercase via ALPHANUMERIC_NAME_LOWER
+        // regex
+        Self(name.as_str().into())
     }
 }
 
@@ -681,7 +683,9 @@ impl PropertyNameKey {
 impl From<&super::property::PropertyName> for PropertyNameKey {
     #[inline]
     fn from(name: &super::property::PropertyName) -> Self {
-        Self(name.as_str().to_lowercase().into_boxed_str())
+        // Names are already validated lowercase via ALPHANUMERIC_NAME_LOWER
+        // regex
+        Self(name.as_str().into())
     }
 }
 

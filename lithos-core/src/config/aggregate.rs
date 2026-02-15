@@ -213,8 +213,8 @@ impl Version {
     pub fn next(self) -> Result<Self, ConfigError> {
         self.0.checked_add(1).map(Self).ok_or_else(|| {
             ConfigError::ValidationFailed {
-                field: "config_version".to_owned().into(),
-                message: "config version overflow".to_owned().into(),
+                field: "config_version".into(),
+                message: "config version overflow".into(),
             }
         })
     }
@@ -234,8 +234,8 @@ impl TryFrom<u64> for Version {
     fn try_from(value: u64) -> Result<Self, Self::Error> {
         if value == 0 {
             return Err(ConfigError::ValidationFailed {
-                field: "config_version".to_owned().into(),
-                message: "config version cannot be zero".to_owned().into(),
+                field: "config_version".into(),
+                message: "config version cannot be zero".into(),
             });
         }
         Ok(Self(value))

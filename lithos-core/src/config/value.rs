@@ -107,7 +107,7 @@ impl FieldSpec {
             } => {
                 if values.is_empty() {
                     return Err(ConfigError::ValidationFailed {
-                        field: "fields.values".to_owned().into(),
+                        field: "fields.values".into(),
                         message: "enum values cannot be empty"
                             .to_owned()
                             .into(),
@@ -127,7 +127,7 @@ impl FieldSpec {
                 let bounds = Bounds::from_options(min, max)
                     .transpose()
                     .map_err(|e| ConfigError::ValidationFailed {
-                        field: "fields".to_owned().into(),
+                        field: "fields".into(),
                         message: e.to_string().into(),
                     })?
                     .unwrap_or(Bounds::Unbounded);
@@ -143,7 +143,7 @@ impl FieldSpec {
                 let bounds = Bounds::from_options(min, max)
                     .transpose()
                     .map_err(|e| ConfigError::ValidationFailed {
-                        field: "fields".to_owned().into(),
+                        field: "fields".into(),
                         message: e.to_string().into(),
                     })?
                     .unwrap_or(Bounds::Unbounded);
@@ -168,13 +168,13 @@ impl FieldSpec {
                 if let Some(pattern_str) = pattern.as_ref() {
                     if pattern_str.len() > 256 {
                         return Err(ConfigError::ValidationFailed {
-                            field: "fields.pattern".to_owned().into(),
-                            message: "pattern too long".to_owned().into(),
+                            field: "fields.pattern".into(),
+                            message: "pattern too long".into(),
                         });
                     }
                     let regex = Regex::new(pattern_str).map_err(|error| {
                         ConfigError::ValidationFailed {
-                            field: "fields.pattern".to_owned().into(),
+                            field: "fields.pattern".into(),
                             message: error.to_string().into(),
                         }
                     })?;
@@ -266,13 +266,13 @@ impl FieldSpec {
     ) -> Result<(), ConfigError> {
         let number =
             value.as_i64().ok_or_else(|| ConfigError::InvalidType {
-                field: name.as_str().to_owned().into(),
-                expected: "integer".to_owned().into(),
+                field: name.as_str().into(),
+                expected: "integer".into(),
                 actual: value_type(value).into(),
             })?;
         if !bounds.validate(number) {
             return Err(ConfigError::OutOfRange {
-                field: name.as_str().to_owned().into(),
+                field: name.as_str().into(),
                 value: number.to_string().into(),
                 min: bounds.min().map(|v| v.to_string().into()),
                 max: bounds.max().map(|v| v.to_string().into()),
@@ -288,13 +288,13 @@ impl FieldSpec {
     ) -> Result<(), ConfigError> {
         let number =
             value.as_f64().ok_or_else(|| ConfigError::InvalidType {
-                field: name.as_str().to_owned().into(),
-                expected: "float".to_owned().into(),
+                field: name.as_str().into(),
+                expected: "float".into(),
                 actual: value_type(value).into(),
             })?;
         if !bounds.validate(number) {
             return Err(ConfigError::OutOfRange {
-                field: name.as_str().to_owned().into(),
+                field: name.as_str().into(),
                 value: number.to_string().into(),
                 min: bounds.min().map(|v| v.to_string().into()),
                 max: bounds.max().map(|v| v.to_string().into()),
@@ -309,16 +309,16 @@ impl FieldSpec {
         pattern: Option<&Regex>,
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
-            field: name.as_str().to_owned().into(),
-            expected: "string".to_owned().into(),
+            field: name.as_str().into(),
+            expected: "string".into(),
             actual: value_type(value).into(),
         })?;
         if let Some(regex) = pattern
             && !regex.is_match(text)
         {
             return Err(ConfigError::ValidationFailed {
-                field: name.as_str().to_owned().into(),
-                message: "pattern mismatch".to_owned().into(),
+                field: name.as_str().into(),
+                message: "pattern mismatch".into(),
             });
         }
         Ok(())
@@ -330,14 +330,14 @@ impl FieldSpec {
         values: &[Box<str>],
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
-            field: name.as_str().to_owned().into(),
-            expected: "string".to_owned().into(),
+            field: name.as_str().into(),
+            expected: "string".into(),
             actual: value_type(value).into(),
         })?;
         if !values.iter().any(|v| v.as_ref() == text) {
             return Err(ConfigError::InvalidEnumValue {
-                field: name.as_str().to_owned().into(),
-                value: text.to_owned().into(),
+                field: name.as_str().into(),
+                value: text.into(),
                 allowed: values
                     .iter()
                     .map(std::string::ToString::to_string)
@@ -353,8 +353,8 @@ impl FieldSpec {
         format: &str,
     ) -> Result<(), ConfigError> {
         let text = value.as_str().ok_or_else(|| ConfigError::InvalidType {
-            field: name.as_str().to_owned().into(),
-            expected: "string".to_owned().into(),
+            field: name.as_str().into(),
+            expected: "string".into(),
             actual: value_type(value).into(),
         })?;
         parse_datetime_value(text, format, name.as_str())?;
@@ -394,8 +394,8 @@ impl FieldName {
         let text = value.as_ref();
         if text.is_empty() || text.len() > 64 {
             return Err(ConfigError::ValidationFailed {
-                field: "fields.name".to_owned().into(),
-                message: "field name must be 1-64 characters".to_owned().into(),
+                field: "fields.name".into(),
+                message: "field name must be 1-64 characters".into(),
             });
         }
         if !text
@@ -403,7 +403,7 @@ impl FieldName {
             .all(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
             return Err(ConfigError::ValidationFailed {
-                field: "fields.name".to_owned().into(),
+                field: "fields.name".into(),
                 message: "field name must be ASCII alphanumeric, '_' or '-'"
                     .to_owned()
                     .into(),
@@ -570,16 +570,16 @@ pub(crate) fn validate_chrono_format(
 ) -> Result<(), ConfigError> {
     if format.is_empty() {
         return Err(ConfigError::ValidationFailed {
-            field: field.to_owned().into(),
-            message: "format cannot be empty".to_owned().into(),
+            field: field.into(),
+            message: "format cannot be empty".into(),
         });
     }
     // Simple verification that format is valid for chrono
     let now = chrono::Utc::now().naive_utc();
     if now.format(format).to_string().is_empty() {
         return Err(ConfigError::ValidationFailed {
-            field: field.to_owned().into(),
-            message: "invalid chrono format".to_owned().into(),
+            field: field.into(),
+            message: "invalid chrono format".into(),
         });
     }
     Ok(())
@@ -608,14 +608,14 @@ fn parse_datetime_value(
     let date =
         chrono::NaiveDate::parse_from_str(text, format).map_err(|error| {
             ConfigError::ValidationFailed {
-                field: field.to_owned().into(),
+                field: field.into(),
                 message: error.to_string().into(),
             }
         })?;
 
     date.and_hms_opt(0, 0, 0).ok_or_else(|| ConfigError::ValidationFailed {
-        field: field.to_owned().into(),
-        message: "invalid date time".to_owned().into(),
+        field: field.into(),
+        message: "invalid date time".into(),
     })
 }
 

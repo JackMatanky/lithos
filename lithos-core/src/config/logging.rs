@@ -171,7 +171,7 @@ impl TryFrom<String> for LogLevel {
             "debug" => Ok(Self::Debug),
             "trace" => Ok(Self::Trace),
             _ => Err(ConfigError::InvalidEnumValue {
-                field: "log_level".to_owned().into(),
+                field: "log_level".into(),
                 value: value.into(),
                 allowed: ["error", "warn", "info", "debug", "trace"]
                     .iter()

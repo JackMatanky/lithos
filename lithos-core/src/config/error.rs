@@ -182,51 +182,51 @@ mod tests {
     #[rstest]
     #[case::validation_field(
         ConfigError::ValidationFailed {
-            field: "vault_path".to_owned().into(),
-            message: "cannot be empty".to_owned().into()
+            field: "vault_path".into(),
+            message: "cannot be empty".into()
         },
         "vault_path"
     )]
     #[case::validation_message(
         ConfigError::ValidationFailed {
-            field: "vault_path".to_owned().into(),
-            message: "cannot be empty".to_owned().into()
+            field: "vault_path".into(),
+            message: "cannot be empty".into()
         },
         "cannot be empty"
     )]
     #[case::missing_field_name(
         ConfigError::MissingRequiredField {
-            field: "templates_dir".to_owned().into()
+            field: "templates_dir".into()
         },
         "templates_dir"
     )]
     #[case::missing_field_message(
         ConfigError::MissingRequiredField {
-            field: "templates_dir".to_owned().into()
+            field: "templates_dir".into()
         },
         "missing"
     )]
     #[case::invalid_type_field(
         ConfigError::InvalidType {
-            field: "log_level".to_owned().into(),
-            expected: "String".to_owned().into(),
-            actual: "Number".to_owned().into()
+            field: "log_level".into(),
+            expected: "String".into(),
+            actual: "Number".into()
         },
         "log_level"
     )]
     #[case::invalid_type_expected(
         ConfigError::InvalidType {
-            field: "log_level".to_owned().into(),
-            expected: "String".to_owned().into(),
-            actual: "Number".to_owned().into()
+            field: "log_level".into(),
+            expected: "String".into(),
+            actual: "Number".into()
         },
         "String"
     )]
     #[case::invalid_type_actual(
         ConfigError::InvalidType {
-            field: "log_level".to_owned().into(),
-            expected: "String".to_owned().into(),
-            actual: "Number".to_owned().into()
+            field: "log_level".into(),
+            expected: "String".into(),
+            actual: "Number".into()
         },
         "Number"
     )]

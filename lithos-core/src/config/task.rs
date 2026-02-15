@@ -146,7 +146,7 @@ impl Task {
             for field_name in fields_list {
                 if !fields.contains_key(field_name.as_str()) {
                     return Err(ConfigError::ValidationFailed {
-                        field: "task.indexing.fields".to_owned().into(),
+                        field: "task.indexing.fields".into(),
                         message: format!("unknown field: {field_name}").into(),
                     });
                 }
@@ -279,14 +279,14 @@ impl CheckboxStatus {
 
             if by_name.contains_key(&status_name) {
                 return Err(ConfigError::ValidationFailed {
-                    field: "task.status".to_owned().into(),
-                    message: "duplicate status name".to_owned().into(),
+                    field: "task.status".into(),
+                    message: "duplicate status name".into(),
                 });
             }
             if by_symbol.contains_key(&status_symbol) {
                 return Err(ConfigError::ValidationFailed {
-                    field: "task.status".to_owned().into(),
-                    message: "duplicate status symbol".to_owned().into(),
+                    field: "task.status".into(),
+                    message: "duplicate status symbol".into(),
                 });
             }
 
@@ -296,8 +296,8 @@ impl CheckboxStatus {
 
         if by_name.is_empty() {
             return Err(ConfigError::ValidationFailed {
-                field: "task.status".to_owned().into(),
-                message: "status mapping cannot be empty".to_owned().into(),
+                field: "task.status".into(),
+                message: "status mapping cannot be empty".into(),
             });
         }
 
@@ -374,7 +374,7 @@ impl StatusName {
         let text = value.as_ref();
         if text.is_empty() || text.len() > 32 {
             return Err(ConfigError::ValidationFailed {
-                field: "task.status".to_owned().into(),
+                field: "task.status".into(),
                 message: "status name must be 1-32 characters"
                     .to_owned()
                     .into(),
@@ -382,7 +382,7 @@ impl StatusName {
         }
         if !text.chars().all(|c: char| c.is_ascii_alphanumeric() || c == '_') {
             return Err(ConfigError::ValidationFailed {
-                field: "task.status".to_owned().into(),
+                field: "task.status".into(),
                 message: "status name must be ASCII alphanumeric or '_'"
                     .to_owned()
                     .into(),
@@ -438,15 +438,15 @@ impl StatusSymbol {
         if (value == ' ' || value.is_ascii_graphic()) && value.is_ascii() {
             let byte = u8::try_from(value).map_err(|e| {
                 ConfigError::ValidationFailed {
-                    field: "task.status".to_owned().into(),
+                    field: "task.status".into(),
                     message: format!("invalid status symbol: {e}").into(),
                 }
             })?;
             return Ok(Self(byte));
         }
         Err(ConfigError::ValidationFailed {
-            field: "task.status".to_owned().into(),
-            message: "status symbol must be printable ASCII".to_owned().into(),
+            field: "task.status".into(),
+            message: "status symbol must be printable ASCII".into(),
         })
     }
 
@@ -491,7 +491,7 @@ impl TaskTag {
         let text = value.as_ref();
         if text.len() < 2 || !text.starts_with('#') {
             return Err(ConfigError::ValidationFailed {
-                field: "task_tags".to_owned().into(),
+                field: "task_tags".into(),
                 message: "task tag must start with '#' and be non-empty"
                     .to_owned()
                     .into(),
@@ -503,7 +503,7 @@ impl TaskTag {
             .all(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
             return Err(ConfigError::ValidationFailed {
-                field: "task_tags".to_owned().into(),
+                field: "task_tags".into(),
                 message: "task tag must be ASCII alphanumeric, '_' or '-'"
                     .to_owned()
                     .into(),

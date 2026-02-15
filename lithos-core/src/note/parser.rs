@@ -655,18 +655,42 @@ struct LinkState {
 
 /// Determine embed type from file extension.
 fn determine_embed_type(path: &str) -> EmbedType {
-    let ext = path
-        .rsplit_once('.')
-        .map(|(_, ext)| ext.to_lowercase())
-        .unwrap_or_default();
+    let Some((_, ext)) = path.rsplit_once('.') else {
+        return EmbedType::Note;
+    };
 
-    match ext.as_str() {
-        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" => EmbedType::Image,
-        "mp4" | "webm" | "ogv" | "mov" => EmbedType::Video,
-        "mp3" | "wav" | "ogg" | "m4a" => EmbedType::Audio,
-        "pdf" => EmbedType::Pdf,
-        _ => EmbedType::Note,
+    // Use case-insensitive comparison without allocation
+    if ext.eq_ignore_ascii_case("png")
+        || ext.eq_ignore_ascii_case("jpg")
+        || ext.eq_ignore_ascii_case("jpeg")
+        || ext.eq_ignore_ascii_case("gif")
+        || ext.eq_ignore_ascii_case("svg")
+        || ext.eq_ignore_ascii_case("webp")
+    {
+        return EmbedType::Image;
     }
+
+    if ext.eq_ignore_ascii_case("mp4")
+        || ext.eq_ignore_ascii_case("webm")
+        || ext.eq_ignore_ascii_case("ogv")
+        || ext.eq_ignore_ascii_case("mov")
+    {
+        return EmbedType::Video;
+    }
+
+    if ext.eq_ignore_ascii_case("mp3")
+        || ext.eq_ignore_ascii_case("wav")
+        || ext.eq_ignore_ascii_case("ogg")
+        || ext.eq_ignore_ascii_case("m4a")
+    {
+        return EmbedType::Audio;
+    }
+
+    if ext.eq_ignore_ascii_case("pdf") {
+        return EmbedType::Pdf;
+    }
+
+    EmbedType::Note
 }
 
 /// Check if URL is external (http/https).
