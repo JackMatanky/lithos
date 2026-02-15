@@ -74,6 +74,9 @@ pub enum PropertySpecDef {
     String(StringSpecDef),
 }
 
+/// Raw property specification (serde-facing input type).
+pub type RawPropertySpec = PropertySpecDef;
+
 impl PropertySpecDef {
     /// Get the spec type identifier.
     #[inline]
