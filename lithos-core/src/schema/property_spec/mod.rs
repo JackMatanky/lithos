@@ -9,11 +9,9 @@
               types. Spec suffix is descriptive"
 )]
 
-use std::{
-    collections::{HashMap, hash_map::Entry},
-    path::{Component, Path},
-    sync::{Arc, OnceLock, RwLock},
-};
+mod regex_cache;
+
+use std::path::{Component, Path};
 
 use super::error::SchemaError;
 
@@ -478,7 +476,7 @@ impl StringSpec {
 
         let pattern = match pattern {
             Some(p) => {
-                get_cached_regex(&p)?;
+                regex_cache::get_cached_regex(&p)?;
                 Some(p.into_boxed_str())
             }
             None => None,
@@ -549,7 +547,7 @@ impl StringSpec {
 
     fn validate_pattern(&self, value: &str) -> Result<(), SchemaError> {
         if let Some(pattern) = self.pattern.as_ref() {
-            let re = get_cached_regex(pattern)?;
+            let re = regex_cache::get_cached_regex(pattern)?;
             if !re.is_match(value) {
                 return Err(SchemaError::ValidationFailed(format!(
                     "Value {value} does not match pattern {pattern}"
@@ -731,46 +729,6 @@ impl VaultRelPath {
     #[inline]
     fn as_str(&self) -> &str {
         &self.0
-    }
-}
-
-type RegexCache = HashMap<String, Arc<regex::Regex>>;
-type RegexCacheLock = RwLock<RegexCache>;
-
-static REGEX_CACHE: OnceLock<RegexCacheLock> = OnceLock::new();
-
-fn get_cached_regex(pattern: &str) -> Result<Arc<regex::Regex>, SchemaError> {
-    let cache = REGEX_CACHE.get_or_init(|| RwLock::new(RegexCache::new()));
-
-    // Fast path: read lock.
-    {
-        let guard = match cache.read() {
-            Ok(guard) => guard,
-            Err(e) => e.into_inner(),
-        };
-
-        if let Some(re) = guard.get(pattern) {
-            return Ok(Arc::clone(re));
-        }
-    }
-
-    // Slow path: compile without holding any locks.
-    let compiled = Arc::new(regex::Regex::new(pattern).map_err(|e| {
-        SchemaError::InvalidRegex(format!("Invalid pattern {pattern}: {e}"))
-    })?);
-
-    // Insert (or reuse) under a write lock.
-    let mut guard = match cache.write() {
-        Ok(guard) => guard,
-        Err(e) => e.into_inner(),
-    };
-
-    match guard.entry(pattern.to_owned()) {
-        Entry::Occupied(entry) => Ok(Arc::clone(entry.get())),
-        Entry::Vacant(entry) => {
-            entry.insert(Arc::clone(&compiled));
-            Ok(compiled)
-        }
     }
 }
 
