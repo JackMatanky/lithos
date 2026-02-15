@@ -133,10 +133,12 @@ impl PropertySpec {
     ) -> Result<(), SchemaError> {
         match self {
             Self::Bool(_) => {
-                value.as_bool().ok_or_else(|| SchemaError::InvalidType {
-                    value: value.to_string(),
-                    expected: "boolean".into(),
-                })?;
+                if !value.is_boolean() {
+                    return Err(SchemaError::InvalidType {
+                        value: value.to_string(),
+                        expected: "boolean".into(),
+                    });
+                }
                 Ok(())
             }
             Self::Date(s) => {
@@ -161,14 +163,7 @@ impl PropertySpec {
                         value: value.to_string(),
                         expected: "number".into(),
                     })?;
-                if !n.is_finite() {
-                    return Err(SchemaError::ValidationFailed(format!(
-                        "Value {n} is not finite"
-                    )));
-                }
-                s.validate_range(n)?;
-                s.validate_step(n)?;
-                Ok(())
+                s.validate_value(n)
             }
             Self::String(s) => {
                 let val =
@@ -390,28 +385,31 @@ impl NumberSpec {
         })
     }
 
-    /// Validates that a numeric value falls within optional min/max bounds.
+    /// Validates a numeric value against range and step constraints.
     ///
     /// # Errors
-    /// Returns `SchemaError::NumberOutOfRange` if validation fails.
+    /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub fn validate_range(&self, value: f64) -> Result<(), SchemaError> {
-        if !value.is_finite() {
-            return Err(SchemaError::ValidationFailed(format!(
-                "Value {value} is not finite"
-            )));
-        }
+    pub fn validate_value(&self, value: f64) -> Result<(), SchemaError> {
         let finite = FiniteF64::try_new(value, "value").map_err(|_err| {
             SchemaError::ValidationFailed(format!(
                 "Value {value} is not finite"
             ))
         })?;
 
+        self.validate_range(finite)?;
+        self.validate_step(finite)?;
+        Ok(())
+    }
+
+    /// Validates that a numeric value falls within optional min/max bounds.
+    #[inline]
+    fn validate_range(&self, finite: FiniteF64) -> Result<(), SchemaError> {
         if !self.bounds.validate(finite) {
             let min = self.bounds.min().map(FiniteF64::get);
             let max = self.bounds.max().map(FiniteF64::get);
             return Err(SchemaError::NumberOutOfRange {
-                value,
+                value: finite.get(),
                 min,
                 max,
             });
@@ -420,23 +418,15 @@ impl NumberSpec {
     }
 
     /// Validates that a numeric value aligns with a step increment.
-    ///
-    /// # Errors
-    /// Returns `SchemaError::InvalidStepValue` if validation fails.
     #[inline]
     #[expect(
         clippy::float_arithmetic,
         clippy::modulo_arithmetic,
         reason = "Core numeric validation logic with epsilon comparison"
     )]
-    pub fn validate_step(&self, value: f64) -> Result<(), SchemaError> {
+    fn validate_step(&self, finite: FiniteF64) -> Result<(), SchemaError> {
         const EPSILON: f64 = 1e-10;
-
-        if !value.is_finite() {
-            return Err(SchemaError::ValidationFailed(format!(
-                "Value {value} is not finite"
-            )));
-        }
+        let value = finite.get();
 
         if let Some(step) = self.step {
             let base = self.bounds.min().map_or(0.0f64, FiniteF64::get);
@@ -742,7 +732,7 @@ fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
     Ok(())
 }
 
-type RegexCache = HashMap<String, Arc<regex::Regex>>;
+type RegexCache = HashMap<Box<str>, Arc<regex::Regex>>;
 type RegexCacheLock = RwLock<RegexCache>;
 
 static REGEX_CACHE: OnceLock<RegexCacheLock> = OnceLock::new();
@@ -773,7 +763,7 @@ fn get_cached_regex(pattern: &str) -> Result<Arc<regex::Regex>, SchemaError> {
         Err(e) => e.into_inner(),
     };
 
-    match guard.entry(pattern.to_owned()) {
+    match guard.entry(pattern.into()) {
         Entry::Occupied(entry) => Ok(Arc::clone(entry.get())),
         Entry::Vacant(entry) => {
             entry.insert(Arc::clone(&compiled));
@@ -955,11 +945,7 @@ mod tests {
             let spec = validated_spec(&def);
 
             // WHEN: validating a numeric value
-            let result = (|| {
-                spec.validate_range(value)?;
-                spec.validate_step(value)?;
-                Ok(())
-            })();
+            let result = spec.validate_value(value);
 
             // THEN: the result matches the expectation
             assert_eq!(
@@ -997,7 +983,7 @@ mod tests {
         fn number_spec_rejects_nan_value() {
             let spec = NumberSpec::try_new(Some(0.0f64), Some(10.0f64), None)
                 .expect("Expected valid NumberSpec");
-            let result = spec.validate_range(f64::NAN);
+            let result = spec.validate_value(f64::NAN);
             assert!(
                 matches!(result, Err(SchemaError::ValidationFailed(_))),
                 "Expected ValidationFailed for NaN, got: {result:?}"
@@ -1012,7 +998,7 @@ mod tests {
         fn number_spec_rejects_infinite_value() {
             let spec = NumberSpec::try_new(Some(0.0f64), Some(10.0f64), None)
                 .expect("Expected valid NumberSpec");
-            let result = spec.validate_range(f64::INFINITY);
+            let result = spec.validate_value(f64::INFINITY);
             assert!(
                 matches!(result, Err(SchemaError::ValidationFailed(_))),
                 "Expected ValidationFailed for infinity, got: {result:?}"
