@@ -156,6 +156,8 @@ For deeper rationale and examples, see [docs/refs/rust/idioms.md](docs/refs/rust
 - **Collections**: Use `.get()` instead of `[index]`, `entry()` API for HashMap updates
 - **Conversion traits**: Implement `From/Into` for infallible conversions, `TryFrom/TryInto` for fallible ones
 - **Lifetimes as documentation**: `fn get<'a>(&'a self) -> Guard<'a>` shows zero-copy, `fn get(&self) -> T` hides allocation
+- **Box<str> over String**: Use `Box<str>` for immutable string storage to avoid heap over-allocation
+- **Static strings**: Use `"literal".into()` instead of `"literal".to_owned().into()` for error fields
 
 ### ❌ Never Do
 - **String cloning for paths**: Path operations must use `Path`/`PathBuf` APIs
@@ -165,12 +167,45 @@ For deeper rationale and examples, see [docs/refs/rust/idioms.md](docs/refs/rust
 - **Numeric casting with 'as'**: Use `.try_into()?` to catch overflow/truncation errors
 - **Generic `String` errors**: Use `thiserror` for structured errors with context
 - **Ad-hoc conversions**: Don't write `to_x()` methods - use `From/Into` traits instead
+- **Unnecessary to_owned()**: NEVER use `"text".to_owned().into()` - use `"text".into()` directly
 
-### 🎯 Performance Patterns
-- **Zero-copy reads**: Return guards (`Deref<Target=V>`) not owned values
-- **Batch transactions**: One redb write transaction for bulk operations, not one per item
-- **Arc for shared state**: `Arc<T>` is cheap to clone (atomic refcount), clone the Arc not T
-- **Avoid premature async**: moka and redb are sync - adding async adds 50ns overhead
+### String Allocation Anti-Patterns (Must Avoid)
+
+These patterns create unnecessary heap allocations:
+
+1. **`"text".to_owned().into()`** → Use `"text".into()` instead
+   - `Box<str>: From<&'static str>` is zero-cost
+   - Found 100+ occurrences in codebase before fixes
+
+2. **Unnecessary to_string() for errors**
+   - Error fields using `String` type: prefer `"literal".into()` over `to_string()`
+   - Only allocate when the error message actually needs the full String
+
+3. **UUID to_string() in hot paths**
+   - Database lookups using `id.to_string()` allocate 36 bytes per call
+   - Consider: thread-local buffers, UUID-native DB methods, or adapter-level caching
+
+4. **Case conversion for pre-validated data** (context-specific)
+   - Only applies when data is already validated to be lowercase via regex (e.g., `^[a-z0-9_-]+$`)
+   - In this case, `to_lowercase()` is redundant and allocates unnecessarily
+
+### Zero-Copy API Patterns
+
+For performance-critical paths (LSP queries, hot database reads):
+
+```rust
+// ✅ GOOD: Closure-based zero-copy access
+fn with_archived<F, R>(&self, id: Id, f: F) -> Result<Option<R>, Error>
+where
+    F: for<'a> FnOnce(&'a Archived<T>) -> R;
+
+// ❌ BAD: Returning guards requires self-referential structs
+fn get_archived(&self, id: Id) -> Result<Option<Guard>, Error>;
+```
+
+When implementing Query ports:
+- Prefer closure-based `with_archived()` over returning guards
+- Avoid GAT Guard patterns that require `self_cell` or complex lifetime management
 
 ## Definition of Done
 
@@ -187,6 +222,7 @@ Before marking any task complete:
 - [ ] Documentation updated (doc comments for public APIs)
 - [ ] Doc tests run when docs/examples changed (`cargo test --doc`)
 - [ ] ADR created if architectural decision made
+- [ ] **No string allocation anti-patterns**: No `.to_owned().into()`, no unnecessary `.to_lowercase()`, no `.to_string()` in hot paths
 
 ## Before Submitting Work
 
