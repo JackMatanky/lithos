@@ -7,7 +7,10 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    aggregate::{PropertyBank, Schema, SchemaId, SchemaName},
+    aggregate::{
+        PropertyBank, ResolutionMetadata, Schema, SchemaHash, SchemaId,
+        SchemaName, Timestamp,
+    },
     error::SchemaError,
     property::{Cardinality, Multiplicity, Property, PropertyId, PropertyName},
     property_ref::PropertyRef,
@@ -57,7 +60,7 @@ impl SchemaResolver {
     pub fn resolve_all(
         raw_schemas: Vec<RawSchema>,
         bank: &PropertyBank,
-    ) -> Result<Vec<Schema>, SchemaError> {
+    ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError> {
         let mut graph = InheritanceGraph::new();
         let mut raw_by_name = HashMap::with_capacity(raw_schemas.len());
 
@@ -90,8 +93,81 @@ impl SchemaResolver {
                 .as_ref()
                 .and_then(|parent_key| resolved_by_name.get(parent_key));
             let schema = Self::resolve(raw, parent, bank)?;
+            let parent_hash = parent.map(SchemaHash::compute);
+            let metadata = ResolutionMetadata::new(
+                schema.id(),
+                Timestamp::now(),
+                parent_hash,
+                bank.version(),
+                None,
+            );
             resolved_by_name.insert(schema.name().clone(), schema.clone());
-            resolved.push(schema);
+            resolved.push((schema, metadata));
+        }
+
+        Ok(resolved)
+    }
+
+    /// Resolve only changed schemas (incremental resolution).
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if resolution fails.
+    #[inline]
+    pub fn resolve_changed(
+        raw_schemas: Vec<RawSchema>,
+        existing_metadata: &[ResolutionMetadata],
+        bank: &PropertyBank,
+    ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError> {
+        let file_mtimes: HashMap<SchemaId, Option<Timestamp>> =
+            existing_metadata
+                .iter()
+                .map(|meta| (meta.schema_id(), meta.file_modified()))
+                .collect();
+
+        let mut graph = InheritanceGraph::new();
+        let mut raw_by_name = HashMap::with_capacity(raw_schemas.len());
+
+        for raw in raw_schemas {
+            let name = SchemaName::try_from(raw.name.as_str())?;
+            let extends =
+                raw.extends.as_deref().map(SchemaName::try_from).transpose()?;
+
+            if raw_by_name.contains_key(&name) {
+                return Err(SchemaError::AlreadyExists(name.to_string()));
+            }
+            graph.add_node(name.clone(), extends);
+            raw_by_name.insert(name, raw);
+        }
+
+        let order = graph.resolve_order()?;
+        let mut resolved_by_name: HashMap<SchemaName, Schema> =
+            HashMap::with_capacity(order.len());
+        let mut resolved = Vec::with_capacity(order.len());
+
+        for name in order {
+            let raw = raw_by_name.remove(&name).ok_or_else(|| {
+                SchemaError::NotFound(format!(
+                    "Schema definition missing for {name}"
+                ))
+            })?;
+            let parent_name =
+                raw.extends.as_deref().map(SchemaName::try_from).transpose()?;
+            let parent = parent_name
+                .as_ref()
+                .and_then(|parent_key| resolved_by_name.get(parent_key));
+            let schema = Self::resolve(raw, parent, bank)?;
+            let parent_hash = parent.map(SchemaHash::compute);
+            let file_modified =
+                file_mtimes.get(&schema.id()).copied().flatten();
+            let metadata = ResolutionMetadata::new(
+                schema.id(),
+                Timestamp::now(),
+                parent_hash,
+                bank.version(),
+                file_modified,
+            );
+            resolved_by_name.insert(schema.name().clone(), schema.clone());
+            resolved.push((schema, metadata));
         }
 
         Ok(resolved)
