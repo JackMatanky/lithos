@@ -53,7 +53,7 @@ use super::{
 ///     Vec::new(),
 /// );
 ///
-/// let results = resolver.resolve_all(vec![raw])?;
+/// let results = resolver.process(vec![raw])?;
 /// assert_eq!(results[0].0.name().as_str(), "test");
 /// # Ok(())
 /// # }
@@ -63,6 +63,13 @@ pub struct SchemaResolver<'bank> {
     graph: InheritanceGraph,
     resolved_cache: HashMap<SchemaId, Schema>,
 }
+
+/// Result of building the inheritance graph.
+///
+/// Contains the indexed raw schemas and file modification times
+/// (for incremental resolution).
+type GraphBuildResult =
+    (HashMap<SchemaId, RawSchema>, HashMap<SchemaId, Option<Timestamp>>);
 
 impl<'bank> SchemaResolver<'bank> {
     /// Create a new resolver with a `PropertyBank` reference.
@@ -79,7 +86,7 @@ impl<'bank> SchemaResolver<'bank> {
         }
     }
 
-    /// Resolve a set of raw schemas into fully resolved schemas.
+    /// Process a set of raw schemas into fully resolved schemas.
     ///
     /// Builds an inheritance graph, determines deterministic resolution order,
     /// and resolves each schema with parent context.
@@ -88,16 +95,90 @@ impl<'bank> SchemaResolver<'bank> {
     /// Returns `SchemaError` if resolution fails (e.g. cycles, missing parents,
     /// or invalid properties).
     #[inline]
-    pub fn resolve_all(
+    pub fn process(
         &mut self,
         raw_schemas: Vec<RawSchema>,
     ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError> {
+        type NoLoader = fn(&SchemaId) -> Result<Option<Schema>, SchemaError>;
+
         // Clear previous state
         self.graph = InheritanceGraph::new();
         self.resolved_cache.clear();
 
+        // Build inheritance graph
+        let (raw_by_id, file_mtimes) = self.build_graph(raw_schemas, None)?;
+
+        // Compute topological order
+        let order = self.compute_resolution_order::<NoLoader>(None)?;
+
+        // Resolve schemas in order
+        self.resolve_schemas_in_order::<NoLoader>(
+            order,
+            raw_by_id,
+            &file_mtimes,
+            None,
+        )
+    }
+
+    /// Process only changed schemas (incremental resolution).
+    ///
+    /// Requires existing metadata for staleness detection and parent hash
+    /// lookups. The `parent_loader` function is called to load parent schemas
+    /// that are not in the current batch.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if resolution fails.
+    #[inline]
+    pub fn process_changed<F>(
+        &mut self,
+        raw_schemas: Vec<RawSchema>,
+        existing_metadata: &[ResolutionMetadata],
+        parent_loader: F,
+    ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError>
+    where
+        F: Fn(&SchemaId) -> Result<Option<Schema>, SchemaError>,
+    {
+        // Clear previous state
+        self.graph = InheritanceGraph::new();
+        self.resolved_cache.clear();
+
+        // Build inheritance graph with file modification times
+        let (raw_by_id, file_mtimes) =
+            self.build_graph(raw_schemas, Some(existing_metadata))?;
+
+        // Compute topological order with external parent loader
+        let order = self.compute_resolution_order(Some(&parent_loader))?;
+
+        // Resolve schemas in order with incremental support
+        self.resolve_schemas_in_order(
+            order,
+            raw_by_id,
+            &file_mtimes,
+            Some(&parent_loader),
+        )
+    }
+
+    /// Build inheritance graph and index maps from raw schemas.
+    ///
+    /// Returns (`raw_by_id`, `file_mtimes`) where `file_mtimes` is populated
+    /// only if `existing_metadata` is provided (for incremental mode).
+    fn build_graph(
+        &mut self,
+        raw_schemas: Vec<RawSchema>,
+        existing_metadata: Option<&[ResolutionMetadata]>,
+    ) -> Result<GraphBuildResult, SchemaError> {
         let mut raw_by_id = HashMap::with_capacity(raw_schemas.len());
         let mut name_to_id = HashMap::with_capacity(raw_schemas.len());
+
+        // Extract file modification times from metadata if provided
+        let file_mtimes = existing_metadata
+            .map(|metadata| {
+                metadata
+                    .iter()
+                    .map(|meta| (meta.schema_id(), meta.file_modified()))
+                    .collect()
+            })
+            .unwrap_or_default();
 
         // Build graph with SchemaId as primary key
         for raw in raw_schemas {
@@ -124,7 +205,38 @@ impl<'bank> SchemaResolver<'bank> {
             raw_by_id.insert(id, raw);
         }
 
-        let order = self.graph.resolve_order(|_| false)?;
+        Ok((raw_by_id, file_mtimes))
+    }
+
+    /// Compute topological resolution order from the inheritance graph.
+    ///
+    /// For incremental mode, provide a `parent_exists_fn` to check if
+    /// parent schemas exist externally (not in the current batch).
+    fn compute_resolution_order<F>(
+        &self,
+        parent_exists_fn: Option<&F>,
+    ) -> Result<Vec<SchemaId>, SchemaError>
+    where
+        F: Fn(&SchemaId) -> Result<Option<Schema>, SchemaError>,
+    {
+        self.graph.resolve_order(|id| {
+            parent_exists_fn
+                .is_some_and(|check_fn| matches!(check_fn(id), Ok(Some(_))))
+        })
+    }
+
+    /// Process schemas in topological order, resolving each with parent
+    /// context.
+    fn resolve_schemas_in_order<F>(
+        &mut self,
+        order: Vec<SchemaId>,
+        mut raw_by_id: HashMap<SchemaId, RawSchema>,
+        file_mtimes: &HashMap<SchemaId, Option<Timestamp>>,
+        parent_loader: Option<&F>,
+    ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError>
+    where
+        F: Fn(&SchemaId) -> Result<Option<Schema>, SchemaError>,
+    {
         let mut resolved = Vec::with_capacity(order.len());
 
         for id in order {
@@ -139,23 +251,10 @@ impl<'bank> SchemaResolver<'bank> {
                 ))
             })?;
 
-            let parent = if let Some(parent_id) =
-                self.graph.edges.get(&id).and_then(|p| *p)
-            {
-                self.resolved_cache.get(&parent_id)
-            } else {
-                None
-            };
-
-            let schema = self.resolve_single(raw, parent)?;
-            let parent_hash = parent.map(SchemaHash::compute);
-            let metadata = ResolutionMetadata::new(
-                schema.id(),
-                Timestamp::now(),
-                parent_hash,
-                self.bank.version(),
-                None,
-            );
+            let parent = self.load_parent(&id, parent_loader)?;
+            let schema = self.resolve_single(raw, parent.as_ref())?;
+            let metadata =
+                self.create_metadata(&schema, parent.as_ref(), file_mtimes);
 
             self.resolved_cache.insert(schema.id(), schema.clone());
             resolved.push((schema, metadata));
@@ -164,109 +263,53 @@ impl<'bank> SchemaResolver<'bank> {
         Ok(resolved)
     }
 
-    /// Resolve only changed schemas (incremental resolution).
+    /// Load parent schema from cache or external loader.
     ///
-    /// Requires existing metadata for staleness detection and parent hash
-    /// lookups. The `parent_loader` function is called to load parent schemas
-    /// that are not in the changed set.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if resolution fails.
-    #[inline]
-    pub fn resolve_changed<F>(
-        &mut self,
-        raw_schemas: Vec<RawSchema>,
-        existing_metadata: &[ResolutionMetadata],
-        parent_loader: F,
-    ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError>
+    /// Tries the resolved cache first, then falls back to the external
+    /// loader if provided (incremental mode).
+    fn load_parent<F>(
+        &self,
+        id: &SchemaId,
+        parent_loader: Option<&F>,
+    ) -> Result<Option<Schema>, SchemaError>
     where
         F: Fn(&SchemaId) -> Result<Option<Schema>, SchemaError>,
     {
-        // Clear previous state
-        self.graph = InheritanceGraph::new();
-        self.resolved_cache.clear();
-
-        let file_mtimes: HashMap<SchemaId, Option<Timestamp>> =
-            existing_metadata
-                .iter()
-                .map(|meta| (meta.schema_id(), meta.file_modified()))
-                .collect();
-
-        let mut raw_by_id = HashMap::with_capacity(raw_schemas.len());
-        let mut name_to_id = HashMap::with_capacity(raw_schemas.len());
-
-        // Build graph with SchemaId as primary key
-        for raw in raw_schemas {
-            let id = SchemaId::from_uuid(raw.id);
-            let name = SchemaName::try_from(raw.name.as_str())?;
-
-            if name_to_id.contains_key(&name) {
-                return Err(SchemaError::AlreadyExists(name.to_string()));
+        if let Some(parent_id) = self.graph.edges.get(id).and_then(|p| *p) {
+            // Try cache first
+            if let Some(p) = self.resolved_cache.get(&parent_id) {
+                return Ok(Some(p.clone()));
             }
 
-            let parent_id = match raw.extends.as_ref() {
-                Some(parent_name_str) => {
-                    let parent_name =
-                        SchemaName::try_from(parent_name_str.as_str())?;
-                    name_to_id.get(&parent_name).copied()
-                }
-                None => None,
-            };
-
-            self.graph.add_node(id, name.clone(), parent_id);
-            name_to_id.insert(name, id);
-            raw_by_id.insert(id, raw);
+            // Fall back to external loader if available (incremental mode)
+            if let Some(loader) = parent_loader {
+                return loader(&parent_id);
+            }
         }
 
-        let order = self.graph.resolve_order(|id| {
-            // Check if parent exists externally via loader
-            matches!(parent_loader(id), Ok(Some(_)))
-        })?;
+        Ok(None)
+    }
 
-        let mut resolved = Vec::with_capacity(order.len());
+    /// Create resolution metadata for a schema.
+    ///
+    /// Includes parent hash, bank version, and file modification time
+    /// (if available from incremental mode).
+    fn create_metadata(
+        &self,
+        schema: &Schema,
+        parent: Option<&Schema>,
+        file_mtimes: &HashMap<SchemaId, Option<Timestamp>>,
+    ) -> ResolutionMetadata {
+        let parent_hash = parent.map(SchemaHash::compute);
+        let file_modified = file_mtimes.get(&schema.id()).copied().flatten();
 
-        for id in order {
-            let raw = raw_by_id.remove(&id).ok_or_else(|| {
-                let name = self
-                    .graph
-                    .names
-                    .get(&id)
-                    .map_or("unknown", super::aggregate::SchemaName::as_str);
-                SchemaError::NotFound(format!(
-                    "Schema definition missing for {name}"
-                ))
-            })?;
-
-            let parent = if let Some(parent_id) =
-                self.graph.edges.get(&id).and_then(|p| *p)
-            {
-                if let Some(p) = self.resolved_cache.get(&parent_id) {
-                    Some(p.clone())
-                } else {
-                    // Not in current batch, try external loader
-                    parent_loader(&parent_id)?
-                }
-            } else {
-                None
-            };
-
-            let schema = self.resolve_single(raw, parent.as_ref())?;
-            let parent_hash = parent.as_ref().map(SchemaHash::compute);
-            let file_modified =
-                file_mtimes.get(&schema.id()).copied().flatten();
-            let metadata = ResolutionMetadata::new(
-                schema.id(),
-                Timestamp::now(),
-                parent_hash,
-                self.bank.version(),
-                file_modified,
-            );
-
-            self.resolved_cache.insert(schema.id(), schema.clone());
-            resolved.push((schema, metadata));
-        }
-
-        Ok(resolved)
+        ResolutionMetadata::new(
+            schema.id(),
+            Timestamp::now(),
+            parent_hash,
+            self.bank.version(),
+            file_modified,
+        )
     }
 
     fn merge_parent_properties(
