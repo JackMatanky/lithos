@@ -6,24 +6,25 @@ This directory contains modular knowledge files for the TEA agent to reference w
 
 ### Test Types
 
-| Module                     | Purpose                                  | Load When                   |
-| -------------------------- | ---------------------------------------- | --------------------------- |
-| `test-test-unit.md`        | Unit testing patterns and location rules | Reviewing unit tests        |
-| `test-test-integration.md` | Integration testing with I/O             | Reviewing integration tests |
-| `test-test-e2e.md`         | End-to-end CLI testing                   | Reviewing E2E tests         |
+| Module                  | Purpose                                  | Load When                   |
+| ----------------------- | ---------------------------------------- | --------------------------- |
+| `test-unit.md`          | Unit testing patterns and location rules | Reviewing unit tests        |
+| `test-integration.md`   | Integration testing with I/O             | Reviewing integration tests |
+| `test-e2e.md`           | End-to-end CLI testing                   | Reviewing E2E tests         |
 
 ### Code Quality
 
-| Module                    | Purpose                         | Load When                   |
-| ------------------------- | ------------------------------- | --------------------------- |
-| `naming.md`               | Test naming conventions         | Reviewing any tests         |
-| `assertions.md`           | Assertion patterns and messages | Reviewing assertions        |
-| `fixtures.md`             | Fixture strategies              | Reviewing test setup        |
-| `anti-patterns.md`        | Patterns to detect and reject   | Always load for test review |
-| `mocks.md`                | Mocking and isolation           | Complex dependency testing  |
-| `test-test-benchmarks.md` | Performance measuring           | Reviewing performance tests |
-| `quality-gates.md`        | Coverage/Performance targets    | Assessing test suite health |
-| `ci.md`                   | CI/CD pipeline integration      | Pipeline configuration      |
+| Module               | Purpose                         | Load When                   |
+| -------------------- | ------------------------------- | --------------------------- |
+| `naming.md`          | Test naming conventions         | Reviewing any tests         |
+| `assertions.md`      | Assertion patterns and messages | Reviewing assertions        |
+| `linting.md`         | Linter warning management       | Reviewing clippy/fmt issues |
+| `fixtures.md`        | Fixture strategies              | Reviewing test setup        |
+| `anti-patterns.md`   | Patterns to detect and reject   | Always load for test review |
+| `mocks.md`           | Mocking and isolation           | Complex dependency testing  |
+| `test-benchmarks.md` | Performance measuring           | Reviewing performance tests |
+| `quality-gates.md`   | Coverage/Performance targets    | Assessing test suite health |
+| `ci.md`              | CI/CD pipeline integration      | Pipeline configuration      |
 
 ### Tools
 
@@ -52,7 +53,7 @@ When generating tests, load all modules for comprehensive guidance.
 
 | Question                       | Load Module                         |
 | ------------------------------ | ----------------------------------- |
-| "Where should this test go?"   | `test-test-unit.md` (decision tree) |
+| "Where should this test go?"   | `test-unit.md` (decision tree) |
 | "Is this a good test name?"    | `naming.md`                         |
 | "How should I assert this?"    | `assertions.md`                     |
 | "What's wrong with this test?" | `anti-patterns.md`                  |

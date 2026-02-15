@@ -310,6 +310,8 @@ style_and_linting_review:
   compliance_score: "9/10"
 ```
 
+Refer to `linting.md` for specific suppression rules and justified exceptions.
+
 ### 2. Lithos Architecture Compliance
 
 #### Pattern: Context Boundary Validation

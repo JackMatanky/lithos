@@ -800,7 +800,7 @@ async fn test_async_properly() {
 
 ### Automated Detection
 
-- Use clippy lints to catch common anti-patterns
+- Use clippy lints to catch common anti-patterns. Refer to `linting.md` for suppression standards.
 - Implement custom test quality metrics
 - Monitor for brittle tests that break frequently
 - Track test execution times for performance regressions

@@ -8,6 +8,7 @@ integration,Rust Integration Testing,Integration testing guidance for I/O and de
 e2e,Rust E2E Testing,End-to-end CLI testing guidance,"rust,testing,e2e,cli",test-e2e.md
 naming,Rust Test Naming,Test naming conventions and patterns,"rust,testing,naming,conventions",naming.md
 assertions,Rust Test Assertions,Assertion patterns and error messaging,"rust,testing,assertions",assertions.md
+linting,Linter Warning Management,Clippy standards and suppression policies for tests,"rust,testing,linting,clippy",linting.md
 fixtures,Rust Test Fixtures,Fixture setup strategies and isolation guidance,"rust,testing,fixtures",fixtures.md
 mocks,Mocking Patterns,Trait-based and automock patterns,"rust,testing,mocks",mocks.md
 benchmarks,Performance & Benchmarking,Criterion benchmarks and memory profiling,"rust,testing,benchmarks,performance",test-benchmarks.md

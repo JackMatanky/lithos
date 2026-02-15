@@ -8,5 +8,5 @@
 - [ ] Error paths covered
 - [ ] Flaky tests addressed
 - [ ] Anti-patterns removed
-- [ ] Rust style and linting standards adhered to
+- [ ] Rust style and linting standards adhered to (clippy clean or `#[expect]` justified)
 - [ ] Fixes applied (not only suggestions)
