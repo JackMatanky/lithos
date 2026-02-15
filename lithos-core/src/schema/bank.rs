@@ -3,7 +3,10 @@
 //! Provides O(1) dual-indexed property lookup by ID and Name with singleton
 //! identity and versioning for incremental resolution.
 
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    fmt::Display,
+};
 
 use uuid::Uuid;
 
@@ -78,7 +81,7 @@ pub struct PropertyBank {
     version: BankVersion,
     /// Domain events pending emission.
     #[serde(skip)]
-    pending_events: Vec<Events>,
+    pending_events: Option<Vec<Events>>,
 }
 
 impl PropertyBank {
@@ -92,7 +95,7 @@ impl PropertyBank {
             name_index: HashMap::new(),
             properties: Vec::new(),
             version: BankVersion::initial(),
-            pending_events: Vec::new(),
+            pending_events: None,
         }
     }
 
@@ -149,29 +152,36 @@ impl PropertyBank {
     pub fn register(&mut self, property: Property) -> Result<(), SchemaError> {
         property.validate()?;
 
-        // Idempotent success if ID already exists
-        if self.id_index.contains_key(&property.id()) {
-            let event = self.create_updated_event();
-            self.add_event(event);
-            return Ok(());
-        }
-
-        // Prevent duplicate names
-        self.validate_name_unique(property.name())?;
-
         let id = property.id();
         let name = property.name().clone();
-        let idx = self.properties.len();
 
-        self.id_index.insert(id, idx);
-        self.name_index.insert(name, idx);
-        self.properties.push(property);
-        self.version = self.version.increment();
+        // Use Entry API to minimize hash lookups
+        match self.id_index.entry(id) {
+            Entry::Occupied(_) => {
+                // Idempotent success if ID already exists
+                let event = self.create_updated_event();
+                self.add_event(event);
+                Ok(())
+            }
+            Entry::Vacant(id_entry) => {
+                // Prevent duplicate names
+                if self.name_index.contains_key(&name) {
+                    return Err(SchemaError::DuplicatePropertyName(
+                        name.as_str().into(),
+                    ));
+                }
 
-        let event = self.create_updated_event();
-        self.add_event(event);
+                let idx = self.properties.len();
+                id_entry.insert(idx);
+                self.name_index.insert(name, idx);
+                self.properties.push(property);
+                self.version = self.version.increment();
 
-        Ok(())
+                let event = self.create_updated_event();
+                self.add_event(event);
+                Ok(())
+            }
+        }
     }
 
     /// Lookup property by ID (O(1)).
@@ -274,20 +284,20 @@ impl PropertyBank {
     #[inline]
     #[must_use]
     pub fn pending_events(&self) -> &[Events] {
-        &self.pending_events
+        self.pending_events.as_deref().unwrap_or_default()
     }
 
     /// Returns and clears pending domain events.
     #[inline]
     #[must_use]
     pub fn take_events(&mut self) -> Vec<Events> {
-        std::mem::take(&mut self.pending_events)
+        self.pending_events.take().unwrap_or_default()
     }
 
     /// Adds a domain event to the pending events collection.
     #[inline]
     fn add_event(&mut self, event: Events) {
-        self.pending_events.push(event);
+        self.pending_events.get_or_insert_with(Vec::new).push(event);
     }
 
     fn create_updated_event(&self) -> Events {
@@ -295,18 +305,6 @@ impl PropertyBank {
             self.properties.len(),
             super::aggregate::Timestamp::now(),
         ))
-    }
-
-    fn validate_name_unique(
-        &self,
-        name: &PropertyName,
-    ) -> Result<(), SchemaError> {
-        if self.name_index.contains_key(name) {
-            return Err(SchemaError::DuplicatePropertyName(
-                name.as_str().into(),
-            ));
-        }
-        Ok(())
     }
 }
 
