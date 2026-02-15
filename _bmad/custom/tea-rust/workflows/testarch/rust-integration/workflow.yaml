@@ -8,6 +8,7 @@ output_folder: "{config_source}:output_folder"
 user_name: "{config_source}:user_name"
 communication_language: "{config_source}:communication_language"
 document_output_language: "{config_source}:document_output_language"
+integration_output: "{config_source}:integration_output"
 date: system-generated
 
 installed_path: "{project-root}/_bmad/custom/tea-rust/workflows/testarch/rust-integration"
@@ -17,6 +18,8 @@ validation: "{installed_path}/checklist.md"
 variables:
   target_scope: "auto"
   components: []
+
+default_output_file: "{integration_output}/rust-integration-plan.md"
 
 
 required_tools:

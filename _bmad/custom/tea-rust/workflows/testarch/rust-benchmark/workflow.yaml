@@ -8,6 +8,7 @@ output_folder: "{config_source}:output_folder"
 user_name: "{config_source}:user_name"
 communication_language: "{config_source}:communication_language"
 document_output_language: "{config_source}:document_output_language"
+benchmark_output: "{config_source}:benchmark_output"
 date: system-generated
 
 installed_path: "{project-root}/_bmad/custom/tea-rust/workflows/testarch/rust-benchmark"
@@ -19,7 +20,7 @@ variables:
   benchmark_scope: "auto"
   target_path: ""
 
-default_output_file: "{output_folder}/tea-rust/benchmark-plan.md"
+default_output_file: "{benchmark_output}/rust-benchmark-plan.md"
 
 required_tools:
   - read_file

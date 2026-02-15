@@ -8,6 +8,7 @@ output_folder: "{config_source}:output_folder"
 user_name: "{config_source}:user_name"
 communication_language: "{config_source}:communication_language"
 document_output_language: "{config_source}:document_output_language"
+test_review_output: "{config_source}:test_review_output"
 date: system-generated
 
 installed_path: "{project-root}/_bmad/custom/tea-rust/workflows/testarch/rust-test-review"
@@ -19,7 +20,7 @@ variables:
   review_scope: "single" # single, directory, suite
   target_path: ""
 
-default_output_file: "{output_folder}/tea-rust/test-review.md"
+default_output_file: "{test_review_output}/rust-test-review.md"
 
 required_tools:
   - read_file
