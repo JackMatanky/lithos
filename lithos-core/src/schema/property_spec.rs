@@ -11,6 +11,7 @@
 
 use std::{
     collections::{HashMap, hash_map::Entry},
+    hash::Hash,
     path::{Component, Path},
     sync::{Arc, OnceLock, RwLock},
 };
@@ -29,7 +30,14 @@ use crate::bounds::{Bounds, BoundsError};
 
 /// Supported property specification types.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
@@ -53,6 +61,7 @@ pub enum PropertySpecType {
     Debug,
     Clone,
     PartialEq,
+    Hash,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -178,6 +187,7 @@ impl PropertySpec {
     Debug,
     Clone,
     PartialEq,
+    Hash,
     Default,
     serde::Serialize,
     serde::Deserialize,
@@ -194,6 +204,7 @@ pub struct BoolSpec;
     Debug,
     Clone,
     PartialEq,
+    Hash,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -245,6 +256,7 @@ impl DateSpec {
     Debug,
     Clone,
     PartialEq,
+    Hash,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -313,6 +325,7 @@ impl FileSpec {
     Debug,
     Clone,
     PartialEq,
+    Hash,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -446,6 +459,7 @@ impl NumberSpec {
     Debug,
     Clone,
     PartialEq,
+    Hash,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -614,11 +628,26 @@ impl FiniteF64 {
     }
 }
 
+impl std::hash::Hash for FiniteF64 {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.to_bits().hash(state);
+    }
+
+    #[inline]
+    fn hash_slice<H: std::hash::Hasher>(data: &[Self], state: &mut H) {
+        for value in data {
+            value.hash(state);
+        }
+    }
+}
+
 #[derive(
     Debug,
     Clone,
     Copy,
     PartialEq,
+    Hash,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
