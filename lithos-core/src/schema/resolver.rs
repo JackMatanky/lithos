@@ -76,7 +76,7 @@ impl SchemaResolver {
             raw_by_name.insert(name, raw);
         }
 
-        let order = graph.resolve_order()?;
+        let order = graph.resolve_order(|_| false)?;
         let mut resolved_by_name: HashMap<SchemaName, Schema> =
             HashMap::with_capacity(order.len());
         let mut resolved = Vec::with_capacity(order.len());
@@ -113,11 +113,15 @@ impl SchemaResolver {
     /// # Errors
     /// Returns `SchemaError` if resolution fails.
     #[inline]
-    pub fn resolve_changed(
+    pub fn resolve_changed<F>(
         raw_schemas: Vec<RawSchema>,
         existing_metadata: &[ResolutionMetadata],
         bank: &PropertyBank,
-    ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError> {
+        parent_loader: F,
+    ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError>
+    where
+        F: Fn(&SchemaName) -> Result<Option<Schema>, SchemaError>,
+    {
         let file_mtimes: HashMap<SchemaId, Option<Timestamp>> =
             existing_metadata
                 .iter()
@@ -139,7 +143,11 @@ impl SchemaResolver {
             raw_by_name.insert(name, raw);
         }
 
-        let order = graph.resolve_order()?;
+        let order = graph.resolve_order(|name| {
+            // Check if parent exists externally via loader
+            matches!(parent_loader(name), Ok(Some(_)))
+        })?;
+
         let mut resolved_by_name: HashMap<SchemaName, Schema> =
             HashMap::with_capacity(order.len());
         let mut resolved = Vec::with_capacity(order.len());
@@ -152,11 +160,20 @@ impl SchemaResolver {
             })?;
             let parent_name =
                 raw.extends.as_deref().map(SchemaName::try_from).transpose()?;
-            let parent = parent_name
-                .as_ref()
-                .and_then(|parent_key| resolved_by_name.get(parent_key));
-            let schema = Self::resolve(raw, parent, bank)?;
-            let parent_hash = parent.map(SchemaHash::compute);
+
+            let parent = if let Some(parent_key) = parent_name.as_ref() {
+                if let Some(p) = resolved_by_name.get(parent_key) {
+                    Some(p.clone())
+                } else {
+                    // Not in current batch, try loader
+                    parent_loader(parent_key)?
+                }
+            } else {
+                None
+            };
+
+            let schema = Self::resolve(raw, parent.as_ref(), bank)?;
+            let parent_hash = parent.as_ref().map(SchemaHash::compute);
             let file_modified =
                 file_mtimes.get(&schema.id()).copied().flatten();
             let metadata = ResolutionMetadata::new(
@@ -322,7 +339,13 @@ impl InheritanceGraph {
     }
 
     #[inline]
-    fn resolve_order(&self) -> Result<Vec<SchemaName>, SchemaError> {
+    fn resolve_order<F>(
+        &self,
+        external_parent_exists: F,
+    ) -> Result<Vec<SchemaName>, SchemaError>
+    where
+        F: Fn(&SchemaName) -> bool,
+    {
         let mut sorted = Vec::new();
         let mut visited = HashSet::new();
         let mut temp_visited = HashSet::new();
@@ -337,6 +360,7 @@ impl InheritanceGraph {
                     &mut visited,
                     &mut temp_visited,
                     &mut sorted,
+                    &external_parent_exists,
                 )?;
             }
         }
@@ -354,13 +378,21 @@ impl InheritanceGraph {
         Ok(())
     }
 
-    fn visit(
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Recursive graph traversal requires passing state"
+    )]
+    fn visit<F>(
         &self,
         name: &SchemaName,
         visited: &mut HashSet<SchemaName>,
         temp_visited: &mut HashSet<SchemaName>,
         sorted: &mut Vec<SchemaName>,
-    ) -> Result<(), SchemaError> {
+        external_parent_exists: &F,
+    ) -> Result<(), SchemaError>
+    where
+        F: Fn(&SchemaName) -> bool,
+    {
         Self::validate_not_temporarily_visited(name, temp_visited)?;
 
         if visited.contains(name) {
@@ -369,7 +401,13 @@ impl InheritanceGraph {
 
         temp_visited.insert(name.clone());
 
-        self.visit_parent(name, visited, temp_visited, sorted)?;
+        self.visit_parent(
+            name,
+            visited,
+            temp_visited,
+            sorted,
+            external_parent_exists,
+        )?;
 
         temp_visited.remove(name);
         visited.insert(name.clone());
@@ -378,20 +416,37 @@ impl InheritanceGraph {
         Ok(())
     }
 
-    fn visit_parent(
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Recursive graph traversal requires passing state"
+    )]
+    fn visit_parent<F>(
         &self,
         name: &SchemaName,
         visited: &mut HashSet<SchemaName>,
         temp_visited: &mut HashSet<SchemaName>,
         sorted: &mut Vec<SchemaName>,
-    ) -> Result<(), SchemaError> {
+        external_parent_exists: &F,
+    ) -> Result<(), SchemaError>
+    where
+        F: Fn(&SchemaName) -> bool,
+    {
         if let Some(parent_opt) = self.nodes.get(name)
             && let Some(parent) = parent_opt.as_ref()
         {
             if self.nodes.contains_key(parent) {
-                self.visit(parent, visited, temp_visited, sorted)?;
-            } else {
+                self.visit(
+                    parent,
+                    visited,
+                    temp_visited,
+                    sorted,
+                    external_parent_exists,
+                )?;
+            } else if !external_parent_exists(parent) {
                 return Err(SchemaError::ParentNotFound(parent.to_string()));
+            } else {
+                // If external parent exists, we don't visit it (it's assumed
+                // resolved externally)
             }
         }
         Ok(())
@@ -585,7 +640,7 @@ mod tests {
         fn resolve_order(
             graph: &InheritanceGraph,
         ) -> Result<Vec<SchemaName>, SchemaError> {
-            graph.resolve_order()
+            graph.resolve_order(|_| false)
         }
 
         /// 3.3-UNIT-018: `schema_graph_detects_arbitrary_cycles`.
@@ -622,7 +677,7 @@ mod tests {
                     graph.add_node(name, Some(next_name));
                 }
 
-                let res = graph.resolve_order();
+                let res = graph.resolve_order(|_| false);
                 prop_assert!(
                     matches!(res, Err(SchemaError::CircularInheritance(_))),
                     "Proptest circular dependency should be detected, got: \
@@ -669,11 +724,12 @@ mod tests {
                     previous = Some(name);
                 }
 
-                let order = graph.resolve_order().map_err(|error| {
-                    TestCaseError::fail(format!(
-                        "Linear graph should resolve successfully: {error}"
-                    ))
-                })?;
+                let order =
+                    graph.resolve_order(|_| false).map_err(|error| {
+                        TestCaseError::fail(format!(
+                            "Linear graph should resolve successfully: {error}"
+                        ))
+                    })?;
                 prop_assert_eq!(
                     order.len(),
                     unique_names.len(),
@@ -699,7 +755,7 @@ mod tests {
             graph.add_node(a.clone(), Some(b.clone()));
             graph.add_node(b, Some(a));
 
-            let res = graph.resolve_order();
+            let res = graph.resolve_order(|_| false);
 
             if matches!(res, Err(SchemaError::CircularInheritance(_))) {
                 Ok(())
