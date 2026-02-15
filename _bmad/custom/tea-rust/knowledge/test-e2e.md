@@ -232,6 +232,6 @@ fn list_command_outputs_json_when_requested() {
 
 ## RELATED MODULES
 
-- See `unit.md` for unit testing
-- See `integration.md` for integration testing
+- See `test-unit.md` for unit testing
+- See `test-integration.md` for integration testing
 - See `assertions.md` for assertion patterns

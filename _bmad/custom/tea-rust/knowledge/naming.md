@@ -348,6 +348,6 @@ mod tests {
 
 ## RELATED MODULES
 
-- See `unit.md` for unit testing location rules
+- See `test-unit.md` for unit testing location rules
 - See `assertions.md` for assertion patterns
 - See `anti-patterns.md` for comprehensive anti-patterns

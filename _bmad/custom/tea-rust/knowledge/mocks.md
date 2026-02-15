@@ -125,6 +125,6 @@ fn test_consumer_with_mock() {
 
 ## RELATED MODULES
 
-- See `unit.md` for unit testing context
-- See `integration.md` for integration testing context
+- See `test-unit.md` for unit testing context
+- See `test-integration.md` for integration testing context
 - See `anti-patterns.md` for comprehensive anti-patterns
