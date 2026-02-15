@@ -20,7 +20,7 @@ use super::error::SchemaError;
 // === Public API ===
 //
 // This module uses a two-layer model:
-// - `*SpecDef`: persisted/serde-friendly schema definitions.
+// - Raw spec definitions live in `schema::raw` (serde-friendly input).
 // - `*Spec`: validated runtime constraints (invariants enforced at
 //   construction).
 //
@@ -43,189 +43,6 @@ pub enum PropertySpecType {
     Number,
     /// String type.
     String,
-}
-
-// --- Persisted schema types (Serde source-of-truth): *SpecDef ---
-
-/// Persisted sum type for all supported property specifications.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(tag = "type", rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum PropertySpecDef {
-    /// Boolean property definition (marker type).
-    Bool(BoolSpecDef),
-    /// Date property definition.
-    Date(DateSpecDef),
-    /// File property definition.
-    File(FileSpecDef),
-    /// Number property definition.
-    Number(NumberSpecDef),
-    /// String property definition.
-    String(StringSpecDef),
-}
-
-/// Raw property specification (serde-facing input type).
-pub type RawPropertySpec = PropertySpecDef;
-
-impl PropertySpecDef {
-    /// Get the spec type identifier.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &enum are intentional here for \
-                  readability"
-    )]
-    pub fn spec_type(&self) -> PropertySpecType {
-        match self {
-            Self::Bool(_) => PropertySpecType::Bool,
-            Self::Date(_) => PropertySpecType::Date,
-            Self::File(_) => PropertySpecType::File,
-            Self::Number(_) => PropertySpecType::Number,
-            Self::String(_) => PropertySpecType::String,
-        }
-    }
-
-    /// Validate and compile a persisted definition into a validated spec.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if the definition is invalid.
-    #[inline]
-    pub fn try_into_validated(self) -> Result<PropertySpec, SchemaError> {
-        match self {
-            Self::Bool(_) => Ok(PropertySpec::Bool(BoolSpec::default())),
-            Self::Date(def) => {
-                Ok(PropertySpec::Date(DateSpec::try_new(&def.format)?))
-            }
-            Self::File(def) => Ok(PropertySpec::File(FileSpec::try_new(
-                def.directory,
-                def.file_class,
-            )?)),
-            Self::Number(def) => Ok(PropertySpec::Number(NumberSpec::try_new(
-                def.min, def.max, def.step,
-            )?)),
-            Self::String(def) => Ok(PropertySpec::String(StringSpec::try_new(
-                def.min_length,
-                def.max_length,
-                def.pattern,
-                def.enum_values,
-            )?)),
-        }
-    }
-}
-
-/// Boolean property definition (marker type).
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct BoolSpecDef;
-
-/// Date property definition.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct DateSpecDef {
-    /// Date format string (using chrono format tokens).
-    pub format: String,
-}
-
-/// File property definition.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct FileSpecDef {
-    /// Optional directory restriction (vault-relative path).
-    pub directory: Option<String>,
-    /// Optional file class restriction (schema name).
-    pub file_class: Option<String>,
-}
-
-/// Number property definition.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct NumberSpecDef {
-    /// Optional maximum value.
-    pub max: Option<f64>,
-    /// Optional minimum value.
-    pub min: Option<f64>,
-    /// Optional step increment.
-    pub step: Option<f64>,
-}
-
-/// String property definition.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct StringSpecDef {
-    /// Optional enum of allowed values.
-    pub enum_values: Option<Vec<String>>,
-    /// Optional max length.
-    pub max_length: Option<usize>,
-    /// Optional min length.
-    pub min_length: Option<usize>,
-    /// Optional regex pattern.
-    pub pattern: Option<String>,
 }
 
 // --- Validated runtime types: *Spec ---
@@ -286,9 +103,9 @@ impl PropertySpec {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::schema::property_spec::{PropertySpecDef, BoolSpecDef};
+    /// # use lithos_core::schema::raw::{RawPropertySpec, BoolSpecDef};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let def = PropertySpecDef::Bool(BoolSpecDef::default());
+    /// let def = RawPropertySpec::Bool(BoolSpecDef::default());
     /// let spec = def.try_into_validated()?;
     /// spec.validate(&serde_json::json!(true))?;
     /// # Ok(())
@@ -995,12 +812,12 @@ fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     mod string_spec {
         use rstest::rstest;
 
-        use super::*;
+        use crate::schema::{
+            error::SchemaError, property_spec::StringSpec, raw::StringSpecDef,
+        };
 
         /// 3.3-UNIT-011: String Specification Validation Matrix.
         /// Priority: P1.
@@ -1097,7 +914,9 @@ mod tests {
     mod number_spec {
         use rstest::rstest;
 
-        use super::*;
+        use crate::schema::{
+            error::SchemaError, property_spec::NumberSpec, raw::NumberSpecDef,
+        };
 
         #[expect(
             clippy::disallowed_methods,
@@ -1256,7 +1075,7 @@ mod tests {
     mod file_spec {
         use rstest::rstest;
 
-        use super::*;
+        use crate::schema::{error::SchemaError, property_spec::FileSpec};
 
         #[expect(
             clippy::disallowed_methods,
@@ -1367,7 +1186,7 @@ mod tests {
     }
 
     mod bool_spec {
-        use super::*;
+        use crate::schema::property_spec::{BoolSpec, PropertySpec};
 
         #[test]
         fn bool_spec_accepts_true() {
@@ -1393,7 +1212,7 @@ mod tests {
     }
 
     mod date_spec {
-        use super::*;
+        use crate::schema::{error::SchemaError, property_spec::DateSpec};
 
         #[test]
         #[expect(
@@ -1428,14 +1247,17 @@ mod tests {
     }
 
     mod property_spec {
-        use super::*;
+        use crate::schema::{
+            property_spec::{PropertySpec, PropertySpecType},
+            raw::{BoolSpecDef, NumberSpecDef, RawPropertySpec, StringSpecDef},
+        };
 
         #[expect(
             clippy::disallowed_methods,
             reason = "Helper uses expect for deterministic spec setup."
         )]
         fn bool_spec() -> PropertySpec {
-            PropertySpecDef::Bool(BoolSpecDef::default())
+            RawPropertySpec::Bool(BoolSpecDef::default())
                 .try_into_validated()
                 .expect("Expected default BoolSpec to validate")
         }
@@ -1445,7 +1267,7 @@ mod tests {
             reason = "Helper uses expect for deterministic spec setup."
         )]
         fn string_spec() -> PropertySpec {
-            PropertySpecDef::String(StringSpecDef::default())
+            RawPropertySpec::String(StringSpecDef::default())
                 .try_into_validated()
                 .expect("Expected default StringSpec to validate")
         }
@@ -1455,7 +1277,7 @@ mod tests {
             reason = "Helper uses expect for deterministic spec setup."
         )]
         fn number_spec() -> PropertySpec {
-            PropertySpecDef::Number(NumberSpecDef::default())
+            RawPropertySpec::Number(NumberSpecDef::default())
                 .try_into_validated()
                 .expect("Expected default NumberSpec to validate")
         }

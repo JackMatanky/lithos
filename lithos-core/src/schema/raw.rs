@@ -5,15 +5,204 @@
     reason = "RawSchema and RawProperty follow naming conventions for input \
               types"
 )]
+#![expect(
+    clippy::exhaustive_enums,
+    clippy::exhaustive_structs,
+    reason = "rkyv generates exhaustive archived types despite \
+              #[non_exhaustive] on source types."
+)]
 
 use std::collections::HashSet;
 
 use uuid::Uuid;
 
 use super::{
-    aggregate::SchemaName, property::PropertyName,
-    property_spec::RawPropertySpec,
+    aggregate::SchemaName,
+    error::SchemaError,
+    property::PropertyName,
+    property_spec::{
+        BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec,
+        PropertySpecType, StringSpec,
+    },
 };
+
+/// Raw property specification (serde-facing input type).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(tag = "type", rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum RawPropertySpec {
+    /// Boolean property definition (marker type).
+    Bool(BoolSpecDef),
+    /// Date property definition.
+    Date(DateSpecDef),
+    /// File property definition.
+    File(FileSpecDef),
+    /// Number property definition.
+    Number(NumberSpecDef),
+    /// String property definition.
+    String(StringSpecDef),
+}
+
+impl RawPropertySpec {
+    /// Get the spec type identifier.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &enum are intentional here for \
+                  readability"
+    )]
+    pub fn spec_type(&self) -> PropertySpecType {
+        match self {
+            Self::Bool(_) => PropertySpecType::Bool,
+            Self::Date(_) => PropertySpecType::Date,
+            Self::File(_) => PropertySpecType::File,
+            Self::Number(_) => PropertySpecType::Number,
+            Self::String(_) => PropertySpecType::String,
+        }
+    }
+
+    /// Validate and compile a persisted definition into a validated spec.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if the definition is invalid.
+    #[inline]
+    pub fn try_into_validated(self) -> Result<PropertySpec, SchemaError> {
+        match self {
+            Self::Bool(_) => Ok(PropertySpec::Bool(BoolSpec::default())),
+            Self::Date(def) => {
+                Ok(PropertySpec::Date(DateSpec::try_new(&def.format)?))
+            }
+            Self::File(def) => Ok(PropertySpec::File(FileSpec::try_new(
+                def.directory,
+                def.file_class,
+            )?)),
+            Self::Number(def) => Ok(PropertySpec::Number(NumberSpec::try_new(
+                def.min, def.max, def.step,
+            )?)),
+            Self::String(def) => Ok(PropertySpec::String(StringSpec::try_new(
+                def.min_length,
+                def.max_length,
+                def.pattern,
+                def.enum_values,
+            )?)),
+        }
+    }
+}
+
+/// Boolean property definition (marker type).
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct BoolSpecDef;
+
+/// Date property definition.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct DateSpecDef {
+    /// Date format string (using chrono format tokens).
+    pub format: String,
+}
+
+/// File property definition.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct FileSpecDef {
+    /// Optional directory restriction (vault-relative path).
+    pub directory: Option<String>,
+    /// Optional file class restriction (schema name).
+    pub file_class: Option<String>,
+}
+
+/// Number property definition.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct NumberSpecDef {
+    /// Optional maximum value.
+    pub max: Option<f64>,
+    /// Optional minimum value.
+    pub min: Option<f64>,
+    /// Optional step increment.
+    pub step: Option<f64>,
+}
+
+/// String property definition.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct StringSpecDef {
+    /// Optional enum of allowed values.
+    pub enum_values: Option<Vec<String>>,
+    /// Optional max length.
+    pub max_length: Option<usize>,
+    /// Optional min length.
+    pub min_length: Option<usize>,
+    /// Optional regex pattern.
+    pub pattern: Option<String>,
+}
 
 /// Raw schema definition (Input).
 ///
@@ -21,7 +210,7 @@ use super::{
 /// ```ignore
 /// use lithos_core::schema::raw::{RawSchema, RawProperty, RawPropertyInline};
 /// use lithos_core::schema::aggregate::SchemaName;
-/// use lithos_core::schema::property_spec::{RawPropertySpec, BoolSpecDef};
+/// use lithos_core::schema::raw::{RawPropertySpec, BoolSpecDef};
 /// use std::collections::HashSet;
 /// use uuid::Uuid;
 /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -121,7 +310,7 @@ pub struct RawPropertyRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::property_spec::BoolSpecDef;
+    use crate::schema::raw::BoolSpecDef;
 
     const TEST_SCHEMA_ID: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0601);
