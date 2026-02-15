@@ -28,7 +28,7 @@ use super::{
 ///
 /// let schema = RawSchema::new(
 ///     Uuid::now_v7(),
-///     SchemaName::new("note".to_string())?,
+///     SchemaName::new("note")?,
 ///     None,
 ///     HashSet::new(),
 ///     vec![RawProperty::Inline(RawPropertyInline {

@@ -3,9 +3,11 @@
 //! This module implements the Query port trait for Schema read operations,
 //! using the Database layer for zero-copy reads.
 
-use uuid::Uuid;
-
-use super::{aggregate::Schema, db_table::SCHEMAS, error::SchemaError};
+use super::{
+    aggregate::{Schema, SchemaId, SchemaName},
+    db_table::SCHEMAS,
+    error::SchemaError,
+};
 use crate::db::Database;
 
 /// Query implementation for Schema read operations.
@@ -36,7 +38,7 @@ impl super::ports::Query for Query<'_> {
     /// Schema is stored by name, not ID. For now, returns `None`.
     /// A name→ID index would be needed for full implementation.
     #[inline]
-    fn find_by_id(&self, _id: Uuid) -> Result<Option<Schema>, SchemaError> {
+    fn find_by_id(&self, _id: SchemaId) -> Result<Option<Schema>, SchemaError> {
         // Schema is stored by name, not ID
         // For now, return None - would need name→id index for full
         // implementation
@@ -48,10 +50,13 @@ impl super::ports::Query for Query<'_> {
     /// # Errors
     /// Returns `SchemaError` if query fails.
     #[inline]
-    fn find_by_name(&self, name: &str) -> Result<Option<Schema>, SchemaError> {
-        self.db.get_owned(SCHEMAS, name).map_err(|e: crate::db::DbError| {
-            SchemaError::Storage(e.to_string())
-        })
+    fn find_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<Schema>, SchemaError> {
+        self.db.get_owned(SCHEMAS, name.as_ref()).map_err(
+            |e: crate::db::DbError| SchemaError::Storage(e.to_string()),
+        )
     }
 
     /// List all available schemas.
@@ -73,12 +78,16 @@ impl super::ports::Query for Query<'_> {
 )]
 mod tests {
     mod fixtures {
+        use uuid::Uuid;
+
         use super::*;
 
-        pub const TEST_SCHEMA_ID_A: Uuid =
-            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0201);
-        pub const TEST_SCHEMA_ID_B: Uuid =
-            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0202);
+        pub const TEST_SCHEMA_ID_A: SchemaId = SchemaId::from_uuid(
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0201),
+        );
+        pub const TEST_SCHEMA_ID_B: SchemaId = SchemaId::from_uuid(
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0202),
+        );
 
         pub fn test_db() -> Result<(TempDir, Database), String> {
             let dir = tempdir().map_err(|e| e.to_string())?;
@@ -87,7 +96,10 @@ mod tests {
             Ok((dir, db))
         }
 
-        pub fn schema_fixture(id: Uuid, name: &str) -> Result<Schema, String> {
+        pub fn schema_fixture(
+            id: SchemaId,
+            name: &str,
+        ) -> Result<Schema, String> {
             let name = SchemaName::new(name).map_err(|e| e.to_string())?;
             Schema::new(id, name, vec![]).map_err(|e| e.to_string())
         }
@@ -96,7 +108,6 @@ mod tests {
     use std::collections::HashSet;
 
     use tempfile::{TempDir, tempdir};
-    use uuid::Uuid;
 
     use super::*;
     use crate::schema::{aggregate::SchemaName, command, ports::Query as _};
@@ -138,8 +149,9 @@ mod tests {
                     .expect("Failed to create schema fixture");
             cmd.save(&schema).expect("Save should succeed");
 
-            let stored =
-                qry.find_by_name("note").expect("Query should succeed");
+            let name =
+                SchemaName::new("note").expect("Failed to create schema name");
+            let stored = qry.find_by_name(&name).expect("Query should succeed");
             let stored_schema = stored.expect("Schema should be found by name");
             assert_eq!(
                 stored_schema.name().as_ref(),

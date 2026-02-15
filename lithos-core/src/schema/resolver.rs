@@ -7,9 +7,9 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    aggregate::{PropertyBank, Schema},
+    aggregate::{PropertyBank, Schema, SchemaId},
     error::SchemaError,
-    property::{Property, PropertyName},
+    property::{Cardinality, Multiplicity, Property, PropertyId, PropertyName},
     raw::{RawProperty, RawPropertyRef, RawSchema},
 };
 
@@ -29,14 +29,14 @@ use super::{
 /// let bank = PropertyBank::new();
 /// let raw = RawSchema::new(
 ///     Uuid::now_v7(),
-///     SchemaName::new("test".into())?,
+///     SchemaName::new("test")?,
 ///     None,
 ///     HashSet::new(),
 ///     Vec::new(),
 /// );
 ///
 /// let schema = Resolver::resolve(raw, None, &bank)?;
-/// assert_eq!(&schema.name().0, "test", "Schema name should match");
+/// assert_eq!(schema.name().as_str(), "test", "Schema name should match");
 /// # Ok(())
 /// # }
 /// ```
@@ -93,10 +93,10 @@ impl Resolver {
         let mut final_props: Vec<Property> =
             resolved_props.into_values().collect();
         // Sort for determinism
-        final_props.sort_by(|a, b| a.name().0.cmp(&b.name().0));
+        final_props.sort_by(|a, b| a.name().as_str().cmp(b.name().as_str()));
 
         // Create the Schema entity using the identity of its raw definition
-        Schema::new(raw.id, raw.name, final_props)
+        Schema::new(SchemaId::from_uuid(raw.id), raw.name, final_props)
     }
 
     fn resolve_own_properties(
@@ -119,11 +119,21 @@ impl Resolver {
             RawProperty::Inline(inline) => {
                 let name = PropertyName::new(&inline.name)?;
                 let spec = inline.spec.try_into_validated()?;
+                let cardinality = if inline.required {
+                    Cardinality::Required
+                } else {
+                    Cardinality::Optional
+                };
+                let multiplicity = if inline.array {
+                    Multiplicity::Many
+                } else {
+                    Multiplicity::Single
+                };
                 Ok(Property::new(
-                    inline.id,
+                    PropertyId::from_uuid(inline.id),
                     name,
-                    inline.required,
-                    inline.array,
+                    cardinality,
+                    multiplicity,
                     spec,
                 )?)
             }
@@ -132,7 +142,8 @@ impl Resolver {
             }) => {
                 let lookup =
                     ref_path.strip_prefix("#/properties/").unwrap_or(&ref_path);
-                bank.get_by_name(lookup).cloned().ok_or_else(|| {
+                let name = PropertyName::try_from(lookup)?;
+                bank.get_by_name(&name).cloned().ok_or_else(|| {
                     SchemaError::PropertyNotFound(ref_path.clone())
                 })
             }
@@ -150,7 +161,7 @@ mod tests {
 
     use super::*;
     use crate::schema::{
-        aggregate::SchemaName,
+        aggregate::{SchemaId, SchemaName},
         property_spec::{BoolSpec, PropertySpec},
     };
 
@@ -175,10 +186,10 @@ mod tests {
         pub fn parent_property() -> Property {
             let name = PropertyName::new("parent").expect("valid name");
             Property::new(
-                TEST_PROPERTY_ID_PARENT,
+                PropertyId::from_uuid(TEST_PROPERTY_ID_PARENT),
                 name,
-                true,
-                false,
+                Cardinality::Required,
+                Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             )
             .expect("valid property")
@@ -187,10 +198,10 @@ mod tests {
         pub fn status_property() -> Property {
             let name = PropertyName::new("status").expect("valid name");
             Property::new(
-                TEST_PROPERTY_ID_STATUS,
+                PropertyId::from_uuid(TEST_PROPERTY_ID_STATUS),
                 name,
-                true,
-                false,
+                Cardinality::Required,
+                Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             )
             .expect("valid property")
@@ -199,10 +210,10 @@ mod tests {
         pub fn excluded_property() -> Property {
             let name = PropertyName::new("p").expect("valid name");
             Property::new(
-                TEST_PROPERTY_ID_EXCLUDE,
+                PropertyId::from_uuid(TEST_PROPERTY_ID_EXCLUDE),
                 name,
-                true,
-                false,
+                Cardinality::Required,
+                Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             )
             .expect("valid property")
@@ -210,8 +221,10 @@ mod tests {
 
         pub fn parent_schema_with_property(property: Property) -> Schema {
             let name = SchemaName::new("parent").expect("valid schema name");
-            Schema::new(TEST_SCHEMA_ID_PARENT, name, vec![property])
-                .expect("valid schema")
+            Schema::new(SchemaId::from_uuid(TEST_SCHEMA_ID_PARENT), name, vec![
+                property,
+            ])
+            .expect("valid schema")
         }
 
         pub fn child_raw_schema() -> RawSchema {
@@ -274,14 +287,19 @@ mod tests {
                 .expect("resolve schema")
         }
     }
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test uses expect for deterministic setup."
+    )]
     mod resolve {
         use super::*;
 
         #[test]
         fn includes_parent_properties() {
             let schema = fixtures::resolved_schema_with_parent_property();
+            let name = PropertyName::new("parent").expect("valid name");
             assert!(
-                schema.has("parent"),
+                schema.has(&name),
                 "Resolved schema should include parent property"
             );
         }
@@ -289,8 +307,9 @@ mod tests {
         #[test]
         fn excludes_properties_listed_in_child() {
             let schema = fixtures::resolved_schema_with_excludes();
+            let name = PropertyName::new("p").expect("valid name");
             assert!(
-                !schema.has("p"),
+                !schema.has(&name),
                 "Resolved schema should exclude child-listed property"
             );
         }
@@ -303,7 +322,7 @@ mod tests {
         fn resolves_ref_property_by_plain_name() {
             let property = fixtures::resolved_ref_property();
             assert_eq!(
-                &property.name().0,
+                property.name().as_str(),
                 "status",
                 "Resolved property name should match"
             );

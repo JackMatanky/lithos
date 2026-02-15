@@ -7,7 +7,8 @@
 )]
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+
+use super::aggregate::{SchemaId, SchemaName, Timestamp};
 
 /// Property bank updated domain event.
 ///
@@ -16,9 +17,11 @@ use uuid::Uuid;
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::events::PropertyBankUpdated;
+/// use lithos_core::schema::{
+///     aggregate::Timestamp, events::PropertyBankUpdated,
+/// };
 ///
-/// let event = PropertyBankUpdated::new(12, 1234567890);
+/// let event = PropertyBankUpdated::new(12, Timestamp::from_secs(1234567890));
 /// assert_eq!(event.property_count, 12, "Property count should match");
 /// ```
 #[derive(
@@ -38,7 +41,7 @@ pub struct PropertyBankUpdated {
     /// Number of properties in the bank after update.
     pub property_count: usize,
     /// Unix timestamp when the update occurred.
-    pub timestamp: i64,
+    pub timestamp: Timestamp,
 }
 
 /// Schema created domain event.
@@ -48,13 +51,19 @@ pub struct PropertyBankUpdated {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::events::SchemaCreated;
-/// use uuid::Uuid;
+/// use lithos_core::schema::{
+///     aggregate::{SchemaId, SchemaName, Timestamp},
+///     events::SchemaCreated,
+/// };
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// let id = Uuid::now_v7();
-/// let event = SchemaCreated::new(id, "schema", 1234567890);
+/// let id = SchemaId::new();
+/// let name = SchemaName::new("schema")?;
+/// let event = SchemaCreated::new(id, &name, Timestamp::from_secs(1234567890));
 /// assert_eq!(event.id, id, "Schema id should match");
-/// assert_eq!(event.name, "schema", "Schema name should match");
+/// assert_eq!(event.name, name, "Schema name should match");
+/// # Ok(())
+/// # }
 /// ```
 #[derive(
     Debug,
@@ -71,11 +80,11 @@ pub struct PropertyBankUpdated {
 #[non_exhaustive]
 pub struct SchemaCreated {
     /// UUID of the schema.
-    pub id: Uuid,
+    pub id: SchemaId,
     /// Name of the schema.
-    pub name: String,
+    pub name: SchemaName,
     /// Unix timestamp when the schema was created.
-    pub timestamp: i64,
+    pub timestamp: Timestamp,
 }
 
 /// Domain events for the Schema context.
@@ -95,7 +104,7 @@ impl PropertyBankUpdated {
     /// Creates a new property bank updated event.
     #[inline]
     #[must_use]
-    pub fn new(property_count: usize, timestamp: i64) -> Self {
+    pub fn new(property_count: usize, timestamp: Timestamp) -> Self {
         Self {
             property_count,
             timestamp,
@@ -107,10 +116,10 @@ impl SchemaCreated {
     /// Creates a new schema created event.
     #[inline]
     #[must_use]
-    pub fn new(id: Uuid, name: &str, timestamp: i64) -> Self {
+    pub fn new(id: SchemaId, name: &SchemaName, timestamp: Timestamp) -> Self {
         Self {
             id,
-            name: name.into(),
+            name: name.clone(),
             timestamp,
         }
     }
