@@ -1,5 +1,4 @@
 id,name,description,tags,fragment_file
-best-practices,Rust Testing Best Practices,Comprehensive Rust testing patterns and quality gates,"rust,testing,best-practices,quality",knowledge/best-practices.md
 anti-patterns,Rust Testing Anti-Patterns,Comprehensive guide and scoring for Rust testing anti-patterns,"rust,testing,anti-patterns,quality,scoring",knowledge/anti-patterns.md
 review-patterns,Rust Test Review Patterns,Senior-dev review patterns and quality frameworks,"rust,testing,review,quality",knowledge/review-patterns.md
 lithos-architecture-testing,Lithos Architecture Testing,Bounded context and CQRS testing patterns,"lithos,architecture,cqrs,zero-copy",knowledge/lithos-architecture-testing.md
@@ -10,6 +9,10 @@ e2e,Rust E2E Testing,End-to-end CLI testing guidance,"rust,testing,e2e,cli",know
 naming,Rust Test Naming,Test naming conventions and patterns,"rust,testing,naming,conventions",knowledge/naming.md
 assertions,Rust Test Assertions,Assertion patterns and error messaging,"rust,testing,assertions",knowledge/assertions.md
 fixtures,Rust Test Fixtures,Fixture setup strategies and isolation guidance,"rust,testing,fixtures",knowledge/fixtures.md
+mocks,Mocking Patterns,Trait-based and automock patterns,"rust,testing,mocks",knowledge/mocks.md
+benchmarks,Performance & Benchmarking,Criterion benchmarks and memory profiling,"rust,testing,benchmarks,performance",knowledge/benchmarks.md
+quality-gates,Quality Gates,Coverage and performance thresholds,"rust,testing,quality-gates",knowledge/quality-gates.md
+ci,CI/CD Integration,Automated pipeline and gate enforcement,"rust,testing,ci",knowledge/ci.md
 tools-nextest,Nextest Configuration,Nextest profiles and usage patterns,"rust,testing,nextest,tools",knowledge/tools-nextest.md
 tools-proptest,Proptest Patterns,Property-based testing guidance and strategies,"rust,testing,proptest,property-testing",knowledge/tools-proptest.md
 tools-rstest,rstest Patterns,Parameterized testing and fixtures with rstest,"rust,testing,rstest,tools",knowledge/tools-rstest.md

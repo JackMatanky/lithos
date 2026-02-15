@@ -57,6 +57,7 @@ What are you asserting?
 - [ ] Uses `assert!(result.is_ok(), "...", result.err())` NOT `result.unwrap()`
 - [ ] Uses `pretty_assertions` for struct comparisons
 - [ ] Avoids `#[should_panic]` unless panic is documented behavior
+- [ ] Tests all error variants comprehensively (exhaustive error coverage)
 
 ### Assertion Phases
 
@@ -120,6 +121,48 @@ assert_eq!(
 ### Result Assertions
 
 ```rust
+// Comprehensive Error Testing
+#[test]
+fn test_all_error_variants() {
+    let test_cases = vec![
+        ("", ValidationError::EmptyTitle),
+        ("a".repeat(101), ValidationError::TitleTooLong),
+        ("invalid", ValidationError::InvalidFormat),
+    ];
+
+    for (input, expected_error) in test_cases {
+        let result = validate_title(input);
+        match result {
+            Err(actual_error) => {
+                assert!(
+                    matches!(actual_error, expected_error),
+                    "Expected {:?}, got {:?}",
+                    expected_error, actual_error
+                );
+            }
+            Ok(_) => panic!("Expected error for input: {:?}", input),
+        }
+    }
+}
+
+// Error Recovery Testing
+#[test]
+fn test_error_recovery_mechanisms() {
+    let storage = setup_storage_with_fault_injection();
+
+    // Test that system recovers from transient errors
+    storage.inject_error(StorageError::TemporaryFailure);
+
+    let result = store_test_note(&storage);
+    assert!(result.is_err());
+
+    // Remove error injection and retry
+    storage.clear_error_injection();
+
+    let retry_result = store_test_note(&storage);
+    assert!(retry_result.is_ok());
+}
+
 // ❌ BAD: unwrap() hides the error
 let value = result.unwrap();
 assert_eq!(value, expected);
