@@ -11,7 +11,7 @@ agent:
 # Using only standard BMAD sections to ensure compatibility
 memories:
   # --- Knowledge Base Location ---
-  - "Rust testing knowledge is modularized in _bmad/tea/knowledge/rust/"
+  - "Rust testing knowledge is modularized in _bmad/custom/tea-rust/knowledge/"
   - "Always reference README.md in that directory for module selection guidance"
 
   # --- Context-Aware Loading Instructions ---

@@ -81,7 +81,7 @@ What are you working on?
 
 ## File Locations
 
-- Knowledge modules: `_bmad/tea/knowledge/rust/`
+- Knowledge modules: `_bmad/custom/tea-rust/knowledge/`
 - Agent customization: `_bmad/_config/agents/tea-tea.customize.yaml`
 - Test documentation: `_bmad-output/test-developer-guide.md`
 - Test strategy: `_bmad-output/test-design-system.md`
