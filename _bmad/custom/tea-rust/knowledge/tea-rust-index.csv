@@ -14,3 +14,37 @@ rust-testing-anti-patterns-checklist,Rust Testing Anti-Patterns Checklist,Checkl
 rust-testing-tools-nextest,Nextest Configuration,Nextest profiles and usage patterns,"rust,testing,nextest,tools",knowledge/testing-tools-nextest.md
 rust-testing-tools-proptest,Proptest Patterns,Property-based testing guidance and strategies,"rust,testing,proptest,property-testing",knowledge/testing-tools-proptest.md
 rust-testing-tools-rstest,rstest Patterns,Parameterized testing and fixtures with rstest,"rust,testing,rstest,tools",knowledge/testing-tools-rstest.md
+fixture-architecture,Fixture Architecture,"Composable fixture patterns (pure function -> fixture -> merge) and reuse rules","fixtures,architecture,playwright,cypress",../../../tea/testarch/knowledge/fixture-architecture.md
+network-first,Network-First Safeguards,"Intercept-before-navigate workflow, HAR capture, deterministic waits, edge mocking","network,stability,playwright,cypress,ui",../../../tea/testarch/knowledge/network-first.md
+data-factories,Data Factories and API Setup,"Factories with overrides, API seeding, cleanup discipline","data,factories,setup,api,backend,seeding",../../../tea/testarch/knowledge/data-factories.md
+component-tdd,Component TDD Loop,"Red -> green -> refactor workflow, provider isolation, accessibility assertions","component-testing,tdd,ui",../../../tea/testarch/knowledge/component-tdd.md
+playwright-config,Playwright Config Guardrails,"Environment switching, timeout standards, artifact outputs","playwright,config,env",../../../tea/testarch/knowledge/playwright-config.md
+ci-burn-in,CI and Burn-In Strategy,"Staged jobs, shard orchestration, burn-in loops, artifact policy","ci,automation,flakiness",../../../tea/testarch/knowledge/ci-burn-in.md
+selective-testing,Selective Test Execution,"Tag/grep usage, spec filters, diff-based runs, promotion rules","risk-based,selection,strategy",../../../tea/testarch/knowledge/selective-testing.md
+feature-flags,Feature Flag Governance,"Enum management, targeting helpers, cleanup, release checklists","feature-flags,governance,launchdarkly",../../../tea/testarch/knowledge/feature-flags.md
+contract-testing,Contract Testing Essentials,"Pact publishing, provider verification, resilience coverage","contract-testing,pact,api,backend,microservices,service-contract",../../../tea/testarch/knowledge/contract-testing.md
+email-auth,Email Authentication Testing,"Magic link extraction, state preservation, caching, negative flows","email-authentication,security,workflow",../../../tea/testarch/knowledge/email-auth.md
+error-handling,Error Handling Checks,"Scoped exception handling, retry validation, telemetry logging","resilience,error-handling,stability,api,backend",../../../tea/testarch/knowledge/error-handling.md
+visual-debugging,Visual Debugging Toolkit,"Trace viewer usage, artifact expectations, accessibility integration","debugging,dx,tooling,ui",../../../tea/testarch/knowledge/visual-debugging.md
+risk-governance,Risk Governance,"Scoring matrix, category ownership, gate decision rules","risk,governance,gates",../../../tea/testarch/knowledge/risk-governance.md
+probability-impact,Probability and Impact Scale,"Shared definitions for scoring matrix and gate thresholds","risk,scoring,scale",../../../tea/testarch/knowledge/probability-impact.md
+test-quality,Test Quality Definition of Done,"Execution limits, isolation rules, green criteria","quality,definition-of-done,tests",../../../tea/testarch/knowledge/test-quality.md
+nfr-criteria,NFR Review Criteria,"Security, performance, reliability, maintainability status definitions","nfr,assessment,quality",../../../tea/testarch/knowledge/nfr-criteria.md
+test-levels,Test Levels Framework,"Guidelines for choosing unit, integration, or end-to-end coverage","testing,levels,selection,api,backend,ui",../../../tea/testarch/knowledge/test-levels-framework.md
+test-priorities,Test Priorities Matrix,"P0-P3 criteria, coverage targets, execution ordering","testing,prioritization,risk",../../../tea/testarch/knowledge/test-priorities-matrix.md
+test-healing-patterns,Test Healing Patterns,"Common failure patterns and automated fixes","healing,debugging,patterns",../../../tea/testarch/knowledge/test-healing-patterns.md
+selector-resilience,Selector Resilience,"Robust selector strategies and debugging techniques","selectors,locators,debugging,ui",../../../tea/testarch/knowledge/selector-resilience.md
+timing-debugging,Timing Debugging,"Race condition identification and deterministic wait fixes","timing,async,debugging",../../../tea/testarch/knowledge/timing-debugging.md
+overview,Playwright Utils Overview,"Installation, design principles, fixture patterns for API and UI testing","playwright-utils,fixtures,api,backend,ui",../../../tea/testarch/knowledge/overview.md
+api-request,API Request,"Typed HTTP client, schema validation, retry logic for API and service testing","api,backend,service-testing,api-testing,playwright-utils",../../../tea/testarch/knowledge/api-request.md
+network-recorder,Network Recorder,"HAR record/playback, CRUD detection for offline UI testing","network,playwright-utils,ui,har",../../../tea/testarch/knowledge/network-recorder.md
+auth-session,Auth Session,"Token persistence, multi-user, API and browser authentication","auth,playwright-utils,api,backend,jwt,token",../../../tea/testarch/knowledge/auth-session.md
+intercept-network-call,Intercept Network Call,"Network spy/stub, JSON parsing for UI tests","network,playwright-utils,ui",../../../tea/testarch/knowledge/intercept-network-call.md
+recurse,Recurse Polling,"Async polling for API responses, background jobs, eventual consistency","polling,playwright-utils,api,backend,async,eventual-consistency",../../../tea/testarch/knowledge/recurse.md
+log,Log Utility,"Report logging, structured output for API and UI tests","logging,playwright-utils,api,ui",../../../tea/testarch/knowledge/log.md
+file-utils,File Utilities,"CSV/XLSX/PDF/ZIP validation for API exports and UI downloads","files,playwright-utils,api,backend,ui",../../../tea/testarch/knowledge/file-utils.md
+burn-in,Burn-in Runner,"Smart test selection, git diff for CI optimization","ci,playwright-utils",../../../tea/testarch/knowledge/burn-in.md
+network-error-monitor,Network Error Monitor,"HTTP 4xx/5xx detection for UI tests","monitoring,playwright-utils,ui",../../../tea/testarch/knowledge/network-error-monitor.md
+fixtures-composition,Fixtures Composition,"mergeTests composition patterns for combining utilities","fixtures,playwright-utils",../../../tea/testarch/knowledge/fixtures-composition.md
+api-testing-patterns,API Testing Patterns,"Pure API test patterns without browser: service testing, microservices, GraphQL","api,backend,service-testing,api-testing,microservices,graphql,no-browser",../../../tea/testarch/knowledge/api-testing-patterns.md
+adr-quality-readiness-checklist,ADR Quality Readiness Checklist,"8-category 29-criteria framework for ADR testability and NFR assessment","nfr,testability,adr,quality,assessment,checklist",../../../tea/testarch/knowledge/adr-quality-readiness-checklist.md

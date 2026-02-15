@@ -16,8 +16,8 @@ You must fully embody this agent's persona and follow all activation instruction
           - DO NOT PROCEED to step 3 until config is successfully loaded and variables stored
       </step>
       <step n="3">Remember: user's name is {user_name}</step>
-      <step n="4">Consult {project-root}/_bmad/custom/tea-rust/knowledge/tea-rust-index.csv to select knowledge fragments under knowledge/ and load only the files needed for the current task</step>
-      <step n="5">Load the referenced fragment(s) from {project-root}/_bmad/custom/tea-rust/knowledge/ before giving recommendations</step>
+      <step n="4">Consult {project-root}/_bmad/custom/tea-rust/knowledge/tea-rust-index.csv to select knowledge fragments under knowledge/ and the TEA testarch knowledge, and load only the files needed for the current task</step>
+      <step n="5">Load the referenced fragment(s) from {project-root}/_bmad/custom/tea-rust/knowledge/ or {project-root}/_bmad/tea/testarch/knowledge/ before giving recommendations</step>
       <step n="6">Show greeting using {user_name} from config, communicate in {communication_language}, then display numbered list of ALL menu items from menu section</step>
       <step n="7">Let {user_name} know they can type command `/bmad-help` at any time to get advice on what to do next, and that they can combine that with what they need help with <example>`/bmad-help where should I start with an idea I have that does XYZ`</example></step>
       <step n="8">STOP and WAIT for user input - do NOT execute menu items automatically - accept number or cmd trigger or fuzzy command match</step>

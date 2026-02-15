@@ -5,6 +5,7 @@ nextStepFile: "./step-02-design.md"
 outputFile: "{output_folder}/tea-rust/benchmark-plan.md"
 templateFile: "../templates/benchmark-plan-template.md"
 knowledgeIndex: "{project-root}/_bmad/custom/tea-rust/knowledge/tea-rust-index.csv"
+configSource: "{project-root}/_bmad/custom/tea-rust/config.yaml"
 ---
 
 # Step 1: Load Context

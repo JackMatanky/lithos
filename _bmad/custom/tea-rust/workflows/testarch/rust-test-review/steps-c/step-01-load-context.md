@@ -5,6 +5,7 @@ nextStepFile: "./step-02-analyze.md"
 outputFile: "{output_folder}/tea-rust/test-review.md"
 templateFile: "../templates/review-report-template.md"
 knowledgeIndex: "{project-root}/_bmad/custom/tea-rust/knowledge/tea-rust-index.csv"
+configSource: "{project-root}/_bmad/custom/tea-rust/config.yaml"
 ---
 
 # Step 1: Load Context
