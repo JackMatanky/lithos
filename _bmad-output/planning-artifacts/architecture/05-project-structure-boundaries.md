@@ -36,19 +36,19 @@ lithos/
 │   └── src/
 │       ├── lib.rs              # Crate root and public prelude
 │       ├── patterns.rs         # Shared domain patterns (Aggregate, Command)
+│       ├── application/        # APPLICATION LAYER (Cross-context orchestration)
+│       │   ├── mod.rs          # Application service exports
+│       │   ├── vault.rs        # Vault facade (high-level API)
+│       │   └── services/       # Cross-context workflow services
+│       │       ├── note_creation.rs     # "Create note from template" workflow
+│       │       ├── vault_init.rs        # "Initialize vault" workflow
+│       │       └── batch_indexing.rs    # "Batch index notes" workflow
 │       ├── db/                 # PERSISTENCE INFRASTRUCTURE (redb + rkyv)
 │       │   ├── mod.rs          # Database module entry, core Database type
 │       │   ├── batch.rs        # Atomic write batch implementation
 │       │   ├── error.rs        # Storage-specific error types
-│       │   ├── schema_adapter.rs # Schema port adapters (implements QueryPort + CommandPort)
-│       │   ├── note_adapter.rs   # Note port adapters (implements QueryPort + CommandPort)
-│       │   ├── template_adapter.rs # Template port adapters (implements QueryPort + CommandPort)
-│       │   ├── config_adapter.rs # Config port adapters (implements QueryPort + CommandPort)
-│       │   └── stored/         # Stored types (rkyv DTOs, optional optimization)
-│       │       ├── schema.rs   # StoredSchema and conversions (only if domain shape inefficient)
-│       │       ├── note.rs     # StoredNote and conversions (only if domain shape inefficient)
-│       │       ├── template.rs # StoredTemplate and conversions (only if domain shape inefficient)
-│       │       └── config.rs   # StoredConfig and conversions (only if domain shape inefficient)
+│       │   ├── reader.rs       # Zero-copy read helpers
+│       │   └── writer.rs       # Batch write helpers
 │       ├── note/               # NOTE CONTEXT (Knowledge Graph) - BUSINESS
 │       │   ├── mod.rs          # Public API, re-exports, type aliases (RedbNoteQuery)
 │       │   ├── aggregate.rs    # Note aggregate root (domain, has rkyv derives)
@@ -56,6 +56,11 @@ lithos/
 │       │   ├── command.rs      # Command<C: NoteCommandPort> write operations
 │       │   ├── query.rs        # Query<Q: NoteQueryPort> read operations
 │       │   ├── ports.rs        # NoteQueryPort + NoteCommandPort traits with GATs
+│       │   ├── adapters/       # Storage adapters (context-scoped)
+│       │   │   ├── mod.rs
+│       │   │   ├── query.rs      # impl note::ports::Query
+│       │   │   ├── command.rs    # impl note::ports::Command
+│       │   │   └── stored.rs     # Optional: StoredNote (only if domain shape inefficient)
 │       │   ├── frontmatter.rs  # Metadata extraction and parsing
 │       │   ├── link.rs         # Wiki-link and embed logic
 │       │   ├── structure.rs    # Markdown structural analysis
@@ -70,11 +75,15 @@ lithos/
 │       │   ├── command.rs      # Command<C: SchemaCommandPort> lifecycle management
 │       │   ├── query.rs        # Query<Q: SchemaQueryPort> lookup and resolution
 │       │   ├── ports.rs        # SchemaQueryPort + SchemaCommandPort traits with GATs
+│       │   ├── adapters/       # Storage adapters (context-scoped)
+│       │   │   ├── mod.rs
+│       │   │   ├── query.rs      # impl schema::ports::Query
+│       │   │   ├── command.rs    # impl schema::ports::Command
+│       │   │   └── stored.rs     # Optional: StoredSchema (only if domain shape inefficient)
 │       │   ├── property.rs     # Individual property logic
 │       │   ├── property_spec.rs # Property specification types
 │       │   ├── resolver.rs     # Reference resolution
 │       │   ├── graph.rs        # Schema inheritance graph
-│       │   ├── raw.rs          # RawSchema (serde input, unvalidated)
 │       │   ├── error.rs        # Context-specific errors
 │       │   └── events.rs       # Domain events
 │       ├── template/           # TEMPLATE CONTEXT (Generation) - BUSINESS
@@ -84,6 +93,11 @@ lithos/
 │       │   ├── command.rs      # Command<C: TemplateCommandPort> rendering operations
 │       │   ├── query.rs        # Query<Q: TemplateQueryPort> lookup and resolution
 │       │   ├── ports.rs        # TemplateQueryPort + TemplateCommandPort traits with GATs
+│       │   ├── adapters/       # Storage adapters (context-scoped)
+│       │   │   ├── mod.rs
+│       │   │   ├── query.rs      # impl template::ports::Query
+│       │   │   ├── command.rs    # impl template::ports::Command
+│       │   │   └── stored.rs     # Optional: StoredTemplate (only if domain shape inefficient)
 │       │   ├── variable.rs     # Variable injection logic
 │       │   ├── composition.rs  # Component/Partial logic
 │       │   ├── syntax.rs       # Syntax highlighting/parsing
@@ -97,6 +111,11 @@ lithos/
 │       │   ├── command.rs      # Command<C: ConfigCommandPort> settings updates
 │       │   ├── query.rs        # Query<Q: ConfigQueryPort> settings retrieval
 │       │   ├── ports.rs        # ConfigQueryPort + ConfigCommandPort traits with GATs
+│       │   ├── adapters/       # Storage adapters (context-scoped)
+│       │   │   ├── mod.rs
+│       │   │   ├── query.rs      # impl config::ports::Query
+│       │   │   ├── command.rs    # impl config::ports::Command
+│       │   │   └── stored.rs     # Optional: StoredConfig (only if domain shape inefficient)
 │       │   ├── types.rs        # Shared config models
 │       │   ├── global.rs       # System-wide settings
 │       │   ├── vault.rs        # Vault-specific settings
@@ -139,15 +158,18 @@ lithos/
   - **Pure Infrastructure** (`db`, `fs`, ...): Generic utilities with no business rules
   - Business contexts depend on config context and infrastructure, but NOT on each other
 - **Dependency Flow:**
-  - Pure Infrastructure (db/, fs/, patterns/) → All Business Contexts
-  - Config Context → Other Business Contexts (note/, schema/, template/)
-  - Business Contexts → CLI
+  - Technical Infrastructure (db/, fs/, patterns/) → Adapters
+  - Adapters (<context>/adapters/) → Domain Ports + Technical Infrastructure
+  - Domain Contexts (note/, schema/, template/, config/) → Ports only (not adapters)
+  - Application Layer (application/) → Domain + Adapters (via dependency injection)
+  - Drivers (CLI, LSP) → Application Layer
 - **Port-Based CQRS:**
   - Each context defines **split storage ports** with GATs (e.g., `schema::ports::Query`, `schema::ports::Command`)
   - CQRS types generic over respective ports: `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`
-  - Default adapters: `RedbSchemaQueryAdapter<'db>` and `RedbSchemaCommandAdapter<'db>` implement ports
-  - Type aliases hide complexity: `RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>`
+  - Context-scoped adapters: `schema::adapters::QueryAdapter<'db>` and `schema::adapters::CommandAdapter<'db>` implement ports
+  - Type aliases hide complexity: `RedbSchemaQuery<'db> = Query<QueryAdapter<'db>>`
   - Port split prevents interface bloat and enables read-only test fakes
+  - Adapters scoped to context (not in generic `db/`) for cohesion and independence
 
 ### Component Boundaries
 
@@ -185,10 +207,12 @@ lithos/
   - `query.rs` (Query<Q: QueryPort> generic over query port)
   - `ports.rs` (QueryPort + CommandPort traits with GATs, single file per context)
 - **Co-location:** Errors (`error.rs`), Events (`events.rs`), Ports (`ports.rs`), and Raw types (`raw.rs`) are co-located within the context folder.
-- **Storage Adapters:** Adapters and optional `Stored*` types live in infrastructure:
-  - `db/<context>_adapter.rs` (port adapter implementations like `RedbSchemaQueryAdapter`, `RedbSchemaCommandAdapter`)
-  - `db/stored/<context>.rs` (optional: `Stored*` type definitions only when domain shape inefficient)
-  - Adapters implement split ports defined in business context
+- **Storage Adapters:** Adapters and optional `Stored*` types are context-scoped:
+  - `<context>/adapters/query.rs` - QueryPort implementation
+  - `<context>/adapters/command.rs` - CommandPort implementation
+  - `<context>/adapters/stored.rs` - Optional StoredType (only if profiling shows need)
+  - Adapters scoped to context, import `db/` utilities and implement context ports
+  - No premature nesting (flat `adapters/` until multiple backends exist)
 
 ## Requirements to Structure Mapping
 

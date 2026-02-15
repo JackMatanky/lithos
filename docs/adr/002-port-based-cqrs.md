@@ -65,14 +65,15 @@ pub trait SchemaCommandPort {
 
 ### 2. Infrastructure Adapters
 
-Defined in `db/<context>_adapter.rs`. Adapters implement the ports defined by the domain.
+Defined in `<context>/adapters/`. Adapters implement the ports defined by the domain and are scoped to their respective context.
 
 ```rust
-pub struct RedbSchemaQueryAdapter<'db> {
+// schema/adapters/query.rs
+pub struct QueryAdapter<'db> {
     db: &'db Database,
 }
 
-impl SchemaQueryPort for RedbSchemaQueryAdapter<'_> {
+impl schema::ports::Query for QueryAdapter<'_> {
     type Error = DbError;
     type Archived<'a> = &'a ArchivedSchema; // or &'a ArchivedStoredSchema
 
@@ -86,16 +87,77 @@ impl SchemaQueryPort for RedbSchemaQueryAdapter<'_> {
 }
 ```
 
+**Rationale for Context-Scoped Adapters:**
+- **Cohesion**: All schema-related code lives in `schema/`
+- **Independence**: Context can be tested with different storage backends
+- **Clarity**: Generic `db/` module contains only database primitives, not business-specific adapters
+- **Prevents Circular Dependencies**: Infrastructure depends on domain ports, not vice versa
+- **No Premature Nesting**: Single `adapters/` directory sufficient until multiple backends exist
+
 ### 3. Ergonomic Type Aliases
 
 Defined in `<context>/mod.rs` to hide generic complexity from application code:
 
 ```rust
-pub type RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>;
-pub type RedbSchemaCommand<'db> = Command<RedbSchemaCommandAdapter<'db>>;
+// schema/mod.rs
+use crate::schema::adapters::{QueryAdapter, CommandAdapter};
+
+pub type RedbSchemaQuery<'db> = Query<QueryAdapter<'db>>;
+pub type RedbSchemaCommand<'db> = Command<CommandAdapter<'db>>;
+
+impl<'db> RedbSchemaQuery<'db> {
+    pub fn new_redb(db: &'db Database) -> Self {
+        Self::new(QueryAdapter::new(db))
+    }
+}
 ```
 
-### 4. Error Handling Strategy
+### 4. Application Layer for Orchestration
+
+Cross-context workflows are coordinated in the **application layer** within `lithos-core`, not in CLI drivers. This enables reusability across multiple drivers (CLI, LSP, future Web API) and maintains library-first design.
+
+```rust
+// application/services/note_creation.rs
+pub struct NoteCreationService<'db> {
+    note_cmd: note::RedbCommand<'db>,
+    template_query: template::RedbQuery<'db>,
+    schema_query: schema::RedbQuery<'db>,
+}
+
+impl NoteCreationService<'_> {
+    pub fn create_from_template(
+        &self,
+        template_name: &str,
+        schema_name: &str,
+        context: TemplateContext,
+    ) -> Result<Note, NoteCreationError> {
+        // 1. Load template
+        let template = self.template_query.find_by_name(template_name)?
+            .ok_or(NoteCreationError::TemplateNotFound)?;
+
+        // 2. Load schema
+        let schema = self.schema_query.find_by_name(schema_name)?
+            .ok_or(NoteCreationError::SchemaNotFound)?;
+
+        // 3. Render template with validation
+        let rendered = template.render(context)?;
+        schema.validate(&rendered.frontmatter)?;
+
+        // 4. Create note
+        let note = self.note_cmd.create(&rendered.path)?;
+
+        Ok(note)
+    }
+}
+```
+
+**Benefits:**
+- **Reusability**: Same service used by CLI and LSP
+- **Context Isolation**: Business contexts don't import each other
+- **Library-First**: `lithos-core` independently useful
+- **Testability**: Application services easily tested with fake ports
+
+### 5. Error Handling Strategy
 
 To maintain decoupling while providing useful feedback, we adopt a layered error strategy:
 
@@ -116,6 +178,7 @@ pub enum QueryError<E> {
 
 - **Concrete Type**: The adapter implementation defines the concrete error (e.g., `DbError`).
 - **Result**: The public API returns `Result<T, QueryError<DbError>>`.
+- **Application Layer**: Application services define their own error types that aggregate errors from multiple contexts.
 
 ## Alternatives Considered
 
