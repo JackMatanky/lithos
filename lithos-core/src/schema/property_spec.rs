@@ -1036,6 +1036,16 @@ mod tests {
             "abc",
             Ok(())
         )]
+        #[case::length_utf8_bytes_match(
+            StringSpecDef { min_length: Some(5), max_length: Some(5), ..Default::default() },
+            "caf\u{00e9}",
+            Ok(())
+        )]
+        #[case::length_utf8_bytes_too_long(
+            StringSpecDef { max_length: Some(4), ..Default::default() },
+            "caf\u{00e9}",
+            Err(SchemaError::StringTooLong { max: 4, actual: 5 })
+        )]
         #[case::too_short(
             StringSpecDef { min_length: Some(2), ..Default::default() },
             "a",

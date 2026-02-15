@@ -6,8 +6,14 @@
     reason = "Core domain logic. rkyv generates exhaustive Archived types \
               despite #[non_exhaustive]. Property prefix is descriptive"
 )]
+#![expect(
+    clippy::exhaustive_enums,
+    reason = "rkyv generates exhaustive archived enums despite \
+              #[non_exhaustive] on the source enums."
+)]
 
 use std::{
+    borrow::Borrow,
     fmt::{Debug, Display},
     sync::LazyLock,
 };
@@ -34,15 +40,117 @@ use crate::patterns;
 #[non_exhaustive]
 pub struct Property {
     /// Unique identity (UUID v7).
-    id: Uuid,
+    id: PropertyId,
     /// Property name.
     name: PropertyName,
     /// Whether property is required.
-    required: bool,
+    cardinality: Cardinality,
     /// Whether property accepts array of values.
-    array: bool,
+    multiplicity: Multiplicity,
     /// Type-specific validation specification.
     spec: PropertySpec,
+}
+
+/// Unique identity for a property.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct PropertyId(Uuid);
+
+impl PropertyId {
+    /// Wraps a UUID into a `PropertyId`.
+    #[inline]
+    #[must_use]
+    pub const fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+
+    /// Returns the inner UUID reference.
+    #[inline]
+    #[must_use]
+    pub const fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+
+    /// Returns the inner UUID by value.
+    #[inline]
+    #[must_use]
+    pub const fn into_uuid(self) -> Uuid {
+        self.0
+    }
+
+    /// Creates a new UUID v7-based `PropertyId`.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+}
+
+impl Default for PropertyId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Whether a property is required or optional.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Cardinality {
+    /// Optional property.
+    Optional,
+    /// Required property.
+    Required,
+}
+
+/// Whether a property accepts a single value or multiple values.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Multiplicity {
+    /// Single scalar value.
+    Single,
+    /// Multiple values (array).
+    Many,
 }
 
 /// Validated property name value object.
@@ -57,7 +165,7 @@ pub struct Property {
 /// # use lithos_core::schema::property::PropertyName;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let name = PropertyName::new("status")?;
-/// assert_eq!(&name.0, "status", "Name should match input");
+/// assert_eq!(name.as_str(), "status", "Name should match input");
 /// assert!(PropertyName::new("").is_err(), "Empty name should be rejected");
 /// # Ok(())
 /// # }
@@ -77,20 +185,11 @@ pub struct Property {
 #[rkyv(derive(Debug))]
 #[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
-pub struct PropertyName(pub String);
+pub struct PropertyName(Box<str>);
 
 impl AsRef<str> for PropertyName {
     #[inline]
     fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::ops::Deref for PropertyName {
-    type Target = str;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
@@ -102,10 +201,17 @@ impl Display for PropertyName {
     }
 }
 
+impl Borrow<str> for PropertyName {
+    #[inline]
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
 impl From<PropertyName> for String {
     #[inline]
     fn from(val: PropertyName) -> Self {
-        val.0
+        val.0.into()
     }
 }
 
@@ -128,25 +234,25 @@ impl TryFrom<String> for PropertyName {
 }
 
 impl Property {
-    /// Returns true if this property accepts an array of values.
-    #[inline]
-    #[must_use]
-    pub const fn array(&self) -> bool {
-        self.array
-    }
-
     /// Returns the property's unique identifier.
     #[inline]
     #[must_use]
-    pub const fn id(&self) -> Uuid {
+    pub const fn id(&self) -> PropertyId {
         self.id
     }
 
-    /// Returns true if this property is required and not an array.
+    /// Returns the property's cardinality.
     #[inline]
     #[must_use]
-    pub const fn is_required_scalar(&self) -> bool {
-        self.required && !self.array
+    pub const fn cardinality(&self) -> Cardinality {
+        self.cardinality
+    }
+
+    /// Returns the property's multiplicity.
+    #[inline]
+    #[must_use]
+    pub const fn multiplicity(&self) -> Multiplicity {
+        self.multiplicity
     }
 
     /// Returns the property's name.
@@ -161,16 +267,24 @@ impl Property {
     /// # Examples
     ///
     /// ```
-    /// # use lithos_core::schema::property::{Property, PropertyName};
+    /// # use lithos_core::schema::property::{
+    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+    /// # };
     /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
     /// # use uuid::Uuid;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let name = PropertyName::new("is_active")?;
     /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let id = Uuid::now_v7();
+    /// let id = PropertyId::new();
     ///
-    /// let property = Property::new(id, name, true, false, spec)?;
-    /// assert!(property.required(), "Property should be required");
+    /// let property = Property::new(
+    ///     id,
+    ///     name,
+    ///     Cardinality::Required,
+    ///     Multiplicity::Single,
+    ///     spec,
+    /// )?;
+    /// assert!(property.is_required_scalar(), "Property should be required");
     /// # Ok(())
     /// # }
     /// ```
@@ -179,17 +293,17 @@ impl Property {
     /// Returns `SchemaError` if validation fails.
     #[inline]
     pub fn new(
-        id: Uuid,
+        id: PropertyId,
         name: PropertyName,
-        required: bool,
-        array: bool,
+        cardinality: Cardinality,
+        multiplicity: Multiplicity,
         spec: PropertySpec,
     ) -> Result<Self, SchemaError> {
         let property = Self {
             id,
             name,
-            required,
-            array,
+            cardinality,
+            multiplicity,
             spec,
         };
         property.validate()?;
@@ -199,8 +313,9 @@ impl Property {
     /// Returns true if this property is required.
     #[inline]
     #[must_use]
-    pub const fn required(&self) -> bool {
-        self.required
+    pub fn is_required_scalar(&self) -> bool {
+        self.cardinality == Cardinality::Required
+            && self.multiplicity == Multiplicity::Single
     }
 
     /// Returns the type-specific validation specification.
@@ -231,13 +346,21 @@ impl Property {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::schema::property::{Property, PropertyName};
+    /// # use lithos_core::schema::property::{
+    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+    /// # };
     /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
     /// # use uuid::Uuid;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let name = PropertyName::new("enabled")?;
     /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property = Property::new(Uuid::now_v7(), name, true, false, spec)?;
+    /// let property = Property::new(
+    ///     PropertyId::new(),
+    ///     name,
+    ///     Cardinality::Required,
+    ///     Multiplicity::Single,
+    ///     spec,
+    /// )?;
     /// property.validate_value(&serde_json::json!(true))?;
     /// # Ok(())
     /// # }
@@ -247,7 +370,7 @@ impl Property {
         &self,
         value: &serde_json::Value,
     ) -> Result<(), SchemaError> {
-        if self.array {
+        if self.multiplicity == Multiplicity::Many {
             let arr =
                 value.as_array().ok_or_else(|| SchemaError::InvalidType {
                     value: value.to_string(),
@@ -272,6 +395,13 @@ impl PropertyName {
     pub fn new(name: &str) -> Result<Self, SchemaError> {
         Self::validate(name)?;
         Ok(Self(name.into()))
+    }
+
+    /// Returns the inner string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 
     /// Validates a property name string.
@@ -316,9 +446,9 @@ mod tests {
 
         /// `PropertyBuilder` for flexible test data generation.
         pub struct PropertyBuilder {
-            array: bool,
+            cardinality: Cardinality,
+            multiplicity: Multiplicity,
             name: String,
-            required: bool,
             spec: PropertySpec,
         }
 
@@ -326,9 +456,9 @@ mod tests {
             #[inline]
             fn default() -> Self {
                 Self {
-                    array: false,
+                    cardinality: Cardinality::Optional,
+                    multiplicity: Multiplicity::Single,
                     name: "test_property".to_owned(),
-                    required: false,
                     spec: PropertySpec::String(StringSpec::default()),
                 }
             }
@@ -339,7 +469,11 @@ mod tests {
             #[inline]
             #[must_use]
             pub fn array(mut self, array: bool) -> Self {
-                self.array = array;
+                self.multiplicity = if array {
+                    Multiplicity::Many
+                } else {
+                    Multiplicity::Single
+                };
                 self
             }
 
@@ -351,10 +485,10 @@ mod tests {
             pub fn build(self) -> Result<Property, SchemaError> {
                 let name = PropertyName::new(&self.name)?;
                 Property::new(
-                    TEST_PROPERTY_ID,
+                    PropertyId::from_uuid(TEST_PROPERTY_ID),
                     name,
-                    self.required,
-                    self.array,
+                    self.cardinality,
+                    self.multiplicity,
                     self.spec,
                 )
             }
@@ -378,7 +512,11 @@ mod tests {
             #[inline]
             #[must_use]
             pub fn required(mut self, required: bool) -> Self {
-                self.required = required;
+                self.cardinality = if required {
+                    Cardinality::Required
+                } else {
+                    Cardinality::Optional
+                };
                 self
             }
 
@@ -416,7 +554,7 @@ mod tests {
                 let property = build_property();
 
                 assert_eq!(
-                    &property.name().0,
+                    property.name().as_str(),
                     "priority",
                     "Builder should set property name to 'priority'"
                 );
@@ -427,7 +565,7 @@ mod tests {
                 let property = build_property();
 
                 assert!(
-                    property.required(),
+                    property.cardinality() == Cardinality::Required,
                     "Builder should set required flag to true"
                 );
             }
@@ -437,7 +575,7 @@ mod tests {
                 let property = build_property();
 
                 assert!(
-                    property.array(),
+                    property.multiplicity() == Multiplicity::Many,
                     "Builder should set array flag to true"
                 );
             }
@@ -464,8 +602,14 @@ mod tests {
             let name = PropertyName::new("status")
                 .expect("Expected valid property name");
 
-            Property::new(TEST_PROPERTY_ID, name, true, false, spec)
-                .expect("Expected valid property")
+            Property::new(
+                PropertyId::from_uuid(TEST_PROPERTY_ID),
+                name,
+                Cardinality::Required,
+                Multiplicity::Single,
+                spec,
+            )
+            .expect("Expected valid property")
         }
 
         #[test]
@@ -473,7 +617,7 @@ mod tests {
             let property = required_scalar_property();
 
             assert!(
-                property.required(),
+                property.cardinality() == Cardinality::Required,
                 "Property should be required when required flag is true"
             );
         }
@@ -493,7 +637,7 @@ mod tests {
             let property = required_scalar_property();
 
             assert!(
-                !property.array(),
+                property.multiplicity() == Multiplicity::Single,
                 "Property should not be an array when array flag is false"
             );
         }
@@ -503,7 +647,7 @@ mod tests {
             let property = required_scalar_property();
 
             assert_eq!(
-                &property.name().0,
+                property.name().as_str(),
                 "status",
                 "Property name should match"
             );

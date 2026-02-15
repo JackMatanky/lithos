@@ -3,9 +3,10 @@
 //! This module defines the command and query trait interfaces for the Schema
 //! aggregate.
 
-use uuid::Uuid;
-
-use super::{aggregate::Schema, error::SchemaError};
+use super::{
+    aggregate::{Schema, SchemaId, SchemaName},
+    error::SchemaError,
+};
 
 /// Command port for Schema write operations.
 pub trait Command: Send + Sync {
@@ -13,13 +14,13 @@ pub trait Command: Send + Sync {
     ///
     /// # Errors
     /// Returns `SchemaError` if deletion fails.
-    fn delete(&self, id: Uuid) -> Result<(), SchemaError>;
+    fn delete(&self, name: &SchemaName) -> Result<(), SchemaError>;
 
     /// Save a schema to persistence.
     ///
     /// # Errors
     /// Returns `SchemaError` if saving fails.
-    fn save(&self, schema: Schema) -> Result<(), SchemaError>;
+    fn save(&self, schema: &Schema) -> Result<(), SchemaError>;
 }
 
 /// Query port for Schema read operations.
@@ -28,13 +29,16 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns `SchemaError` if query fails.
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Schema>, SchemaError>;
+    fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, SchemaError>;
 
     /// Find a schema by its unique name.
     ///
     /// # Errors
     /// Returns `SchemaError` if query fails.
-    fn find_by_name(&self, name: &str) -> Result<Option<Schema>, SchemaError>;
+    fn find_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<Schema>, SchemaError>;
 
     /// List all available schemas.
     ///

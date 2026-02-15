@@ -3,7 +3,11 @@
 //! This module implements the Command port trait for Schema write operations,
 //! using the Database layer for persistence.
 
-use super::{aggregate::Schema, db_table::SCHEMAS, error::SchemaError};
+use super::{
+    aggregate::{Schema, SchemaName},
+    db_table::SCHEMAS,
+    error::SchemaError,
+};
 use crate::db::Database;
 
 /// Command implementation for Schema write operations.
@@ -28,9 +32,9 @@ impl<'db> Command<'db> {
     /// # Errors
     /// Returns `SchemaError` if deletion fails.
     #[inline]
-    pub fn delete(&self, name: &str) -> Result<(), SchemaError> {
+    pub fn delete(&self, name: &SchemaName) -> Result<(), SchemaError> {
         self.db
-            .delete(SCHEMAS, name)
+            .delete(SCHEMAS, name.as_ref())
             .map_err(|e| SchemaError::Storage(e.to_string()))?;
         Ok(())
     }
@@ -58,12 +62,16 @@ impl<'db> Command<'db> {
 )]
 mod tests {
     mod fixtures {
+        use uuid::Uuid;
+
         use super::*;
 
-        pub const TEST_SCHEMA_ID_NOTE: Uuid =
-            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0101);
-        pub const TEST_SCHEMA_ID_PROJECT: Uuid =
-            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0102);
+        pub const TEST_SCHEMA_ID_NOTE: SchemaId = SchemaId::from_uuid(
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0101),
+        );
+        pub const TEST_SCHEMA_ID_PROJECT: SchemaId = SchemaId::from_uuid(
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0102),
+        );
 
         pub fn test_db() -> Result<(TempDir, Database), String> {
             let dir = tempdir().map_err(|e| e.to_string())?;
@@ -72,7 +80,10 @@ mod tests {
             Ok((dir, db))
         }
 
-        pub fn schema_fixture(id: Uuid, name: &str) -> Result<Schema, String> {
+        pub fn schema_fixture(
+            id: SchemaId,
+            name: &str,
+        ) -> Result<Schema, String> {
             let schema_name =
                 SchemaName::new(name).map_err(|e| e.to_string())?;
             Schema::new(id, schema_name, vec![]).map_err(|e| e.to_string())
@@ -80,10 +91,9 @@ mod tests {
     }
 
     use tempfile::{TempDir, tempdir};
-    use uuid::Uuid;
 
     use super::*;
-    use crate::schema::aggregate::SchemaName;
+    use crate::schema::aggregate::{SchemaId, SchemaName};
 
     mod persistence {
         use super::*;
@@ -134,7 +144,9 @@ mod tests {
             .expect("Failed to create schema fixture");
             cmd.save(&schema).expect("Save should succeed");
 
-            cmd.delete("project").expect("Delete should succeed");
+            let name = SchemaName::new("project")
+                .expect("Failed to create schema name");
+            cmd.delete(&name).expect("Delete should succeed");
 
             let stored = db
                 .get_owned::<Schema>(SCHEMAS, "project")
