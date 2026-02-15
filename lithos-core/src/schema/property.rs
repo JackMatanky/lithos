@@ -51,189 +51,6 @@ pub struct Property {
     spec: PropertySpec,
 }
 
-/// Unique identity for a property.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct PropertyId(Uuid);
-
-impl PropertyId {
-    /// Wraps a UUID into a `PropertyId`.
-    #[inline]
-    #[must_use]
-    pub const fn from_uuid(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-
-    /// Returns the inner UUID reference.
-    #[inline]
-    #[must_use]
-    pub const fn as_uuid(&self) -> &Uuid {
-        &self.0
-    }
-
-    /// Returns the inner UUID by value.
-    #[inline]
-    #[must_use]
-    pub const fn into_uuid(self) -> Uuid {
-        self.0
-    }
-
-    /// Creates a new UUID v7-based `PropertyId`.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
-}
-
-impl Default for PropertyId {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Whether a property is required or optional.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Cardinality {
-    /// Optional property.
-    Optional,
-    /// Required property.
-    Required,
-}
-
-/// Whether a property accepts a single value or multiple values.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Multiplicity {
-    /// Single scalar value.
-    Single,
-    /// Multiple values (array).
-    Many,
-}
-
-/// Validated property name value object.
-///
-/// Enforces invariants:
-/// - Non-empty
-/// - Max 64 characters
-/// - Matches regex `^[a-z0-9_-]+$` (lowercase alphanumeric, underscores,
-///   dashes)
-///
-/// # Examples
-/// ```
-/// # use lithos_core::schema::property::PropertyName;
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let name = PropertyName::new("status")?;
-/// assert_eq!(name.as_str(), "status", "Name should match input");
-/// assert!(PropertyName::new("").is_err(), "Empty name should be rejected");
-/// # Ok(())
-/// # }
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
-#[serde(try_from = "String", into = "String")]
-#[non_exhaustive]
-pub struct PropertyName(Box<str>);
-
-impl AsRef<str> for PropertyName {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Display for PropertyName {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Borrow<str> for PropertyName {
-    #[inline]
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<PropertyName> for String {
-    #[inline]
-    fn from(val: PropertyName) -> Self {
-        val.0.into()
-    }
-}
-
-impl TryFrom<&str> for PropertyName {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl TryFrom<String> for PropertyName {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(&value)
-    }
-}
-
 impl Property {
     /// Returns the property's unique identifier.
     #[inline]
@@ -384,6 +201,189 @@ impl Property {
         } else {
             self.spec.validate(value)
         }
+    }
+}
+
+/// Whether a property is required or optional.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Cardinality {
+    /// Optional property.
+    Optional,
+    /// Required property.
+    Required,
+}
+
+/// Whether a property accepts a single value or multiple values.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Multiplicity {
+    /// Single scalar value.
+    Single,
+    /// Multiple values (array).
+    Many,
+}
+
+/// Unique identity for a property.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct PropertyId(Uuid);
+
+impl PropertyId {
+    /// Wraps a UUID into a `PropertyId`.
+    #[inline]
+    #[must_use]
+    pub const fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+
+    /// Returns the inner UUID reference.
+    #[inline]
+    #[must_use]
+    pub const fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+
+    /// Returns the inner UUID by value.
+    #[inline]
+    #[must_use]
+    pub const fn into_uuid(self) -> Uuid {
+        self.0
+    }
+
+    /// Creates a new UUID v7-based `PropertyId`.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+}
+
+impl Default for PropertyId {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Validated property name value object.
+///
+/// Enforces invariants:
+/// - Non-empty
+/// - Max 64 characters
+/// - Matches regex `^[a-z0-9_-]+$` (lowercase alphanumeric, underscores,
+///   dashes)
+///
+/// # Examples
+/// ```
+/// # use lithos_core::schema::property::PropertyName;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let name = PropertyName::new("status")?;
+/// assert_eq!(name.as_str(), "status", "Name should match input");
+/// assert!(PropertyName::new("").is_err(), "Empty name should be rejected");
+/// # Ok(())
+/// # }
+/// ```
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
+#[serde(try_from = "String", into = "String")]
+#[non_exhaustive]
+pub struct PropertyName(Box<str>);
+
+impl AsRef<str> for PropertyName {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for PropertyName {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Borrow<str> for PropertyName {
+    #[inline]
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<PropertyName> for String {
+    #[inline]
+    fn from(val: PropertyName) -> Self {
+        val.0.into()
+    }
+}
+
+impl TryFrom<&str> for PropertyName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl TryFrom<String> for PropertyName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(&value)
     }
 }
 
