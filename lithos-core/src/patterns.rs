@@ -18,6 +18,20 @@
 /// - Invalid: `invalid name`, `name!`, `name.txt`
 pub const ALPHANUMERIC_NAME: &str = "^[a-zA-Z0-9_-]+$";
 
+/// Lowercase alphanumeric name pattern: lowercase letters, numbers,
+/// underscores, and dashes.
+///
+/// Used by:
+/// - Schema names (`SchemaName::validate_format`)
+/// - Property names (`PropertyName::validate_format`)
+///
+/// Pattern: `^[a-z0-9_-]+$`.
+///
+/// # Examples
+/// - Valid: `daily-note`, `project_schema`, `schema123`
+/// - Invalid: `MySchema`, `invalid name`, `name!`
+pub const ALPHANUMERIC_NAME_LOWER: &str = "^[a-z0-9_-]+$";
+
 /// Basic email validation pattern.
 pub const EMAIL: &str = r"^[^@]+@[^@]+\.[^@]+$";
 
