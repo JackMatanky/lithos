@@ -2,7 +2,7 @@
 name: "step-03-test-plan"
 description: "Define unit test plan with GWT comments"
 nextStepFile: "./step-04-summary.md"
-outputFile: "{output_folder}/tea-rust/unit-test-plan.md"
+outputFile: "{test_design_output}/rust-unit-test-plan.md"
 ---
 
 # Step 3: Unit Test Plan

@@ -2,7 +2,7 @@
 name: "step-02-inventory"
 description: "Inventory public components and coverage gaps"
 nextStepFile: "./step-03-test-plan.md"
-outputFile: "{output_folder}/tea-rust/unit-test-plan.md"
+outputFile: "{test_design_output}/rust-unit-test-plan.md"
 ---
 
 # Step 2: Inventory Public Components

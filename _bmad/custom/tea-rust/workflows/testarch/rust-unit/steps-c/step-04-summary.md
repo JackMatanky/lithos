@@ -1,7 +1,7 @@
 ---
 name: "step-04-summary"
 description: "Finalize unit test plan"
-outputFile: "{output_folder}/tea-rust/unit-test-plan.md"
+outputFile: "{test_design_output}/rust-unit-test-plan.md"
 ---
 
 # Step 4: Summary

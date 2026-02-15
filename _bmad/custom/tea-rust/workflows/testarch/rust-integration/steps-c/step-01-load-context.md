@@ -1,6 +1,7 @@
 ---
 name: "step-01-load-context"
 description: "Load config and identify integration scope"
+outputFile: "{integration_output}/rust-integration-plan.md"
 nextStepFile: "./step-02-scenarios.md"
 knowledgeIndex: "{project-root}/_bmad/custom/tea-rust/knowledge/tea-rust-index.csv"
 configSource: "{project-root}/_bmad/custom/tea-rust/config.yaml"

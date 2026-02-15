@@ -2,7 +2,7 @@
 name: "step-02-design"
 description: "Design benchmark cases and doc comments"
 nextStepFile: "./step-03-plan.md"
-outputFile: "{output_folder}/tea-rust/benchmark-plan.md"
+outputFile: "{benchmark_output}/rust-benchmark-plan.md"
 ---
 
 # Step 2: Design Benchmarks

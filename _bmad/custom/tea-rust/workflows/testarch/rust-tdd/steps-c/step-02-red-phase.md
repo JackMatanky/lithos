@@ -2,7 +2,7 @@
 name: "step-02-red-phase"
 description: "Define red-phase tests with GWT comments"
 nextStepFile: "./step-03-green-phase.md"
-outputFile: "{output_folder}/tea-rust/tdd-plan.md"
+outputFile: "{test_design_output}/rust-tdd-plan.md"
 ---
 
 # Step 2: Red Phase (Failing Tests)

@@ -2,7 +2,7 @@
 name: "step-01-load-context"
 description: "Load config and target path for review"
 nextStepFile: "./step-02-analyze.md"
-outputFile: "{output_folder}/tea-rust/test-review.md"
+outputFile: "{test_review_output}/rust-test-review.md"
 templateFile: "../templates/review-report-template.md"
 knowledgeIndex: "{project-root}/_bmad/custom/tea-rust/knowledge/tea-rust-index.csv"
 configSource: "{project-root}/_bmad/custom/tea-rust/config.yaml"

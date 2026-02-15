@@ -2,7 +2,7 @@
 name: "step-01-load-context"
 description: "Load config, determine scope, and gather story/requirements for Rust TDD"
 nextStepFile: "./step-02-red-phase.md"
-outputFile: "{output_folder}/tea-rust/tdd-plan.md"
+outputFile: "{test_design_output}/rust-tdd-plan.md"
 templateFile: "../templates/tdd-plan-template.md"
 knowledgeIndex: "{project-root}/_bmad/custom/tea-rust/knowledge/tea-rust-index.csv"
 configSource: "{project-root}/_bmad/custom/tea-rust/config.yaml"

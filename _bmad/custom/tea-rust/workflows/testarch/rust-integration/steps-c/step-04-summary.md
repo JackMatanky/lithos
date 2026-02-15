@@ -1,6 +1,7 @@
 ---
 name: "step-04-summary"
 description: "Finalize integration/E2E orchestration"
+outputFile: "{integration_output}/rust-integration-plan.md"
 ---
 
 # Step 4: Summary
