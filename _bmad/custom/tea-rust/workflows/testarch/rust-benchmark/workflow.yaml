@@ -1,0 +1,39 @@
+# Tea-Rust workflow: rust-benchmark
+name: tea-rust-benchmark
+description: "Benchmark and performance regression workflow for Rust code"
+author: "Tea-Rust"
+
+config_source: "{project-root}/_bmad/custom/tea-rust/config.yaml"
+output_folder: "{config_source}:output_folder"
+user_name: "{config_source}:user_name"
+communication_language: "{config_source}:communication_language"
+document_output_language: "{config_source}:document_output_language"
+date: system-generated
+
+installed_path: "{project-root}/_bmad/custom/tea-rust/workflows/testarch/rust-benchmark"
+instructions: "{installed_path}/instructions.md"
+validation: "{installed_path}/checklist.md"
+template: "{installed_path}/templates/benchmark-plan-template.md"
+
+variables:
+  benchmark_scope: "auto"
+  target_path: ""
+
+default_output_file: "{output_folder}/tea-rust/benchmark-plan.md"
+
+required_tools:
+  - read_file
+  - write_file
+  - list_files
+  - search_repo
+  - glob
+
+tags:
+  - rust
+  - benchmark
+  - performance
+
+execution_hints:
+  interactive: true
+  autonomous: true
+  iterative: true

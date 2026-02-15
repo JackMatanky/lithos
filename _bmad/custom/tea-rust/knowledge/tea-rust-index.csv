@@ -1,0 +1,5 @@
+id,name,description,tags,fragment_file
+rust-testing-best-practices,Rust Testing Best Practices,Comprehensive Rust testing patterns and quality gates,"rust,testing,best-practices,quality",knowledge/rust-testing-best-practices.md
+rust-testing-anti-patterns,Rust Testing Anti-Patterns,Common anti-patterns and avoidance guidance,"rust,testing,anti-patterns,quality",knowledge/rust-testing-anti-patterns.md
+rust-test-review-patterns,Rust Test Review Patterns,Senior-dev review patterns and quality frameworks,"rust,testing,review,quality",knowledge/rust-test-review-patterns.md
+lithos-architecture-testing,Lithos Architecture Testing,Bounded context and CQRS testing patterns,"lithos,architecture,cqrs,zero-copy",knowledge/lithos-architecture-testing.md
