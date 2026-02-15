@@ -75,7 +75,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Naming Convention:**
   - Queries: `find_*`, `get_*`, `list_*`, `count_*`
   - Commands: `save`, `delete`, `update`, `create`
-  - Ports: `<Context>Store` (e.g., `NoteStore`)
+  - Ports: Prefer short, qualified names: `<Context>::ports::Query` and `<Context>::ports::Command` (e.g., `schema::ports::Query`, `schema::ports::Command`)
 - **Sync-First Execution Model:**
   - **Default to Sync:** Core domain logic and file I/O must be synchronous.
   - **Async at Edges:** Use `async` ONLY for LSP server, network I/O, or explicit concurrency (e.g., parallel indexing).
@@ -188,8 +188,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 #### Naming & Mechanical Sympathy
 - **Transparency:** Prohibit hiding expensive clones or allocations behind getter methods. If a method clones, it MUST be named `clone_x()` or `to_x_owned()`.
 - **Port/Adapter Naming:**
-  - **Ports:** `<Context>::ports::Store` (e.g., `note::ports::Store`).
-  - **Adapters:** `Redb<Context>Store` (e.g., `RedbNoteStore`).
+  - **Ports:** Prefer short, qualified names: `<Context>::ports::Query` and `<Context>::ports::Command` (e.g., `schema::ports::Query`, `schema::ports::Command`).
+  - **Adapters:** `Redb<Context>Query` and `Redb<Context>Command` (e.g., `RedbSchemaQuery`, `RedbSchemaCommand`).
 - **DTO Isolation:** Use `Stored*` prefix for persistence DTOs (e.g., `StoredNote`). These live in the storage layer and never leak into the public domain API.
 
 #### Documentation as "Agent Glue"
