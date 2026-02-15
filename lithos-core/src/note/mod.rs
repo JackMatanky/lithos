@@ -47,6 +47,8 @@
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
+/// Note storage adapters.
+pub mod adapter;
 /// Core Note aggregate root and main entities.
 pub mod aggregate;
 /// Note command implementations (CQRS write operations).
@@ -119,4 +121,30 @@ pub(crate) mod db_table {
         MultimapTableDefinition::new("tasks_by_status");
     pub(crate) const FRONTMATTER_KV: MultimapTableDefinition<&str, &str> =
         MultimapTableDefinition::new("frontmatter_kv");
+}
+use self::adapter::{command::CommandAdapter, query::QueryAdapter};
+use crate::db::Database;
+
+/// Redb-backed note command alias.
+pub type RedbNoteCommand<'db> = CommandAdapter<'db>;
+
+/// Redb-backed note query alias.
+pub type RedbNoteQuery<'db> = QueryAdapter<'db>;
+
+impl<'db> RedbNoteCommand<'db> {
+    #[inline]
+    #[must_use]
+    /// Create a redb-backed note command.
+    pub fn new_redb(db: &'db Database) -> Self {
+        Self::new(db)
+    }
+}
+
+impl<'db> RedbNoteQuery<'db> {
+    #[inline]
+    #[must_use]
+    /// Create a redb-backed note query.
+    pub fn new_redb(db: &'db Database) -> Self {
+        Self::new(db)
+    }
 }

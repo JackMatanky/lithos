@@ -5,6 +5,8 @@
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
+/// Schema storage adapters.
+pub mod adapter;
 /// Schema aggregate roots and main entities.
 pub mod aggregate;
 /// PropertyBank domain aggregate for centralized property registration.
@@ -43,10 +45,8 @@ pub(crate) mod db_table {
 
 // --- Public API ---
 
-use crate::db::{
-    Database,
-    schema_adapter::{CommandAdapter, QueryAdapter},
-};
+use self::adapter::{command::CommandAdapter, query::QueryAdapter};
+use crate::db::Database;
 
 /// Redb-backed schema command alias.
 pub type RedbSchemaCommand<'db> = command::Command<CommandAdapter<'db>>;
