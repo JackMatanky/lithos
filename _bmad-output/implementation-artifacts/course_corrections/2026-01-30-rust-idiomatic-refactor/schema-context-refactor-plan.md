@@ -83,6 +83,7 @@ Phase 8: Event model + tests
 Phase 9: CLI and integration alignment
 - Update CLI parsing to construct SchemaName/PropertyName from raw strings.
 - Update fixtures to reflect lowercase-only names and new CQRS APIs.
+- Update callers to use resolve_changed with parent loader (incremental resolution).
 - Exit criteria: CLI build/tests green.
 
 Phase 10: Documentation and ADRs
