@@ -17,6 +17,8 @@ pub mod events;
 pub mod ports;
 /// Property domain entities.
 pub mod property;
+/// Property reference types.
+pub mod property_ref;
 /// Property specification variants.
 pub mod property_spec;
 /// Schema query implementations (CQRS read operations).
