@@ -1,13 +1,13 @@
 //! `Resolver` domain service for schema resolution.
 //!
 //! Resolves raw schemas into fully resolved Schema entities by merging parent
-//! properties, applying excludes, and resolving $ref pointers through the
-//! `PropertyBank`.
+//! properties, applying excludes, resolving $ref pointers through the
+//! `PropertyBank`, and enforcing inheritance ordering.
 
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    aggregate::{PropertyBank, Schema, SchemaId},
+    aggregate::{PropertyBank, Schema, SchemaId, SchemaName},
     error::SchemaError,
     property::{Cardinality, Multiplicity, Property, PropertyId, PropertyName},
     raw::{RawProperty, RawPropertyRef, RawSchema},
@@ -44,6 +44,53 @@ use super::{
 pub struct Resolver;
 
 impl Resolver {
+    /// Resolve a set of raw schemas into fully resolved schemas.
+    ///
+    /// Builds an inheritance graph, determines deterministic resolution order,
+    /// and resolves each schema with parent context.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if resolution fails (e.g. cycles, missing parents,
+    /// or invalid properties).
+    #[inline]
+    pub fn resolve_all(
+        raw_schemas: Vec<RawSchema>,
+        bank: &PropertyBank,
+    ) -> Result<Vec<Schema>, SchemaError> {
+        let mut graph = InheritanceGraph::new();
+        let mut raw_by_name = HashMap::with_capacity(raw_schemas.len());
+
+        for raw in raw_schemas {
+            if raw_by_name.contains_key(&raw.name) {
+                return Err(SchemaError::AlreadyExists(raw.name.to_string()));
+            }
+            graph.add_node(raw.name.clone(), raw.extends.clone());
+            raw_by_name.insert(raw.name.clone(), raw);
+        }
+
+        let order = graph.resolve_order()?;
+        let mut resolved_by_name: HashMap<SchemaName, Schema> =
+            HashMap::with_capacity(order.len());
+        let mut resolved = Vec::with_capacity(order.len());
+
+        for name in order {
+            let raw = raw_by_name.remove(&name).ok_or_else(|| {
+                SchemaError::NotFound(format!(
+                    "Schema definition missing for {name}"
+                ))
+            })?;
+            let parent = raw
+                .extends
+                .as_ref()
+                .and_then(|parent_name| resolved_by_name.get(parent_name));
+            let schema = Self::resolve(raw, parent, bank)?;
+            resolved_by_name.insert(schema.name().clone(), schema.clone());
+            resolved.push(schema);
+        }
+
+        Ok(resolved)
+    }
+
     fn merge_parent_properties(
         resolved_props: &mut HashMap<String, Property>,
         parent: Option<&Schema>,
@@ -151,40 +198,118 @@ impl Resolver {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct InheritanceGraph {
+    nodes: HashMap<SchemaName, Option<SchemaName>>,
+}
+
+impl Default for InheritanceGraph {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl InheritanceGraph {
+    #[inline]
+    fn add_node(&mut self, name: SchemaName, extends: Option<SchemaName>) {
+        self.nodes.insert(name, extends);
+    }
+
+    #[inline]
+    #[must_use]
+    fn new() -> Self {
+        Self {
+            nodes: HashMap::new(),
+        }
+    }
+
+    #[inline]
+    fn resolve_order(&self) -> Result<Vec<SchemaName>, SchemaError> {
+        let mut sorted = Vec::new();
+        let mut visited = HashSet::new();
+        let mut temp_visited = HashSet::new();
+
+        let mut keys: Vec<_> = self.nodes.keys().cloned().collect();
+        keys.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+
+        for name in keys {
+            if !visited.contains(&name) {
+                self.visit(
+                    &name,
+                    &mut visited,
+                    &mut temp_visited,
+                    &mut sorted,
+                )?;
+            }
+        }
+
+        Ok(sorted)
+    }
+
+    fn validate_not_temporarily_visited(
+        name: &SchemaName,
+        temp_visited: &HashSet<SchemaName>,
+    ) -> Result<(), SchemaError> {
+        if temp_visited.contains(name) {
+            return Err(SchemaError::CircularInheritance(name.to_string()));
+        }
+        Ok(())
+    }
+
+    fn visit(
+        &self,
+        name: &SchemaName,
+        visited: &mut HashSet<SchemaName>,
+        temp_visited: &mut HashSet<SchemaName>,
+        sorted: &mut Vec<SchemaName>,
+    ) -> Result<(), SchemaError> {
+        Self::validate_not_temporarily_visited(name, temp_visited)?;
+
+        if visited.contains(name) {
+            return Ok(());
+        }
+
+        temp_visited.insert(name.clone());
+
+        self.visit_parent(name, visited, temp_visited, sorted)?;
+
+        temp_visited.remove(name);
+        visited.insert(name.clone());
+        sorted.push(name.clone());
+
+        Ok(())
+    }
+
+    fn visit_parent(
+        &self,
+        name: &SchemaName,
+        visited: &mut HashSet<SchemaName>,
+        temp_visited: &mut HashSet<SchemaName>,
+        sorted: &mut Vec<SchemaName>,
+    ) -> Result<(), SchemaError> {
+        if let Some(parent_opt) = self.nodes.get(name)
+            && let Some(parent) = parent_opt.as_ref()
+        {
+            if self.nodes.contains_key(parent) {
+                self.visit(parent, visited, temp_visited, sorted)?;
+            } else {
+                return Err(SchemaError::ParentSchemaNotFound(
+                    parent.to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Test module groups fixtures and submodules for readability."
-)]
 mod tests {
-    use uuid::Uuid;
-
-    use super::*;
-    use crate::schema::{
-        aggregate::{SchemaId, SchemaName},
-        property_spec::{BoolSpec, PropertySpec},
-    };
-
-    const TEST_SCHEMA_ID_PARENT: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0501);
-    const TEST_SCHEMA_ID_CHILD: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0502);
-    const TEST_PROPERTY_ID_PARENT: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0503);
-    const TEST_PROPERTY_ID_STATUS: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0504);
-    const TEST_PROPERTY_ID_EXCLUDE: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0505);
-
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Fixture helpers use expect for deterministic setup."
-    )]
     mod fixtures {
         use super::*;
 
-        pub fn parent_property() -> Property {
-            let name = PropertyName::new("parent").expect("valid name");
+        pub fn parent_property() -> Result<Property, SchemaError> {
+            let name = PropertyName::new("parent")?;
             Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_PARENT),
                 name,
@@ -192,11 +317,10 @@ mod tests {
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             )
-            .expect("valid property")
         }
 
-        pub fn status_property() -> Property {
-            let name = PropertyName::new("status").expect("valid name");
+        pub fn status_property() -> Result<Property, SchemaError> {
+            let name = PropertyName::new("status")?;
             Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_STATUS),
                 name,
@@ -204,11 +328,10 @@ mod tests {
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             )
-            .expect("valid property")
         }
 
-        pub fn excluded_property() -> Property {
-            let name = PropertyName::new("p").expect("valid name");
+        pub fn excluded_property() -> Result<Property, SchemaError> {
+            let name = PropertyName::new("p")?;
             Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_EXCLUDE),
                 name,
@@ -216,102 +339,107 @@ mod tests {
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             )
-            .expect("valid property")
         }
 
-        pub fn parent_schema_with_property(property: Property) -> Schema {
-            let name = SchemaName::new("parent").expect("valid schema name");
+        pub fn parent_schema_with_property(
+            property: Property,
+        ) -> Result<Schema, SchemaError> {
+            let name = SchemaName::new("parent")?;
             Schema::new(SchemaId::from_uuid(TEST_SCHEMA_ID_PARENT), name, vec![
                 property,
             ])
-            .expect("valid schema")
         }
 
-        pub fn child_raw_schema() -> RawSchema {
-            let name = SchemaName::new("child").expect("valid schema name");
-            RawSchema::new(
+        pub fn child_raw_schema() -> Result<RawSchema, SchemaError> {
+            let name = SchemaName::new("child")?;
+            Ok(RawSchema::new(
                 TEST_SCHEMA_ID_CHILD,
                 name,
                 None,
                 HashSet::new(),
                 Vec::new(),
-            )
+            ))
         }
 
         pub fn child_raw_schema_with_excludes(
             exclude_name: PropertyName,
-        ) -> RawSchema {
-            let name = SchemaName::new("child").expect("valid schema name");
+        ) -> Result<RawSchema, SchemaError> {
+            let name = SchemaName::new("child")?;
             let mut excludes = HashSet::new();
             excludes.insert(exclude_name);
-            RawSchema::new(
+            Ok(RawSchema::new(
                 TEST_SCHEMA_ID_CHILD,
                 name,
                 None,
                 excludes,
                 Vec::new(),
-            )
+            ))
         }
 
-        pub fn property_bank_with(property: Property) -> PropertyBank {
+        pub fn property_bank_with(
+            property: Property,
+        ) -> Result<PropertyBank, SchemaError> {
             let mut bank = PropertyBank::new();
-            bank.register(property).expect("register property should succeed");
-            bank
+            bank.register(property)?;
+            Ok(bank)
         }
 
-        pub fn resolved_schema_with_parent_property() -> Schema {
+        pub fn resolved_schema_with_parent_property()
+        -> Result<Schema, SchemaError> {
             let bank = PropertyBank::new();
-            let property = parent_property();
-            let parent_schema = parent_schema_with_property(property.clone());
-            let raw = child_raw_schema();
+            let property = parent_property()?;
+            let parent_schema = parent_schema_with_property(property.clone())?;
+            let raw = child_raw_schema()?;
             Resolver::resolve(raw, Some(&parent_schema), &bank)
-                .expect("resolve schema")
         }
 
-        pub fn resolved_ref_property() -> Property {
-            let property = status_property();
-            let bank = property_bank_with(property);
+        pub fn resolved_ref_property() -> Result<Property, SchemaError> {
+            let property = status_property()?;
+            let bank = property_bank_with(property)?;
             let raw = RawProperty::Ref(RawPropertyRef {
                 ref_path: "status".to_owned(),
             });
-            Resolver::resolve_single_property(raw, &bank).expect("resolve ref")
+            Resolver::resolve_single_property(raw, &bank)
         }
 
-        pub fn resolved_schema_with_excludes() -> Schema {
+        pub fn resolved_schema_with_excludes() -> Result<Schema, SchemaError> {
             let bank = PropertyBank::new();
-            let property = excluded_property();
-            let parent_schema = parent_schema_with_property(property);
-            let exclude_name = PropertyName::new("p").expect("valid name");
-            let raw = child_raw_schema_with_excludes(exclude_name);
+            let property = excluded_property()?;
+            let parent_schema = parent_schema_with_property(property)?;
+            let exclude_name = PropertyName::new("p")?;
+            let raw = child_raw_schema_with_excludes(exclude_name)?;
             Resolver::resolve(raw, Some(&parent_schema), &bank)
-                .expect("resolve schema")
         }
     }
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test uses expect for deterministic setup."
-    )]
+
     mod resolve {
         use super::*;
 
         #[test]
-        fn includes_parent_properties() {
-            let schema = fixtures::resolved_schema_with_parent_property();
-            let name = PropertyName::new("parent").expect("valid name");
-            assert!(
-                schema.has(&name),
-                "Resolved schema should include parent property"
-            );
+        fn includes_parent_properties() -> Result<(), SchemaError> {
+            let schema = fixtures::resolved_schema_with_parent_property()?;
+            let name = PropertyName::new("parent")?;
+            if schema.has(&name) {
+                Ok(())
+            } else {
+                Err(SchemaError::ValidationFailed(
+                    "Resolved schema should include parent property".to_owned(),
+                ))
+            }
         }
 
         #[test]
-        fn excludes_properties_listed_in_child() {
-            let schema = fixtures::resolved_schema_with_excludes();
-            let name = PropertyName::new("p").expect("valid name");
-            assert!(
-                !schema.has(&name),
-                "Resolved schema should exclude child-listed property"
-            );
+        fn excludes_properties_listed_in_child() -> Result<(), SchemaError> {
+            let schema = fixtures::resolved_schema_with_excludes()?;
+            let name = PropertyName::new("p")?;
+            if schema.has(&name) {
+                Err(SchemaError::ValidationFailed(
+                    "Resolved schema should exclude child-listed property"
+                        .to_owned(),
+                ))
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -319,13 +447,15 @@ mod tests {
         use super::*;
 
         #[test]
-        fn resolves_ref_property_by_plain_name() {
-            let property = fixtures::resolved_ref_property();
-            assert_eq!(
-                property.name().as_str(),
-                "status",
-                "Resolved property name should match"
-            );
+        fn resolves_ref_property_by_plain_name() -> Result<(), SchemaError> {
+            let property = fixtures::resolved_ref_property()?;
+            if property.name().as_str() == "status" {
+                Ok(())
+            } else {
+                Err(SchemaError::ValidationFailed(
+                    "Resolved property name should match".to_owned(),
+                ))
+            }
         }
 
         #[test]
@@ -344,4 +474,209 @@ mod tests {
             );
         }
     }
+
+    mod inheritance_graph {
+        use std::collections::BTreeSet;
+
+        use proptest::{
+            prelude::*,
+            test_runner::{TestCaseError, TestRunner},
+        };
+
+        use super::super::{InheritanceGraph, *};
+
+        fn schema_name_literal(lit: &str) -> Result<SchemaName, SchemaError> {
+            SchemaName::new(lit)
+        }
+
+        fn resolve_order(
+            graph: &InheritanceGraph,
+        ) -> Result<Vec<SchemaName>, SchemaError> {
+            graph.resolve_order()
+        }
+
+        /// 3.3-UNIT-018: `schema_graph_detects_arbitrary_cycles`.
+        /// Priority: P0.
+        #[test]
+        fn schema_graph_detects_arbitrary_cycles() -> Result<(), String> {
+            let mut runner = TestRunner::deterministic();
+            let strategy = prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10);
+
+            let run_result = runner.run(&strategy, |names| {
+                let parse_name =
+                    |raw: &str| -> Result<SchemaName, TestCaseError> {
+                        match SchemaName::new(raw) {
+                            Ok(name) => Ok(name),
+                            Err(e) => Err(TestCaseError::fail(format!(
+                                "Invalid generated schema name: {e}"
+                            ))),
+                        }
+                    };
+
+                let unique_names: Vec<_> = names
+                    .into_iter()
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect();
+                prop_assume!(unique_names.len() >= 2);
+
+                let mut graph = InheritanceGraph::new();
+                for (name_raw, next_raw) in
+                    unique_names.iter().zip(unique_names.iter().cycle().skip(1))
+                {
+                    let name = parse_name(name_raw)?;
+                    let next_name = parse_name(next_raw)?;
+                    graph.add_node(name, Some(next_name));
+                }
+
+                let res = graph.resolve_order();
+                prop_assert!(
+                    matches!(res, Err(SchemaError::CircularInheritance(_))),
+                    "Proptest circular dependency should be detected, got: \
+                     {res:?}"
+                );
+                Ok(())
+            });
+            run_result.map_err(|e| {
+                format!("Deterministic proptest should not fail: {e:?}")
+            })?;
+
+            Ok(())
+        }
+
+        /// 3.3-UNIT-019: `schema_graph_accepts_arbitrary_lineage`.
+        /// Priority: P1.
+        #[test]
+        fn schema_graph_accepts_arbitrary_lineage() -> Result<(), String> {
+            let mut runner = TestRunner::deterministic();
+            let strategy = prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10);
+
+            let run_result = runner.run(&strategy, |names| {
+                let parse_name =
+                    |raw: &str| -> Result<SchemaName, TestCaseError> {
+                        match SchemaName::new(raw) {
+                            Ok(name) => Ok(name),
+                            Err(e) => Err(TestCaseError::fail(format!(
+                                "Invalid generated schema name: {e}"
+                            ))),
+                        }
+                    };
+
+                let unique_names: Vec<_> = names
+                    .into_iter()
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect();
+
+                let mut graph = InheritanceGraph::new();
+                let mut previous: Option<SchemaName> = None;
+                for name_str in &unique_names {
+                    let name = parse_name(name_str)?;
+                    graph.add_node(name.clone(), previous.clone());
+                    previous = Some(name);
+                }
+
+                let order = graph.resolve_order().map_err(|error| {
+                    TestCaseError::fail(format!(
+                        "Linear graph should resolve successfully: {error}"
+                    ))
+                })?;
+                prop_assert_eq!(
+                    order.len(),
+                    unique_names.len(),
+                    "Resolution order should contain all schemas"
+                );
+                Ok(())
+            });
+            run_result.map_err(|e| {
+                format!("Deterministic proptest should not fail: {e:?}")
+            })?;
+
+            Ok(())
+        }
+
+        /// 3.3-UNIT-021: `detects_circular_inheritance`.
+        /// Priority: P0.
+        #[test]
+        fn detects_circular_inheritance() -> Result<(), SchemaError> {
+            let mut graph = InheritanceGraph::new();
+            let a = schema_name_literal("a")?;
+            let b = schema_name_literal("b")?;
+
+            graph.add_node(a.clone(), Some(b.clone()));
+            graph.add_node(b, Some(a));
+
+            let res = graph.resolve_order();
+
+            if matches!(res, Err(SchemaError::CircularInheritance(_))) {
+                Ok(())
+            } else {
+                Err(SchemaError::ValidationFailed(format!(
+                    "Circular inheritance between schemas should be detected, \
+                     got: {res:?}"
+                )))
+            }
+        }
+
+        /// 3.3-UNIT-020: `resolves_empty_graph`.
+        /// Priority: P2.
+        #[test]
+        fn resolves_empty_graph() -> Result<(), SchemaError> {
+            let graph = InheritanceGraph::new();
+
+            let order = resolve_order(&graph)?;
+
+            if order.is_empty() {
+                Ok(())
+            } else {
+                Err(SchemaError::ValidationFailed(
+                    "Empty graph should return empty resolution order"
+                        .to_owned(),
+                ))
+            }
+        }
+
+        /// 3.3-UNIT-022: `determines_topological_resolution_order`.
+        /// Priority: P1.
+        #[test]
+        fn determines_topological_resolution_order() -> Result<(), SchemaError>
+        {
+            let mut graph = InheritanceGraph::new();
+            let child = schema_name_literal("child")?;
+            let parent = schema_name_literal("parent")?;
+
+            graph.add_node(child.clone(), Some(parent.clone()));
+            graph.add_node(parent.clone(), None);
+
+            let order = resolve_order(&graph)?;
+
+            if order == vec![parent, child] {
+                Ok(())
+            } else {
+                Err(SchemaError::ValidationFailed(
+                    "Parent schema should be ordered before child schema"
+                        .to_owned(),
+                ))
+            }
+        }
+    }
+
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::schema::{
+        aggregate::{SchemaId, SchemaName},
+        property_spec::{BoolSpec, PropertySpec},
+    };
+
+    const TEST_SCHEMA_ID_PARENT: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0501);
+    const TEST_SCHEMA_ID_CHILD: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0502);
+    const TEST_PROPERTY_ID_PARENT: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0503);
+    const TEST_PROPERTY_ID_STATUS: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0504);
+    const TEST_PROPERTY_ID_EXCLUDE: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0505);
 }
