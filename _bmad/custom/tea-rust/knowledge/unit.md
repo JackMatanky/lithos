@@ -37,6 +37,7 @@ Is the test checking...
 - [ ] Test is in `#[cfg(test)] mod tests` block in the same file as implementation
 - [ ] Test module is at the bottom of the source file (after implementation)
 - [ ] Uses `use super::*;` to access private items
+- [ ] Related tests are grouped into submodules (e.g., `mod creation_tests`, `mod validation_tests`)
 
 ### Naming
 
@@ -149,31 +150,43 @@ mod tests {
 ### Module Per Function Pattern
 
 ```rust
+// Preferred test module organization
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test_utils::*;
 
-    mod validate {
+    // Group related tests together
+    mod creation_tests {
         use super::*;
 
         #[test]
-        fn rejects_empty_paths() { }
+        fn test_valid_creation() {
+            // Test implementation
+        }
 
         #[test]
-        fn rejects_invalid_characters() { }
-
-        #[test]
-        fn accepts_valid_note_paths() { }
+        fn test_invalid_input_handling() {
+            // Test implementation
+        }
     }
 
-    mod parse {
+    mod validation_tests {
         use super::*;
 
         #[test]
-        fn extracts_filename_correctly() { }
+        fn test_field_validation() {
+            // Test implementation
+        }
+    }
+
+    mod error_handling_tests {
+        use super::*;
 
         #[test]
-        fn handles_nested_directories() { }
+        fn test_error_variants() {
+            // Test implementation
+        }
     }
 }
 ```

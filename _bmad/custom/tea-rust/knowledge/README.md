@@ -18,6 +18,10 @@ This directory contains modular knowledge files for the TEA agent to reference w
 | `assertions.md` | Assertion patterns and messages | Reviewing assertions |
 | `fixtures.md` | Fixture strategies | Reviewing test setup |
 | `anti-patterns.md` | Patterns to detect and reject | Always load for test review |
+| `mocks.md` | Mocking and isolation | Complex dependency testing |
+| `benchmarks.md` | Performance measuring | Reviewing performance tests |
+| `quality-gates.md` | Coverage/Performance targets | Assessing test suite health |
+| `ci.md` | CI/CD pipeline integration | Pipeline configuration |
 
 ### Tools
 | Module | Purpose | Load When |

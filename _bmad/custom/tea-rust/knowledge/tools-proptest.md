@@ -40,6 +40,7 @@ Are you testing...
 - [ ] Regex strategies for string patterns
 - [ ] `prop_compose!` for complex strategies
 - [ ] `prop_filter` for valid ranges
+- [ ] Implements `Arbitrary` for domain types to enable seamless generation
 
 ### Determinism
 
@@ -134,6 +135,19 @@ proptest! {
 
 ```rust
 use proptest::prelude::*;
+use proptest::strategy::{Strategy, Just, BoxedStrategy};
+
+// Implement Arbitrary for domain types
+impl Arbitrary for NoteTitle {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        "[a-zA-Z0-9 ]{1,100}"
+            .prop_map(|s| NoteTitle::new(&s).unwrap())
+            .boxed()
+    }
+}
 
 // Strategy for valid schema names
 fn schema_name_strategy() -> impl Strategy<Value = String> {

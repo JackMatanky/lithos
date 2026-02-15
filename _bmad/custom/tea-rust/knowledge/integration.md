@@ -47,7 +47,7 @@ Does the test require...
 ### I/O and Side Effects
 
 - [ ] Uses `tempfile::TempDir` for filesystem operations
-- [ ] Uses in-memory or temporary database instances
+- [ ] Uses in-memory or temporary database instances (e.g., `redb` with temp file)
 - [ ] Cleans up resources via RAII (Drop implementations)
 - [ ] No hardcoded paths or environment-dependent resources
 
@@ -102,6 +102,29 @@ Does the test require...
 ### Basic Integration Test
 
 ```rust
+// Database Integration Example
+#[cfg(test)]
+mod database_integration_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_database_integration() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+
+        let mut storage = RedbNoteStorage::new(&db_path).unwrap();
+
+        // Test actual storage operations
+        let note = create_test_note();
+        let note_id = storage.store_note(&note).unwrap();
+
+        let retrieved = storage.get_note(note_id).unwrap();
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().title(), note.title());
+    }
+}
+
 // lithos-core/tests/storage_adapter_test.rs
 use lithos_core::*;
 use tempfile::TempDir;

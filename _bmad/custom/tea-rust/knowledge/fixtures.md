@@ -46,6 +46,7 @@ What kind of test data do you need?
 - [ ] Document purpose in doc comment
 - [ ] Accept parameters for customization
 - [ ] Return ready-to-use test objects
+- [ ] Uses builder patterns for flexible complex data construction
 
 ### rstest Fixtures
 
@@ -126,6 +127,39 @@ fn rejects_empty_name() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Use builder patterns for complex test data
+    pub struct NoteTestBuilder {
+        title: Option<String>,
+        content: Option<String>,
+        timestamp: Option<Timestamp>,
+    }
+
+    impl NoteTestBuilder {
+        pub fn new() -> Self {
+            Self {
+                title: None,
+                content: None,
+                timestamp: Some(Timestamp::now()),
+            }
+        }
+        pub fn with_title(mut self, title: &str) -> Self {
+            self.title = Some(title.to_string());
+            self
+        }
+        pub fn with_content(mut self, content: &str) -> Self {
+            self.content = Some(content.to_string());
+            self
+        }
+        pub fn build(self) -> Result<Note, ValidationError> {
+            Note::new(
+                NoteId::new_random(),
+                NoteTitle::new(&self.title.unwrap_or_else(|| "Title".to_string()))?,
+                NoteContent::new(&self.content.unwrap_or_else(|| "Content".to_string()))?,
+                self.timestamp.unwrap_or_else(Timestamp::now),
+            )
+        }
+    }
 
     /// Creates a test note with default values
     fn note_fixture(path: &str) -> Note {
