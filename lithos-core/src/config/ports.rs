@@ -3,6 +3,8 @@
 //! This module defines the [`Command`] and [`Query`] trait interfaces,
 //! decoupling domain logic from storage implementation details (like Redb).
 
+use std::ops::Deref;
+
 use super::{
     aggregate::{Config, Version},
     global::Global,
@@ -10,18 +12,14 @@ use super::{
 };
 
 /// Command port for configuration write operations.
-///
-/// This trait defines the interface for persisting configuration state.
-/// Implementations are responsible for mapping domain types to the
-/// physical storage layer.
 pub trait Command: Send + Sync {
     /// Storage error type for command operations.
-    type Error: std::error::Error;
+    type Error: std::error::Error + Send + Sync + 'static;
 
     /// Loads the active merged configuration version for a vault.
     ///
     /// # Errors
-    /// Returns a storage-specific error on failure.
+    /// Returns a storage-specific error if the lookup fails.
     fn load_active_version(
         &self,
         vault_id: VaultId,
@@ -30,13 +28,13 @@ pub trait Command: Send + Sync {
     /// Loads the persisted global configuration, if present.
     ///
     /// # Errors
-    /// Returns a storage-specific error on failure.
+    /// Returns a storage-specific error if the lookup fails.
     fn load_global(&self) -> Result<Option<Global>, Self::Error>;
 
     /// Loads the persisted vault configuration, if present.
     ///
     /// # Errors
-    /// Returns a storage-specific error on failure.
+    /// Returns a storage-specific error if the lookup fails.
     fn load_vault(
         &self,
         vault_id: VaultId,
@@ -45,13 +43,13 @@ pub trait Command: Send + Sync {
     /// Persists the global configuration.
     ///
     /// # Errors
-    /// Returns a storage-specific error on failure.
+    /// Returns a storage-specific error if the save operation fails.
     fn save_global(&self, config: &Global) -> Result<(), Self::Error>;
 
     /// Persists a merged configuration snapshot.
     ///
     /// # Errors
-    /// Returns a storage-specific error on failure.
+    /// Returns a storage-specific error if the save operation fails.
     fn save_merged(
         &self,
         vault_id: VaultId,
@@ -62,7 +60,7 @@ pub trait Command: Send + Sync {
     /// Persists vault-specific configuration.
     ///
     /// # Errors
-    /// Returns a storage-specific error on failure.
+    /// Returns a storage-specific error if the save operation fails.
     fn save_vault(
         &self,
         vault_id: VaultId,
@@ -72,7 +70,7 @@ pub trait Command: Send + Sync {
     /// Persists the vault ID to root path mapping.
     ///
     /// # Errors
-    /// Returns a storage-specific error on failure.
+    /// Returns a storage-specific error if the save operation fails.
     fn save_vault_path_mapping(
         &self,
         vault_id: VaultId,
@@ -82,59 +80,51 @@ pub trait Command: Send + Sync {
     /// Sets the active merged configuration version for a vault.
     ///
     /// # Errors
-    /// Returns a storage-specific error on failure.
+    /// Returns a storage-specific error if the update fails.
     fn set_active_version(
         &self,
         vault_id: VaultId,
         version: Version,
     ) -> Result<(), Self::Error>;
-
-    // TODO: Add `load_vault_id_by_path` method for looking up existing vault
-    // IDs from the vault_path_by_id table. This enables detecting when a
-    // vault already exists at a given path, avoiding creating duplicate
-    // VaultIds.
 }
 
 /// Query port for configuration read operations.
-///
-/// This trait defines the interface for retrieving configuration state.
-/// It supports both owned data retrieval and zero-copy access via
-/// archived types.
 pub trait Query: Send + Sync {
-    /// Archived merged config type for zero-copy reads.
-    type Archived<'archived>;
     /// Storage error type for query operations.
-    type Error: std::error::Error;
+    type Error: std::error::Error + Send + Sync + 'static;
+
+    /// RAII Guard that holds the archived data and dereferences to it.
+    type Guard<'archived>: Deref<Target = rkyv::Archived<Config>> + 'archived
+    where
+        Self: 'archived;
 
     /// Fetches the active merged configuration version for a vault.
     ///
     /// # Errors
-    /// Returns a storage-specific error on failure.
+    /// Returns a storage-specific error if the lookup fails.
     fn get_active_version(
         &self,
         vault_id: VaultId,
     ) -> Result<Option<Version>, Self::Error>;
 
+    /// Fetches a merged configuration snapshot for zero-copy access via a GAT
+    /// Guard.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the lookup or access fails.
+    fn get_archived(
+        &self,
+        vault_id: VaultId,
+        version: Version,
+    ) -> Result<Option<Self::Guard<'_>>, Self::Error>;
+
     /// Fetches a merged configuration snapshot as owned data.
     ///
     /// # Errors
-    /// Returns a storage-specific error on failure.
+    /// Returns a storage-specific error if the lookup or deserialization fails.
     fn get_merged_owned(
         &self,
         vault_id: VaultId,
         version: Version,
     ) -> Result<Option<Config>, Self::Error>;
-
-    /// Fetches a merged configuration snapshot for zero-copy access.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error on failure.
-    fn with_archived_merged<F, R>(
-        &self,
-        vault_id: VaultId,
-        version: Version,
-        f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R;
 }

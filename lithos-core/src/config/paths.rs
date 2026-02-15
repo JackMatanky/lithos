@@ -90,6 +90,15 @@ impl Paths {
     }
 }
 
+impl ArchivedPaths {
+    /// Return the cache configuration.
+    #[inline]
+    #[must_use]
+    pub const fn cache(&self) -> &ArchivedCache {
+        &self.cache
+    }
+}
+
 impl TryFrom<&super::raw::RawPathsConfig> for Paths {
     type Error = ConfigError;
 
@@ -346,6 +355,15 @@ impl Cache {
     }
 }
 
+impl ArchivedCache {
+    /// Return the cache directory.
+    #[inline]
+    #[must_use]
+    pub const fn cache_dir(&self) -> &ArchivedRelativePath {
+        &self.cache_dir
+    }
+}
+
 /// Property bank filename configuration.
 ///
 /// The property bank is a central registry of all properties used across
@@ -490,6 +508,15 @@ impl RelativePath {
             });
         }
         Ok(())
+    }
+}
+
+impl ArchivedRelativePath {
+    /// Return the inner path as a standard library [`Path`].
+    #[inline]
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        Path::new(self.0.as_str())
     }
 }
 

@@ -18,14 +18,6 @@ use super::{
 /// This struct provides the primary interface for retrieving persisted
 /// configuration snapshots. It is generic over a [`config_ports::Query`]
 /// to support different storage backends.
-///
-/// # Examples
-///
-/// ```rust
-/// // Note: Query is constructed with a storage port implementation
-/// // let qry = Query::new(storage_port);
-/// // let result = qry.get(vault_id);
-/// ```
 pub struct Query<Q> {
     /// Port interface for storage operations.
     query_port: Q,
@@ -78,25 +70,21 @@ where
             .map_err(|error| ConfigQueryError::Storage(error.into()))
     }
 
-    /// Execute a zero-copy read against the merged config.
+    /// Returns a zero-copy RAII Guard for the merged config.
     ///
     /// # Errors
     /// Returns `ConfigQueryError` if the active version lookup or archived
     /// access fails.
     #[inline]
     #[instrument(
-        skip(self, f),
+        skip(self),
         level = "debug",
-        fields(operation = "with_archived_config", vault_id = %vault_id)
+        fields(operation = "get_archived_config", vault_id = %vault_id)
     )]
-    pub fn with_archived<R, F>(
+    pub fn get_archived(
         &self,
         vault_id: VaultId,
-        f: F,
-    ) -> Result<Option<R>, ConfigQueryError>
-    where
-        F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
-    {
+    ) -> Result<Option<Q::Guard<'_>>, ConfigQueryError> {
         let active = self
             .query_port
             .get_active_version(vault_id)
@@ -106,29 +94,29 @@ where
         };
 
         self.query_port
-            .with_archived_merged(vault_id, version, f)
+            .get_archived(vault_id, version)
             .map_err(|error| ConfigQueryError::Storage(error.into()))
     }
 }
-
-// ----------------------------------------------------------- //
-//                            Tests                            //
-// ----------------------------------------------------------- //
 
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
     clippy::arbitrary_source_item_ordering,
-    reason = "Test fixtures use expect for setup; test modules organized for \
-              readability"
+    reason = "Test module requirements"
 )]
 mod tests {
-    use super::*;
+
+    use std::ops::Deref;
+
+    use super::Query;
     use crate::{
         config::{
-            aggregate::Version,
+            aggregate::{Config, Version},
             db_table::{CONFIG, MERGED_CONFIG_ACTIVE, MERGED_CONFIG_VERSIONS},
             global::Global,
+            ports::{self as config_ports},
+            vault::VaultId,
         },
         db::{Database, DbError},
     };
@@ -152,13 +140,10 @@ mod tests {
             (dir, db)
         }
 
-        /// Create a Config with test values. Only available in tests.
         pub fn test_config() -> Config {
             let test_root = VaultRoot::try_new("/test-vault".into())
                 .expect("test vault root must be valid");
             let vault_id = VaultId::new();
-
-            // Use Config::build with empty raw config
             Config::build(&RawConfig::default(), vault_id, test_root)
                 .expect("test config must be valid")
         }
@@ -166,60 +151,6 @@ mod tests {
 
     struct DbPort<'db> {
         db: &'db Database,
-    }
-
-    mod load {
-        use super::*;
-
-        #[test]
-        fn get_returns_none_when_active_missing() {
-            // Arrange - unwrap permitted for test setup
-            let (_dir, db) = fixtures::test_db();
-            db.put(CONFIG, "global", &Global::default())
-                .expect("must put global config");
-            let qry = Query::new(DbPort::new(&db));
-
-            // Act
-            let result = qry.get(VaultId::new()).expect("query must succeed");
-
-            // Assert - explicit assertion
-            assert!(
-                result.is_none(),
-                "Expected None when active version missing"
-            );
-        }
-    }
-
-    mod borrowing {
-        use super::*;
-
-        #[test]
-        fn with_archived_executes_closure_on_archived_data() {
-            // Arrange - unwrap permitted for test setup
-            let (_dir, db) = fixtures::test_db();
-            let vault_id = VaultId::new();
-            let config = fixtures::test_config();
-
-            // Setup: version 1 active with default config
-            db.put(MERGED_CONFIG_VERSIONS, &format!("{vault_id}:1"), &config)
-                .expect("must put config version");
-            db.put(
-                MERGED_CONFIG_ACTIVE,
-                &vault_id.to_string(),
-                &Version::initial(),
-            )
-            .expect("must set active version");
-
-            let qry = Query::new(DbPort::new(&db));
-
-            // Act
-            let result = qry
-                .with_archived(vault_id, |_archived| true)
-                .expect("query must succeed");
-
-            // Assert - explicit assertion
-            assert_eq!(result, Some(true));
-        }
     }
 
     impl<'db> DbPort<'db> {
@@ -230,9 +161,27 @@ mod tests {
         }
     }
 
+    struct TestGuard(rkyv::util::AlignedVec<16>);
+    impl Deref for TestGuard {
+        type Target = rkyv::Archived<Config>;
+
+        #[inline]
+        #[expect(clippy::disallowed_methods, reason = "Validated at creation")]
+        fn deref(&self) -> &Self::Target {
+            // Safe access using rkyv::access.
+            // Since we validated the data during creation, this expect is
+            // logically safe.
+            rkyv::access::<Self::Target, rkyv::rancor::Error>(self.0.as_slice())
+                .expect("valid")
+        }
+    }
+
     impl config_ports::Query for DbPort<'_> {
-        type Archived<'archived> = &'archived rkyv::Archived<Config>;
         type Error = DbError;
+        type Guard<'archived>
+            = TestGuard
+        where
+            Self: 'archived;
 
         fn get_active_version(
             &self,
@@ -250,17 +199,74 @@ mod tests {
             self.db.get_owned(MERGED_CONFIG_VERSIONS, &key)
         }
 
-        fn with_archived_merged<F, R>(
+        fn get_archived(
             &self,
             vault_id: VaultId,
             version: Version,
-            f: F,
-        ) -> Result<Option<R>, DbError>
-        where
-            F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
-        {
-            let key = format!("{vault_id}:{}", version.value());
-            self.db.get::<Config, _, _>(MERGED_CONFIG_VERSIONS, &key, f)
+        ) -> Result<Option<Self::Guard<'_>>, DbError> {
+            let result = self.get_merged_owned(vault_id, version)?;
+            match result {
+                Some(config) => {
+                    let mut vec = rkyv::util::AlignedVec::<16>::new();
+                    rkyv::api::high::to_bytes_in::<_, rkyv::rancor::Error>(
+                        &config, &mut vec,
+                    )
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                    Ok(Some(TestGuard(vec)))
+                }
+                None => Ok(None),
+            }
+        }
+    }
+
+    mod load {
+        use super::*;
+
+        #[test]
+        fn get_returns_none_when_active_missing() {
+            let (_dir, db) = fixtures::test_db();
+            db.put(CONFIG, "global", &Global::default())
+                .expect("must put global config");
+            let qry = Query::new(DbPort::new(&db));
+
+            let result = qry.get(VaultId::new()).expect("query must succeed");
+
+            assert!(
+                result.is_none(),
+                "Expected None when active version missing"
+            );
+        }
+    }
+
+    mod borrowing {
+        use super::*;
+
+        #[test]
+        fn get_archived_returns_guard_to_data() {
+            let (_dir, db) = fixtures::test_db();
+            let vault_id = VaultId::new();
+            let config = fixtures::test_config();
+
+            db.put(MERGED_CONFIG_VERSIONS, &format!("{vault_id}:1"), &config)
+                .expect("must put config version");
+            db.put(
+                MERGED_CONFIG_ACTIVE,
+                &vault_id.to_string(),
+                &Version::initial(),
+            )
+            .expect("must set active version");
+
+            let qry = Query::new(DbPort::new(&db));
+
+            let result =
+                qry.get_archived(vault_id).expect("query must succeed");
+            assert!(result.is_some());
+            let guard = result.unwrap();
+            // Verify we can access data via the guard
+            assert_eq!(
+                guard.paths().cache().cache_dir().as_path(),
+                config.paths().cache.cache_dir().as_path()
+            );
         }
     }
 }

@@ -366,7 +366,7 @@ impl PropertyName {
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME));
+            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME_LOWER));
 
         if name.is_empty() {
             return Err(SchemaError::EmptyPropertyName);

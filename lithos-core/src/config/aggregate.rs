@@ -3,18 +3,6 @@
 //! This module provides the [`Config`] aggregate, which represents the
 //! fully-merged and validated configuration state for a vault. It also
 //! defines [`Version`] for tracking configuration history.
-//!
-//! # Invariants
-//!
-//! - **Always Valid**: Once constructed, `Config` is guaranteed to be
-//!   internally consistent and valid for use throughout the system.
-//! - **Immutability**: Once built, the configuration is immutable and serves as
-//!   the "Source of Truth" for the current execution context.
-//! - **Validation**: All paths and enums are strictly validated during the
-//!   build phase. Construction of a [`Config`] instance is impossible without
-//!   satisfying all domain constraints.
-//! - **Layered Configuration**: The aggregate enforces a clear precedence
-//!   hierarchy for settings (vault overrides → global → system defaults).
 
 use tracing::instrument;
 
@@ -23,61 +11,13 @@ use super::{
     events::{ConfigUpdated, Events},
     frontmatter::Frontmatter,
     logging::Logging,
-    paths::Paths,
+    paths::{ArchivedPaths, Paths},
     raw,
     task::Task,
     vault::{Metadata, VaultId, VaultRoot},
 };
 
-// ----------------------------------------------------------- //
-//                    Config Aggregate Root                    //
-// ----------------------------------------------------------- //
-
 /// Fully-resolved and validated configuration for a vault.
-///
-/// `Config` represents the "Always Valid" state of a vault's configuration
-/// after merging global settings, vault overrides, and system defaults.
-/// It is the aggregate root used by the rest of the system for decision
-/// making.
-///
-/// # Precedence Rules
-///
-/// 1. **Vault Overrides**: Values in the vault-specific `lithos.toml`.
-/// 2. **Global Settings**: System-wide settings in the global `lithos.toml`.
-/// 3. **System Defaults**: Hardcoded defaults (see [`Default`] implementation).
-///
-/// # Examples
-///
-/// ```rust
-/// # use std::path::Path;
-/// # use lithos_core::config::{
-/// #     aggregate::Config,
-/// #     vault::{VaultId, VaultRoot},
-/// #     ingest
-/// # };
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// # let vault_root_path = Path::new("/tmp/vault");
-/// # let vault_id = VaultId::new();
-/// # let vault_root = VaultRoot::try_new(vault_root_path.to_path_buf())?;
-/// // Ingest and build the aggregate
-/// let raw = ingest::build_merged_raw(vault_root_path)?;
-/// let config = Config::build(&raw, vault_id, vault_root)?;
-///
-/// // Access nested configuration values via sub-structs
-/// assert!(config.logging().level_str() == "info");
-/// assert_eq!(config.paths().schema.schemas_dir().as_path(), Path::new("schemas"));
-/// assert_eq!(config.frontmatter().title().as_str(), "title");
-/// assert!(config.task().enabled());
-/// assert_eq!(config.task().tags()[0].as_str(), "#task");
-///
-/// // Iterate over task status mappings
-/// let status_map = config.task().status();
-/// for (name, symbol) in status_map {
-///     println!("Status {} uses symbol {}", name.as_str(), symbol.value());
-/// }
-/// # Ok(())
-/// # }
-/// ```
 #[derive(
     Debug,
     Clone,
@@ -88,6 +28,7 @@ use super::{
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
+#[rkyv(bytecheck(bounds()))]
 #[non_exhaustive]
 pub struct Config {
     /// Vault metadata with versioning and naming.
@@ -144,13 +85,8 @@ impl Config {
 
     /// Build validated Config from Figment-merged raw configuration.
     ///
-    /// This is the **primary constructor** for `Config`. It takes a `RawConfig`
-    /// that has already been merged across layers (defaults → global → vault)
-    /// by `ingest::build_merged_raw()`, validates all fields, and constructs
-    /// a fully validated domain configuration.
-    ///
     /// # Errors
-    /// Returns `ConfigError` if validation fails for any field.
+    /// Returns [`ConfigError`] if the raw configuration fails validation rules.
     #[inline]
     #[instrument(
         skip(raw, vault_root),
@@ -225,30 +161,16 @@ impl Config {
     }
 }
 
-// ----------------------------------------------------------- //
-//               Versioning & Persistence Types                //
-// ----------------------------------------------------------- //
+impl ArchivedConfig {
+    /// Return the paths configuration.
+    #[inline]
+    #[must_use]
+    pub const fn paths(&self) -> &ArchivedPaths {
+        &self.paths
+    }
+}
 
 /// Monotonically increasing version number for configuration snapshots.
-///
-/// This type ensures that configuration versions are positive integers
-/// and provides safe incrementing logic.
-///
-/// # Invariants
-///
-/// - A `Version` must be greater than zero.
-///
-/// # Examples
-///
-/// ```rust
-/// use lithos_core::config::aggregate::Version;
-///
-/// let version = Version::initial();
-/// assert_eq!(version.value(), 1);
-///
-/// let next = version.next().unwrap();
-/// assert_eq!(next.value(), 2);
-/// ```
 #[derive(
     Debug,
     Clone,
@@ -262,6 +184,7 @@ impl Config {
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
+#[rkyv(bytecheck(bounds()))]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Version(u64);
@@ -281,11 +204,12 @@ impl Version {
         self.0
     }
 
-    #[inline]
     /// Return the next version, or an overflow error.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` on overflow.
+    /// Returns [`ConfigError::ValidationFailed`] if the version number
+    /// overflows.
+    #[inline]
     pub fn next(self) -> Result<Self, ConfigError> {
         self.0.checked_add(1).map(Self).ok_or_else(|| {
             ConfigError::ValidationFailed {
@@ -317,55 +241,6 @@ impl TryFrom<u64> for Version {
         Ok(Self(value))
     }
 }
-
-// Persisted configuration record with version metadata.
-// DEPRECATED: Not used in current CQRS design. Retained for potential future
-// use. #[derive(
-//     Debug,
-//     Clone,
-//     PartialEq,
-//     serde::Serialize,
-//     serde::Deserialize,
-//     rkyv::Archive,
-//     rkyv::Serialize,
-//     rkyv::Deserialize,
-// )]
-// #[non_exhaustive]
-// pub struct Record {
-//     /// Vault identifier.
-//     pub vault_id: VaultId,
-//     /// Merged config version.
-//     pub version: Version,
-//     /// Unix timestamp for creation.
-//     pub created_at: i64,
-//     /// Merged configuration snapshot.
-//     pub config: Config,
-// }
-
-// Active config pointer for a vault.
-// DEPRECATED: Not used in current CQRS design. Retained for potential future
-// use. #[derive(
-//     Debug,
-//     Clone,
-//     PartialEq,
-//     serde::Serialize,
-//     serde::Deserialize,
-//     rkyv::Archive,
-//     rkyv::Serialize,
-//     rkyv::Deserialize,
-// )]
-// #[rkyv(derive(Debug))]
-// #[non_exhaustive]
-// pub struct ActiveConfig {
-//     /// Vault identifier.
-//     pub vault_id: VaultId,
-//     /// Active merged version.
-//     pub version: Version,
-// }
-
-// ----------------------------------------------------------- //
-//                            Tests                            //
-// ----------------------------------------------------------- //
 
 #[cfg(test)]
 #[expect(

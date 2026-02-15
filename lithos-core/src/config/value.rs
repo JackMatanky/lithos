@@ -444,7 +444,7 @@ pub struct DateSpec {
     /// Field name used in text.
     keyword: FieldName,
     /// Optional emoji marker (e.g., 📅).
-    emoji: Option<char>,
+    emoji: Option<u32>,
     /// Chrono format string (e.g., `%Y-%m-%d`).
     format: Box<str>,
 }
@@ -460,7 +460,7 @@ impl DateSpec {
         validate_chrono_format(&raw.format, "task.dates.format")?;
         Ok(Self {
             keyword,
-            emoji: raw.emoji,
+            emoji: raw.emoji.map(u32::from),
             format: raw.format.into_boxed_str(),
         })
     }
@@ -476,7 +476,7 @@ impl DateSpec {
     #[must_use]
     /// Return the optional emoji marker.
     pub fn emoji(&self) -> Option<char> {
-        self.emoji
+        self.emoji.and_then(char::from_u32)
     }
 
     #[inline]
