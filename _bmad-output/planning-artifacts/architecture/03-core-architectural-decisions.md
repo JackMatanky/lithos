@@ -63,13 +63,27 @@ section: "Architecture Decisions"
 
 - **Strategy:** Minimal Event Foundation (Phase 1).
   - **Pattern:** Domain methods return `(Entity, Vec<Event>)` - pure functions, no side effects.
-  - **Orchestration:** Application layer (CLI) collects events and dispatches synchronously.
+  - **Orchestration:** Application layer (in `lithos-core/src/application/`) collects events and dispatches synchronously.
   - **Handlers:** Simple synchronous functions for logging, tracing, basic reactions.
   - **Data Plane:** Direct `db` writes via CQRS commands. `db.batch_write()` handles atomicity.
   - **Control Plane:** Simple callbacks or deferred dispatch via `UnitOfWork` if needed.
   - **State Plane:** Deferred to LSP phase (async event bus, MPSC channels).
   - **Benefits:** Prevents god-object orchestrators while keeping Phase 1 simple.
 - **ADR Reference:** [ADR 004: Event Orchestration](../../docs/adr/004-event-orchestration.md)
+
+## Application Layer Architecture
+
+- **Location:** `lithos-core/src/application/`
+- **Purpose:** Cross-context orchestration and workflow coordination without violating context isolation
+- **Reusability:** Shared by multiple drivers (CLI, LSP, future Web API)
+- **Key Components:**
+  - **Vault Facade** (`vault.rs`) - High-level API for common operations
+  - **Services** (`services/`) - Cross-context workflow implementations
+    - `NoteCreationService` - "Create note from template" workflow
+    - `VaultInitializationService` - "Initialize vault" workflow
+    - `BatchIndexingService` - "Index vault files" workflow
+- **Dependency Direction:** Application → Domain (via ports) + Adapters (via dependency injection)
+- **Benefits:** Library-first design prevents CLI logic duplication when LSP is added
 
 ## Schema System Architecture
 

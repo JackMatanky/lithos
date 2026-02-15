@@ -657,17 +657,17 @@ impl<C: SchemaCommandPort> Command<C> {
 
 ### Adapter Implementation Pattern
 
-**Pattern:** Adapters live in `db/<context>_adapter.rs` and implement port traits.
+**Pattern:** Adapters live in `<context>/adapters/` and implement port traits. They are scoped to their context, not placed in a generic `db/` module.
 
 ✅ **Prefer:**
 
 ```rust
-// db/schema_adapter.rs - Infrastructure implements domain ports
-pub struct RedbSchemaQueryAdapter<'db> {
+// schema/adapters/query.rs - Context-scoped adapter
+pub struct QueryAdapter<'db> {
     db: &'db Database,
 }
 
-impl SchemaQueryPort for RedbSchemaQueryAdapter<'_> {
+impl schema::ports::Query for QueryAdapter<'_> {
     type Error = DbError;
     type Archived<'a> = &'a ArchivedSchema;  // Domain type or StoredSchema
 
@@ -691,11 +691,12 @@ impl SchemaQueryPort for RedbSchemaQueryAdapter<'_> {
     }
 }
 
-pub struct RedbSchemaCommandAdapter<'db> {
+// schema/adapters/command.rs
+pub struct CommandAdapter<'db> {
     db: &'db Database,
 }
 
-impl SchemaCommandPort for RedbSchemaCommandAdapter<'_> {
+impl schema::ports::Command for CommandAdapter<'_> {
     type Error = DbError;
 
     fn save(&self, schema: &Schema) -> Result<(), DbError> {
@@ -705,14 +706,21 @@ impl SchemaCommandPort for RedbSchemaCommandAdapter<'_> {
 }
 ```
 
+**Rationale:**
+- **Cohesion**: All schema-related code lives in `schema/`
+- **Independence**: Can test `schema/` with different storage backends
+- **Clarity**: `db/` contains only generic database primitives
+- **No Circular Dependencies**: Adapters import `db/` utilities and implement domain ports
+- **No Premature Nesting**: Flat `adapters/` directory until multiple backends require organization
+
 ❌ **Avoid:**
 
 ```rust
-// Adapter in domain context (violates dependency flow)
-// <context>/redb_adapter.rs - WRONG LOCATION!
+// Adapter in generic infrastructure (blurs dependencies)
+// db/schema_adapter.rs - WRONG: Creates coupling between db/ and domain
 pub struct RedbSchemaStore { /* ... */ }
 impl SchemaStore for RedbSchemaStore {
-    // Now domain depends on infrastructure!
+    // Now db/ module depends on schema/ business logic!
 }
 ```
 
@@ -820,13 +828,14 @@ When implementing port-based CQRS, verify:
 - [ ] Query uses GAT: `type Archived<'a> where Self: 'a`
 - [ ] Hot path uses HRTB: `impl for<'a> FnOnce(Self::Archived<'a>) -> R`
 - [ ] CQRS types generic: `Query<Q>`, `Command<C>`
-- [ ] Adapters in `db/<context>_adapter.rs` (not in domain context)
+- [ ] Adapters in `<context>/adapters/` (context-scoped, not generic `db/`)
 - [ ] Type aliases hide generics: `RedbSchemaQuery<'db>`
 - [ ] Domain types have rkyv derives
-- [ ] `Stored*` only created when profiling shows need
+- [ ] `Stored*` only created when profiling shows need (in `adapters/stored.rs`)
 - [ ] Test fakes implement only needed port methods
 - [ ] No unsafe blocks in CQRS or port implementations
-- [ ] Context isolation maintained (domain doesn't import db/)
+- [ ] Context isolation maintained (adapters import `db/`, domain doesn't)
+- [ ] Application layer coordinates cross-context workflows (not CLI)
 
 ### CQRS Naming Conventions
 
