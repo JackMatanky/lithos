@@ -192,7 +192,7 @@ impl Property {
             let arr =
                 value.as_array().ok_or_else(|| SchemaError::InvalidType {
                     value: value.to_string(),
-                    expected: "array".to_owned(),
+                    expected: "array".into(),
                 })?;
             for item in arr {
                 self.spec.validate(item)?;
@@ -382,7 +382,7 @@ impl PropertyName {
         })?;
 
         if !re.is_match(name) {
-            return Err(SchemaError::InvalidPropertyName(name.to_owned()));
+            return Err(SchemaError::InvalidPropertyName(name.into()));
         }
         Ok(())
     }
