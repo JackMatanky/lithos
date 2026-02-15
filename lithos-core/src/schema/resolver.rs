@@ -281,12 +281,12 @@ impl SchemaResolver {
                 match prop_ref {
                     PropertyRef::ById(id) => {
                         bank.get_by_id(id).cloned().ok_or_else(|| {
-                            SchemaError::PropertyNotFound(ref_path.clone())
+                            SchemaError::PropertyRefNotFound(ref_path.clone())
                         })
                     }
                     PropertyRef::ByName(name) => {
                         bank.get_by_name(&name).cloned().ok_or_else(|| {
-                            SchemaError::PropertyNotFound(ref_path.clone())
+                            SchemaError::PropertyRefNotFound(ref_path.clone())
                         })
                     }
                 }
@@ -391,9 +391,7 @@ impl InheritanceGraph {
             if self.nodes.contains_key(parent) {
                 self.visit(parent, visited, temp_visited, sorted)?;
             } else {
-                return Err(SchemaError::ParentSchemaNotFound(
-                    parent.to_string(),
-                ));
+                return Err(SchemaError::ParentNotFound(parent.to_string()));
             }
         }
         Ok(())
@@ -563,7 +561,7 @@ mod tests {
             let result = SchemaResolver::resolve_single_property(raw, &bank);
 
             assert!(
-                matches!(result, Err(SchemaError::PropertyNotFound(_))),
+                matches!(result, Err(SchemaError::PropertyRefNotFound(_))),
                 "Missing property reference should be detected, got: \
                  {result:?}"
             );

@@ -51,6 +51,14 @@ pub enum SchemaError {
     #[error("Property not found: {0}")]
     PropertyNotFound(String),
 
+    /// Property reference not found.
+    #[error("Property reference not found: {0}")]
+    PropertyRefNotFound(String),
+
+    /// Duplicate property in schema.
+    #[error("Duplicate property: {0}")]
+    DuplicateProperty(String),
+
     // --- Inheritance & Resolution Errors ---
     /// Circular schema inheritance detected.
     #[error("Circular schema inheritance detected: {0}")]
@@ -59,6 +67,10 @@ pub enum SchemaError {
     /// Parent schema not found.
     #[error("Parent schema not found: {0}")]
     ParentSchemaNotFound(String),
+
+    /// Parent schema not found.
+    #[error("Parent not found: {0}")]
+    ParentNotFound(String),
 
     /// Resolver error.
     #[error("resolver error: {0}")]
@@ -185,6 +197,13 @@ pub enum SchemaQueryError {
         /// Reason for corruption.
         reason: Box<str>,
     },
+
+    /// Entity not found.
+    #[error("not found: {name}")]
+    NotFound {
+        /// Name or identifier.
+        name: Box<str>,
+    },
 }
 
 #[cfg(test)]
@@ -216,6 +235,9 @@ mod tests {
     #[case(SchemaError::AlreadyExists("schema".into()))]
     #[case(SchemaError::ValidationFailed("invalid".into()))]
     #[case(SchemaError::CircularInheritance("cycle".into()))]
+    #[case(SchemaError::DuplicateProperty("prop".into()))]
+    #[case(SchemaError::ParentNotFound("parent".into()))]
+    #[case(SchemaError::PropertyRefNotFound("ref".into()))]
     #[case(SchemaError::Property("invalid property".into()))]
     #[case(SchemaError::Resolver("missing reference".into()))]
     #[case(SchemaError::Storage("io error".into()))]

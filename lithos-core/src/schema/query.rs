@@ -4,7 +4,7 @@
 //! through the schema query port.
 
 use super::{
-    aggregate::{Schema, SchemaId, SchemaName},
+    aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName},
     error::SchemaQueryError,
     ports as schema_ports,
 };
@@ -107,14 +107,36 @@ where
     where
         F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
     {
-        let id = self
-            .query_port
-            .lookup_id_by_name(name)
-            .map_err(|error| SchemaQueryError::Storage(error.into()))?;
-        let Some(id) = id else {
-            return Ok(None);
-        };
-        self.with_archived_by_id(id, f)
+        self.query_port
+            .with_archived_by_name(name, f)
+            .map_err(|error| SchemaQueryError::Storage(error.into()))
+    }
+
+    /// List all resolution metadata entries.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if query fails.
+    #[inline]
+    pub fn list_metadata(
+        &self,
+    ) -> Result<Vec<ResolutionMetadata>, SchemaQueryError> {
+        self.query_port
+            .list_metadata()
+            .map_err(|error| SchemaQueryError::Storage(error.into()))
+    }
+
+    /// Find resolution metadata by schema ID.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if query fails.
+    #[inline]
+    pub fn find_metadata_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<ResolutionMetadata>, SchemaQueryError> {
+        self.query_port
+            .find_metadata_by_id(id)
+            .map_err(|error| SchemaQueryError::Storage(error.into()))
     }
 }
 
@@ -159,7 +181,8 @@ mod tests {
 
     use super::*;
     use crate::schema::{
-        RedbSchemaCommand, RedbSchemaQuery, aggregate::SchemaName,
+        RedbSchemaCommand, RedbSchemaQuery,
+        aggregate::{BankVersion, SchemaName, Timestamp},
     };
 
     mod queries {
@@ -180,7 +203,15 @@ mod tests {
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
-            cmd.save(&schema).expect("Save should succeed");
+            let metadata = ResolutionMetadata::new(
+                schema.id(),
+                Timestamp::now(),
+                None,
+                BankVersion::initial(),
+                None,
+            );
+            cmd.save_with_metadata(&schema, &metadata)
+                .expect("Save should succeed");
 
             let result = qry
                 .find_by_id(fixtures::TEST_SCHEMA_ID_A)
@@ -203,7 +234,15 @@ mod tests {
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
-            cmd.save(&schema).expect("Save should succeed");
+            let metadata = ResolutionMetadata::new(
+                schema.id(),
+                Timestamp::now(),
+                None,
+                BankVersion::initial(),
+                None,
+            );
+            cmd.save_with_metadata(&schema, &metadata)
+                .expect("Save should succeed");
 
             let name =
                 SchemaName::new("note").expect("Failed to create schema name");
@@ -235,8 +274,25 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_B, "project")
                     .expect("Failed to create schema fixture");
 
-            cmd.save(&schema_a).expect("Save should succeed");
-            cmd.save(&schema_b).expect("Save should succeed");
+            let metadata_a = ResolutionMetadata::new(
+                schema_a.id(),
+                Timestamp::now(),
+                None,
+                BankVersion::initial(),
+                None,
+            );
+            let metadata_b = ResolutionMetadata::new(
+                schema_b.id(),
+                Timestamp::now(),
+                None,
+                BankVersion::initial(),
+                None,
+            );
+
+            cmd.save_with_metadata(&schema_a, &metadata_a)
+                .expect("Save should succeed");
+            cmd.save_with_metadata(&schema_b, &metadata_b)
+                .expect("Save should succeed");
 
             let schemas = qry.list().expect("List should succeed");
             let names: HashSet<&str> =
@@ -246,6 +302,72 @@ mod tests {
                 HashSet::from(["note", "project"]),
                 "List should return all saved schemas"
             );
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn list_metadata_returns_saved_entries() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let cmd = RedbSchemaCommand::new_redb(&db);
+            let qry = RedbSchemaQuery::new_redb(&db);
+
+            let schema =
+                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
+                    .expect("Failed to create schema fixture");
+            let metadata = ResolutionMetadata::new(
+                schema.id(),
+                Timestamp::now(),
+                None,
+                BankVersion::initial(),
+                None,
+            );
+
+            cmd.save_with_metadata(&schema, &metadata)
+                .expect("Save should succeed");
+
+            let items = qry.list_metadata().expect("List should succeed");
+            assert_eq!(
+                items.len(),
+                1,
+                "Expected one metadata entry after save"
+            );
+        }
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses expect for deterministic fixture setup and \
+                      value extraction."
+        )]
+        fn find_metadata_by_id_returns_entry() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let cmd = RedbSchemaCommand::new_redb(&db);
+            let qry = RedbSchemaQuery::new_redb(&db);
+
+            let schema =
+                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
+                    .expect("Failed to create schema fixture");
+            let metadata = ResolutionMetadata::new(
+                schema.id(),
+                Timestamp::now(),
+                None,
+                BankVersion::initial(),
+                None,
+            );
+
+            cmd.save_with_metadata(&schema, &metadata)
+                .expect("Save should succeed");
+
+            let stored = qry
+                .find_metadata_by_id(schema.id())
+                .expect("Lookup should succeed");
+            assert!(stored.is_some(), "Metadata should be found");
         }
     }
 }
