@@ -320,6 +320,6 @@ fn test_wrapping_add(a: i32, b: i32, expected: i32) {
 
 ## RELATED MODULES
 
-- See `testing-fixtures.md` for fixture strategies
-- See `testing-unit.md` for unit testing patterns
-- See `testing-anti-patterns.md` for comprehensive anti-patterns
+- See `fixtures.md` for fixture strategies
+- See `unit.md` for unit testing patterns
+- See `anti-patterns.md` for comprehensive anti-patterns

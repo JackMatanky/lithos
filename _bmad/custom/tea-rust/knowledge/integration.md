@@ -227,7 +227,7 @@ fn find_schema_by_id_returns_correct_schema() {
 
 ## RELATED MODULES
 
-- See `testing-unit.md` for unit testing patterns
-- See `testing-tools-nextest.md` for test runner configuration
-- See `testing-fixtures.md` for fixture strategies
-- See `testing-anti-patterns.md` for comprehensive anti-patterns
+- See `unit.md` for unit testing patterns
+- See `tools-nextest.md` for test runner configuration
+- See `fixtures.md` for fixture strategies
+- See `anti-patterns.md` for comprehensive anti-patterns
