@@ -13,8 +13,6 @@ pub mod command;
 pub mod error;
 /// Schema domain events.
 pub mod events;
-/// Schema inheritance graph logic.
-pub mod graph;
 /// Schema ports for CQRS.
 pub mod ports;
 /// Property domain entities.
