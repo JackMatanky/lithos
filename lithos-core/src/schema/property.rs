@@ -158,7 +158,8 @@ pub enum Multiplicity {
 /// Enforces invariants:
 /// - Non-empty
 /// - Max 64 characters
-/// - Matches regex `^[a-zA-Z0-9_-]+$` (alphanumeric, underscores, dashes)
+/// - Matches regex `^[a-z0-9_-]+$` (lowercase alphanumeric, underscores,
+///   dashes)
 ///
 /// # Examples
 /// ```
@@ -411,7 +412,7 @@ impl PropertyName {
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME));
+            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME_LOWER));
 
         if name.is_empty() {
             return Err(SchemaError::EmptyPropertyName);
@@ -738,7 +739,7 @@ mod tests {
         // Priority: P2.
         proptest! {
             #[test]
-            fn validates_property_name_format_proptest(name in "[a-zA-Z0-9_-]{1,64}") {
+            fn validates_property_name_format_proptest(name in "[a-z0-9_-]{1,64}") {
                 // GIVEN an arbitrary valid property name
                 // WHEN creating a PropertyName
                 // THEN it must succeed
@@ -753,7 +754,7 @@ mod tests {
         // Priority: P2.
         proptest! {
             #[test]
-            fn rejects_invalid_property_name_characters_proptest(name in ".*[^a-zA-Z0-9_-].*") {
+            fn rejects_invalid_property_name_characters_proptest(name in ".*[^a-z0-9_-].*") {
                 prop_assume!(!name.is_empty() && name.len() <= 64);
 
                 // GIVEN an arbitrary string containing invalid characters
