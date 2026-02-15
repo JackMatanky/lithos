@@ -148,9 +148,9 @@ use uuid::Uuid;
 const TEMPLATES_TABLE: TableDefinition<&str, &[u8]> =
     TableDefinition::new("templates");
 
-// ============================================================================
-// Numeric Formatting (Optimization Tracking)
-// ============================================================================
+// ----------------------------------------------------------- //
+//                     Numeric Formatting                      //
+// ----------------------------------------------------------- //
 
 /// Benchmarks numeric formatting: itoa/ryu vs .`to_string()` (optimization
 /// tracking).
@@ -230,9 +230,9 @@ fn bench_numeric_formatting(c: &mut Criterion) {
     group.finish();
 }
 
-// ============================================================================
-// Constructor APIs (Optimization Tracking)
-// ============================================================================
+// ----------------------------------------------------------- //
+//                      Constructor Apis                       //
+// ----------------------------------------------------------- //
 
 /// Benchmarks constructor APIs: &str vs String parameters (optimization
 /// tracking).
@@ -337,9 +337,9 @@ fn bench_constructor_apis(c: &mut Criterion) {
     group.finish();
 }
 
-// ============================================================================
-// Aggregate Workflow
-// ============================================================================
+// ----------------------------------------------------------- //
+//                     Aggregate Workflow                      //
+// ----------------------------------------------------------- //
 
 /// Benchmarks aggregate workflow combining multiple optimizations.
 ///

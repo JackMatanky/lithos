@@ -1,8 +1,8 @@
 //! Predefined regex patterns for domain validation across bounded contexts.
 
-// ============================================================================
-// Domain-Specific Patterns (Actively Used)
-// ============================================================================
+// ----------------------------------------------------------- //
+//                  Domain-Specific Patterns                   //
+// ----------------------------------------------------------- //
 
 /// Alphanumeric name pattern: letters, numbers, underscores, and dashes.
 ///

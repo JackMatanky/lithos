@@ -137,9 +137,9 @@ const TEMPLATES_TABLE: TableDefinition<&str, &[u8]> =
 const BENCHMARK_TABLE: TableDefinition<&str, &[u8]> =
     TableDefinition::new("benchmark");
 
-// ============================================================================
-// UUID Handling Strategies (Optimization Tracking)
-// ============================================================================
+// ----------------------------------------------------------- //
+//                  UUID Handling Strategies                   //
+// ----------------------------------------------------------- //
 
 /// Benchmarks UUID-native methods vs string conversion (optimization tracking).
 ///
@@ -277,9 +277,9 @@ fn bench_uuid_handling(c: &mut Criterion) {
     group.finish();
 }
 
-// ============================================================================
-// Key Formatting Strategies (Optimization Tracking)
-// ============================================================================
+// ----------------------------------------------------------- //
+//                  Key Formatting Strategies                  //
+// ----------------------------------------------------------- //
 
 /// Benchmarks key formatting with pre-allocated buffer (optimization tracking).
 ///

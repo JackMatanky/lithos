@@ -71,9 +71,9 @@
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
-// ============================================================================
-// Core Aggregate Modules
-// ============================================================================
+// ----------------------------------------------------------- //
+//                   Core Aggregate Modules                    //
+// ----------------------------------------------------------- //
 
 /// Configuration storage adapters.
 pub mod adapter;
@@ -86,9 +86,9 @@ pub mod paths;
 /// Vault-scoped configuration types.
 pub mod vault;
 
-// ============================================================================
-// Logic & Infrastructure Modules
-// ============================================================================
+// ----------------------------------------------------------- //
+//               Logic & Infrastructure Modules                //
+// ----------------------------------------------------------- //
 
 /// Configuration command implementations (CQRS write operations).
 pub mod command;
@@ -99,9 +99,9 @@ pub mod ports;
 /// Configuration query implementations (CQRS read operations).
 pub mod query;
 
-// ============================================================================
-// Supporting Domain Modules
-// ============================================================================
+// ----------------------------------------------------------- //
+//                  Supporting Domain Modules                  //
+// ----------------------------------------------------------- //
 
 /// Configuration error types.
 pub mod error;
@@ -118,9 +118,9 @@ pub mod task;
 /// Field specification and value validation types.
 pub mod value;
 
-// ============================================================================
-// Concrete Implementation Aliases (Redb)
-// ============================================================================
+// ----------------------------------------------------------- //
+//               Concrete Implementation Aliases               //
+// ----------------------------------------------------------- //
 
 pub(crate) mod db_table {
     use redb::TableDefinition;
