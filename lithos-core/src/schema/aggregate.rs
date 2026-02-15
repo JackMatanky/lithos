@@ -190,7 +190,8 @@ impl Default for SchemaId {
 /// Enforces invariants:
 /// - Non-empty
 /// - Max 64 characters
-/// - Matches regex `^[a-zA-Z0-9_-]+$` (alphanumeric, underscores, dashes)
+/// - Matches regex `^[a-z0-9_-]+$` (lowercase alphanumeric, underscores,
+///   dashes)
 ///
 /// # Examples
 ///
@@ -204,8 +205,8 @@ impl Default for SchemaId {
 /// let name2 = SchemaName::new("daily_note")?;
 /// assert_eq!(name2.as_str(), "daily_note", "Schema name should match");
 ///
-/// let name3 = SchemaName::new("MySchema")?;
-/// assert_eq!(name3.as_str(), "MySchema", "Schema name should match");
+/// let name3 = SchemaName::new("myschema")?;
+/// assert_eq!(name3.as_str(), "myschema", "Schema name should match");
 ///
 /// let invalid = SchemaName::new("");
 /// assert!(invalid.is_err(), "Empty name should be rejected");
@@ -254,7 +255,7 @@ impl SchemaName {
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME));
+            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME_LOWER));
 
         if name.is_empty() {
             return Err(SchemaError::EmptySchemaName);

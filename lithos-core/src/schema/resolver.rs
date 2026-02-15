@@ -500,7 +500,7 @@ mod tests {
         #[test]
         fn schema_graph_detects_arbitrary_cycles() -> Result<(), String> {
             let mut runner = TestRunner::deterministic();
-            let strategy = prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10);
+            let strategy = prop::collection::vec("[a-z0-9]{3,10}", 2..10);
 
             let run_result = runner.run(&strategy, |names| {
                 let parse_name =
@@ -549,7 +549,7 @@ mod tests {
         #[test]
         fn schema_graph_accepts_arbitrary_lineage() -> Result<(), String> {
             let mut runner = TestRunner::deterministic();
-            let strategy = prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10);
+            let strategy = prop::collection::vec("[a-z0-9]{3,10}", 1..10);
 
             let run_result = runner.run(&strategy, |names| {
                 let parse_name =
