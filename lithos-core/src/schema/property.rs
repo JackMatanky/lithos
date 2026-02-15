@@ -341,52 +341,6 @@ impl Default for PropertyId {
 #[non_exhaustive]
 pub struct PropertyName(Box<str>);
 
-impl AsRef<str> for PropertyName {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Display for PropertyName {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Borrow<str> for PropertyName {
-    #[inline]
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<PropertyName> for String {
-    #[inline]
-    fn from(val: PropertyName) -> Self {
-        val.0.into()
-    }
-}
-
-impl TryFrom<&str> for PropertyName {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl TryFrom<String> for PropertyName {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(&value)
-    }
-}
-
 impl PropertyName {
     /// Create a new `PropertyName` with validation.
     ///
@@ -431,6 +385,52 @@ impl PropertyName {
             return Err(SchemaError::InvalidPropertyName(name.to_owned()));
         }
         Ok(())
+    }
+}
+
+impl AsRef<str> for PropertyName {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for PropertyName {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Borrow<str> for PropertyName {
+    #[inline]
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<PropertyName> for String {
+    #[inline]
+    fn from(val: PropertyName) -> Self {
+        val.0.into()
+    }
+}
+
+impl TryFrom<&str> for PropertyName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl TryFrom<String> for PropertyName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(&value)
     }
 }
 
