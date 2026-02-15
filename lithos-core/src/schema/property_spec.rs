@@ -484,8 +484,8 @@ impl StringSpec {
     pub fn try_new(
         min_length: Option<usize>,
         max_length: Option<usize>,
-        pattern: Option<String>,
-        enum_values: Option<Vec<String>>,
+        pattern: Option<Box<str>>,
+        enum_values: Option<Vec<Box<str>>>,
     ) -> Result<Self, SchemaError> {
         let length = match Bounds::from_options(min_length, max_length) {
             None => Bounds::Unbounded,
@@ -500,13 +500,10 @@ impl StringSpec {
         let pattern = match pattern {
             Some(p) => {
                 get_cached_regex(&p)?;
-                Some(p.into_boxed_str())
+                Some(p)
             }
             None => None,
         };
-
-        let enum_values = enum_values
-            .map(|vals| vals.into_iter().map(String::into_boxed_str).collect());
 
         Ok(Self {
             enum_values,
@@ -786,7 +783,7 @@ mod tests {
         #[rstest]
         #[case::enum_match(
             StringSpecDef {
-                enum_values: Some(vec!["A".to_owned(), "B".to_owned()]),
+                enum_values: Some(vec!["A".into(), "B".into()]),
                 ..Default::default()
             },
             "A",
@@ -794,7 +791,7 @@ mod tests {
         )]
         #[case::enum_mismatch(
             StringSpecDef {
-                enum_values: Some(vec!["A".to_owned(), "B".to_owned()]),
+                enum_values: Some(vec!["A".into(), "B".into()]),
                 ..Default::default()
             },
             "C",
@@ -804,12 +801,12 @@ mod tests {
             })
         )]
         #[case::regex_match(
-            StringSpecDef { pattern: Some(r"^\d+$".to_owned()), ..Default::default() },
+            StringSpecDef { pattern: Some(r"^\d+$".into()), ..Default::default() },
             "123",
             Ok(())
         )]
         #[case::regex_mismatch(
-            StringSpecDef { pattern: Some(r"^\d+$".to_owned()), ..Default::default() },
+            StringSpecDef { pattern: Some(r"^\d+$".into()), ..Default::default() },
             "abc",
             Err(SchemaError::ValidationFailed("Value abc does not match pattern ^\\d+$".to_owned()))
         )]

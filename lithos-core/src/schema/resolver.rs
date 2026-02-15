@@ -147,7 +147,7 @@ impl<'bank> ResolutionContext<'bank> {
 
         for raw in raw_schemas {
             let id = SchemaId::from_uuid(raw.id);
-            let name = SchemaName::try_from(raw.name.as_str())?;
+            let name = SchemaName::try_from(raw.name.as_ref())?;
 
             if name_to_id.insert(name.clone(), id).is_some() {
                 return Err(SchemaError::AlreadyExists(name.to_string()));
@@ -170,7 +170,7 @@ impl<'bank> ResolutionContext<'bank> {
             let parent_id = if let Some(parent_name_str) = raw.extends.as_ref()
             {
                 let parent_name =
-                    SchemaName::try_from(parent_name_str.as_str())?;
+                    SchemaName::try_from(parent_name_str.as_ref())?;
                 name_to_id.get(&parent_name).copied()
             } else {
                 None
@@ -242,7 +242,8 @@ impl<'bank> ResolutionContext<'bank> {
                 let extends_name =
                     self.raw_by_id.get(&id).and_then(|r| r.extends.clone());
                 return Err(SchemaError::ParentNotFound(
-                    extends_name.unwrap_or_else(|| "unknown".to_owned()),
+                    extends_name
+                        .map_or_else(|| "unknown".to_owned(), String::from),
                 ));
             }
         }
@@ -307,7 +308,7 @@ impl<'bank> ResolutionContext<'bank> {
         let excludes: HashSet<PropertyName> = raw
             .excludes
             .iter()
-            .map(|s| PropertyName::try_from(s.as_str()))
+            .map(|s| PropertyName::try_from(s.as_ref()))
             .collect::<Result<_, _>>()?;
 
         let final_props = if let Some(p) = parent {
@@ -329,7 +330,7 @@ impl<'bank> ResolutionContext<'bank> {
     ) -> Result<Property, SchemaError> {
         match raw {
             RawProperty::Inline(inline) => {
-                let name = PropertyName::new(&inline.name)?;
+                let name = PropertyName::new(inline.name.as_ref())?;
                 let spec = inline.spec.try_into_validated()?;
                 let cardinality = if inline.required {
                     Cardinality::Required
@@ -352,16 +353,20 @@ impl<'bank> ResolutionContext<'bank> {
             RawProperty::Ref(RawPropertyRef {
                 ref_path,
             }) => {
-                let prop_ref = PropertyRef::try_from(ref_path.as_str())?;
+                let prop_ref = PropertyRef::try_from(ref_path.as_ref())?;
                 match prop_ref {
                     PropertyRef::ById(id) => {
                         self.bank.get_by_id(id).cloned().ok_or_else(|| {
-                            SchemaError::PropertyRefNotFound(ref_path.clone())
+                            SchemaError::PropertyRefNotFound(
+                                ref_path.to_string(),
+                            )
                         })
                     }
                     PropertyRef::ByName(name) => {
                         self.bank.get_by_name(&name).cloned().ok_or_else(|| {
-                            SchemaError::PropertyRefNotFound(ref_path.clone())
+                            SchemaError::PropertyRefNotFound(
+                                ref_path.to_string(),
+                            )
                         })
                     }
                 }
@@ -449,6 +454,8 @@ fn merge_sorted_properties(
 #[cfg(test)]
 mod tests {
     mod fixtures {
+        use std::collections::BTreeSet;
+
         use super::*;
 
         pub fn parent_property() -> Result<Property, SchemaError> {
@@ -496,9 +503,9 @@ mod tests {
         pub fn child_raw_schema() -> RawSchema {
             RawSchema::new(
                 TEST_SCHEMA_ID_CHILD,
-                "child".to_owned(),
+                "child".into(),
                 None,
-                HashSet::new(),
+                BTreeSet::new(),
                 Vec::new(),
             )
         }
@@ -506,11 +513,11 @@ mod tests {
         pub fn child_raw_schema_with_excludes(
             exclude_name: &PropertyName,
         ) -> RawSchema {
-            let mut excludes = HashSet::new();
-            excludes.insert(exclude_name.as_str().to_owned());
+            let mut excludes = BTreeSet::new();
+            excludes.insert(exclude_name.as_str().into());
             RawSchema::new(
                 TEST_SCHEMA_ID_CHILD,
-                "child".to_owned(),
+                "child".into(),
                 None,
                 excludes,
                 Vec::new(),
@@ -584,7 +591,7 @@ mod tests {
             let property = fixtures::status_property()?;
             let bank = fixtures::property_bank_with(property)?;
             let raw = RawProperty::Ref(RawPropertyRef {
-                ref_path: "status".to_owned(),
+                ref_path: "status".into(),
             });
             let ctx = ResolutionContext::new(&bank, 0);
             let prop = ctx.resolve_property(raw)?;

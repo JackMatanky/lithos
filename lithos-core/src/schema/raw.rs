@@ -12,7 +12,7 @@
               #[non_exhaustive] on source types."
 )]
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use uuid::Uuid;
 
@@ -30,18 +30,18 @@ use super::{
 /// ```ignore
 /// use lithos_core::schema::raw::{RawSchema, RawProperty, RawPropertyInline};
 /// use lithos_core::schema::raw::{RawPropertySpec, BoolSpecDef};
-/// use std::collections::HashSet;
+/// use std::collections::BTreeSet;
 /// use uuid::Uuid;
 /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// let schema = RawSchema::new(
 ///     Uuid::now_v7(),
-///     "note".to_owned(),
+///     "note".into(),
 ///     None,
-///     HashSet::new(),
+///     BTreeSet::new(),
 ///     vec![RawProperty::Inline(RawPropertyInline {
 ///         id: Uuid::now_v7(),
-///         name: "archived".to_string(),
+///         name: "archived".into(),
 ///         required: false,
 ///         array: false,
 ///         spec: RawPropertySpec::Bool(BoolSpecDef::default()),
@@ -57,12 +57,12 @@ pub struct RawSchema {
     /// Unique identity for the schema definition.
     pub id: Uuid,
     /// Unique schema name.
-    pub name: String,
+    pub name: Box<str>,
     /// Optional parent schema name for inheritance.
-    pub extends: Option<String>,
+    pub extends: Option<Box<str>>,
     /// Property names to exclude from parent schema.
     #[serde(default)]
-    pub excludes: HashSet<String>,
+    pub excludes: BTreeSet<Box<str>>,
     /// List of raw property definitions.
     pub properties: Vec<RawProperty>,
 }
@@ -73,9 +73,9 @@ impl RawSchema {
     #[must_use]
     pub fn new(
         id: Uuid,
-        name: String,
-        extends: Option<String>,
-        excludes: HashSet<String>,
+        name: Box<str>,
+        extends: Option<Box<str>>,
+        excludes: BTreeSet<Box<str>>,
         properties: Vec<RawProperty>,
     ) -> Self {
         Self {
@@ -106,7 +106,7 @@ pub struct RawPropertyInline {
     /// Unique identity assigned by adapter.
     pub id: Uuid,
     /// Property name.
-    pub name: String,
+    pub name: Box<str>,
     /// Whether property is required.
     #[serde(default)]
     pub required: bool,
@@ -123,7 +123,7 @@ pub struct RawPropertyInline {
 pub struct RawPropertyRef {
     /// The reference string (e.g., "#/properties/title").
     #[serde(rename = "$ref")]
-    pub ref_path: String,
+    pub ref_path: Box<str>,
 }
 
 /// Raw property specification (serde-facing input type).
@@ -184,8 +184,8 @@ impl RawPropertySpec {
                 Ok(PropertySpec::Date(DateSpec::try_new(&def.format)?))
             }
             Self::File(def) => Ok(PropertySpec::File(FileSpec::try_new(
-                def.directory,
-                def.file_class,
+                def.directory.map(String::from),
+                def.file_class.map(String::from),
             )?)),
             Self::Number(def) => Ok(PropertySpec::Number(NumberSpec::try_new(
                 def.min, def.max, def.step,
@@ -232,7 +232,7 @@ pub struct BoolSpecDef;
 #[non_exhaustive]
 pub struct DateSpecDef {
     /// Date format string (using chrono format tokens).
-    pub format: String,
+    pub format: Box<str>,
 }
 
 /// File property definition.
@@ -251,9 +251,9 @@ pub struct DateSpecDef {
 #[non_exhaustive]
 pub struct FileSpecDef {
     /// Optional directory restriction (vault-relative path).
-    pub directory: Option<String>,
+    pub directory: Option<Box<str>>,
     /// Optional file class restriction (schema name).
-    pub file_class: Option<String>,
+    pub file_class: Option<Box<str>>,
 }
 
 /// Number property definition.
@@ -295,17 +295,19 @@ pub struct NumberSpecDef {
 #[non_exhaustive]
 pub struct StringSpecDef {
     /// Optional enum of allowed values.
-    pub enum_values: Option<Vec<String>>,
+    pub enum_values: Option<Vec<Box<str>>>,
     /// Optional max length.
     pub max_length: Option<usize>,
     /// Optional min length.
     pub min_length: Option<usize>,
     /// Optional regex pattern.
-    pub pattern: Option<String>,
+    pub pattern: Option<Box<str>>,
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
     use crate::schema::raw::BoolSpecDef;
 
@@ -314,8 +316,8 @@ mod tests {
     const TEST_PROPERTY_ID: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0602);
 
-    fn schema_name() -> String {
-        "note".to_owned()
+    fn schema_name() -> Box<str> {
+        "note".into()
     }
 
     #[test]
@@ -324,7 +326,7 @@ mod tests {
             TEST_SCHEMA_ID,
             schema_name(),
             None,
-            HashSet::new(),
+            BTreeSet::new(),
             Vec::new(),
         );
 
@@ -340,7 +342,7 @@ mod tests {
             TEST_SCHEMA_ID,
             schema_name(),
             None,
-            HashSet::new(),
+            BTreeSet::new(),
             Vec::new(),
         );
 
@@ -354,7 +356,7 @@ mod tests {
     fn raw_property_inline_variant_constructs() {
         let inline = RawPropertyInline {
             id: TEST_PROPERTY_ID,
-            name: "archived".to_owned(),
+            name: "archived".into(),
             required: false,
             array: false,
             spec: RawPropertySpec::Bool(BoolSpecDef::default()),
@@ -370,7 +372,7 @@ mod tests {
     #[test]
     fn raw_property_ref_variant_constructs() {
         let reference = RawPropertyRef {
-            ref_path: "status".to_owned(),
+            ref_path: "status".into(),
         };
         let reference_variant = RawProperty::Ref(reference);
 
