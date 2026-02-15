@@ -1,13 +1,12 @@
 ---
 name: "step-04-summary"
-description: "Finalize integration plan"
-outputFile: "{output_folder}/tea-rust/integration-plan.md"
+description: "Finalize integration/E2E orchestration"
 ---
 
 # Step 4: Summary
 
 ## STEP GOAL:
-Finalize plan and next actions.
+Finalize orchestration plan and next actions.
 
 ## MANDATORY SEQUENCE
 1. Summarize plan

@@ -4,7 +4,7 @@
 **Version:** 1.0 (Step-File Architecture)
 
 ## Overview
-Design and orchestrate integration/E2E tests with adaptive scope expansion, doc comment templates, and quality gates.
+Design and orchestrate integration/E2E tests with adaptive scope expansion, doc comment templates, and quality gates. This workflow is non-documenting and delivers decisions in-session.
 
 ## INITIALIZATION SEQUENCE
 1. Load config and variables from `workflow.yaml`
