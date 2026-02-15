@@ -1,7 +1,8 @@
-//! Config port adapters for the database.
+//! Concrete implementation of the [`crate::config::ports::Command`] trait.
 
 use tracing::instrument;
 
+use super::merged_version_key;
 use crate::{
     config::{
         aggregate::{Config, Version},
@@ -10,7 +11,7 @@ use crate::{
             VAULT_ID_BY_PATH, VAULT_PATH_BY_ID,
         },
         global::Global,
-        ports::{Command, Query},
+        ports::Command,
         vault::{Vault, VaultId, VaultRoot},
     },
     db::{Database, DbError},
@@ -134,85 +135,4 @@ impl Command for CommandAdapter<'_> {
         self.db.put(VAULT_ID_BY_PATH, &path_key, &vault_id)?;
         self.db.put(VAULT_PATH_BY_ID, &vault_id.to_string(), vault_root)
     }
-}
-
-/// Redb-backed config query adapter.
-pub struct QueryAdapter<'db> {
-    db: &'db Database,
-}
-
-impl<'db> QueryAdapter<'db> {
-    #[inline]
-    #[must_use]
-    /// Create a query adapter for a database.
-    pub const fn new(db: &'db Database) -> Self {
-        Self {
-            db,
-        }
-    }
-}
-
-impl Query for QueryAdapter<'_> {
-    type Archived<'archived> = &'archived rkyv::Archived<Config>;
-    type Error = DbError;
-
-    #[inline]
-    #[instrument(
-        skip(self),
-        level = "debug",
-        fields(operation = "get_active_version", vault_id = %vault_id)
-    )]
-    fn get_active_version(
-        &self,
-        vault_id: VaultId,
-    ) -> Result<Option<Version>, Self::Error> {
-        self.db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())
-    }
-
-    #[inline]
-    #[instrument(
-        skip(self),
-        level = "debug",
-        fields(
-            operation = "get_merged_owned",
-            vault_id = %vault_id,
-            version = %version
-        )
-    )]
-    fn get_merged_owned(
-        &self,
-        vault_id: VaultId,
-        version: Version,
-    ) -> Result<Option<Config>, Self::Error> {
-        let key = merged_version_key(vault_id, version);
-        self.db.get_owned(MERGED_CONFIG_VERSIONS, &key)
-    }
-
-    #[inline]
-    #[instrument(
-        skip(self, f),
-        level = "debug",
-        fields(
-            operation = "with_archived_merged",
-            vault_id = %vault_id,
-            version = %version
-        )
-    )]
-    fn with_archived_merged<F, R>(
-        &self,
-        vault_id: VaultId,
-        version: Version,
-        f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
-    {
-        let key = merged_version_key(vault_id, version);
-        self.db.get::<Config, _, _>(MERGED_CONFIG_VERSIONS, &key, f)
-    }
-}
-
-#[inline]
-fn merged_version_key(vault_id: VaultId, version: Version) -> String {
-    format!("{}:{}", vault_id, version.value())
 }

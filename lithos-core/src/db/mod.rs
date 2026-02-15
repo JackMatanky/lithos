@@ -33,10 +33,8 @@
     reason = "DbError is intentionally explicit at the crate API boundary"
 )]
 
-pub mod config_adapter;
 mod error;
 mod reader;
-pub mod schema_adapter;
 mod writer;
 
 use std::path::Path;

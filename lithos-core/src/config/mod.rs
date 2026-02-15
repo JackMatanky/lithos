@@ -75,6 +75,8 @@
 // Core Aggregate Modules
 // ============================================================================
 
+/// Configuration storage adapters.
+pub mod adapter;
 /// Configuration aggregate root.
 pub mod aggregate;
 /// Global configuration types and validation.
@@ -135,10 +137,8 @@ pub(crate) mod db_table {
         TableDefinition::new("vault_path_by_id");
 }
 
-use crate::db::{
-    Database,
-    config_adapter::{CommandAdapter, QueryAdapter},
-};
+use self::adapter::{command::CommandAdapter, query::QueryAdapter};
+use crate::db::Database;
 
 /// Redb-backed config command alias.
 pub type RedbConfigCommand<'db> = command::Command<CommandAdapter<'db>>;
