@@ -65,7 +65,7 @@ Critical decisions are documented in ADRs 0001-0017 (including the Single-Crate 
 The project structure is complete and specific, with all files and directories defined.
 
 **Pattern Completeness:**
-Conflict points (async vs sync, error handling) are addressed in `implementation-patterns-consistency-rules.md`.
+Conflict points (async vs sync, error handling) are addressed in `04-implementation-patterns-consistency-rules.md`.
 
 ## Gap Analysis Results
 

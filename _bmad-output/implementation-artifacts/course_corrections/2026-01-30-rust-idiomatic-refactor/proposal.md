@@ -94,7 +94,7 @@ We must pivot to a **Single-Crate "Core" Architecture** (`lithos-core`) + separa
 
 ### 1. Workspace Structure
 
-**Target**: `project-structure-boundaries.md`
+**Target**: `05-project-structure-boundaries.md`
 
 **Epic Affected**: ALL (Epics 1-16)
 **Priority**: P0 - Critical (Blocks Implementation)
@@ -297,7 +297,7 @@ lithos-core/src/lib.rs (LithosError via #[from])
 
 **Epic Affected**: Epic 3 (Domain), Epic 5 (Cache), Epic 9 (Storage), Epic 14 (CLI)
 **Priority**: P1 - High (Error clarity and boundary enforcement)
-**Target Files**: `implementation-patterns-consistency-rules.md`, domain error definitions
+**Target Files**: `04-implementation-patterns-consistency-rules.md`, domain error definitions
 
 **Problem**: A single `DomainError` obscures context-specific failures and leaks across boundaries, making errors harder to match and violating Rust error idioms.
 
@@ -368,7 +368,7 @@ pub enum LithosError {
 
 ### 3. Module Organization Strategy
 
-**Target**: `project-structure-boundaries.md`
+**Target**: `05-project-structure-boundaries.md`
 **Epic Affected**: Epic 3 (Domain), all epics with domain contexts
 **Priority**: P1 - High (Foundation for file organization)
 **Principle**: File First, Folder Second.
@@ -600,7 +600,7 @@ A: lithos-core/src/config/ports.rs (co-located with Config context)
 
 ### 4. Database Layer: Zero-Copy Infrastructure (CLI MVP)
 
-**Target**: `project-structure-boundaries.md`, `implementation-patterns-consistency-rules.md`, Epics 4, 5, 9, 10
+**Target**: `05-project-structure-boundaries.md`, `04-implementation-patterns-consistency-rules.md`, Epics 4, 5, 9, 10
 **Epic Affected**: Epic 5 (Cache), Epic 9 (Storage), Epic 10 (Indexing)
 **Priority**: P0 - Critical (Foundation for all IO operations)
 
@@ -939,7 +939,7 @@ lithos-cli (orchestrates db + contexts)
 
 ### 5. CQRS Pattern: Optional Trait Boundaries
 
-**Target**: `implementation-patterns-consistency-rules.md`, Epics 3, 4, 5, 9
+**Target**: `04-implementation-patterns-consistency-rules.md`, Epics 3, 4, 5, 9
 **Epic Affected**: Epic 3 (Domain), Epic 9 (Storage), Epic 14 (CLI)
 **Priority**: P2 - Medium (Design pattern, not blocking)
 
@@ -1113,7 +1113,7 @@ LSP can simply use the traits for dependency injection, allowing for easy mockin
 
 **Epic Affected**: Epic 5 (Cache), Epic 8 (Event Bus), Epic 10 (Indexing), Epic 14 (CLI), Epic 15 (Tests)
 **Priority**: P1 – High (Performance + complexity control)
-**Target Files**: `implementation-patterns-consistency-rules.md`, architecture docs, and affected epic stories
+**Target Files**: `04-implementation-patterns-consistency-rules.md`, architecture docs, and affected epic stories
 
 **Problem**
 The current plan assumes async everywhere, which increases complexity and couples core logic to an async runtime. In Rust, async is most valuable at the edges (I/O multiplexing, LSP, network), not inside CPU‑bound or local filesystem logic.
@@ -1205,7 +1205,7 @@ let note = tokio::task::spawn_blocking(move || repo.find_by_id(id)).await??;
 
 **Epic Affected**: Epic 3 (Domain), Epic 5 (Cache), Epic 14 (CLI), Epic 15 (Tests)
 **Priority**: P1 – High
-**Target Files**: `implementation-patterns-consistency-rules.md`, error usage across crates
+**Target Files**: `04-implementation-patterns-consistency-rules.md`, error usage across crates
 
 **Problem**
 
@@ -1228,7 +1228,7 @@ Error handling is inconsistent (mix of anyhow, color-eyre, and planned miette). 
 
 **Epic Affected**: Epic 3 (Domain), Epic 5 (Cache), Epic 9 (Storage), Epic 14 (CLI)
 **Priority**: P2 – Medium
-**Target Files**: `implementation-patterns-consistency-rules.md`, domain models, ports, adapters
+**Target Files**: `04-implementation-patterns-consistency-rules.md`, domain models, ports, adapters
 
 **Problem**
 
@@ -1328,11 +1328,11 @@ This section provides a concrete execution roadmap aligned with the 10 detailed 
   - Update structure diagrams (single-crate, db.rs)
   - Add "File First, Folder Second" rule (Proposal 3)
   - Add "Zero-Copy Primitives" section (Proposal 4)
-- [x] Update `project-structure-boundaries.md`:
+- [x] Update `05-project-structure-boundaries.md`:
   - Document `<context>.rs` + `<context>/` pattern (NO mod.rs)
   - Document co-located errors/events/ports (Proposal 2)
   - Document dependency flow rules (domain → db.rs → cli)
-- [x] Update `implementation-patterns-consistency-rules.md`:
+- [x] Update `04-implementation-patterns-consistency-rules.md`:
   - Add "Database Access Rules" from Proposal 4
   - Add "CQRS Naming Conventions" from Proposal 5
   - Add "Sync-First Rules" from Proposal 6

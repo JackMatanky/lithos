@@ -447,7 +447,7 @@ Phase 8 (Final Gate) → Ship it
 
 ## Architectural Patterns
 
-**Three-Shape Serialization Pattern**: The config context implements the canonical **Raw* → TryFrom → Domain → [Stored*]** pattern for parsing, validation, and optional storage optimization. See [`_bmad-output/planning-artifacts/architecture/implementation-patterns-consistency-rules.md`](../../../_bmad-output/planning-artifacts/architecture/implementation-patterns-consistency-rules.md#three-shape-serialization-pattern) for:
+**Three-Shape Serialization Pattern**: The config context implements the canonical **Raw* → TryFrom → Domain → [Stored*]** pattern for parsing, validation, and optional storage optimization. See [`_bmad-output/planning-artifacts/architecture/04-implementation-patterns-consistency-rules.md`](../../../_bmad-output/planning-artifacts/architecture/04-implementation-patterns-consistency-rules.md#three-shape-serialization-pattern) for:
 
 - Rationale for zero-method Raw types (dumb data)
 - TryFrom as explicit validation boundary

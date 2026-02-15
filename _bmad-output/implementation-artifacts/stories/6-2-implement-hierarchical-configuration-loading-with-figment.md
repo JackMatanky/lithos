@@ -328,7 +328,7 @@ Figment::from(DefaultsProvider::default())
 - [Source: _bmad-output/planning-artifacts/epics/epic-6-configuration-management-system-phase-15.md#Story-6.2] - Complete story requirements and acceptance criteria
 - [Source: _bmad-output/planning-artifacts/prd.md#Configuration-Management] - FR26, FR27, FR28 functional requirements
 - [Source: _bmad-output/project-context.md#Technology-Stack] - Rust 1.92+, Figment configuration, error handling standards
-- [Source: _bmad-output/planning-artifacts/architecture/core-architectural-decisions.md#ADR-0005] - Figment hierarchical configuration decision
+- [Source: _bmad-output/planning-artifacts/architecture/03-core-architectural-decisions.md#ADR-0005] - Figment hierarchical configuration decision
 - [Source: crates/domain/src/config/aggregate.rs] - Config aggregate target structure
 - [Source: crates/domain/src/config/global.rs] - GlobalConfig domain model
 - [Source: crates/domain/src/config/vault.rs] - VaultConfig domain model

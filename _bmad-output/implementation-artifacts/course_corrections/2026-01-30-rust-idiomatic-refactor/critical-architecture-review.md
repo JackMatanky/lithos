@@ -280,11 +280,11 @@ After user requested proper course correction workflow, I invoked explore agent 
 **Documents Analyzed**:
 
 1. index.md (navigation)
-2. core-architectural-decisions.md
-3. project-structure-boundaries.md
-4. implementation-patterns-consistency-rules.md
-5. starter-template-evaluation.md
-6. project-context-analysis.md
+2. 03-core-architectural-decisions.md
+3. 05-project-structure-boundaries.md
+4. 04-implementation-patterns-consistency-rules.md
+5. 02-starter-template-evaluation.md
+6. 01-project-context-analysis.md
 
 **Critical Issues Found**:
 
@@ -417,7 +417,7 @@ After user requested proper course correction workflow, I invoked explore agent 
 
 ## Specific Changes Required by Document
 
-### 1. core-architectural-decisions.md
+### 1. 03-core-architectural-decisions.md
 
 **Line 17 - Serialization Strategy**:
 
@@ -437,7 +437,7 @@ AFTER: Event Orchestration: Start with direct function calls. Add events when:
   Rationale: Measure first, optimize second
 ```
 
-### 2. project-structure-boundaries.md
+### 2. 05-project-structure-boundaries.md
 
 **Lines 50-90 - Workspace Structure**:
 
@@ -481,7 +481,7 @@ AFTER: rkyv provides zero-copy via archived_root() API
 - Pattern: Return Archived<DomainType> references with lifetimes
 ```
 
-### 3. implementation-patterns-consistency-rules.md
+### 3. 04-implementation-patterns-consistency-rules.md
 
 **Lines 55-61 - Error Handling**:
 
@@ -542,7 +542,7 @@ AFTER:
 - Quality Gates: All public APIs tested, critical logic covered, NO percentage targets
 ```
 
-### 4. starter-template-evaluation.md
+### 4. 02-starter-template-evaluation.md
 
 **Lines 56-75 - Dependencies**:
 
@@ -574,7 +574,7 @@ AFTER:
 - YAGNI Principle: Build for solo velocity, refactor IF team scales
 ```
 
-### 5. project-context-analysis.md
+### 5. 01-project-context-analysis.md
 
 **Line 118 - Event Architecture**:
 

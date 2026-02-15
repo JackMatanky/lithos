@@ -7,9 +7,9 @@
 - **Project Context**: [Core rules and patterns](_bmad-output/project-context.md)
 - **PRD**: [Product requirements](_bmad-output/planning-artifacts/prd.md)
 - **Architecture**:
-  - [Core Architectural Decisions](_bmad-output/planning-artifacts/architecture/core-architectural-decisions.md)
-  - [Implementation Patterns & Consistency Rules](_bmad-output/planning-artifacts/architecture/implementation-patterns-consistency-rules.md)
-  - [Project Structure & Boundaries](_bmad-output/planning-artifacts/architecture/project-structure-boundaries.md)
+  - [Core Architectural Decisions](_bmad-output/planning-artifacts/architecture/03-core-architectural-decisions.md)
+  - [Implementation Patterns & Consistency Rules](_bmad-output/planning-artifacts/architecture/04-implementation-patterns-consistency-rules.md)
+  - [Project Structure & Boundaries](_bmad-output/planning-artifacts/architecture/05-project-structure-boundaries.md)
 
 ## BMAD Agent Activation
 

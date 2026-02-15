@@ -57,7 +57,7 @@ section: "Architecture Decisions"
   - [ADR 006: Persistence & Cache Infrastructure](../../docs/adr/006-persistence-cache-infrastructure.md)
   - [ADR 003: Domain Serialization Strategy](../../docs/adr/003-domain-serialization.md) (see Appendix A)
   - [Design Doc 012: CQRS Concrete Over Port](../../docs/design/012-cqrs-concrete-over-port.md)
-  - Implementation detail: `_bmad-output/planning-artifacts/architecture/implementation-patterns-consistency-rules.md`
+  - Implementation detail: `_bmad-output/planning-artifacts/architecture/04-implementation-patterns-consistency-rules.md`
 
 ## Internal Communication
 
