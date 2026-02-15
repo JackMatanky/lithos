@@ -24,6 +24,7 @@
     Clone,
     Copy,
     PartialEq,
+    Hash,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
