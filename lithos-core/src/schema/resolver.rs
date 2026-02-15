@@ -10,6 +10,7 @@ use super::{
     aggregate::{PropertyBank, Schema, SchemaId, SchemaName},
     error::SchemaError,
     property::{Cardinality, Multiplicity, Property, PropertyId, PropertyName},
+    property_ref::PropertyRef,
     raw::{RawProperty, RawPropertyRef, RawSchema},
 };
 
@@ -200,12 +201,19 @@ impl SchemaResolver {
             RawProperty::Ref(RawPropertyRef {
                 ref_path,
             }) => {
-                let lookup =
-                    ref_path.strip_prefix("#/properties/").unwrap_or(&ref_path);
-                let name = PropertyName::try_from(lookup)?;
-                bank.get_by_name(&name).cloned().ok_or_else(|| {
-                    SchemaError::PropertyNotFound(ref_path.clone())
-                })
+                let prop_ref = PropertyRef::try_from(ref_path.as_str())?;
+                match prop_ref {
+                    PropertyRef::ById(id) => {
+                        bank.get_by_id(id).cloned().ok_or_else(|| {
+                            SchemaError::PropertyNotFound(ref_path.clone())
+                        })
+                    }
+                    PropertyRef::ByName(name) => {
+                        bank.get_by_name(&name).cloned().ok_or_else(|| {
+                            SchemaError::PropertyNotFound(ref_path.clone())
+                        })
+                    }
+                }
             }
         }
     }
