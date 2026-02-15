@@ -22,8 +22,10 @@ use super::{
         SchemaName, Timestamp,
     },
     error::SchemaError,
-    property::{Cardinality, Multiplicity, Property, PropertyId, PropertyName},
-    property_ref::PropertyRef,
+    property::{
+        Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+        PropertyRef,
+    },
     raw::{RawProperty, RawPropertyRef, RawSchema},
 };
 
