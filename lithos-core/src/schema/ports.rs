@@ -1,9 +1,11 @@
 //! Schema bounded context ports for CQRS operations.
 //!
 //! This module defines the command and query trait interfaces for the Schema
-//! aggregate.
+//! aggregate and PropertyBank registry.
 
-use super::aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName};
+use super::aggregate::{
+    PropertyBank, ResolutionMetadata, Schema, SchemaId, SchemaName,
+};
 
 /// Command port for Schema write operations.
 pub trait Command: Send + Sync {
@@ -23,6 +25,15 @@ pub trait Command: Send + Sync {
     fn save_batch(
         &self,
         schemas: &[(Schema, ResolutionMetadata)],
+    ) -> Result<(), Self::Error>;
+
+    /// Save the `PropertyBank` to persistence.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if saving fails.
+    fn save_property_bank(
+        &self,
+        bank: &PropertyBank,
     ) -> Result<(), Self::Error>;
 
     /// Save a schema and resolution metadata to persistence.
@@ -57,6 +68,12 @@ pub trait Query: Send + Sync {
         &self,
         id: SchemaId,
     ) -> Result<Option<ResolutionMetadata>, Self::Error>;
+
+    /// Find the `PropertyBank` registry.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if query fails.
+    fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error>;
 
     /// List all available schemas.
     ///

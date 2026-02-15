@@ -4,7 +4,7 @@
 //! through the schema command port.
 
 use super::{
-    aggregate::{ResolutionMetadata, Schema, SchemaId},
+    aggregate::{PropertyBank, ResolutionMetadata, Schema, SchemaId},
     error::SchemaCommandError,
     ports as schema_ports,
 };
@@ -69,6 +69,20 @@ where
     ) -> Result<(), SchemaCommandError> {
         self.command_port
             .save_batch(schemas)
+            .map_err(|error| SchemaCommandError::Storage(error.into()))
+    }
+
+    /// Save the `PropertyBank` to persistence.
+    ///
+    /// # Errors
+    /// Returns `SchemaCommandError` if saving fails.
+    #[inline]
+    pub fn save_property_bank(
+        &self,
+        bank: &PropertyBank,
+    ) -> Result<(), SchemaCommandError> {
+        self.command_port
+            .save_property_bank(bank)
             .map_err(|error| SchemaCommandError::Storage(error.into()))
     }
 }

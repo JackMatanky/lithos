@@ -37,6 +37,8 @@ pub(crate) mod db_table {
         TableDefinition::new("schema_id_by_name");
     pub(crate) const SCHEMA_METADATA: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_metadata");
+    pub(crate) const PROPERTY_BANK: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("property_bank");
 }
 
 // --- Public API ---

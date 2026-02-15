@@ -30,6 +30,17 @@ use crate::patterns;
 ///
 /// Provides O(1) lookup by ID and Name.
 ///
+/// The `PropertyBank` acts as a singleton registry with a stable UUID identity.
+/// It is loaded first at program start and versioned for incremental
+/// resolution.
+///
+/// # Storage Strategy
+///
+/// The `PropertyBank` uses UUID-first storage with a singleton identity:
+/// - **Primary key**: `PropertyBankId::singleton()` (fixed UUID)
+/// - **Lifecycle**: Loaded once at startup, persisted on modification
+/// - **Versioning**: `BankVersion` increments on any property change
+///
 /// # Examples
 ///
 /// ```
@@ -60,7 +71,6 @@ use crate::patterns;
     Debug,
     Clone,
     PartialEq,
-    Default,
     serde::Serialize,
     serde::Deserialize,
     rkyv::Archive,
@@ -69,6 +79,8 @@ use crate::patterns;
 )]
 #[non_exhaustive]
 pub struct PropertyBank {
+    /// Unique identity for the property bank (singleton).
+    id: PropertyBankId,
     /// Index mapping ID -> index in properties vector.
     id_index: HashMap<PropertyId, usize>,
     /// Index mapping Name -> index in properties vector.
@@ -80,6 +92,13 @@ pub struct PropertyBank {
     /// Domain events pending emission.
     #[serde(skip)]
     pending_events: Vec<Events>,
+}
+
+impl Default for PropertyBank {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Schema aggregate defining metadata validation constraints.
@@ -148,6 +167,73 @@ pub struct ResolutionMetadata {
     parent_hash: Option<SchemaHash>,
     bank_version: BankVersion,
     file_modified: Option<Timestamp>,
+}
+
+/// Unique identity for a property bank.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct PropertyBankId(Uuid);
+
+impl PropertyBankId {
+    /// Wraps a UUID into a `PropertyBankId`.
+    #[inline]
+    #[must_use]
+    pub const fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+
+    /// Returns the inner UUID reference.
+    #[inline]
+    #[must_use]
+    pub const fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+
+    /// Returns the inner UUID by value.
+    #[inline]
+    #[must_use]
+    pub const fn into_uuid(self) -> Uuid {
+        self.0
+    }
+
+    /// Creates a new UUID v7-based `PropertyBankId`.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+
+    /// Returns the singleton `PropertyBank` ID.
+    ///
+    /// The `PropertyBank` uses a fixed UUID to act as a singleton registry.
+    /// This ensures consistent identity across all program runs.
+    #[inline]
+    #[must_use]
+    pub const fn singleton() -> Self {
+        // Fixed UUID v7 for singleton PropertyBank
+        Self(Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0001))
+    }
+}
+
+impl Default for PropertyBankId {
+    #[inline]
+    fn default() -> Self {
+        Self::singleton()
+    }
 }
 
 /// Unique identity for a schema.
@@ -374,6 +460,42 @@ impl SchemaNameKey {
 impl From<&SchemaName> for SchemaNameKey {
     #[inline]
     fn from(name: &SchemaName) -> Self {
+        Self(name.as_str().to_lowercase().into_boxed_str())
+    }
+}
+
+/// Normalized property name for storage indexing.
+///
+/// Used for composite indexes and property lookups in storage projections.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct PropertyNameKey(Box<str>);
+
+impl PropertyNameKey {
+    /// Returns the normalized key as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&super::property::PropertyName> for PropertyNameKey {
+    #[inline]
+    fn from(name: &super::property::PropertyName) -> Self {
         Self(name.as_str().to_lowercase().into_boxed_str())
     }
 }
@@ -736,11 +858,25 @@ impl PropertyBank {
         self.name_index.contains_key(name)
     }
 
+    /// Returns the `PropertyBank`'s unique identifier.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> PropertyBankId {
+        self.id
+    }
+
     /// Create a new empty `PropertyBank`.
     #[inline]
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            id: PropertyBankId::singleton(),
+            id_index: HashMap::new(),
+            name_index: HashMap::new(),
+            properties: Vec::new(),
+            version: BankVersion::initial(),
+            pending_events: Vec::new(),
+        }
     }
 
     /// Returns the current `PropertyBank` version.

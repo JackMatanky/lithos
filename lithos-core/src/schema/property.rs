@@ -65,7 +65,7 @@ pub struct Property {
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
 #[serde(transparent)]
 #[non_exhaustive]
 pub struct PropertyId(Uuid);
@@ -183,7 +183,7 @@ pub enum Multiplicity {
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug))]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
 #[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct PropertyName(Box<str>);
