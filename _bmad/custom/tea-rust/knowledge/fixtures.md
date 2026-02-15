@@ -368,7 +368,7 @@ proptest! {
 
 ## RELATED MODULES
 
-- See `testing-unit.md` for test structure
-- See `testing-tools-rstest.md` for rstest patterns
-- See `testing-tools-proptest.md` for property testing
-- See `testing-anti-patterns.md` for comprehensive anti-patterns
+- See `unit.md` for test structure
+- See `tools-rstest.md` for rstest patterns
+- See `tools-proptest.md` for property testing
+- See `anti-patterns.md` for comprehensive anti-patterns

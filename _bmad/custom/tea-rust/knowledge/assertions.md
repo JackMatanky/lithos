@@ -317,6 +317,6 @@ fn example() {
 
 ## RELATED MODULES
 
-- See `testing-unit.md` for test structure
-- See `testing-naming.md` for naming conventions
-- See `testing-anti-patterns.md` for comprehensive anti-patterns
+- See `unit.md` for test structure
+- See `naming.md` for naming conventions
+- See `anti-patterns.md` for comprehensive anti-patterns

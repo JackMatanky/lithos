@@ -218,7 +218,7 @@ mod tests {
 
 ## RELATED MODULES
 
-- See `testing-naming.md` for detailed naming conventions
-- See `testing-assertions.md` for assertion patterns
-- See `testing-fixtures.md` for fixture strategies
-- See `testing-anti-patterns.md` for comprehensive anti-patterns
+- See `naming.md` for detailed naming conventions
+- See `assertions.md` for assertion patterns
+- See `fixtures.md` for fixture strategies
+- See `anti-patterns.md` for comprehensive anti-patterns
