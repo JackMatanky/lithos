@@ -130,6 +130,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn property_bank_updated_captures_payload() {
+        let timestamp = Timestamp::from_secs(123);
+        let event = PropertyBankUpdated::new(42, timestamp);
+
+        assert_eq!(event.property_count, 42);
+        assert_eq!(event.timestamp, timestamp);
+    }
+
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test uses expect for deterministic event setup."
+    )]
+    fn schema_created_captures_payload() {
+        let id = SchemaId::new();
+        let name = SchemaName::new("schema").expect("Valid schema name");
+        let timestamp = Timestamp::from_secs(456);
+        let event = SchemaCreated::new(id, &name, timestamp);
+
+        assert_eq!(event.id, id);
+        assert_eq!(event.name, name);
+        assert_eq!(event.timestamp, timestamp);
+    }
+
+    #[test]
     fn events_are_send_sync() {
         // GIVEN the schema events enum
         fn is_send_sync<T: Send + Sync>() {}
