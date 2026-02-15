@@ -1,6 +1,7 @@
 # TEA Knowledge: Rust E2E Testing
 
 ## CONTEXT
+
 - **Applies to**: End-to-end CLI testing in `lithos-cli/`
 - **Purpose**: Testing complete user journeys and CLI behavior
 - **Tools**: `assert_cmd`, `predicates`, `tempfile`
@@ -32,23 +33,27 @@ Does the test verify...
 ## VALIDATION CHECKLIST
 
 ### Test Structure
+
 - [ ] Test is in `lithos-cli/tests/` or `lithos-cli/src/main.rs` doc tests
 - [ ] Uses `assert_cmd::Command` to invoke the binary
 - [ ] Tests complete user flows (not implementation details)
 - [ ] Focus on happy paths and critical error paths only
 
 ### CLI Testing
+
 - [ ] Tests both success and failure exit codes
 - [ ] Verifies stdout/stderr output content
 - [ ] Tests with various argument combinations
 - [ ] Uses `tempfile::TempDir` for filesystem isolation
 
 ### Isolation
+
 - [ ] Each test has its own temp directory
 - [ ] No dependence on existing files or environment
 - [ ] Clean state before each test (fresh temp dir)
 
 ### Performance
+
 - [ ] E2E tests complete in < 2s median
 - [ ] Minimal CLI invocations (batch operations where possible)
 - [ ] Focus on critical user journeys only (10% of test suite)
@@ -56,18 +61,21 @@ Does the test verify...
 ## ANTI-PATTERNS (FLAG THESE)
 
 ### Structure Issues
+
 - ❌ **E2E test in `lithos-core/`** → Move to `lithos-cli/`
 - ❌ **Testing implementation details** → Test behavior, not internals
 - ❌ **Testing every edge case via CLI** → Use unit tests for edge cases
 - ❌ **Complex setup in E2E tests** → Simplify or use integration tests
 
 ### CLI Issues
+
 - ❌ **Not checking exit codes** → Always assert on success/failure
 - ❌ **Brittle output assertions** → Use predicates, not exact string matching
 - ❌ **Testing help text** → Only if it's part of UX requirements
 - ❌ **Slow tests (> 2s)** → Optimize or move to integration layer
 
 ### Isolation Issues
+
 - ❌ **Tests sharing temp directories** → Fresh `TempDir` per test
 - ❌ **Tests depending on existing vault** → Create test vault in temp dir
 - ❌ **Environment-dependent tests** → Mock environment variables
@@ -75,6 +83,7 @@ Does the test verify...
 ## CORRECT EXAMPLES
 
 ### Basic CLI Test
+
 ```rust
 // lithos-cli/tests/cli_test.rs
 use assert_cmd::Command;
@@ -113,6 +122,7 @@ fn new_command_creates_note() {
 ```
 
 ### Testing Error Conditions
+
 ```rust
 #[test]
 fn new_command_fails_when_vault_not_initialized() {
@@ -132,6 +142,7 @@ fn new_command_fails_when_vault_not_initialized() {
 ```
 
 ### Complex User Journey
+
 ```rust
 #[test]
 fn full_workflow_create_index_and_search() {
@@ -169,6 +180,7 @@ fn full_workflow_create_index_and_search() {
 ```
 
 ### Testing Output Formats
+
 ```rust
 #[test]
 fn list_command_outputs_json_when_requested() {
@@ -190,6 +202,7 @@ fn list_command_outputs_json_when_requested() {
 ## E2E TEST SCOPE
 
 ### DO Test (Critical User Journeys)
+
 - Vault initialization (`lithos init`)
 - Note creation (`lithos new`)
 - Vault indexing (`lithos index`)
@@ -198,6 +211,7 @@ fn list_command_outputs_json_when_requested() {
 - Configuration handling
 
 ### DON'T Test (Use Unit/Integration Instead)
+
 - Edge case validation (unit test)
 - Schema inheritance logic (unit test)
 - Port implementation details (integration test)
@@ -206,17 +220,18 @@ fn list_command_outputs_json_when_requested() {
 
 ## QUICK REFERENCE
 
-| Task | Pattern |
-|------|---------|
-| Run E2E tests | `mise run test:e2e` |
-| Invoke CLI | `Command::cargo_bin("lithos")` |
-| Assert success | `.assert().success()` |
-| Assert failure | `.assert().failure()` |
-| Check output | `.stdout(predicate::str::contains("..."))` |
-| Temp directory | `TempDir::new().unwrap()` |
-| Set working dir | `.current_dir(&path)` |
+| Task            | Pattern                                    |
+| --------------- | ------------------------------------------ |
+| Run E2E tests   | `mise run test:e2e`                        |
+| Invoke CLI      | `Command::cargo_bin("lithos")`             |
+| Assert success  | `.assert().success()`                      |
+| Assert failure  | `.assert().failure()`                      |
+| Check output    | `.stdout(predicate::str::contains("..."))` |
+| Temp directory  | `TempDir::new().unwrap()`                  |
+| Set working dir | `.current_dir(&path)`                      |
 
 ## RELATED MODULES
+
 - See `testing-unit.md` for unit testing
 - See `testing-integration.md` for integration testing
 - See `testing-assertions.md` for assertion patterns

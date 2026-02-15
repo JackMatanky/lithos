@@ -9,4 +9,5 @@
 - [ ] Public components covered with tests
 - [ ] Error paths and edge cases covered
 - [ ] Rust-specific invariants validated
+- [ ] Rust style and linting standards adhered to (fmt, lint)
 - [ ] Quality gates identified (fmt, lint, test, verify)

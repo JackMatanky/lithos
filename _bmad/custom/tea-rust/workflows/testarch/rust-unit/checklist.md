@@ -7,4 +7,5 @@
 - [ ] GWT comments present in tests
 - [ ] Error paths and edge cases covered
 - [ ] No doc comments in unit tests
+- [ ] Rust style and linting standards adhered to
 - [ ] Quality gates identified and enforced

@@ -1,6 +1,7 @@
 # TEA Knowledge: Nextest Configuration
 
 ## CONTEXT
+
 - **Tool**: `cargo-nextest` - Primary test runner for Lithos
 - **Purpose**: Fast, parallel test execution with superior isolation
 - **Configuration**: `.config/nextest.toml`
@@ -28,6 +29,7 @@ What environment are you running in?
 ## VALIDATION CHECKLIST
 
 ### Configuration File
+
 - [ ] File exists at `.config/nextest.toml`
 - [ ] Has `profile.default` section
 - [ ] Has `profile.ci` section for CI
@@ -35,18 +37,21 @@ What environment are you running in?
 - [ ] Timeout overrides for slow tests
 
 ### Profile Settings
+
 - [ ] `test-threads` set appropriately (num-cpus for default)
 - [ ] `fail-fast` true for local, false for CI
 - [ ] `retries` configured for flaky test detection
 - [ ] `slow-timeout` set per environment
 
 ### Test Groups
+
 - [ ] Serial tests identified and marked
 - [ ] Database tests limited (`max-threads`)
 - [ ] Network tests have longer timeouts
 - [ ] Platform-specific overrides (macOS, Windows)
 
 ### CI Integration
+
 - [ ] JUnit XML output configured
 - [ ] Test results archived as artifacts
 - [ ] Flaky test detection enabled
@@ -55,17 +60,20 @@ What environment are you running in?
 ## ANTI-PATTERNS (FLAG THESE)
 
 ### Configuration Issues
+
 - ❌ **No nextest.toml** → Must have configuration
 - ❌ **Default profile only** → Need CI profile
 - ❌ **No test groups** → Tests that need serial execution may fail
 - ❌ **No timeout overrides** → Slow tests hang CI
 
 ### CI Issues
+
 - ❌ **No JUnit output** → Can't integrate with CI dashboards
 - ❌ **No retries** → Flaky tests fail builds
 - ❌ **fail-fast in CI** → Miss multiple failures
 
 ### Test Organization
+
 - ❌ **Tests without serial annotation** → Should use test groups
 - ❌ **Database tests running parallel unbounded** → Limit connections
 - ❌ **No platform-specific overrides** → macOS tests slower
@@ -73,6 +81,7 @@ What environment are you running in?
 ## CORRECT EXAMPLES
 
 ### Basic Configuration
+
 ```toml
 # .config/nextest.toml
 
@@ -92,6 +101,7 @@ junit = { path = "junit.xml" }
 ```
 
 ### Test Groups
+
 ```toml
 [test-groups]
 serial = { max-threads = 1 }
@@ -114,6 +124,7 @@ retries = 5
 ```
 
 ### Platform-Specific Overrides
+
 ```toml
 [[profile.ci.overrides]]
 platform = 'cfg(target_os = "macos")'
@@ -127,6 +138,7 @@ slow-timeout = "120s"
 ```
 
 ### Timeout with Termination
+
 ```toml
 [[profile.default.overrides]]
 filter = 'test(/\btest_hanging_/)'
@@ -138,6 +150,7 @@ slow-timeout = { period = "30s", terminate-after = 2 }
 ## USAGE COMMANDS
 
 ### Running Tests
+
 ```bash
 # Default profile (local development)
 mise run test:unit
@@ -158,6 +171,7 @@ cargo nextest run --test-group db
 ```
 
 ### Filtering Tests
+
 ```bash
 # Run tests matching pattern
 cargo nextest run -- test_foo
@@ -174,23 +188,24 @@ cargo nextest run -p lithos-core
 
 ## COMPARISON: nextest vs cargo test
 
-| Feature | cargo test | nextest |
-|---------|------------|---------|
-| Parallelism | Thread-based | Process-based |
-| Isolation | Shared memory | Process isolation |
-| Flaky detection | No | Yes |
-| Timeout per test | No | Yes |
-| Retry failed | No | Yes |
-| JUnit XML | No | Yes |
-| Stress testing | No | Yes |
-| Filter expressions | Simple | Rich |
-| Doctests | Yes | No* |
+| Feature            | cargo test    | nextest           |
+| ------------------ | ------------- | ----------------- |
+| Parallelism        | Thread-based  | Process-based     |
+| Isolation          | Shared memory | Process isolation |
+| Flaky detection    | No            | Yes               |
+| Timeout per test   | No            | Yes               |
+| Retry failed       | No            | Yes               |
+| JUnit XML          | No            | Yes               |
+| Stress testing     | No            | Yes               |
+| Filter expressions | Simple        | Rich              |
+| Doctests           | Yes           | No\*              |
 
-*Doctests must be run with `cargo test --doc`
+\*Doctests must be run with `cargo test --doc`
 
 ## MISE INTEGRATION
 
 ### Available Commands
+
 ```bash
 mise run test:unit          # Run all unit tests
 mise run test:unit:core     # Core crate only
@@ -203,6 +218,7 @@ mise run test:watch        # Watch mode
 ```
 
 ### Aliases
+
 ```bash
 mise run tu    # test:unit
 mise run tucore # test:unit:core
@@ -214,16 +230,17 @@ mise run tw    # test:watch
 
 ## QUICK REFERENCE
 
-| Task | Command |
-|------|---------|
-| Run all tests | `cargo nextest run` |
-| Run with CI profile | `cargo nextest run --profile ci` |
-| Run specific test | `cargo nextest run -- test_name` |
-| Filter tests | `cargo nextest run -E 'test(/pattern/)'` |
-| Stress test | `cargo nextest run --profile stress` |
-| List tests | `cargo nextest list` |
+| Task                | Command                                  |
+| ------------------- | ---------------------------------------- |
+| Run all tests       | `cargo nextest run`                      |
+| Run with CI profile | `cargo nextest run --profile ci`         |
+| Run specific test   | `cargo nextest run -- test_name`         |
+| Filter tests        | `cargo nextest run -E 'test(/pattern/)'` |
+| Stress test         | `cargo nextest run --profile stress`     |
+| List tests          | `cargo nextest list`                     |
 
 ## RELATED MODULES
+
 - See `testing-unit.md` for unit testing
 - See `testing-integration.md` for integration testing
 - See `testing-e2e.md` for E2E testing

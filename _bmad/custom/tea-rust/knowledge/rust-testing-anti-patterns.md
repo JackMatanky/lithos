@@ -1,14 +1,17 @@
 # Rust Testing Anti-Patterns
 
 ## Overview
+
 This document outlines common testing anti-patterns in Rust development, specifically tailored for the Lithos project architecture. Recognizing and avoiding these anti-patterns is crucial for maintaining high-quality, effective test suites.
 
 ## High-Level Anti-Patterns
 
 ### 1. Coverage-Driven Testing
+
 **Problem**: Focusing on achieving high coverage percentages rather than meaningful tests.
 
 **Bad Example**:
+
 ```rust
 #[test]
 fn test_getter_coverage() {
@@ -20,6 +23,7 @@ fn test_getter_coverage() {
 ```
 
 **Good Approach**:
+
 ```rust
 #[test]
 fn test_note_invariant_validation() {
@@ -41,9 +45,11 @@ fn test_note_invariant_validation() {
 ```
 
 ### 2. Implementation-Specific Testing
+
 **Problem**: Testing internal implementation details rather than behavior contracts.
 
 **Bad Example**:
+
 ```rust
 #[test]
 fn test_internal_storage_format() {
@@ -57,6 +63,7 @@ fn test_internal_storage_format() {
 ```
 
 **Good Approach**:
+
 ```rust
 #[test]
 fn test_storage_roundtrip() {
@@ -74,9 +81,11 @@ fn test_storage_roundtrip() {
 ## Rust-Specific Anti-Patterns
 
 ### 1. Panic-Prone Tests
+
 **Problem**: Using `unwrap()` or `expect()` in tests when testing error paths.
 
 **Bad Example**:
+
 ```rust
 #[test]
 fn test_error_handling() {
@@ -91,6 +100,7 @@ fn test_error_handling() {
 ```
 
 **Good Approach**:
+
 ```rust
 #[test]
 fn test_error_handling() {
@@ -113,9 +123,11 @@ fn test_error_handling() {
 ```
 
 ### 2. Ownership Testing Anti-Patterns
+
 **Problem**: Not properly testing ownership transfer and borrowing scenarios.
 
 **Bad Example**:
+
 ```rust
 #[test]
 fn test_ownership_scenarios() {
@@ -132,6 +144,7 @@ fn test_ownership_scenarios() {
 ```
 
 **Good Approach**:
+
 ```rust
 #[test]
 fn test_ownership_transfer() {
@@ -162,9 +175,11 @@ fn test_borrowing_scenarios() {
 ```
 
 ### 3. Async Testing Anti-Patterns
+
 **Problem**: Not properly testing async code, especially with blocking operations.
 
 **Bad Example**:
+
 ```rust
 #[test]
 fn test_async_storage() {
@@ -180,6 +195,7 @@ fn test_async_storage() {
 ```
 
 **Good Approach**:
+
 ```rust
 #[tokio::test]
 async fn test_async_storage_concurrent() {
@@ -225,9 +241,11 @@ fn test_async_error_handling() {
 ## Lithos Architecture Anti-Patterns
 
 ### 1. Context Boundary Violations
+
 **Problem**: Tests that create inappropriate dependencies between bounded contexts.
 
 **Bad Example**:
+
 ```rust
 #[test]
 fn test_cross_context_violation() {
@@ -244,6 +262,7 @@ fn test_cross_context_violation() {
 ```
 
 **Good Approach**:
+
 ```rust
 #[test]
 fn test_context_boundary_respect() {
@@ -266,9 +285,11 @@ fn test_context_boundary_respect() {
 ```
 
 ### 2. Port Testing Anti-Patterns
+
 **Problem**: Testing port implementations with concrete dependencies instead of mocks.
 
 **Bad Example**:
+
 ```rust
 #[test]
 fn test_port_with_real_database() {
@@ -283,6 +304,7 @@ fn test_port_with_real_database() {
 ```
 
 **Good Approach**:
+
 ```rust
 #[test]
 fn test_port_with_mock() {
@@ -307,9 +329,11 @@ fn test_port_with_mock() {
 ## Test Organization Anti-Patterns
 
 ### 1. Monolithic Test Modules
+
 **Problem**: All tests in one large, unorganized module.
 
 **Bad Example**:
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -326,6 +350,7 @@ mod tests {
 ```
 
 **Good Approach**:
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -375,9 +400,11 @@ mod tests {
 ```
 
 ### 2. Test Data Management Anti-Patterns
+
 **Problem**: Hardcoded test data or inefficient data generation.
 
 **Bad Example**:
+
 ```rust
 #[test]
 fn test_with_hardcoded_data() {
@@ -392,6 +419,7 @@ fn test_with_hardcoded_data() {
 ```
 
 **Good Approach**:
+
 ```rust
 // Use builder pattern for flexible test data
 pub struct NoteTestBuilder {
@@ -449,9 +477,11 @@ fn test_with_builder() {
 ## Performance Testing Anti-Patterns
 
 ### 1. Inaccurate Benchmarking
+
 **Problem**: Not accounting for warmup, JIT compilation, or measurement error.
 
 **Bad Example**:
+
 ```rust
 #[test]
 fn test_performance_naive() {
@@ -468,6 +498,7 @@ fn test_performance_naive() {
 ```
 
 **Good Approach**:
+
 ```rust
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
@@ -492,9 +523,11 @@ criterion_main!(benches);
 ## CI/CD Integration Anti-Patterns
 
 ### 1. Flaky Tests in CI
+
 **Problem**: Tests that pass locally but fail intermittently in CI.
 
 **Bad Example**:
+
 ```rust
 #[test]
 fn test_with_timing_dependency() {
@@ -510,6 +543,7 @@ fn test_with_timing_dependency() {
 ```
 
 **Good Approach**:
+
 ```rust
 #[tokio::test]
 async fn test_async_properly() {
@@ -524,12 +558,14 @@ async fn test_async_properly() {
 ## Detection and Prevention
 
 ### Automated Detection
+
 - Use clippy lints to catch common anti-patterns
 - Implement custom test quality metrics
 - Monitor for brittle tests that break frequently
 - Track test execution times for performance regressions
 
 ### Code Review Checklist
+
 - [ ] Tests focus on behavior, not implementation
 - [ ] Error cases are properly tested
 - [ ] No `unwrap()` calls in error path tests

@@ -1,6 +1,7 @@
 # TEA Knowledge: Test Assertion Patterns
 
 ## CONTEXT
+
 - **Applies to**: All test assertions (`assert!`, `assert_eq!`, etc.)
 - **Purpose**: Clear, explicit verification with helpful error messages
 - **Goal**: Make test failures immediately diagnosable
@@ -44,18 +45,21 @@ What are you asserting?
 ## VALIDATION CHECKLIST
 
 ### Error Messages
+
 - [ ] All `assert!` calls include a descriptive message
 - [ ] Error messages include the actual value that failed
 - [ ] Error messages explain what was expected
 - [ ] Uses `{:?}` debug formatting for complex types
 
 ### Assertion Types
+
 - [ ] Uses `matches!` for enum variant checking (not equality)
 - [ ] Uses `assert!(result.is_ok(), "...", result.err())` NOT `result.unwrap()`
 - [ ] Uses `pretty_assertions` for struct comparisons
 - [ ] Avoids `#[should_panic]` unless panic is documented behavior
 
 ### Assertion Phases
+
 - [ ] **Arrange**: Setup can use `unwrap()` (test prerequisites)
 - [ ] **Act**: NO `unwrap()` - capture the result
 - [ ] **Assert**: NO `unwrap()` - use explicit assertions
@@ -63,29 +67,34 @@ What are you asserting?
 ## ANTI-PATTERNS (FLAG THESE)
 
 ### Critical Issues
+
 - ❌ `result.unwrap()` in assertions → Hides error information
 - ❌ `result.expect("...")` in assertions → Same issue
 - ❌ `assert!(result.is_ok())` without error message → No context on failure
 - ❌ `assert!(result.is_err())` without error message → Can't see what error occurred
 
 ### Message Issues
+
 - ❌ `assert!(x > 0)` → No message at all
 - ❌ `assert!(x > 0, "failed")` → Unhelpful message
 - ❌ `assert!(x > 0, "x failed")` → Missing actual value
 - ❌ Generic messages without context → "Expected success, got error"
 
 ### Type Issues
+
 - ❌ `assert_eq!(result, Ok(expected))` on enums → Use `matches!`
 - ❌ `assert!(error == Error::Variant)` → Use `matches!` for variants
 - ❌ Complex equality checks without pretty_assertions → Hard to read diffs
 
 ### Hidden Assertions
+
 - ❌ Assertions in helper functions → Keep assertions visible in test body
 - ❌ Multiple assertions testing different behaviors → Split into separate tests
 
 ## CORRECT EXAMPLES
 
 ### Basic Assertions with Messages
+
 ```rust
 // ❌ BAD: No error message
 assert!(result.is_ok());
@@ -109,6 +118,7 @@ assert_eq!(
 ```
 
 ### Result Assertions
+
 ```rust
 // ❌ BAD: unwrap() hides the error
 let value = result.unwrap();
@@ -132,6 +142,7 @@ assert!(
 ```
 
 ### Enum Variant Checking
+
 ```rust
 // ❌ BAD: Checking full equality when only variant matters
 assert_eq!(error, DomainError::Validation("field".to_string()));
@@ -152,6 +163,7 @@ assert!(
 ```
 
 ### With pretty_assertions
+
 ```rust
 use pretty_assertions::assert_eq;
 
@@ -170,6 +182,7 @@ fn complex_struct_comparison() {
 ```
 
 ### Property Test Assertions
+
 ```rust
 use proptest::prelude::*;
 
@@ -190,6 +203,7 @@ proptest! {
 ```
 
 ### Custom Assertion Helpers
+
 ```rust
 /// Assert that a result is a validation error for a specific field
 #[track_caller]
@@ -227,6 +241,7 @@ fn test_validation() {
 ```
 
 ### Option Assertions
+
 ```rust
 // ✅ Check Some with context
 assert!(
@@ -250,6 +265,7 @@ let note = option.unwrap(); // Safe now
 ## ASSERTION PHRASES TEMPLATE
 
 ### Arrange Phase (unwrap OK)
+
 ```rust
 #[test]
 fn example() {
@@ -259,12 +275,14 @@ fn example() {
 ```
 
 ### Act Phase (NO unwrap)
+
 ```rust
     // Act - capture result, do NOT unwrap
     let result = process(input);
 ```
 
 ### Assert Phase (explicit assertions)
+
 ```rust
     // Assert - use explicit assertions
     assert!(
@@ -284,20 +302,21 @@ fn example() {
 
 ## COMMON ASSERTION PATTERNS
 
-| Scenario | Pattern |
-|----------|---------|
-| Result is Ok | `assert!(result.is_ok(), "msg: {:?}", result.err())` |
-| Result is Err | `assert!(result.is_err(), "msg: {:?}", result.unwrap())` |
-| Specific error | `assert!(matches!(result, Err(Error::Variant(_))))` |
-| Option is Some | `assert!(opt.is_some(), "msg")` |
-| Option is None | `assert!(opt.is_none(), "msg")` |
-| Enum variant | `assert!(matches!(val, Variant(_)))` |
-| Equality | `assert_eq!(actual, expected, "msg")` |
-| Inequality | `assert_ne!(actual, unexpected, "msg")` |
-| Boolean | `assert!(condition, "msg with {:?}", value)` |
-| Contains | `assert!(vec.contains(&item), "msg")` |
+| Scenario       | Pattern                                                  |
+| -------------- | -------------------------------------------------------- |
+| Result is Ok   | `assert!(result.is_ok(), "msg: {:?}", result.err())`     |
+| Result is Err  | `assert!(result.is_err(), "msg: {:?}", result.unwrap())` |
+| Specific error | `assert!(matches!(result, Err(Error::Variant(_))))`      |
+| Option is Some | `assert!(opt.is_some(), "msg")`                          |
+| Option is None | `assert!(opt.is_none(), "msg")`                          |
+| Enum variant   | `assert!(matches!(val, Variant(_)))`                     |
+| Equality       | `assert_eq!(actual, expected, "msg")`                    |
+| Inequality     | `assert_ne!(actual, unexpected, "msg")`                  |
+| Boolean        | `assert!(condition, "msg with {:?}", value)`             |
+| Contains       | `assert!(vec.contains(&item), "msg")`                    |
 
 ## RELATED MODULES
+
 - See `testing-unit.md` for test structure
 - See `testing-naming.md` for naming conventions
 - See `testing-anti-patterns.md` for comprehensive anti-patterns

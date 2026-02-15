@@ -5,6 +5,7 @@
 ### Bounded Context Validation
 
 #### Test Context Boundaries
+
 ```rust
 // Note: Only test domain logic, never import other contexts
 #[cfg(test)]
@@ -31,6 +32,7 @@ mod note_context_tests {
 ```
 
 #### Cross-Context Communication Testing
+
 ```rust
 // Test cross-context communication through ports
 #[cfg(test)]
@@ -64,6 +66,7 @@ mod cross_context_tests {
 ### Port-Based CQRS Testing
 
 #### Command Port Testing
+
 ```rust
 #[cfg(test)]
 mod command_port_tests {
@@ -139,6 +142,7 @@ mod command_port_tests {
 ```
 
 #### Query Port Testing
+
 ```rust
 #[cfg(test)]
 mod query_port_tests {
@@ -213,6 +217,7 @@ mod query_port_tests {
 ### Zero-Copy Pattern Testing
 
 #### Zero-Copy Storage Testing
+
 ```rust
 #[cfg(test)]
 mod zero_copy_tests {
@@ -293,6 +298,7 @@ mod zero_copy_tests {
 ```
 
 #### GAT-Based Port Testing
+
 ```rust
 #[cfg(test)]
 mod gat_port_tests {
@@ -354,6 +360,7 @@ mod gat_port_tests {
 ## Type-Driven Development Testing
 
 #### Newtype Wrapper Testing
+
 ```rust
 #[cfg(test)]
 mod newtype_tests {
@@ -447,6 +454,7 @@ mod newtype_tests {
 ```
 
 #### Constructor Testing
+
 ```rust
 #[cfg(test)]
 mod constructor_tests {
@@ -532,6 +540,7 @@ mod constructor_tests {
 ## Error Handling Testing
 
 #### Comprehensive Error Testing
+
 ```rust
 #[cfg(test)]
 mod error_handling_tests {
