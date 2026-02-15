@@ -257,6 +257,8 @@ pub enum Multiplicity {
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     serde::Serialize,
     serde::Deserialize,
@@ -306,6 +308,13 @@ impl Default for PropertyId {
     }
 }
 
+impl Display for PropertyId {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Validated property name value object.
 ///
 /// Enforces invariants:
@@ -329,6 +338,8 @@ impl Default for PropertyId {
     Clone,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     serde::Serialize,
     serde::Deserialize,
