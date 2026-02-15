@@ -455,7 +455,7 @@ impl SchemaName {
         })?;
 
         if !re.is_match(name) {
-            return Err(SchemaError::InvalidSchemaName(name.to_owned()));
+            return Err(SchemaError::InvalidSchemaName(name.into()));
         }
         Ok(())
     }

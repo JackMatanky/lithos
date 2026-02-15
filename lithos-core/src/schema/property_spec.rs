@@ -135,7 +135,7 @@ impl PropertySpec {
             Self::Bool(_) => {
                 value.as_bool().ok_or_else(|| SchemaError::InvalidType {
                     value: value.to_string(),
-                    expected: "boolean".to_owned(),
+                    expected: "boolean".into(),
                 })?;
                 Ok(())
             }
@@ -143,7 +143,7 @@ impl PropertySpec {
                 let val =
                     value.as_str().ok_or_else(|| SchemaError::InvalidType {
                         value: value.to_string(),
-                        expected: "string (date)".to_owned(),
+                        expected: "string (date)".into(),
                     })?;
                 s.validate_str(val)
             }
@@ -151,7 +151,7 @@ impl PropertySpec {
                 let val =
                     value.as_str().ok_or_else(|| SchemaError::InvalidType {
                         value: value.to_string(),
-                        expected: "string (file path)".to_owned(),
+                        expected: "string (file path)".into(),
                     })?;
                 s.validate_str(val)
             }
@@ -159,7 +159,7 @@ impl PropertySpec {
                 let n =
                     value.as_f64().ok_or_else(|| SchemaError::InvalidType {
                         value: value.to_string(),
-                        expected: "number".to_owned(),
+                        expected: "number".into(),
                     })?;
                 if !n.is_finite() {
                     return Err(SchemaError::ValidationFailed(format!(
@@ -174,7 +174,7 @@ impl PropertySpec {
                 let val =
                     value.as_str().ok_or_else(|| SchemaError::InvalidType {
                         value: value.to_string(),
-                        expected: "string".to_owned(),
+                        expected: "string".into(),
                     })?;
                 s.validate_str(val)
             }
@@ -226,7 +226,7 @@ impl DateSpec {
     pub fn try_new(format: &str) -> Result<Self, SchemaError> {
         if format.is_empty() {
             return Err(SchemaError::InvalidDateFormat(
-                "Format cannot be empty".to_owned(),
+                "Format cannot be empty".into(),
             ));
         }
         Ok(Self {
@@ -290,7 +290,7 @@ impl FileSpec {
             && fc.is_empty()
         {
             return Err(SchemaError::InvalidFileClass(
-                "File class cannot be empty".to_owned(),
+                "File class cannot be empty".into(),
             ));
         }
 
@@ -374,7 +374,7 @@ impl NumberSpec {
             Some(Ok(bounds)) => bounds,
             Some(Err(BoundsError::InvalidRange)) => {
                 return Err(SchemaError::ValidationFailed(
-                    "min cannot be greater than max".to_owned(),
+                    "min cannot be greater than max".into(),
                 ));
             }
         };
@@ -502,7 +502,7 @@ impl StringSpec {
             Some(Ok(bounds)) => bounds,
             Some(Err(BoundsError::InvalidRange)) => {
                 return Err(SchemaError::ValidationFailed(
-                    "min_length cannot be greater than max_length".to_owned(),
+                    "min_length cannot be greater than max_length".into(),
                 ));
             }
         };
@@ -538,7 +538,7 @@ impl StringSpec {
             && !enums.iter().any(|s| s.as_ref() == value)
         {
             return Err(SchemaError::InvalidEnumValue {
-                value: value.to_owned(),
+                value: value.into(),
                 allowed: enums
                     .iter()
                     .map(std::string::ToString::to_string)
@@ -664,7 +664,7 @@ impl Step {
         let finite = FiniteF64::try_new(value, "step")?;
         if finite.get() <= 0.0f64 {
             return Err(SchemaError::ValidationFailed(
-                "step must be positive".to_owned(),
+                "step must be positive".into(),
             ));
         }
         Ok(Self(finite))
@@ -709,7 +709,7 @@ impl VaultRelPath {
 fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
     if path.is_empty() {
         return Err(SchemaError::InvalidDirectoryPath(
-            "Path cannot be empty".to_owned(),
+            "Path cannot be empty".into(),
         ));
     }
 

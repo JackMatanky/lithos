@@ -247,7 +247,7 @@ impl PropertyBank {
         // Fall back to name lookup
         let name = PropertyName::try_from(key)?;
         self.get_by_name(&name)
-            .ok_or_else(|| SchemaError::PropertyNotFound(key.to_owned()))
+            .ok_or_else(|| SchemaError::PropertyNotFound(key.into()))
     }
 
     /// Checks if a property exists by ID.
@@ -303,7 +303,7 @@ impl PropertyBank {
     ) -> Result<(), SchemaError> {
         if self.name_index.contains_key(name) {
             return Err(SchemaError::DuplicatePropertyName(
-                name.as_str().to_owned(),
+                name.as_str().into(),
             ));
         }
         Ok(())
