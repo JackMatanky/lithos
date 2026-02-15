@@ -1,0 +1,6 @@
+module:
+  code: tea-rust
+  name: Tea Rust
+  description: Rust-focused test architecture agent and workflows for Lithos
+  version: "0.1.0"
+  unitary: true
