@@ -3,7 +3,7 @@ title: "Implementation Patterns & Consistency Rules"
 description: "Development patterns, naming conventions, and consistency rules for Lithos implementation"
 author: "Jack"
 date: "2026-01-23"
-last_updated: "2026-02-05"
+last_updated: "2026-02-15"
 section: "Implementation Standards"
 ---
 
@@ -30,10 +30,10 @@ section: "Implementation Standards"
 
 - **Say what it means:** Prefer names that make roles and direction obvious (e.g., `needle`/`haystack`, `source`/`destination`, `before`/`after`).
 - **Consistent word order:** Pick a project-wide pattern and stick to it. If most functions read as `verb_noun`, new APIs should follow `verb_noun` unless there is a strong reason not to.
-- **Be concise (but not cryptic):** Avoid nonstandard abbreviations and “inside jokes”; shorten only when meaning remains obvious.
+- **Be concise (but not cryptic):** Avoid nonstandard abbreviations and "inside jokes"; shorten only when meaning remains obvious.
 - **Use simple, correct words:** Prefer the smallest set of small words that preserve meaning; avoid terms that can be read two ways.
-- **Unify concept names:** One term per concept. If we choose “vault” (not “repo”/“workspace”) for the user’s note collection, use “vault” consistently in APIs, docs, and modules.
-- **Avoid type-noise in names:** Don’t encode types (e.g., `*_str`, `*_vec`) unless it disambiguates two values with the same conceptual meaning.
+- **Unify concept names:** One term per concept. If we choose "vault" (not "repo"/"workspace") for the user's note collection, use "vault" consistently in APIs, docs, and modules.
+- **Avoid type-noise in names:** Don't encode types (e.g., `*_str`, `*_vec`) unless it disambiguates two values with the same conceptual meaning.
 
 **Pattern-Match Variable Naming:**
 
@@ -65,7 +65,7 @@ match state {
 **Pattern Matching Discipline:**
 
 - **Match exhaustively to draw attention:** Prefer destructuring structs/enums to make it obvious which fields are considered. This helps the compiler alert us when structures evolve.
-- **Don’t pattern-match references:** Prefer explicit dereferencing (`|x| *x`) over `|&x| x`.
+- **Don't pattern-match references:** Prefer explicit dereferencing (`|x| *x`) over `|&x| x`.
 - **Avoid numeric tuple indexing:** Prefer destructuring into named values (`let (x, y) = point`) over `.0`/`.1`.
 - **Avoid pattern-matching in `fn` parameters:** Unpack on the first line inside the function; keep signatures clean.
 
@@ -113,7 +113,7 @@ fn new(ServerConfig { db_path, working_path }: ServerConfig) {
 
 **Lifetime Parameter Naming:**
 
-- Use lifetimes as “documentation”: pick names derived from what is being borrowed (e.g., `'db`, `'tx`, `'bytes`, `'src`).
+- Use lifetimes as "documentation": pick names derived from what is being borrowed (e.g., `'db`, `'tx`, `'bytes`, `'src`).
 - Avoid `'a`/`'b` unless there is a compelling reason; avoid numbers in lifetime names.
 
 ✅ Prefer:
@@ -535,11 +535,11 @@ When designing a type, ask:
 
 ✅ Mark all fields private by default
 ✅ Wrap validated strings in newtypes (SchemaName, NotePath)
-✅ Use NonZero\* types from std for positive numbers
+✅ Use NonZero* types from std for positive numbers
 ✅ Expose collections via `&[T]` or iterators, not `&mut Vec<T>`
 ✅ Use `#[non_exhaustive]` on public enums
 
-## Port-Based CQRS Implementation Patterns
+## CQRS & Port Patterns
 
 **Core Principle:** Separate read and write capabilities via split port traits to prevent interface bloat, enable read-only test fakes, and support future backend flexibility.
 
@@ -744,6 +744,158 @@ let query = RedbSchemaQuery::new_redb(&db);
 let schema = query.find_owned_by_name(name)?;
 ```
 
+### Benefits
+
+- **Decoupling**: CQRS layer independent of concrete database implementation
+- **Zero-Copy Performance**: GATs enable `Archived<'a>` without leaking transaction lifetimes
+- **Testability**: Can substitute `FakeSchemaQueryPort` or `FakeSchemaCommandPort` implementing respective ports
+- **Interface Segregation**: Read-only test fakes don't implement write operations
+- **Static Dispatch**: Performance benefits when using concrete type aliases (monomorphization)
+- **Future-Proof**: Can change storage backend by implementing new adapters, or use different backends for reads vs writes
+- **Lean Ports**: Each port trait contains only methods relevant to its responsibility
+
+### Port-Based Testing Pattern
+
+**Pattern:** Different test fakes for read vs write, minimal implementation.
+
+✅ **Prefer:**
+
+```rust
+// <context>/query.rs tests - Read-only fake
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    struct FakeSchemaQueryPort {
+        schemas: HashMap<SchemaName, Schema>,
+    }
+
+    impl SchemaQueryPort for FakeSchemaQueryPort {
+        type Error = String;
+        type Archived<'a> = &'a Schema;  // Just borrow domain type
+
+        fn find_owned_by_name(&self, name: &SchemaName)
+            -> Result<Option<Schema>, String>
+        {
+            Ok(self.schemas.get(name).cloned())
+        }
+
+        fn with_archived_by_name<R>(
+            &self,
+            name: &SchemaName,
+            f: impl for<'a> FnOnce(&'a Schema) -> R,
+        ) -> Result<Option<R>, String> {
+            Ok(self.schemas.get(name).map(f))
+        }
+
+        // No need to implement list_all_owned if test doesn't use it!
+        fn list_all_owned(&self) -> Result<Vec<Schema>, String> {
+            unimplemented!("not needed for this test")
+        }
+    }
+
+    #[test]
+    fn finds_existing_schema() {
+        let mut store = FakeSchemaQueryPort {
+            schemas: HashMap::new()
+        };
+        let schema = Schema::new("test")?;
+        store.schemas.insert(schema.name().clone(), schema.clone());
+
+        let query = Query::new(store);  // Generic Query<FakeSchemaQueryPort>
+
+        let result = query.find_owned_by_name(schema.name())?;
+        assert_eq!(result, Some(schema));
+    }
+}
+```
+
+### Port Pattern Checklist
+
+When implementing port-based CQRS, verify:
+
+- [ ] Ports split into `QueryPort` and `CommandPort` (not single `Store`)
+- [ ] Both ports defined in single `<context>/ports.rs` file
+- [ ] Query uses GAT: `type Archived<'a> where Self: 'a`
+- [ ] Hot path uses HRTB: `impl for<'a> FnOnce(Self::Archived<'a>) -> R`
+- [ ] CQRS types generic: `Query<Q>`, `Command<C>`
+- [ ] Adapters in `db/<context>_adapter.rs` (not in domain context)
+- [ ] Type aliases hide generics: `RedbSchemaQuery<'db>`
+- [ ] Domain types have rkyv derives
+- [ ] `Stored*` only created when profiling shows need
+- [ ] Test fakes implement only needed port methods
+- [ ] No unsafe blocks in CQRS or port implementations
+- [ ] Context isolation maintained (domain doesn't import db/)
+
+### CQRS Naming Conventions
+
+- **Queries:** `find_*`, `get_*`, `list_*`, `count_*`.
+- **Commands:** `save`, `delete`, `update`, `create`.
+- **Port Traits:** `<Context>QueryPort`, `<Context>CommandPort`.
+- **CQRS Types:** `Query<Q>`, `Command<C>` generic over port traits.
+- **Type Aliases:** `Redb<Context>Query<'db>` for ergonomic use.
+- **Legacy (deprecated):** Port traits named `<Context>Store` (e.g., `NoteStore`, `SchemaStore`).
+
+### Database Access Rules
+
+- **Port-Based Access:** Contexts define split storage port traits (e.g., `SchemaQueryPort`, `SchemaCommandPort`).
+- **Generic CQRS:** Command/Query types are generic over ports: `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`.
+- **Zero-Copy Reads:** Ports use GATs to enable closure-based archived access.
+- **Default Backend:** Type aliases hide generics: `RedbSchemaQuery<'db>`.
+- **Test Substitution:** Use `FakeSchemaQueryPort` or `FakeSchemaCommandPort` implementing the respective port.
+- **Legacy Note:** Single-store `SchemaStore` traits are deprecated; see Anti-Patterns.
+
+### Legacy Single-Store CQRS Example (Deprecated)
+
+The following pattern is retained for historical context and for recognizing deprecated usage. It conflicts with split-port guidance.
+
+```rust
+// Port trait (in context/ports.rs)
+pub trait SchemaStore {
+    type Error;
+    type Archived<'a> where Self: 'a;
+
+    fn find_owned_by_name(&self, name: &SchemaName)
+        -> Result<Option<Schema>, Self::Error>;
+
+    fn with_archived_by_name<R>(
+        &self,
+        name: &SchemaName,
+        f: impl for<'a> FnOnce(Self::Archived<'a>) -> R,
+    ) -> Result<Option<R>, Self::Error>;
+}
+
+// Query implementation (in context/query.rs)
+pub struct Query<S> {
+    store: S,
+}
+
+impl<S: SchemaStore> Query<S> {
+    pub fn new(store: S) -> Self {
+        Self { store }
+    }
+
+    pub fn find_owned_by_name(&self, name: &SchemaName)
+        -> Result<Option<Schema>, QueryError<S::Error>>
+    {
+        self.store.find_owned_by_name(name)
+            .map_err(QueryError::Storage)
+    }
+}
+
+// Type alias for default backend (in context/mod.rs)
+pub type RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>;
+```
+
+## Serialization & Storage Patterns
+
+**Serialization Patterns:**
+
+- **Feature Flag:** Use `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]`.
+- **Optional:** Serde is optional for domain types, required for DTOs/Config.
+- **Zero-Copy:** Use `rkyv` for performance-critical storage types.
+
 ### Three-Shape Serialization Pattern
 
 **Core Principle:** Separate concerns of parsing, validation, and storage optimization through three distinct type layers.
@@ -760,9 +912,47 @@ Domain Types (validated invariants, typed enums)
 Database (redb, zero-copy bytes)
 ```
 
+```text
+┌─────────────────────────────────────────┐
+│ File System (YAML/JSON)                 │
+│ - User-editable vault files             │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼ parse (serde)
+┌─────────────────────────────────────────┐
+│ Raw* (serde derives)                    │
+│ - Unvalidated input representation      │
+│ - Location: <context>/raw.rs            │
+│ - Nullable fields for better errors     │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼ validate & compile
+┌─────────────────────────────────────────┐
+│ Domain (rkyv + serde feature-gated)     │
+│ - Validated, invariant-preserving       │
+│ - Location: <context>/aggregate.rs      │
+│ - Used throughout application           │
+│ - Has rkyv derives for zero-copy DB     │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼ project/adapt (optional, only when needed)
+┌─────────────────────────────────────────┐
+│ Stored* (rkyv derives, optional)        │
+│ - Storage-optimized representation      │
+│ - Location: db/stored/<context>.rs      │
+│ - Only when domain shape inefficient    │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼ serialize (rkyv)
+┌─────────────────────────────────────────┐
+│ Database (redb)                         │
+│ - Zero-copy archived access             │
+└─────────────────────────────────────────┘
+```
+
 ---
 
-#### Shape 1: Raw\* Types (Parsing Boundary)
+#### Shape 1: Raw* Types (Parsing Boundary)
 
 **Purpose:** Accept flexible, unvalidated input from external sources (files, API requests, CLI args).
 
@@ -1085,7 +1275,7 @@ impl RawFrontmatter {
 db.put("config", "frontmatter", &raw_frontmatter)?;
 ```
 
-❌ **DON'T: Create Stored\* prematurely**
+❌ **DON'T: Create Stored* prematurely**
 
 ```rust
 // ❌ BAD: Creating Stored* without performance justification
@@ -1109,227 +1299,9 @@ pub struct StoredSchema { /* ... */ }  // Domain works fine!
 
 **Golden Rule:** Raw types are **dumb data**, validation is **explicit** via `TryFrom`, domain types are **smart** with invariants, Stored types are **rare optimizations**.
 
-### Port-Based Testing Pattern
-
-**Pattern:** Different test fakes for read vs write, minimal implementation.
-
-✅ **Prefer:**
-
-```rust
-// <context>/query.rs tests - Read-only fake
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    struct FakeSchemaQueryPort {
-        schemas: HashMap<SchemaName, Schema>,
-    }
-
-    impl SchemaQueryPort for FakeSchemaQueryPort {
-        type Error = String;
-        type Archived<'a> = &'a Schema;  // Just borrow domain type
-
-        fn find_owned_by_name(&self, name: &SchemaName)
-            -> Result<Option<Schema>, String>
-        {
-            Ok(self.schemas.get(name).cloned())
-        }
-
-        fn with_archived_by_name<R>(
-            &self,
-            name: &SchemaName,
-            f: impl for<'a> FnOnce(&'a Schema) -> R,
-        ) -> Result<Option<R>, String> {
-            Ok(self.schemas.get(name).map(f))
-        }
-
-        // No need to implement list_all_owned if test doesn't use it!
-        fn list_all_owned(&self) -> Result<Vec<Schema>, String> {
-            unimplemented!("not needed for this test")
-        }
-    }
-
-    #[test]
-    fn finds_existing_schema() {
-        let mut store = FakeSchemaQueryPort {
-            schemas: HashMap::new()
-        };
-        let schema = Schema::new("test")?;
-        store.schemas.insert(schema.name().clone(), schema.clone());
-
-        let query = Query::new(store);  // Generic Query<FakeSchemaQueryPort>
-
-        let result = query.find_owned_by_name(schema.name())?;
-        assert_eq!(result, Some(schema));
-    }
-}
-```
-
-### Port Pattern Checklist
-
-When implementing port-based CQRS, verify:
-
-- [ ] Ports split into `QueryPort` and `CommandPort` (not single `Store`)
-- [ ] Both ports defined in single `<context>/ports.rs` file
-- [ ] Query uses GAT: `type Archived<'a> where Self: 'a`
-- [ ] Hot path uses HRTB: `impl for<'a> FnOnce(Self::Archived<'a>) -> R`
-- [ ] CQRS types generic: `Query<Q>`, `Command<C>`
-- [ ] Adapters in `db/<context>_adapter.rs` (not in domain context)
-- [ ] Type aliases hide generics: `RedbSchemaQuery<'db>`
-- [ ] Domain types have rkyv derives
-- [ ] `Stored*` only created when profiling shows need
-- [ ] Test fakes implement only needed port methods
-- [ ] No unsafe blocks in CQRS or port implementations
-- [ ] Context isolation maintained (domain doesn't import db/)
-
-## Structure Patterns
-
-**Workspace Organization:**
-
-- **Crate Separation:** `lithos-core` (Logic + Infra) vs `lithos-cli` (Driver).
-- **Module Organization:** Within crates, contexts use `<context>/mod.rs` pattern.
-  - Each context is a folder with `mod.rs` as entry point
-  - Submodules organized by responsibility (aggregate, command, query, ports, error, events)
-- **Test Placement:** Unit tests in same file (`#[cfg(test)]`), integration tests in `tests/`.
-- **Binary Organization:** CLI crate delegating to `lithos-core`.
-
-**File Structure Standards:**
-
-- **Lithos Core:** `src/lib.rs`, `src/db/`, `src/fs/`, `src/<context>/` (contexts with mod.rs, errors/events/ports co-located).
-- **Lithos CLI:** `src/main.rs`, `src/commands/`.
-- **Common Patterns:** Group related items, keep files focused.
-
-## Format Patterns
-
-**Error Handling Standards:**
-
-- **Core Errors:** `thiserror::Error` for typed, co-located error enums (e.g. `note::Error`).
-- **Context Addition:** `anyhow::Result` only in `main.rs` if prototyping; otherwise `miette`.
-- **CLI Output:** `miette` for user-facing errors with help/labels.
-- **Logging:** `tracing` with structured spans.
-- **Panic Avoidance:** Never use `unwrap()`, `expect()` in library code.
-
-**Async Patterns:**
-
-- **Sync-First:** Core domain logic and file I/O must be synchronous.
-- **Async at Edge:** `lithos-cli` uses `tokio::main`.
-- **Bridging:** Use `tokio::task::spawn_blocking` for concurrent core operations.
-- **No Async Traits:** Do NOT use `#[async_trait]` in `lithos-core`.
-
-**Documentation Standards:**
-
-- **Item Documentation:** Use `///` for public items.
-- **Module Documentation:** Use `//!` at top of `<context>.rs`.
-- **Examples:** Include code examples for public APIs.
-
-**Serialization Patterns:**
-
-- **Feature Flag:** Use `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]`.
-- **Optional:** Serde is optional for domain types, required for DTOs/Config.
-- **Zero-Copy:** Use `rkyv` for performance-critical storage types.
-
-## Communication Patterns
-
-**Event System Standards:**
-
-- **Event Naming:** `PascalCase` with past tense (e.g., `NoteIndexed`).
-- **Co-location:** Events defined in `<context>/events.rs`.
-- **Dispatch:** Deferred dispatch via `UnitOfWork` or simple callbacks (Phase 1).
-
-**Inter-Module Communication:**
-
-- **Context Isolation:** Business contexts (note, schema, template) do not import each other.
-- **Cross-Cutting Context:** Config (user-configurable business rules) is available to all contexts.
-- **Pure Infrastructure:** db, fs, patterns (generic utilities) are available to all contexts.
-- **Orchestration:** Cross-context workflows happen in CLI layer or dedicated app module.
-
-**Dependency Flow Rules:**
-
-✅ **ALLOWED:**
-
-```rust
-// From any business context (note, schema, template):
-use crate::config::Global;      // Config is cross-cutting infrastructure
-use crate::config::Vault;
-use crate::db;                  // Infrastructure
-use crate::fs;
-use crate::patterns;
-
-// Within context:
-use super::aggregate::Note;
-use super::error::NoteError;
-use super::ports::NoteStore;
-```
-
-❌ **FORBIDDEN:**
-
-```rust
-// Business contexts importing each other:
-use crate::note::Note;          // From schema context
-use crate::schema::Schema;      // From note context
-use crate::template::Template;  // From config context
-```
-
-**Database Access Rules:**
-
-- **Port-Based Access:** Contexts define storage port traits (e.g., `SchemaStore`, `NoteStore`)
-- **Generic CQRS:** Command/Query types are generic over port: `Query<S: SchemaStore>`
-- **Zero-Copy Reads:** Ports use GATs to enable closure-based archived access
-- **Default Backend:** Type aliases hide generics: `RedbSchemaQuery<'db>`
-- **Test Substitution:** Use `FakeSchemaStore` implementing the same port
-
-**CQRS Pattern:**
-
-```rust
-// Port trait (in context/ports.rs)
-pub trait SchemaStore {
-    type Error;
-    type Archived<'a> where Self: 'a;
-
-    fn find_owned_by_name(&self, name: &SchemaName)
-        -> Result<Option<Schema>, Self::Error>;
-
-    fn with_archived_by_name<R>(
-        &self,
-        name: &SchemaName,
-        f: impl for<'a> FnOnce(Self::Archived<'a>) -> R,
-    ) -> Result<Option<R>, Self::Error>;
-}
-
-// Query implementation (in context/query.rs)
-pub struct Query<S> {
-    store: S,
-}
-
-impl<S: SchemaStore> Query<S> {
-    pub fn new(store: S) -> Self {
-        Self { store }
-    }
-
-    pub fn find_owned_by_name(&self, name: &SchemaName)
-        -> Result<Option<Schema>, QueryError<S::Error>>
-    {
-        self.store.find_owned_by_name(name)
-            .map_err(QueryError::Storage)
-    }
-}
-
-// Type alias for default backend (in context/mod.rs)
-pub type RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>;
-```
-
-**CQRS Naming Conventions:**
-
-- **Queries:** `find_*`, `get_*`, `list_*`, `count_*`.
-- **Commands:** `save`, `delete`, `update`, `create`.
-- **Port Traits:** `<Context>Store` (e.g., `NoteStore`, `SchemaStore`)
-- **CQRS Types:** `Query<S>`, `Command<S>` generic over store port
-- **Type Aliases:** `Redb<Context>Query<'db>` for ergonomic use
-
 ## Storage Patterns
 
-Following **ADR 003 Appendix A**, minimize coupling between domain and storage format:
+Following **ADR 003 Appendix A**, minimize coupling between domain and storage format. When a `Stored*` representation is introduced (optional), apply these triggers and guidelines; default remains to store domain types directly unless profiling or migration stability requires otherwise.
 
 **When to Introduce Stored Types:**
 
@@ -1386,7 +1358,94 @@ impl TryFrom<StoredSchema> for Schema { /* ... */ }
 - **redb custom Value**: Implement `redb::Value` via local newtypes/wrappers when you need custom encoding.
 - **moka determinism**: In tests, call `run_pending_tasks()` to ensure cache stats are consistent.
 
-## Process Patterns
+## Project Structure & Module Layout
+
+**Workspace Organization:**
+
+- **Crate Separation:** `lithos-core` (Logic + Infra) vs `lithos-cli` (Driver).
+- **Module Organization:** Within crates, contexts use `<context>/mod.rs` pattern.
+  - Each context is a folder with `mod.rs` as entry point
+  - Submodules organized by responsibility (aggregate, command, query, ports, error, events)
+- **Test Placement:** Unit tests in same file (`#[cfg(test)]`), integration tests in `tests/`.
+- **Binary Organization:** CLI crate delegating to `lithos-core`.
+
+**File Structure Standards:**
+
+- **Lithos Core:** `src/lib.rs`, `src/db/`, `src/fs/`, `src/<context>/` (contexts with mod.rs, errors/events/ports co-located).
+- **Lithos CLI:** `src/main.rs`, `src/commands/`.
+- **Common Patterns:** Group related items, keep files focused.
+
+## Error Handling & Diagnostics
+
+**Error Handling Standards:**
+
+- **Core Errors:** `thiserror::Error` for typed, co-located error enums (e.g. `note::Error`).
+- **Context Addition:** `anyhow::Result` only in `main.rs` if prototyping; otherwise `miette`.
+- **CLI Output:** `miette` for user-facing errors with help/labels.
+- **Logging:** `tracing` with structured spans.
+- **Panic Avoidance:** Never use `unwrap()`, `expect()` in library code.
+
+## Async & Concurrency Rules
+
+**Async Patterns:**
+
+- **Sync-First:** Core domain logic and file I/O must be synchronous.
+- **Async at Edge:** `lithos-cli` uses `tokio::main`.
+- **Bridging:** Use `tokio::task::spawn_blocking` for concurrent core operations.
+- **No Async Traits:** Do NOT use `#[async_trait]` in `lithos-core`.
+
+## Documentation Standards
+
+**Documentation Standards:**
+
+- **Item Documentation:** Use `///` for public items.
+- **Module Documentation:** Use `//!` at top of `<context>.rs`.
+- **Examples:** Include code examples for public APIs.
+
+## Communication & Dependency Rules
+
+**Event System Standards:**
+
+- **Event Naming:** `PascalCase` with past tense (e.g., `NoteIndexed`).
+- **Co-location:** Events defined in `<context>/events.rs`.
+- **Dispatch:** Deferred dispatch via `UnitOfWork` or simple callbacks (Phase 1).
+
+**Inter-Module Communication:**
+
+- **Context Isolation:** Business contexts (note, schema, template) do not import each other.
+- **Cross-Cutting Context:** Config (user-configurable business rules) is available to all contexts.
+- **Pure Infrastructure:** db, fs, patterns (generic utilities) are available to all contexts.
+- **Orchestration:** Cross-context workflows happen in CLI layer or dedicated app module.
+
+**Dependency Flow Rules:**
+
+✅ **ALLOWED:**
+
+```rust
+// From any business context (note, schema, template):
+use crate::config::Global;      // Config is cross-cutting infrastructure
+use crate::config::Vault;
+use crate::db;                  // Infrastructure
+use crate::fs;
+use crate::patterns;
+
+// Within context:
+use super::aggregate::Note;
+use super::error::NoteError;
+use super::ports::NoteQueryPort;
+use super::ports::NoteCommandPort;
+```
+
+❌ **FORBIDDEN:**
+
+```rust
+// Business contexts importing each other:
+use crate::note::Note;          // From schema context
+use crate::schema::Schema;      // From note context
+use crate::template::Template;  // From config context
+```
+
+## Process & Tooling
 
 **Testing Standards:**
 
@@ -1422,7 +1481,7 @@ impl TryFrom<StoredSchema> for Schema { /* ... */ }
 - Follow established naming conventions without exception
 - Maintain context boundaries (business contexts must not import each other; only infrastructure/cross-cutting)
 - Use port-based CQRS pattern (generic over storage traits, not direct database coupling)
-- Use async/await consistently throughout the codebase with proper error handling
+- Use async/await consistently in async-enabled edge layers with proper error handling; keep core sync-first
 - Implement comprehensive error handling with typed errors and context
 - Write tests for all public APIs and critical paths including async operations
 - Document public traits and complex business logic with examples following Rust doc standards
@@ -1450,7 +1509,9 @@ impl TryFrom<StoredSchema> for Schema { /* ... */ }
 
 ## Pattern Examples
 
-**Good Examples:**
+**Legacy Example (Non-Compliant, retained for context):**
+
+This example predates current async and unwrap prohibitions. It is retained for historical context only; do not treat it as compliant guidance.
 
 ````rust
 /// A note in the vault with its metadata and content.
