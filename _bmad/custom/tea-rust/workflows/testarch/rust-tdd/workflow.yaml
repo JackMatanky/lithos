@@ -9,6 +9,7 @@ output_folder: "{config_source}:output_folder"
 user_name: "{config_source}:user_name"
 communication_language: "{config_source}:communication_language"
 document_output_language: "{config_source}:document_output_language"
+test_design_output: "{config_source}:test_design_output"
 date: system-generated
 
 # Workflow components
@@ -23,7 +24,7 @@ variables:
   story_path: "" # optional story input
 
 # Output configuration
-default_output_file: "{output_folder}/tea-rust/tdd-plan.md"
+default_output_file: "{test_design_output}/rust-tdd-plan.md"
 
 # Required tools
 required_tools:
