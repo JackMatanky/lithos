@@ -1,42 +1,46 @@
 //! Schema command implementations (CQRS write operations).
 //!
-//! This module implements the Command port trait for Schema write operations,
-//! using the Database layer for persistence.
+//! This module provides the [`Command`] type, which handles write operations
+//! through the schema command port.
 
 use super::{
-    aggregate::{Schema, SchemaName},
-    db_table::SCHEMAS,
+    aggregate::{Schema, SchemaId},
     error::SchemaError,
+    ports as schema_ports,
 };
-use crate::db::Database;
 
-/// Command implementation for Schema write operations.
+/// Command implementation for schema write operations.
 ///
-/// Implements the Command port trait using the Database layer.
-pub struct Command<'db> {
-    db: &'db Database,
+/// This struct is generic over a storage port to support multiple backends.
+pub struct Command<C> {
+    command_port: C,
 }
 
-impl<'db> Command<'db> {
-    /// Create a new `Command` with a database reference.
+impl<C> Command<C> {
+    /// Create a new `Command` with a storage port.
     #[inline]
     #[must_use]
-    pub const fn new(db: &'db Database) -> Self {
+    pub const fn new(command_port: C) -> Self {
         Self {
-            db,
+            command_port,
         }
     }
+}
 
-    /// Delete a schema by name.
+impl<C> Command<C>
+where
+    C: schema_ports::Command,
+    C::Error: std::error::Error,
+{
+    /// Delete a schema by ID.
     ///
     /// # Errors
     /// Returns `SchemaError` if deletion fails.
     #[inline]
-    pub fn delete(&self, name: &SchemaName) -> Result<(), SchemaError> {
-        self.db
-            .delete(SCHEMAS, name.as_ref())
-            .map_err(|e| SchemaError::Storage(e.to_string()))?;
-        Ok(())
+    pub fn delete(&self, id: SchemaId) -> Result<(), SchemaError> {
+        self.command_port
+            .delete(id)
+            .map_err(|error| SchemaError::Storage(error.to_string()))
     }
 
     /// Save a schema to persistence.
@@ -45,13 +49,9 @@ impl<'db> Command<'db> {
     /// Returns `SchemaError` if saving fails.
     #[inline]
     pub fn save(&self, schema: &Schema) -> Result<(), SchemaError> {
-        // Get schema name as key
-        let name = schema.name().as_ref();
-
-        // Save to database
-        self.db.put(SCHEMAS, name, schema).map_err(|e: crate::db::DbError| {
-            SchemaError::Storage(e.to_string())
-        })
+        self.command_port
+            .save(schema)
+            .map_err(|error| SchemaError::Storage(error.to_string()))
     }
 }
 
@@ -65,6 +65,7 @@ mod tests {
         use uuid::Uuid;
 
         use super::*;
+        use crate::db::Database;
 
         pub const TEST_SCHEMA_ID_NOTE: SchemaId = SchemaId::from_uuid(
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0101),
@@ -93,7 +94,11 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use super::*;
-    use crate::schema::aggregate::{SchemaId, SchemaName};
+    use crate::schema::{
+        RedbSchemaCommand,
+        aggregate::{SchemaId, SchemaName, SchemaNameKey},
+        db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
+    };
 
     mod persistence {
         use super::*;
@@ -104,10 +109,10 @@ mod tests {
             reason = "Test uses expect for deterministic fixture setup and \
                       value extraction."
         )]
-        fn save_persists_schema_by_name() {
+        fn save_persists_schema_by_id_and_name_index() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = Command::new(&db);
+            let cmd = RedbSchemaCommand::new_redb(&db);
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")
@@ -115,14 +120,25 @@ mod tests {
 
             cmd.save(&schema).expect("Save should succeed");
 
+            let id_key = schema.id().as_uuid().to_string();
             let stored = db
-                .get_owned::<Schema>(SCHEMAS, "note")
+                .get_owned::<Schema>(SCHEMA_BY_ID, &id_key)
                 .expect("Read after save should succeed");
             let stored_schema = stored.expect("Stored schema should exist");
             assert_eq!(
                 stored_schema.name().as_ref(),
                 "note",
                 "Stored schema name should match"
+            );
+
+            let name_key = SchemaNameKey::from(schema.name());
+            let indexed = db
+                .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name_key.as_str())
+                .expect("Index lookup should succeed");
+            assert_eq!(
+                indexed,
+                Some(schema.id()),
+                "Name index should map to schema id"
             );
         }
 
@@ -132,26 +148,34 @@ mod tests {
             reason = "Test uses expect for deterministic fixture setup and \
                       value extraction."
         )]
-        fn delete_removes_schema_by_name() {
+        fn delete_removes_schema_by_id() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = Command::new(&db);
+            let cmd = RedbSchemaCommand::new_redb(&db);
 
             let schema = fixtures::schema_fixture(
                 fixtures::TEST_SCHEMA_ID_PROJECT,
                 "project",
             )
             .expect("Failed to create schema fixture");
+            let schema_id = schema.id();
             cmd.save(&schema).expect("Save should succeed");
+
+            cmd.delete(schema_id).expect("Delete should succeed");
+
+            let id_key = schema_id.as_uuid().to_string();
+            let stored = db
+                .get_owned::<Schema>(SCHEMA_BY_ID, &id_key)
+                .expect("Read after delete should succeed");
+            assert!(stored.is_none(), "Deleted schema should not exist");
 
             let name = SchemaName::new("project")
                 .expect("Failed to create schema name");
-            cmd.delete(&name).expect("Delete should succeed");
-
-            let stored = db
-                .get_owned::<Schema>(SCHEMAS, "project")
-                .expect("Read after delete should succeed");
-            assert!(stored.is_none(), "Deleted schema should not exist");
+            let name_key = SchemaNameKey::from(&name);
+            let indexed = db
+                .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name_key.as_str())
+                .expect("Index lookup should succeed");
+            assert!(indexed.is_none(), "Deleted schema should be unindexed");
         }
     }
 }

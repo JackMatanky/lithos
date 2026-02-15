@@ -1,48 +1,49 @@
 //! Schema query implementations (CQRS read operations).
 //!
-//! This module implements the Query port trait for Schema read operations,
-//! using the Database layer for zero-copy reads.
+//! This module provides the [`Query`] type, which handles read operations
+//! through the schema query port.
 
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
-    db_table::SCHEMAS,
     error::SchemaError,
+    ports as schema_ports,
 };
-use crate::db::Database;
 
-/// Query implementation for Schema read operations.
+/// Query implementation for schema read operations.
 ///
-/// Implements the Query port trait using the Database layer.
-pub struct Query<'db> {
-    db: &'db Database,
+/// This struct is generic over a storage port to support multiple backends.
+pub struct Query<Q> {
+    query_port: Q,
 }
 
-impl<'db> Query<'db> {
-    /// Create a new `Query` with a database reference.
+impl<Q> Query<Q> {
+    /// Create a new `Query` with a storage port.
     #[inline]
     #[must_use]
-    pub const fn new(db: &'db Database) -> Self {
+    pub const fn new(query_port: Q) -> Self {
         Self {
-            db,
+            query_port,
         }
     }
 }
 
-impl super::ports::Query for Query<'_> {
+impl<Q> Query<Q>
+where
+    Q: schema_ports::Query,
+    Q::Error: std::error::Error,
+{
     /// Find a schema by its ID.
     ///
     /// # Errors
     /// Returns `SchemaError` if query fails.
-    ///
-    /// # Note
-    /// Schema is stored by name, not ID. For now, returns `None`.
-    /// A name→ID index would be needed for full implementation.
     #[inline]
-    fn find_by_id(&self, _id: SchemaId) -> Result<Option<Schema>, SchemaError> {
-        // Schema is stored by name, not ID
-        // For now, return None - would need name→id index for full
-        // implementation
-        Ok(None)
+    pub fn find_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<Schema>, SchemaError> {
+        self.query_port
+            .find_by_id(id)
+            .map_err(|error| SchemaError::Storage(error.to_string()))
     }
 
     /// Find a schema by its unique name.
@@ -50,13 +51,18 @@ impl super::ports::Query for Query<'_> {
     /// # Errors
     /// Returns `SchemaError` if query fails.
     #[inline]
-    fn find_by_name(
+    pub fn find_by_name(
         &self,
         name: &SchemaName,
     ) -> Result<Option<Schema>, SchemaError> {
-        self.db.get_owned(SCHEMAS, name.as_ref()).map_err(
-            |e: crate::db::DbError| SchemaError::Storage(e.to_string()),
-        )
+        let id = self
+            .query_port
+            .lookup_id_by_name(name)
+            .map_err(|error| SchemaError::Storage(error.to_string()))?;
+        let Some(id) = id else {
+            return Ok(None);
+        };
+        self.find_by_id(id)
     }
 
     /// List all available schemas.
@@ -64,10 +70,51 @@ impl super::ports::Query for Query<'_> {
     /// # Errors
     /// Returns `SchemaError` if query fails.
     #[inline]
-    fn list(&self) -> Result<Vec<Schema>, SchemaError> {
-        self.db
-            .list_owned::<Schema>(SCHEMAS)
-            .map_err(|e| SchemaError::Storage(e.to_string()))
+    pub fn list(&self) -> Result<Vec<Schema>, SchemaError> {
+        self.query_port
+            .list()
+            .map_err(|error| SchemaError::Storage(error.to_string()))
+    }
+
+    /// Access a schema by ID as archived data.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if query fails.
+    #[inline]
+    pub fn with_archived_by_id<F, R>(
+        &self,
+        id: SchemaId,
+        f: F,
+    ) -> Result<Option<R>, SchemaError>
+    where
+        F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
+    {
+        self.query_port
+            .with_archived_by_id(id, f)
+            .map_err(|error| SchemaError::Storage(error.to_string()))
+    }
+
+    /// Access a schema by name as archived data.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if query fails.
+    #[inline]
+    pub fn with_archived_by_name<F, R>(
+        &self,
+        name: &SchemaName,
+        f: F,
+    ) -> Result<Option<R>, SchemaError>
+    where
+        F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
+    {
+        let id = self
+            .query_port
+            .lookup_id_by_name(name)
+            .map_err(|error| SchemaError::Storage(error.to_string()))?;
+        let Some(id) = id else {
+            return Ok(None);
+        };
+        self.with_archived_by_id(id, f)
     }
 }
 
@@ -81,6 +128,7 @@ mod tests {
         use uuid::Uuid;
 
         use super::*;
+        use crate::db::Database;
 
         pub const TEST_SCHEMA_ID_A: SchemaId = SchemaId::from_uuid(
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0201),
@@ -110,7 +158,9 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use super::*;
-    use crate::schema::{aggregate::SchemaName, command, ports::Query as _};
+    use crate::schema::{
+        RedbSchemaCommand, RedbSchemaQuery, aggregate::SchemaName,
+    };
 
     mod queries {
         use super::*;
@@ -121,15 +171,21 @@ mod tests {
             reason = "Test uses expect for deterministic fixture setup and \
                       value extraction."
         )]
-        fn find_by_id_returns_none_for_unindexed_schema() {
+        fn find_by_id_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let qry = Query::new(&db);
+            let cmd = RedbSchemaCommand::new_redb(&db);
+            let qry = RedbSchemaQuery::new_redb(&db);
+
+            let schema =
+                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
+                    .expect("Failed to create schema fixture");
+            cmd.save(&schema).expect("Save should succeed");
 
             let result = qry
                 .find_by_id(fixtures::TEST_SCHEMA_ID_A)
                 .expect("Query should succeed");
-            assert!(result.is_none(), "find_by_id should return None");
+            assert!(result.is_some(), "find_by_id should return schema");
         }
 
         #[test]
@@ -141,8 +197,8 @@ mod tests {
         fn find_by_name_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = command::Command::new(&db);
-            let qry = Query::new(&db);
+            let cmd = RedbSchemaCommand::new_redb(&db);
+            let qry = RedbSchemaQuery::new_redb(&db);
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -169,8 +225,8 @@ mod tests {
         fn list_returns_all_saved_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = command::Command::new(&db);
-            let qry = Query::new(&db);
+            let cmd = RedbSchemaCommand::new_redb(&db);
+            let qry = RedbSchemaQuery::new_redb(&db);
 
             let schema_a =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
