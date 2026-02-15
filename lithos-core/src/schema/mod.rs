@@ -31,8 +31,39 @@ pub mod resolver;
 pub(crate) mod db_table {
     use redb::TableDefinition;
 
-    pub(crate) const SCHEMAS: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("schemas");
+    pub(crate) const SCHEMA_BY_ID: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_by_id");
+    pub(crate) const SCHEMA_ID_BY_NAME: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_id_by_name");
 }
 
 // --- Public API ---
+
+use crate::db::{
+    Database,
+    schema_adapter::{CommandAdapter, QueryAdapter},
+};
+
+/// Redb-backed schema command alias.
+pub type RedbSchemaCommand<'db> = command::Command<CommandAdapter<'db>>;
+
+/// Redb-backed schema query alias.
+pub type RedbSchemaQuery<'db> = query::Query<QueryAdapter<'db>>;
+
+impl<'db> RedbSchemaCommand<'db> {
+    #[inline]
+    #[must_use]
+    /// Create a redb-backed schema command.
+    pub fn new_redb(db: &'db Database) -> Self {
+        Self::new(CommandAdapter::new(db))
+    }
+}
+
+impl<'db> RedbSchemaQuery<'db> {
+    #[inline]
+    #[must_use]
+    /// Create a redb-backed schema query.
+    pub fn new_redb(db: &'db Database) -> Self {
+        Self::new(QueryAdapter::new(db))
+    }
+}
