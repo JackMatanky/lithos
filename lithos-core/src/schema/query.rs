@@ -4,7 +4,9 @@
 //! through the schema query port.
 
 use super::{
-    aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName},
+    aggregate::{
+        PropertyBank, ResolutionMetadata, Schema, SchemaId, SchemaName,
+    },
     error::SchemaQueryError,
     ports as schema_ports,
 };
@@ -136,6 +138,19 @@ where
     ) -> Result<Option<ResolutionMetadata>, SchemaQueryError> {
         self.query_port
             .find_metadata_by_id(id)
+            .map_err(|error| SchemaQueryError::Storage(error.into()))
+    }
+
+    /// Find the `PropertyBank` registry.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if query fails.
+    #[inline]
+    pub fn find_property_bank(
+        &self,
+    ) -> Result<Option<PropertyBank>, SchemaQueryError> {
+        self.query_port
+            .find_property_bank()
             .map_err(|error| SchemaQueryError::Storage(error.into()))
     }
 }

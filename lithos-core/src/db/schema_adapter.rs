@@ -6,9 +6,12 @@ use crate::{
     db::{Database, DbError},
     schema::{
         aggregate::{
-            ResolutionMetadata, Schema, SchemaId, SchemaName, SchemaNameKey,
+            PropertyBank, PropertyBankId, ResolutionMetadata, Schema, SchemaId,
+            SchemaName, SchemaNameKey,
         },
-        db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA},
+        db_table::{
+            PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
+        },
         ports::{Command, Query},
     },
 };
@@ -136,6 +139,20 @@ impl Command for CommandAdapter<'_> {
         self.db.delete_by_uuid(SCHEMA_METADATA, id_uuid)?;
         Ok(())
     }
+
+    #[inline]
+    #[instrument(
+        skip(self, bank),
+        fields(operation = "save_property_bank", bank_id = %bank.id().as_uuid())
+    )]
+    fn save_property_bank(
+        &self,
+        bank: &PropertyBank,
+    ) -> Result<(), Self::Error> {
+        let id_uuid = bank.id().into_uuid();
+        self.db.put_by_uuid(PROPERTY_BANK, id_uuid, bank)?;
+        Ok(())
+    }
 }
 
 /// Redb-backed schema query adapter.
@@ -258,5 +275,17 @@ impl Query for QueryAdapter<'_> {
     ) -> Result<Option<ResolutionMetadata>, Self::Error> {
         let key = id.as_uuid().to_string();
         self.db.get_owned(SCHEMA_METADATA, &key)
+    }
+
+    #[inline]
+    #[instrument(
+        skip(self),
+        level = "debug",
+        fields(operation = "find_property_bank")
+    )]
+    fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
+        let id = PropertyBankId::singleton();
+        let key = id.as_uuid().to_string();
+        self.db.get_owned(PROPERTY_BANK, &key)
     }
 }
