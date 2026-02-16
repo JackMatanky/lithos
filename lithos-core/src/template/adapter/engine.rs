@@ -8,7 +8,7 @@ use crate::template::error::TemplateError;
 ///
 /// # Architecture
 /// - Owns Arc<Environment> for shared compiled templates
-/// - Configures strict undefined behavior (fail on missing variables)
+/// - Configures strict undefined behavior (fail on missing inputs)
 /// - Registers custom filters via `FilterRegistry`
 /// - Caches compiled templates (compile once, render many)
 pub struct TemplateEngine {
@@ -19,11 +19,11 @@ impl TemplateEngine {
     /// Constructs engine with default configuration.
     ///
     /// Configuration:
-    /// - Strict undefined behavior (fail on {{ `undefined_var` }})
+    /// - Strict undefined behavior (fail on {{ `undefined_input` }})
     /// - Max template depth: 10 (prevent infinite recursion)
     /// - Auto-escape: None (we render Markdown, not HTML)
-    /// - Custom filters registered (`validate_length`, `validate_pattern`,
-    ///   etc.)
+    /// - Registers custom filters registered (`validate_length`,
+    ///   `validate_pattern`, etc.)
     #[must_use]
     #[inline]
     pub fn new() -> Self {
@@ -114,7 +114,7 @@ impl TemplateEngine {
     ///
     /// # Errors
     /// - `TemplateError::NotFound`: Template not compiled
-    /// - `TemplateError::Render`: Rendering failed (undefined var, filter
+    /// - `TemplateError::Render`: Rendering failed (undefined input, filter
     ///   error, etc.)
     #[inline]
     pub fn render<S: serde::Serialize>(
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn fails_on_undefined_variable_strict_mode() {
+    fn fails_on_undefined_input_strict_mode() {
         let mut engine = TemplateEngine::new();
 
         engine.compile("test", "Hello {{ undefined }}!").unwrap();

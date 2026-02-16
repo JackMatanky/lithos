@@ -34,7 +34,7 @@ impl<Q: Query> TemplateCatalog<Q> {
     /// Constructs catalog with storage backend.
     ///
     /// Configures `MiniJinja` Environment:
-    /// - Strict undefined behavior (fail on {{ undefined }})
+    /// - Strict undefined behavior (fail on missing inputs)
     /// - Max template depth: 10 (prevent infinite recursion)
     /// - Auto-escape: None (we render Markdown, not HTML)
     /// - Registers custom filters (`validate_length`, etc.)
@@ -123,7 +123,7 @@ impl<Q: Query> TemplateCatalog<Q> {
     ///
     /// # Errors
     /// - `NotFound`: Template not compiled (did you call `load_all()`?)
-    /// - Render: Undefined variable, filter validation failed, or other render
+    /// - Render: Undefined input, filter validation failed, or other render
     ///   error
     #[inline]
     pub fn render<S: serde::Serialize>(
