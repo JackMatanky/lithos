@@ -21,6 +21,8 @@ pub mod events;
 pub mod ports;
 /// Template query implementations (Generic CQRS wrapper).
 pub mod query;
+/// Raw template input definitions.
+pub mod raw;
 /// Template input specifications.
 pub mod value;
 
