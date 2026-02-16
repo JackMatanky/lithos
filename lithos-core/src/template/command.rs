@@ -30,7 +30,7 @@ impl<'db> Command<'db> {
     }
 }
 
-impl super::ports::Command for Command<'_> {
+impl super::ports::TemplateCommandPort for Command<'_> {
     /// Creates a new template.
     ///
     /// # Errors
@@ -144,7 +144,7 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use super::*;
-    use crate::template::ports::Command as _;
+    use crate::template::ports::TemplateCommandPort as _;
 
     mod persistence {
         use super::*;

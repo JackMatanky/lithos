@@ -9,6 +9,8 @@ pub mod adapter;
 pub mod aggregate;
 /// Template composition strategies.
 pub mod block;
+/// Template catalog for lifecycle orchestration.
+pub mod catalog;
 /// Template command implementations (CQRS write operations).
 pub mod command;
 /// Template composition logic.
@@ -39,4 +41,5 @@ pub(crate) mod db_table {
 
 pub use aggregate::{Metadata, Template};
 pub use block::{BlockStrategy, TemplateBlock};
+pub use catalog::TemplateCatalog;
 pub use variable::VariableDefinition;
