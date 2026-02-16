@@ -16,6 +16,16 @@ too-many-arguments-threshold = 5
 type-complexity-threshold = 160
 excessive-nesting-threshold = 5
 
+# Memory & Performance Thresholds
+# Limit large types on stack to encourage boxing or reference passing.
+too-large-for-stack = 128
+# Flags large arrays on stack (>= 1KB).
+array-size-threshold = 1024
+# Limits stack frame size to prevent overflows.
+stack-size-threshold = 4096
+# Prevents boxing large vectors unless capacity planning is deliberate.
+vec-box-size-threshold = 4096
+
 # Structural Restrictions
 max-fn-params-bools = 2
 max-struct-bools = 2
@@ -77,13 +87,13 @@ allow-expect-in-tests = true
 
 # Disallowed Methods (Prevent common anti-patterns and unsafe shortcuts)
 disallowed-methods = [
-    "std::option::Option::unwrap",
-    "std::result::Result::unwrap",
-    "std::result::Result::expect",
-    "std::process::exit",
-    "std::mem::forget",
-    "std::env::current_dir",
-    "std::fs::canonicalize",
-    "std::thread::sleep",
-    "std::panic::catch_unwind"
+    { path = "std::option::Option::unwrap", reason = "Use proper error handling (match/if let) or .ok_or(). Avoid panics in production." },
+    { path = "std::result::Result::unwrap", reason = "Use the ? operator or handle the error explicitly. Avoid panics in production." },
+    { path = "std::result::Result::expect", reason = "Use the ? operator. Only use expect if the panic is truly impossible and documented." },
+    { path = "std::process::exit", reason = "Use miette and return Result from main. Abrupt exit skips cleanup/Drop." },
+    { path = "std::mem::forget", reason = "Potential memory leak. Use ManuallyDrop or ensure correct RAII management." },
+    { path = "std::env::current_dir", reason = "Global state and potential for race conditions. Prefer explicit path management." },
+    { path = "std::fs::canonicalize", reason = "Expensive I/O operation. Use only when strictly necessary for path resolution." },
+    { path = "std::thread::sleep", reason = "Blocks the current thread. In async code, use tokio::time::sleep." },
+    { path = "std::panic::catch_unwind", reason = "Prefer Result-based error handling. Catching panics is non-idiomatic for control flow." }
 ]

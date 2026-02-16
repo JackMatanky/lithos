@@ -130,22 +130,22 @@ impl Query for FakeTemplateStorage {
         &self,
         name: &str,
     ) -> Result<Option<Template>, TemplateError> {
-        let name_index = self
-            .name_index
-            .lock()
-            .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
-        let templates = self
-            .templates
-            .lock()
-            .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
+        let Ok(tn) = TemplateName::try_from(name) else {
+            return Ok(None);
+        };
 
-        // We can create a TemplateName from &str for lookup if it's valid
-        if let Ok(tn) = TemplateName::try_from(name)
-            && let Some(&id) = name_index.get(&tn)
-        {
-            return Ok(templates.get(&id).cloned());
+        let id = {
+            let name_index = self
+                .name_index
+                .lock()
+                .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
+            name_index.get(&tn).copied()
+        };
+
+        match id {
+            Some(id) => self.find_by_id(id),
+            None => Ok(None),
         }
-        Ok(None)
     }
 
     #[inline]
@@ -177,10 +177,6 @@ impl Query for FakeTemplateStorage {
 impl Command for FakeTemplateStorage {
     #[inline]
     fn create(&self, template: &Template) -> Result<(), TemplateError> {
-        let mut templates = self
-            .templates
-            .lock()
-            .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
         let mut name_index = self
             .name_index
             .lock()
@@ -192,8 +188,16 @@ impl Command for FakeTemplateStorage {
             ));
         }
 
+        let mut templates = self
+            .templates
+            .lock()
+            .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
+
         templates.insert(template.id(), template.clone());
         name_index.insert(template.name().clone(), template.id());
+
+        drop(name_index);
+        drop(templates);
 
         Ok(())
     }
@@ -220,11 +224,15 @@ impl Command for FakeTemplateStorage {
                 ));
             }
 
-            name_index.remove(old.name());
+            let old_name = old.name().clone();
+            name_index.remove(&old_name);
             name_index.insert(template.name().clone(), template.id());
         }
 
         templates.insert(template.id(), template.clone());
+
+        drop(name_index);
+        drop(templates);
 
         Ok(())
     }
@@ -243,6 +251,9 @@ impl Command for FakeTemplateStorage {
         if let Some(template) = templates.remove(&id) {
             name_index.remove(template.name());
         }
+
+        drop(name_index);
+        drop(templates);
 
         Ok(())
     }
