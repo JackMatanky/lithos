@@ -101,11 +101,6 @@ impl Task {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::unwrap() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use super::*;
 
@@ -132,10 +127,6 @@ mod tests {
             let position = 50;
 
             // WHEN: creating a new task
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup phase - test fixture creation"
-            )]
             let result = Task::new(text, status, position).unwrap();
 
             // THEN: it has the correct values

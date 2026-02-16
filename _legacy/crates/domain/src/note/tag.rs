@@ -154,11 +154,6 @@ fn is_valid_tag_segment(segment: &str) -> bool {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::unwrap() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     // # LINT_DISABLE_REASON: Standard test utilities and behavioral
     // verification patterns.

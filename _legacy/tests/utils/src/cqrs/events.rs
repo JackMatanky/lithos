@@ -243,10 +243,6 @@ impl<E> EventTestResult<E> {
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method
-// linting. # LINT_DISABLE_REASON: Options tried: manual Result propagation.
-// # LINT_DISABLE_REASON: Justification: maintain clear test intent.
-#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

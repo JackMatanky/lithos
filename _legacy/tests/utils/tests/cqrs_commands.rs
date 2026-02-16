@@ -4,8 +4,6 @@
 //! repositories, event verification, validation logic, and error scenario
 //! testing.
 
-#![allow(clippy::disallowed_methods)]
-
 use std::sync::Arc;
 
 use lithos_test_utils::cqrs::{

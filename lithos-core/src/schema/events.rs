@@ -139,10 +139,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test uses expect for deterministic event setup."
-    )]
+
     fn schema_created_captures_payload() {
         let id = SchemaId::new();
         let name = SchemaName::new("schema").expect("Valid schema name");

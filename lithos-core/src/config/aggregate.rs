@@ -243,11 +243,8 @@ impl TryFrom<u64> for Version {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Test modules group fixtures and tests for readability"
-)]
 mod tests {
+
     mod fixtures {
         use std::path::PathBuf;
 
@@ -339,12 +336,10 @@ mod tests {
         }
 
         #[test]
-        fn version_next_increments_value()
-        -> Result<(), Box<dyn std::error::Error>> {
+        fn version_next_increments_value() {
             let v1 = Version::initial();
-            let v2 = v1.next()?;
+            let v2 = v1.next().unwrap();
             assert_eq!(v2.value(), 2);
-            Ok(())
         }
 
         #[test]
@@ -354,11 +349,9 @@ mod tests {
         }
 
         #[test]
-        fn version_try_from_accepts_positive()
-        -> Result<(), Box<dyn std::error::Error>> {
-            let v = Version::try_from(42)?;
+        fn version_try_from_accepts_positive() {
+            let v = Version::try_from(42).unwrap();
             assert_eq!(v.value(), 42);
-            Ok(())
         }
 
         #[test]

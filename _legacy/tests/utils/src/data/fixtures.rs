@@ -301,7 +301,6 @@ pub fn test_config() -> HashMap<String, String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

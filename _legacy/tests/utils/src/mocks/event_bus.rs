@@ -274,10 +274,6 @@ where
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method
-// linting. # LINT_DISABLE_REASON: Options tried: manual Result propagation.
-// # LINT_DISABLE_REASON: Justification: keep tests concise.
-#[allow(clippy::disallowed_methods)]
 mod tests {
     use serde::Serialize;
     use tokio::sync::mpsc::Receiver;

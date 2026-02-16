@@ -282,12 +282,6 @@ pub mod fixtures {
         /// Panics if the property configuration is invalid.
         #[inline]
         #[must_use]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test builder uses Result::expect() for creating \
-                      properties from hardcoded test data. Failures here \
-                      indicate logic errors in test setup."
-        )]
         pub fn build(self) -> Property {
             let name = PropertyName::new(self.name).expect("Valid name");
             Property::new(
@@ -360,11 +354,6 @@ pub mod fixtures {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     mod property {
         use super::super::{super::property_spec::StringSpec, *};

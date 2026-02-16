@@ -618,11 +618,6 @@ mod tests {
 
         // [4.1-U-04] Dispatcher JSON
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test assertions intentionally use unwrap() for clear \
-                      failure messages. See clippy.toml allow-unwrap-in-tests."
-        )]
         fn should_dispatch_json_correctly() {
             // GIVEN a dispatcher, valid JSON content, and a .json path
             let dispatcher = Dispatcher::new();
@@ -644,11 +639,6 @@ mod tests {
 
         // [4.1-U-05] Dispatcher TOML
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test assertions intentionally use unwrap() for clear \
-                      failure messages. See clippy.toml allow-unwrap-in-tests."
-        )]
         fn should_dispatch_toml_correctly() {
             // GIVEN a dispatcher, valid TOML content, and a .toml path
             let dispatcher = Dispatcher::new();
@@ -670,11 +660,6 @@ mod tests {
 
         // [4.1-U-06] Dispatcher YAML
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test assertions intentionally use unwrap() for clear \
-                      failure messages. See clippy.toml allow-unwrap-in-tests."
-        )]
         fn should_dispatch_yaml_correctly() {
             // GIVEN a dispatcher, valid YAML content, and a .yaml path
             let dispatcher = Dispatcher::new();
@@ -714,11 +699,6 @@ mod tests {
 
         // [4.1-U-08] Dispatcher Content Analysis JSON
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test assertions intentionally use unwrap() for clear \
-                      failure messages. See clippy.toml allow-unwrap-in-tests."
-        )]
         fn should_dispatch_json_by_content() {
             // GIVEN a dispatcher, valid JSON content, and a path without
             // extension
@@ -741,11 +721,6 @@ mod tests {
 
         // [4.1-U-09] Dispatcher Content Analysis YAML
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test assertions intentionally use unwrap() for clear \
-                      failure messages. See clippy.toml allow-unwrap-in-tests."
-        )]
         fn should_dispatch_yaml_by_content() {
             // GIVEN a dispatcher, valid YAML content, and a path without
             // extension
@@ -768,11 +743,6 @@ mod tests {
 
         // [4.1-U-10] Dispatcher Content Analysis TOML
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test assertions intentionally use unwrap() for clear \
-                      failure messages. See clippy.toml allow-unwrap-in-tests."
-        )]
         fn should_dispatch_toml_by_content() {
             // GIVEN a dispatcher, valid TOML content, and a path without
             // extension
@@ -795,11 +765,6 @@ mod tests {
 
         // [4.1-U-11] Dispatcher Extension Takes Priority
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test assertions intentionally use unwrap() for clear \
-                      failure messages. See clippy.toml allow-unwrap-in-tests."
-        )]
         fn should_prioritize_extension_over_content() {
             // GIVEN a dispatcher, JSON content but TOML extension
             let dispatcher = Dispatcher::new();
@@ -1088,11 +1053,6 @@ mod tests {
 
         // [4.1-U-17] Mixed Line Endings
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test unwrap for assertion. See clippy.toml \
-                      allow-unwrap-in-tests."
-        )]
         fn should_handle_mixed_line_endings() {
             // GIVEN TOML content with mixed line endings (\r\n and \n)
             let mixed_endings =

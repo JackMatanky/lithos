@@ -21,7 +21,6 @@ pub fn create_benchmark_runtime() -> tokio::runtime::Runtime {
     // benchmark cannot proceed; panic is acceptable here.
     #[expect(
         clippy::expect_used,
-        clippy::disallowed_methods,
         reason = "Benchmark runtime initialization requires expect()"
     )]
     tokio::runtime::Builder::new_multi_thread()

@@ -21,7 +21,7 @@ use serde_json::Value;
 // expect() for parsing. # LINT_DISABLE_REASON: Options tried: manual Result
 // propagation. # LINT_DISABLE_REASON: Justification: this is test-only code
 // where panics are preferred over silent failures.
-#[allow(clippy::expect_used, clippy::disallowed_methods)]
+#[allow(clippy::expect_used)]
 pub fn assert_no_prohibited_dependencies(
     crate_name: &str,
     prohibited: &[&str],

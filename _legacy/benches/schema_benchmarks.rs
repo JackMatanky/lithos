@@ -25,13 +25,6 @@
 //! - >5% degradation triggers warning
 //! - >10% degradation blocks release
 
-#![expect(
-    clippy::disallowed_methods,
-    reason = "Benchmarks use Result::unwrap() during setup and measurement \
-              loops for uninterrupted iteration. Failures represent invalid \
-              state, not logic under test."
-)]
-
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use lithos_domain::{
     Property, PropertyName, PropertySpec, Schema, SchemaGraph, SchemaName,

@@ -538,12 +538,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup. \
-                      Failure indicates invalid test data. Expect is \
-                      idiomatic in setup."
-        )]
+
         fn creates_strict_validator_with_root() {
             // GIVEN an absolute root path
             let temp_dir = TempDir::new().expect("TempDir should be created");
@@ -682,11 +677,7 @@ mod tests {
             };
 
             #[test]
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test uses expect for deterministic fixture setup \
-                          and value extraction."
-            )]
+
             fn rejects_escaped_symlinks() {
                 let ws = Workspace::new().expect("Workspace should be created");
                 let mut outside_file = NamedTempFile::new()
@@ -713,11 +704,7 @@ mod tests {
             }
 
             #[test]
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test uses expect for deterministic fixture setup \
-                          and value extraction."
-            )]
+
             fn detects_symlink_loops() {
                 let ws = Workspace::new().expect("Workspace should be created");
                 let link_a = ws.root.join("link_a");
@@ -735,11 +722,7 @@ mod tests {
             }
 
             #[test]
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test uses expect for deterministic fixture setup \
-                          and value extraction."
-            )]
+
             fn rejects_internal_hidden_targets() {
                 let ws = Workspace::new().expect("Workspace should be created");
                 let hidden_file = ws.create_file(".secret.txt", None);
@@ -768,11 +751,7 @@ mod tests {
             };
 
             #[test]
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test uses expect for deterministic fixture setup \
-                          and value extraction."
-            )]
+
             fn allows_external_symlinks() {
                 let ws = Workspace::new().expect("Workspace should be created");
                 let mut outside_file = NamedTempFile::new()
@@ -840,6 +819,7 @@ mod tests {
                               directory to restore state after test."
                 )]
                 let previous = std::env::current_dir()?;
+
                 std::env::set_current_dir(path)?;
                 Ok(Self {
                     _guard: guard,

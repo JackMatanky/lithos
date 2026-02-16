@@ -284,10 +284,6 @@ pub enum ListType {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Tests use expect for deterministic fixtures."
-)]
 mod tests {
     use super::*;
 

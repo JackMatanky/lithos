@@ -225,7 +225,6 @@ impl FilterRegistry {
 }
 
 #[cfg(test)]
-#[expect(clippy::disallowed_methods, reason = "Tests use unwrap")]
 mod tests {
     use minijinja::Environment;
 

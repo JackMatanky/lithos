@@ -460,7 +460,6 @@ mod tests {
         /// 3.1-UNIT-005: `generates_sequential_uuids`.
         /// Priority: P1.
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test fixture creation")]
         fn generates_sequential_uuids() {
             // GIVEN: a paused tokio runtime for deterministic UUID time
             let rt = tokio::runtime::Builder::new_current_thread()
@@ -487,12 +486,6 @@ mod tests {
         /// 3.1-UNIT-006: `succeeds_when_all_entities_are_valid`.
         /// Priority: P0.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::expect() during arrangement of \
-                      complex Note aggregate. Failures here indicate logic \
-                      errors in test data rather than code under test."
-        )]
         fn succeeds_when_all_entities_are_valid() {
             // GIVEN: a note aggregate with consistent sub-entities
             let note_id = Uuid::now_v7();
@@ -534,12 +527,6 @@ mod tests {
         /// 3.1-UNIT-009: `mutators_update_aggregate_state`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap() for ergonomic addition of \
-                      sub-entities during state transition testing. \
-                      Acceptable in test-only code paths."
-        )]
         fn mutators_update_aggregate_state() {
             // GIVEN: a basic note
             let note_id = Uuid::now_v7();
@@ -599,12 +586,6 @@ mod tests {
         /// 3.1-UNIT-010: `filtered_link_iterators_work`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap() for populating Note with \
-                      diverse link variants for iterator testing. Failures \
-                      represent environment or test data issues."
-        )]
         fn filtered_link_iterators_work() {
             // GIVEN: a note with various link types (2 wikilinks, 1 markdown, 1
             // embed)
@@ -703,10 +684,6 @@ pub mod fixtures {
     /// # Panics
     /// Panics if the hardcoded date string is invalid or frontmatter
     /// construction fails.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture - unwrap/expect acceptable in test code"
-    )]
     #[inline]
     #[must_use]
     pub fn example_frontmatter() -> Frontmatter {
@@ -730,10 +707,6 @@ pub mod fixtures {
     ///
     /// # Panics
     /// Panics if the hardcoded tag string is invalid.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture - unwrap/expect acceptable in test code"
-    )]
     #[inline]
     #[must_use]
     pub fn example_tag() -> Tag {

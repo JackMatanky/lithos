@@ -241,10 +241,7 @@ mod tests {
     };
 
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Tests use unwrap for concise setup"
-    )]
+
     fn loads_and_compiles_all_templates() {
         let storage = FakeTemplateStorage::new();
 
@@ -291,10 +288,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Tests use unwrap for concise setup"
-    )]
+
     fn detects_circular_extends() {
         let storage = FakeTemplateStorage::new();
 
@@ -328,10 +322,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Tests use unwrap for concise setup"
-    )]
+
     fn topological_sort_compiles_parents_before_children() {
         let storage = FakeTemplateStorage::new();
 
@@ -391,10 +382,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Tests use unwrap for concise setup"
-    )]
+
     fn list_names_returns_all_templates() {
         let storage = FakeTemplateStorage::new();
 

@@ -120,7 +120,6 @@
 #![allow(
     missing_docs,
     clippy::expect_used,
-    clippy::disallowed_methods,
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects,
     clippy::as_conversions,

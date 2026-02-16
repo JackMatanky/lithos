@@ -4,17 +4,6 @@
 //! associated error types, following hexagonal architecture principles where
 //! the cache serves as a Service Provider Interface (SPI) for other adapters.
 
-#![cfg_attr(
-    test,
-    expect(
-        clippy::disallowed_methods,
-        reason = "Mockall macro expansion and test assertions require \
-                  internal unwrap/expect calls. Unavoidable due to library \
-                  design and test brevity. Inner attribute scoped to test \
-                  ensures expectation is not unfulfilled in standard builds."
-    )
-)]
-
 pub(crate) mod backfiller;
 pub(crate) mod coordinator;
 pub mod encoder;

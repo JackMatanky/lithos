@@ -359,11 +359,6 @@ mod tests {
         /// 3.3-UNIT-020: `build_handles_missing_global`.
         /// Priority: P1.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap() on Config::build() for clear \
-                      failure messages. Acceptable in test-only code paths."
-        )]
         fn build_handles_missing_global() {
             // GIVEN: no global configuration
             let vault = VaultConfig {
@@ -618,13 +613,6 @@ mod tests {
         /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
         /// Priority: P0.
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::expect() during aggregate \
-                      construction for clear failures. Building from \
-                      validated sample data is a safe invariant for this test \
-                      case."
-        )]
         fn vault_values_take_precedence_over_global() {
             // GIVEN: a global config with default settings and a vault config
             // with custom overrides

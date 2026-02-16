@@ -14,9 +14,8 @@
 // Result handling. # LINT_DISABLE_REASON: Justification: keep tests readable
 // without unwrap/expect.
 #[expect(
-    clippy::disallowed_methods,
     clippy::arbitrary_source_item_ordering,
-    reason = "Test assertions use Result helpers without unwrap/expect"
+    reason = "Test module organization"
 )]
 mod tests {
     use std::{

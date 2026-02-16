@@ -118,11 +118,6 @@ version = "0.1.0"
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: TestVault initialization and assertions in tests use
-// unwrap for conciseness. # LINT_DISABLE_REASON: Options tried: manual Result
-// propagation. # LINT_DISABLE_REASON: Justification: standard practice in test
-// code.
-#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

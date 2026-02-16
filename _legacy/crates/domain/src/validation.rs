@@ -32,7 +32,6 @@ pub(crate) fn is_alphanumeric_name(name: &str) -> bool {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         #[expect(
             clippy::expect_used,
-            clippy::disallowed_methods,
             reason = "Static regex literal is safe and efficient"
         )]
         Regex::new(patterns::ALPHANUMERIC_NAME).expect("Static regex literal")
@@ -47,7 +46,6 @@ pub(crate) fn is_identifier_name(name: &str) -> bool {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         #[expect(
             clippy::expect_used,
-            clippy::disallowed_methods,
             reason = "Static regex literal is safe and efficient"
         )]
         Regex::new(patterns::IDENTIFIER_NAME).expect("Static regex literal")
@@ -293,10 +291,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test expectations use unwrap"
-    )]
     fn validate_vault_path_works() {
         // GIVEN: various path strings and requirements
         // WHEN: validating the paths
@@ -326,10 +320,8 @@ mod tests {
 
     #[test]
     #[expect(
-        clippy::disallowed_methods,
         clippy::default_numeric_fallback,
-        reason = "Test fixture uses Result::unwrap() for clear test failures. \
-                  Float literals (5.0, 10.0) default to f64 which is correct \
+        reason = "Float literals (5.0, 10.0) default to f64 which is correct \
                   type for numeric validation."
     )]
     fn validate_numeric_range_works() {
@@ -348,12 +340,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture uses Result::unwrap() on \
-                  validate_numeric_step() for clear failure messages. \
-                  Acceptable in test-only code paths."
-    )]
     fn validate_numeric_step_works() {
         // GIVEN: a value, base, and step increment
         // WHEN: validating the step alignment
@@ -367,12 +353,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture uses Result::unwrap() on \
-                  validate_string_length() for clear failure messages. \
-                  Acceptable in test-only code paths."
-    )]
     fn validate_string_length_works() {
         // GIVEN: a string and length constraints
         // WHEN: validating the length

@@ -140,7 +140,6 @@ impl Default for TemplateEngine {
 }
 
 #[cfg(test)]
-#[expect(clippy::disallowed_methods, reason = "Tests use unwrap")]
 mod tests {
     use super::*;
 

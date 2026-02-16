@@ -4,8 +4,6 @@
 //! stores, result transformation testing, performance validation, and caching
 //! verification.
 
-#![allow(clippy::disallowed_methods)]
-
 use std::sync::Arc;
 
 use lithos_test_utils::cqrs::{
