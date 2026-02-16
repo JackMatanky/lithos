@@ -15,7 +15,6 @@ use crate::{
             TASKS_BY_DUE_DATE, TASKS_BY_PRIORITY, TASKS_BY_PROJECT,
             TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
         },
-        error::NoteQueryError,
         ports::Query,
     },
 };
@@ -40,18 +39,13 @@ impl<'db> QueryAdapter<'db> {
         &self,
         index_table: redb::MultimapTableDefinition<&str, &str>,
         index_key: &str,
-    ) -> Result<Vec<Note>, NoteQueryError> {
-        let note_refs = self
-            .db
-            .multimap_get(index_table, index_key)
-            .map_err(NoteQueryError::Storage)?;
+    ) -> Result<Vec<Note>, crate::db::DbError> {
+        let note_refs = self.db.multimap_get(index_table, index_key)?;
 
         let mut notes = Vec::with_capacity(note_refs.len());
         for note_id_str in note_refs {
-            if let Some(note) = self
-                .db
-                .get_owned::<Note>(NOTES, &note_id_str)
-                .map_err(NoteQueryError::Storage)?
+            if let Some(note) =
+                self.db.get_owned::<Note>(NOTES, &note_id_str)?
             {
                 notes.push(note);
             }
@@ -61,22 +55,15 @@ impl<'db> QueryAdapter<'db> {
 }
 
 impl Query for QueryAdapter<'_> {
+    type Error = crate::db::DbError;
     type NoteArchived<'archived> = &'archived rkyv::Archived<Note>;
 
     #[inline]
-    fn find_by_alias(
-        &self,
-        alias: &str,
-    ) -> Result<Option<Note>, NoteQueryError> {
-        let ids = self
-            .db
-            .multimap_get(ALIAS_TO_ID, alias)
-            .map_err(NoteQueryError::Storage)?;
+    fn find_by_alias(&self, alias: &str) -> Result<Option<Note>, Self::Error> {
+        let ids = self.db.multimap_get(ALIAS_TO_ID, alias)?;
 
         if let Some(id_str) = ids.first() {
-            self.db
-                .get_owned::<Note>(NOTES, id_str)
-                .map_err(NoteQueryError::Storage)
+            self.db.get_owned::<Note>(NOTES, id_str)
         } else {
             Ok(None)
         }
@@ -86,19 +73,12 @@ impl Query for QueryAdapter<'_> {
     fn find_by_file_class(
         &self,
         class: &str,
-    ) -> Result<Vec<Note>, NoteQueryError> {
-        let ids = self
-            .db
-            .multimap_get(FILE_CLASS_TO_ID, class)
-            .map_err(NoteQueryError::Storage)?;
+    ) -> Result<Vec<Note>, Self::Error> {
+        let ids = self.db.multimap_get(FILE_CLASS_TO_ID, class)?;
 
         let mut notes = Vec::with_capacity(ids.len());
         for id_str in ids {
-            if let Some(note) = self
-                .db
-                .get_owned::<Note>(NOTES, &id_str)
-                .map_err(NoteQueryError::Storage)?
-            {
+            if let Some(note) = self.db.get_owned::<Note>(NOTES, &id_str)? {
                 notes.push(note);
             }
         }
@@ -106,22 +86,12 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn find_by_folder(
-        &self,
-        folder: &str,
-    ) -> Result<Vec<Note>, NoteQueryError> {
-        let ids = self
-            .db
-            .multimap_get(FOLDER_TO_ID, folder)
-            .map_err(NoteQueryError::Storage)?;
+    fn find_by_folder(&self, folder: &str) -> Result<Vec<Note>, Self::Error> {
+        let ids = self.db.multimap_get(FOLDER_TO_ID, folder)?;
 
         let mut notes = Vec::with_capacity(ids.len());
         for id_str in ids {
-            if let Some(note) = self
-                .db
-                .get_owned::<Note>(NOTES, &id_str)
-                .map_err(NoteQueryError::Storage)?
-            {
+            if let Some(note) = self.db.get_owned::<Note>(NOTES, &id_str)? {
                 notes.push(note);
             }
         }
@@ -129,23 +99,16 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError> {
-        self.db
-            .get_owned::<Note>(NOTES, &id.to_string())
-            .map_err(NoteQueryError::Storage)
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, Self::Error> {
+        self.db.get_owned::<Note>(NOTES, &id.to_string())
     }
 
     #[inline]
-    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteQueryError> {
-        let ids = self
-            .db
-            .multimap_get(PATH_TO_ID, path)
-            .map_err(NoteQueryError::Storage)?;
+    fn find_by_path(&self, path: &str) -> Result<Option<Note>, Self::Error> {
+        let ids = self.db.multimap_get(PATH_TO_ID, path)?;
 
         if let Some(id_str) = ids.first() {
-            self.db
-                .get_owned::<Note>(NOTES, id_str)
-                .map_err(NoteQueryError::Storage)
+            self.db.get_owned::<Note>(NOTES, id_str)
         } else {
             Ok(None)
         }
@@ -155,7 +118,7 @@ impl Query for QueryAdapter<'_> {
     fn find_by_task_completed_date(
         &self,
         completed_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<Note>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(completed_date);
         self.find_notes_by_task_index(TASKS_BY_COMPLETED_DATE, date_str)
@@ -165,7 +128,7 @@ impl Query for QueryAdapter<'_> {
     fn find_by_task_created_date(
         &self,
         created_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<Note>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(created_date);
         self.find_notes_by_task_index(TASKS_BY_CREATED_DATE, date_str)
@@ -175,7 +138,7 @@ impl Query for QueryAdapter<'_> {
     fn find_by_task_due_date(
         &self,
         due_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<Note>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(due_date);
         self.find_notes_by_task_index(TASKS_BY_DUE_DATE, date_str)
@@ -185,7 +148,7 @@ impl Query for QueryAdapter<'_> {
     fn find_by_task_priority(
         &self,
         priority: f64,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<Note>, Self::Error> {
         let mut buffer = ryu::Buffer::new();
         let priority_str = buffer.format(priority);
         self.find_notes_by_task_index(TASKS_BY_PRIORITY, priority_str)
@@ -195,7 +158,7 @@ impl Query for QueryAdapter<'_> {
     fn find_by_task_project(
         &self,
         project: &str,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<Note>, Self::Error> {
         self.find_notes_by_task_index(TASKS_BY_PROJECT, project)
     }
 
@@ -203,7 +166,7 @@ impl Query for QueryAdapter<'_> {
     fn find_by_task_reminder_date(
         &self,
         reminder_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<Note>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(reminder_date);
         self.find_notes_by_task_index(TASKS_BY_REMINDER_DATE, date_str)
@@ -213,13 +176,13 @@ impl Query for QueryAdapter<'_> {
     fn find_by_task_status(
         &self,
         status: &str,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<Note>, Self::Error> {
         self.find_notes_by_task_index(TASKS_BY_STATUS, status)
     }
 
     #[inline]
-    fn list(&self) -> Result<Vec<Note>, NoteQueryError> {
-        self.db.list_owned::<Note>(NOTES).map_err(NoteQueryError::Storage)
+    fn list(&self) -> Result<Vec<Note>, Self::Error> {
+        self.db.list_owned::<Note>(NOTES)
     }
 
     #[inline]
@@ -231,7 +194,7 @@ impl Query for QueryAdapter<'_> {
         &self,
         key: &str,
         value: &str,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<Note>, Self::Error> {
         use std::fmt::Write as _;
         let mut combined_key =
             String::with_capacity(key.len() + value.len() + 1);
@@ -248,13 +211,11 @@ impl Query for QueryAdapter<'_> {
         &self,
         id: Uuid,
         f: F,
-    ) -> Result<Option<R>, NoteQueryError>
+    ) -> Result<Option<R>, Self::Error>
     where
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
     {
-        self.db
-            .get::<Note, _, R>(NOTES, &id.to_string(), f)
-            .map_err(NoteQueryError::Storage)
+        self.db.get::<Note, _, R>(NOTES, &id.to_string(), f)
     }
 }
 
@@ -268,7 +229,7 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use super::*;
-    use crate::note::error::NoteError;
+    use crate::note::error::{NoteError, NoteQueryError};
 
     mod fixtures {
         use std::collections::HashMap;
