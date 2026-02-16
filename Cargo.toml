@@ -7,7 +7,6 @@
 
 [workspace]
 members = ["lithos-core", "lithos-cli"]
-exclude = ["_legacy/*"]
 resolver = "2"
 
 [workspace.package]
@@ -66,7 +65,6 @@ rstest = "0.23"
 
 # Internal Workspace Crates
 lithos-core = { path = "lithos-core" }
-lithos-test-utils = { path = "tests/utils" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
