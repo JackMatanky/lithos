@@ -45,7 +45,7 @@ impl super::ports::Command for Command<'_> {
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         self.db
-            .multimap_insert(NAME_TO_ID, template.name(), &id_str)
+            .multimap_insert(NAME_TO_ID, template.name().as_str(), &id_str)
             .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
         Ok(())
@@ -69,7 +69,7 @@ impl super::ports::Command for Command<'_> {
         if let Some(t) = template {
             // 2. Remove from name index
             self.db
-                .multimap_remove(NAME_TO_ID, t.name(), &id_str)
+                .multimap_remove(NAME_TO_ID, t.name().as_str(), &id_str)
                 .map_err(|e| TemplateError::Storage(e.to_string()))?;
 
             // 3. Delete template
@@ -100,10 +100,14 @@ impl super::ports::Command for Command<'_> {
             // 2. Update name index if changed
             if old.name() != template.name() {
                 self.db
-                    .multimap_remove(NAME_TO_ID, old.name(), &id_str)
+                    .multimap_remove(NAME_TO_ID, old.name().as_str(), &id_str)
                     .map_err(|e| TemplateError::Storage(e.to_string()))?;
                 self.db
-                    .multimap_insert(NAME_TO_ID, template.name(), &id_str)
+                    .multimap_insert(
+                        NAME_TO_ID,
+                        template.name().as_str(),
+                        &id_str,
+                    )
                     .map_err(|e| TemplateError::Storage(e.to_string()))?;
             }
         }
@@ -125,6 +129,7 @@ impl super::ports::Command for Command<'_> {
 mod tests {
     mod fixtures {
         use super::*;
+        use crate::template::aggregate::TemplateName;
 
         pub fn test_db() -> Result<(TempDir, Database), String> {
             let dir = tempdir().map_err(|e| e.to_string())?;
@@ -134,7 +139,8 @@ mod tests {
         }
 
         pub fn template_fixture(name: &str) -> Result<Template, String> {
-            Template::new(name, None, vec![], HashMap::new())
+            let tn = TemplateName::try_from(name).map_err(|e| e.to_string())?;
+            Template::new(&tn, None, vec![], HashMap::new())
                 .map_err(|e| e.to_string())
         }
     }
@@ -148,6 +154,7 @@ mod tests {
 
     mod persistence {
         use super::*;
+        use crate::template::aggregate::TemplateName;
 
         #[expect(
             clippy::disallowed_methods,
@@ -173,10 +180,14 @@ mod tests {
                       idiomatic in setup."
         )]
         fn updated_template_name() -> (TempDir, Database, String) {
-            let (dir, db, mut template, id_str) = created_template();
+            let (dir, db, template, id_str) = created_template();
             let cmd = Command::new(&db);
-            template.name = "weekly".into();
-            cmd.update(&template).expect("Update should succeed");
+            let new_name = TemplateName::try_from("weekly").unwrap();
+            let updated = Template {
+                name: new_name,
+                ..template
+            };
+            cmd.update(&updated).expect("Update should succeed");
             (dir, db, id_str)
         }
 
@@ -193,7 +204,7 @@ mod tests {
                 .expect("Read after create should succeed");
             let stored_template = stored.expect("Stored template should exist");
             assert_eq!(
-                stored_template.name(),
+                stored_template.name().as_str(),
                 "daily",
                 "Stored template name should match"
             );

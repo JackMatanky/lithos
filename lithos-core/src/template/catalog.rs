@@ -8,8 +8,8 @@ use std::{
 use minijinja::{AutoEscape, Environment, UndefinedBehavior};
 
 use crate::template::{
-    Template,
     adapter::{FilterRegistry, SourceGenerator},
+    aggregate::{Template, TemplateName},
     error::TemplateError,
     ports::Query,
 };
@@ -99,7 +99,7 @@ impl<Q: Query> TemplateCatalog<Q> {
             // Leak strings to meet Environment<'static> requirement.
             // Templates are loaded once at startup and are permanent.
             let name_static: &'static str =
-                Box::leak(template.name().to_owned().into_boxed_str());
+                Box::leak(template.name().as_str().to_owned().into_boxed_str());
             let source_static: &'static str =
                 Box::leak(source.into_boxed_str());
 
@@ -147,7 +147,7 @@ impl<Q: Query> TemplateCatalog<Q> {
     #[inline]
     pub fn list_names(&self) -> Result<Vec<String>, TemplateError> {
         let templates = self.metadata.list()?;
-        Ok(templates.into_iter().map(|t| t.name().into()).collect())
+        Ok(templates.into_iter().map(|t| t.name().to_string()).collect())
     }
 
     /// Topologically sorts templates by extends relationships (Kahn's
@@ -155,16 +155,14 @@ impl<Q: Query> TemplateCatalog<Q> {
     ///
     /// # Errors
     /// Returns `CircularComposition` if a cycle is detected.
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Checked by graph construction"
-    )]
     fn topological_sort(
         templates: &[Template],
     ) -> Result<Vec<&Template>, TemplateError> {
-        let mut graph: HashMap<&str, Vec<&str>> = HashMap::new();
-        let mut in_degree: HashMap<&str, usize> = HashMap::new();
-        let mut template_map: HashMap<&str, &Template> = HashMap::new();
+        let mut graph: HashMap<&TemplateName, Vec<&TemplateName>> =
+            HashMap::new();
+        let mut in_degree: HashMap<&TemplateName, usize> = HashMap::new();
+        let mut template_map: HashMap<&TemplateName, &Template> =
+            HashMap::new();
 
         for template in templates {
             template_map.insert(template.name(), template);
@@ -172,11 +170,17 @@ impl<Q: Query> TemplateCatalog<Q> {
 
             if let Some(parent) = template.extends() {
                 graph.entry(parent).or_default().push(template.name());
-                *in_degree.entry(template.name()).or_insert(0) += 1;
+                #[expect(
+                    clippy::arithmetic_side_effects,
+                    reason = "Template count is finite"
+                )]
+                {
+                    *in_degree.entry(template.name()).or_insert(0) += 1;
+                }
             }
         }
 
-        let mut queue: VecDeque<&str> = in_degree
+        let mut queue: VecDeque<&TemplateName> = in_degree
             .iter()
             .filter(|&(_, &deg)| deg == 0)
             .map(|(&name, _)| name)
@@ -195,14 +199,20 @@ impl<Q: Query> TemplateCatalog<Q> {
                 continue;
             };
 
-            for &child in children {
+            for child in children {
                 let deg = in_degree.get_mut(child).ok_or_else(|| {
                     TemplateError::Storage(format!(
                         "Child {child} not found in degrees"
                     ))
                 })?;
 
-                *deg -= 1;
+                #[expect(
+                    clippy::arithmetic_side_effects,
+                    reason = "In-degree is positive"
+                )]
+                {
+                    *deg -= 1;
+                };
 
                 if *deg == 0 {
                     queue.push_back(child);
@@ -239,8 +249,9 @@ mod tests {
         let storage = FakeTemplateStorage::new();
 
         // Create parent template
+        let parent_name = TemplateName::try_from("parent").unwrap();
         let parent = Template::new(
-            "parent",
+            &parent_name,
             None,
             vec![TemplateBlock::new(
                 "title",
@@ -252,9 +263,11 @@ mod tests {
         .unwrap();
 
         // Create child template
+        let child_name = TemplateName::try_from("child").unwrap();
+        let parent_name_ext = TemplateName::try_from("parent").unwrap();
         let child = Template::new(
-            "child",
-            Some("parent"),
+            &child_name,
+            Some(parent_name_ext),
             vec![TemplateBlock::new(
                 "title",
                 "Custom Title",
@@ -286,9 +299,23 @@ mod tests {
         let storage = FakeTemplateStorage::new();
 
         // Create circular dependency: A extends B, B extends A
-        let a = Template::new("a", Some("b"), vec![], HashMap::new()).unwrap();
+        let a_name = TemplateName::try_from("a").unwrap();
+        let b_name = TemplateName::try_from("b").unwrap();
+        let a = Template::new(
+            &a_name,
+            Some(TemplateName::try_from("b").unwrap()),
+            vec![],
+            HashMap::new(),
+        )
+        .unwrap();
 
-        let b = Template::new("b", Some("a"), vec![], HashMap::new()).unwrap();
+        let b = Template::new(
+            &b_name,
+            Some(TemplateName::try_from("a").unwrap()),
+            vec![],
+            HashMap::new(),
+        )
+        .unwrap();
 
         storage.create(&a).unwrap();
         storage.create(&b).unwrap();
@@ -309,8 +336,9 @@ mod tests {
         let storage = FakeTemplateStorage::new();
 
         // Create 3-level hierarchy: grandparent <- parent <- child
+        let gp_name = TemplateName::try_from("grandparent").unwrap();
         let grandparent = Template::new(
-            "grandparent",
+            &gp_name,
             None,
             vec![TemplateBlock::new(
                 "a",
@@ -321,17 +349,19 @@ mod tests {
         )
         .unwrap();
 
+        let p_name = TemplateName::try_from("parent").unwrap();
         let parent = Template::new(
-            "parent",
-            Some("grandparent"),
+            &p_name,
+            Some(TemplateName::try_from("grandparent").unwrap()),
             vec![TemplateBlock::new("a", "Parent", BlockStrategy::Replace)],
             HashMap::new(),
         )
         .unwrap();
 
+        let c_name = TemplateName::try_from("child").unwrap();
         let child = Template::new(
-            "child",
-            Some("parent"),
+            &c_name,
+            Some(TemplateName::try_from("parent").unwrap()),
             vec![TemplateBlock::new("a", "Child", BlockStrategy::Replace)],
             HashMap::new(),
         )
@@ -368,8 +398,10 @@ mod tests {
     fn list_names_returns_all_templates() {
         let storage = FakeTemplateStorage::new();
 
-        let t1 = Template::new("t1", None, vec![], HashMap::new()).unwrap();
-        let t2 = Template::new("t2", None, vec![], HashMap::new()).unwrap();
+        let t1_name = TemplateName::try_from("t1").unwrap();
+        let t1 = Template::new(&t1_name, None, vec![], HashMap::new()).unwrap();
+        let t2_name = TemplateName::try_from("t2").unwrap();
+        let t2 = Template::new(&t2_name, None, vec![], HashMap::new()).unwrap();
 
         storage.create(&t1).unwrap();
         storage.create(&t2).unwrap();

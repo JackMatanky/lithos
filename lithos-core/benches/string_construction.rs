@@ -139,7 +139,7 @@ use lithos_core::{
     schema::{
         aggregate::SchemaName, property::PropertyName, property_spec::DateSpec,
     },
-    template::aggregate::Template,
+    template::aggregate::{Template, TemplateName},
 };
 use redb::TableDefinition;
 use tempfile::TempDir;
@@ -308,13 +308,10 @@ fn bench_constructor_apis(c: &mut Criterion) {
     // Optimized: Template with &str
     group.bench_function("template_from_str", |b| {
         b.iter(|| {
-            Template::new(
-                black_box("my-template"),
-                None,
-                vec![],
-                HashMap::new(),
-            )
-            .expect("valid template")
+            let name = TemplateName::try_from(black_box("my-template"))
+                .expect("valid name");
+            Template::new(&name, None, vec![], HashMap::new())
+                .expect("valid template")
         });
     });
 
@@ -322,7 +319,9 @@ fn bench_constructor_apis(c: &mut Criterion) {
     group.bench_function("template_from_owned_string", |b| {
         b.iter(|| {
             let owned = black_box("my-template").to_owned();
-            Template::new(&owned, None, vec![], HashMap::new())
+            let name =
+                TemplateName::try_from(owned.as_str()).expect("valid name");
+            Template::new(&name, None, vec![], HashMap::new())
                 .expect("valid template")
         });
     });
@@ -381,13 +380,10 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
 
             // Task 2: UUID-native database operations
             let template_uuid = Uuid::now_v7();
-            let template = Template::new(
-                "workflow-template",
-                None,
-                vec![],
-                HashMap::new(),
-            )
-            .expect("valid template");
+            let name = TemplateName::try_from("workflow-template")
+                .expect("valid name");
+            let template = Template::new(&name, None, vec![], HashMap::new())
+                .expect("valid template");
 
             db.put_by_uuid(TEMPLATES_TABLE, template_uuid, &template)
                 .expect("put_by_uuid");
