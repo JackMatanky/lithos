@@ -298,7 +298,7 @@ Doc-tests turn your `/// # Examples` into compiler-verified tests.
 
 #### Basic Example with Hidden Setup
 
-```rust
+````rust
 /// Parses a note path from a string.
 ///
 /// # Examples
@@ -311,13 +311,13 @@ Doc-tests turn your `/// # Examples` into compiler-verified tests.
 pub fn new(path: String) -> Result<Self, NoteError> {
     // implementation
 }
-```
+````
 
 #### `no_run` for Side-Effect Heavy Code
 
 Use `no_run` when the code has side effects (file I/O, network calls) that shouldn't execute during doc tests:
 
-```rust
+````rust
 /// Deletes a note from the vault.
 ///
 /// # Examples
@@ -332,13 +332,13 @@ Use `no_run` when the code has side effects (file I/O, network calls) that shoul
 pub fn delete(&self, path: &str) -> Result<(), NoteError> {
     // implementation
 }
-```
+````
 
 #### `compile_fail` for Invalid API Usage
 
 Use `compile_fail` to document APIs that should not compile:
 
-```rust
+````rust
 /// Creates a new validated tag.
 ///
 /// Tags must start with `#` and contain only alphanumeric characters.
@@ -363,13 +363,13 @@ Use `compile_fail` to document APIs that should not compile:
 pub fn new(tag: &str) -> Result<Self, TagError> {
     // implementation
 }
-```
+````
 
 #### `should_panic` for Expected Panics
 
 Use `should_panic` when demonstrating code that intentionally panics:
 
-```rust
+````rust
 /// Unwraps a value, panicking if None.
 ///
 /// # Examples
@@ -392,13 +392,13 @@ Use `should_panic` when demonstrating code that intentionally panics:
 pub fn unwrap_or_panic<T>(opt: Option<T>) -> T {
     opt.expect("value was None")
 }
-```
+````
 
 #### Testing Private Functions via Module Re-export
 
 For doc tests that need access to internal types:
 
-```rust
+````rust
 /// Internal utilities for testing.
 ///
 /// # Examples
@@ -421,11 +421,11 @@ pub mod test_helpers {
         }
     }
 }
-```
+````
 
 #### Multiple Examples for Different Scenarios
 
-```rust
+````rust
 /// Validates a property name.
 ///
 /// Property names must:
@@ -464,7 +464,7 @@ pub mod test_helpers {
 pub fn new(name: &str) -> Result<Self, ValidationError> {
     // implementation
 }
-```
+````
 
 ## 7. Standard Rust Testing Patterns
 
