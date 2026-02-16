@@ -10,6 +10,7 @@
 #![recursion_limit = "1024"]
 
 // Module declarations
+pub mod application;
 pub mod bounds;
 pub mod config;
 pub mod db;
