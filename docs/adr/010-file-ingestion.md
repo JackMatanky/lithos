@@ -291,8 +291,8 @@ The `config::ingest::build_merged_raw()` implementation already demonstrates thi
 
 ## References
 
-- [File Ingestion Architecture Research (Design Doc 013)](../../design/013-file-ingestion-architecture.md) - Comprehensive research and implementation plan
-- [File Ingestion Performance Analysis (Design Doc 014)](../../design/014-file-ingestion-performance.md) - Performance validation and optimization strategies
+- [File Ingestion Architecture Design (Design Doc 016)](../../design/016-file-ingestion-architecture.md) - Implementation design and code structure
+- [File Ingestion Performance Design (Design Doc 017)](../../design/017-file-ingestion-performance.md) - Performance optimization strategies and benchmarks
 - [Cargo Source Code](https://github.com/rust-lang/cargo) - `TomlManifest` pattern reference
 - [rustc Source Code](https://github.com/rust-lang/rust) - Multi-stage compilation pipeline reference
 - [Diesel Migrations](https://github.com/diesel-rs/diesel/tree/master/diesel_migrations) - `MigrationSource` trait pattern
@@ -558,3 +558,139 @@ Infrastructure (db::Database)
 - [ ] No clippy warnings (`mise run lint`)
 - [ ] Benchmarks meet performance targets
 - [ ] Architecture tests prevent violations
+
+## Appendix F: Real-World Research
+
+Analysis of file ingestion patterns in 5 mature Rust projects reveals consistent architectural themes that validate our Service Layer approach.
+
+### Project 1: Cargo (Package Manager)
+
+**Pipeline**:
+```
+File System (Cargo.toml)
+    ↓ TomlManifest::from_str (parsing)
+TomlManifest (unvalidated)
+    ↓ TomlManifest::to_real_manifest (validation)
+Manifest (validated domain)
+    ↓ PackageRegistry::insert (persistence)
+In-Memory Registry
+```
+
+**Key Patterns**:
+- File I/O in `cargo::util::toml::TomlManifest::read_file()`
+- Parsing produces `TomlManifest` (serde-based, tolerant)
+- Validation converts to `Manifest` (strict, invariants enforced)
+- Persistence is separate concern (`PackageRegistry`, in-memory HashMap)
+
+**Lessons**: Separate parsing from validation (`TomlManifest` vs `Manifest` mirrors our `Raw*` vs domain pattern). Explicit conversion boundaries via `to_real_manifest()`. Workflow coordination at application layer.
+
+---
+
+### Project 2: rustc (Compiler)
+
+**Pipeline**:
+```
+Source Files (.rs)
+    ↓ SourceFileLoader (file I/O)
+SourceFile (raw text + metadata)
+    ↓ Parser (syntax analysis)
+AST (Abstract Syntax Tree)
+    ↓ HIR lowering (validation + desugaring)
+HIR (High-level IR, validated)
+    ↓ THIR/MIR/Codegen
+Machine Code
+```
+
+**Key Patterns**:
+- File loading is separate phase (`SourceFileLoader`, `SourceMap`)
+- Parsing produces AST (unvalidated structure)
+- HIR lowering is validation boundary (type checking, name resolution)
+- Persistence (incremental cache) happens after validation
+- Query system (`rustc_query_system`) separates reads from transformations
+
+**Lessons**: Parsing ≠ validation (AST accepts invalid programs, HIR only accepts valid ones). Incremental computation via query system memoization. File source abstraction for filesystem vs in-memory vs stdin. Cache invalidation tracks file changes.
+
+---
+
+### Project 3: Diesel (ORM Migrations)
+
+**Pipeline**:
+```
+migration.sql files
+    ↓ MigrationHarness::run_pending_migrations
+Migration (parsed SQL)
+    ↓ Connection::execute
+Database schema changes
+```
+
+**Key Patterns**:
+- File discovery via `MigrationSource` trait finds `.sql` files
+- Parsing in `Migration::from_file()` (SQL text → Migration struct)
+- Execution is separate trait (`Connection::execute_batch`)
+- State tracking stored in `__diesel_schema_migrations` table
+
+**Lessons**: `MigrationSource` trait allows filesystem, embedded, or custom sources (exactly like our `FileSource`). Two-phase execution (discover → parse → execute). Idempotency via version tracking.
+
+---
+
+### Project 4: config-rs / figment (Configuration)
+
+**Pipeline**:
+```
+Multiple sources (files, env, defaults)
+    ↓ Provider trait (abstraction)
+Figment (merged configuration)
+    ↓ extract::<T>() (deserialization)
+Typed config struct
+```
+
+**Key Patterns**:
+- `Provider` trait abstracts over file, environment, command-line
+- Merging happens in-memory (not tied to specific source)
+- Extraction deserializes into typed structs (validation via serde or custom)
+- No persistence layer (read-only)
+
+**Lessons**: Source abstraction via traits. Composition over inheritance (Figment chains providers via `.merge()`). Lazy evaluation (files not read until `.extract()` called). **Already in Lithos**: We use this pattern in `config::ingest::build_merged_raw()` as reference implementation.
+
+---
+
+### Project 5: tree-sitter (Parser Generator)
+
+**Pipeline**:
+```
+Source text (files)
+    ↓ Parser::parse
+Tree (AST)
+    ↓ Query::captures (traversal)
+Match results
+```
+
+**Key Patterns**:
+- Parser state separate from source text
+- Tree holds references to source text (zero-copy)
+- Queries operate on trees, not files
+- Incremental re-parsing of changed regions only
+
+**Lessons**: Zero-copy parsing (tree references source via `&str` slices). Incremental updates track changed ranges. Separation of concerns (parsing produces trees, queries operate on trees). Lifecycle independence (Parser ≠ Tree ≠ Query).
+
+---
+
+### Cross-Project Analysis
+
+| Project     | File I/O Layer       | Parsing Layer      | Validation Layer  | Persistence Layer     |
+| ----------- | -------------------- | ------------------ | ----------------- | --------------------- |
+| Cargo       | `fs::read_to_string` | `TomlManifest`     | `Manifest`        | `PackageRegistry`     |
+| rustc       | `SourceFileLoader`   | `Parser → AST`     | `HIR::lower`      | Query system (cache)  |
+| Diesel      | `MigrationSource`    | `Migration::parse` | SQL validation    | `Connection::execute` |
+| config-rs   | `Provider::data`     | serde              | Type extraction   | N/A (read-only)       |
+| tree-sitter | `fs::read_to_string` | `Parser::parse`    | N/A (syntax only) | N/A (in-memory)       |
+
+**Common Themes Across All Projects**:
+
+1. **File I/O is a separate concern** from parsing, validation, and persistence
+2. **Trait-based source abstraction** enables testing without filesystem (Diesel's `MigrationSource`, config-rs's `Provider`, rustc's `SourceFileLoader`)
+3. **Multi-stage pipeline** with explicit boundaries (`File → Raw → Validated → Stored`)
+4. **Application layer coordinates** the workflow, not infrastructure
+5. **Incremental updates** track changes and minimize re-processing (rustc's query system, cargo's fingerprints, tree-sitter's incremental parsing)
+
+**Validation of Our Approach**: The Service Layer pattern with `FileSource` trait matches patterns proven in production Rust systems handling millions of files. Our `Raw*` → Domain validation mirrors Cargo's `TomlManifest` → `Manifest` and rustc's `AST` → `HIR` transformations.

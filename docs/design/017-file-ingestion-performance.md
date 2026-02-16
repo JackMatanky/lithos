@@ -5,8 +5,9 @@ author: "Claude (Performance Architect)"
 date: "2026-02-16"
 status: "research"
 related_docs:
-  - "013-file-ingestion-architecture.md"
+  - "016-file-ingestion-architecture.md"
 related_adrs:
+  - "010-file-ingestion"
   - "003-domain-serialization"
   - "006-persistence-cache-infrastructure"
 tags:

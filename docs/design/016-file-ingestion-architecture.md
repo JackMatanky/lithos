@@ -1,505 +1,41 @@
 ---
-title: "File Ingestion Architecture Research & Design"
-description: "Deep architectural research and concrete design for separating file ingestion from database persistence"
+title: "File Ingestion Implementation Design"
+description: "Implementation design for file ingestion Service Layer pattern with FileSource trait, parsers, and application services"
 author: "Claude (Senior Software Architect)"
 date: "2026-02-16"
 status: "proposal"
 related_adrs:
+  - "010-file-ingestion"
   - "003-domain-serialization"
   - "006-persistence-cache-infrastructure"
 tags:
   - architecture
   - cqrs
   - file-ingestion
-  - research
+  - implementation
 ---
 
-# File Ingestion Architecture: Research & Design
+# File Ingestion Implementation Design
 
-## Executive Summary
+## Context
 
-This document provides **comprehensive architectural research** and a **concrete implementation plan** for separating file ingestion from database persistence in Lithos. The current architecture mistakenly mixes file I/O concerns into CQRS ports (which should be database-only), violating separation of concerns and making the system harder to test, reason about, and evolve.
+This document describes the **implementation design** for the file ingestion architecture documented in [ADR 010](../adr/010-file-ingestion.md).
 
-**Key Findings:**
-
-1. **Real-world patterns** (Cargo, rustc, Diesel, config-rs, tree-sitter) consistently separate file parsing from persistence through **explicit transformation pipelines** with clear boundaries.
-2. **Best practice**: File ingestion is a **separate workflow** orchestrated at the application layer, not a port responsibility.
-3. **Proposed solution**: Introduce a **FileSource trait** for reading/parsing files, keep **CQRS ports pure** (database-only), and use **Application Services** to coordinate the `File → Raw → Domain → Database` pipeline.
-
-**Impact:** This architecture eliminates the current violation, enables independent testing of file parsing and database operations, supports incremental updates (file watching), and follows established Rust patterns from mature projects.
-
----
+For research findings and alternative analysis, see ADR 010 Appendix F.
+For performance considerations, see [Design Doc 017](./017-file-ingestion-performance.md).
 
 ## Table of Contents
 
-1. [Research: Real-World Patterns](#research-real-world-patterns)
-2. [Critical Analysis: Anti-Patterns](#critical-analysis-anti-patterns)
-3. [Proposed Architecture](#proposed-architecture)
-4. [Trade-off Analysis](#trade-off-analysis)
-5. [Implementation Plan](#implementation-plan)
-6. [Testing Strategy](#testing-strategy)
-7. [Migration Path](#migration-path)
-
----
-
-## Research: Real-World Patterns
-
-### 1. Cargo (Package Manager)
-
-**How it Works:**
-
-Cargo separates file ingestion from state management through distinct layers:
-
-```
-File System (Cargo.toml)
-    ↓ TomlManifest::from_str (parsing)
-TomlManifest (unvalidated)
-    ↓ TomlManifest::to_real_manifest (validation)
-Manifest (validated domain)
-    ↓ PackageRegistry::insert (persistence)
-In-Memory Registry
-```
-
-**Key Architectural Decisions:**
-
-- **File I/O** happens in `cargo::util::toml::TomlManifest::read_file()`
-- **Parsing** produces `TomlManifest` (serde-based, tolerant)
-- **Validation** converts to `Manifest` (strict, invariants enforced)
-- **Persistence** is a separate concern (`PackageRegistry`, in-memory HashMap)
-
-**Lessons for Lithos:**
-
-- ✅ **Separate parsing from validation**: `TomlManifest` vs `Manifest` mirrors our `Raw*` vs domain pattern
-- ✅ **Explicit conversion boundaries**: `to_real_manifest()` is the validation gate
-- ✅ **File I/O is not a repository concern**: Reading files ≠ reading from storage
-- ✅ **Workflow coordination**: Application layer orchestrates File → Parse → Validate → Store
-
-**Relevant Code Patterns:**
-
-```rust
-// Cargo pattern (simplified)
-pub struct TomlManifest { /* serde, unvalidated */ }
-pub struct Manifest { /* validated */ }
-
-impl TomlManifest {
-    pub fn from_str(s: &str) -> Result<Self, Error> { /* parse */ }
-    pub fn to_real_manifest(self) -> Result<Manifest, Error> { /* validate */ }
-}
-
-// Application workflow
-fn load_manifest(path: &Path) -> Result<Manifest, Error> {
-    let content = fs::read_to_string(path)?;  // File I/O
-    let toml = TomlManifest::from_str(&content)?;  // Parse
-    toml.to_real_manifest()  // Validate
-}
-```
-
----
-
-### 2. rustc (Compiler)
-
-**How it Works:**
-
-The Rust compiler has one of the most sophisticated pipelines for file → IR transformation:
-
-```
-Source Files (.rs)
-    ↓ SourceFileLoader (file I/O)
-SourceFile (raw text + metadata)
-    ↓ Parser (syntax analysis)
-AST (Abstract Syntax Tree)
-    ↓ HIR lowering (validation + desugaring)
-HIR (High-level IR, validated)
-    ↓ THIR/MIR/Codegen
-Machine Code
-```
-
-**Key Architectural Decisions:**
-
-- **File loading** is a separate phase (`SourceFileLoader`, `SourceMap`)
-- **Parsing** produces AST (unvalidated structure)
-- **HIR lowering** is the validation boundary (type checking, name resolution)
-- **Persistence** (incremental compilation cache) happens _after_ validation
-- **Query system** (`rustc_query_system`) separates reads from transformations
-
-**Lessons for Lithos:**
-
-- ✅ **Parsing ≠ validation**: AST accepts invalid programs, HIR only accepts valid ones
-- ✅ **Incremental computation**: Query system memoizes expensive transformations
-- ✅ **File source abstraction**: `SourceFileLoader` abstracts over filesystem vs in-memory vs stdin
-- ✅ **Cache invalidation**: Incremental compilation tracks file changes and re-parses only modified files
-
-**Relevant Code Patterns:**
-
-```rust
-// rustc pattern (simplified)
-pub struct SourceFile {
-    src: String,
-    name: FileName,
-    // File I/O result
-}
-
-pub struct Ast { /* unvalidated */ }
-pub struct Hir { /* validated */ }
-
-// Workflow
-fn compile_file(path: &Path) -> Result<Hir, Error> {
-    let source = SourceFileLoader::load(path)?;  // File I/O
-    let ast = Parser::parse(source)?;  // Parse
-    Hir::lower(ast)  // Validate + transform
-}
-```
-
----
-
-### 3. Diesel / SeaORM (ORMs)
-
-**How it Works:**
-
-ORMs separate schema file loading from database operations:
-
-```
-migration.sql files
-    ↓ MigrationHarness::run_pending_migrations
-Migration (parsed SQL)
-    ↓ Connection::execute
-Database schema changes
-```
-
-**Key Architectural Decisions:**
-
-- **File discovery** (`MigrationSource`) finds `.sql` files
-- **Parsing** happens in `Migration::from_file()` (SQL text → Migration struct)
-- **Execution** is a separate trait (`Connection::execute_batch`)
-- **State tracking** (applied migrations) stored in `__diesel_schema_migrations` table
-
-**Lessons for Lithos:**
-
-- ✅ **Source abstraction**: `MigrationSource` trait allows filesystem, embedded, or custom sources
-- ✅ **Two-phase execution**: Discover files → Parse → Execute (not atomic with reading)
-- ✅ **Idempotency**: Track which files have been processed (migration version numbers)
-- ✅ **Separation of concerns**: File I/O, parsing, and database writes are distinct operations
-
-**Relevant Code Patterns:**
-
-```rust
-// Diesel pattern (simplified)
-pub trait MigrationSource {
-    fn migrations(&self) -> Result<Vec<Migration>, Error>;
-}
-
-pub struct FileBasedMigrations {
-    path: PathBuf,
-}
-
-impl MigrationSource for FileBasedMigrations {
-    fn migrations(&self) -> Result<Vec<Migration>, Error> {
-        // Read files, parse SQL, return migrations
-    }
-}
-
-// Workflow
-fn apply_migrations(source: impl MigrationSource, conn: &Connection) -> Result<(), Error> {
-    let migrations = source.migrations()?;  // File I/O + Parse
-    for migration in migrations {
-        conn.execute_batch(&migration.sql)?;  // Database write
-    }
-}
-```
-
----
-
-### 4. config-rs / figment (Configuration Libraries)
-
-**How it Works:**
-
-Figment (which Lithos already uses) demonstrates excellent source/sink separation:
-
-```
-Multiple sources (files, env, defaults)
-    ↓ Provider trait (abstraction)
-Figment (merged configuration)
-    ↓ extract::<T>() (deserialization)
-Typed config struct
-```
-
-**Key Architectural Decisions:**
-
-- **Provider trait** abstracts over file, environment, command-line, etc.
-- **Merging** happens in-memory (not tied to any specific source)
-- **Extraction** deserializes into typed structs (validation via serde or custom)
-- **No persistence layer**: Config libraries read, they don't write back
-
-**Lessons for Lithos:**
-
-- ✅ **Source abstraction via traits**: `Provider` is the abstraction boundary
-- ✅ **Composition over inheritance**: Figment chains providers via `.merge()`
-- ✅ **Lazy evaluation**: Files aren't read until `.extract()` is called
-- ✅ **Clear separation**: Provider (I/O) → Figment (merging) → Extraction (validation)
-
-**Relevant Code Patterns:**
-
-```rust
-// Figment pattern (simplified)
-pub trait Provider {
-    fn data(&self) -> Result<Map<String, Value>, Error>;
-}
-
-pub struct Toml {
-    path: PathBuf,
-}
-
-impl Provider for Toml {
-    fn data(&self) -> Result<Map<String, Value>, Error> {
-        let content = fs::read_to_string(&self.path)?;  // File I/O
-        toml::from_str(&content)  // Parse
-    }
-}
-
-// Workflow
-fn load_config() -> Result<AppConfig, Error> {
-    Figment::new()
-        .merge(Toml::file("config.toml"))  // File source
-        .merge(Env::prefixed("APP_"))  // Environment source
-        .extract()  // Deserialize + validate
-}
-```
-
-**Already in Lithos**: We use this pattern in `config::ingest::build_merged_raw()` — this is the **gold standard** we should extend to other contexts.
-
----
-
-### 5. tree-sitter (Parser Generator)
-
-**How it Works:**
-
-Tree-sitter separates source text from parsed trees:
-
-```
-Source text (files)
-    ↓ Parser::parse
-Tree (AST)
-    ↓ Query::captures (traversal)
-Match results
-```
-
-**Key Architectural Decisions:**
-
-- **Parser state** is separate from source text
-- **Tree** holds references to source text (zero-copy)
-- **Queries** operate on trees, not files
-- **Incremental re-parsing**: Only re-parse changed regions
-
-**Lessons for Lithos:**
-
-- ✅ **Zero-copy parsing**: Tree references source text via `&str` slices
-- ✅ **Incremental updates**: Track changed ranges and re-parse minimally
-- ✅ **Separation of concerns**: Parsing produces trees, queries operate on trees
-- ✅ **Lifecycle independence**: Parser ≠ Tree ≠ Query
-
-**Relevant Code Patterns:**
-
-```rust
-// tree-sitter pattern (simplified)
-pub struct Parser { /* state */ }
-pub struct Tree<'a> {
-    source: &'a str,  // Zero-copy reference
-    // ...
-}
-
-// Workflow
-fn parse_file(path: &Path) -> Result<Tree<'static>, Error> {
-    let source = fs::read_to_string(path)?;  // File I/O
-    let mut parser = Parser::new();
-    parser.parse(&source, None)  // Parse (returns Tree)
-}
-```
-
----
-
-### Summary of Real-World Patterns
-
-| Project     | File I/O Layer       | Parsing Layer      | Validation Layer  | Persistence Layer     |
-| ----------- | -------------------- | ------------------ | ----------------- | --------------------- |
-| Cargo       | `fs::read_to_string` | `TomlManifest`     | `Manifest`        | `PackageRegistry`     |
-| rustc       | `SourceFileLoader`   | `Parser → AST`     | `HIR::lower`      | Query system (cache)  |
-| Diesel      | `MigrationSource`    | `Migration::parse` | SQL validation    | `Connection::execute` |
-| config-rs   | `Provider::data`     | serde              | Type extraction   | N/A (read-only)       |
-| tree-sitter | `fs::read_to_string` | `Parser::parse`    | N/A (syntax only) | N/A (in-memory)       |
-
-**Common Themes:**
-
-1. **File I/O is a separate concern** from parsing, validation, and persistence
-2. **Trait-based source abstraction** enables testing without filesystem
-3. **Multi-stage pipeline** with explicit boundaries (File → Raw → Validated → Stored)
-4. **Application layer coordinates** the workflow, not infrastructure
-5. **Incremental updates** track changes and minimize re-processing
-
----
-
-## Critical Analysis: Anti-Patterns
-
-### Anti-Pattern 1: "Loader" Ports (The Current Problem)
-
-**What it looks like:**
-
-```rust
-// ❌ BAD: Port trait mixing file I/O with database operations
-pub trait SchemaPort {
-    fn load_from_file(&self, path: &Path) -> Result<Schema, Error>;
-    fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Error>;
-    fn save(&self, schema: &Schema) -> Result<(), Error>;
-}
-```
-
-**Why it's wrong:**
-
-1. **Violates Single Responsibility**: Port does file I/O, parsing, validation, _and_ database operations
-2. **Untestable**: Mock implementations must fake file system _and_ database
-3. **Tight coupling**: Database adapter now depends on filesystem
-4. **Lifecycle confusion**: File ingestion is a one-time or periodic workflow, not a query operation
-5. **Performance**: Can't optimize hot path reads (database) separately from cold path ingestion (files)
-
-**Real-world violation analogy:**
-
-> "Imagine Cargo's `PackageRegistry` having a `load_from_toml_file()` method. Now every test needs fake TOML files, and the registry can't be used independently of the filesystem."
-
----
-
-### Anti-Pattern 2: Mixing File I/O with Database Ports
-
-**What it looks like:**
-
-```rust
-// ❌ BAD: CQRS port doing file I/O
-impl SchemaQueryPort for RedbSchemaAdapter {
-    fn find_all_from_directory(&self, dir: &Path) -> Result<Vec<Schema>, Error> {
-        // Reads files from disk
-        // Parses JSON/TOML
-        // Validates schemas
-        // Stores in database
-        // Returns results
-    }
-}
-```
-
-**Why it's wrong:**
-
-1. **Transaction boundary violation**: File I/O is slow and fallible; holding database transaction open during file parsing is disaster
-2. **Error handling complexity**: Can't distinguish file errors from database errors
-3. **No incremental updates**: Must re-process all files every time
-4. **Testing nightmare**: Need real filesystem AND real database for integration tests
-
----
-
-### Anti-Pattern 3: Bypassing Validation Boundaries
-
-**What it looks like:**
-
-```rust
-// ❌ BAD: Skipping Raw → Domain validation
-fn load_schema_file(path: &Path) -> Result<Schema, Error> {
-    let content = fs::read_to_string(path)?;
-    serde_json::from_str(&content)  // Deserializes directly into domain type!
-}
-```
-
-**Why it's wrong:**
-
-1. **Invalid states representable**: Domain type can be constructed with invalid data
-2. **Poor error messages**: Serde errors are cryptic, user-facing errors should be rich
-3. **No semantic validation**: Type checks pass but business rules violated
-4. **Violates three-shape pattern**: Skips `Raw*` → Domain conversion
-
-**Correct approach:**
-
-```rust
-// ✅ GOOD: Explicit Raw → Domain validation
-fn load_schema_file(path: &Path) -> Result<Schema, Error> {
-    let content = fs::read_to_string(path)?;
-    let raw: RawSchema = serde_json::from_str(&content)?;  // Parse
-    Schema::try_from(raw)  // Validate (TryFrom boundary)
-}
-```
-
----
-
-### Anti-Pattern 4: Circular Dependencies (Infrastructure → Domain)
-
-**What it looks like:**
-
-```rust
-// db/adapters/schema.rs
-use crate::schema::Schema;  // ❌ Infrastructure importing domain
-
-impl SchemaAdapter {
-    pub fn load_all_from_vault(&self, vault_path: &Path) -> Result<Vec<Schema>, Error> {
-        // File I/O + database writes
-    }
-}
-```
-
-**Why it's wrong:**
-
-1. **Dependency inversion violation**: Infrastructure (db) should NOT depend on domain (schema)
-2. **Prevents context isolation**: Can't test schema context without db infrastructure
-3. **Adapter role confusion**: Adapters implement ports, they don't orchestrate workflows
-
-**Correct dependency flow:**
-
-```
-Application Layer (orchestrates workflows)
-    ↓ uses
-Domain Layer (schema::Query, schema::Command)
-    ↓ uses
-Port Traits (schema::ports::Query, schema::ports::Command)
-    ↑ implemented by
-Adapter Layer (schema::adapter::query, schema::adapter::command)
-    ↓ uses
-Infrastructure (db::Database)
-```
-
----
-
-### Where Validation Should Live
-
-**Correct layering:**
-
-1. **File I/O**: `fs/` module or source traits (infrastructure)
-2. **Parsing**: `Raw*::from_str` or serde (deserialization)
-3. **Validation**: `TryFrom<Raw*>` for domain types (domain boundary)
-4. **Persistence**: CQRS ports (database operations only)
-
-**Example:**
-
-```rust
-// fs/parsers.rs - File I/O + Parsing
-pub fn read_schema_file(path: &Path) -> Result<RawSchema, ParseError> {
-    let content = fs::read_to_string(path)?;
-    serde_json::from_str(&content).map_err(ParseError::from)
-}
-
-// schema/aggregate.rs - Validation
-impl TryFrom<RawSchema> for Schema {
-    type Error = ValidationError;
-    fn try_from(raw: RawSchema) -> Result<Self, Self::Error> {
-        // Business logic validation
-    }
-}
-
-// schema/ports.rs - Database operations (no file I/O!)
-pub trait Command {
-    fn save(&self, schema: &Schema) -> Result<(), Error>;
-}
-
-// Application layer - Workflow orchestration
-pub fn ingest_schema_file(path: &Path, cmd: &impl SchemaCommand) -> Result<(), Error> {
-    let raw = fs::parsers::read_schema_file(path)?;  // File I/O
-    let schema = Schema::try_from(raw)?;  // Validation
-    cmd.save(&schema)?;  // Persistence
-    Ok(())
-}
-```
+1. [Proposed Architecture](#proposed-architecture)
+2. [Layer 1: FileSource Trait](#layer-1-filesource-trait)
+3. [Layer 2: File Parsers](#layer-2-file-parsers)
+4. [Layer 3: Ingestion Services](#layer-3-ingestion-services)
+5. [Layer 4: CQRS Ports](#layer-4-cqrs-ports)
+6. [Workflow Examples](#workflow-examples)
+7. [Context-Specific Adaptations](#context-specific-adaptations)
+8. [Implementation Plan](#implementation-plan)
+9. [Testing Strategy](#testing-strategy)
+10. [Migration Path](#migration-path)
 
 ---
 
@@ -544,7 +80,9 @@ pub fn ingest_schema_file(path: &Path, cmd: &impl SchemaCommand) -> Result<(), E
 ORCHESTRATED BY: Application Services (application/ layer)
 ```
 
-### Layer 1: FileSource Trait (Infrastructure Abstraction)
+---
+
+## Layer 1: FileSource Trait
 
 **Purpose**: Abstract over different file sources (filesystem, embedded, in-memory, network).
 
@@ -635,7 +173,7 @@ impl FileSource for InMemoryFileSource {
 }
 ```
 
-**Rationale:**
+**Rationale**:
 
 - ✅ **Testability**: Mock file system without touching disk
 - ✅ **Flexibility**: Support embedded resources, network sources
@@ -644,7 +182,7 @@ impl FileSource for InMemoryFileSource {
 
 ---
 
-### Layer 2: File Parsers (Infrastructure)
+## Layer 2: File Parsers
 
 **Purpose**: Convert raw file bytes to `Raw*` types (unvalidated).
 
@@ -710,7 +248,7 @@ pub fn parse_note_file(
 }
 ```
 
-**Rationale:**
+**Rationale**:
 
 - ✅ **Generic over source**: Works with any `FileSource` implementation
 - ✅ **Format detection**: Supports JSON, TOML, YAML for schemas
@@ -719,7 +257,7 @@ pub fn parse_note_file(
 
 ---
 
-### Layer 3: Ingestion Services (Application Layer)
+## Layer 3: Ingestion Services
 
 **Purpose**: Orchestrate File → Raw → Domain → Database pipeline.
 
@@ -838,7 +376,7 @@ pub struct TemplateIngestionService<'a, Q, C> {
 pub use crate::config::ingest::build_merged_raw as ingest_config;
 ```
 
-**Rationale:**
+**Rationale**:
 
 - ✅ **Single Responsibility**: Each service orchestrates one context's ingestion
 - ✅ **Explicit workflow**: File → Raw → Domain → Database steps are clear
@@ -849,7 +387,7 @@ pub use crate::config::ingest::build_merged_raw as ingest_config;
 
 ---
 
-### Layer 4: CQRS Ports (Database-Only)
+## Layer 4: CQRS Ports
 
 **Critical Rule**: CQRS ports MUST NOT have file I/O methods.
 
@@ -882,9 +420,9 @@ pub trait Query {
 
 ---
 
-### Workflow Examples
+## Workflow Examples
 
-#### Workflow 1: Initial Vault Ingestion
+### Workflow 1: Initial Vault Ingestion
 
 ```rust
 // CLI command: lithos init <vault-path>
@@ -922,7 +460,7 @@ pub fn init_vault(vault_path: &Path, db: &Database) -> Result<(), Error> {
 }
 ```
 
-#### Workflow 2: Incremental Update (File Watcher)
+### Workflow 2: Incremental Update (File Watcher)
 
 ```rust
 // File watcher detects schema file changed
@@ -944,7 +482,7 @@ pub fn handle_schema_file_changed(
 }
 ```
 
-#### Workflow 3: Hot Path Read (Database-Only)
+### Workflow 3: Hot Path Read (Database-Only)
 
 ```rust
 // LSP query: "Get schema by name" (performance-critical)
@@ -961,9 +499,9 @@ pub fn get_schema_for_lsp(name: &str, db: &Database) -> Result<Option<Schema>, E
 
 ---
 
-### Context-Specific Adaptations
+## Context-Specific Adaptations
 
-#### Config Ingestion (Already Implemented Correctly)
+### Config Ingestion (Already Implemented Correctly)
 
 **Location**: `lithos-core/src/config/ingest.rs`
 
@@ -979,7 +517,7 @@ Files (global, vault) → Figment (merge) → RawConfig → Config → Database
 
 ---
 
-#### Schema Ingestion
+### Schema Ingestion
 
 **Files**: `.lithos/schemas/**/*.{json,toml,yaml}`
 
@@ -1034,7 +572,7 @@ pub fn ingest_schemas_with_resolution(
 
 ---
 
-#### Template Ingestion
+### Template Ingestion
 
 **Files**: `.lithos/templates/**/*.md` (Jinja2 templates)
 
@@ -1077,7 +615,7 @@ pub fn ingest_template(
 
 ---
 
-#### Note Ingestion (Markdown + Frontmatter)
+### Note Ingestion (Markdown + Frontmatter)
 
 **Files**: `**/*.md` (user notes)
 
@@ -1114,152 +652,6 @@ pub fn ingest_note(
     Ok(note.id())
 }
 ```
-
----
-
-## Trade-off Analysis
-
-### Approach 1: Repository Pattern (One Abstraction for All Sources)
-
-**Pattern**:
-
-```rust
-pub trait SchemaRepository {
-    fn load_from_file(&self, path: &Path) -> Result<Schema, Error>;
-    fn load_from_db(&self, id: SchemaId) -> Result<Option<Schema>, Error>;
-    fn save(&self, schema: &Schema) -> Result<(), Error>;
-}
-```
-
-**Pros**:
-
-- ✅ Single trait for all data access
-- ✅ Familiar pattern from OOP
-
-**Cons**:
-
-- ❌ Violates Interface Segregation (reads need writes)
-- ❌ Mixes file I/O with database operations (can't optimize separately)
-- ❌ Hard to test (mocks need both filesystem and database)
-- ❌ Tight coupling between ingestion and persistence
-- ❌ Can't split hot path (DB) from cold path (files)
-
-**Verdict**: ❌ **Rejected** — violates project constraints (port-based CQRS, separation of concerns)
-
----
-
-### Approach 2: Gateway Pattern (Separate Gateways per Source)
-
-**Pattern**:
-
-```rust
-pub trait FileGateway {
-    fn load_schema(&self, path: &Path) -> Result<Schema, Error>;
-}
-
-pub trait DatabaseGateway {
-    fn find_schema(&self, id: SchemaId) -> Result<Option<Schema>, Error>;
-    fn save_schema(&self, schema: &Schema) -> Result<(), Error>;
-}
-```
-
-**Pros**:
-
-- ✅ Separates file I/O from database operations
-- ✅ Testable in isolation
-
-**Cons**:
-
-- ❌ Still mixes parsing/validation with I/O in `FileGateway`
-- ❌ No clear orchestration layer (who calls what?)
-- ❌ Validation boundary unclear (Gateway or caller?)
-
-**Verdict**: ⚠️ **Partial solution** — better than Repository, but lacks explicit workflow
-
----
-
-### Approach 3: Service Layer (Application Service Coordinates) ✅ CHOSEN
-
-**Pattern**:
-
-```rust
-// Infrastructure
-pub trait FileSource {
-    fn read_to_string(&self, path: &Path) -> Result<String, Error>;
-}
-
-// Parsing (fs/)
-pub fn parse_schema_file(source: &impl FileSource, path: &Path) -> Result<RawSchema, Error>;
-
-// Validation (domain)
-impl TryFrom<RawSchema> for Schema { /* ... */ }
-
-// Persistence (CQRS ports)
-pub trait SchemaCommand {
-    fn save(&self, schema: &Schema) -> Result<(), Error>;
-}
-
-// Orchestration (application layer)
-pub struct SchemaIngestionService {
-    fn ingest_file(&self, source: &impl FileSource, path: &Path) -> Result<SchemaId, Error> {
-        let raw = parse_schema_file(source, path)?;  // Parse
-        let schema = Schema::try_from(raw)?;  // Validate
-        self.command.save(&schema)?;  // Persist
-        Ok(schema.id())
-    }
-}
-```
-
-**Pros**:
-
-- ✅ **Clear separation of concerns**: File I/O, parsing, validation, persistence are distinct
-- ✅ **Explicit workflow**: Service orchestrates the pipeline
-- ✅ **Testable**: Each layer can be tested independently
-- ✅ **Follows real-world patterns**: Matches Cargo, rustc, Diesel
-- ✅ **Port-based CQRS intact**: Ports remain database-only
-- ✅ **Context isolation maintained**: Services in `application/` layer
-- ✅ **Incremental updates supported**: Services can check file timestamps
-- ✅ **Performance optimized**: Hot path (DB reads) separate from cold path (file ingestion)
-
-**Cons**:
-
-- ⚠️ More layers (but each has clear responsibility)
-- ⚠️ Requires discipline (developers must use services, not bypass)
-
-**Verdict**: ✅ **CHOSEN** — best fit for Lithos architecture
-
----
-
-### Approach 4: Event Sourcing (File Changes → Events → Projections)
-
-**Pattern**:
-
-```rust
-// Events
-pub enum SchemaEvent {
-    FileCreated { path: PathBuf, content: String },
-    FileModified { path: PathBuf, content: String },
-    FileDeleted { path: PathBuf },
-}
-
-// Projection
-fn handle_schema_file_created(event: SchemaEvent::FileCreated) -> Result<(), Error> {
-    // Parse, validate, persist
-}
-```
-
-**Pros**:
-
-- ✅ Supports incremental updates naturally
-- ✅ Audit trail of all changes
-
-**Cons**:
-
-- ❌ Overkill for Phase 1 (no event bus yet)
-- ❌ Adds complexity (event storage, replay)
-- ❌ Doesn't address separation of concerns (still need file I/O abstraction)
-
-**Verdict**: 🔮 **Future consideration** — good for Phase 2 (LSP) but not now
 
 ---
 
@@ -1430,17 +822,12 @@ lithos watch /path/to/vault
 
 **Tasks**:
 
-1. **Write ADR** (`docs/adr/014-file-ingestion-architecture.md`)
-   - Document decision to separate file I/O from CQRS ports
-   - Explain `FileSource` trait and ingestion services
-   - Reference this research document
-
-2. **Integration tests** (`lithos-core/tests/ingestion_flow.rs`)
+1. **Integration tests** (`lithos-core/tests/ingestion_flow.rs`)
    - Test full pipeline: File → Raw → Domain → Database
    - Test partial failure handling (some files invalid)
    - Test incremental updates
 
-3. **Update project-context.md**
+2. **Update project-context.md**
    - Add rule: "CQRS ports MUST NOT have file I/O methods"
    - Add rule: "File ingestion MUST use FileSource trait"
    - Add rule: "Application services orchestrate File → Domain → Database"
@@ -1662,7 +1049,6 @@ fn cli_init_ingests_all_schemas_and_templates() {
 
 ### Step 5: Document & Enforce
 
-- Write ADR 014: File Ingestion Architecture
 - Update `project-context.md` with new rules
 - Add architecture tests to prevent regression
 
@@ -1686,40 +1072,22 @@ fn cli_init_ingests_all_schemas_and_templates() {
 - ✅ **Testability**: Each layer can be tested independently
 - ✅ **Performance**: Hot path (DB reads) optimized separately from cold path (file ingestion)
 - ✅ **Maintainability**: Clear separation of concerns, single responsibility
-- ✅ **Flexibility**: Can swap file sources (filesystem, embedded, network)
-- ✅ **Incremental updates**: Services can check file timestamps and skip unchanged files
-- ✅ **Follows real-world patterns**: Matches Cargo, rustc, Diesel, config-rs
+- ✅ **Flexibility**: Easy to add new sources (network, embedded, in-memory)
+- ✅ **Follows proven patterns**: Matches Cargo, rustc, Diesel implementations
 
 ### Next Steps
 
-1. **Review this document** with project stakeholders
-2. **Prototype `FileSource` trait** and `InMemoryFileSource` for testing
-3. **Implement `SchemaIngestionService`** as reference implementation
-4. **Refactor CLI** to use ingestion services
-5. **Write ADR 014** to document the decision
+1. Implement Phase 1 (Infrastructure Foundation)
+2. Implement Phase 2 (Ingestion Services)
+3. Implement Phase 3 (CLI Integration)
+4. Add comprehensive tests
+5. Document in ADR and project-context.md
 
 ---
 
 ## References
 
-### Real-World Projects Analyzed
-
-- **Cargo**: [cargo/util/toml.rs](https://github.com/rust-lang/cargo/blob/master/src/cargo/util/toml/mod.rs)
-- **rustc**: [rustc_span/source_map.rs](https://github.com/rust-lang/rust/blob/master/compiler/rustc_span/src/source_map.rs)
-- **Diesel**: [diesel/migration/mod.rs](https://github.com/diesel-rs/diesel/tree/master/diesel_migrations)
-- **Figment**: [figment/provider.rs](https://github.com/SergioBenitez/Figment/blob/master/src/provider.rs)
-- **tree-sitter**: [lib.rs](https://github.com/tree-sitter/tree-sitter/blob/master/lib/src/lib.rs)
-
-### Related Lithos Documentation
-
-- [ADR 003: Domain Serialization Strategy](../adr/003-domain-serialization.md)
-- [ADR 006: Persistence & Cache Infrastructure](../adr/006-persistence-cache-infrastructure.md)
-- [Implementation Patterns](../../_bmad-output/planning-artifacts/architecture/04-implementation-patterns-consistency-rules.md)
-- [Project Structure](../../_bmad-output/planning-artifacts/architecture/05-project-structure-boundaries.md)
-
----
-
-**Document Status**: Proposal
-**Author**: Claude (Senior Software Architect)
-**Date**: 2026-02-16
-**Review Required**: Yes
+- [ADR 010: File Ingestion Architecture](../adr/010-file-ingestion.md) - Architectural decision and research findings
+- [Design Doc 017: File Ingestion Performance](./017-file-ingestion-performance.md) - Performance optimization strategies
+- [ADR 003: Domain Serialization](../adr/003-domain-serialization.md) - Raw* types and validation boundaries
+- [ADR 006: Persistence Cache Infrastructure](../adr/006-persistence-cache-infrastructure.md) - Zero-copy database reads
