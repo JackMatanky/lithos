@@ -236,7 +236,7 @@ pub enum InsertionPosition {
 )]
 mod tests {
     use super::*;
-    use crate::{VariableDefinition, template::TemplateMetadata};
+    use crate::{InputSpec, template::TemplateMetadata};
 
     /// 3.4-UNIT-028: `should_detect_circular_composition`.
     /// Priority: P0.
@@ -304,7 +304,7 @@ mod tests {
     fn validate_rejects_variable_type_mismatch() {
         // GIVEN: a base template with a string variable
         let mut variables = HashMap::new();
-        variables.insert("title".to_owned(), VariableDefinition::String {
+        variables.insert("title".to_owned(), InputSpec::String {
             default: None,
             max_length: None,
             min_length: None,

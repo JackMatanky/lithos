@@ -22,4 +22,4 @@ pub use composition::{
 };
 pub use events::{TemplateCreated, TemplateEvents};
 pub use syntax::PlaceholderSyntax;
-pub use variable::VariableDefinition;
+pub use variable::InputSpec;

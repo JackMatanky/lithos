@@ -55,7 +55,7 @@ So that developers understand the domain language and can work effectively with 
 - [x] Read all files in `crates/domain/src/note/` directory to understand Note bounded context: Note aggregate, Frontmatter, Link, Embed, Tag, Heading, Task, Section entities and their validation rules, business logic
 - [x] Read all files in `crates/domain/src/schema/` directory to understand Schema bounded context: Schema aggregate, Property, PropertyBank, PropertySpec trait and implementations (StringSpec, NumberSpec, etc.), inheritance resolution, trait-based generic design
 - [x] Read all files in `crates/domain/src/config/` directory to understand Config bounded context: Config entity with phantom types, ConfigValue, ConfigPath, ValidationRule, hierarchical merging, encryption boundary
-- [x] Read all files in `crates/domain/src/template/` directory to understand Template bounded context: Template aggregate, VariableDefinition, TemplateComposition, MiniJinja compatibility, domain purity (no syntax validation)
+- [x] Read all files in `crates/domain/src/template/` directory to understand Template bounded context: Template aggregate, InputSpec, TemplateComposition, MiniJinja compatibility, domain purity (no syntax validation)
 - [x] Analyze inter-entity relationships: Note ↔ Config (defaults), Note ↔ Schema (validation), Template ↔ Schema (variable constraints), Template ↔ Config (execution settings)
 - [x] Document evolution patterns: adding fields/subentities, modifying validation rules, trait evolution, phantom type changes, backward compatibility requirements
 - [x] Create inventory document `_bmad-output/documentation-inventory/epic3-domain-entities.md` listing all entities with file locations, purposes, key methods, validation requirements
@@ -96,7 +96,7 @@ So that developers understand the domain language and can work effectively with 
 
 ### Task 7: Document Template Bounded Context
 - [x] Document Template entity with modular composition and variable definitions
-- [x] Detail VariableDefinition enum variants with type constraints and defaults
+- [x] Detail InputSpec enum variants with type constraints and defaults
 - [x] Document TemplateComposition for inheritance and modular assembly
 - [x] Include MiniJinja compatibility requirements and domain layer boundaries
 - [x] Document Template relationships with Schema bounded context (variable validation)
@@ -325,7 +325,7 @@ docs/
 
 **Template Bounded Context:**
 - **Template Entity**: UUID identity, content storage, variable definitions
-- **VariableDefinition Enum**: String/Number/Bool/Date/File with constraints
+- **InputSpec Enum**: String/Number/Bool/Date/File with constraints
 - **TemplateComposition**: Extends/includes with dependency resolution
 - **MiniJinja Compatibility**: Domain stores opaque content, adapter handles syntax
 - **Contracts**: References Schema for variable validation, uses Config for rendering parameters

@@ -8,7 +8,7 @@ use super::{
     events::{TemplateCreated, TemplateEvents},
     syntax::PlaceholderSyntax,
     validation::{validate_content, validate_structure},
-    variable::VariableDefinition,
+    variable::InputSpec,
 };
 use crate::{errors::DomainError, validation};
 
@@ -52,7 +52,7 @@ pub struct Template {
     /// Syntax used for placeholders.
     syntax: PlaceholderSyntax,
     /// Variable definitions with types and constraints.
-    variables: HashMap<String, VariableDefinition>,
+    variables: HashMap<String, InputSpec>,
     /// Optional parent template for composition.
     extends: Option<String>,
     /// Metadata for template management.
@@ -201,12 +201,12 @@ impl Template {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_domain::{Template, VariableDefinition, TemplateMetadata};
+    /// # use lithos_domain::{Template, InputSpec, TemplateMetadata};
     /// # use std::collections::HashMap;
     /// let mut variables = HashMap::new();
     /// variables.insert(
     ///     "title".to_string(),
-    ///     VariableDefinition::String {
+    ///     InputSpec::String {
     ///         default: Some("Daily".to_string()),
     ///         max_length: None,
     ///         min_length: None,
@@ -227,7 +227,7 @@ impl Template {
     pub fn new(
         name: String,
         content: String,
-        variables: HashMap<String, VariableDefinition>,
+        variables: HashMap<String, InputSpec>,
         extends: Option<String>,
         metadata: Metadata,
     ) -> Result<Self, DomainError> {
@@ -280,7 +280,7 @@ impl Template {
     /// Returns the template's variable definitions.
     #[inline]
     #[must_use]
-    pub const fn variables(&self) -> &HashMap<String, VariableDefinition> {
+    pub const fn variables(&self) -> &HashMap<String, InputSpec> {
         &self.variables
     }
 
@@ -405,7 +405,7 @@ impl Template {
                   validation regardless of order."
     )]
     fn validate_variable_definitions(
-        variables: &HashMap<String, VariableDefinition>,
+        variables: &HashMap<String, InputSpec>,
     ) -> Result<(), DomainError> {
         Self::validate_max_variables_not_exceeded(variables.len())?;
 
@@ -604,7 +604,7 @@ mod tests {
         let base = Template::new(
             "base".to_owned(),
             "Base: {{v}}".to_owned(),
-            [("v".to_owned(), VariableDefinition::Boolean {
+            [("v".to_owned(), InputSpec::Boolean {
                 default: None,
             })]
             .into_iter()
