@@ -1,10 +1,11 @@
 ---
 feature: Template Task Integration
 status: Draft
-author: Jack Matanky (with AI assistance)
-ticket: TBD
+author: Jack (via AI Design Partner)
+ticket: Story 3.4 - Template Task Integration
 date_created: 2026-02-08
-tags: [template, task, query, integration]
+date_updated: 2026-02-16
+tags: [template, task, query, integration, minijinja]
 ---
 
 # Tech Spec: Template Task Integration
@@ -13,61 +14,77 @@ tags: [template, task, query, integration]
 
 ### 1.1 Context & Background
 
-The template system (Epic 12) needs to expose tasks for template rendering and provide validated task creation from templates. Currently, there is no formal definition of how tasks integrate with the template context.
+**Current State:**
+The MiniJinja-first template architecture (defined in 012, 013, 014) provides domain models, storage, and rendering services. However, templates need to **query and create tasks** to be useful for note-taking workflows.
 
-**Current Gaps**:
+**Current Gaps:**
+
 - No task query functions for templates (`query.tasks_overdue()`)
 - No task formatting helpers (`tasks.format_checkbox()`)
 - No config-validated task creation from templates
 - Templates cannot iterate over tasks or display metadata
 
-**Why Template Context**: Task integration spans multiple concerns:
-- **Query exposure**: Template context provides task queries (backed by Note CQRS)
-- **Formatting**: Templates generate valid task markdown (validated against TaskConfig)
-- **User interaction**: Prompts/suggesters populate task metadata
+**Why This Matters:**
+Task integration enables templates to:
 
-**Related Decisions**:
-- [003: Task Configuration Schema](./003-config-task.md)
-- [007: Note List and Task Entities](./007-note-list-task.md)
-- [Epic 12: Template System](../../_bmad-output/planning-artifacts/epics/) (TBD)
+1. **Query tasks** for reporting (overdue tasks, tasks by project, completed tasks)
+2. **Format tasks** with validation (generate valid markdown checkboxes with metadata)
+3. **Populate variables** from task queries (use suggesters to select projects)
+
+This document defines how task query/format functions integrate with the TemplateCatalog service layer.
+
+**Related Documents:**
+
+- [012: Template Domain Models](./012-template-models.md) - Template metadata schema
+- [013: Template CQRS](./013-template-cqrs.md) - Template storage and ports
+- [014: Template Services](./014-template-services.md) - MiniJinja integration and TemplateCatalog
+- [003: Task Configuration Schema](./003-config-task.md) - TaskConfig domain
+- [007: Note List and Task Entities](./007-note-list-task.md) - Task domain
 
 ### 1.2 Goals & Non-Goals
 
-**Goals**:
+**Goals:**
+
 1. **Expose task queries** for template rendering (tasks by status, field, date range)
 2. **Provide task formatting** with config validation (`tasks.format_checkbox()`)
 3. **Enable interactive task creation** via prompts/suggesters (standard template functions)
 4. **Validate generated tasks** against vault TaskConfig (fail-fast on invalid metadata)
-5. **Zero breaking changes**: Existing templates continue to work
+5. **Zero breaking changes:** Existing templates continue to work (additive feature)
 
-**Non-Goals**:
-- Template engine selection (MiniJinja assumed, see Epic 12)
-- Task CQRS implementation (Note context responsibility)
-- Query service internals (Epic 11)
-- Real-time task updates (no file watching in MVP)
+**Non-Goals:**
+
+1. **Template engine selection:** MiniJinja is established (see [014: Template Services](./014-template-services.md))
+2. **Task CQRS implementation:** Note context responsibility (see [007: Note List and Task Entities](./007-note-list-task.md))
+3. **Real-time task updates:** No file watching in MVP (templates rendered on-demand)
+4. **Task mutation via templates:** Templates are read-only (cannot modify existing tasks)
 
 ### 1.3 Constraints (The Hard Limits)
 
-**Architectural**:
-- Template context is **application boundary** (orchestrates Note + Config)
-- No direct database access (uses Note CQRS ports)
-- Formatting **must validate** against TaskConfig (fail-fast)
-- Templates are **sync-first** (no async template functions in MVP)
+**Architectural Constraints:**
 
-**Performance**:
-- Task queries backed by indexes (defined in TaskConfig)
-- Template rendering target: <100ms for typical vaults
-- Format validation: <1ms per task (config validation cached)
+- **TemplateCatalog Integration:** Task functions registered with MiniJinja Environment (see [014: Template Services](./014-template-services.md))
+- **No Direct Database Access:** Uses Note CQRS Query ports (read-only task access)
+- **Fail-Fast Validation:** Formatting MUST validate against TaskConfig (errors during rendering, not silently ignored)
+- **Sync-First:** No async template functions in MVP (MiniJinja functions are sync)
 
-**User Experience**:
-- Template errors **must be actionable** ("priority must be 0-10", not "invalid value")
-- Generated tasks **must be valid markdown** (no syntax errors)
-- Prompts/suggesters use standard template function API (no special task syntax)
+**Performance Constraints:**
 
-**Integration**:
-- Query functions return task data (not Task entities - no domain leakage)
-- Format functions accept primitive types (strings, numbers, maps)
-- Config loaded before template rendering (no lazy loading)
+- **Task Queries:** Backed by indexes (defined in TaskConfig, O(log N) lookups)
+- **Template Rendering:** <100ms for typical vaults (includes task queries)
+- **Format Validation:** <1ms per task (config validation is cached)
+- **Query Result Limit:** Max 1000 tasks per query (prevent memory exhaustion)
+
+**User Experience Constraints:**
+
+- **Actionable Errors:** Template errors must be specific ("priority must be 0-10", not "invalid value")
+- **Valid Markdown:** Generated tasks must be syntactically valid (no broken checkboxes)
+- **Standard Functions:** Prompts/suggesters use existing template function API (no special task syntax)
+
+**Integration Constraints:**
+
+- **No Domain Leakage:** Query functions return TaskView DTOs (not Task entities)
+- **Primitive Types:** Format functions accept strings, numbers, maps (JSON-compatible types)
+- **Config Preloaded:** TaskConfig loaded before TemplateCatalog initialization (no lazy loading)
 
 ## 2. Guide-Level Explanation (The "What")
 
@@ -185,25 +202,37 @@ $ lithos template render daily-tasks.md
   - Line 15: tasks.format_checkbox() - project_name pattern mismatch (expected ^[a-z_]+$)
 ```
 
-#### Developer Perspective: Template Context API
+#### Developer Perspective: TemplateCatalog with Task Functions
 
-**Registering Task Functions**
+**Registering Task Functions (Application Startup):**
 
 ```rust
-use lithos_core::template::context::TemplateContext;
-use lithos_core::note::ports::Query as NoteQuery;
+use lithos_core::template::{TemplateCatalog, TemplateQuery};
+use lithos_core::note::Query as NoteQuery;
 use lithos_core::config::task::TaskConfig;
+use lithos_core::db::Database;
 
-let mut ctx = TemplateContext::new();
+// 1. Open database and create ports
+let db = Database::open("vault.redb")?;
+let template_query = Box::new(TemplateQuery::new(&db));
+let note_query = Box::new(NoteQuery::new(&db));
+let task_config = TaskConfig::load(&db)?;
 
-// Register query functions (backed by Note CQRS)
-ctx.register_query_functions(&note_query, &task_config);
+// 2. Create TemplateCatalog with task function registration
+let mut catalog = TemplateCatalog::builder()
+    .with_template_query(template_query)
+    .with_task_query(note_query, &task_config)  // Registers query.* functions
+    .with_task_format(&task_config)              // Registers tasks.* functions
+    .build()?;
 
-// Register formatting functions
-ctx.register_task_functions(&task_config);
+// 3. Load and compile all templates
+catalog.load_all()?;
 
-// Render template
-let output = ctx.render("weekly-review.md", &vault_path)?;
+// 4. Render templates with task functions available
+let output = catalog.render(
+    "weekly-review",
+    minijinja::context! { date => "2026-02-16" },
+)?;
 ```
 
 **Query Function Implementation** (internal):
@@ -277,24 +306,25 @@ pub fn format_checkbox(
 
 ### 2.2 Mental Model
 
-**Three-Layer Integration**:
+**Three-Layer Integration:**
 
 ```
 ┌─────────────────────────────────────────┐
 │ Template (User-Facing)                  │
-│ - Jinja syntax                          │
+│ - MiniJinja syntax ({{ }}, {% %})       │
 │ - query.* functions (read tasks)        │
 │ - tasks.* functions (create tasks)      │
 │ - Standard filters (date, default)      │
 └─────────────────────────────────────────┘
                   │
-                  │ Template Context (Orchestration)
+                  │ TemplateCatalog (Service Layer)
                   ▼
 ┌─────────────────────────────────────────┐
-│ Template Context API                    │
-│ - Converts queries to template values   │
-│ - Validates task creation               │
-│ - Provides TaskView (no domain leakage) │
+│ TemplateCatalog (014)                   │
+│ - Owns Arc<Environment> (MiniJinja)     │
+│ - Registers task functions              │
+│ - Converts queries to TaskView DTOs     │
+│ - Validates task formatting             │
 └─────────────────────────────────────────┘
                   │
           ┌───────┴───────┐
@@ -305,17 +335,20 @@ pub fn format_checkbox(
 └─────────────────┘ └──────────────┘
 ```
 
-**Key Concepts**:
+**Key Concepts:**
 
-1. **TaskView = Template-Friendly DTO**: No domain entities leaked to templates
-2. **Query Functions = Read-Only**: Templates cannot modify tasks (render only)
-3. **Format Functions = Validated Creation**: Generated markdown is guaranteed valid
-4. **TemplateValue = Template Primitive**: String/Number/Boolean/Array/Object (mirrors FieldValue)
+1. **TaskView = Template-Friendly DTO:** No domain entities leaked to templates (see Section 3.2)
+2. **Query Functions = Read-Only:** Templates cannot modify tasks (render only)
+3. **Format Functions = Validated Creation:** Generated markdown is guaranteed valid (fail-fast)
+4. **TemplateValue = Template Primitive:** String/Number/Boolean/Array/Object (MiniJinja-compatible)
+5. **TemplateCatalog Owns Functions:** Task functions registered with MiniJinja Environment during catalog build
 
-**Think of it like**:
-- **query.\*** = SQL SELECT for tasks (read-only)
-- **tasks.format_checkbox()** = INSERT statement (validated before output)
+**Think of it like:**
+
+- **query.\*** = SQL SELECT for tasks (read-only, returns TaskView DTOs)
+- **tasks.format_checkbox()** = Markdown generator (validated before output, never modifies database)
 - **TaskView** = JSON response from API (not internal domain model)
+- **TemplateCatalog** = Service that wires together MiniJinja + task queries + validation
 
 ## 3. Detailed Design (The "How")
 
@@ -324,17 +357,19 @@ pub fn format_checkbox(
 ```mermaid
 graph TB
     subgraph "Template Layer (User-Facing)"
-        Template[Template File<br/>.md with Jinja]
+        Template[Template File<br/>.md with MiniJinja]
     end
 
-    subgraph "Template Context (Orchestration)"
-        TmplCtx[TemplateContext]
+    subgraph "Service Layer (014)"
+        Catalog[TemplateCatalog]
+        Env[Arc&lt;Environment&gt;<br/>MiniJinja]
         QueryFns[Query Functions]
         FormatFns[Format Functions]
         TaskView[TaskView DTO]
 
-        TmplCtx --> QueryFns
-        TmplCtx --> FormatFns
+        Catalog --> Env
+        Env --> QueryFns
+        Env --> FormatFns
         QueryFns --> TaskView
     end
 
@@ -347,14 +382,15 @@ graph TB
         TaskConfig[TaskConfig]
     end
 
-    Template --> TmplCtx
+    Template --> Catalog
     QueryFns --> NoteQuery
     FormatFns --> TaskConfig
     NoteQuery --> Task
     Task -.converts to.-> TaskView
 
-    style TmplCtx fill:#fff4e1
+    style Catalog fill:#fff4e1
     style TaskConfig fill:#e1f5ff
+    style Env fill:#e8f4f8
 ```
 
 ### 3.2 Data Models
@@ -451,22 +487,25 @@ impl TemplateValue {
 
 ### 3.3 Component & Interface Specifications
 
-#### Component: `TemplateContext`
+#### Component: `TemplateCatalog` (Extended for Task Integration)
 
-- **Responsibility**: Orchestrates template rendering with task query/format functions
-- **Public Interface**:
-  - `TemplateContext::new() -> Self`
-    - _Behavior_: Creates context with empty function registry
-  - `register_query_functions(&mut self, query: &impl NoteQuery, config: &TaskConfig)`
-    - _Behavior_: Registers task query functions (tasks_overdue, tasks_by_field, etc.)
-  - `register_task_functions(&mut self, config: &TaskConfig)`
-    - _Behavior_: Registers task formatting functions (format_checkbox)
-  - `render(&self, template_name: &str, vault_path: &Path) -> Result<String, TemplateError>`
-    - _Behavior_: Renders template with registered functions
-    - _Errors_: Template not found, validation failures, query errors
-- **State/Invariants**:
-  - Functions registered before rendering
-  - Config loaded before function registration
+- **Responsibility:** Orchestrates template rendering with task query/format functions (extends [014: Template Services](./014-template-services.md))
+- **Public Interface:**
+  - `TemplateCatalog::builder() -> TemplateCatalogBuilder`
+    - _Behavior:_ Creates builder for configuring catalog with task functions
+  - `TemplateCatalogBuilder::with_task_query(query: Box<dyn NoteQuery>, config: &TaskConfig) -> Self`
+    - _Behavior:_ Registers task query functions (tasks_overdue, tasks_by_field, etc.) with MiniJinja Environment
+  - `TemplateCatalogBuilder::with_task_format(config: &TaskConfig) -> Self`
+    - _Behavior:_ Registers task formatting functions (format_checkbox) with MiniJinja Environment
+  - `TemplateCatalogBuilder::build() -> Result<TemplateCatalog, TemplateError>`
+    - _Behavior:_ Constructs catalog with all registered functions
+  - `TemplateCatalog::render(&self, name: &str, context: minijinja::Value) -> Result<String, TemplateError>`
+    - _Behavior:_ Renders template with task functions available
+    - _Errors:_ Template not found, validation failures, query errors
+- **State/Invariants:**
+  - Task functions registered during build phase (before load_all())
+  - TaskConfig loaded before builder creation (no lazy loading)
+  - Query/format functions closed over shared state (Arc<Query>, Arc<TaskConfig>)
 
 #### Component: Query Functions
 
@@ -507,22 +546,20 @@ Format functions are registered as template globals (accessed via `tasks.*`).
 ```mermaid
 sequenceDiagram
     participant User as Template File
-    participant Engine as MiniJinja
-    participant Ctx as TemplateContext
+    participant Engine as MiniJinja<br/>Environment
+    participant Catalog as TemplateCatalog
     participant Query as Query Functions
     participant CQRS as Note Query Port
     participant Task as Task Entity
 
     User->>Engine: query.tasks_overdue()
-    Engine->>Ctx: Call registered function
-    Ctx->>Query: tasks_overdue()
+    Engine->>Query: Call registered function
     Query->>CQRS: find_tasks_by_date_range("due_date", ..now)
     CQRS->>Task: Retrieve tasks
     Task-->>CQRS: Vec<Task>
     CQRS-->>Query: Vec<Task>
     Query->>Query: Convert to TaskView
-    Query-->>Ctx: Vec<TaskView>
-    Ctx-->>Engine: Serialize to JSON
+    Query-->>Engine: Vec<TaskView> (serialized)
     Engine-->>User: Render in template
 ```
 
@@ -531,14 +568,12 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant User as Template File
-    participant Engine as MiniJinja
-    participant Ctx as TemplateContext
+    participant Engine as MiniJinja<br/>Environment
     participant Format as Format Functions
     participant Config as TaskConfig
 
     User->>Engine: tasks.format_checkbox(text, status, metadata)
-    Engine->>Ctx: Call registered function
-    Ctx->>Format: format_checkbox(...)
+    Engine->>Format: Call registered function
     Format->>Config: Validate status
     Config-->>Format: StatusSymbol('x')
     Format->>Config: Get task tag
@@ -551,61 +586,84 @@ sequenceDiagram
     end
 
     Format->>Format: Build markdown string
-    Format-->>Ctx: "- [x] #task Text [key:: val]"
-    Ctx-->>Engine: Return string
+    Format-->>Engine: "- [x] #task Text [key:: val]"
     Engine-->>User: Insert in output
 ```
 
 #### Dependencies
 
-- **MiniJinja**: Template engine (template context integrates with)
-- **Note CQRS**: Query port for task retrieval
-- **TaskConfig**: Validation and formatting rules
-- **Serde**: JSON serialization for template values
+- **MiniJinja:** Template engine (TemplateCatalog owns Arc<Environment>)
+- **Note CQRS:** Query port for task retrieval (read-only)
+- **TaskConfig:** Validation and formatting rules (loaded at startup)
+- **Serde:** JSON serialization for template values (MiniJinja-compatible)
+- **TemplateCatalog:** Service layer from [014: Template Services](./014-template-services.md)
 
 ### 3.5 Core Logic & Algorithms
 
 #### Algorithm: Task Query Function Registration
 
+**Implementation in TemplateCatalogBuilder:**
+
 ```rust
-impl TemplateContext {
-    pub fn register_query_functions<Q: NoteQuery>(
-        &mut self,
-        query: &Q,
+impl TemplateCatalogBuilder {
+    pub fn with_task_query(
+        mut self,
+        query: Box<dyn NoteQuery>,
         config: &TaskConfig,
-    ) {
-        let query = Arc::new(query.clone()); // Shared across functions
+    ) -> Self {
+        let query = Arc::from(query);
         let config = Arc::new(config.clone());
 
+        // Get mutable access to Environment (before Arc wrapping)
+        let env = self.env.as_mut()
+            .expect("Environment must exist before registering functions");
+
         // Register tasks_overdue
-        self.engine.add_function("tasks_overdue", move || {
-            let now = chrono::Utc::now();
-            query.find_tasks_by_date_range("due_date", ..now)
-                .map(|tasks| {
-                    tasks.into_iter()
-                        .map(|t| TaskView::from_task(&t, &config))
-                        .collect::<Vec<_>>()
-                })
-                .map_err(|e| TemplateError::QueryFailed(e))
+        env.add_function("tasks_overdue", {
+            let query = Arc::clone(&query);
+            let config = Arc::clone(&config);
+            move || -> Result<Vec<TaskView>, minijinja::Error> {
+                let now = chrono::Utc::now();
+                query.find_tasks_by_date_range("due_date", ..now)
+                    .map(|tasks| {
+                        tasks.into_iter()
+                            .map(|t| TaskView::from_task(&t, &config))
+                            .collect()
+                    })
+                    .map_err(|e| minijinja::Error::new(
+                        minijinja::ErrorKind::InvalidOperation,
+                        format!("Query failed: {e}"),
+                    ))
+            }
         });
 
         // Register tasks_by_field
-        self.engine.add_function("tasks_by_field", {
+        env.add_function("tasks_by_field", {
             let query = Arc::clone(&query);
             let config = Arc::clone(&config);
-            move |field: String, value: TemplateValue| {
-                let field_value = note::value::FieldValue::from_template_value(&value);
+            move |field: String, value: minijinja::Value| -> Result<Vec<TaskView>, minijinja::Error> {
+                let field_value = note::value::FieldValue::from_json(&value)
+                    .map_err(|e| minijinja::Error::new(
+                        minijinja::ErrorKind::InvalidOperation,
+                        format!("Invalid field value: {e}"),
+                    ))?;
+
                 query.find_tasks_by_field(&field, &field_value)
                     .map(|tasks| {
                         tasks.into_iter()
                             .map(|t| TaskView::from_task(&t, &config))
-                            .collect::<Vec<_>>()
+                            .collect()
                     })
-                    .map_err(|e| TemplateError::QueryFailed(e))
+                    .map_err(|e| minijinja::Error::new(
+                        minijinja::ErrorKind::InvalidOperation,
+                        format!("Query failed: {e}"),
+                    ))
             }
         });
 
-        // ... other query functions
+        // ... other query functions (tasks_completed_since, task_projects, etc.)
+
+        self
     }
 }
 ```
@@ -743,38 +801,57 @@ fn render_template(
 ```
 
 **Logs**:
+
 - `INFO`: Template rendered (name, duration, success)
 - `WARN`: Unknown metadata fields used (forward compatibility)
 - `ERROR`: Validation failures (field name, expected vs actual)
 
 ### 5.2 Migration Strategy
 
-**Phase 1: Add TemplateContext**
-- Create `template/context.rs` with TemplateContext
-- Add `template/task_view.rs` with TaskView DTO
-- Add `template/value.rs` with TemplateValue
+**Prerequisites:**
+- [014: Template Services](./014-template-services.md) implemented (TemplateCatalog exists)
+- Note CQRS query ports available (task retrieval)
+- TaskConfig loaded at application startup
 
-**Phase 2: Register Query Functions**
-- Implement query function wrappers
-- Register with MiniJinja engine
-- Add tests with fake Note query
+**Phase 1: Add TaskView DTO and TemplateValue**
 
-**Phase 3: Register Format Functions**
-- Implement format_checkbox with validation
-- Add tests with various metadata combinations
+- Create `template/task_view.rs` with TaskView (template-friendly DTO)
+- Add `template/value.rs` with TemplateValue if not already present (may reuse minijinja::Value)
+- Add conversion: `TaskView::from_task(task: &Task, config: &TaskConfig) -> Self`
 
-**Backward Compatibility**:
-- Templates without task functions continue to work
-- Task queries return empty lists if no tasks indexed
+**Phase 2: Extend TemplateCatalogBuilder**
+
+- Add `TemplateCatalogBuilder::with_task_query()` method
+- Register query functions: tasks_overdue, tasks_by_field, tasks_completed_since, task_projects, tasks_by_status
+- Functions close over `Arc<Box<dyn NoteQuery>>` and `Arc<TaskConfig>`
+
+**Phase 3: Add Format Functions**
+
+- Add `TemplateCatalogBuilder::with_task_format()` method
+- Implement `tasks.format_checkbox()` with full validation
+- Add tests with various metadata combinations (valid, invalid, edge cases)
+
+**Phase 4: Update Application Code**
+
+- Update application startup to call `with_task_query()` and `with_task_format()`
+- Test rendering with task functions
+
+**Backward Compatibility:**
+
+- Templates without task functions continue to work (additive change)
+- Task queries return empty lists if no tasks indexed (graceful degradation)
+- Format functions are opt-in (only error if called with invalid data)
 
 ### 5.3 Security & Privacy
 
 **Template Injection**:
+
 - Templates are user-authored (trusted)
 - No eval/exec of template-generated code
 - Metadata values are data only
 
 **Query Access Control**:
+
 - Templates can query all tasks (no per-note filtering in MVP)
 - Future: Add note permissions to query context
 
@@ -794,12 +871,12 @@ fn render_template(
 
 ## 7. Critique & Refinement Log
 
-| Date       | Critique / Issue                     | Resolution                                   |
-|:-----------|:-------------------------------------|:---------------------------------------------|
-| 2026-02-08 | "Should templates access Task?"      | No - use TaskView DTO to prevent coupling    |
-| 2026-02-08 | "Async or sync query functions?"     | Sync for MVP; defer async until needed       |
-| 2026-02-08 | "Silent fail or error on invalid?"   | Fail-fast with actionable errors             |
-| 2026-02-08 | "Special prompt syntax for tasks?"   | No - reuse standard template functions       |
+| Date       | Critique / Issue                   | Resolution                                |
+| :--------- | :--------------------------------- | :---------------------------------------- |
+| 2026-02-08 | "Should templates access Task?"    | No - use TaskView DTO to prevent coupling |
+| 2026-02-08 | "Async or sync query functions?"   | Sync for MVP; defer async until needed    |
+| 2026-02-08 | "Silent fail or error on invalid?" | Fail-fast with actionable errors          |
+| 2026-02-08 | "Special prompt syntax for tasks?" | No - reuse standard template functions    |
 
 ## 8. References
 
@@ -942,17 +1019,17 @@ pub fn format_checkbox(
 
 **Error Handling Matrix**:
 
-| Error Scenario                         | TemplateError Variant         | User-Facing Message Example                                     |
-| -------------------------------------- | ----------------------------- | --------------------------------------------------------------- |
-| Invalid status name format             | `InvalidStatusName`           | "Status name 'in-progress!' must be alphanumeric + '_'"         |
-| Status not in config                   | `UnknownStatus`               | "Unknown status 'foo'. Configured: complete, incomplete, ..."   |
-| No task tags configured                | `NoTaskTagsConfigured`        | "Cannot format task: no task tags in vault config"              |
-| Field not in config                    | `UnknownField`                | "Unknown field 'urgency'. Configured: priority, project, ..."   |
-| Field value out of bounds              | `ValidationFailed`            | "Field 'priority': value 15 exceeds max 10"                     |
-| Field value wrong type                 | `ValidationFailed`            | "Field 'priority': expected integer, got string"                |
-| Field value fails pattern              | `ValidationFailed`            | "Field 'project': value 'My-Project' doesn't match '^[a-z_]+$'" |
-| Unsupported complex type (array/object)| `UnsupportedFieldType`        | "Field 'tags': array fields not supported in inline metadata"   |
-| Invalid date format                    | `InvalidDateFormat`           | "Field 'due_date': invalid format '2026-13-45'"                 |
+| Error Scenario                          | TemplateError Variant  | User-Facing Message Example                                     |
+| --------------------------------------- | ---------------------- | --------------------------------------------------------------- |
+| Invalid status name format              | `InvalidStatusName`    | "Status name 'in-progress!' must be alphanumeric + '\_'"        |
+| Status not in config                    | `UnknownStatus`        | "Unknown status 'foo'. Configured: complete, incomplete, ..."   |
+| No task tags configured                 | `NoTaskTagsConfigured` | "Cannot format task: no task tags in vault config"              |
+| Field not in config                     | `UnknownField`         | "Unknown field 'urgency'. Configured: priority, project, ..."   |
+| Field value out of bounds               | `ValidationFailed`     | "Field 'priority': value 15 exceeds max 10"                     |
+| Field value wrong type                  | `ValidationFailed`     | "Field 'priority': expected integer, got string"                |
+| Field value fails pattern               | `ValidationFailed`     | "Field 'project': value 'My-Project' doesn't match '^[a-z_]+$'" |
+| Unsupported complex type (array/object) | `UnsupportedFieldType` | "Field 'tags': array fields not supported in inline metadata"   |
+| Invalid date format                     | `InvalidDateFormat`    | "Field 'due_date': invalid format '2026-13-45'"                 |
 
 **Validation Order** (fail-fast):
 
