@@ -14,30 +14,6 @@ pub trait Command: Send + Sync {
     /// Storage error type for command operations.
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// Loads the active merged configuration version for a vault.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the lookup fails.
-    fn load_active_version(
-        &self,
-        vault_id: VaultId,
-    ) -> Result<Option<Version>, Self::Error>;
-
-    /// Loads the persisted global configuration, if present.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the lookup fails.
-    fn load_global(&self) -> Result<Option<Global>, Self::Error>;
-
-    /// Loads the persisted vault configuration, if present.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the lookup fails.
-    fn load_vault(
-        &self,
-        vault_id: VaultId,
-    ) -> Result<Option<Vault>, Self::Error>;
-
     /// Persists the global configuration.
     ///
     /// # Errors
@@ -100,6 +76,12 @@ pub trait Query: Send + Sync {
         vault_id: VaultId,
     ) -> Result<Option<Version>, Self::Error>;
 
+    /// Fetches the persisted global configuration, if present.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the lookup fails.
+    fn get_global(&self) -> Result<Option<Global>, Self::Error>;
+
     /// Fetches a merged configuration snapshot as owned data (COLD PATH).
     ///
     /// Use this for operations that need to move/store the config, or when
@@ -113,6 +95,15 @@ pub trait Query: Send + Sync {
         vault_id: VaultId,
         version: Version,
     ) -> Result<Option<Config>, Self::Error>;
+
+    /// Fetches the persisted vault configuration, if present.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the lookup fails.
+    fn get_vault(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Option<Vault>, Self::Error>;
 
     /// Zero-copy access to archived configuration via closure (HOT PATH).
     ///

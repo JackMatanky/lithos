@@ -2,6 +2,10 @@
 //!
 //! This module handles the loading and merging of raw configuration data
 //! from external files and environment variables into [`RawConfig`].
+//!
+//! Reference implementation: this module demonstrates the preferred file
+//! ingestion pattern using Figment providers. Other contexts should follow
+//! the same separation (file -> raw -> domain) using the `FileSource` trait.
 
 use std::path::{Path, PathBuf};
 
