@@ -91,7 +91,6 @@ pub enum FieldSpec {
 
 impl FieldSpec {
     #[inline]
-    #[allow(clippy::too_many_lines, reason = "Complex ingestion logic")]
     /// Build a field spec from raw input.
     ///
     /// # Errors
@@ -104,89 +103,113 @@ impl FieldSpec {
         match raw {
             RawFieldSpec::Enum {
                 values,
-            } => {
-                if values.is_empty() {
-                    return Err(ConfigError::ValidationFailed {
-                        field: "fields.values".into(),
-                        message: "enum values cannot be empty"
-                            .to_owned()
-                            .into(),
-                    });
-                }
-                let values =
-                    values.into_iter().map(String::into_boxed_str).collect();
-                Ok(Self::Enum {
-                    name,
-                    values,
-                })
-            }
+            } => Self::ingest_enum_spec(name, values),
             RawFieldSpec::Integer {
                 min,
                 max,
-            } => {
-                let bounds = Bounds::from_options(min, max)
-                    .transpose()
-                    .map_err(|e| ConfigError::ValidationFailed {
-                        field: "fields".into(),
-                        message: e.to_string().into(),
-                    })?
-                    .unwrap_or(Bounds::Unbounded);
-                Ok(Self::Integer {
-                    name,
-                    bounds,
-                })
-            }
+            } => Self::ingest_integer_spec(name, min, max),
             RawFieldSpec::Float {
                 min,
                 max,
-            } => {
-                let bounds = Bounds::from_options(min, max)
-                    .transpose()
-                    .map_err(|e| ConfigError::ValidationFailed {
-                        field: "fields".into(),
-                        message: e.to_string().into(),
-                    })?
-                    .unwrap_or(Bounds::Unbounded);
-                Ok(Self::Float {
-                    name,
-                    bounds,
-                })
-            }
+            } => Self::ingest_float_spec(name, min, max),
             RawFieldSpec::DateTime {
                 format,
-            } => {
-                validate_chrono_format(&format, "fields.format")?;
-                Ok(Self::DateTime {
-                    name,
-                    format,
-                })
-            }
+            } => Self::ingest_datetime_spec(name, format),
             RawFieldSpec::String {
                 pattern,
-            } => {
-                let mut compiled = None;
-                if let Some(pattern_str) = pattern.as_ref() {
-                    if pattern_str.len() > 256 {
-                        return Err(ConfigError::ValidationFailed {
-                            field: "fields.pattern".into(),
-                            message: "pattern too long".into(),
-                        });
-                    }
-                    let regex = Regex::new(pattern_str).map_err(|error| {
-                        ConfigError::ValidationFailed {
-                            field: "fields.pattern".into(),
-                            message: error.to_string().into(),
-                        }
-                    })?;
-                    compiled = Some(Arc::new(regex));
-                }
-                Ok(Self::String {
-                    name,
-                    pattern,
-                    compiled,
-                })
-            }
+            } => Self::ingest_string_spec(name, pattern),
         }
+    }
+
+    fn ingest_enum_spec(
+        name: FieldName,
+        values: Vec<String>,
+    ) -> Result<Self, ConfigError> {
+        if values.is_empty() {
+            return Err(ConfigError::ValidationFailed {
+                field: "fields.values".into(),
+                message: "enum values cannot be empty".into(),
+            });
+        }
+        let values = values.into_iter().map(String::into_boxed_str).collect();
+        Ok(Self::Enum {
+            name,
+            values,
+        })
+    }
+
+    fn ingest_integer_spec(
+        name: FieldName,
+        min: Option<i64>,
+        max: Option<i64>,
+    ) -> Result<Self, ConfigError> {
+        let bounds = Bounds::from_options(min, max)
+            .transpose()
+            .map_err(|e| ConfigError::ValidationFailed {
+                field: "fields".into(),
+                message: e.to_string().into(),
+            })?
+            .unwrap_or(Bounds::Unbounded);
+        Ok(Self::Integer {
+            name,
+            bounds,
+        })
+    }
+
+    fn ingest_float_spec(
+        name: FieldName,
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Result<Self, ConfigError> {
+        let bounds = Bounds::from_options(min, max)
+            .transpose()
+            .map_err(|e| ConfigError::ValidationFailed {
+                field: "fields".into(),
+                message: e.to_string().into(),
+            })?
+            .unwrap_or(Bounds::Unbounded);
+        Ok(Self::Float {
+            name,
+            bounds,
+        })
+    }
+
+    fn ingest_datetime_spec(
+        name: FieldName,
+        format: String,
+    ) -> Result<Self, ConfigError> {
+        validate_chrono_format(&format, "fields.format")?;
+        Ok(Self::DateTime {
+            name,
+            format,
+        })
+    }
+
+    fn ingest_string_spec(
+        name: FieldName,
+        pattern: Option<String>,
+    ) -> Result<Self, ConfigError> {
+        let mut compiled = None;
+        if let Some(pattern_str) = pattern.as_ref() {
+            if pattern_str.len() > 256 {
+                return Err(ConfigError::ValidationFailed {
+                    field: "fields.pattern".into(),
+                    message: "pattern too long".into(),
+                });
+            }
+            let regex = Regex::new(pattern_str).map_err(|error| {
+                ConfigError::ValidationFailed {
+                    field: "fields.pattern".into(),
+                    message: error.to_string().into(),
+                }
+            })?;
+            compiled = Some(Arc::new(regex));
+        }
+        Ok(Self::String {
+            name,
+            pattern,
+            compiled,
+        })
     }
 
     #[inline]
@@ -194,7 +217,8 @@ impl FieldSpec {
     /// Return the spec name identifier.
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Ergonomic enum pattern for accessing shared field"
+        reason = "Match ergonomics are preferred over explicit 'ref' patterns \
+                  for readability."
     )]
     pub fn name(&self) -> &FieldName {
         match self {
@@ -228,7 +252,8 @@ impl FieldSpec {
     /// Returns `ConfigError` if the value does not match the spec.
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Ergonomic enum pattern for validation dispatch"
+        reason = "Match ergonomics are preferred over explicit 'ref' patterns \
+                  for readability."
     )]
     pub(crate) fn validate_raw_value(
         &self,
@@ -493,7 +518,11 @@ impl DateSpec {
 
 impl PartialEq for FieldSpec {
     #[inline]
-    #[expect(clippy::pattern_type_mismatch, reason = "Enum pattern matching")]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics are preferred over explicit 'ref' patterns \
+                  for readability."
+    )]
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (
@@ -624,10 +653,6 @@ fn parse_datetime_value(
 // ----------------------------------------------------------- //
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test modules have relaxed rules for unwrapping"
-)]
 mod tests {
     use super::*;
 

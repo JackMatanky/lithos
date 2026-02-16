@@ -85,24 +85,12 @@ mod tests {
     mod fixtures {
         use super::*;
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic setup. \
-                      Failure indicates invalid test data. Expect is \
-                      idiomatic in setup."
-        )]
         pub fn deserialized_event() -> ConfigUpdated {
             let json = r#"{"source":"vault","timestamp":1234567890}"#;
             serde_json::from_str(json)
                 .expect("ConfigUpdated should deserialize successfully")
         }
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic setup. \
-                      Failure indicates invalid test data. Expect is \
-                      idiomatic in setup."
-        )]
         pub fn serialized_event() -> String {
             let event = ConfigUpdated {
                 source: "vault".to_owned(),

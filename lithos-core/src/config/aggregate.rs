@@ -244,11 +244,8 @@ impl TryFrom<u64> for Version {
 
 #[cfg(test)]
 #[expect(
-    clippy::disallowed_methods,
-    clippy::let_underscore_must_use,
-    clippy::let_underscore_untyped,
-    clippy::panic_in_result_fn,
-    reason = "Test modules have relaxed rules for unwrapping and events"
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test modules group fixtures and tests for readability"
 )]
 mod tests {
     mod fixtures {
@@ -326,7 +323,7 @@ mod tests {
 
         pub fn config_with_cleared_events() -> Config {
             let mut config = test_config();
-            let _ = config.take_events();
+            let _events: Vec<Events> = config.take_events();
             config
         }
     }
@@ -409,7 +406,7 @@ mod tests {
             config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
                 "test", 0,
             )));
-            let _ = config.take_events();
+            let _events: Vec<Events> = config.take_events();
             assert!(config.pending_events().is_empty());
         }
     }

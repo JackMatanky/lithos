@@ -124,7 +124,6 @@ where
 
 #[cfg(test)]
 #[expect(
-    clippy::disallowed_methods,
     clippy::arbitrary_source_item_ordering,
     reason = "Test module requirements"
 )]

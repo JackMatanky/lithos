@@ -72,11 +72,8 @@ impl Emitter {
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Matching on reference to enum variants"
-    )]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "serde_json::json! macro uses unwrap internally"
+        reason = "Match ergonomics are preferred over explicit 'ref' patterns \
+                  for readability."
     )]
     pub fn get_filter_chain(
         spec: &InputSpec,
@@ -165,10 +162,6 @@ impl Emitter {
             reason = "Explicitly matching on mutable reference to combine \
                       filter args"
         )]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "serde_json::json! macro uses unwrap internally"
-        )]
         if let Some((FilterName::VALIDATE_LENGTH, args)) = chain.last_mut() {
             if let Some(obj) = args.as_object_mut() {
                 obj.insert("max".to_owned(), max.into());
@@ -183,7 +176,6 @@ impl Emitter {
 }
 
 #[cfg(test)]
-#[expect(clippy::disallowed_methods, reason = "Tests use unwrap")]
 mod tests {
     use std::collections::HashMap;
 
