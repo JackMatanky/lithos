@@ -8,7 +8,7 @@ use std::{
 use minijinja::{AutoEscape, Environment, UndefinedBehavior};
 
 use crate::template::{
-    adapter::{FilterRegistry, SourceGenerator},
+    adapter::{Emitter, FilterRegistry},
     aggregate::{Template, TemplateName},
     error::TemplateError,
     ports::Query,
@@ -19,7 +19,7 @@ use crate::template::{
 /// # Responsibilities
 /// - Loads all templates from storage (via `Query` port).
 /// - Topologically sorts by extends relationships (parents before children).
-/// - Compiles templates via `SourceGenerator` + `MiniJinja`.
+/// - Compiles templates via `Emitter` + `MiniJinja`.
 /// - Caches compiled templates in `Arc<Environment>` (shared across threads).
 /// - Provides unified render API.
 pub struct TemplateCatalog<Q: Query> {
@@ -94,7 +94,7 @@ impl<Q: Query> TemplateCatalog<Q> {
         );
 
         for template in sorted {
-            let source = SourceGenerator::generate(template);
+            let source = Emitter::emit(template);
 
             // Leak strings to meet Environment<'static> requirement.
             // Templates are loaded once at startup and are permanent.

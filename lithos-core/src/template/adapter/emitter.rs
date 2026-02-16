@@ -1,25 +1,25 @@
-//! Generates MiniJinja source code from template metadata.
+//! Emits MiniJinja source code from template metadata.
 //!
 //! This module converts the domain representation of a template (including
 //! inheritance and blocks) into a valid MiniJinja template string.
 
 use crate::template::{aggregate::Template, block::BlockStrategy};
 
-/// Generator for `MiniJinja` source code.
+/// Emitter for `MiniJinja` source code.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
-pub struct SourceGenerator;
+pub struct Emitter;
 
-impl SourceGenerator {
-    /// Generates `MiniJinja` source code from a `Template` aggregate.
+impl Emitter {
+    /// Emits `MiniJinja` source code from a `Template` aggregate.
     ///
-    /// The generator handles:
+    /// The emitter handles:
     /// - Inheritance via `{% extends "..." %}`
     /// - Block definitions and overrides via `{% block ... %}`
     /// - Composition strategies (Replace, Extend, Prepend) via `super()`
     #[must_use]
     #[inline]
-    pub fn generate(template: &Template) -> String {
+    pub fn emit(template: &Template) -> String {
         // Pre-allocate some space to reduce re-allocations
         let mut source = String::with_capacity(1024);
 
@@ -66,7 +66,7 @@ mod tests {
     use crate::template::{aggregate::TemplateName, block::TemplateBlock};
 
     #[test]
-    fn generates_base_template_with_blocks() {
+    fn emits_base_template_with_blocks() {
         let name = TemplateName::try_from("base").unwrap();
         let template = Template::new(
             &name,
@@ -87,7 +87,7 @@ mod tests {
         )
         .unwrap();
 
-        let source = SourceGenerator::generate(&template);
+        let source = Emitter::emit(&template);
 
         assert!(
             source.contains("{% block content %}Base Content{% endblock %}")
@@ -97,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn generates_child_template_with_inheritance() {
+    fn emits_child_template_with_inheritance() {
         let name = TemplateName::try_from("child").unwrap();
         let parent = TemplateName::try_from("base").unwrap();
         let template = Template::new(
@@ -112,7 +112,7 @@ mod tests {
         )
         .unwrap();
 
-        let source = SourceGenerator::generate(&template);
+        let source = Emitter::emit(&template);
 
         assert!(source.contains(r#"{% extends "base" %}"#));
         assert!(
@@ -121,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn generates_block_with_extend_strategy() {
+    fn emits_block_with_extend_strategy() {
         let name = TemplateName::try_from("child").unwrap();
         let parent = TemplateName::try_from("base").unwrap();
         let template = Template::new(
@@ -132,7 +132,7 @@ mod tests {
         )
         .unwrap();
 
-        let source = SourceGenerator::generate(&template);
+        let source = Emitter::emit(&template);
 
         assert!(
             source.contains(
@@ -142,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn generates_block_with_prepend_strategy() {
+    fn emits_block_with_prepend_strategy() {
         let name = TemplateName::try_from("child").unwrap();
         let parent = TemplateName::try_from("base").unwrap();
         let template = Template::new(
@@ -157,7 +157,7 @@ mod tests {
         )
         .unwrap();
 
-        let source = SourceGenerator::generate(&template);
+        let source = Emitter::emit(&template);
 
         assert!(
             source.contains(
