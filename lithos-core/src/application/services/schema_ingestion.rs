@@ -340,7 +340,10 @@ mod tests {
     use crate::{
         db::Database,
         fs::source::InMemoryFileSource,
-        schema::{RedbSchemaCommand, RedbSchemaQuery},
+        schema::{
+            RedbSchemaCommand, RedbSchemaQuery,
+            adapter::{command::CommandAdapter, query::QueryAdapter},
+        },
     };
 
     fn test_db() -> Result<(TempDir, Database), String> {
@@ -353,8 +356,8 @@ mod tests {
     #[test]
     fn schema_ingestion_service_new_creates_service() {
         let (_dir, db) = test_db().expect("Failed to create test db");
-        let query = RedbSchemaQuery::new_redb(&db);
-        let command = RedbSchemaCommand::new_redb(&db);
+        let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
+        let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
 
         let _service = SchemaIngestionService::new(&query, &command);
         // If we get here, construction succeeded
@@ -363,8 +366,8 @@ mod tests {
     #[test]
     fn schema_ingestion_service_ingests_valid_json_file() {
         let (_dir, db) = test_db().expect("Failed to create test db");
-        let query = RedbSchemaQuery::new_redb(&db);
-        let command = RedbSchemaCommand::new_redb(&db);
+        let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
+        let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
         let service = SchemaIngestionService::new(&query, &command);
 
         let mut source = InMemoryFileSource::new();
@@ -398,8 +401,8 @@ mod tests {
     #[test]
     fn schema_ingestion_service_rejects_invalid_schema() {
         let (_dir, db) = test_db().expect("Failed to create test db");
-        let query = RedbSchemaQuery::new_redb(&db);
-        let command = RedbSchemaCommand::new_redb(&db);
+        let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
+        let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
         let service = SchemaIngestionService::new(&query, &command);
 
         let mut source = InMemoryFileSource::new();
@@ -423,8 +426,8 @@ mod tests {
     #[test]
     fn schema_ingestion_service_handles_partial_directory_failures() {
         let (_dir, db) = test_db().expect("Failed to create test db");
-        let query = RedbSchemaQuery::new_redb(&db);
-        let command = RedbSchemaCommand::new_redb(&db);
+        let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
+        let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
         let service = SchemaIngestionService::new(&query, &command);
 
         let mut source = InMemoryFileSource::new();
@@ -473,8 +476,8 @@ mod tests {
     #[test]
     fn schema_ingestion_service_needs_update_always_returns_true() {
         let (_dir, db) = test_db().expect("Failed to create test db");
-        let query = RedbSchemaQuery::new_redb(&db);
-        let command = RedbSchemaCommand::new_redb(&db);
+        let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
+        let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
         let service = SchemaIngestionService::new(&query, &command);
 
         let source = InMemoryFileSource::new();

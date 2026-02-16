@@ -46,28 +46,9 @@ pub(crate) mod db_table {
 // --- Public API ---
 
 use self::adapter::{command::CommandAdapter, query::QueryAdapter};
-use crate::db::Database;
 
 /// Redb-backed schema command alias.
 pub type RedbSchemaCommand<'db> = command::Command<CommandAdapter<'db>>;
 
 /// Redb-backed schema query alias.
 pub type RedbSchemaQuery<'db> = query::Query<QueryAdapter<'db>>;
-
-impl<'db> RedbSchemaCommand<'db> {
-    #[inline]
-    #[must_use]
-    /// Create a redb-backed schema command.
-    pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(CommandAdapter::new(db))
-    }
-}
-
-impl<'db> RedbSchemaQuery<'db> {
-    #[inline]
-    #[must_use]
-    /// Create a redb-backed schema query.
-    pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(QueryAdapter::new(db))
-    }
-}

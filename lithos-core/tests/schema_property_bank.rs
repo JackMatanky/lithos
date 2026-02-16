@@ -16,6 +16,7 @@ use lithos_core::{
     db::Database,
     schema::{
         RedbSchemaCommand, RedbSchemaQuery,
+        adapter::{command::CommandAdapter, query::QueryAdapter},
         bank::{PropertyBank, PropertyBankId},
         property::{
             Cardinality, Multiplicity, Property, PropertyId, PropertyName,
@@ -66,8 +67,8 @@ fn create_sample_property(
 fn property_bank_singleton_identity_persists() -> TestResult {
     // GIVEN: A database and PropertyBank with singleton ID
     let (_dir, db) = setup_db()?;
-    let command = RedbSchemaCommand::new_redb(&db);
-    let query = RedbSchemaQuery::new_redb(&db);
+    let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
+    let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
     let bank = PropertyBank::new();
     assert_eq!(
@@ -104,8 +105,8 @@ fn property_bank_singleton_identity_persists() -> TestResult {
 fn property_bank_save_creates_singleton() -> TestResult {
     // GIVEN: An empty database
     let (_dir, db) = setup_db()?;
-    let command = RedbSchemaCommand::new_redb(&db);
-    let query = RedbSchemaQuery::new_redb(&db);
+    let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
+    let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
     let initial = query.find_property_bank()?;
     assert!(initial.is_none(), "Fresh database should have no PropertyBank");
@@ -145,8 +146,8 @@ fn property_bank_save_creates_singleton() -> TestResult {
 fn property_bank_save_updates_existing_singleton() -> TestResult {
     // GIVEN: A PropertyBank with one property
     let (_dir, db) = setup_db()?;
-    let command = RedbSchemaCommand::new_redb(&db);
-    let query = RedbSchemaQuery::new_redb(&db);
+    let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
+    let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
     let mut bank = PropertyBank::new();
     let prop1 = create_sample_property(
@@ -200,8 +201,8 @@ fn property_bank_save_updates_existing_singleton() -> TestResult {
 fn property_bank_version_increments_persist() -> TestResult {
     // GIVEN: A new PropertyBank
     let (_dir, db) = setup_db()?;
-    let command = RedbSchemaCommand::new_redb(&db);
-    let query = RedbSchemaQuery::new_redb(&db);
+    let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
+    let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
     let mut bank = PropertyBank::new();
     let initial_version = bank.version();
@@ -274,13 +275,13 @@ fn property_bank_survives_restart() -> TestResult {
     // Save with first database connection
     {
         let db = Database::open(&db_path)?;
-        let command = RedbSchemaCommand::new_redb(&db);
+        let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
         command.save_property_bank(&bank)?;
     } // Database closed
 
     // WHEN: Reopening database
     let db = Database::open(&db_path)?;
-    let query = RedbSchemaQuery::new_redb(&db);
+    let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
     // THEN: PropertyBank is intact
     let loaded = query.find_property_bank()?;
@@ -320,8 +321,8 @@ fn property_bank_survives_restart() -> TestResult {
 fn property_bank_roundtrip_preserves_all_fields() -> TestResult {
     // GIVEN: A PropertyBank with multiple properties
     let (_dir, db) = setup_db()?;
-    let command = RedbSchemaCommand::new_redb(&db);
-    let query = RedbSchemaQuery::new_redb(&db);
+    let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
+    let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
     let mut bank = PropertyBank::new();
     let prop1 = create_sample_property(

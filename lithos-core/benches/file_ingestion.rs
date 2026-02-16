@@ -20,7 +20,10 @@ use lithos_core::{
     application::services::SchemaIngestionService,
     db::Database,
     fs::source::{FileSource as _, FsFileSource, InMemoryFileSource},
-    schema::{RedbSchemaCommand, RedbSchemaQuery},
+    schema::{
+        RedbSchemaCommand, RedbSchemaQuery,
+        adapter::{command::CommandAdapter, query::QueryAdapter},
+    },
 };
 use tempfile::tempdir;
 
@@ -73,8 +76,8 @@ fn bench_schema_ingestion(c: &mut Criterion) {
     let db_dir = tempdir().expect("Failed to create db dir");
     let db_path = db_dir.path().join("bench.redb");
     let db = Database::open(&db_path).expect("Failed to open database");
-    let query = RedbSchemaQuery::new_redb(&db);
-    let command = RedbSchemaCommand::new_redb(&db);
+    let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
+    let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
     let service = SchemaIngestionService::new(&query, &command);
 
     let mut group = c.benchmark_group("ingestion");
