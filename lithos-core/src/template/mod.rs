@@ -22,7 +22,7 @@ pub mod ports;
 /// Template query implementations (CQRS read operations).
 pub mod query;
 /// Template input specifications.
-pub mod variable;
+pub mod value;
 
 pub(crate) mod db_table {
     use redb::{MultimapTableDefinition, TableDefinition};
@@ -36,4 +36,4 @@ pub(crate) mod db_table {
 pub use aggregate::{InputName, Metadata, Template, TemplateName};
 pub use block::{BlockStrategy, TemplateBlock};
 pub use catalog::TemplateCatalog;
-pub use variable::InputSpec;
+pub use value::InputSpec;

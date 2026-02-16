@@ -27,7 +27,7 @@ use super::{
     block::TemplateBlock,
     error::TemplateError,
     events::{Events, TemplateCreated},
-    variable::InputSpec,
+    value::InputSpec,
 };
 use crate::patterns;
 
