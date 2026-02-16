@@ -2,6 +2,8 @@
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
+/// MiniJinja adapter layer.
+pub mod adapter;
 /// Template aggregate root and main entities.
 pub mod aggregate;
 /// Template command implementations (CQRS write operations).
