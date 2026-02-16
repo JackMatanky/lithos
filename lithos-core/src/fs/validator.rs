@@ -327,7 +327,8 @@ impl Validator {
         // 2. Resolve symlinks
         #[expect(
             clippy::disallowed_methods,
-            reason = "Security validation requires canonicalization"
+            reason = "Security validation requires canonicalization to \
+                      resolve all symlink components for boundary checking."
         )]
         let resolved = std::fs::canonicalize(path_ref)
             .map_err(|e| PathValidationError::IoError(e.to_string()))?;
@@ -836,7 +837,7 @@ mod tests {
                 #[expect(
                     clippy::disallowed_methods,
                     reason = "Test-only CWD guard needs current working \
-                              directory."
+                              directory to restore state after test."
                 )]
                 let previous = std::env::current_dir()?;
                 std::env::set_current_dir(path)?;

@@ -50,7 +50,6 @@ pub struct Frontmatter {
 impl Default for Frontmatter {
     #[inline]
     #[expect(
-        clippy::disallowed_methods,
         clippy::expect_used,
         reason = "Default values are guaranteed to be valid"
     )]
@@ -293,10 +292,6 @@ fn validate_non_empty(
 // ----------------------------------------------------------- //
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test modules have relaxed unwrap/expect rules"
-)]
 mod tests {
     mod fixtures {
         use super::super::FrontmatterKey;

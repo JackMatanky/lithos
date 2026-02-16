@@ -133,10 +133,6 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "expect is permitted in test setup"
-        )]
         fn build_merged_raw_uses_defaults_when_file_missing() {
             let dir = tempdir().expect("tempdir");
             let result = build_merged_raw(dir.path());
@@ -144,10 +140,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "expect is permitted in test setup"
-        )]
         fn build_merged_raw_reads_lithos_toml_when_present() {
             let (dir, _path) = fixtures::setup_vault_with_config(
                 "[logging]\nlog_level = \"debug\"\n",
@@ -166,10 +158,6 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "expect is permitted in test setup"
-        )]
         fn vault_overrides_global() {
             // GIVEN: global config with logging = info, vault config with debug
             let (_global_dir, global_path, vault_dir) = setup_layered_configs(
@@ -193,10 +181,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "expect is permitted in test setup"
-        )]
         fn global_used_when_vault_missing() {
             // GIVEN: only global config
             let (_global_dir, global_path, vault_dir) = setup_layered_configs(
@@ -220,10 +204,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "expect is permitted in test setup"
-        )]
         fn defaults_used_when_both_missing() {
             // GIVEN: no configs at all
             let dir = tempdir().expect("tempdir");
@@ -241,10 +221,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "expect is permitted in test setup"
-        )]
         fn paths_fields_merge_correctly() {
             // GIVEN: global with schemas_dir, vault with cache_dir
             let (_global_dir, global_path, vault_dir) = setup_layered_configs(
@@ -273,10 +249,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "expect is permitted in test setup"
-        )]
         fn vault_overrides_global_paths_field() {
             // GIVEN: global with templates_dir = global-templates, vault with
             // vault-templates

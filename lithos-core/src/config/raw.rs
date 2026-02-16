@@ -198,10 +198,6 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Tests use unwrap() for deterministic TOML parsing"
-        )]
         fn raw_config_deserializes_from_toml() {
             let toml = r#"
                 [paths]
@@ -228,10 +224,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Tests use unwrap() for deterministic TOML parsing"
-        )]
         fn raw_config_supports_partial_paths() {
             let toml = r#"
                 [paths]
@@ -259,10 +251,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Tests use unwrap() for deterministic TOML parsing"
-        )]
         fn raw_paths_config_all_fields_optional() {
             let toml = "
                 [paths]
@@ -279,10 +267,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Tests use unwrap() for deterministic TOML parsing"
-        )]
         fn raw_config_with_all_sections() {
             let toml = r#"
                 [paths]
@@ -304,10 +288,6 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Tests use unwrap() for deterministic TOML parsing"
-        )]
         fn raw_config_serializes_and_roundtrips() {
             let original = RawConfig {
                 paths: RawPathsConfig {

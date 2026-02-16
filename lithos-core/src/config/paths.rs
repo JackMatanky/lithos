@@ -387,7 +387,6 @@ pub struct PropertyBank(FileName);
 impl Default for PropertyBank {
     #[inline]
     #[expect(
-        clippy::disallowed_methods,
         clippy::expect_used,
         reason = "Default filename is guaranteed valid"
     )]
@@ -783,10 +782,6 @@ impl std::fmt::Display for AbsolutePath {
 // ----------------------------------------------------------- //
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test modules have relaxed unwrap/expect rules"
-)]
 mod tests {
     mod fixtures {
         use std::path::PathBuf;
