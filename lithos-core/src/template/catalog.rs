@@ -11,7 +11,7 @@ use crate::template::{
     Template,
     adapter::{FilterRegistry, SourceGenerator},
     error::TemplateError,
-    ports::TemplateQueryPort,
+    ports::Query,
 };
 
 /// Template catalog: orchestrates loading, compilation, and rendering.
@@ -27,7 +27,7 @@ pub struct TemplateCatalog {
     env: Arc<Environment<'static>>,
 
     /// Domain metadata storage (for template queries).
-    metadata: Box<dyn TemplateQueryPort>,
+    metadata: Box<dyn Query>,
 }
 
 impl TemplateCatalog {
@@ -42,9 +42,7 @@ impl TemplateCatalog {
     /// # Errors
     /// Returns `TemplateError` if initialization fails.
     #[inline]
-    pub fn new(
-        metadata: Box<dyn TemplateQueryPort>,
-    ) -> Result<Self, TemplateError> {
+    pub fn new(metadata: Box<dyn Query>) -> Result<Self, TemplateError> {
         let mut env = Environment::new();
         env.set_undefined_behavior(UndefinedBehavior::Strict);
         env.set_recursion_limit(10);
@@ -229,7 +227,7 @@ mod tests {
     use super::*;
     use crate::template::{
         BlockStrategy, TemplateBlock,
-        ports::{FakeTemplateStorage, TemplateCommandPort as _},
+        ports::{Command as _, FakeTemplateStorage},
     };
 
     #[test]
