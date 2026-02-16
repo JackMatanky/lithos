@@ -67,6 +67,11 @@ name = "note_parsing"
 harness = false
 path = "benches/note_parsing.rs"
 
+[[bench]]
+name = "file_ingestion"
+harness = false
+path = "benches/file_ingestion.rs"
+
 [features]
 default = []
 # Serde support for domain types (Proposal 10)
