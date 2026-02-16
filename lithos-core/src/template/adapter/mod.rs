@@ -6,8 +6,9 @@
 pub mod engine;
 /// Custom filters for variable constraints.
 pub mod filters;
-// pub mod source_generator; // Added in Phase 3
+/// Generates MiniJinja source code from template metadata.
+pub mod source_generator;
 
 pub use engine::TemplateEngine;
 pub use filters::FilterRegistry;
-// pub use source_generator::SourceGenerator; // Added in Phase 3
+pub use source_generator::SourceGenerator;
