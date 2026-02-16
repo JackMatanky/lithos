@@ -1,84 +1,49 @@
 //! Template command implementations (CQRS write operations).
-//!
-//! This module implements the Command port trait for Template write operations,
-//! using the Database layer for persistence.
 
 use uuid::Uuid;
 
 use super::{
-    aggregate::Template,
-    db_table::{NAME_TO_ID, TEMPLATES},
-    error::TemplateError,
+    aggregate::Template, error::TemplateError, ports as template_ports,
 };
-use crate::db::Database;
 
 /// Command implementation for Template write operations.
 ///
-/// Implements the Command port trait using the Database layer.
-pub struct Command<'db> {
-    db: &'db Database,
+/// This struct is generic over a storage port to support multiple backends.
+pub struct Command<C> {
+    port: C,
 }
 
-impl<'db> Command<'db> {
-    /// Create a new `Command` with a database reference.
+impl<C> Command<C> {
+    /// Creates a new `Command` wrapper with a storage port.
     #[inline]
     #[must_use]
-    pub const fn new(db: &'db Database) -> Self {
+    pub const fn new(port: C) -> Self {
         Self {
-            db,
+            port,
         }
     }
 }
 
-impl super::ports::TemplateCommandPort for Command<'_> {
+impl<C> Command<C>
+where
+    C: template_ports::Command,
+{
     /// Creates a new template.
     ///
     /// # Errors
     /// Returns `TemplateError` if creation fails.
     #[inline]
-    fn create(&self, template: &Template) -> Result<(), TemplateError> {
-        // Note: Still need id_str for multimap_insert (not UUID-based yet)
-        let id_str = template.id().to_string();
-
-        self.db
-            .put_by_uuid(TEMPLATES, template.id(), template)
-            .map_err(|e| TemplateError::Storage(e.to_string()))?;
-
-        self.db
-            .multimap_insert(NAME_TO_ID, template.name(), &id_str)
-            .map_err(|e| TemplateError::Storage(e.to_string()))?;
-
-        Ok(())
+    pub fn create(&self, template: &Template) -> Result<(), TemplateError> {
+        self.port.create(template)
     }
 
-    /// Deletes a template by ID.
+    /// Deletes a template by its unique identifier.
     ///
     /// # Errors
     /// Returns `TemplateError` if deletion fails.
     #[inline]
-    fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
-        // Note: Still need id_str for multimap_remove (not UUID-based yet)
-        let id_str = id.to_string();
-
-        // 1. Get template first to clean up indexes
-        let template = self
-            .db
-            .get_owned::<Template>(TEMPLATES, &id.to_string())
-            .map_err(|e| TemplateError::Storage(e.to_string()))?;
-
-        if let Some(t) = template {
-            // 2. Remove from name index
-            self.db
-                .multimap_remove(NAME_TO_ID, t.name(), &id_str)
-                .map_err(|e| TemplateError::Storage(e.to_string()))?;
-
-            // 3. Delete template
-            self.db
-                .delete_by_uuid(TEMPLATES, id)
-                .map_err(|e| TemplateError::Storage(e.to_string()))?;
-        }
-
-        Ok(())
+    pub fn delete(&self, id: Uuid) -> Result<(), TemplateError> {
+        self.port.delete(id)
     }
 
     /// Updates an existing template.
@@ -86,34 +51,8 @@ impl super::ports::TemplateCommandPort for Command<'_> {
     /// # Errors
     /// Returns `TemplateError` if update fails.
     #[inline]
-    fn update(&self, template: &Template) -> Result<(), TemplateError> {
-        // Note: Still need id_str for multimap operations (not UUID-based yet)
-        let id_str = template.id().to_string();
-
-        // 1. Get old template to find what changed
-        let old_template = self
-            .db
-            .get_owned::<Template>(TEMPLATES, &template.id().to_string())
-            .map_err(|e| TemplateError::Storage(e.to_string()))?;
-
-        if let Some(old) = old_template {
-            // 2. Update name index if changed
-            if old.name() != template.name() {
-                self.db
-                    .multimap_remove(NAME_TO_ID, old.name(), &id_str)
-                    .map_err(|e| TemplateError::Storage(e.to_string()))?;
-                self.db
-                    .multimap_insert(NAME_TO_ID, template.name(), &id_str)
-                    .map_err(|e| TemplateError::Storage(e.to_string()))?;
-            }
-        }
-
-        // 3. Save new template
-        self.db
-            .put_by_uuid(TEMPLATES, template.id(), template)
-            .map_err(|e| TemplateError::Storage(e.to_string()))?;
-
-        Ok(())
+    pub fn update(&self, template: &Template) -> Result<(), TemplateError> {
+        self.port.update(template)
     }
 }
 
@@ -124,7 +63,14 @@ impl super::ports::TemplateCommandPort for Command<'_> {
 )]
 mod tests {
     mod fixtures {
-        use super::*;
+        use std::collections::HashMap;
+
+        use tempfile::{TempDir, tempdir};
+
+        use crate::{
+            db::Database,
+            template::aggregate::{Template, TemplateName},
+        };
 
         pub fn test_db() -> Result<(TempDir, Database), String> {
             let dir = tempdir().map_err(|e| e.to_string())?;
@@ -134,31 +80,28 @@ mod tests {
         }
 
         pub fn template_fixture(name: &str) -> Result<Template, String> {
-            Template::new(name, None, vec![], HashMap::new())
+            let tn = TemplateName::try_from(name).map_err(|e| e.to_string())?;
+            Template::new(&tn, None, vec![], HashMap::new())
                 .map_err(|e| e.to_string())
         }
     }
 
-    use std::collections::HashMap;
-
-    use tempfile::{TempDir, tempdir};
+    use tempfile::TempDir;
 
     use super::*;
-    use crate::template::ports::TemplateCommandPort as _;
+    use crate::{
+        db::Database,
+        template::{adapter::command::CommandAdapter, aggregate::Template},
+    };
 
     mod persistence {
         use super::*;
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic setup. \
-                      Failure indicates invalid test data. Expect is \
-                      idiomatic in setup."
-        )]
         fn created_template() -> (TempDir, Database, Template, String) {
             let (dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = Command::new(&db);
+            let adapter = CommandAdapter::new(&db);
+            let cmd = Command::new(adapter);
             let template = fixtures::template_fixture("daily")
                 .expect("Failed to create template fixture");
             cmd.create(&template).expect("Create should succeed");
@@ -166,125 +109,21 @@ mod tests {
             (dir, db, template, id_str)
         }
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic setup. \
-                      Failure indicates invalid test data. Expect is \
-                      idiomatic in setup."
-        )]
-        fn updated_template_name() -> (TempDir, Database, String) {
-            let (dir, db, mut template, id_str) = created_template();
-            let cmd = Command::new(&db);
-            template.name = "weekly".into();
-            cmd.update(&template).expect("Update should succeed");
-            (dir, db, id_str)
-        }
-
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn create_persists_template_and_name_index() {
+
+        fn create_persists_template() {
             let (_dir, db, _template, id_str) = created_template();
             let stored = db
-                .get_owned::<Template>(TEMPLATES, &id_str)
+                .get_owned::<Template>(
+                    crate::template::db_table::TEMPLATES,
+                    &id_str,
+                )
                 .expect("Read after create should succeed");
             let stored_template = stored.expect("Stored template should exist");
             assert_eq!(
-                stored_template.name(),
+                stored_template.name().as_str(),
                 "daily",
                 "Stored template name should match"
-            );
-        }
-
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn create_persists_name_index() {
-            let (_dir, db, _template, id_str) = created_template();
-
-            let ids = db
-                .multimap_get(NAME_TO_ID, "daily")
-                .expect("Name index read should succeed");
-            assert!(
-                ids.contains(&id_str),
-                "Name index should contain template id"
-            );
-        }
-
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn update_refreshes_name_index_when_name_changes() {
-            let (_dir, db, id_str) = updated_template_name();
-            let old_ids = db
-                .multimap_get(NAME_TO_ID, "daily")
-                .expect("Old name index read should succeed");
-            assert!(
-                !old_ids.contains(&id_str),
-                "Old name index should not contain template id"
-            );
-        }
-
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn update_adds_new_name_index_entry() {
-            let (_dir, db, id_str) = updated_template_name();
-
-            let new_ids = db
-                .multimap_get(NAME_TO_ID, "weekly")
-                .expect("New name index read should succeed");
-            assert!(
-                new_ids.contains(&id_str),
-                "New name index should contain template id"
-            );
-        }
-
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn delete_removes_template_and_name_index() {
-            let (_dir, db, template, id_str) = created_template();
-            let cmd = Command::new(&db);
-            cmd.delete(template.id()).expect("Delete should succeed");
-            let stored = db
-                .get_owned::<Template>(TEMPLATES, &id_str)
-                .expect("Read after delete should succeed");
-            assert!(stored.is_none(), "Deleted template should not exist");
-        }
-
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
-        fn delete_removes_name_index_entry() {
-            let (_dir, db, template, id_str) = created_template();
-            let cmd = Command::new(&db);
-            cmd.delete(template.id()).expect("Delete should succeed");
-
-            let ids = db
-                .multimap_get(NAME_TO_ID, "daily")
-                .expect("Name index read should succeed");
-            assert!(
-                !ids.contains(&id_str),
-                "Name index should not contain deleted template id"
             );
         }
     }

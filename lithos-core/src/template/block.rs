@@ -22,7 +22,6 @@ use rkyv::{Archive, Deserialize, Serialize};
     serde::Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[non_exhaustive]
 pub enum BlockStrategy {
     /// Replace parent's block entirely (default).
     Replace,

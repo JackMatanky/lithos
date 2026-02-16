@@ -598,12 +598,6 @@ mod tests {
         mod tests {
             use super::*;
 
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test fixture uses expect for deterministic setup. \
-                          Failure indicates invalid test data. Expect is \
-                          idiomatic in setup."
-            )]
             fn build_property() -> Property {
                 PropertyBuilder::new()
                     .name("priority")
@@ -656,12 +650,6 @@ mod tests {
         const TEST_PROPERTY_ID: Uuid =
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0802);
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic setup. \
-                      Failure indicates invalid test data. Expect is \
-                      idiomatic in setup."
-        )]
         fn required_scalar_property() -> Property {
             let spec = PropertySpec::String(StringSpec::default());
             let name = PropertyName::new("status")

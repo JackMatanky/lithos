@@ -142,11 +142,7 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
+
         fn save_persists_schema_by_id_and_name_index() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
@@ -200,11 +196,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
+
         fn delete_removes_schema_by_id() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
@@ -254,11 +246,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
+
         fn save_batch_persists_schemas_and_metadata() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");

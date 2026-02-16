@@ -135,7 +135,7 @@ println!("{}", output);
 **Creating a Template with Inheritance (Application Code):**
 
 ```rust
-use lithos_core::template::{Template, TemplateBlock, BlockStrategy, VariableDefinition};
+use lithos_core::template::{Template, TemplateBlock, BlockStrategy, InputSpec};
 
 // Define parent template
 let parent = Template::new(
@@ -173,11 +173,11 @@ let child = Template::new(
         ),
     ],
     vec![
-        ("date", VariableDefinition::Date {
+        ("date", InputSpec::Date {
             default: None,
             format: Some("%Y-%m-%d".into()),
         }),
-        ("tasks", VariableDefinition::String {
+        ("tasks", InputSpec::String {
             default: Some("- [ ] Review yesterday".into()),
             min_length: Some(1),
             max_length: Some(5000),
@@ -243,7 +243,7 @@ let template = Template::new(
         ),
     ],
     vec![
-        ("title", VariableDefinition::String {
+        ("title", InputSpec::String {
             default: None,
             min_length: Some(1),
             max_length: Some(100),

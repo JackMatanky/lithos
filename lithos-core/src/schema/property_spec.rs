@@ -840,12 +840,6 @@ mod tests {
             #[case] value: &str,
             #[case] expected: Result<(), SchemaError>,
         ) {
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Test fixture uses expect for deterministic spec \
-                          setup. Failure indicates invalid test data. Expect \
-                          is idiomatic in setup."
-            )]
             fn validated_spec(def: StringSpecDef) -> StringSpec {
                 StringSpec::try_new(
                     def.min_length,
@@ -877,12 +871,6 @@ mod tests {
             error::SchemaError, property_spec::NumberSpec, raw::NumberSpecDef,
         };
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic spec setup. \
-                      Failure indicates invalid test data. Expect is \
-                      idiomatic in setup."
-        )]
         fn validated_spec(def: &NumberSpecDef) -> NumberSpec {
             NumberSpec::try_new(def.min, def.max, def.step)
                 .expect("Expected valid NumberSpecDef")
@@ -973,10 +961,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic spec setup."
-        )]
+
         fn number_spec_rejects_nan_value() {
             let spec = NumberSpec::try_new(Some(0.0f64), Some(10.0f64), None)
                 .expect("Expected valid NumberSpec");
@@ -988,10 +973,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic spec setup."
-        )]
+
         fn number_spec_rejects_infinite_value() {
             let spec = NumberSpec::try_new(Some(0.0f64), Some(10.0f64), None)
                 .expect("Expected valid NumberSpec");
@@ -1032,12 +1014,6 @@ mod tests {
 
         use crate::schema::{error::SchemaError, property_spec::FileSpec};
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic spec setup. \
-                      Failure indicates invalid test data. Expect is \
-                      idiomatic in setup."
-        )]
         fn validated_spec_with_dir(dir: &str) -> FileSpec {
             FileSpec::try_new(Some(dir.to_owned()), None)
                 .expect("Expected valid FileSpec")
@@ -1170,10 +1146,7 @@ mod tests {
         use crate::schema::{error::SchemaError, property_spec::DateSpec};
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic DateSpec setup."
-        )]
+
         fn date_spec_accepts_valid_date() {
             let spec = DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ")
                 .expect("Expected valid DateSpec");
@@ -1185,10 +1158,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic DateSpec setup."
-        )]
+
         fn date_spec_rejects_invalid_date() {
             let spec = DateSpec::try_new("%Y-%m-%dT%H:%M:%SZ")
                 .expect("Expected valid DateSpec");
@@ -1207,30 +1177,18 @@ mod tests {
             raw::{BoolSpecDef, NumberSpecDef, RawPropertySpec, StringSpecDef},
         };
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Helper uses expect for deterministic spec setup."
-        )]
         fn bool_spec() -> PropertySpec {
             RawPropertySpec::Bool(BoolSpecDef::default())
                 .try_into_validated()
                 .expect("Expected default BoolSpec to validate")
         }
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Helper uses expect for deterministic spec setup."
-        )]
         fn string_spec() -> PropertySpec {
             RawPropertySpec::String(StringSpecDef::default())
                 .try_into_validated()
                 .expect("Expected default StringSpec to validate")
         }
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Helper uses expect for deterministic spec setup."
-        )]
         fn number_spec() -> PropertySpec {
             RawPropertySpec::Number(NumberSpecDef::default())
                 .try_into_validated()

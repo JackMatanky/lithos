@@ -243,14 +243,8 @@ impl TryFrom<u64> for Version {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    clippy::let_underscore_must_use,
-    clippy::let_underscore_untyped,
-    clippy::panic_in_result_fn,
-    reason = "Test modules have relaxed rules for unwrapping and events"
-)]
 mod tests {
+
     mod fixtures {
         use std::path::PathBuf;
 
@@ -326,7 +320,7 @@ mod tests {
 
         pub fn config_with_cleared_events() -> Config {
             let mut config = test_config();
-            let _ = config.take_events();
+            let _events: Vec<Events> = config.take_events();
             config
         }
     }
@@ -342,12 +336,10 @@ mod tests {
         }
 
         #[test]
-        fn version_next_increments_value()
-        -> Result<(), Box<dyn std::error::Error>> {
+        fn version_next_increments_value() {
             let v1 = Version::initial();
-            let v2 = v1.next()?;
+            let v2 = v1.next().unwrap();
             assert_eq!(v2.value(), 2);
-            Ok(())
         }
 
         #[test]
@@ -357,11 +349,9 @@ mod tests {
         }
 
         #[test]
-        fn version_try_from_accepts_positive()
-        -> Result<(), Box<dyn std::error::Error>> {
-            let v = Version::try_from(42)?;
+        fn version_try_from_accepts_positive() {
+            let v = Version::try_from(42).unwrap();
             assert_eq!(v.value(), 42);
-            Ok(())
         }
 
         #[test]
@@ -409,7 +399,7 @@ mod tests {
             config.add_event(Events::ConfigUpdated(ConfigUpdated::new(
                 "test", 0,
             )));
-            let _ = config.take_events();
+            let _events: Vec<Events> = config.take_events();
             assert!(config.pending_events().is_empty());
         }
     }

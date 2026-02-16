@@ -135,7 +135,7 @@ mod tests {
 **Knowledge Base**: [test_guide.md#streamlining-with-lithos-test-utils](../../docs/test_guide.md#streamlining-with-lithos-test-utils)
 
 **Issue Description**:
-Setup logic for `VariableDefinition` maps is repeated.
+Setup logic for `InputSpec` maps is repeated.
 
 **Recommended Improvement**:
 Implement the `Fixture` trait from `test-utils::data::fixtures` to provide a `basic_template()` and `complex_template()` setup.

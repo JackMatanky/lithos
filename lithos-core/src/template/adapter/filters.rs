@@ -4,7 +4,9 @@ use chrono::NaiveDate;
 use minijinja::{Environment, value::Kwargs};
 use regex::Regex;
 
-/// Registry for custom `MiniJinja` filters that enforce variable constraints.
+use super::FilterName;
+
+/// Registry for custom `MiniJinja` filters that enforce input constraints.
 #[non_exhaustive]
 pub struct FilterRegistry;
 
@@ -12,12 +14,24 @@ impl FilterRegistry {
     /// Registers all custom filters in the given environment.
     #[inline]
     pub fn register_all(env: &mut Environment) {
-        env.add_filter("validate_length", Self::validate_length);
-        env.add_filter("validate_pattern", Self::validate_pattern);
-        env.add_filter("validate_range", Self::validate_range);
-        env.add_filter("validate_file_type", Self::validate_file_type);
-        env.add_filter("date_format", Self::date_format);
-        env.add_filter("vault_path", Self::vault_path);
+        env.add_filter(
+            FilterName::VALIDATE_LENGTH.as_str(),
+            Self::validate_length,
+        );
+        env.add_filter(
+            FilterName::VALIDATE_PATTERN.as_str(),
+            Self::validate_pattern,
+        );
+        env.add_filter(
+            FilterName::VALIDATE_RANGE.as_str(),
+            Self::validate_range,
+        );
+        env.add_filter(
+            FilterName::VALIDATE_FILE_TYPE.as_str(),
+            Self::validate_file_type,
+        );
+        env.add_filter(FilterName::DATE_FORMAT.as_str(), Self::date_format);
+        env.add_filter(FilterName::VAULT_PATH.as_str(), Self::vault_path);
     }
 
     /// String length validation filter.
@@ -211,7 +225,6 @@ impl FilterRegistry {
 }
 
 #[cfg(test)]
-#[expect(clippy::disallowed_methods, reason = "Tests use unwrap")]
 mod tests {
     use minijinja::Environment;
 

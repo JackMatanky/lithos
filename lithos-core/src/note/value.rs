@@ -573,10 +573,6 @@ mod tests {
         reason = "Assertions are used to fail tests"
     )]
     fn from_json_works() -> Result<(), Box<dyn std::error::Error>> {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "json! macro is allowed in tests for convenience"
-        )]
         let json = json!({
             "str": "hello",
             "num": 42.5f64,

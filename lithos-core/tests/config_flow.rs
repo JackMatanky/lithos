@@ -216,11 +216,6 @@ fn config_cqrs_integration_flow() -> TestResult {
     let config = query.get(vault_id)?;
 
     assert!(config.is_some(), "Should return active config");
-    // # LINT_DISABLE_REASON: Test assertion context
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test assertion uses unwrap on Option."
-    )]
     let config = config.unwrap();
 
     // 6. Verify Content

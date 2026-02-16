@@ -81,7 +81,6 @@ pub struct Task {
 impl Default for Task {
     #[inline]
     #[expect(
-        clippy::disallowed_methods,
         clippy::unwrap_used,
         reason = "Default config is guaranteed valid"
     )]
@@ -547,7 +546,6 @@ impl TryFrom<RawTaskConfig> for Task {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    clippy::disallowed_methods,
     reason = "Test modules have relaxed rules"
 )]
 mod tests {

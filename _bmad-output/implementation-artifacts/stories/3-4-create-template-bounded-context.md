@@ -39,7 +39,7 @@ So that template structure and business rules are properly validated at the doma
 
 ### Task 1: Define Template Domain Tests First (RED Phase - AC: All)
 - [x] Write failing unit tests for Template entity (structure validation, variable definitions)
-- [x] Write failing unit tests for VariableDefinition (type safety, default values, constraints)
+- [x] Write failing unit tests for InputSpec (type safety, default values, constraints)
 - [x] Write failing unit tests for TemplateComposition (modular assembly, dependency resolution)
 - [x] Write failing unit tests for domain business rules (variable naming, composition cycles)
 - [x] Write failing property-based tests for edge cases (invalid variable names, composition cycles)
@@ -48,14 +48,14 @@ So that template structure and business rules are properly validated at the doma
 
 ### Task 2: Implement Template Core Entities (GREEN Phase - AC: 1-3)
 - [x] Create file `crates/domain/src/template/aggregate.rs` and implement all Template entities in single file (Note: implemented in subfolder `template/` as per later decision)
-- [x] Define Template struct: `#[derive(Debug, Clone, PartialEq)] pub struct Template` with fields `pub id: Uuid`, `pub name: String`, `pub content: String`, `pub variables: HashMap<String, VariableDefinition>`, `pub extends: Option<String>`, `pub metadata: TemplateMetadata`
+- [x] Define Template struct: `#[derive(Debug, Clone, PartialEq)] pub struct Template` with fields `pub id: Uuid`, `pub name: String`, `pub content: String`, `pub variables: HashMap<String, InputSpec>`, `pub extends: Option<String>`, `pub metadata: TemplateMetadata`
 - [x] Implement Template::new() constructor that validates name format (regex `^[a-zA-Z0-9_-]+$`), variable name conflicts, composition cycles, returns `Result<Self, TemplateError>`
 - [x] Implement Template::validate() method checking variable definitions match HashMap, no circular references in extends, returns `Result<(), TemplateError>`
 - [x] Define TemplateMetadata struct: `#[derive(Debug, Clone, PartialEq)] pub struct TemplateMetadata` with fields `pub description: Option<String>`, `pub version: Option<String>`, `pub tags: Vec<String>`, `pub created_at: DateTime<Utc>`, `pub updated_at: DateTime<Utc>`
 - [x] Implement Default trait for TemplateMetadata with current timestamps
-- [x] Define VariableDefinition enum: `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum VariableDefinition { String { default: Option<String>, min_length: Option<usize>, max_length: Option<usize>, pattern: Option<String> }, Number { default: Option<f64>, min: Option<f64>, max: Option<f64> }, Boolean { default: Option<bool> }, Date { default: Option<String>, format: Option<String> }, File { default: Option<String>, file_types: Option<Vec<String>> } }`
-- [x] Implement VariableDefinition::validate_value() method for type-safe validation based on variant, returns `Result<(), TemplateError>`
-- [x] Implement VariableDefinition::has_default() and get_default_value() helper methods
+- [x] Define InputSpec enum: `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum InputSpec { String { default: Option<String>, min_length: Option<usize>, max_length: Option<usize>, pattern: Option<String> }, Number { default: Option<f64>, min: Option<f64>, max: Option<f64> }, Boolean { default: Option<bool> }, Date { default: Option<String>, format: Option<String> }, File { default: Option<String>, file_types: Option<Vec<String>> } }`
+- [x] Implement InputSpec::validate_value() method for type-safe validation based on variant, returns `Result<(), TemplateError>`
+- [x] Implement InputSpec::has_default() and get_default_value() helper methods
 - [x] Define InsertionPosition enum: `#[derive(Debug, Clone, PartialEq)] pub enum InsertionPosition { BeforeVariable(String), AfterVariable(String), Beginning, End }`
 - [x] Define TemplateSection struct: `#[derive(Debug, Clone, PartialEq)] pub struct TemplateSection` with fields `pub name: String`, `pub content: String`, `pub position: InsertionPosition`
 - [x] Define TemplateComposition struct: `#[derive(Debug, Clone, PartialEq)] pub struct TemplateComposition` with fields `pub base_template: String`, `pub variable_overrides: HashMap<String, serde_json::Value>`, `pub additional_sections: Vec<TemplateSection>`, `pub includes: Vec<String>`
@@ -133,7 +133,7 @@ So that template structure and business rules are properly validated at the doma
 
 **Core Entity Structure:**
 - **Template Entity**: Main aggregate root with UUID v7 identity and content storage
-- **VariableDefinition Enum**: Type-safe variable definitions with constraints and defaults
+- **InputSpec Enum**: Type-safe variable definitions with constraints and defaults
 - **TemplateComposition Struct**: Modular template assembly with dependency management
 - **Immutability**: All template entities MUST be immutable following Rust ownership patterns
 - **Validation**: Domain business rules only (no syntax validation - that's adapter layer)
@@ -161,7 +161,7 @@ pub struct Template {
     pub content: String,
 
     /// Variable definitions with types and constraints
-    pub variables: HashMap<String, VariableDefinition>,
+    pub variables: HashMap<String, InputSpec>,
 
     /// Optional parent template for composition
     pub extends: Option<String>,
@@ -190,12 +190,12 @@ pub struct TemplateMetadata {
 }
 ```
 
-**VariableDefinition Enum:**
+**InputSpec Enum:**
 ```rust
 /// Type-safe variable definition with validation constraints
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum VariableDefinition {
+pub enum InputSpec {
     /// String variable with optional constraints
     String {
         default: Option<String>,
@@ -321,7 +321,7 @@ pub enum InsertionPosition {
 // Use #[non_exhaustive] on domain enums
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum VariableDefinition {
+pub enum InputSpec {
     String { /* fields */ },
     Number { /* fields */ },
     Boolean { /* fields */ },
@@ -331,8 +331,8 @@ pub enum VariableDefinition {
 
 // PROHIBIT catch-all patterns in domain logic:
 match var_def {
-    VariableDefinition::String { .. } => { /* handle */ },
-    VariableDefinition::Number { .. } => { /* handle */ },
+    InputSpec::String { .. } => { /* handle */ },
+    InputSpec::Number { .. } => { /* handle */ },
     // NO: _ => {} catch-alls!
 }
 ```
@@ -390,17 +390,17 @@ let template = Template::new(
 {{notes}}
 "#.to_string(),
     HashMap::from([
-        ("date".to_string(), VariableDefinition::Date {
+        ("date".to_string(), InputSpec::Date {
             default: Some("today".to_string()),
             format: Some("%Y-%m-%d".to_string()),
         }),
-        ("tasks".to_string(), VariableDefinition::String {
+        ("tasks".to_string(), InputSpec::String {
             default: Some("".to_string()),
             min_length: Some(0),
             max_length: Some(1000),
             pattern: None,
         }),
-        ("notes".to_string(), VariableDefinition::String {
+        ("notes".to_string(), InputSpec::String {
             default: Some("".to_string()),
             min_length: Some(0),
             max_length: Some(5000),
@@ -440,7 +440,7 @@ let composition = TemplateComposition {
 **Variable Validation Examples:**
 ```rust
 // String variable with constraints
-let title_var = VariableDefinition::String {
+let title_var = InputSpec::String {
     default: Some("Untitled".to_string()),
     min_length: Some(1),
     max_length: Some(200),
@@ -448,14 +448,14 @@ let title_var = VariableDefinition::String {
 };
 
 // Number variable with range
-let priority_var = VariableDefinition::Number {
+let priority_var = InputSpec::Number {
     default: Some(3.0),
     min: Some(1.0),
     max: Some(5.0),
 };
 
 // File variable with type constraints
-let attachment_var = VariableDefinition::File {
+let attachment_var = InputSpec::File {
     default: None,
     file_types: Some(vec!["image".to_string(), "pdf".to_string()]),
 };
@@ -540,13 +540,13 @@ pub mod fixtures {
             "daily-note".to_string(),
             "# {{title}}\n\n{{content}}".to_string(),
             HashMap::from([
-                ("title".to_string(), VariableDefinition::String {
+                ("title".to_string(), InputSpec::String {
                     default: Some("Daily Note".to_string()),
                     min_length: Some(1),
                     max_length: Some(100),
                     pattern: None,
                 }),
-                ("content".to_string(), VariableDefinition::String {
+                ("content".to_string(), InputSpec::String {
                     default: Some("".to_string()),
                     min_length: Some(0),
                     max_length: Some(5000),
@@ -863,7 +863,7 @@ Claude 3.5 Sonnet (via Amelia Persona)
 ### Completion Notes List
 
 - Implemented `Template` aggregate root with UUID v7.
-- Implemented `VariableDefinition` with type-safe validation for Boolean, Date, File, Number, and String.
+- Implemented `InputSpec` with type-safe validation for Boolean, Date, File, Number, and String.
 - Implemented `Composition` with DFS cycle detection (Max depth 5).
 - Implemented `Template::compose` for modular assembly.
 - Added `TemplateCreated` domain event emission and pending events tracking.

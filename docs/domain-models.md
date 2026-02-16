@@ -285,7 +285,7 @@ Template validation is limited to placeholder balance, content size, variable na
 ### Structure
 
 - **Template aggregate**: `id`, `name`, `content`, `syntax`, `variables`, `extends`, `metadata`, `pending_events` (validates name, size, structure, variable names).
-- **VariableDefinition**: typed constraints (string/number/date/file/boolean).
+- **InputSpec**: typed constraints (string/number/date/file/boolean).
 - **PlaceholderSyntax**: prefix/suffix wrapping.
 - **Composition**: base template, sections, includes, variable overrides.
 - **Section**: inserted content with `InsertionPosition`.
@@ -457,9 +457,9 @@ flowchart TD
 3. Wire merge logic in `Config::merge_frontmatter`.
 4. Update documentation and inventory mappings.
 
-### Creating a Custom VariableDefinition
+### Creating a Custom InputSpec
 
-1. Add the variant to `VariableDefinition` and update validation.
+1. Add the variant to `InputSpec` and update validation.
 2. Extend template variable name checks if needed.
 3. Update template docs and examples to include the new variant.
 

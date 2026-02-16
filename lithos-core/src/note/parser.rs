@@ -742,10 +742,7 @@ mod tests {
 
     fn test_config() -> Config {
         let raw = RawConfig::default();
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic setup"
-        )]
+
         Config::build(
             &raw,
             VaultId::new(),
