@@ -26,12 +26,18 @@ use super::{
 /// ```rust,no_run
 /// # use tempfile::tempdir;
 /// # use lithos_core::{
-/// #     config::{global::Global, RedbConfigCommand},
+/// #     config::{
+/// #         global::Global, RedbConfigCommand,
+/// #         adapter::{command::CommandAdapter, query::QueryAdapter},
+/// #     },
 /// #     db::Database,
 /// # };
 /// let dir = tempdir()?;
 /// let db = Database::open(&dir.path().join("config.redb"))?;
-/// let command = RedbConfigCommand::new_redb(&db);
+/// let command = RedbConfigCommand::new(
+///     QueryAdapter::new(&db),
+///     CommandAdapter::new(&db),
+/// );
 /// command.save_global(&Global::default())?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```

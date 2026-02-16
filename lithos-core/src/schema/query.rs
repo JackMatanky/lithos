@@ -195,6 +195,7 @@ mod tests {
     use super::*;
     use crate::schema::{
         RedbSchemaCommand, RedbSchemaQuery,
+        adapter::{command::CommandAdapter, query::QueryAdapter},
         aggregate::{SchemaName, Timestamp},
         bank::BankVersion,
     };
@@ -207,8 +208,8 @@ mod tests {
         fn find_by_id_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new_redb(&db);
-            let qry = RedbSchemaQuery::new_redb(&db);
+            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
+            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -234,8 +235,8 @@ mod tests {
         fn find_by_name_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new_redb(&db);
-            let qry = RedbSchemaQuery::new_redb(&db);
+            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
+            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -266,8 +267,8 @@ mod tests {
         fn list_returns_all_saved_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new_redb(&db);
-            let qry = RedbSchemaQuery::new_redb(&db);
+            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
+            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
             let schema_a =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -311,8 +312,8 @@ mod tests {
         fn list_metadata_returns_saved_entries() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new_redb(&db);
-            let qry = RedbSchemaQuery::new_redb(&db);
+            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
+            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -341,8 +342,8 @@ mod tests {
         fn find_metadata_by_id_returns_entry() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new_redb(&db);
-            let qry = RedbSchemaQuery::new_redb(&db);
+            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
+            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
