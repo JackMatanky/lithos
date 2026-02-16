@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 use minijinja::{Environment, value::Kwargs};
 use regex::Regex;
 
-/// Registry for custom `MiniJinja` filters that enforce variable constraints.
+/// Registry for custom `MiniJinja` filters that enforce input constraints.
 #[non_exhaustive]
 pub struct FilterRegistry;
 

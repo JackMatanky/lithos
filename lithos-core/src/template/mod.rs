@@ -21,7 +21,7 @@ pub mod events;
 pub mod ports;
 /// Template query implementations (CQRS read operations).
 pub mod query;
-/// Template variable definitions.
+/// Template input specifications.
 pub mod variable;
 
 pub(crate) mod db_table {

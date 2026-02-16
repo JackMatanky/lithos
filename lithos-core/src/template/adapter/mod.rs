@@ -4,7 +4,7 @@
 
 /// Template engine wrapper.
 pub mod engine;
-/// Custom filters for variable constraints.
+/// Custom filters for input constraints.
 pub mod filters;
 /// Generates MiniJinja source code from template metadata.
 pub mod source_generator;

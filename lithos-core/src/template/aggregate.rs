@@ -1,6 +1,6 @@
 //! Template aggregate root and composition logic.
 //!
-//! Handles template lifecycle, variable definitions, and hierarchical
+//! Handles template lifecycle, input specifications, and hierarchical
 //! composition through native MiniJinja inheritance.
 #![allow(
     clippy::exhaustive_structs,
@@ -117,8 +117,9 @@ pub struct Template {
     pub extends: Option<Box<str>>,
     /// Block definitions.
     pub blocks: Vec<TemplateBlock>,
-    /// Variable definitions.
-    pub variables: HashMap<String, InputSpec>,
+    /// Input specifications.
+    pub inputs: HashMap<String, InputSpec>,
+
     /// Metadata for template management.
     pub metadata: Metadata,
     /// Domain events pending emission.
@@ -138,10 +139,10 @@ impl Template {
         name: &str,
         extends: Option<&str>,
         blocks: Vec<TemplateBlock>,
-        variables: HashMap<String, InputSpec>,
+        inputs: HashMap<String, InputSpec>,
     ) -> Result<Self, TemplateError> {
         Self::validate_name(name)?;
-        Self::validate_variable_definitions(&variables)?;
+        Self::validate_input_specs(&inputs)?;
 
         // Ensure block names are unique within the template
         let mut block_names = HashSet::new();
@@ -160,7 +161,7 @@ impl Template {
             name: name.into(),
             extends: extends.map(Into::into),
             blocks,
-            variables,
+            inputs,
             metadata: Metadata::default(),
             pending_events: vec![],
         };
@@ -258,11 +259,11 @@ impl Template {
         &self.blocks
     }
 
-    /// Returns the template's variable definitions.
+    /// Returns the template's input specifications.
     #[inline]
     #[must_use]
-    pub fn variables(&self) -> &HashMap<String, InputSpec> {
-        &self.variables
+    pub fn inputs(&self) -> &HashMap<String, InputSpec> {
+        &self.inputs
     }
 
     /// Returns the template's metadata.
@@ -286,11 +287,11 @@ impl Template {
         &self.pending_events
     }
 
-    /// Returns true if the template defines any variables.
+    /// Returns true if the template defines any inputs.
     #[inline]
     #[must_use]
-    pub fn has_variables(&self) -> bool {
-        !self.variables.is_empty()
+    pub fn has_inputs(&self) -> bool {
+        !self.inputs.is_empty()
     }
 
     // --- Validation Helpers ---
@@ -325,65 +326,65 @@ impl Template {
 
     #[expect(
         clippy::iter_over_hash_type,
-        reason = "Validation checks all variable definitions for correctness. \
+        reason = "Validation checks all input specifications for correctness. \
                   HashMap iteration order is irrelevant—all entries must pass \
                   validation regardless of order."
     )]
-    fn validate_variable_definitions(
-        variables: &HashMap<String, InputSpec>,
+    fn validate_input_specs(
+        inputs: &HashMap<String, InputSpec>,
     ) -> Result<(), TemplateError> {
-        Self::validate_max_variables_not_exceeded(variables.len())?;
+        Self::validate_max_inputs_not_exceeded(inputs.len())?;
 
-        for var_name in variables.keys() {
-            Self::validate_variable_name(var_name)?;
+        for input_name in inputs.keys() {
+            Self::validate_input_name(input_name)?;
         }
         Ok(())
     }
 
-    /// Validates a variable name according to domain constraints.
+    /// Validates an input name according to domain constraints.
     ///
     /// # Errors
-    /// Returns `TemplateError` if the variable name is invalid.
+    /// Returns `TemplateError` if the input name is invalid.
     #[inline]
-    pub fn validate_variable_name(name: &str) -> Result<(), TemplateError> {
+    pub fn validate_input_name(name: &str) -> Result<(), TemplateError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
             LazyLock::new(|| Regex::new(patterns::IDENTIFIER_NAME));
 
         if name.is_empty() {
-            return Err(TemplateError::EmptyVariableName);
+            return Err(TemplateError::EmptyInputName);
         }
         if name.len() > 32 {
-            return Err(TemplateError::VariableNameTooLong(name.len()));
+            return Err(TemplateError::InputNameTooLong(name.len()));
         }
 
         let re = RE.as_ref().map_err(|error| {
             TemplateError::ValidationFailed(format!(
-                "Invalid variable name regex: {error}"
+                "Invalid input name regex: {error}"
             ))
         })?;
 
         if !re.is_match(name) {
-            return Err(TemplateError::InvalidVariableName(name.to_owned()));
+            return Err(TemplateError::InvalidInputName(name.to_owned()));
         }
-        Self::validate_variable_name_not_reserved(name)?;
+        Self::validate_input_name_not_reserved(name)?;
         Ok(())
     }
 
-    fn validate_max_variables_not_exceeded(
+    fn validate_max_inputs_not_exceeded(
         count: usize,
     ) -> Result<(), TemplateError> {
         if count > 50 {
-            return Err(TemplateError::MaxVariablesExceeded(count));
+            return Err(TemplateError::MaxInputsExceeded(count));
         }
         Ok(())
     }
 
-    fn validate_variable_name_not_reserved(
+    fn validate_input_name_not_reserved(
         name: &str,
     ) -> Result<(), TemplateError> {
         if RESERVED_WORDS.contains(&name) {
-            return Err(TemplateError::InvalidVariableName(format!(
-                "Variable name '{name}' is a reserved word"
+            return Err(TemplateError::InvalidInputName(format!(
+                "Input name '{name}' is a reserved word"
             )));
         }
         Ok(())
@@ -441,13 +442,10 @@ mod tests {
         }
 
         #[test]
-        fn has_variables_false_for_base_template() {
+        fn has_inputs_false_for_base_template() {
             let template = base_template();
 
-            assert!(
-                !template.has_variables(),
-                "Template should have no variables"
-            );
+            assert!(!template.has_inputs(), "Template should have no inputs");
         }
 
         #[test]

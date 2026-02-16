@@ -1,4 +1,4 @@
-//! Type-safe variable definitions.
+//! Type-safe input specifications.
 #![allow(
     missing_docs,
     clippy::exhaustive_enums,
@@ -8,7 +8,7 @@
 
 use crate::bounds::Bounds;
 
-/// Type-safe variable definition with validation constraints.
+/// Type-safe input specification with validation constraints.
 #[derive(
     Debug,
     Clone,
@@ -22,33 +22,33 @@ use crate::bounds::Bounds;
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum InputSpec {
-    /// Boolean variable.
+    /// Boolean input.
     Boolean {
         /// Default value.
         default: Option<bool>,
     },
-    /// Date variable.
+    /// Date input.
     Date {
         /// Default value.
         default: Option<Box<str>>,
         /// ISO 8601 format string.
         format: Option<Box<str>>,
     },
-    /// File reference variable.
+    /// File reference input.
     File {
         /// Default value.
         default: Option<Box<str>>,
         /// Allowed file types.
         file_types: Option<Vec<Box<str>>>,
     },
-    /// Number variable.
+    /// Number input.
     Number {
         /// Default value.
         default: Option<f64>,
         /// Value bounds.
         bounds: Bounds<f64>,
     },
-    /// String variable.
+    /// String input.
     String {
         /// Default value.
         default: Option<Box<str>>,
@@ -66,10 +66,6 @@ impl InputSpec {
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Matching on reference to enum variants"
-    )]
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "Default behavior for unmatched variants is empty list"
     )]
     pub fn filter_chain(&self) -> Vec<&'static str> {
         match self {
@@ -105,7 +101,15 @@ impl InputSpec {
                 format: Some(_),
                 ..
             } => vec!["date_format"],
-            _ => vec![],
+            Self::Boolean {
+                ..
+            }
+            | Self::Date {
+                ..
+            }
+            | Self::File {
+                ..
+            } => vec![],
         }
     }
 
@@ -115,10 +119,6 @@ impl InputSpec {
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Matching on reference to enum variants"
-    )]
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "Default behavior for unmatched variants is null"
     )]
     pub fn filter_args(&self) -> serde_json::Value {
         match self {
@@ -176,7 +176,15 @@ impl InputSpec {
                 map.insert("format".to_owned(), f.as_ref().into());
                 serde_json::Value::Object(map)
             }
-            _ => serde_json::Value::Null,
+            Self::Boolean {
+                ..
+            }
+            | Self::Date {
+                ..
+            }
+            | Self::File {
+                ..
+            } => serde_json::Value::Null,
         }
     }
 
@@ -211,12 +219,12 @@ impl InputSpec {
         }
     }
 
-    /// Checks if variable has a default value.
+    /// Checks if input has a default value.
     #[inline]
     #[must_use]
     #[expect(
-        clippy::pattern_type_mismatch,
         clippy::match_same_arms,
+        clippy::pattern_type_mismatch,
         reason = "Enum has mixed Copy and non-Copy fields."
     )]
     pub fn has_default(&self) -> bool {
@@ -250,28 +258,28 @@ mod tests {
 
     #[test]
     fn has_default_returns_true_when_default_present() {
-        let def = InputSpec::String {
+        let spec = InputSpec::String {
             default: Some("Title".into()),
             length: Bounds::Unbounded,
             pattern: None,
         };
 
         assert!(
-            def.has_default(),
-            "Variable definition should indicate that a default value is set"
+            spec.has_default(),
+            "Input spec should indicate that a default value is set"
         );
     }
 
     #[test]
     fn get_default_value_returns_configured_value() {
-        let def = InputSpec::String {
+        let spec = InputSpec::String {
             default: Some("Title".into()),
             length: Bounds::Unbounded,
             pattern: None,
         };
 
         assert_eq!(
-            def.default_value(),
+            spec.default_value(),
             Some(serde_json::Value::String("Title".to_owned())),
             "Default value should match the configured value"
         );
@@ -279,7 +287,7 @@ mod tests {
 
     #[test]
     fn filter_chain_for_string_with_pattern_and_length() {
-        let var = InputSpec::String {
+        let spec = InputSpec::String {
             default: None,
             length: Bounds::Range {
                 min: 5,
@@ -288,13 +296,13 @@ mod tests {
             pattern: Some("^[A-Z]".into()),
         };
 
-        let chain = var.filter_chain();
+        let chain = spec.filter_chain();
         assert_eq!(chain, vec!["validate_pattern", "validate_length"]);
     }
 
     #[test]
     fn filter_chain_for_number_with_range() {
-        let var = InputSpec::Number {
+        let spec = InputSpec::Number {
             default: None,
             bounds: Bounds::Range {
                 min: 1.0f64,
@@ -302,13 +310,13 @@ mod tests {
             },
         };
 
-        let chain = var.filter_chain();
+        let chain = spec.filter_chain();
         assert_eq!(chain, vec!["validate_range"]);
     }
 
     #[test]
     fn filter_args_for_string() {
-        let var = InputSpec::String {
+        let spec = InputSpec::String {
             default: None,
             length: Bounds::Range {
                 min: 5,
@@ -317,7 +325,7 @@ mod tests {
             pattern: Some("^[A-Z]".into()),
         };
 
-        let args = var.filter_args();
+        let args = spec.filter_args();
         assert_eq!(
             args.get("min").and_then(serde_json::Value::as_u64),
             Some(5)
