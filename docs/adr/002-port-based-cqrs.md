@@ -237,6 +237,46 @@ Initial benchmarks of this pattern (vs direct DB usage) show negligible overhead
 | **Generic Proliferation** | Use type aliases (`RedbSchemaQuery`) to hide generics from 99% of call sites. |
 | **Object Safety** | If `dyn` is truly needed, provide a separate `ObjectSafeStore` trait for the cold tier only. |
 
+## Command-Side Read-for-Write
+
+In CQRS, commands sometimes need to read current state to compute new state (e.g., allocating version numbers, computing rollback targets). This creates a tension: the command side needs read access, but CQRS emphasizes separating read and write models.
+
+### Decision: Encapsulate Read-for-Write in Command Ports
+
+We resolve this by encapsulating read-for-write operations as atomic methods on the Command port itself:
+
+```rust
+pub trait Command: Send + Sync {
+    /// Allocates the next version number for a vault atomically.
+    /// Reads current version, computes next, returns without persisting.
+    fn get_next_version(&self, vault_id: VaultId) -> Result<Version, Self::Error>;
+
+    /// Rolls back the active version by `steps` atomically.
+    /// Reads current version, computes target, updates active pointer in one transaction.
+    fn rollback_active_version(
+        &self,
+        vault_id: VaultId,
+        steps: u32,
+    ) -> Result<Version, Self::Error>;
+}
+```
+
+### Why This Maintains CQRS Boundaries
+
+1. **Query Model Stays Separate**: The Query port remains read-only for external read operations (LSP, UI). Command-side reads are internal implementation details, not exposed as a read API.
+
+2. **Atomic Operations**: Using database transactions (`read_write_transaction`), these methods atomically read and write, preventing race conditions.
+
+3. **Command Ownership**: The command model owns its state transitions. Version allocation and rollback are command responsibilities, not query responsibilities.
+
+4. **Storage Isolation**: Both Query and Command ports can use the same storage backend (Redb) without coupling—the Command port simply exposes higher-level atomic operations.
+
+### Implementation
+
+- Added `Database::read_write_transaction()` for atomic read+write in one transaction
+- Command adapter implements `get_next_version` and `rollback_active_version` using this API
+- Command struct no longer depends on Query port—only Command port
+
 ## References
 - [Core Architectural Decisions](../../_bmad-output/planning-artifacts/architecture/03-core-architectural-decisions.md)
 - [ADR 003: Domain Serialization Strategy](./0003-domain-serialization.md)
