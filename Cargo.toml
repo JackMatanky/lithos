@@ -7,7 +7,6 @@
 
 [workspace]
 members = ["lithos-core", "lithos-cli"]
-exclude = ["_legacy/*"]
 resolver = "2"
 
 [workspace.package]
@@ -66,7 +65,6 @@ rstest = "0.23"
 
 # Internal Workspace Crates
 lithos-core = { path = "lithos-core" }
-lithos-test-utils = { path = "tests/utils" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -136,6 +134,64 @@ unreachable = "deny"
 indexing_slicing = "deny"
 arithmetic_side_effects = "deny"
 disallowed_methods = "deny"
+
+# --- Performance & Zero-Copy Lints ---
+# Reuses existing heap capacity with a.clone_from(&b) instead of reallocating.
+assigning_clones = "deny"
+# Detects redundant allocations like &Box<T> or Box<Arc<T>>.
+redundant_allocation = "deny"
+# Flags .collect::<Vec<_>>() when lazy iteration is sufficient.
+needless_collect = "deny"
+# Detects vec![...] that is immediately sliced, avoiding a heap allocation.
+useless_vec = "deny"
+# Prefers 'c' over "c" in string methods for faster character searching.
+single_char_pattern = "deny"
+# Uses Atomic* types instead of Mutex<T> for small primitives (lower overhead).
+mutex_atomic = "deny"
+# Ensures RwLock write locks are only used when mutation actually occurs.
+readonly_write_lock = "deny"
+# Replaces contains_key + insert with entry to avoid double lookups.
+map_entry = "deny"
+# Suggests push over push_str for single characters to avoid string parsing.
+string_extend_chars = "deny"
+# Prefers String::new() over "".to_string() to avoid unnecessary allocation.
+manual_string_new = "deny"
+# Prevents Box<Vec<T>> or Box<String> which adds double heap indirection.
+box_collection = "deny"
+# Use .any() instead of .find().is_some() for clearer optimization intent.
+search_is_some = "deny"
+# Prefers .cloned()/.copied() over manual closures for internal optimizations.
+map_clone = "deny"
+# Prevents nested format! calls inside println!, avoiding temporary strings.
+format_in_format_args = "deny"
+# Uses Display implementation directly instead of calling .to_string().
+to_string_in_format_args = "deny"
+# Detects .to_owned()/.to_string() when a reference or Cow would suffice.
+unnecessary_to_owned = "deny"
+# Flags .to_string() on types with more efficient display or conversion paths.
+inefficient_to_string = "deny"
+
+# --- Performance & Optimization (Warn) ---
+# Passes small Copy types (like Id) by value to improve register usage.
+trivially_copy_pass_by_ref = "warn"
+# Minimizes lock critical sections to reduce thread contention.
+significant_drop_tightening = "warn"
+# Move .cloned() calls after .take(n) to avoid unnecessary clones.
+iter_overeager_cloned = "warn"
+# Suggests Vec::with_capacity() or vec![...] instead of new() + push().
+vec_init_then_push = "warn"
+# Detects suboptimal patterns (e.g., manual loops) for resizing vectors.
+slow_vector_initialization = "warn"
+# Moves large arrays to the heap or static to avoid stack overflows.
+large_stack_arrays = "warn"
+# Replaces manual nested loops with the more optimized .flatten() iterator.
+manual_flatten = "warn"
+# Uses let-else to flatten error paths and improve branch predictability.
+manual_let_else = "warn"
+# Prefers impl Trait over Box<dyn Trait> for static dispatch performance.
+impl_trait_in_params = "warn"
+# Uses write! macro into a String instead of push_str(&format!(..)).
+format_push_string = "warn"
 
 [profile.release]
 opt-level = 3

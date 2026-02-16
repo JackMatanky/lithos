@@ -257,7 +257,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 **Template Bounded Context (Story 3-4):**
 - Template entity: 80%+ coverage (structure validation, composition)
-- VariableDefinition enum: 80%+ coverage (type safety, constraints, defaults)
+- InputSpec enum: 80%+ coverage (type safety, constraints, defaults)
 - TemplateComposition: 80%+ coverage (modular assembly, dependency resolution)
 - Business rules: 80%+ coverage (variable naming, composition cycles, semantic validation)
 

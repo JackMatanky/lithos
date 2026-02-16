@@ -1,108 +1,123 @@
 //! Template query implementations (CQRS read operations).
-//!
-//! This module implements the Query port trait for Template read operations,
-//! using the Database layer for zero-copy reads.
-
-#![allow(
-    deprecated,
-    reason = "Transitional layer still using legacy composition"
-)]
-
-use std::collections::HashMap;
 
 use uuid::Uuid;
 
 use super::{
-    aggregate::Template, composition::Composition, error::TemplateError,
-};
-use crate::{
-    db::Database,
-    template::db_table::{NAME_TO_ID, TEMPLATES},
+    aggregate::Template, error::TemplateError, ports as template_ports,
 };
 
 /// Query implementation for Template read operations.
 ///
-/// Implements the Query port trait using the Database layer.
-pub struct Query<'db> {
-    db: &'db Database,
+/// This struct is generic over a storage port to support multiple backends.
+pub struct Query<Q> {
+    port: Q,
 }
 
-impl<'db> Query<'db> {
-    /// Create a new `Query` with a database reference.
+impl<Q> Query<Q> {
+    /// Creates a new `Query` wrapper with a storage port.
     #[inline]
     #[must_use]
-    pub const fn new(db: &'db Database) -> Self {
+    pub const fn new(port: Q) -> Self {
         Self {
-            db,
+            port,
         }
     }
 }
 
-impl super::ports::TemplateQueryPort for Query<'_> {
-    /// Find a template by ID.
+impl<Q> Query<Q>
+where
+    Q: template_ports::Query,
+{
+    /// Find a template by its ID.
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
     #[inline]
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
-        self.db.get_owned(TEMPLATES, &id.to_string()).map_err(
-            |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
-        )
+    pub fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<Template>, TemplateError> {
+        self.port.find_by_id(id)
     }
 
-    /// Find a template by name.
+    /// Find a template by its unique name.
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
     #[inline]
-    fn find_by_name(
+    pub fn find_by_name(
         &self,
         name: &str,
     ) -> Result<Option<Template>, TemplateError> {
-        let ids = self.db.multimap_get(NAME_TO_ID, name).map_err(
-            |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
-        )?;
-
-        if let Some(id_str) = ids.first() {
-            self.db.get_owned::<Template>(TEMPLATES, id_str).map_err(
-                |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
-            )
-        } else {
-            Ok(None)
-        }
+        self.port.find_by_name(name)
     }
 
-    /// Lists all templates.
+    /// List all templates.
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
     #[inline]
-    fn list(&self) -> Result<Vec<Template>, TemplateError> {
-        self.db.list_owned::<Template>(TEMPLATES).map_err(
-            |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
-        )
+    pub fn list(&self) -> Result<Vec<Template>, TemplateError> {
+        self.port.list()
     }
 
-    /// Resolves a template composition.
+    /// Access a template with zero-copy.
     ///
     /// # Errors
-    /// Returns `TemplateError` if resolution fails.
+    /// Returns `TemplateError` if query fails.
     #[inline]
-    fn resolve(
+    pub fn with_archived<F, R>(
         &self,
-        composition: &Composition,
-    ) -> Result<Template, TemplateError> {
-        let base = self.find_by_name(&composition.base_template)?.ok_or_else(
-            || TemplateError::NotFound(composition.base_template.clone()),
-        )?;
+        id: Uuid,
+        f: F,
+    ) -> Result<Option<R>, TemplateError>
+    where
+        F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
+    {
+        self.port.with_archived(id, f)
+    }
+}
 
-        // We need all templates for cycle detection and include resolution
-        let all_templates_list = self.list()?;
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
 
-        // Use borrowed keys to avoid allocating template names
-        let all_templates: HashMap<&str, &Template> =
-            all_templates_list.iter().map(|t| (t.name(), t)).collect();
+    use tempfile::tempdir;
 
-        Template::compose(&base, composition, &all_templates)
+    use super::*;
+    use crate::{
+        db::Database,
+        template::{
+            adapter::{command::CommandAdapter, query::QueryAdapter},
+            aggregate::TemplateName,
+            ports::Command as _,
+        },
+    };
+
+    #[test]
+
+    fn with_archived_zero_copy() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("test.db");
+        let db = Database::open(&db_path).unwrap();
+
+        let adapter = QueryAdapter::new(&db);
+        let query = Query::new(adapter);
+        let command = CommandAdapter::new(&db);
+
+        let tn = TemplateName::try_from("test").unwrap();
+        let template =
+            Template::new(&tn, None, vec![], HashMap::new()).unwrap();
+        command.create(&template).unwrap();
+
+        // Zero-copy read
+        let name_read = query
+            .with_archived(template.id(), |archived| {
+                archived.name.0.to_string()
+            })
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(name_read, "test");
     }
 }

@@ -9,26 +9,20 @@ pub mod adapter;
 pub mod aggregate;
 /// Template composition strategies.
 pub mod block;
-/// Template lifecycle manager (load → compile → cache → render).
+/// Template catalog for lifecycle orchestration.
 pub mod catalog;
-/// Template command implementations (CQRS write operations).
+/// Template command implementations (Generic CQRS wrapper).
 pub mod command;
-/// Template composition logic.
-pub mod composition;
 /// Template errors.
 pub mod error;
 /// Template domain events.
 pub mod events;
 /// Template ports for CQRS.
 pub mod ports;
-/// Template query implementations (CQRS read operations).
+/// Template query implementations (Generic CQRS wrapper).
 pub mod query;
-/// Template placeholder syntax.
-pub mod syntax;
-/// Template validation logic.
-pub mod validation;
-/// Template variable definitions.
-pub mod variable;
+/// Template input specifications.
+pub mod value;
 
 pub(crate) mod db_table {
     use redb::{MultimapTableDefinition, TableDefinition};
@@ -39,8 +33,18 @@ pub(crate) mod db_table {
         MultimapTableDefinition::new("name_to_id");
 }
 
-pub use aggregate::{Metadata, Template};
+pub use adapter::{
+    CommandAdapter as RedbTemplateCommandAdapter,
+    QueryAdapter as RedbTemplateQueryAdapter,
+};
+pub use aggregate::{InputName, Metadata, Template, TemplateName};
 pub use block::{BlockStrategy, TemplateBlock};
 pub use catalog::TemplateCatalog;
-pub use ports::{TemplateCommandPort, TemplateQueryPort};
-pub use variable::VariableDefinition;
+pub use command::Command;
+pub use query::Query;
+pub use value::InputSpec;
+
+/// Convenience type alias for Redb-backed template query.
+pub type RedbTemplateQuery<'db> = Query<RedbTemplateQueryAdapter<'db>>;
+/// Convenience type alias for Redb-backed template command.
+pub type RedbTemplateCommand<'db> = Command<RedbTemplateCommandAdapter<'db>>;

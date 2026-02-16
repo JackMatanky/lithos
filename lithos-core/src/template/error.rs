@@ -31,9 +31,9 @@ pub enum TemplateError {
     #[error("render error: {0}")]
     Render(String),
 
-    /// Variable error.
-    #[error("variable error: {0}")]
-    Variable(String),
+    /// Input error.
+    #[error("input error: {0}")]
+    Input(String),
 
     /// Storage error.
     #[error("storage error: {0}")]
@@ -51,21 +51,21 @@ pub enum TemplateError {
     #[error("invalid template name: {0}")]
     InvalidTemplateName(String),
 
-    /// Empty variable name.
-    #[error("variable name cannot be empty")]
-    EmptyVariableName,
+    /// Empty input name.
+    #[error("input name cannot be empty")]
+    EmptyInputName,
 
-    /// Variable name too long.
-    #[error("variable name too long: {0} characters (max 32)")]
-    VariableNameTooLong(usize),
+    /// Input name too long.
+    #[error("input name too long: {0} characters (max 32)")]
+    InputNameTooLong(usize),
 
-    /// Invalid variable name.
-    #[error("invalid variable name: {0}")]
-    InvalidVariableName(String),
+    /// Invalid input name.
+    #[error("invalid input name: {0}")]
+    InvalidInputName(String),
 
-    /// Too many variables.
-    #[error("maximum of 50 variables exceeded: {0}")]
-    MaxVariablesExceeded(usize),
+    /// Too many inputs.
+    #[error("maximum of 50 inputs exceeded: {0}")]
+    MaxInputsExceeded(usize),
 
     /// Composition depth exceeded.
     #[error("maximum composition depth exceeded: {0}")]
@@ -75,16 +75,14 @@ pub enum TemplateError {
     #[error("circular composition detected: {0}")]
     CircularComposition(String),
 
-    /// Variable not found.
-    #[error("variable not found: {0}")]
-    VariableNotFound(String),
+    /// Input spec not found.
+    #[error("input spec not found: {0}")]
+    InputNotFound(String),
 
-    /// Variable type mismatch.
-    #[error(
-        "variable '{name}' type mismatch: expected {expected}, got {actual}"
-    )]
-    VariableTypeMismatch {
-        /// Variable name.
+    /// Input type mismatch.
+    #[error("input '{name}' type mismatch: expected {expected}, got {actual}")]
+    InputTypeMismatch {
+        /// Input name.
         name: String,
         /// Expected type.
         expected: String,
@@ -137,7 +135,7 @@ mod tests {
     #[case(TemplateError::Composition("missing part".into()))]
     #[case(TemplateError::Syntax("invalid braces".into()))]
     #[case(TemplateError::Render("failed to render".into()))]
-    #[case(TemplateError::Variable("undefined var".into()))]
+    #[case(TemplateError::Input("undefined input".into()))]
     #[case(TemplateError::Storage("io error".into()))]
     fn template_error_display_is_non_empty(#[case] error: TemplateError) {
         assert!(

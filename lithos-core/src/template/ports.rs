@@ -8,11 +8,12 @@ use std::{
 use uuid::Uuid;
 
 use super::{
-    aggregate::Template, composition::Composition, error::TemplateError,
+    aggregate::{Template, TemplateName},
+    error::TemplateError,
 };
 
 /// Command port for template-related write operations.
-pub trait TemplateCommandPort: Send + Sync {
+pub trait Command: Send + Sync {
     /// Creates a new template.
     ///
     /// # Errors
@@ -33,7 +34,10 @@ pub trait TemplateCommandPort: Send + Sync {
 }
 
 /// Query port for template-related read operations.
-pub trait TemplateQueryPort: Send + Sync {
+pub trait Query: Send + Sync {
+    /// Archived template type for zero-copy reads.
+    type Archived<'archived>;
+
     /// Find a template by ID.
     ///
     /// # Errors
@@ -55,14 +59,17 @@ pub trait TemplateQueryPort: Send + Sync {
     /// Returns `TemplateError` if query fails.
     fn list(&self) -> Result<Vec<Template>, TemplateError>;
 
-    /// Resolves a template composition.
+    /// Access a template with zero-copy.
     ///
     /// # Errors
-    /// Returns `TemplateError` if resolution fails.
-    fn resolve(
+    /// Returns `TemplateError` if query fails.
+    fn with_archived<F, R>(
         &self,
-        composition: &Composition,
-    ) -> Result<Template, TemplateError>;
+        id: Uuid,
+        f: F,
+    ) -> Result<Option<R>, TemplateError>
+    where
+        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R;
 }
 
 #[cfg(test)]
@@ -71,19 +78,22 @@ mod tests {
 
     #[test]
     fn command_trait_is_object_safe() {
-        let _: Option<Box<dyn TemplateCommandPort>> = None;
-    }
-
-    #[test]
-    fn query_trait_is_object_safe() {
-        let _: Option<Box<dyn TemplateQueryPort>> = None;
+        let _: Option<Box<dyn Command>> = None;
     }
 
     #[test]
     fn traits_are_send_and_sync() {
         fn assert_send_sync<T: Send + Sync + ?Sized>() {}
-        assert_send_sync::<dyn TemplateCommandPort>();
-        assert_send_sync::<dyn TemplateQueryPort>();
+        assert_send_sync::<dyn Command>();
+    }
+
+    #[test]
+    fn query_trait_is_send_and_sync() {
+        fn assert_send_sync<T: Query>() {
+            fn is_send_sync<U: Send + Sync>() {}
+            is_send_sync::<T>();
+        }
+        assert_send_sync::<FakeTemplateStorage>();
     }
 }
 
@@ -91,7 +101,7 @@ mod tests {
 #[derive(Clone, Default, Debug)]
 pub struct FakeTemplateStorage {
     templates: Arc<Mutex<HashMap<Uuid, Template>>>,
-    name_index: Arc<Mutex<HashMap<String, Uuid>>>,
+    name_index: Arc<Mutex<HashMap<TemplateName, Uuid>>>,
 }
 
 impl FakeTemplateStorage {
@@ -103,7 +113,9 @@ impl FakeTemplateStorage {
     }
 }
 
-impl TemplateQueryPort for FakeTemplateStorage {
+impl Query for FakeTemplateStorage {
+    type Archived<'archived> = &'archived Template;
+
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
         let templates = self
@@ -118,19 +130,21 @@ impl TemplateQueryPort for FakeTemplateStorage {
         &self,
         name: &str,
     ) -> Result<Option<Template>, TemplateError> {
-        let name_index = self
-            .name_index
-            .lock()
-            .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
-        let templates = self
-            .templates
-            .lock()
-            .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
+        let Ok(tn) = TemplateName::try_from(name) else {
+            return Ok(None);
+        };
 
-        if let Some(&id) = name_index.get(name) {
-            Ok(templates.get(&id).cloned())
-        } else {
-            Ok(None)
+        let id = {
+            let name_index = self
+                .name_index
+                .lock()
+                .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
+            name_index.get(&tn).copied()
+        };
+
+        match id {
+            Some(id) => self.find_by_id(id),
+            None => Ok(None),
         }
     }
 
@@ -144,38 +158,46 @@ impl TemplateQueryPort for FakeTemplateStorage {
     }
 
     #[inline]
-    fn resolve(
+    fn with_archived<F, R>(
         &self,
-        _composition: &Composition,
-    ) -> Result<Template, TemplateError> {
-        #[expect(
-            clippy::unimplemented,
-            reason = "Not needed for catalog tests"
-        )]
-        {
-            unimplemented!("resolve() not needed for catalog tests")
-        }
-    }
-}
-
-impl TemplateCommandPort for FakeTemplateStorage {
-    #[inline]
-    fn create(&self, template: &Template) -> Result<(), TemplateError> {
-        let mut templates = self
+        id: Uuid,
+        f: F,
+    ) -> Result<Option<R>, TemplateError>
+    where
+        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
+    {
+        let templates = self
             .templates
             .lock()
             .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
+        Ok(templates.get(&id).map(f))
+    }
+}
+
+impl Command for FakeTemplateStorage {
+    #[inline]
+    fn create(&self, template: &Template) -> Result<(), TemplateError> {
         let mut name_index = self
             .name_index
             .lock()
             .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
 
         if name_index.contains_key(template.name()) {
-            return Err(TemplateError::AlreadyExists(template.name().into()));
+            return Err(TemplateError::AlreadyExists(
+                template.name().to_string(),
+            ));
         }
 
+        let mut templates = self
+            .templates
+            .lock()
+            .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
+
         templates.insert(template.id(), template.clone());
-        name_index.insert(template.name().into(), template.id());
+        name_index.insert(template.name().clone(), template.id());
+
+        drop(name_index);
+        drop(templates);
 
         Ok(())
     }
@@ -198,15 +220,19 @@ impl TemplateCommandPort for FakeTemplateStorage {
         if old.name() != template.name() {
             if name_index.contains_key(template.name()) {
                 return Err(TemplateError::AlreadyExists(
-                    template.name().into(),
+                    template.name().to_string(),
                 ));
             }
 
-            name_index.remove(old.name());
-            name_index.insert(template.name().into(), template.id());
+            let old_name = old.name().clone();
+            name_index.remove(&old_name);
+            name_index.insert(template.name().clone(), template.id());
         }
 
         templates.insert(template.id(), template.clone());
+
+        drop(name_index);
+        drop(templates);
 
         Ok(())
     }
@@ -225,6 +251,9 @@ impl TemplateCommandPort for FakeTemplateStorage {
         if let Some(template) = templates.remove(&id) {
             name_index.remove(template.name());
         }
+
+        drop(name_index);
+        drop(templates);
 
         Ok(())
     }

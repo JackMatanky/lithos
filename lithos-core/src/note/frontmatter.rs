@@ -408,10 +408,6 @@ pub fn as_string_array_lossy(value: &FieldValue) -> Option<Vec<Box<str>>> {
 #[cfg(test)]
 mod tests {
     /// Test fixtures and builders for Frontmatter tests.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Fixture helpers use expect for deterministic setup."
-    )]
     mod fixtures {
         use chrono::{DateTime, TimeZone as _, Utc};
 

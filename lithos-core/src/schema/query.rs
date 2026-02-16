@@ -203,11 +203,7 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
+
         fn find_by_id_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
@@ -234,11 +230,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
+
         fn find_by_name_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
@@ -270,11 +262,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
+
         fn list_returns_all_saved_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
@@ -319,11 +307,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
+
         fn list_metadata_returns_saved_entries() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
@@ -353,11 +337,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup and \
-                      value extraction."
-        )]
+
         fn find_metadata_by_id_returns_entry() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");

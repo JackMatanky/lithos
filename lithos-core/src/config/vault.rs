@@ -400,11 +400,7 @@ impl From<VaultRoot> for String {
 
 impl Default for VaultRoot {
     #[inline]
-    #[expect(
-        clippy::expect_used,
-        clippy::disallowed_methods,
-        reason = "Root path is guaranteed non-empty"
-    )]
+    #[expect(clippy::expect_used, reason = "Root path is guaranteed non-empty")]
     fn default() -> Self {
         Self::try_new(PathBuf::from("/")).expect("root path is non-empty")
     }
@@ -580,7 +576,6 @@ impl std::fmt::Display for VaultName {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    clippy::disallowed_methods,
     reason = "Test modules have relaxed rules"
 )]
 mod tests {
@@ -618,22 +613,15 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::panic_in_result_fn,
-            reason = "Test uses assert_eq! which can panic."
-        )]
-        fn metadata_new_derives_from_vault_path()
-        -> Result<(), Box<dyn std::error::Error>> {
+        fn metadata_new_derives_from_vault_path() {
             // GIVEN: a vault path
             let vault_root = fixtures::vault_root("/vaults/work");
+            let vault_id = fixtures::vault_id();
 
             // WHEN: building metadata from the path
-            let metadata = Metadata::new(
-                fixtures::vault_id(),
-                vault_root.clone(),
-                None,
-                None,
-            )?;
+            let metadata =
+                Metadata::new(vault_id, vault_root.clone(), None, None)
+                    .unwrap();
 
             // THEN: version and name defaults are applied
             assert_eq!(
@@ -651,8 +639,6 @@ mod tests {
                 vault_root.as_path(),
                 "Expected path to match input"
             );
-
-            Ok(())
         }
 
         #[test]

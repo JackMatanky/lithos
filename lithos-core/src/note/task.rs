@@ -756,20 +756,12 @@ type TemporalFields = (
 
 // Pre-compiled regexes for performance
 static METADATA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        clippy::disallowed_methods,
-        reason = "Internal regex compilation"
-    )]
+    #[expect(clippy::expect_used, reason = "Internal regex compilation")]
     Regex::new(r"\[([^:\]]+)::\s*([^\]]+)\]").expect("Invalid metadata regex")
 });
 
 static TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    #[expect(
-        clippy::expect_used,
-        clippy::disallowed_methods,
-        reason = "Internal regex compilation"
-    )]
+    #[expect(clippy::expect_used, reason = "Internal regex compilation")]
     Regex::new(r"#[a-zA-Z0-9_\-/]+").expect("Invalid tag regex")
 });
 
@@ -817,10 +809,6 @@ fn find_emoji_field(text: &str, emoji: char) -> Option<&str> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Tests use expect for deterministic fixtures."
-)]
 mod tests {
     use super::*;
     use crate::config::{

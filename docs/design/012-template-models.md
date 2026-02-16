@@ -77,7 +77,7 @@ We're refactoring to a MiniJinja-first architecture where:
 **Creating a Simple Template (No Inheritance):**
 
 ```rust
-use lithos_core::template::{Template, TemplateBlock, BlockStrategy, VariableDefinition};
+use lithos_core::template::{Template, TemplateBlock, BlockStrategy, InputSpec};
 
 // Create template metadata (pure data structure)
 let template = Template::new(
@@ -91,11 +91,11 @@ let template = Template::new(
         ),
     ],
     vec![
-        ("date", VariableDefinition::Date {
+        ("date", InputSpec::Date {
             default: None,
             format: Some("%Y-%m-%d".into()),
         }),
-        ("notes", VariableDefinition::String {
+        ("notes", InputSpec::String {
             default: Some("- [ ] Review yesterday".into()),
             min_length: Some(1),
             max_length: Some(5000),
@@ -149,8 +149,8 @@ let child = Template::new(
         ),
     ],
     vec![
-        ("date", VariableDefinition::Date { /* ... */ }),
-        ("tasks", VariableDefinition::String { /* ... */ }),
+        ("date", InputSpec::Date { /* ... */ }),
+        ("tasks", InputSpec::String { /* ... */ }),
     ].into_iter().collect(),
 )?;
 
@@ -190,7 +190,7 @@ assert!(matches!(
 let name: &str = template.name();
 let extends: Option<&str> = template.extends();
 let blocks: &[TemplateBlock] = template.blocks();
-let variables: &HashMap<String, VariableDefinition> = template.variables();
+let variables: &HashMap<String, InputSpec> = template.variables();
 
 // Check constraints
 for block in template.blocks() {
@@ -259,9 +259,9 @@ Example:
 // Child with Replace: "World" → renders "World"
 ```
 
-**VariableDefinition as Constraints:**
+**InputSpec as Constraints:**
 
-`VariableDefinition` is NOT validation logic—it's a **data structure describing constraints**:
+`InputSpec` is NOT validation logic—it's a **data structure describing constraints**:
 
 - The adapter converts it to MiniJinja filters
 - The domain just stores: "title must be 1-100 chars"
@@ -277,7 +277,7 @@ graph TB
         Template[Template Entity]
         Block[TemplateBlock]
         BlockStrategy[BlockStrategy Enum]
-        VarDef[VariableDefinition]
+        VarDef[InputSpec]
         Metadata[Metadata]
         Events[Events]
         Errors[TemplateError]
@@ -348,7 +348,7 @@ pub struct Template {
     blocks: Vec<TemplateBlock>,
 
     /// Variable constraint declarations (converted to MiniJinja filters)
-    variables: HashMap<String, VariableDefinition>,
+    variables: HashMap<String, InputSpec>,
 
     /// Management metadata (description, tags, timestamps)
     metadata: Metadata,
@@ -375,7 +375,7 @@ impl Template {
         name: &str,
         extends: Option<&str>,
         blocks: Vec<TemplateBlock>,
-        variables: HashMap<String, VariableDefinition>,
+        variables: HashMap<String, InputSpec>,
     ) -> Result<Self, TemplateError>;
 
     /// Validates composition relationships (cycle detection)
@@ -395,7 +395,7 @@ impl Template {
     pub fn name(&self) -> &str;
     pub fn extends(&self) -> Option<&str>;
     pub fn blocks(&self) -> &[TemplateBlock];
-    pub fn variables(&self) -> &HashMap<String, VariableDefinition>;
+    pub fn variables(&self) -> &HashMap<String, InputSpec>;
     pub const fn metadata(&self) -> &Metadata;
     pub fn pending_events(&self) -> &[Events];
     pub fn take_events(&mut self) -> Vec<Events>;
@@ -465,7 +465,7 @@ pub enum BlockStrategy {
 
 ---
 
-#### `VariableDefinition` (Domain - Enum)
+#### `InputSpec` (Domain - Enum)
 
 - **Purpose**: Declares variable type and constraints as DATA (not validation logic).
 - **Key rules**:
@@ -478,7 +478,7 @@ pub enum BlockStrategy {
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub enum VariableDefinition {
+pub enum InputSpec {
     String {
         default: Option<Box<str>>,
         min_length: Option<usize>,
@@ -507,7 +507,7 @@ pub enum VariableDefinition {
     },
 }
 
-impl VariableDefinition {
+impl InputSpec {
     /// Returns filter names to apply at render time
     ///
     /// Used by adapter to generate MiniJinja filter chains.
@@ -612,7 +612,7 @@ impl Default for Metadata {
   - `name(&self) -> &str` - Zero-cost accessor
   - `extends(&self) -> Option<&str>` - Zero-cost accessor
   - `blocks(&self) -> &[TemplateBlock]` - Zero-cost accessor
-  - `variables(&self) -> &HashMap<String, VariableDefinition>` - Zero-cost accessor
+  - `variables(&self) -> &HashMap<String, InputSpec>` - Zero-cost accessor
   - `metadata(&self) -> &Metadata` - Zero-cost accessor
   - `take_events(&mut self) -> Vec<Events>` - Consumes pending events
 - **State/Invariants**:
@@ -638,7 +638,7 @@ impl Default for Metadata {
 
 ---
 
-#### Component: `VariableDefinition` (Enum)
+#### Component: `InputSpec` (Enum)
 
 - **Responsibility**: Declares constraints as data (adapter converts to filters)
 - **Public Interface**:
@@ -663,7 +663,7 @@ impl Default for Metadata {
 
 **Consumed By:**
 
-- **Adapter Layer** (`template-services.md`): SourceGenerator reads Template metadata, FilterRegistry uses VariableDefinition
+- **Adapter Layer** (`template-services.md`): SourceGenerator reads Template metadata, FilterRegistry uses InputSpec
 - **Storage Layer** (`template-cqrs.md`): Ports serialize/deserialize Template via rkyv
 
 **Data Flow (Template Creation):**
@@ -813,7 +813,7 @@ fn validate_composition(
 #### Filter Chain Generation
 
 ```rust
-impl VariableDefinition {
+impl InputSpec {
     pub fn filter_chain(&self) -> Vec<&'static str> {
         match self {
             Self::String { pattern: Some(_), min_length: Some(_), .. } |
@@ -852,9 +852,9 @@ impl VariableDefinition {
 
 ---
 
-#### Decision: VariableDefinition as Data (Not Validation Logic)
+#### Decision: InputSpec as Data (Not Validation Logic)
 
-- **Context**: Should `VariableDefinition` validate variables at construction, or just describe constraints?
+- **Context**: Should `InputSpec` validate variables at construction, or just describe constraints?
 - **Choice**: Describe constraints as data (adapter converts to MiniJinja filters).
 - **Alternatives Considered**:
   - _Validation methods_: `validate(&self, value) -> Result<()>`. Rejected - couples domain to validation logic, harder to test.
@@ -988,7 +988,7 @@ See [Migration Strategy](./003-template-migration-strategy.md) for detailed plan
 | :--------- | :------------------------------------------------- | :-------------------------------------------------------------------------- |
 | 2026-02-16 | "Template should validate syntax"                  | No - MiniJinja is source of truth. Domain is metadata only.                 |
 | 2026-02-16 | "Why separate validate_composition()?"             | Requires all templates (not available at construction). Separate concern.   |
-| 2026-02-16 | "VariableDefinition should have validate() method" | No - constraint data, not logic. Adapter converts to filters.               |
+| 2026-02-16 | "InputSpec should have validate() method" | No - constraint data, not logic. Adapter converts to filters.               |
 | 2026-02-16 | "Why Box<str> over String?"                        | Immutable data, exact allocation, saves memory. Benchmark confirms benefit. |
 | 2026-02-16 | "BlockStrategy needs Merge variant?"               | Not yet - YAGNI. Add when use case emerges (extensible design).             |
 

@@ -456,10 +456,6 @@ impl Display for BankVersion {
     clippy::arbitrary_source_item_ordering,
     reason = "Test module groups fixtures and submodules for readability."
 )]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test setup uses expect for deterministic fixtures."
-)]
 mod tests {
     use uuid::Uuid;
 

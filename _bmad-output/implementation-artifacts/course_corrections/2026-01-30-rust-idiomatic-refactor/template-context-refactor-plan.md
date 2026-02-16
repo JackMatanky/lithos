@@ -686,7 +686,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
   - [ ] Mark deprecated: Add `#[deprecated]` to `content: String` field
   - [ ] Mark deprecated: Add `#[deprecated]` to `syntax: PlaceholderSyntax` field
 - [ ] Update `Template::new()` constructor:
-  - [ ] Change signature to: `pub fn new(name: &str, extends: Option<&str>, blocks: Vec<TemplateBlock>, variables: HashMap<String, VariableDefinition>) -> Result<Self, TemplateError>`
+  - [ ] Change signature to: `pub fn new(name: &str, extends: Option<&str>, blocks: Vec<TemplateBlock>, variables: HashMap<String, InputSpec>) -> Result<Self, TemplateError>`
   - [ ] Initialize `extends` field
   - [ ] Initialize `blocks` field
   - [ ] Initialize deprecated fields as empty (for backward compat during migration)
@@ -698,10 +698,10 @@ We cannot break existing functionality while refactoring. This plan provides an 
   - [ ] Add `#[deprecated(note = "Use MiniJinja native {% extends %} instead")]` to `Template::compose()` if it exists
 - [ ] Verify compiles: `cargo check -p lithos-core` (warnings expected for deprecated fields)
 
-**Task 2.3: Update VariableDefinition**
+**Task 2.3: Update InputSpec**
 - [ ] Add method to `lithos-core/src/template/variable.rs`:
   ```rust
-  impl VariableDefinition {
+  impl InputSpec {
       /// Returns filter names to apply at render time.
       ///
       /// Used by adapter to generate filter chains in MiniJinja templates.
@@ -833,7 +833,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
       }
   }
   ```
-- [ ] Add tests for VariableDefinition in `lithos-core/src/template/variable.rs`:
+- [ ] Add tests for InputSpec in `lithos-core/src/template/variable.rs`:
   ```rust
   #[cfg(test)]
   mod tests {
@@ -841,7 +841,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
 
       #[test]
       fn filter_chain_for_string_with_pattern_and_length() {
-          let var = VariableDefinition::String {
+          let var = InputSpec::String {
               default: None,
               min_length: Some(5),
               max_length: Some(10),
@@ -854,7 +854,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
 
       #[test]
       fn filter_chain_for_number_with_range() {
-          let var = VariableDefinition::Number {
+          let var = InputSpec::Number {
               default: None,
               min: Some(1.0),
               max: Some(10.0),
@@ -866,7 +866,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
 
       #[test]
       fn filter_args_for_string() {
-          let var = VariableDefinition::String {
+          let var = InputSpec::String {
               default: None,
               min_length: Some(5),
               max_length: Some(10),
@@ -880,7 +880,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
 
       #[test]
       fn has_default_returns_true_when_default_exists() {
-          let var = VariableDefinition::String {
+          let var = InputSpec::String {
               default: Some("hello".into()),
               min_length: None,
               max_length: None,
@@ -892,7 +892,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
 
       #[test]
       fn has_default_returns_false_when_no_default() {
-          let var = VariableDefinition::String {
+          let var = InputSpec::String {
               default: None,
               min_length: None,
               max_length: None,
@@ -919,13 +919,13 @@ We cannot break existing functionality while refactoring. This plan provides an 
 - [ ] TemplateBlock and BlockStrategy types exist with tests
 - [ ] Old `content` and `syntax` fields marked `#[deprecated]`
 - [ ] Old `validate()` and `compose()` methods deprecated
-- [ ] VariableDefinition has `filter_chain()`, `filter_args()`, `default_value()`, `has_default()` methods
+- [ ] InputSpec has `filter_chain()`, `filter_args()`, `default_value()`, `has_default()` methods
 - [ ] All unit tests updated and passing with new API
 
 **🎯 Success Criteria:**
 - ✅ Domain is now metadata-only (no processing logic)
 - ✅ Template describes structure via blocks (not raw content string)
-- ✅ VariableDefinition provides filter metadata (not validation logic)
+- ✅ InputSpec provides filter metadata (not validation logic)
 - ✅ Old API deprecated (visible warnings guide refactor)
 - ✅ Tests demonstrate new composition model
 
@@ -2067,7 +2067,7 @@ We cannot break existing functionality while refactoring. This plan provides an 
 **Task 6.3: Remove Deprecated Methods**
 - [ ] Remove `#[deprecated] Template::validate()` method
 - [ ] Remove `#[deprecated] Template::compose()` method if exists
-- [ ] Remove `#[deprecated] VariableDefinition::validate_value()` method if exists
+- [ ] Remove `#[deprecated] InputSpec::validate_value()` method if exists
 
 **Task 6.4: Clean Up Imports**
 - [ ] Remove `pub mod syntax;` from `lithos-core/src/template/mod.rs`

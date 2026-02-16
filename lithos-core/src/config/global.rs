@@ -387,7 +387,6 @@ impl TryFrom<RawTrustedVaults> for TrustedVaults {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    clippy::disallowed_methods,
     reason = "Test modules have relaxed rules"
 )]
 mod tests {
@@ -418,20 +417,15 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::panic_in_result_fn,
-            reason = "Test uses assert_eq! which can panic."
-        )]
-        fn trusted_vault_path_accepts_absolute()
-        -> Result<(), Box<dyn std::error::Error>> {
+        fn trusted_vault_path_accepts_absolute() {
             let path = if cfg!(windows) {
                 "C:\\vault"
             } else {
                 "/vault"
             };
-            let result = TrustedVaultPath::try_new(PathBuf::from(path))?;
+            let result =
+                TrustedVaultPath::try_new(PathBuf::from(path)).unwrap();
             assert_eq!(result.as_path().to_string_lossy(), path);
-            Ok(())
         }
     }
 
