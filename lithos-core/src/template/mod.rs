@@ -1,11 +1,14 @@
 //! Template bounded context models.
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
+#![allow(clippy::pub_use, reason = "Re-exporting for convenience")]
 
 /// MiniJinja adapter layer.
 pub mod adapter;
 /// Template aggregate root and main entities.
 pub mod aggregate;
+/// Template composition strategies.
+pub mod block;
 /// Template command implementations (CQRS write operations).
 pub mod command;
 /// Template composition logic.
@@ -34,4 +37,6 @@ pub(crate) mod db_table {
         MultimapTableDefinition::new("name_to_id");
 }
 
-// --- Public API ---
+pub use aggregate::{Metadata, Template};
+pub use block::{BlockStrategy, TemplateBlock};
+pub use variable::VariableDefinition;

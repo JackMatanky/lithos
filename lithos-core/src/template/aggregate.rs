@@ -5,21 +5,28 @@
 #![allow(
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
+    clippy::missing_inline_in_public_items,
+    clippy::items_after_statements,
+    clippy::self_only_used_in_recursion,
     reason = "rkyv Archive derive generates non-exhaustive archived types"
 )]
 
-use std::{collections::HashMap, sync::LazyLock};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::LazyLock,
+};
 
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use uuid::Uuid;
 
 use super::{
+    block::TemplateBlock,
     composition::{Composition, InsertionPosition, Section},
     error::TemplateError,
     events::{Events, TemplateCreated},
     syntax::PlaceholderSyntax,
-    validation::{validate_content, validate_structure},
+    validation::validate_structure,
     variable::VariableDefinition,
 };
 use crate::patterns;
@@ -52,13 +59,6 @@ const RESERVED_WORDS: &[&str] = &[
 ];
 
 /// Metadata for template management.
-///
-/// # Examples
-/// ```
-/// # use lithos_core::template::aggregate::Metadata;
-/// let metadata = Metadata::default();
-/// assert!(metadata.tags.is_empty(), "New metadata should have empty tags");
-/// ```
 #[derive(
     Debug,
     Clone,
@@ -73,17 +73,29 @@ const RESERVED_WORDS: &[&str] = &[
 #[non_exhaustive]
 pub struct Metadata {
     /// Template description.
-    pub description: Option<String>,
+    pub description: Option<Box<str>>,
     /// Template version.
-    pub version: Option<String>,
+    pub version: Option<Box<str>>,
     /// Tags for categorization.
-    pub tags: Vec<String>,
+    pub tags: Vec<Box<str>>,
     /// Creation timestamp.
     #[rkyv(with = crate::ser::DateTimeAsI64)]
     pub created_at: DateTime<Utc>,
     /// Last modification timestamp.
     #[rkyv(with = crate::ser::DateTimeAsI64)]
     pub updated_at: DateTime<Utc>,
+}
+
+impl Default for Metadata {
+    fn default() -> Self {
+        Self {
+            description: None,
+            version: None,
+            tags: Vec::new(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
 }
 
 /// Aggregate root representing a reusable template.
@@ -103,34 +115,26 @@ pub struct Template {
     /// UUID v7 identity.
     pub id: Uuid,
     /// Unique template name.
-    pub name: String,
-    /// Template content.
-    pub content: String,
-    /// Syntax used for placeholders.
-    pub syntax: PlaceholderSyntax,
-    /// Variable definitions with types and constraints.
+    pub name: Box<str>,
+    /// Optional parent template name.
+    pub extends: Option<Box<str>>,
+    /// Block definitions.
+    pub blocks: Vec<TemplateBlock>,
+    /// Variable definitions.
     pub variables: HashMap<String, VariableDefinition>,
-    /// Optional parent template for composition.
-    pub extends: Option<String>,
     /// Metadata for template management.
     pub metadata: Metadata,
     /// Domain events pending emission.
     #[rkyv(with = rkyv::with::Skip)]
     #[serde(skip)]
     pub pending_events: Vec<Events>,
-}
 
-impl Default for Metadata {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            description: None,
-            version: None,
-            tags: Vec::new(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        }
-    }
+    /// Deprecated content field.
+    #[deprecated]
+    pub content: String,
+    /// Deprecated syntax field.
+    #[deprecated]
+    pub syntax: PlaceholderSyntax,
 }
 
 #[expect(
@@ -139,50 +143,219 @@ impl Default for Metadata {
               reference to enum avoids borrow checker friction"
 )]
 impl Template {
+    /// Creates a new template aggregate with validation.
+    ///
+    /// # Errors
+    /// Returns `TemplateError` if validation fails (name format, size limits,
+    /// etc).
+    #[inline]
+    pub fn new(
+        name: &str,
+        extends: Option<&str>,
+        blocks: Vec<TemplateBlock>,
+        variables: HashMap<String, VariableDefinition>,
+    ) -> Result<Self, TemplateError> {
+        Self::validate_name(name)?;
+        Self::validate_variable_definitions(&variables)?;
+
+        // Ensure block names are unique within the template
+        let mut block_names = HashSet::new();
+        for block in &blocks {
+            if !block_names.insert(block.name()) {
+                return Err(TemplateError::ValidationFailed(format!(
+                    "Duplicate block name: {}",
+                    block.name()
+                )));
+            }
+        }
+
+        let id = Uuid::now_v7();
+        let mut template = Self {
+            id,
+            name: name.into(),
+            extends: extends.map(Into::into),
+            blocks,
+            variables,
+            metadata: Metadata::default(),
+            pending_events: vec![],
+            #[expect(deprecated, reason = "Legacy field")]
+            content: String::new(),
+            #[expect(deprecated, reason = "Legacy field")]
+            syntax: PlaceholderSyntax::default(),
+        };
+
+        template.add_event(Events::TemplateCreated(TemplateCreated::new(
+            id,
+            name,
+            chrono::Utc::now().timestamp(),
+        )));
+
+        Ok(template)
+    }
+
     /// Adds a domain event to the pending events collection.
     #[inline]
     fn add_event(&mut self, event: Events) {
         self.pending_events.push(event);
     }
 
+    /// Validates composition relationships (cycle detection).
+    ///
+    /// # Errors
+    /// Returns `TemplateError::CircularComposition` if a cycle is detected.
+    /// Returns `TemplateError::CompositionDepthExceeded` if depth > 10.
+    #[inline]
+    pub fn validate_composition(
+        &self,
+        all_templates: &HashMap<&str, &Template>,
+    ) -> Result<(), TemplateError> {
+        let mut visited = HashSet::new();
+        let mut stack = Vec::new();
+
+        self.dfs(self.name(), all_templates, &mut visited, &mut stack)
+    }
+
+    fn dfs<'ctx>(
+        &self,
+        current: &'ctx str,
+        all_templates: &HashMap<&str, &'ctx Template>,
+        visited: &mut HashSet<&'ctx str>,
+        stack: &mut Vec<&'ctx str>,
+    ) -> Result<(), TemplateError> {
+        if stack.contains(&current) {
+            return Err(TemplateError::CircularComposition(format!(
+                "Cycle detected: {stack:?}"
+            )));
+        }
+
+        if stack.len() >= 10 {
+            return Err(TemplateError::CompositionDepthExceeded(stack.len()));
+        }
+
+        if visited.contains(current) {
+            return Ok(());
+        }
+
+        stack.push(current);
+        visited.insert(current);
+
+        if let Some(template) = all_templates.get(current)
+            && let Some(parent) = template.extends()
+        {
+            self.dfs(parent, all_templates, visited, stack)?;
+        }
+
+        stack.pop();
+        Ok(())
+    }
+
+    /// Returns the template's unique identifier.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> Uuid {
+        self.id
+    }
+
+    /// Returns the template's unique name.
+    #[inline]
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the name of the template this one extends, if any.
+    #[inline]
+    #[must_use]
+    pub fn extends(&self) -> Option<&str> {
+        self.extends.as_deref()
+    }
+
+    /// Returns the template's blocks.
+    #[inline]
+    #[must_use]
+    pub fn blocks(&self) -> &[TemplateBlock] {
+        &self.blocks
+    }
+
+    /// Returns the template's variable definitions.
+    #[inline]
+    #[must_use]
+    pub fn variables(&self) -> &HashMap<String, VariableDefinition> {
+        &self.variables
+    }
+
+    /// Returns the template's metadata.
+    #[inline]
+    #[must_use]
+    pub const fn metadata(&self) -> &Metadata {
+        &self.metadata
+    }
+
+    /// Returns and clears pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<Events> {
+        std::mem::take(&mut self.pending_events)
+    }
+
+    /// Returns a reference to pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn pending_events(&self) -> &[Events] {
+        &self.pending_events
+    }
+
+    // --- Deprecated Methods ---
+
+    /// Returns the template's content.
+    #[inline]
+    #[must_use]
+    #[deprecated]
+    #[expect(deprecated, reason = "Legacy field")]
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Returns true if the template defines any variables.
+    #[inline]
+    #[must_use]
+    pub fn has_variables(&self) -> bool {
+        !self.variables.is_empty()
+    }
+
+    /// Returns the template's placeholder syntax.
+    #[inline]
+    #[must_use]
+    #[deprecated]
+    #[expect(deprecated, reason = "Legacy field")]
+    pub const fn syntax(&self) -> &PlaceholderSyntax {
+        &self.syntax
+    }
+
+    /// Validates template constraints.
+    ///
+    /// # Errors
+    /// Returns `TemplateError` if validation fails.
+    #[inline]
+    #[deprecated(note = "Template syntax validation is handled by MiniJinja.")]
+    #[expect(deprecated, reason = "Legacy method")]
+    pub fn validate(&self) -> Result<(), TemplateError> {
+        validate_structure(
+            &self.content,
+            &self.syntax.prefix,
+            &self.syntax.suffix,
+        )?;
+        Ok(())
+    }
+
     /// Composes a template from a base and a composition.
     ///
     /// # Errors
-    /// Returns `TemplateError::ValidationFailed` if composition validation
-    /// fails.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// # use lithos_core::template::aggregate::{Template, Metadata};
-    /// # use lithos_core::template::composition::{Composition, Section, InsertionPosition};
-    /// # use std::collections::HashMap;
-    /// # fn run() -> Result<(), lithos_core::template::error::TemplateError> {
-    /// let base = Template::new(
-    ///     "base".to_string(),
-    ///     "Hello {{name}}".to_string(),
-    ///     HashMap::new(),
-    ///     None,
-    ///     Metadata::default(),
-    /// )?;
-    /// let composition = Composition {
-    ///     additional_sections: vec![Section {
-    ///         name: "footer".to_string(),
-    ///         content: "--".to_string(),
-    ///         position: InsertionPosition::End,
-    ///     }],
-    ///     base_template: base.name.to_string(),
-    ///     includes: Vec::new(),
-    ///     variable_overrides: HashMap::new(),
-    /// };
-    /// let mut templates = HashMap::new();
-    /// templates.insert(base.name.to_string(), base.clone());
-    /// let composed = Template::compose(&base, &composition, &templates)?;
-    /// assert!(composed.extends().is_some(), "Composed template should extend base");
-    /// # Ok(())
-    /// # }
-    /// # run()?;
-    /// ```
+    /// Returns `TemplateError` if composition fails.
     #[inline]
+    #[deprecated(note = "Composition is handled by MiniJinja inheritance ({% \
+                         extends %}).")]
+    #[expect(deprecated, reason = "Legacy method")]
     pub fn compose(
         base: &Self,
         composition: &Composition,
@@ -199,15 +372,17 @@ impl Template {
 
         let id = Uuid::now_v7();
         let name = format!("{}-composed", base.name);
+
         let mut template = Self {
-            content: final_content,
-            extends: Some(base.name.clone()),
             id,
-            metadata: Metadata::default(),
-            name: name.clone(),
-            pending_events: vec![],
-            syntax: base.syntax.clone(),
+            name: name.clone().into(),
+            extends: Some(base.name.clone()),
+            blocks: base.blocks.clone(), // Naive copy, deprecated anyway
             variables: base.variables.clone(),
+            metadata: Metadata::default(),
+            pending_events: vec![],
+            content: final_content,
+            syntax: base.syntax.clone(),
         };
 
         template.add_event(Events::TemplateCreated(TemplateCreated::new(
@@ -217,135 +392,6 @@ impl Template {
         )));
 
         Ok(template)
-    }
-
-    /// Returns the template's content.
-    #[inline]
-    #[must_use]
-    pub fn content(&self) -> &str {
-        &self.content
-    }
-
-    /// Returns true if the template defines any variables.
-    #[inline]
-    #[must_use]
-    pub fn has_variables(&self) -> bool {
-        !self.variables.is_empty()
-    }
-
-    /// Returns the name of the template this one extends, if any.
-    #[inline]
-    #[must_use]
-    pub fn extends(&self) -> Option<&str> {
-        self.extends.as_deref()
-    }
-
-    /// Returns the template's unique identifier.
-    #[inline]
-    #[must_use]
-    pub const fn id(&self) -> Uuid {
-        self.id
-    }
-
-    /// Returns the template's metadata.
-    #[inline]
-    #[must_use]
-    pub const fn metadata(&self) -> &Metadata {
-        &self.metadata
-    }
-
-    /// Returns the template's unique name.
-    #[inline]
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Creates a new template aggregate with validation.
-    ///
-    /// # Errors
-    /// Returns `TemplateError` if validation fails (name format, size limits,
-    /// etc).
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::template::aggregate::{Template, Metadata};
-    /// # use lithos_core::template::variable::VariableDefinition;
-    /// # use std::collections::HashMap;
-    /// # fn main() -> Result<(), lithos_core::template::error::TemplateError> {
-    /// let mut variables = HashMap::new();
-    /// variables.insert("title".to_string(), VariableDefinition::String {
-    ///     default: Some("Daily".to_string()),
-    ///     max_length: None,
-    ///     min_length: None,
-    ///     pattern: None,
-    /// });
-    /// let template = Template::new(
-    ///     "daily",
-    ///     "# {{title}}".to_string(),
-    ///     variables,
-    ///     None,
-    ///     Metadata::default(),
-    /// )
-    /// ?;
-    /// assert_eq!(template.name, "daily", "Template name should match");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn new(
-        name: &str,
-        content: String,
-        variables: HashMap<String, VariableDefinition>,
-        extends: Option<String>,
-        metadata: Metadata,
-    ) -> Result<Self, TemplateError> {
-        Self::validate_name(name)?;
-        validate_content(&content)?;
-        Self::validate_variable_definitions(&variables)?;
-
-        let id = Uuid::now_v7();
-        let mut template = Self {
-            content,
-            extends,
-            id,
-            metadata,
-            name: name.to_owned(),
-            pending_events: vec![],
-            syntax: PlaceholderSyntax::default(),
-            variables,
-        };
-
-        template.validate()?;
-
-        template.add_event(Events::TemplateCreated(TemplateCreated::new(
-            id,
-            name,
-            chrono::Utc::now().timestamp(),
-        )));
-
-        Ok(template)
-    }
-
-    /// Returns a reference to pending domain events.
-    #[inline]
-    #[must_use]
-    pub fn pending_events(&self) -> &[Events] {
-        &self.pending_events
-    }
-
-    /// Returns the template's placeholder syntax.
-    #[inline]
-    #[must_use]
-    pub const fn syntax(&self) -> &PlaceholderSyntax {
-        &self.syntax
-    }
-
-    /// Returns and clears pending domain events.
-    #[inline]
-    #[must_use]
-    pub fn take_events(&mut self) -> Vec<Events> {
-        std::mem::take(&mut self.pending_events)
     }
 
     /// Applies additional sections to content.
@@ -380,6 +426,7 @@ impl Template {
         }
     }
 
+    #[expect(deprecated, reason = "Legacy method")]
     fn insert_relative_to_variable(
         &self,
         content: &mut String,
@@ -401,44 +448,12 @@ impl Template {
         }
     }
 
-    /// Validates template constraints.
-    ///
-    /// # Errors
-    /// Returns `TemplateError::ValidationFailed` if placeholders are
-    /// unbalanced.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::template::aggregate::{Template, Metadata};
-    /// # use std::collections::HashMap;
-    /// # fn main() -> Result<(), lithos_core::template::error::TemplateError> {
-    /// let template = Template::new(
-    ///     "basic",
-    ///     "Hello {{name}}".to_string(),
-    ///     HashMap::new(),
-    ///     None,
-    ///     Metadata::default(),
-    /// )
-    /// ?;
-    /// template.validate()?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn validate(&self) -> Result<(), TemplateError> {
-        validate_structure(
-            &self.content,
-            &self.syntax.prefix,
-            &self.syntax.suffix,
-        )?;
-        Ok(())
-    }
+    // --- Validation Helpers ---
 
     /// Validates a template name according to domain constraints.
     ///
     /// # Errors
-    /// Returns `TemplateError` if the name is empty, too long, or contains
-    /// invalid characters.
+    /// Returns `TemplateError` if the name is invalid.
     #[inline]
     pub fn validate_name(name: &str) -> Result<(), TemplateError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
@@ -483,8 +498,7 @@ impl Template {
     /// Validates a variable name according to domain constraints.
     ///
     /// # Errors
-    /// Returns `TemplateError` if the name is empty, too long, contains
-    /// invalid characters, or is a reserved word.
+    /// Returns `TemplateError` if the variable name is invalid.
     #[inline]
     pub fn validate_variable_name(name: &str) -> Result<(), TemplateError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
@@ -532,22 +546,18 @@ impl Template {
 }
 
 #[cfg(test)]
+#[expect(clippy::arbitrary_source_item_ordering, reason = "Test organization")]
 mod tests {
     use proptest::prelude::*;
 
     use super::*;
+    use crate::template::block::{BlockStrategy, TemplateBlock};
 
     mod fixtures {
         use super::*;
 
         pub fn base_template() -> Result<Template, TemplateError> {
-            Template::new(
-                "base",
-                "Hello".to_owned(),
-                HashMap::new(),
-                None,
-                Metadata::default(),
-            )
+            Template::new("base", None, vec![], HashMap::new())
         }
     }
 
@@ -564,27 +574,17 @@ mod tests {
             fixtures::base_template().expect("Valid base template")
         }
 
-        /// 3.4-UNIT-022: `name_and_content_accessors_return_expected_values`.
-        /// Priority: P1.
         #[test]
         fn name_accessor_returns_template_name() {
             let template = base_template();
 
-            assert_eq!(template.name, "base", "Template name should be 'base'");
-        }
-
-        #[test]
-        fn content_accessor_returns_template_content() {
-            let template = base_template();
-
             assert_eq!(
-                template.content, "Hello",
-                "Template content should be 'Hello'"
+                template.name(),
+                "base",
+                "Template name should be 'base'"
             );
         }
 
-        /// 3.4-UNIT-022: `extends_is_none_for_base_template`.
-        /// Priority: P1.
         #[test]
         fn extends_is_none_for_base_template() {
             let template = base_template();
@@ -595,8 +595,6 @@ mod tests {
             );
         }
 
-        /// 3.4-UNIT-022: `has_variables_false_for_base_template`.
-        /// Priority: P1.
         #[test]
         fn has_variables_false_for_base_template() {
             let template = base_template();
@@ -607,8 +605,6 @@ mod tests {
             );
         }
 
-        /// 3.4-UNIT-022: `pending_events_emitted_on_create`.
-        /// Priority: P1.
         #[test]
         fn pending_events_emitted_on_create() {
             let template = base_template();
@@ -620,8 +616,6 @@ mod tests {
             );
         }
 
-        /// 3.4-UNIT-022: `take_events_drains_event_queue`.
-        /// Priority: P1.
         #[test]
         fn take_events_returns_pending_events() {
             let mut template = base_template();
@@ -645,43 +639,24 @@ mod tests {
             );
         }
 
-        /// 3.4-UNIT-023: `should_reject_template_when_name_format_is_invalid`.
-        /// Priority: P0.
         #[test]
         fn should_reject_template_when_name_is_empty() {
-            let result = Template::new(
-                "",
-                "content".to_owned(),
-                HashMap::new(),
-                None,
-                Metadata::default(),
-            );
+            let result = Template::new("", None, vec![], HashMap::new());
 
             assert!(result.is_err(), "Expected error for empty name");
         }
 
         #[test]
         fn should_reject_template_when_name_contains_spaces() {
-            let result = Template::new(
-                "Invalid Name",
-                "content".to_owned(),
-                HashMap::new(),
-                None,
-                Metadata::default(),
-            );
+            let result =
+                Template::new("Invalid Name", None, vec![], HashMap::new());
 
             assert!(result.is_err(), "Expected error for name with spaces");
         }
 
         #[test]
         fn should_reject_template_when_name_contains_invalid_characters() {
-            let result = Template::new(
-                "name!",
-                "content".to_owned(),
-                HashMap::new(),
-                None,
-                Metadata::default(),
-            );
+            let result = Template::new("name!", None, vec![], HashMap::new());
 
             assert!(
                 result.is_err(),
@@ -692,45 +667,38 @@ mod tests {
         #[test]
         fn should_reject_template_when_name_is_too_long() {
             let invalid_long_name = "a".repeat(65);
-            let result = Template::new(
-                &invalid_long_name,
-                "content".to_owned(),
-                HashMap::new(),
-                None,
-                Metadata::default(),
-            );
+            let result =
+                Template::new(&invalid_long_name, None, vec![], HashMap::new());
 
             assert!(result.is_err(), "Expected error for overlong name");
         }
 
-        /// 3.4-UNIT-024: `should_reject_template_when_unbalanced_placeholders`.
-        /// Priority: P0.
         #[test]
-        fn should_reject_template_when_unbalanced_placeholders() {
-            // GIVEN: a template with unbalanced placeholders
+        fn should_reject_duplicate_block_names() {
             let result = Template::new(
-                "unbalanced",
-                "{{open but no close".to_owned(),
-                HashMap::new(),
+                "duplicate",
                 None,
-                Metadata::default(),
+                vec![
+                    TemplateBlock::new(
+                        "block1",
+                        "content",
+                        BlockStrategy::Replace,
+                    ),
+                    TemplateBlock::new(
+                        "block1",
+                        "content2",
+                        BlockStrategy::Extend,
+                    ),
+                ],
+                HashMap::new(),
             );
 
-            // WHEN: validation runs during construction
-            // THEN: a validation error describes the unbalanced syntax
             assert!(
-                matches!(
-                    &result,
-                    Err(TemplateError::ValidationFailed(message))
-                        if message.contains("Unbalanced")
-                ),
-                "Expected unbalanced template to fail, got: {result:?}"
+                matches!(result, Err(TemplateError::ValidationFailed(msg)) if msg.contains("Duplicate block name"))
             );
         }
     }
 
-    // 3.4-UNIT-025: `should_validate_template_name_format_across_edge_cases`.
-    // Priority: P2.
     #[test]
     fn should_validate_template_name_format_across_edge_cases()
     -> Result<(), String> {
@@ -740,17 +708,8 @@ mod tests {
         let strategy = "[a-zA-Z0-9_-]{1,64}";
 
         let run_result = runner.run(&strategy, |name| {
-            // GIVEN: a generated valid identifier
-            // WHEN: constructing a template with the identifier
-            let result = Template::new(
-                &name,
-                "content".to_owned(),
-                HashMap::new(),
-                None,
-                Metadata::default(),
-            );
+            let result = Template::new(&name, None, vec![], HashMap::new());
 
-            // THEN: construction succeeds
             prop_assert!(
                 result.is_ok(),
                 "Template with valid name '{}' should be created",
@@ -764,139 +723,91 @@ mod tests {
         Ok(())
     }
 
-    /// 3.4-UNIT-026: `should_compose_templates_with_sections`.
-    /// Priority: P1.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test fixture uses expect for deterministic setup and value \
-                  extraction. Failure indicates invalid test data. Expect is \
-                  idiomatic in setup."
-    )]
-    fn composed_template_with_sections() -> Template {
-        let base = Template::new(
-            "base",
-            "Base: {{v}}".to_owned(),
-            [("v".to_owned(), VariableDefinition::Boolean {
-                default: None,
-            })]
-            .into_iter()
-            .collect(),
-            None,
-            Metadata::default(),
-        )
-        .expect("Expected valid base template");
+    #[test]
+    #[expect(clippy::disallowed_methods, reason = "Test")]
+    fn validate_composition_detects_cycles() {
+        // A -> B -> A
+        let a = Template::new("A", Some("B"), vec![], HashMap::new())
+            .expect("valid");
+        let b = Template::new("B", Some("A"), vec![], HashMap::new())
+            .expect("valid");
 
-        let composition = Composition {
-            base_template: "base".to_owned(),
-            additional_sections: vec![
-                Section {
-                    name: "top".to_owned(),
-                    content: "Header".to_owned(),
-                    position: InsertionPosition::Beginning,
-                },
-                Section {
-                    name: "bottom".to_owned(),
-                    content: "Footer".to_owned(),
-                    position: InsertionPosition::End,
-                },
-                Section {
-                    name: "mid".to_owned(),
-                    content: "Inside".to_owned(),
-                    position: InsertionPosition::AfterVariable("v".to_owned()),
-                },
-            ],
-            includes: vec![],
-            variable_overrides: [(
-                "v".to_owned(),
-                serde_json::Value::Bool(true),
-            )]
-            .into_iter()
-            .collect(),
-        };
+        let mut map = HashMap::new();
+        map.insert("A", &a);
+        map.insert("B", &b);
 
-        // Build borrowed HashMap for API
-        let templates_owned: HashMap<String, Template> =
-            [("base".to_owned(), base.clone())].into_iter().collect();
-        let templates: HashMap<&str, &Template> =
-            templates_owned.iter().map(|(k, v)| (k.as_str(), v)).collect();
-
-        Template::compose(&base, &composition, &templates)
-            .expect("Expected compose to succeed")
+        let result = a.validate_composition(&map);
+        assert!(matches!(result, Err(TemplateError::CircularComposition(_))));
     }
 
     #[test]
-    fn composed_template_inserts_header_at_start() {
-        let composed = composed_template_with_sections();
+    #[expect(clippy::disallowed_methods, reason = "Test")]
+    fn validate_composition_detects_self_cycle() {
+        // A -> A
+        let a = Template::new("A", Some("A"), vec![], HashMap::new())
+            .expect("valid");
 
-        assert!(
-            composed.content.starts_with("Header\n"),
-            "Composed content should start with header"
-        );
+        let mut map = HashMap::new();
+        map.insert("A", &a);
+
+        let result = a.validate_composition(&map);
+        assert!(matches!(result, Err(TemplateError::CircularComposition(_))));
     }
 
     #[test]
-    fn composed_template_inserts_footer_at_end() {
-        let composed = composed_template_with_sections();
+    #[expect(clippy::disallowed_methods, reason = "Test")]
+    fn validate_composition_allows_valid_chain() {
+        // A -> B -> C
+        let c =
+            Template::new("C", None, vec![], HashMap::new()).expect("valid");
+        let b = Template::new("B", Some("C"), vec![], HashMap::new())
+            .expect("valid");
+        let a = Template::new("A", Some("B"), vec![], HashMap::new())
+            .expect("valid");
 
-        assert!(
-            composed.content.ends_with("\nFooter"),
-            "Composed content should end with footer"
-        );
+        let mut map = HashMap::new();
+        map.insert("A", &a);
+        map.insert("B", &b);
+        map.insert("C", &c);
+
+        a.validate_composition(&map).expect("should be valid");
     }
 
     #[test]
-    fn composed_template_inserts_section_after_variable() {
-        let composed = composed_template_with_sections();
+    #[expect(clippy::disallowed_methods, reason = "Test")]
+    #[expect(clippy::default_numeric_fallback, reason = "Test")]
+    #[expect(clippy::iter_over_hash_type, reason = "Test")]
+    fn validate_composition_detects_depth_limit() {
+        // 0 -> 1 -> ... -> 10 (11 levels)
+        let mut map_storage = HashMap::new();
+        let mut map = HashMap::new();
 
-        assert!(
-            composed.content.contains("Base: {{v}}\nInside"),
-            "Composed content should include inserted section"
-        );
-    }
+        for i in 0..=10 {
+            let name = i.to_string();
+            let extends = if i == 10 {
+                None
+            } else {
+                Some((i + 1).to_string())
+            };
+            let t = Template::new(
+                &name,
+                extends.as_deref(),
+                vec![],
+                HashMap::new(),
+            )
+            .expect("valid");
+            map_storage.insert(name, t);
+        }
 
-    #[test]
-    fn composed_template_extends_base_template() {
-        let composed = composed_template_with_sections();
+        for (k, v) in &map_storage {
+            map.insert(k.as_str(), v);
+        }
 
-        assert_eq!(
-            composed.extends(),
-            Some("base"),
-            "Composed template should extend base"
-        );
-    }
-
-    /// 3.4-UNIT-027: `apply_sections_handles_missing_variable`.
-    /// Priority: P2.
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test uses expect for deterministic fixture setup and value \
-                  extraction."
-    )]
-    fn apply_sections_handles_missing_variable() {
-        // GIVEN: a template without variables
-        let base = Template::new(
-            "b",
-            "no var".to_owned(),
-            HashMap::new(),
-            None,
-            Metadata::default(),
-        )
-        .expect("Expected valid base template");
-
-        // WHEN: applying a section relative to a missing variable
-        let mut content = "no var".to_owned();
-        let sections = vec![Section {
-            name: "s".to_owned(),
-            content: "cont".to_owned(),
-            position: InsertionPosition::AfterVariable("missing".to_owned()),
-        }];
-        base.apply_sections(&mut content, &sections);
-
-        // THEN: content remains unchanged
-        assert_eq!(
-            content, "no var",
-            "Content should remain unchanged when variable is missing"
-        );
+        let start = map.get("0").expect("start template");
+        let result = start.validate_composition(&map);
+        assert!(matches!(
+            result,
+            Err(TemplateError::CompositionDepthExceeded(_))
+        ));
     }
 }

@@ -20,11 +20,10 @@ use super::{aggregate::Template, error::TemplateError};
 /// # use std::collections::HashMap;
 /// # fn run() -> Result<(), lithos_core::template::error::TemplateError> {
 /// let base = Template::new(
-///     "base".to_string(),
-///     "Hello {{name}}".to_string(),
-///     HashMap::new(),
+///     "base",
 ///     None,
-///     Metadata::default(),
+///     vec![],
+///     HashMap::new(),
 /// )?;
 /// let composition = Composition {
 ///     additional_sections: vec![Section {
@@ -226,6 +225,7 @@ impl Composition {
                 .variables
                 .get(name)
                 .ok_or_else(|| TemplateError::VariableNotFound(name.clone()))?;
+            #[expect(deprecated, reason = "Legacy field")]
             def.validate_value(value).map_err(|e| {
                 if let TemplateError::InvalidType {
                     expected,
@@ -295,13 +295,20 @@ mod tests {
             }
 
             pub fn build(self) -> Result<Template, TemplateError> {
-                Template::new(
+                let mut template = Template::new(
                     &self.name,
-                    self.content,
+                    self.extends.as_deref(),
+                    vec![],
                     self.variables,
-                    self.extends,
-                    self.metadata,
-                )
+                )?;
+
+                #[expect(deprecated, reason = "Legacy field")]
+                {
+                    template.content = self.content;
+                    template.metadata = self.metadata;
+                };
+
+                Ok(template)
             }
         }
     }

@@ -10,20 +10,6 @@ use super::error::TemplateError;
 use crate::fs;
 
 /// Type-safe variable definition with validation constraints.
-///
-/// # Examples
-/// ```
-/// # use lithos_core::template::variable::VariableDefinition;
-/// let definition = VariableDefinition::Number {
-///     default: Some(3.0),
-///     min: Some(1.0),
-///     max: Some(5.0),
-/// };
-/// assert!(
-///     definition.has_default(),
-///     "Variable with default should return true"
-/// );
-/// ```
 #[derive(
     Debug,
     Clone,
@@ -49,16 +35,16 @@ pub enum VariableDefinition {
     /// Date variable.
     Date {
         /// Default value.
-        default: Option<String>,
+        default: Option<Box<str>>,
         /// ISO 8601 format string.
-        format: Option<String>,
+        format: Option<Box<str>>,
     },
     /// File reference variable.
     File {
         /// Default value.
-        default: Option<String>,
+        default: Option<Box<str>>,
         /// Allowed file types.
-        file_types: Option<Vec<String>>,
+        file_types: Option<Vec<Box<str>>>,
     },
     /// Number variable.
     Number {
@@ -72,62 +58,157 @@ pub enum VariableDefinition {
     /// String variable.
     String {
         /// Default value.
-        default: Option<String>,
+        default: Option<Box<str>>,
         /// Maximum length.
         max_length: Option<usize>,
         /// Minimum length.
         min_length: Option<usize>,
         /// Regex pattern.
-        pattern: Option<String>,
+        pattern: Option<Box<str>>,
     },
 }
 
 impl VariableDefinition {
-    /// Checks string pattern constraints.
-    /// Adversarial Review Fix: Use a cache to avoid recompiling the same regex.
-    fn check_string_pattern(
-        s: &str,
-        pattern: Option<&str>,
-    ) -> Result<(), TemplateError> {
-        let Some(p) = pattern else {
-            return Ok(());
-        };
-
-        thread_local! {
-            static CACHE:
-                std::cell::RefCell<std::collections::HashMap<String, regex::Regex>> =
-                std::cell::RefCell::new(std::collections::HashMap::new());
-        }
-
-        let is_match = CACHE.with(|cache| -> Result<bool, TemplateError> {
-            let mut cache = cache.borrow_mut();
-            if let Some(re) = cache.get(p) {
-                return Ok(re.is_match(s));
+    /// Returns filter names to apply at render time.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on reference to enum variants"
+    )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Default behavior for unmatched variants is empty list"
+    )]
+    pub fn filter_chain(&self) -> Vec<&'static str> {
+        match self {
+            Self::String {
+                pattern: Some(_),
+                min_length: Some(_),
+                ..
             }
-
-            let re = regex::Regex::new(p)
-                .map_err(|e| TemplateError::InvalidRegex(e.to_string()))?;
-            let res = re.is_match(s);
-            cache.insert(p.to_owned(), re);
-            Ok(res)
-        })?;
-
-        if !is_match {
-            return Err(TemplateError::ValidationFailed(format!(
-                "String does not match pattern: {p}"
-            )));
+            | Self::String {
+                pattern: Some(_),
+                max_length: Some(_),
+                ..
+            } => {
+                vec!["validate_pattern", "validate_length"]
+            }
+            Self::String {
+                pattern: Some(_),
+                ..
+            } => vec!["validate_pattern"],
+            Self::String {
+                min_length: Some(_),
+                ..
+            }
+            | Self::String {
+                max_length: Some(_),
+                ..
+            } => vec!["validate_length"],
+            Self::Number {
+                min: Some(_),
+                ..
+            }
+            | Self::Number {
+                max: Some(_),
+                ..
+            } => {
+                vec!["validate_range"]
+            }
+            Self::File {
+                file_types: Some(_),
+                ..
+            } => vec!["validate_file_type"],
+            Self::Date {
+                format: Some(_),
+                ..
+            } => vec!["date_format"],
+            _ => vec![],
         }
-        Ok(())
     }
 
-    /// Gets default value as `serde_json::Value`.
+    /// Returns filter arguments as `serde_json::Value`.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on reference to enum variants"
+    )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "Default behavior for unmatched variants is null"
+    )]
+    pub fn filter_args(&self) -> serde_json::Value {
+        match self {
+            Self::String {
+                min_length,
+                max_length,
+                pattern,
+                ..
+            } => {
+                let mut map = serde_json::Map::new();
+                if let Some(min) = min_length {
+                    map.insert("min".to_owned(), (*min).into());
+                }
+                if let Some(max) = max_length {
+                    map.insert("max".to_owned(), (*max).into());
+                }
+                if let Some(p) = pattern {
+                    map.insert("pattern".to_owned(), p.as_ref().into());
+                }
+                serde_json::Value::Object(map)
+            }
+            Self::Number {
+                min,
+                max,
+                ..
+            } => {
+                let mut map = serde_json::Map::new();
+                if let Some(min) = min {
+                    map.insert("min".to_owned(), (*min).into());
+                }
+                if let Some(max) = max {
+                    map.insert("max".to_owned(), (*max).into());
+                }
+                serde_json::Value::Object(map)
+            }
+            Self::File {
+                file_types: Some(types),
+                ..
+            } => {
+                let mut map = serde_json::Map::new();
+                map.insert(
+                    "extensions".to_owned(),
+                    serde_json::Value::Array(
+                        types
+                            .iter()
+                            .map(|s| serde_json::Value::String(s.to_string()))
+                            .collect(),
+                    ),
+                );
+                serde_json::Value::Object(map)
+            }
+            Self::Date {
+                format: Some(f),
+                ..
+            } => {
+                let mut map = serde_json::Map::new();
+                map.insert("format".to_owned(), f.as_ref().into());
+                serde_json::Value::Object(map)
+            }
+            _ => serde_json::Value::Null,
+        }
+    }
+
+    /// Returns default value as `serde_json::Value`.
     #[inline]
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Mixed Copy and non-Copy enum fields."
     )]
-    pub fn get_default_value(&self) -> Option<serde_json::Value> {
+    pub fn default_value(&self) -> Option<serde_json::Value> {
         match self {
             Self::Boolean {
                 default,
@@ -183,6 +264,42 @@ impl VariableDefinition {
         }
     }
 
+    /// Checks string pattern constraints.
+    fn check_string_pattern(
+        s: &str,
+        pattern: Option<&str>,
+    ) -> Result<(), TemplateError> {
+        let Some(p) = pattern else {
+            return Ok(());
+        };
+
+        thread_local! {
+            static CACHE:
+                std::cell::RefCell<std::collections::HashMap<String, regex::Regex>> =
+                std::cell::RefCell::new(std::collections::HashMap::new());
+        }
+
+        let is_match = CACHE.with(|cache| -> Result<bool, TemplateError> {
+            let mut cache = cache.borrow_mut();
+            if let Some(re) = cache.get(p) {
+                return Ok(re.is_match(s));
+            }
+
+            let re = regex::Regex::new(p)
+                .map_err(|e| TemplateError::InvalidRegex(e.to_string()))?;
+            let res = re.is_match(s);
+            cache.insert(p.to_owned(), re);
+            Ok(res)
+        })?;
+
+        if !is_match {
+            return Err(TemplateError::ValidationFailed(format!(
+                "String does not match pattern: {p}"
+            )));
+        }
+        Ok(())
+    }
+
     #[inline]
     fn validate_boolean(
         value: &serde_json::Value,
@@ -219,24 +336,12 @@ impl VariableDefinition {
     /// Validates a value against this definition.
     ///
     /// # Errors
-    /// Returns `TemplateError::InvalidType` if value type doesn't match.
-    /// Returns `TemplateError::ValidationFailed` for constraint violations.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::template::variable::VariableDefinition;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let definition = VariableDefinition::String {
-    ///     default: None,
-    ///     min_length: Some(1),
-    ///     max_length: Some(5),
-    ///     pattern: None,
-    /// };
-    /// definition.validate_value(&serde_json::json!("note"))?;
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// Returns `TemplateError` if validation fails.
     #[inline]
+    #[deprecated(
+        since = "0.2.0",
+        note = "Variable validation is handled by MiniJinja filters."
+    )]
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Enum variants have mixed Copy and non-Copy fields."
@@ -278,14 +383,14 @@ impl VariableDefinition {
 
     fn validate_file_extension_allowed(
         s: &str,
-        allowed_types: Option<&[String]>,
+        allowed_types: Option<&[Box<str>]>,
     ) -> Result<(), TemplateError> {
         if let Some(allowed) = allowed_types {
             let ext = std::path::Path::new(s)
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
-            if !allowed.iter().any(|a| a == ext) {
+            if !allowed.iter().any(|a| a.as_ref() == ext) {
                 return Err(TemplateError::InvalidFileClass(s.to_owned()));
             }
         }
@@ -295,7 +400,7 @@ impl VariableDefinition {
     #[inline]
     fn validate_file(
         value: &serde_json::Value,
-        file_types: Option<&[String]>,
+        file_types: Option<&[Box<str>]>,
     ) -> Result<(), TemplateError> {
         let s = value.as_str().ok_or_else(|| TemplateError::InvalidType {
             value: value.to_string(),
@@ -402,6 +507,7 @@ impl VariableDefinition {
 }
 
 #[cfg(test)]
+#[expect(deprecated, reason = "Legacy validation tests")]
 mod tests {
     use super::*;
 
@@ -437,7 +543,7 @@ mod tests {
 
     fn string_def_with_default() -> VariableDefinition {
         VariableDefinition::String {
-            default: Some("Title".to_owned()),
+            default: Some("Title".into()),
             max_length: None,
             min_length: None,
             pattern: None,
@@ -454,14 +560,14 @@ mod tests {
     fn date_def_custom() -> VariableDefinition {
         VariableDefinition::Date {
             default: None,
-            format: Some("%Y-%m-%d".to_owned()),
+            format: Some("%Y-%m-%d".into()),
         }
     }
 
     fn file_def_md() -> VariableDefinition {
         VariableDefinition::File {
             default: None,
-            file_types: Some(vec!["md".to_owned()]),
+            file_types: Some(vec!["md".into()]),
         }
     }
 
@@ -475,7 +581,7 @@ mod tests {
     fn file_def_multi() -> VariableDefinition {
         VariableDefinition::File {
             default: None,
-            file_types: Some(vec!["md".to_owned(), "txt".to_owned()]),
+            file_types: Some(vec!["md".into(), "txt".into()]),
         }
     }
 
@@ -511,7 +617,7 @@ mod tests {
             default: None,
             max_length: None,
             min_length: None,
-            pattern: Some(r"^\d+$".to_owned()),
+            pattern: Some(r"^\d+$".into()),
         }
     }
 
@@ -586,7 +692,7 @@ mod tests {
         let def = string_def_with_default();
 
         assert_eq!(
-            def.get_default_value(),
+            def.default_value(),
             Some(str_value("Title")),
             "Default value should match the configured value"
         );
@@ -791,6 +897,55 @@ mod tests {
         assert!(
             result.is_err(),
             "String not matching pattern should be rejected, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn filter_chain_for_string_with_pattern_and_length() {
+        let var = VariableDefinition::String {
+            default: None,
+            min_length: Some(5),
+            max_length: Some(10),
+            pattern: Some("^[A-Z]".into()),
+        };
+
+        let chain = var.filter_chain();
+        assert_eq!(chain, vec!["validate_pattern", "validate_length"]);
+    }
+
+    #[test]
+    fn filter_chain_for_number_with_range() {
+        let var = VariableDefinition::Number {
+            default: None,
+            min: Some(1.0f64),
+            max: Some(10.0f64),
+        };
+
+        let chain = var.filter_chain();
+        assert_eq!(chain, vec!["validate_range"]);
+    }
+
+    #[test]
+    fn filter_args_for_string() {
+        let var = VariableDefinition::String {
+            default: None,
+            min_length: Some(5),
+            max_length: Some(10),
+            pattern: Some("^[A-Z]".into()),
+        };
+
+        let args = var.filter_args();
+        assert_eq!(
+            args.get("min").and_then(serde_json::Value::as_u64),
+            Some(5)
+        );
+        assert_eq!(
+            args.get("max").and_then(serde_json::Value::as_u64),
+            Some(10)
+        );
+        assert_eq!(
+            args.get("pattern").and_then(serde_json::Value::as_str),
+            Some("^[A-Z]")
         );
     }
 }

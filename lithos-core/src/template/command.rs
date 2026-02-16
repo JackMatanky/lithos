@@ -134,14 +134,8 @@ mod tests {
         }
 
         pub fn template_fixture(name: &str) -> Result<Template, String> {
-            Template::new(
-                name,
-                "Hello".to_owned(),
-                HashMap::new(),
-                None,
-                Metadata::default(),
-            )
-            .map_err(|e| e.to_string())
+            Template::new(name, None, vec![], HashMap::new())
+                .map_err(|e| e.to_string())
         }
     }
 
@@ -150,7 +144,7 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use super::*;
-    use crate::template::{aggregate::Metadata, ports::Command as _};
+    use crate::template::ports::Command as _;
 
     mod persistence {
         use super::*;
@@ -181,7 +175,7 @@ mod tests {
         fn updated_template_name() -> (TempDir, Database, String) {
             let (dir, db, mut template, id_str) = created_template();
             let cmd = Command::new(&db);
-            template.name = "weekly".to_owned();
+            template.name = "weekly".into();
             cmd.update(&template).expect("Update should succeed");
             (dir, db, id_str)
         }
