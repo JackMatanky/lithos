@@ -130,21 +130,11 @@ pub struct TracingHandle {
 
 impl TracingHandle {
     /// Returns all captured events.
-    // # LINT_DISABLE_REASON: Mutex poisoning in tests is handled by unwrap as
-    // it signifies a fatal test error. # LINT_DISABLE_REASON: Options
-    // tried: manual error handling. # LINT_DISABLE_REASON: Justification:
-    // simplify test assertion code.
-    #[allow(clippy::disallowed_methods)]
     pub fn events(&self) -> Vec<CapturedEvent> {
         self.state.lock().unwrap().events.clone()
     }
 
     /// Returns all captured spans.
-    // # LINT_DISABLE_REASON: Mutex poisoning in tests is handled by unwrap as
-    // it signifies a fatal test error. # LINT_DISABLE_REASON: Options
-    // tried: manual error handling. # LINT_DISABLE_REASON: Justification:
-    // simplify test assertion code.
-    #[allow(clippy::disallowed_methods)]
     pub fn spans(&self) -> Vec<CapturedSpan> {
         self.state.lock().unwrap().spans.clone()
     }

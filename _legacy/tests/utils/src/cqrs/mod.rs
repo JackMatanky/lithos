@@ -104,11 +104,6 @@ pub trait Entity: Send + Sync + Clone + Debug {
 }
 
 /// Port trait for command-side repositories
-// # LINT_DISABLE_REASON: Mockall generated code uses unwrap/expect internally.
-// # LINT_DISABLE_REASON: Options tried: manual mocks.
-// # LINT_DISABLE_REASON: Justification: standard mocking library used in
-// test-only code.
-#[allow(clippy::disallowed_methods)]
 #[mockall::automock]
 #[async_trait]
 pub trait RepositoryPort<E: Entity + 'static>: Send + Sync {
@@ -126,11 +121,6 @@ pub trait RepositoryPort<E: Entity + 'static>: Send + Sync {
 }
 
 /// Port trait for query-side data stores
-// # LINT_DISABLE_REASON: Mockall generated code uses unwrap/expect internally.
-// # LINT_DISABLE_REASON: Options tried: manual mocks.
-// # LINT_DISABLE_REASON: Justification: standard mocking library used in
-// test-only code.
-#[allow(clippy::disallowed_methods)]
 #[mockall::automock]
 #[async_trait]
 pub trait QueryStorePort<T: Send + Sync + 'static>: Send + Sync {
@@ -752,11 +742,7 @@ impl Default for SagaTester {
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: Mock verification and assertions in tests trigger
-// disallowed-method and expect_used lints. # LINT_DISABLE_REASON: Options
-// tried: manual Result matching. # LINT_DISABLE_REASON: Justification: test
-// code clarity and standard practice.
-#[allow(clippy::disallowed_methods, clippy::expect_used)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

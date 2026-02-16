@@ -204,15 +204,12 @@ impl Template {
     /// # use lithos_domain::{Template, InputSpec, TemplateMetadata};
     /// # use std::collections::HashMap;
     /// let mut variables = HashMap::new();
-    /// variables.insert(
-    ///     "title".to_string(),
-    ///     InputSpec::String {
-    ///         default: Some("Daily".to_string()),
-    ///         max_length: None,
-    ///         min_length: None,
-    ///         pattern: None,
-    ///     },
-    /// );
+    /// variables.insert("title".to_string(), InputSpec::String {
+    ///     default: Some("Daily".to_string()),
+    ///     max_length: None,
+    ///     min_length: None,
+    ///     pattern: None,
+    /// });
     /// let template = Template::new(
     ///     "daily".to_string(),
     ///     "# {{title}}".to_string(),
@@ -487,11 +484,6 @@ impl Default for Metadata {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use proptest::prelude::*;
 

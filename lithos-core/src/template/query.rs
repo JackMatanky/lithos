@@ -95,10 +95,7 @@ mod tests {
     };
 
     #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Tests use unwrap for concise setup"
-    )]
+
     fn with_archived_zero_copy() {
         let temp = tempdir().unwrap();
         let db_path = temp.path().join("test.db");

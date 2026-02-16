@@ -1,12 +1,3 @@
-// # LINT_DISABLE_REASON: Tests use disallowed methods for setup and assertions.
-// # LINT_DISABLE_REASON: Options tried: manual Result handling.
-// # LINT_DISABLE_REASON: Justification: Test code clarity.
-#![expect(
-    clippy::disallowed_methods,
-    reason = "Tests use disallowed methods for setup and assertions for \
-              clarity"
-)]
-
 use std::{
     path::{Path, PathBuf},
     process::Command as ProcessCommand,

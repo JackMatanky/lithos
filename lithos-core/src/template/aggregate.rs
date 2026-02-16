@@ -452,12 +452,6 @@ mod tests {
     mod constructor {
         use super::*;
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic setup. \
-                      Failure indicates invalid test data. Expect is \
-                      idiomatic in setup."
-        )]
         fn base_template() -> Template {
             fixtures::base_note().expect("Valid base template")
         }
@@ -553,7 +547,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test")]
+
         fn should_reject_duplicate_block_names() {
             let name = TemplateName::try_from("duplicate").unwrap();
             let result = Template::new(
@@ -605,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::disallowed_methods, reason = "Test")]
+
     fn validate_composition_detects_cycles() {
         // A -> B -> A
         let a_name = TemplateName::try_from("A").unwrap();
@@ -635,7 +629,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::disallowed_methods, reason = "Test")]
+
     fn validate_composition_detects_self_cycle() {
         // A -> A
         let a_name = TemplateName::try_from("A").unwrap();
@@ -655,7 +649,7 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::disallowed_methods, reason = "Test")]
+
     fn validate_composition_allows_valid_chain() {
         // A -> B -> C
         let a_name = TemplateName::try_from("A").unwrap();
@@ -688,7 +682,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::disallowed_methods, reason = "Test")]
     #[expect(clippy::default_numeric_fallback, reason = "Test")]
     #[expect(clippy::iter_over_hash_type, reason = "Test")]
     fn validate_composition_detects_depth_limit() {

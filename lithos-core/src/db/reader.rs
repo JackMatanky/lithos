@@ -378,10 +378,6 @@ fn uuid_to_str(id: uuid::Uuid) -> String {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test setup uses expect for concise failure messages"
-)]
 mod tests {
     use super::*;
 

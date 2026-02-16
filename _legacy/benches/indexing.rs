@@ -9,12 +9,7 @@
 // # LINT_DISABLE_REASON: Options tried: tokio::time::sleep (requires runtime in
 // iter). # LINT_DISABLE_REASON: Justification: Simulating CPU work in a
 // synchronous benchmark loop.
-#![expect(
-    clippy::disallowed_methods,
-    missing_docs,
-    reason = "Benchmarks use thread::sleep to simulate work and do not \
-              require public docs"
-)]
+#![expect(missing_docs, reason = "Benchmarks do not require public docs")]
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use lithos_test_utils::{bench::standard_criterion, create_benchmark_runtime};

@@ -15,16 +15,6 @@ struct TestDomainEvent {
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method
-// linting. # LINT_DISABLE_REASON: Options tried: explicit matches/guarded
-// Result handling, custom assertion helpers. # LINT_DISABLE_REASON:
-// Justification: Test assertions require assert! macro for readability and
-// standard test patterns.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test assertions use assert! macro which is disallowed in \
-              production but required for tests"
-)]
 mod tests {
     use super::*;
 

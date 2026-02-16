@@ -478,13 +478,6 @@ impl PropertyBank {
 }
 
 #[cfg(test)]
-#[expect(
-    dead_code,
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for deterministic setup of \
-              fixtures. Unreachable code paths are acceptable in shared test \
-              utilities."
-)]
 /// Test fixtures for deterministic schema data.
 pub mod fixtures {
     use uuid::Uuid;
@@ -507,11 +500,6 @@ pub mod fixtures {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::expect() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use uuid::Uuid;
 
@@ -634,12 +622,6 @@ mod tests {
         assert!(bank.get_by_id(id).is_some());
         assert!(bank.get_by_name("flag").is_some());
         assert!(bank.get(id.to_string().as_str()).is_some());
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap() on PropertyBank::decode() \
-                      for clear failure messages. Acceptable in test-only \
-                      code paths."
-        )]
         bank.decode(id.to_string().as_str()).unwrap();
         assert_eq!(bank.pending_events().len(), 1);
 

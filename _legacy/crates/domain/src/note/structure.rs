@@ -158,11 +158,6 @@ impl Section {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test module uses Result::unwrap() for ergonomic arrangement and \
-              assertions. Acceptable in test-only code paths."
-)]
 mod tests {
     use super::*;
 
@@ -188,10 +183,6 @@ mod tests {
             let position = 10;
 
             // WHEN: creating a new heading
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup phase - test fixture creation"
-            )]
             let result = Heading::new(level, text, position).unwrap();
 
             // THEN: it has the correct values
@@ -246,10 +237,6 @@ mod tests {
         #[test]
         fn new_succeeds_for_valid_input() {
             // GIVEN: valid section parameters
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup phase - test fixture creation"
-            )]
             let heading = Some(Heading::new(1, "Title".into(), 0).unwrap());
             let content = "Section content".to_owned();
             let range = 0..15;

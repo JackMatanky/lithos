@@ -97,10 +97,6 @@ mod tests {
     mod persistence {
         use super::*;
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test fixture uses expect for deterministic setup."
-        )]
         fn created_template() -> (TempDir, Database, Template, String) {
             let (dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
@@ -114,10 +110,7 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for deterministic fixture setup."
-        )]
+
         fn create_persists_template() {
             let (_dir, db, _template, id_str) = created_template();
             let stored = db

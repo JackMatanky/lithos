@@ -1,14 +1,5 @@
 //! Cross-entity integration tests for domain aggregates.
 
-// # LINT_DISABLE_REASON: Integration tests use unwrap for setup and assertions.
-// # LINT_DISABLE_REASON: Options tried: manual Result handling.
-// # LINT_DISABLE_REASON: Justification: Test code clarity.
-#![expect(
-    clippy::disallowed_methods,
-    reason = "Integration tests use unwrap for setup and assertions for \
-              clarity"
-)]
-
 use std::collections::HashMap;
 
 use lithos_domain::{
