@@ -3,13 +3,9 @@
 //! This module implements the Query port trait for Template read operations,
 //! using the Database layer for zero-copy reads.
 
-use std::collections::HashMap;
-
 use uuid::Uuid;
 
-use super::{
-    aggregate::Template, composition::Composition, error::TemplateError,
-};
+use super::{aggregate::Template, error::TemplateError};
 use crate::{
     db::Database,
     template::db_table::{NAME_TO_ID, TEMPLATES},
@@ -80,33 +76,6 @@ impl super::ports::Query for RedbTemplateQuery<'_> {
         )
     }
 
-    /// Resolves a template composition.
-    ///
-    /// # Errors
-    /// Returns `TemplateError` if resolution fails.
-    #[inline]
-    fn resolve(
-        &self,
-        composition: &Composition,
-    ) -> Result<Template, TemplateError> {
-        let base = self.find_by_name(&composition.base_template)?.ok_or_else(
-            || TemplateError::NotFound(composition.base_template.clone()),
-        )?;
-
-        // We need all templates for cycle detection and include resolution
-        let all_templates_list = self.list()?;
-
-        // Use borrowed keys to avoid allocating template names
-        let all_templates: HashMap<&str, &Template> =
-            all_templates_list.iter().map(|t| (t.name(), t)).collect();
-
-        #[expect(
-            deprecated,
-            reason = "Transitional layer still using legacy composition"
-        )]
-        Template::compose(&base, composition, &all_templates)
-    }
-
     /// Access a template with zero-copy.
     ///
     /// # Errors
@@ -128,6 +97,8 @@ impl super::ports::Query for RedbTemplateQuery<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use tempfile::tempdir;
 
     use super::*;

@@ -7,9 +7,7 @@ use std::{
 
 use uuid::Uuid;
 
-use super::{
-    aggregate::Template, composition::Composition, error::TemplateError,
-};
+use super::{aggregate::Template, error::TemplateError};
 
 /// Command port for template-related write operations.
 pub trait Command: Send + Sync {
@@ -57,15 +55,6 @@ pub trait Query: Send + Sync {
     /// # Errors
     /// Returns `TemplateError` if query fails.
     fn list(&self) -> Result<Vec<Template>, TemplateError>;
-
-    /// Resolves a template composition.
-    ///
-    /// # Errors
-    /// Returns `TemplateError` if resolution fails.
-    fn resolve(
-        &self,
-        composition: &Composition,
-    ) -> Result<Template, TemplateError>;
 
     /// Access a template with zero-copy.
     ///
@@ -161,20 +150,6 @@ impl Query for FakeTemplateStorage {
             .lock()
             .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
         Ok(templates.values().cloned().collect())
-    }
-
-    #[inline]
-    fn resolve(
-        &self,
-        _composition: &Composition,
-    ) -> Result<Template, TemplateError> {
-        #[expect(
-            clippy::unimplemented,
-            reason = "Not needed for catalog tests"
-        )]
-        {
-            unimplemented!("resolve() not needed for catalog tests")
-        }
     }
 
     #[inline]
