@@ -46,6 +46,7 @@ rstest = { workspace = true }
 proptest = { workspace = true }
 tempfile.workspace = true
 criterion = { workspace = true, features = ["html_reports"] }
+glob.workspace = true
 
 [[bench]]
 name = "db_storage"

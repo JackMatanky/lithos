@@ -45,6 +45,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ### Code Quality & Standards
 - **clippy**: Enforces **cognitive complexity < 25** and custom quality lints (via `clippy.toml`).
+- **Definition of Done:**
+  - [ ] No file I/O in CQRS ports (verify with architecture tests).
+  - [ ] File ingestion uses `FileSource` trait (not direct `std::fs` in domain).
 - **rustfmt**: Enforces project-wide formatting and import sorting (via `rustfmt.toml`).
 - **nextest**: Optimized test runner for high-performance concurrent execution.
 - **tarpaulin**: Code coverage analysis tool targeting **80%+ coverage**.
@@ -72,6 +75,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
   - **Concrete Adapters:** Infrastructure provides concrete implementations (e.g., `RedbSchemaQueryAdapter`, `RedbSchemaCommandAdapter`).
   - **Type Aliases:** Use type aliases for ergonomics (e.g., `RedbSchemaQuery::new_redb(&db).find(...)`).
   - **Port Split Benefits:** Read-only test fakes don't implement writes, prevents interface bloat, enables future backend flexibility.
+- **File Ingestion Rules:**
+  - **CQRS ports MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
+  - **File ingestion MUST use `FileSource` trait**: Abstract over filesystem for testability.
+  - **Application services orchestrate pipelines**: Services coordinate File → Raw → Domain → Database.
+  - **Parsing and validation are distinct phases**: File → Raw (parsing) → Domain (validation) → DB.
 - **Naming Convention:**
   - Queries: `find_*`, `get_*`, `list_*`, `count_*`
   - Commands: `save`, `delete`, `update`, `create`

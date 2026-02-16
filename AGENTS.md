@@ -69,11 +69,19 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 5. **Test-first**: Red-green-refactor cycle required - tests before implementation
 6. **ADRs required**: Document all architectural decisions in [docs/adr/](docs/adr/)
 7. **Dependency flow**: Infrastructure (db, fs, config, patterns) → Business Contexts (note, schema, template) → CLI
+8. **File Ingestion Rules**:
+   - **CQRS ports MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
+   - **File ingestion MUST use `FileSource` trait**: Abstract over filesystem for testability
+   - **Application services orchestrate pipelines**: Services coordinate File → Raw → Domain → Database
+   - **Parsing and validation are distinct phases**: File → Raw (parsing) → Domain (validation) → DB
 
 ## Where Does This Code Go?
 
 **Pure business logic (no I/O)?** → `lithos-core/src/{context}/` (note, schema, template)
 **Cross-cutting configuration?** → `lithos-core/src/config/`
+**File ingestion orchestration?** → `lithos-core/src/application/services/`
+**File source abstraction?** → `lithos-core/src/fs/source.rs`
+**File parsing logic?** → `lithos-core/src/fs/parsers.rs`
 **Database operations?** → `lithos-core/src/db/`
 **File system utilities?** → `lithos-core/src/fs/`
 **CLI interface?** → `lithos-cli/src/`
