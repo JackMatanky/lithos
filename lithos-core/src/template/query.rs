@@ -3,6 +3,11 @@
 //! This module implements the Query port trait for Template read operations,
 //! using the Database layer for zero-copy reads.
 
+#![allow(
+    deprecated,
+    reason = "Transitional layer still using legacy composition"
+)]
+
 use std::collections::HashMap;
 
 use uuid::Uuid;

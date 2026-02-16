@@ -310,10 +310,9 @@ fn bench_constructor_apis(c: &mut Criterion) {
         b.iter(|| {
             Template::new(
                 black_box("my-template"),
-                "Content: {{var}}".to_owned(),
-                HashMap::new(),
                 None,
-                lithos_core::template::aggregate::Metadata::default(),
+                vec![],
+                HashMap::new(),
             )
             .expect("valid template")
         });
@@ -323,14 +322,8 @@ fn bench_constructor_apis(c: &mut Criterion) {
     group.bench_function("template_from_owned_string", |b| {
         b.iter(|| {
             let owned = black_box("my-template").to_owned();
-            Template::new(
-                &owned,
-                "Content: {{var}}".to_owned(),
-                HashMap::new(),
-                None,
-                lithos_core::template::aggregate::Metadata::default(),
-            )
-            .expect("valid template")
+            Template::new(&owned, None, vec![], HashMap::new())
+                .expect("valid template")
         });
     });
 
@@ -390,10 +383,9 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
             let template_uuid = Uuid::now_v7();
             let template = Template::new(
                 "workflow-template",
-                "Content".to_owned(),
-                HashMap::new(),
                 None,
-                lithos_core::template::aggregate::Metadata::default(),
+                vec![],
+                HashMap::new(),
             )
             .expect("valid template");
 
