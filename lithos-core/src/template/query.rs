@@ -1,79 +1,64 @@
 //! Template query implementations (CQRS read operations).
-//!
-//! This module implements the Query port trait for Template read operations,
-//! using the Database layer for zero-copy reads.
 
 use uuid::Uuid;
 
-use super::{aggregate::Template, error::TemplateError};
-use crate::{
-    db::Database,
-    template::db_table::{NAME_TO_ID, TEMPLATES},
+use super::{
+    aggregate::Template, error::TemplateError, ports as template_ports,
 };
 
 /// Query implementation for Template read operations.
 ///
-/// Implements the Query port trait using the Database layer.
-pub struct RedbTemplateQuery<'db> {
-    db: &'db Database,
+/// This struct is generic over a storage port to support multiple backends.
+pub struct Query<Q> {
+    port: Q,
 }
 
-impl<'db> RedbTemplateQuery<'db> {
-    /// Create a new `RedbTemplateQuery` with a database reference.
+impl<Q> Query<Q> {
+    /// Creates a new `Query` wrapper with a storage port.
     #[inline]
     #[must_use]
-    pub const fn new(db: &'db Database) -> Self {
+    pub const fn new(port: Q) -> Self {
         Self {
-            db,
+            port,
         }
     }
 }
 
-impl super::ports::Query for RedbTemplateQuery<'_> {
-    type Archived<'archived> = &'archived rkyv::Archived<Template>;
-
-    /// Find a template by ID.
+impl<Q> Query<Q>
+where
+    Q: template_ports::Query,
+{
+    /// Find a template by its ID.
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
     #[inline]
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
-        self.db.get_owned(TEMPLATES, &id.to_string()).map_err(
-            |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
-        )
+    pub fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<Template>, TemplateError> {
+        self.port.find_by_id(id)
     }
 
-    /// Find a template by name.
+    /// Find a template by its unique name.
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
     #[inline]
-    fn find_by_name(
+    pub fn find_by_name(
         &self,
         name: &str,
     ) -> Result<Option<Template>, TemplateError> {
-        let ids = self.db.multimap_get(NAME_TO_ID, name).map_err(
-            |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
-        )?;
-
-        if let Some(id_str) = ids.first() {
-            self.db.get_owned::<Template>(TEMPLATES, id_str).map_err(
-                |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
-            )
-        } else {
-            Ok(None)
-        }
+        self.port.find_by_name(name)
     }
 
-    /// Lists all templates.
+    /// List all templates.
     ///
     /// # Errors
     /// Returns `TemplateError` if query fails.
     #[inline]
-    fn list(&self) -> Result<Vec<Template>, TemplateError> {
-        self.db.list_owned::<Template>(TEMPLATES).map_err(
-            |e: crate::db::DbError| TemplateError::Storage(e.to_string()),
-        )
+    pub fn list(&self) -> Result<Vec<Template>, TemplateError> {
+        self.port.list()
     }
 
     /// Access a template with zero-copy.
@@ -81,19 +66,15 @@ impl super::ports::Query for RedbTemplateQuery<'_> {
     /// # Errors
     /// Returns `TemplateError` if query fails.
     #[inline]
-    fn with_archived<F, R>(
+    pub fn with_archived<F, R>(
         &self,
         id: Uuid,
         f: F,
     ) -> Result<Option<R>, TemplateError>
     where
-        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
+        F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
     {
-        self.db
-            .get::<Template, _, _>(TEMPLATES, &id.to_string(), |archived| {
-                f(archived)
-            })
-            .map_err(|e| TemplateError::Storage(e.to_string()))
+        self.port.with_archived(id, f)
     }
 }
 
@@ -104,10 +85,13 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::template::{
-        aggregate::TemplateName,
-        command::Command,
-        ports::{Command as _, Query as _},
+    use crate::{
+        db::Database,
+        template::{
+            adapter::{command::CommandAdapter, query::QueryAdapter},
+            aggregate::TemplateName,
+            ports::Command as _,
+        },
     };
 
     #[test]
@@ -120,8 +104,9 @@ mod tests {
         let db_path = temp.path().join("test.db");
         let db = Database::open(&db_path).unwrap();
 
-        let query = RedbTemplateQuery::new(&db);
-        let command = Command::new(&db);
+        let adapter = QueryAdapter::new(&db);
+        let query = Query::new(adapter);
+        let command = CommandAdapter::new(&db);
 
         let tn = TemplateName::try_from("test").unwrap();
         let template =

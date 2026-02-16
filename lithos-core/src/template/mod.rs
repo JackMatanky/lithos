@@ -11,7 +11,7 @@ pub mod aggregate;
 pub mod block;
 /// Template catalog for lifecycle orchestration.
 pub mod catalog;
-/// Template command implementations (CQRS write operations).
+/// Template command implementations (Generic CQRS wrapper).
 pub mod command;
 /// Template errors.
 pub mod error;
@@ -19,7 +19,7 @@ pub mod error;
 pub mod events;
 /// Template ports for CQRS.
 pub mod ports;
-/// Template query implementations (CQRS read operations).
+/// Template query implementations (Generic CQRS wrapper).
 pub mod query;
 /// Template input specifications.
 pub mod value;
@@ -33,7 +33,18 @@ pub(crate) mod db_table {
         MultimapTableDefinition::new("name_to_id");
 }
 
+pub use adapter::{
+    CommandAdapter as RedbTemplateCommandAdapter,
+    QueryAdapter as RedbTemplateQueryAdapter,
+};
 pub use aggregate::{InputName, Metadata, Template, TemplateName};
 pub use block::{BlockStrategy, TemplateBlock};
 pub use catalog::TemplateCatalog;
+pub use command::Command;
+pub use query::Query;
 pub use value::InputSpec;
+
+/// Convenience type alias for Redb-backed template query.
+pub type RedbTemplateQuery<'db> = Query<RedbTemplateQueryAdapter<'db>>;
+/// Convenience type alias for Redb-backed template command.
+pub type RedbTemplateCommand<'db> = Command<RedbTemplateCommandAdapter<'db>>;
