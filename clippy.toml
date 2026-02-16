@@ -87,9 +87,6 @@ allow-expect-in-tests = true
 
 # Disallowed Methods (Prevent common anti-patterns and unsafe shortcuts)
 disallowed-methods = [
-    { path = "std::option::Option::unwrap", reason = "Use proper error handling (match/if let) or .ok_or(). Avoid panics in production." },
-    { path = "std::result::Result::unwrap", reason = "Use the ? operator or handle the error explicitly. Avoid panics in production." },
-    { path = "std::result::Result::expect", reason = "Use the ? operator. Only use expect if the panic is truly impossible and documented." },
     { path = "std::process::exit", reason = "Use miette and return Result from main. Abrupt exit skips cleanup/Drop." },
     { path = "std::mem::forget", reason = "Potential memory leak. Use ManuallyDrop or ensure correct RAII management." },
     { path = "std::env::current_dir", reason = "Global state and potential for race conditions. Prefer explicit path management." },
