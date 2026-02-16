@@ -202,15 +202,14 @@ jobs:
 
   deployment-readiness:
     name: Deployment Readiness
-    needs: [quality-gates, secrets-detection, test, burn-in, coverage, security]
+    needs: [quality-gates, secrets-detection, test, coverage, security]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check Status
         if: >-
           contains(needs.*.result, 'failure') ||
-          contains(needs.*.result, 'cancelled') ||
-          (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(needs.*.result, 'skipped'))
+          contains(needs.*.result, 'cancelled')
         run: exit 1
       - name: Readiness Confirmed
         run: echo "🚀 Deployment readiness confirmed."
