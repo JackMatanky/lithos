@@ -24,6 +24,16 @@ pub enum FsError {
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
+    /// I/O error reading file.
+    #[error("I/O error reading {path}: {source}")]
+    Io {
+        /// File path where error occurred.
+        path: Box<std::path::Path>,
+        /// Source I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
     /// JSON parsing failed.
     #[error(
         "JSON parse error in {path}: {message} at line {line:?}, column \

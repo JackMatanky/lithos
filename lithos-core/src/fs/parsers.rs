@@ -61,12 +61,12 @@
 //!   YAML/JSON
 //! - **Epic 12** (Templates): Loads `Template` definitions via YAML
 
-use std::path::Path;
+use std::{io, path::Path};
 
 use serde::de::DeserializeOwned;
 use tracing::{debug, error};
 
-use super::error::ParseError;
+use super::{error::ParseError, source::FileSource};
 
 /// Auto-detecting file parser for structured configuration formats.
 ///
@@ -333,6 +333,49 @@ impl Yaml {
             }
         })
     }
+}
+
+/// Reads and parses a structured data file using the dispatcher.
+///
+/// This is a convenience function that combines file reading via `FileSource`
+/// with format detection and parsing via `Dispatcher`. It automatically detects
+/// the file format based on extension and content.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use std::path::Path;
+///
+/// use lithos_core::fs::{parsers::parse_file, source::InMemoryFileSource};
+/// use serde_json::Value;
+///
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let mut source = InMemoryFileSource::new();
+/// source.insert(Path::new("config.toml"), r#"name = "lithos""#.to_owned());
+///
+/// let config: Value = parse_file(&source, Path::new("config.toml"))?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The file cannot be read (I/O error)
+/// - The file format is unsupported
+/// - Parsing fails (syntax error, type mismatch)
+#[inline]
+pub fn parse_file<S, T>(source: &S, path: &Path) -> Result<T, ParseError>
+where
+    S: FileSource<Error = io::Error>,
+    T: DeserializeOwned,
+{
+    let content = source.read_to_string(path).map_err(|e| ParseError::Io {
+        path: path.into(),
+        source: e,
+    })?;
+
+    Dispatcher::new().parse(path, &content)
 }
 
 #[cfg(test)]
