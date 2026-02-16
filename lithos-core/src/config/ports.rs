@@ -10,9 +10,26 @@ use super::{
 };
 
 /// Command port for configuration write operations.
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Methods grouped by functionality, not strict alphabetization"
+)]
 pub trait Command: Send + Sync {
     /// Storage error type for command operations.
     type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Allocates the next version number for a vault atomically.
+    ///
+    /// This method reads the current active version (if any), computes the next
+    /// version, and returns it without persisting. The caller is responsible
+    /// for saving the merged config and setting the active version.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the read fails.
+    fn get_next_version(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Version, Self::Error>;
 
     /// Persists the global configuration.
     ///
@@ -40,6 +57,19 @@ pub trait Command: Send + Sync {
         vault_id: VaultId,
         config: &Vault,
     ) -> Result<(), Self::Error>;
+
+    /// Rolls back the active version by the given number of steps atomically.
+    ///
+    /// This reads the current active version, computes the target version after
+    /// rolling back `steps`, and updates the active pointer.
+    ///
+    /// # Errors
+    /// Returns an error if rollback would underflow or storage fails.
+    fn rollback_active_version(
+        &self,
+        vault_id: VaultId,
+        steps: u32,
+    ) -> Result<Version, Self::Error>;
 
     /// Persists the vault ID to root path mapping.
     ///

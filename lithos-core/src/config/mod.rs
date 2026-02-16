@@ -140,8 +140,7 @@ pub(crate) mod db_table {
 use self::adapter::{command::CommandAdapter, query::QueryAdapter};
 
 /// Redb-backed config command alias.
-pub type RedbConfigCommand<'db> =
-    command::Command<QueryAdapter<'db>, CommandAdapter<'db>>;
+pub type RedbConfigCommand<'db> = command::Command<CommandAdapter<'db>>;
 
 /// Redb-backed config query alias.
 pub type RedbConfigQuery<'db> = query::Query<QueryAdapter<'db>>;

@@ -105,4 +105,66 @@ impl Command for CommandAdapter<'_> {
         self.db.put(VAULT_ID_BY_PATH, &path_key, &vault_id)?;
         self.db.put(VAULT_PATH_BY_ID, &vault_id.to_string(), vault_root)
     }
+
+    #[inline]
+    #[instrument(
+        skip(self),
+        fields(operation = "get_next_version", vault_id = %vault_id)
+    )]
+    fn get_next_version(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Version, Self::Error> {
+        let current: Option<Version> =
+            self.db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
+
+        let candidate = match current {
+            Some(v) => v.next().unwrap_or_else(|_| Version::initial()),
+            None => Version::initial(),
+        };
+
+        Ok(candidate)
+    }
+
+    #[inline]
+    #[instrument(
+        skip(self),
+        fields(operation = "rollback_active_version", vault_id = %vault_id, steps = %steps)
+    )]
+    fn rollback_active_version(
+        &self,
+        vault_id: VaultId,
+        steps: u32,
+    ) -> Result<Version, Self::Error> {
+        self.db.read_write_transaction(|tx| {
+            let current: Option<Version> =
+                tx.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
+
+            let current = current.ok_or_else(|| {
+                DbError::Serialization("no active version".into())
+            })?;
+
+            let steps = u64::from(steps);
+            let current_val = current.value();
+            let target = current_val.saturating_sub(steps);
+
+            if target == 0 {
+                return Err(DbError::Serialization(
+                    "rollback underflow".into(),
+                ));
+            }
+
+            let target_version = Version::try_from(target).map_err(|_e| {
+                DbError::Serialization("invalid version".into())
+            })?;
+
+            tx.put(
+                MERGED_CONFIG_ACTIVE,
+                &vault_id.to_string(),
+                &target_version,
+            )?;
+
+            Ok(target_version)
+        })
+    }
 }

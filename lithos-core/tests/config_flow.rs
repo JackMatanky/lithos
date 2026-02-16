@@ -198,10 +198,7 @@ fn config_cqrs_integration_flow() -> TestResult {
     let db = Database::open(&db_path)?;
 
     // 2. Setup Services using convenience wrappers
-    let command = RedbConfigCommand::new(
-        QueryAdapter::new(&db),
-        CommandAdapter::new(&db),
-    );
+    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
     let query = RedbConfigQuery::new(QueryAdapter::new(&db));
 
     // 3. Define Inputs
@@ -242,10 +239,7 @@ fn config_cqrs_integration_flow() -> TestResult {
 fn config_ingestion_parsing_and_merge_from_vault_file() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = RedbConfigCommand::new(
-        QueryAdapter::new(&db),
-        CommandAdapter::new(&db),
-    );
+    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
     let query = RedbConfigQuery::new(QueryAdapter::new(&db));
 
     let vault_id = VaultId::new();
@@ -260,10 +254,7 @@ fn config_ingestion_parsing_and_merge_from_vault_file() -> TestResult {
 fn config_ingestion_rejects_invalid_toml() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = RedbConfigCommand::new(
-        QueryAdapter::new(&db),
-        CommandAdapter::new(&db),
-    );
+    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
     let vault_id = VaultId::new();
     let vault_root =
         write_vault_config(&dir, "[logging]\nlog_level = \"debug\n")?;
@@ -282,10 +273,7 @@ fn config_ingestion_rejects_invalid_toml() -> TestResult {
 fn config_ingestion_rejects_unknown_indexed_field() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = RedbConfigCommand::new(
-        QueryAdapter::new(&db),
-        CommandAdapter::new(&db),
-    );
+    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
     let vault_id = VaultId::new();
     let vault_root = write_vault_config(
         &dir,
@@ -312,10 +300,7 @@ fn config_ingestion_rejects_unknown_indexed_field() -> TestResult {
 fn config_ingestion_rejects_invalid_field_name() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = RedbConfigCommand::new(
-        QueryAdapter::new(&db),
-        CommandAdapter::new(&db),
-    );
+    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
     let vault_id = VaultId::new();
     let vault_root = write_vault_config(
         &dir,
@@ -341,10 +326,7 @@ fn config_ingestion_rejects_invalid_field_name() -> TestResult {
 fn config_rebuild_is_idempotent_for_same_inputs() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = RedbConfigCommand::new(
-        QueryAdapter::new(&db),
-        CommandAdapter::new(&db),
-    );
+    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
     let query = RedbConfigQuery::new(QueryAdapter::new(&db));
 
     let vault_id = VaultId::new();
