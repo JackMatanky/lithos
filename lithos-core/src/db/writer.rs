@@ -3,7 +3,7 @@
 //! This module contains all write and batch-write operations, keeping
 //! transactions properly scoped and centralized.
 
-use redb::{MultimapTableDefinition, TableDefinition};
+use redb::{MultimapTableDefinition, ReadableTable as _, TableDefinition};
 
 use super::{Database, DbError};
 
@@ -130,6 +130,48 @@ impl Database {
         F: FnOnce(&mut WriteBatch) -> Result<(), DbError>,
     {
         batch_write_impl(&self.inner, f)
+    }
+
+    /// Execute a read-write transaction with both read and write operations.
+    ///
+    /// This method allows atomic read and write operations within a single
+    /// transaction, ensuring consistency for operations like "read current
+    /// value, compute next value, write new value".
+    ///
+    /// The closure receives a [`ReadWriteTransaction`] that supports both read
+    /// and write operations.
+    ///
+    /// # Errors
+    ///
+    /// - `DbError::Transaction` - Transaction operation failed
+    /// - Propagates errors from read or write operations
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # use redb::TableDefinition;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// let table = TableDefinition::new("counters");
+    /// db.read_write_transaction(|tx| {
+    ///     // Read current value
+    ///     let current: Option<u64> = tx.get_owned(table, "counter")?;
+    ///     let next = current.unwrap_or(0) + 1;
+    ///     // Write new value
+    ///     tx.put(table, "counter", &next)?;
+    ///     Ok(next)
+    /// })?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn read_write_transaction<R, F>(&self, f: F) -> Result<R, DbError>
+    where
+        F: FnOnce(&mut ReadWriteTransaction) -> Result<R, DbError>,
+    {
+        read_write_transaction_impl(&self.inner, f)
     }
 
     /// Insert a value into a multimap table definition (1:N relationship).
@@ -259,6 +301,98 @@ impl WriteBatch {
         value: &str,
     ) -> Result<bool, DbError> {
         multimap_remove_tx(&mut self.tx, table, key, value)
+    }
+}
+
+/// A single read-write transaction supporting both read and write operations.
+///
+/// This is intentionally scoped to a closure (see
+/// `Database::read_write_transaction`) so callers cannot accidentally hold a
+/// transaction across unrelated work.
+///
+/// Unlike [`WriteBatch`], this type supports read operations for atomic
+/// read-compute-write patterns.
+pub struct ReadWriteTransaction {
+    tx: redb::WriteTransaction,
+}
+
+impl ReadWriteTransaction {
+    #[inline]
+    pub(super) fn new(tx: redb::WriteTransaction) -> Self {
+        Self {
+            tx,
+        }
+    }
+
+    #[inline]
+    pub(super) fn commit(self) -> Result<(), DbError> {
+        self.tx.commit()?;
+        Ok(())
+    }
+
+    /// Read a value from a table and deserialize to an owned value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if deserialization or transaction fails.
+    #[inline]
+    pub fn get_owned<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        key: &str,
+    ) -> Result<Option<V>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        get_owned_tx(&self.tx, table, key)
+    }
+
+    /// Insert or update a value within the transaction using a table
+    /// definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if serialization fails or if the underlying redb table
+    /// operation fails.
+    #[inline]
+    pub fn put<V>(
+        &mut self,
+        table: TableDefinition<&str, &[u8]>,
+        key: &str,
+        value: &V,
+    ) -> Result<(), DbError>
+    where
+        V: rkyv::Archive
+            + for<'ser> rkyv::Serialize<
+                rkyv::api::high::HighSerializer<
+                    rkyv::util::AlignedVec,
+                    rkyv::ser::allocator::ArenaHandle<'ser>,
+                    rkyv::rancor::Error,
+                >,
+            >,
+    {
+        serialize_and_put_tx::<V>(&mut self.tx, table, key, value)
+    }
+
+    /// Delete a value by key within the transaction using a table definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb table operation fails.
+    #[inline]
+    pub fn delete(
+        &mut self,
+        table: TableDefinition<&str, &[u8]>,
+        key: &str,
+    ) -> Result<bool, DbError> {
+        delete_key_tx(&mut self.tx, table, key)
     }
 }
 
@@ -404,6 +538,66 @@ where
     f(&mut batch)?;
     batch.commit()?;
     Ok(())
+}
+
+/// Execute a read-write transaction with both read and write operations.
+fn read_write_transaction_impl<R, F>(
+    db: &redb::Database,
+    f: F,
+) -> Result<R, DbError>
+where
+    F: FnOnce(&mut ReadWriteTransaction) -> Result<R, DbError>,
+{
+    let tx = db.begin_write()?;
+    let mut tx = ReadWriteTransaction::new(tx);
+
+    let result = f(&mut tx)?;
+    tx.commit()?;
+    Ok(result)
+}
+
+/// Read and deserialize a value from a table within a transaction.
+fn get_owned_tx<V>(
+    tx: &redb::WriteTransaction,
+    table: TableDefinition<&str, &[u8]>,
+    key: &str,
+) -> Result<Option<V>, DbError>
+where
+    V: rkyv::Archive,
+    V::Archived: rkyv::Portable
+        + for<'archived> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+        > + rkyv::Deserialize<
+            V,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+{
+    let table_ref = match tx.open_table(table) {
+        Ok(table_ref) => table_ref,
+        Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
+
+    match table_ref.get(key)? {
+        Some(value) => {
+            let bytes: &[u8] = value.value();
+
+            let mut aligned: rkyv::util::AlignedVec<16> =
+                rkyv::util::AlignedVec::new();
+            aligned.extend_from_slice(bytes);
+
+            let archived =
+                rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(
+                    &aligned,
+                )
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+            let deserialized =
+                rkyv::deserialize::<V, rkyv::rancor::Error>(archived)
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
+            Ok(Some(deserialized))
+        }
+        None => Ok(None),
+    }
 }
 
 #[cfg(test)]
@@ -696,6 +890,74 @@ mod tests {
             let fetched_existing: Option<TestValue> =
                 db.get_owned(USERS_TABLE, "existing").expect("get_owned");
             assert_eq!(fetched_existing, Some(existing));
+        }
+    }
+
+    mod read_write_transaction {
+        use super::*;
+
+        mod tables {
+            use super::*;
+
+            pub(super) const COUNTER_TABLE: TableDefinition<&str, &[u8]> =
+                TableDefinition::new("counters");
+        }
+
+        #[test]
+        fn read_write_transaction_performs_atomic_read_modify_write() {
+            use tables::COUNTER_TABLE;
+            let (_temp, db) = temp_db().expect("temp db");
+
+            let result = db.read_write_transaction(|tx| {
+                let current: Option<u64> =
+                    tx.get_owned(COUNTER_TABLE, "counter")?;
+                let next = current.unwrap_or(0) + 1;
+                tx.put(COUNTER_TABLE, "counter", &next)?;
+                Ok(next)
+            });
+
+            assert_eq!(result.unwrap(), 1);
+
+            let result2 = db.read_write_transaction(|tx| {
+                let current: Option<u64> =
+                    tx.get_owned(COUNTER_TABLE, "counter")?;
+                let next = current.unwrap_or(0) + 1;
+                tx.put(COUNTER_TABLE, "counter", &next)?;
+                Ok(next)
+            });
+
+            assert_eq!(result2.unwrap(), 2);
+        }
+
+        #[test]
+        fn read_write_transaction_returns_none_for_missing_key() {
+            use tables::COUNTER_TABLE;
+            let (_temp, db) = temp_db().expect("temp db");
+
+            let result = db.read_write_transaction(|tx| {
+                let current: Option<u64> =
+                    tx.get_owned(COUNTER_TABLE, "missing")?;
+                Ok(current.is_none())
+            });
+
+            assert!(result.unwrap());
+        }
+
+        #[test]
+        fn read_write_transaction_rolls_back_on_error() {
+            use tables::COUNTER_TABLE;
+            let (_temp, db) = temp_db().expect("temp db");
+
+            let result: Result<(), DbError> = db.read_write_transaction(|tx| {
+                tx.put(COUNTER_TABLE, "counter", &42u64)?;
+                Err(DbError::Transaction(String::from("intentional")))
+            });
+
+            assert!(result.is_err());
+
+            let fetched: Option<u64> =
+                db.get_owned(COUNTER_TABLE, "counter").unwrap();
+            assert_eq!(fetched, None);
         }
     }
 
