@@ -15,6 +15,7 @@ use rkyv::{Archive, Deserialize, Serialize};
     Copy,
     PartialEq,
     Eq,
+    Default,
     Archive,
     Serialize,
     Deserialize,
@@ -24,6 +25,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 #[rkyv(derive(Debug))]
 pub enum BlockStrategy {
     /// Replace parent's block entirely (default).
+    #[default]
     Replace,
     /// Call parent's block first, then append ours.
     Extend,
