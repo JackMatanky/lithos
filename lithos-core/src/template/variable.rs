@@ -6,6 +6,8 @@
               docs"
 )]
 
+use crate::bounds::Bounds;
+
 /// Type-safe variable definition with validation constraints.
 #[derive(
     Debug,
@@ -43,19 +45,15 @@ pub enum VariableDefinition {
     Number {
         /// Default value.
         default: Option<f64>,
-        /// Maximum value.
-        max: Option<f64>,
-        /// Minimum value.
-        min: Option<f64>,
+        /// Value bounds.
+        bounds: Bounds<f64>,
     },
     /// String variable.
     String {
         /// Default value.
         default: Option<Box<str>>,
-        /// Maximum length.
-        max_length: Option<usize>,
-        /// Minimum length.
-        min_length: Option<usize>,
+        /// Length bounds.
+        length: Bounds<usize>,
         /// Regex pattern.
         pattern: Option<Box<str>>,
     },
@@ -76,38 +74,28 @@ impl VariableDefinition {
     pub fn filter_chain(&self) -> Vec<&'static str> {
         match self {
             Self::String {
-                pattern: Some(_),
-                min_length: Some(_),
-                ..
-            }
-            | Self::String {
-                pattern: Some(_),
-                max_length: Some(_),
+                pattern,
+                length,
                 ..
             } => {
-                vec!["validate_pattern", "validate_length"]
+                let mut chain = Vec::new();
+                if pattern.is_some() {
+                    chain.push("validate_pattern");
+                }
+                if !matches!(length, Bounds::Unbounded) {
+                    chain.push("validate_length");
+                }
+                chain
             }
-            Self::String {
-                pattern: Some(_),
-                ..
-            } => vec!["validate_pattern"],
-            Self::String {
-                min_length: Some(_),
-                ..
-            }
-            | Self::String {
-                max_length: Some(_),
-                ..
-            } => vec!["validate_length"],
             Self::Number {
-                min: Some(_),
-                ..
-            }
-            | Self::Number {
-                max: Some(_),
+                bounds,
                 ..
             } => {
-                vec!["validate_range"]
+                if matches!(bounds, Bounds::Unbounded) {
+                    vec![]
+                } else {
+                    vec!["validate_range"]
+                }
             }
             Self::File {
                 file_types: Some(_),
@@ -135,17 +123,16 @@ impl VariableDefinition {
     pub fn filter_args(&self) -> serde_json::Value {
         match self {
             Self::String {
-                min_length,
-                max_length,
+                length,
                 pattern,
                 ..
             } => {
                 let mut map = serde_json::Map::new();
-                if let Some(min) = min_length {
-                    map.insert("min".to_owned(), (*min).into());
+                if let Some(min) = length.min() {
+                    map.insert("min".to_owned(), min.into());
                 }
-                if let Some(max) = max_length {
-                    map.insert("max".to_owned(), (*max).into());
+                if let Some(max) = length.max() {
+                    map.insert("max".to_owned(), max.into());
                 }
                 if let Some(p) = pattern {
                     map.insert("pattern".to_owned(), p.as_ref().into());
@@ -153,16 +140,15 @@ impl VariableDefinition {
                 serde_json::Value::Object(map)
             }
             Self::Number {
-                min,
-                max,
+                bounds,
                 ..
             } => {
                 let mut map = serde_json::Map::new();
-                if let Some(min) = min {
-                    map.insert("min".to_owned(), (*min).into());
+                if let Some(min) = bounds.min() {
+                    map.insert("min".to_owned(), min.into());
                 }
-                if let Some(max) = max {
-                    map.insert("max".to_owned(), (*max).into());
+                if let Some(max) = bounds.max() {
+                    map.insert("max".to_owned(), max.into());
                 }
                 serde_json::Value::Object(map)
             }
@@ -266,8 +252,7 @@ mod tests {
     fn has_default_returns_true_when_default_present() {
         let def = VariableDefinition::String {
             default: Some("Title".into()),
-            max_length: None,
-            min_length: None,
+            length: Bounds::Unbounded,
             pattern: None,
         };
 
@@ -281,8 +266,7 @@ mod tests {
     fn get_default_value_returns_configured_value() {
         let def = VariableDefinition::String {
             default: Some("Title".into()),
-            max_length: None,
-            min_length: None,
+            length: Bounds::Unbounded,
             pattern: None,
         };
 
@@ -297,8 +281,10 @@ mod tests {
     fn filter_chain_for_string_with_pattern_and_length() {
         let var = VariableDefinition::String {
             default: None,
-            min_length: Some(5),
-            max_length: Some(10),
+            length: Bounds::Range {
+                min: 5,
+                max: 10,
+            },
             pattern: Some("^[A-Z]".into()),
         };
 
@@ -310,8 +296,10 @@ mod tests {
     fn filter_chain_for_number_with_range() {
         let var = VariableDefinition::Number {
             default: None,
-            min: Some(1.0f64),
-            max: Some(10.0f64),
+            bounds: Bounds::Range {
+                min: 1.0f64,
+                max: 10.0f64,
+            },
         };
 
         let chain = var.filter_chain();
@@ -322,8 +310,10 @@ mod tests {
     fn filter_args_for_string() {
         let var = VariableDefinition::String {
             default: None,
-            min_length: Some(5),
-            max_length: Some(10),
+            length: Bounds::Range {
+                min: 5,
+                max: 10,
+            },
             pattern: Some("^[A-Z]".into()),
         };
 
