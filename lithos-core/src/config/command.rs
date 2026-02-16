@@ -1,8 +1,8 @@
 //! Configuration command implementations (CQRS write operations).
 //!
-//! This module provides the [`Command`] type, which handles all mutations
-//! to the configuration state, including saving settings and rebuilding
-//! the merged snapshots.
+//! This module provides the [`Command`] type, which handles configuration
+//! mutations (saving settings, rebuilding snapshots) while relying on a
+//! query port for version lookups during write workflows.
 
 use tracing::instrument;
 
@@ -17,9 +17,9 @@ use super::{
 
 /// Command implementation for configuration write operations.
 ///
-/// This struct handles all mutations to the configuration state,
-/// including saving global and vault settings, and rebuilding the
-/// merged configuration snapshot.
+/// This struct handles configuration mutations (saving, rebuilding, version
+/// activation). It composes a query port for read-only version lookups and a
+/// command port for persistence.
 ///
 /// # Examples
 ///
@@ -31,28 +31,53 @@ use super::{
 /// #     vault::{Vault, VaultId, VaultRoot},
 /// #     ports,
 /// # };
-/// # struct MockPort;
+/// # struct MockQueryPort;
+/// # struct MockCommandPort;
 /// #
-/// # impl ports::Command for MockPort {
+/// # impl ports::Query for MockQueryPort {
 /// #     type Error = std::io::Error;
 /// #
-/// #     fn load_active_version(
+/// #     fn get_active_version(
 /// #         &self,
 /// #         _: VaultId,
 /// #     ) -> Result<Option<Version>, Self::Error> {
 /// #         Ok(None)
 /// #     }
 /// #
-/// #     fn load_global(&self) -> Result<Option<Global>, Self::Error> {
+/// #     fn get_global(&self) -> Result<Option<Global>, Self::Error> {
 /// #         Ok(None)
 /// #     }
 /// #
-/// #     fn load_vault(
+/// #     fn get_vault(
 /// #         &self,
 /// #         _: VaultId,
 /// #     ) -> Result<Option<Vault>, Self::Error> {
 /// #         Ok(None)
 /// #     }
+/// #
+/// #     fn get_merged_owned(
+/// #         &self,
+/// #         _: VaultId,
+/// #         _: Version,
+/// #     ) -> Result<Option<Config>, Self::Error> {
+/// #         Ok(None)
+/// #     }
+/// #
+/// #     fn with_archived<R, F>(
+/// #         &self,
+/// #         _: VaultId,
+/// #         _: Version,
+/// #         _: F,
+/// #     ) -> Result<Option<R>, Self::Error>
+/// #     where
+/// #         F: for<'archived> FnOnce(&'archived rkyv::Archived<Config>) -> R,
+/// #     {
+/// #         Ok(None)
+/// #     }
+/// # }
+/// #
+/// # impl ports::Command for MockCommandPort {
+/// #     type Error = std::io::Error;
 /// #
 /// #     fn save_global(&self, _: &Global) -> Result<(), Self::Error> {
 /// #         Ok(())
@@ -91,27 +116,32 @@ use super::{
 /// #         Ok(())
 /// #     }
 /// # }
-/// let cmd = Command::new(MockPort);
+/// let cmd = Command::new(MockQueryPort, MockCommandPort);
 /// ```
-pub struct Command<C> {
-    /// Port interface for storage operations.
+pub struct Command<Q, C> {
+    /// Port interface for query storage operations.
+    query_port: Q,
+    /// Port interface for command storage operations.
     command_port: C,
 }
 
-impl<C> Command<C> {
-    /// Creates a new `Command` with the given port.
+impl<Q, C> Command<Q, C> {
+    /// Creates a new `Command` with the given ports.
     #[inline]
     #[must_use]
-    pub const fn new(command_port: C) -> Self {
+    pub const fn new(query_port: Q, command_port: C) -> Self {
         Self {
+            query_port,
             command_port,
         }
     }
 }
 
-impl<C> Command<C>
+impl<Q, C> Command<Q, C>
 where
+    Q: config_ports::Query,
     C: config_ports::Command,
+    Q::Error: Into<crate::db::DbError>,
     C::Error: Into<crate::db::DbError>,
 {
     /// Saves the global configuration.
@@ -145,41 +175,6 @@ where
     ) -> Result<(), ConfigCommandError> {
         self.command_port
             .save_vault(vault_id, config)
-            .map_err(|error| ConfigCommandError::Storage(error.into()))
-    }
-
-    /// Load global configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigCommandError` if storage fails.
-    #[inline]
-    #[instrument(
-        skip(self),
-        level = "debug",
-        fields(operation = "load_global")
-    )]
-    pub fn load_global(&self) -> Result<Option<Global>, ConfigCommandError> {
-        self.command_port
-            .load_global()
-            .map_err(|error| ConfigCommandError::Storage(error.into()))
-    }
-
-    /// Load vault-specific configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigCommandError` if storage fails.
-    #[inline]
-    #[instrument(
-        skip(self),
-        level = "debug",
-        fields(operation = "load_vault", vault_id = %vault_id)
-    )]
-    pub fn load_vault(
-        &self,
-        vault_id: VaultId,
-    ) -> Result<Option<Vault>, ConfigCommandError> {
-        self.command_port
-            .load_vault(vault_id)
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
@@ -271,8 +266,8 @@ where
         steps: u32,
     ) -> Result<Version, ConfigCommandError> {
         let active = self
-            .command_port
-            .load_active_version(vault_id)
+            .query_port
+            .get_active_version(vault_id)
             .map_err(|error| ConfigCommandError::Storage(error.into()))?
             .ok_or_else(|| {
                 ConfigCommandError::Domain(ConfigError::ValidationFailed {
@@ -303,8 +298,8 @@ where
         vault_id: VaultId,
     ) -> Result<Version, ConfigCommandError> {
         let candidate = self
-            .command_port
-            .load_active_version(vault_id)
+            .query_port
+            .get_active_version(vault_id)
             .map_err(|error| ConfigCommandError::Storage(error.into()))?
             .map(Version::next)
             .transpose()
@@ -353,11 +348,11 @@ mod tests {
         }
     }
 
-    struct DbPort<'db> {
+    struct DbQueryPort<'db> {
         db: &'db Database,
     }
 
-    impl<'db> DbPort<'db> {
+    impl<'db> DbQueryPort<'db> {
         fn new(db: &'db Database) -> Self {
             Self {
                 db,
@@ -365,26 +360,63 @@ mod tests {
         }
     }
 
-    impl config_ports::Command for DbPort<'_> {
+    impl config_ports::Query for DbQueryPort<'_> {
         type Error = DbError;
 
-        fn load_active_version(
+        fn get_active_version(
             &self,
             vault_id: VaultId,
         ) -> Result<Option<Version>, Self::Error> {
             self.db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())
         }
 
-        fn load_global(&self) -> Result<Option<Global>, Self::Error> {
+        fn get_global(&self) -> Result<Option<Global>, Self::Error> {
             self.db.get_owned(CONFIG, "global")
         }
 
-        fn load_vault(
+        fn get_vault(
             &self,
             vault_id: VaultId,
         ) -> Result<Option<Vault>, Self::Error> {
             self.db.get_owned(CONFIG, &vault_id.to_string())
         }
+
+        fn get_merged_owned(
+            &self,
+            vault_id: VaultId,
+            version: Version,
+        ) -> Result<Option<Config>, Self::Error> {
+            let key = format!("{vault_id}:{}", version.value());
+            self.db.get_owned(MERGED_CONFIG_VERSIONS, &key)
+        }
+
+        fn with_archived<R, F>(
+            &self,
+            _vault_id: VaultId,
+            _version: Version,
+            _f: F,
+        ) -> Result<Option<R>, Self::Error>
+        where
+            F: for<'archived> FnOnce(&'archived rkyv::Archived<Config>) -> R,
+        {
+            Ok(None)
+        }
+    }
+
+    struct DbCommandPort<'db> {
+        db: &'db Database,
+    }
+
+    impl<'db> DbCommandPort<'db> {
+        fn new(db: &'db Database) -> Self {
+            Self {
+                db,
+            }
+        }
+    }
+
+    impl config_ports::Command for DbCommandPort<'_> {
+        type Error = DbError;
 
         fn save_global(&self, config: &Global) -> Result<(), Self::Error> {
             self.db.put(CONFIG, "global", config)
@@ -436,7 +468,8 @@ mod tests {
         #[test]
         fn save_global_persists_configuration() {
             let (_dir, db) = fixtures::test_db().unwrap();
-            let cmd = Command::new(DbPort::new(&db));
+            let cmd =
+                Command::new(DbQueryPort::new(&db), DbCommandPort::new(&db));
 
             let global = Global::default();
             cmd.save_global(&global).unwrap();
@@ -453,7 +486,8 @@ mod tests {
         #[test]
         fn save_vault_persists_configuration() {
             let (_dir, db) = fixtures::test_db().unwrap();
-            let cmd = Command::new(DbPort::new(&db));
+            let cmd =
+                Command::new(DbQueryPort::new(&db), DbCommandPort::new(&db));
 
             let vault = Vault::default();
             let vault_id = VaultId::new();
@@ -476,7 +510,8 @@ mod tests {
         #[test]
         fn rollback_updates_active_version() {
             let (_dir, db) = fixtures::test_db().unwrap();
-            let cmd = Command::new(DbPort::new(&db));
+            let cmd =
+                Command::new(DbQueryPort::new(&db), DbCommandPort::new(&db));
             let vault_id = VaultId::new();
 
             // Setup: Version 1 and 2
@@ -500,7 +535,8 @@ mod tests {
         #[test]
         fn activate_version_updates_active_pointer() {
             let (_dir, db) = fixtures::test_db().unwrap();
-            let cmd = Command::new(DbPort::new(&db));
+            let cmd =
+                Command::new(DbQueryPort::new(&db), DbCommandPort::new(&db));
             let vault_id = VaultId::new();
             let version = Version::try_from(5).unwrap();
 
@@ -516,7 +552,8 @@ mod tests {
         fn rebuild_merged_persists_and_versions() {
             let (dir, db): (tempfile::TempDir, Database) =
                 fixtures::test_db().unwrap();
-            let cmd = Command::new(DbPort::new(&db));
+            let cmd =
+                Command::new(DbQueryPort::new(&db), DbCommandPort::new(&db));
             let vault_id = VaultId::new();
             let vault_root =
                 VaultRoot::try_new(dir.path().join("vault")).unwrap();
@@ -536,7 +573,8 @@ mod tests {
             // GIVEN: vault with config file
             let (dir, db): (tempfile::TempDir, Database) =
                 fixtures::test_db().unwrap();
-            let cmd = Command::new(DbPort::new(&db));
+            let cmd =
+                Command::new(DbQueryPort::new(&db), DbCommandPort::new(&db));
             let vault_id = VaultId::new();
             let vault_root =
                 VaultRoot::try_new(dir.path().join("vault")).unwrap();
@@ -567,7 +605,8 @@ mod tests {
             // GIVEN: vault without config file
             let (dir, db): (tempfile::TempDir, Database) =
                 fixtures::test_db().unwrap();
-            let cmd = Command::new(DbPort::new(&db));
+            let cmd =
+                Command::new(DbQueryPort::new(&db), DbCommandPort::new(&db));
             let vault_id = VaultId::new();
             let vault_root =
                 VaultRoot::try_new(dir.path().join("vault")).unwrap();
@@ -590,7 +629,8 @@ mod tests {
             // GIVEN: vault directory
             let (dir, db): (tempfile::TempDir, Database) =
                 fixtures::test_db().unwrap();
-            let cmd = Command::new(DbPort::new(&db));
+            let cmd =
+                Command::new(DbQueryPort::new(&db), DbCommandPort::new(&db));
             let vault_id = VaultId::new();
             let vault_root =
                 VaultRoot::try_new(dir.path().join("vault")).unwrap();
@@ -613,7 +653,8 @@ mod tests {
             // GIVEN: vault with existing merged config
             let (dir, db): (tempfile::TempDir, Database) =
                 fixtures::test_db().unwrap();
-            let cmd = Command::new(DbPort::new(&db));
+            let cmd =
+                Command::new(DbQueryPort::new(&db), DbCommandPort::new(&db));
             let vault_id = VaultId::new();
             let vault_root =
                 VaultRoot::try_new(dir.path().join("vault")).unwrap();
@@ -626,23 +667,6 @@ mod tests {
             // THEN: versions increment
             assert_eq!(v1.value(), 1);
             assert_eq!(v2.value(), 2);
-        }
-    }
-
-    mod load {
-        use super::*;
-
-        #[test]
-        fn vault_returns_stored_config() {
-            let (_dir, db) = fixtures::test_db().unwrap();
-            let cmd = Command::new(DbPort::new(&db));
-            let vault_id = VaultId::new();
-            let vault = Vault::default();
-
-            db.put(CONFIG, &vault_id.to_string(), &vault).unwrap();
-
-            let loaded = cmd.load_vault(vault_id).unwrap();
-            assert_eq!(loaded, Some(vault));
         }
     }
 }

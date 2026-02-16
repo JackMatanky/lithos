@@ -1,23 +1,24 @@
 //! Configuration query implementations (CQRS read operations).
 //!
-//! This module provides the [`Query`] type, which handles read-only access
-//! to the persisted configuration snapshots, supporting both owned and
-//! zero-copy access patterns.
+//! This module provides the [`Query`] type for read-only access to persisted
+//! configuration (merged snapshots, global settings, vault overrides),
+//! supporting both owned and zero-copy access patterns.
 
 use tracing::instrument;
 
 use super::{
     aggregate::Config,
     error::ConfigQueryError,
+    global::Global,
     ports::{self as config_ports},
-    vault::VaultId,
+    vault::{Vault, VaultId},
 };
 
 /// Query implementation for configuration read operations.
 ///
 /// This struct provides the primary interface for retrieving persisted
-/// configuration snapshots. It is generic over a [`config_ports::Query`]
-/// to support different storage backends.
+/// configuration data (merged snapshots plus global/vault settings). It is
+/// generic over a [`config_ports::Query`] to support different backends.
 pub struct Query<Q> {
     /// Port interface for storage operations.
     query_port: Q,
@@ -67,6 +68,37 @@ where
 
         self.query_port
             .get_merged_owned(vault_id, version)
+            .map_err(|error| ConfigQueryError::Storage(error.into()))
+    }
+
+    /// Returns the persisted global configuration, if present.
+    ///
+    /// # Errors
+    /// Returns [`ConfigQueryError`] if storage access fails.
+    #[inline]
+    #[instrument(skip(self), level = "debug", fields(operation = "get_global"))]
+    pub fn get_global(&self) -> Result<Option<Global>, ConfigQueryError> {
+        self.query_port
+            .get_global()
+            .map_err(|error| ConfigQueryError::Storage(error.into()))
+    }
+
+    /// Returns the persisted vault configuration, if present.
+    ///
+    /// # Errors
+    /// Returns [`ConfigQueryError`] if storage access fails.
+    #[inline]
+    #[instrument(
+        skip(self),
+        level = "debug",
+        fields(operation = "get_vault", vault_id = %vault_id)
+    )]
+    pub fn get_vault(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Option<Vault>, ConfigQueryError> {
+        self.query_port
+            .get_vault(vault_id)
             .map_err(|error| ConfigQueryError::Storage(error.into()))
     }
 
@@ -135,7 +167,7 @@ mod tests {
             db_table::{CONFIG, MERGED_CONFIG_ACTIVE, MERGED_CONFIG_VERSIONS},
             global::Global,
             ports::{self as config_ports},
-            vault::VaultId,
+            vault::{Vault, VaultId},
         },
         db::{Database, DbError},
     };
@@ -202,6 +234,59 @@ mod tests {
                     .map_err(|e| DbError::Deserialization(e.to_string()))?;
                     Ok(Some(
                         rkyv::deserialize::<Version, rkyv::rancor::Error>(
+                            archived,
+                        )
+                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
+                    ))
+                }
+                None => Ok(None),
+            }
+        }
+
+        fn get_global(&self) -> Result<Option<Global>, DbError> {
+            let table = match self.txn.open_table(CONFIG) {
+                Ok(t) => t,
+                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
+                Err(e) => return Err(DbError::Transaction(e.to_string())),
+            };
+            match table.get("global")? {
+                Some(guard) => {
+                    let bytes: &[u8] = guard.value();
+                    let archived = rkyv::access::<
+                        rkyv::Archived<Global>,
+                        rkyv::rancor::Error,
+                    >(bytes)
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                    Ok(Some(
+                        rkyv::deserialize::<Global, rkyv::rancor::Error>(
+                            archived,
+                        )
+                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
+                    ))
+                }
+                None => Ok(None),
+            }
+        }
+
+        fn get_vault(
+            &self,
+            vault_id: VaultId,
+        ) -> Result<Option<Vault>, DbError> {
+            let table = match self.txn.open_table(CONFIG) {
+                Ok(t) => t,
+                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
+                Err(e) => return Err(DbError::Transaction(e.to_string())),
+            };
+            match table.get(vault_id.to_string().as_str())? {
+                Some(guard) => {
+                    let bytes: &[u8] = guard.value();
+                    let archived = rkyv::access::<
+                        rkyv::Archived<Vault>,
+                        rkyv::rancor::Error,
+                    >(bytes)
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                    Ok(Some(
+                        rkyv::deserialize::<Vault, rkyv::rancor::Error>(
                             archived,
                         )
                         .map_err(|e| DbError::Deserialization(e.to_string()))?,
@@ -288,6 +373,21 @@ mod tests {
                 result.is_none(),
                 "Expected None when active version missing"
             );
+        }
+
+        #[test]
+        fn get_vault_returns_stored_config() {
+            let (_dir, db) = fixtures::test_db();
+            let vault_id = VaultId::new();
+            let vault = Vault::default();
+
+            db.put(CONFIG, &vault_id.to_string(), &vault)
+                .expect("must put vault config");
+
+            let qry = Query::new(DbPort::new(&db));
+
+            let loaded = qry.get_vault(vault_id).expect("query must succeed");
+            assert_eq!(loaded, Some(vault));
         }
     }
 

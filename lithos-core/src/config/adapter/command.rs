@@ -37,36 +37,6 @@ impl Command for CommandAdapter<'_> {
     type Error = DbError;
 
     #[inline]
-    #[instrument(
-        skip(self),
-        fields(operation = "load_active_version", vault_id = %vault_id)
-    )]
-    fn load_active_version(
-        &self,
-        vault_id: VaultId,
-    ) -> Result<Option<Version>, Self::Error> {
-        self.db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())
-    }
-
-    #[inline]
-    #[instrument(skip(self), fields(operation = "load_global"))]
-    fn load_global(&self) -> Result<Option<Global>, Self::Error> {
-        self.db.get_owned(CONFIG, "global")
-    }
-
-    #[inline]
-    #[instrument(
-        skip(self),
-        fields(operation = "load_vault", vault_id = %vault_id)
-    )]
-    fn load_vault(
-        &self,
-        vault_id: VaultId,
-    ) -> Result<Option<Vault>, Self::Error> {
-        self.db.get_owned(CONFIG, &vault_id.to_string())
-    }
-
-    #[inline]
     #[instrument(skip(self, config), fields(operation = "save_global"))]
     fn save_global(&self, config: &Global) -> Result<(), Self::Error> {
         self.db.put(CONFIG, "global", config)

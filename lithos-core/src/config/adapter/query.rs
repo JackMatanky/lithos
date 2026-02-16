@@ -6,9 +6,10 @@ use super::merged_version_key;
 use crate::{
     config::{
         aggregate::{Config, Version},
-        db_table::{MERGED_CONFIG_ACTIVE, MERGED_CONFIG_VERSIONS},
+        db_table::{CONFIG, MERGED_CONFIG_ACTIVE, MERGED_CONFIG_VERSIONS},
+        global::Global,
         ports::Query,
-        vault::VaultId,
+        vault::{Vault, VaultId},
     },
     db::{Database, DbError},
 };
@@ -43,6 +44,25 @@ impl Query for QueryAdapter<'_> {
         vault_id: VaultId,
     ) -> Result<Option<Version>, Self::Error> {
         self.db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())
+    }
+
+    #[inline]
+    #[instrument(skip(self), level = "debug", fields(operation = "get_global"))]
+    fn get_global(&self) -> Result<Option<Global>, Self::Error> {
+        self.db.get_owned(CONFIG, "global")
+    }
+
+    #[inline]
+    #[instrument(
+        skip(self),
+        level = "debug",
+        fields(operation = "get_vault", vault_id = %vault_id)
+    )]
+    fn get_vault(
+        &self,
+        vault_id: VaultId,
+    ) -> Result<Option<Vault>, Self::Error> {
+        self.db.get_owned(CONFIG, &vault_id.to_string())
     }
 
     #[inline]

@@ -141,7 +141,8 @@ use self::adapter::{command::CommandAdapter, query::QueryAdapter};
 use crate::db::Database;
 
 /// Redb-backed config command alias.
-pub type RedbConfigCommand<'db> = command::Command<CommandAdapter<'db>>;
+pub type RedbConfigCommand<'db> =
+    command::Command<QueryAdapter<'db>, CommandAdapter<'db>>;
 
 /// Redb-backed config query alias.
 pub type RedbConfigQuery<'db> = query::Query<QueryAdapter<'db>>;
@@ -151,7 +152,7 @@ impl<'db> RedbConfigCommand<'db> {
     #[must_use]
     /// Create a redb-backed config command.
     pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(CommandAdapter::new(db))
+        Self::new(QueryAdapter::new(db), CommandAdapter::new(db))
     }
 }
 
