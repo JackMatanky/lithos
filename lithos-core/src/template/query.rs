@@ -38,7 +38,7 @@ impl<'db> Query<'db> {
     }
 }
 
-impl super::ports::TemplateQueryPort for Query<'_> {
+impl super::ports::Query for Query<'_> {
     /// Find a template by ID.
     ///
     /// # Errors

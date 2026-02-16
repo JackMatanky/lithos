@@ -12,7 +12,7 @@ use super::{
 };
 
 /// Command port for template-related write operations.
-pub trait TemplateCommandPort: Send + Sync {
+pub trait Command: Send + Sync {
     /// Creates a new template.
     ///
     /// # Errors
@@ -33,7 +33,7 @@ pub trait TemplateCommandPort: Send + Sync {
 }
 
 /// Query port for template-related read operations.
-pub trait TemplateQueryPort: Send + Sync {
+pub trait Query: Send + Sync {
     /// Find a template by ID.
     ///
     /// # Errors
@@ -71,19 +71,19 @@ mod tests {
 
     #[test]
     fn command_trait_is_object_safe() {
-        let _: Option<Box<dyn TemplateCommandPort>> = None;
+        let _: Option<Box<dyn Command>> = None;
     }
 
     #[test]
     fn query_trait_is_object_safe() {
-        let _: Option<Box<dyn TemplateQueryPort>> = None;
+        let _: Option<Box<dyn Query>> = None;
     }
 
     #[test]
     fn traits_are_send_and_sync() {
         fn assert_send_sync<T: Send + Sync + ?Sized>() {}
-        assert_send_sync::<dyn TemplateCommandPort>();
-        assert_send_sync::<dyn TemplateQueryPort>();
+        assert_send_sync::<dyn Command>();
+        assert_send_sync::<dyn Query>();
     }
 }
 
@@ -103,7 +103,7 @@ impl FakeTemplateStorage {
     }
 }
 
-impl TemplateQueryPort for FakeTemplateStorage {
+impl Query for FakeTemplateStorage {
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
         let templates = self
@@ -158,7 +158,7 @@ impl TemplateQueryPort for FakeTemplateStorage {
     }
 }
 
-impl TemplateCommandPort for FakeTemplateStorage {
+impl Command for FakeTemplateStorage {
     #[inline]
     fn create(&self, template: &Template) -> Result<(), TemplateError> {
         let mut templates = self
