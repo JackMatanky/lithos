@@ -122,33 +122,15 @@ pub(crate) mod db_table {
     pub(crate) const FRONTMATTER_KV: MultimapTableDefinition<&str, &str> =
         MultimapTableDefinition::new("frontmatter_kv");
 }
+
 use self::{
     adapter::{command::CommandAdapter, query::QueryAdapter},
     command::Command,
     query::Query,
 };
-use crate::db::Database;
 
 /// Redb-backed note command alias.
 pub type RedbNoteCommand<'db> = Command<CommandAdapter<'db>>;
 
 /// Redb-backed note query alias.
 pub type RedbNoteQuery<'db> = Query<QueryAdapter<'db>>;
-
-impl<'db> RedbNoteCommand<'db> {
-    #[inline]
-    #[must_use]
-    /// Create a redb-backed note command.
-    pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(CommandAdapter::new(db))
-    }
-}
-
-impl<'db> RedbNoteQuery<'db> {
-    #[inline]
-    #[must_use]
-    /// Create a redb-backed note query.
-    pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(QueryAdapter::new(db))
-    }
-}
