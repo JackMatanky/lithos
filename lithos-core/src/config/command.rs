@@ -18,105 +18,22 @@ use super::{
 /// Command implementation for configuration write operations.
 ///
 /// This struct handles configuration mutations (saving, rebuilding, version
-/// activation). It composes a query port for read-only version lookups and a
-/// command port for persistence.
+/// activation). It composes a query port for internal version lookups and a
+/// command port for persistence, but it does not expose read APIs.
 ///
 /// # Examples
 ///
-/// ```rust
-/// # use lithos_core::config::{
-/// #     aggregate::{Config, Version},
-/// #     command::Command,
-/// #     global::Global,
-/// #     vault::{Vault, VaultId, VaultRoot},
-/// #     ports,
+/// ```rust,no_run
+/// # use tempfile::tempdir;
+/// # use lithos_core::{
+/// #     config::{global::Global, RedbConfigCommand},
+/// #     db::Database,
 /// # };
-/// # struct MockQueryPort;
-/// # struct MockCommandPort;
-/// #
-/// # impl ports::Query for MockQueryPort {
-/// #     type Error = std::io::Error;
-/// #
-/// #     fn get_active_version(
-/// #         &self,
-/// #         _: VaultId,
-/// #     ) -> Result<Option<Version>, Self::Error> {
-/// #         Ok(None)
-/// #     }
-/// #
-/// #     fn get_global(&self) -> Result<Option<Global>, Self::Error> {
-/// #         Ok(None)
-/// #     }
-/// #
-/// #     fn get_vault(
-/// #         &self,
-/// #         _: VaultId,
-/// #     ) -> Result<Option<Vault>, Self::Error> {
-/// #         Ok(None)
-/// #     }
-/// #
-/// #     fn get_merged_owned(
-/// #         &self,
-/// #         _: VaultId,
-/// #         _: Version,
-/// #     ) -> Result<Option<Config>, Self::Error> {
-/// #         Ok(None)
-/// #     }
-/// #
-/// #     fn with_archived<R, F>(
-/// #         &self,
-/// #         _: VaultId,
-/// #         _: Version,
-/// #         _: F,
-/// #     ) -> Result<Option<R>, Self::Error>
-/// #     where
-/// #         F: for<'archived> FnOnce(&'archived rkyv::Archived<Config>) -> R,
-/// #     {
-/// #         Ok(None)
-/// #     }
-/// # }
-/// #
-/// # impl ports::Command for MockCommandPort {
-/// #     type Error = std::io::Error;
-/// #
-/// #     fn save_global(&self, _: &Global) -> Result<(), Self::Error> {
-/// #         Ok(())
-/// #     }
-/// #
-/// #     fn save_merged(
-/// #         &self,
-/// #         _: VaultId,
-/// #         _: Version,
-/// #         _: &Config,
-/// #     ) -> Result<(), Self::Error> {
-/// #         Ok(())
-/// #     }
-/// #
-/// #     fn save_vault(
-/// #         &self,
-/// #         _: VaultId,
-/// #         _: &Vault,
-/// #     ) -> Result<(), Self::Error> {
-/// #         Ok(())
-/// #     }
-/// #
-/// #     fn save_vault_path_mapping(
-/// #         &self,
-/// #         _: VaultId,
-/// #         _: &VaultRoot,
-/// #     ) -> Result<(), Self::Error> {
-/// #         Ok(())
-/// #     }
-/// #
-/// #     fn set_active_version(
-/// #         &self,
-/// #         _: VaultId,
-/// #         _: Version,
-/// #     ) -> Result<(), Self::Error> {
-/// #         Ok(())
-/// #     }
-/// # }
-/// let cmd = Command::new(MockQueryPort, MockCommandPort);
+/// let dir = tempdir()?;
+/// let db = Database::open(&dir.path().join("config.redb"))?;
+/// let command = RedbConfigCommand::new_redb(&db);
+/// command.save_global(&Global::default())?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct Command<Q, C> {
     /// Port interface for query storage operations.

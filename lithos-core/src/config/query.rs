@@ -17,8 +17,24 @@ use super::{
 /// Query implementation for configuration read operations.
 ///
 /// This struct provides the primary interface for retrieving persisted
-/// configuration data (merged snapshots plus global/vault settings). It is
-/// generic over a [`config_ports::Query`] to support different backends.
+/// configuration data (merged snapshots plus global/vault settings) without
+/// performing any mutations. It is generic over a [`config_ports::Query`] to
+/// support different backends.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// # use tempfile::tempdir;
+/// # use lithos_core::{
+/// #     config::{RedbConfigQuery, vault::VaultId},
+/// #     db::Database,
+/// # };
+/// let dir = tempdir()?;
+/// let db = Database::open(&dir.path().join("config.redb"))?;
+/// let query = RedbConfigQuery::new_redb(&db);
+/// let _config = query.get(VaultId::new())?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct Query<Q> {
     /// Port interface for storage operations.
     query_port: Q,
