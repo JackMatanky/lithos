@@ -1,7 +1,7 @@
 //! Template aggregate root and composition logic.
 //!
 //! Handles template lifecycle, variable definitions, and hierarchical
-//! composition through section insertion.
+//! composition through native MiniJinja inheritance.
 #![allow(
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
@@ -22,11 +22,8 @@ use uuid::Uuid;
 
 use super::{
     block::TemplateBlock,
-    composition::{Composition, InsertionPosition, Section},
     error::TemplateError,
     events::{Events, TemplateCreated},
-    syntax::PlaceholderSyntax,
-    validation::validate_structure,
     variable::VariableDefinition,
 };
 use crate::patterns;
@@ -98,7 +95,7 @@ impl Default for Metadata {
     }
 }
 
-/// Aggregate root representing a reusable template.
+/// Aggregate root representing a reusable template metadata schema.
 #[derive(
     Debug,
     Clone,
@@ -128,20 +125,8 @@ pub struct Template {
     #[rkyv(with = rkyv::with::Skip)]
     #[serde(skip)]
     pub pending_events: Vec<Events>,
-
-    /// Deprecated content field.
-    #[deprecated]
-    pub content: String,
-    /// Deprecated syntax field.
-    #[deprecated]
-    pub syntax: PlaceholderSyntax,
 }
 
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "Function ordering optimized for logical flow; matching on \
-              reference to enum avoids borrow checker friction"
-)]
 impl Template {
     /// Creates a new template aggregate with validation.
     ///
@@ -178,10 +163,6 @@ impl Template {
             variables,
             metadata: Metadata::default(),
             pending_events: vec![],
-            #[expect(deprecated, reason = "Legacy field")]
-            content: String::new(),
-            #[expect(deprecated, reason = "Legacy field")]
-            syntax: PlaceholderSyntax::default(),
         };
 
         template.add_event(Events::TemplateCreated(TemplateCreated::new(
@@ -305,147 +286,11 @@ impl Template {
         &self.pending_events
     }
 
-    // --- Deprecated Methods ---
-
-    /// Returns the template's content.
-    #[inline]
-    #[must_use]
-    #[deprecated]
-    #[expect(deprecated, reason = "Legacy field")]
-    pub fn content(&self) -> &str {
-        &self.content
-    }
-
     /// Returns true if the template defines any variables.
     #[inline]
     #[must_use]
     pub fn has_variables(&self) -> bool {
         !self.variables.is_empty()
-    }
-
-    /// Returns the template's placeholder syntax.
-    #[inline]
-    #[must_use]
-    #[deprecated]
-    #[expect(deprecated, reason = "Legacy field")]
-    pub const fn syntax(&self) -> &PlaceholderSyntax {
-        &self.syntax
-    }
-
-    /// Validates template constraints.
-    ///
-    /// # Errors
-    /// Returns `TemplateError` if validation fails.
-    #[inline]
-    #[deprecated(note = "Template syntax validation is handled by MiniJinja.")]
-    #[expect(deprecated, reason = "Legacy method")]
-    pub fn validate(&self) -> Result<(), TemplateError> {
-        validate_structure(
-            &self.content,
-            &self.syntax.prefix,
-            &self.syntax.suffix,
-        )?;
-        Ok(())
-    }
-
-    /// Composes a template from a base and a composition.
-    ///
-    /// # Errors
-    /// Returns `TemplateError` if composition fails.
-    #[inline]
-    #[deprecated(note = "Composition is handled by MiniJinja inheritance ({% \
-                         extends %}).")]
-    #[expect(deprecated, reason = "Legacy method")]
-    pub fn compose(
-        base: &Self,
-        composition: &Composition,
-        templates: &HashMap<&str, &Template>,
-    ) -> Result<Self, TemplateError> {
-        composition.validate(base)?;
-        composition.detect_cycles(templates)?;
-
-        let mut final_content = base.content.clone();
-        base.apply_sections(
-            &mut final_content,
-            &composition.additional_sections,
-        );
-
-        let id = Uuid::now_v7();
-        let name = format!("{}-composed", base.name);
-
-        let mut template = Self {
-            id,
-            name: name.clone().into(),
-            extends: Some(base.name.clone()),
-            blocks: base.blocks.clone(), // Naive copy, deprecated anyway
-            variables: base.variables.clone(),
-            metadata: Metadata::default(),
-            pending_events: vec![],
-            content: final_content,
-            syntax: base.syntax.clone(),
-        };
-
-        template.add_event(Events::TemplateCreated(TemplateCreated::new(
-            id,
-            &name,
-            chrono::Utc::now().timestamp(),
-        )));
-
-        Ok(template)
-    }
-
-    /// Applies additional sections to content.
-    fn apply_sections(&self, content: &mut String, sections: &[Section]) {
-        for section in sections {
-            match &section.position {
-                InsertionPosition::Beginning => {
-                    content.insert(0, '\n');
-                    content.insert_str(0, &section.content);
-                }
-                InsertionPosition::End => {
-                    content.push('\n');
-                    content.push_str(&section.content);
-                }
-                InsertionPosition::BeforeVariable(var_name) => {
-                    self.insert_relative_to_variable(
-                        content,
-                        var_name,
-                        &section.content,
-                        false,
-                    );
-                }
-                InsertionPosition::AfterVariable(var_name) => {
-                    self.insert_relative_to_variable(
-                        content,
-                        var_name,
-                        &section.content,
-                        true,
-                    );
-                }
-            }
-        }
-    }
-
-    #[expect(deprecated, reason = "Legacy method")]
-    fn insert_relative_to_variable(
-        &self,
-        content: &mut String,
-        var_name: &str,
-        section_content: &str,
-        after: bool,
-    ) {
-        let placeholder = self.syntax.wrap(var_name);
-        if let Some(pos) = content.find(&placeholder) {
-            if after {
-                let insert_pos = pos.saturating_add(placeholder.len());
-                content.insert(insert_pos, '\n');
-                content
-                    .insert_str(insert_pos.saturating_add(1), section_content);
-            } else {
-                content.insert_str(pos, section_content);
-                content.insert(pos.saturating_add(section_content.len()), '\n');
-            }
-        }
     }
 
     // --- Validation Helpers ---

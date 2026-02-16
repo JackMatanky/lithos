@@ -13,8 +13,6 @@ pub mod block;
 pub mod catalog;
 /// Template command implementations (CQRS write operations).
 pub mod command;
-/// Template composition logic.
-pub mod composition;
 /// Template errors.
 pub mod error;
 /// Template domain events.
@@ -23,10 +21,6 @@ pub mod events;
 pub mod ports;
 /// Template query implementations (CQRS read operations).
 pub mod query;
-/// Template placeholder syntax.
-pub mod syntax;
-/// Template validation logic.
-pub mod validation;
 /// Template variable definitions.
 pub mod variable;
 
