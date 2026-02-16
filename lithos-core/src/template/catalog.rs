@@ -17,20 +17,20 @@ use crate::template::{
 /// Template catalog: orchestrates loading, compilation, and rendering.
 ///
 /// # Responsibilities
-/// - Loads all templates from storage (via `TemplateQueryPort`).
+/// - Loads all templates from storage (via `Query` port).
 /// - Topologically sorts by extends relationships (parents before children).
 /// - Compiles templates via `SourceGenerator` + `MiniJinja`.
 /// - Caches compiled templates in `Arc<Environment>` (shared across threads).
 /// - Provides unified render API.
-pub struct TemplateCatalog {
+pub struct TemplateCatalog<Q: Query> {
     /// Compiled templates (shared across threads).
     env: Arc<Environment<'static>>,
 
     /// Domain metadata storage (for template queries).
-    metadata: Box<dyn Query>,
+    metadata: Q,
 }
 
-impl TemplateCatalog {
+impl<Q: Query> TemplateCatalog<Q> {
     /// Constructs catalog with storage backend.
     ///
     /// Configures `MiniJinja` Environment:
@@ -42,7 +42,7 @@ impl TemplateCatalog {
     /// # Errors
     /// Returns `TemplateError` if initialization fails.
     #[inline]
-    pub fn new(metadata: Box<dyn Query>) -> Result<Self, TemplateError> {
+    pub fn new(metadata: Q) -> Result<Self, TemplateError> {
         let mut env = Environment::new();
         env.set_undefined_behavior(UndefinedBehavior::Strict);
         env.set_recursion_limit(10);
@@ -268,7 +268,7 @@ mod tests {
         storage.create(&child).unwrap();
 
         // Load all into catalog (automatic topological sort)
-        let mut catalog = TemplateCatalog::new(Box::new(storage)).unwrap();
+        let mut catalog = TemplateCatalog::new(storage).unwrap();
         catalog.load_all().unwrap();
 
         // Render child template
@@ -294,7 +294,7 @@ mod tests {
         storage.create(&b).unwrap();
 
         // Load should fail with cycle detection error
-        let mut catalog = TemplateCatalog::new(Box::new(storage)).unwrap();
+        let mut catalog = TemplateCatalog::new(storage).unwrap();
         let result = catalog.load_all();
 
         assert!(matches!(result, Err(TemplateError::CircularComposition(_))));
@@ -343,7 +343,7 @@ mod tests {
         storage.create(&parent).unwrap();
 
         // Catalog should sort them correctly
-        let mut catalog = TemplateCatalog::new(Box::new(storage)).unwrap();
+        let mut catalog = TemplateCatalog::new(storage).unwrap();
         catalog.load_all().unwrap();
 
         // All three should render correctly
@@ -374,7 +374,7 @@ mod tests {
         storage.create(&t1).unwrap();
         storage.create(&t2).unwrap();
 
-        let catalog = TemplateCatalog::new(Box::new(storage)).unwrap();
+        let catalog = TemplateCatalog::new(storage).unwrap();
         let names = catalog.list_names().unwrap();
 
         assert_eq!(names.len(), 2);

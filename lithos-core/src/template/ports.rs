@@ -34,6 +34,9 @@ pub trait Command: Send + Sync {
 
 /// Query port for template-related read operations.
 pub trait Query: Send + Sync {
+    /// Archived template type for zero-copy reads.
+    type Archived<'archived>;
+
     /// Find a template by ID.
     ///
     /// # Errors
@@ -63,6 +66,18 @@ pub trait Query: Send + Sync {
         &self,
         composition: &Composition,
     ) -> Result<Template, TemplateError>;
+
+    /// Access a template with zero-copy.
+    ///
+    /// # Errors
+    /// Returns `TemplateError` if query fails.
+    fn with_archived<F, R>(
+        &self,
+        id: Uuid,
+        f: F,
+    ) -> Result<Option<R>, TemplateError>
+    where
+        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R;
 }
 
 #[cfg(test)]
@@ -75,15 +90,18 @@ mod tests {
     }
 
     #[test]
-    fn query_trait_is_object_safe() {
-        let _: Option<Box<dyn Query>> = None;
-    }
-
-    #[test]
     fn traits_are_send_and_sync() {
         fn assert_send_sync<T: Send + Sync + ?Sized>() {}
         assert_send_sync::<dyn Command>();
-        assert_send_sync::<dyn Query>();
+    }
+
+    #[test]
+    fn query_trait_is_send_and_sync() {
+        fn assert_send_sync<T: Query>() {
+            fn is_send_sync<U: Send + Sync>() {}
+            is_send_sync::<T>();
+        }
+        assert_send_sync::<FakeTemplateStorage>();
     }
 }
 
@@ -104,6 +122,8 @@ impl FakeTemplateStorage {
 }
 
 impl Query for FakeTemplateStorage {
+    type Archived<'archived> = &'archived Template;
+
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Template>, TemplateError> {
         let templates = self
@@ -155,6 +175,22 @@ impl Query for FakeTemplateStorage {
         {
             unimplemented!("resolve() not needed for catalog tests")
         }
+    }
+
+    #[inline]
+    fn with_archived<F, R>(
+        &self,
+        id: Uuid,
+        f: F,
+    ) -> Result<Option<R>, TemplateError>
+    where
+        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
+    {
+        let templates = self
+            .templates
+            .lock()
+            .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
+        Ok(templates.get(&id).map(f))
     }
 }
 
