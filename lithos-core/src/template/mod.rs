@@ -36,4 +36,4 @@ pub(crate) mod db_table {
 pub use aggregate::{Metadata, Template};
 pub use block::{BlockStrategy, TemplateBlock};
 pub use catalog::TemplateCatalog;
-pub use variable::VariableDefinition;
+pub use variable::InputSpec;

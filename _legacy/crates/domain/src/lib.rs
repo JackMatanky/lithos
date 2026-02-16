@@ -65,5 +65,5 @@ pub use schema::{
 pub use template::{
     InsertionPosition, PlaceholderSyntax, Template, TemplateComposition,
     TemplateCreated, TemplateEvents, TemplateMetadata, TemplateSection,
-    VariableDefinition,
+    InputSpec,
 };

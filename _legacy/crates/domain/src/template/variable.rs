@@ -4,8 +4,8 @@ use crate::{errors::DomainError, validation};
 ///
 /// # Examples
 /// ```
-/// # use lithos_domain::VariableDefinition;
-/// let definition = VariableDefinition::Number {
+/// # use lithos_domain::InputSpec;
+/// let definition = InputSpec::Number {
 ///     default: Some(3.0),
 ///     min: Some(1.0),
 ///     max: Some(5.0),
@@ -18,7 +18,7 @@ use crate::{errors::DomainError, validation};
     clippy::unsafe_derive_deserialize,
     reason = "No unsafe code in this enum, false positive"
 )]
-pub enum VariableDefinition {
+pub enum InputSpec {
     /// Boolean variable.
     Boolean {
         /// Default value.
@@ -65,7 +65,7 @@ pub enum VariableDefinition {
     reason = "Function ordering optimized for logical flow over strict \
               alphabetical order"
 )]
-impl VariableDefinition {
+impl InputSpec {
     /// Checks string pattern constraints.
     /// Adversarial Review Fix: Use a cache to avoid recompiling the same regex.
     fn check_string_pattern(
@@ -213,8 +213,8 @@ impl VariableDefinition {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_domain::VariableDefinition;
-    /// let definition = VariableDefinition::String {
+    /// # use lithos_domain::InputSpec;
+    /// let definition = InputSpec::String {
     ///     default: None,
     ///     min_length: Some(1),
     ///     max_length: Some(5),
@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn should_validate_boolean_constraints() {
         // GIVEN: a boolean variable definition
-        let def = VariableDefinition::Boolean {
+        let def = InputSpec::Boolean {
             default: None,
         };
 
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn should_validate_number_constraints() {
         // GIVEN: a numeric variable definition with range constraints
-        let def = VariableDefinition::Number {
+        let def = InputSpec::Number {
             default: None,
             max: Some(10.0f64),
             min: Some(1.0f64),
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn accessors_expose_defaults() {
         // GIVEN: a variable definition with a default value
-        let def = VariableDefinition::String {
+        let def = InputSpec::String {
             default: Some("Title".to_owned()),
             max_length: None,
             min_length: None,
@@ -402,7 +402,7 @@ mod tests {
     #[test]
     fn should_validate_date_variable() {
         // GIVEN: a date variable definition
-        let def = VariableDefinition::Date {
+        let def = InputSpec::Date {
             default: None,
             format: None,
         };
@@ -412,7 +412,7 @@ mod tests {
         assert!(def.validate_value(&serde_json::json!("invalid")).is_err());
 
         // AND: handles custom formats
-        let def_fmt = VariableDefinition::Date {
+        let def_fmt = InputSpec::Date {
             default: None,
             format: Some("%Y-%m-%d".to_owned()),
         };
@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn should_validate_file_variable() {
         // GIVEN: a file variable definition
-        let def = VariableDefinition::File {
+        let def = InputSpec::File {
             default: None,
             file_types: Some(vec!["md".to_owned()]),
         };
@@ -436,7 +436,7 @@ mod tests {
         assert!(def.validate_value(&serde_json::json!("/abs/path")).is_err());
 
         // AND: handles no type restriction
-        let def_any = VariableDefinition::File {
+        let def_any = InputSpec::File {
             default: None,
             file_types: None,
         };
@@ -446,7 +446,7 @@ mod tests {
     #[test]
     fn should_validate_file_variable_extensions() {
         // GIVEN: a file variable with multiple allowed types
-        let def = VariableDefinition::File {
+        let def = InputSpec::File {
             default: None,
             file_types: Some(vec!["md".to_owned(), "txt".to_owned()]),
         };
@@ -462,7 +462,7 @@ mod tests {
     #[test]
     fn should_validate_string_variable_constraints() {
         // GIVEN: a string variable with length constraints
-        let def = VariableDefinition::String {
+        let def = InputSpec::String {
             default: None,
             max_length: Some(5),
             min_length: Some(2),
@@ -475,7 +475,7 @@ mod tests {
         assert!(def.validate_value(&serde_json::json!("abcdef")).is_err());
 
         // AND: handles min/max independently
-        let def_min = VariableDefinition::String {
+        let def_min = InputSpec::String {
             default: None,
             min_length: Some(3),
             max_length: None,
@@ -483,7 +483,7 @@ mod tests {
         };
         assert!(def_min.validate_value(&serde_json::json!("ab")).is_err());
 
-        let def_max = VariableDefinition::String {
+        let def_max = InputSpec::String {
             default: None,
             min_length: None,
             max_length: Some(3),
@@ -495,7 +495,7 @@ mod tests {
     #[test]
     fn should_validate_string_pattern_with_caching() {
         // GIVEN: a string variable with a pattern
-        let def = VariableDefinition::String {
+        let def = InputSpec::String {
             default: None,
             max_length: None,
             min_length: None,

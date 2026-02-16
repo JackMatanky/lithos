@@ -24,7 +24,7 @@ use super::{
     block::TemplateBlock,
     error::TemplateError,
     events::{Events, TemplateCreated},
-    variable::VariableDefinition,
+    variable::InputSpec,
 };
 use crate::patterns;
 
@@ -118,7 +118,7 @@ pub struct Template {
     /// Block definitions.
     pub blocks: Vec<TemplateBlock>,
     /// Variable definitions.
-    pub variables: HashMap<String, VariableDefinition>,
+    pub variables: HashMap<String, InputSpec>,
     /// Metadata for template management.
     pub metadata: Metadata,
     /// Domain events pending emission.
@@ -138,7 +138,7 @@ impl Template {
         name: &str,
         extends: Option<&str>,
         blocks: Vec<TemplateBlock>,
-        variables: HashMap<String, VariableDefinition>,
+        variables: HashMap<String, InputSpec>,
     ) -> Result<Self, TemplateError> {
         Self::validate_name(name)?;
         Self::validate_variable_definitions(&variables)?;
@@ -261,7 +261,7 @@ impl Template {
     /// Returns the template's variable definitions.
     #[inline]
     #[must_use]
-    pub fn variables(&self) -> &HashMap<String, VariableDefinition> {
+    pub fn variables(&self) -> &HashMap<String, InputSpec> {
         &self.variables
     }
 
@@ -330,7 +330,7 @@ impl Template {
                   validation regardless of order."
     )]
     fn validate_variable_definitions(
-        variables: &HashMap<String, VariableDefinition>,
+        variables: &HashMap<String, InputSpec>,
     ) -> Result<(), TemplateError> {
         Self::validate_max_variables_not_exceeded(variables.len())?;
 

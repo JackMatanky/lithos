@@ -21,7 +21,7 @@ use crate::bounds::Bounds;
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub enum VariableDefinition {
+pub enum InputSpec {
     /// Boolean variable.
     Boolean {
         /// Default value.
@@ -59,7 +59,7 @@ pub enum VariableDefinition {
     },
 }
 
-impl VariableDefinition {
+impl InputSpec {
     /// Returns filter names to apply at render time.
     #[inline]
     #[must_use]
@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn has_default_returns_true_when_default_present() {
-        let def = VariableDefinition::String {
+        let def = InputSpec::String {
             default: Some("Title".into()),
             length: Bounds::Unbounded,
             pattern: None,
@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn get_default_value_returns_configured_value() {
-        let def = VariableDefinition::String {
+        let def = InputSpec::String {
             default: Some("Title".into()),
             length: Bounds::Unbounded,
             pattern: None,
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn filter_chain_for_string_with_pattern_and_length() {
-        let var = VariableDefinition::String {
+        let var = InputSpec::String {
             default: None,
             length: Bounds::Range {
                 min: 5,
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn filter_chain_for_number_with_range() {
-        let var = VariableDefinition::Number {
+        let var = InputSpec::Number {
             default: None,
             bounds: Bounds::Range {
                 min: 1.0f64,
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn filter_args_for_string() {
-        let var = VariableDefinition::String {
+        let var = InputSpec::String {
             default: None,
             length: Bounds::Range {
                 min: 5,
