@@ -18,6 +18,8 @@ chrono.workspace = true
 blake3.workspace = true
 rand.workspace = true
 regex.workspace = true
+walkdir.workspace = true
+glob.workspace = true
 itoa = "1.0"
 ryu = "1.0"
 

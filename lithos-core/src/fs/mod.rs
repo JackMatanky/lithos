@@ -18,13 +18,18 @@
 //! - **markdown**: Offset-aware markdown parsing utilities.
 //!   - Wraps pulldown-cmark for adapter layers.
 
-#![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
+#![expect(
+    clippy::module_name_repetitions,
+    reason = "Namespaced types improve clarity in calling code"
+)]
 /// Filesystem error types.
 pub mod error;
 /// Markdown parsing utilities.
 pub mod markdown;
 /// Structured data parsers (TOML/JSON/YAML).
 pub mod parsers;
+/// File system abstraction for testable file I/O.
+pub mod source;
 /// Security-critical path validation utilities.
 pub mod validator;
 
@@ -45,6 +50,10 @@ pub type ParseError = error::ParseError;
 pub type PathValidator = validator::Validator;
 /// Path validation error type alias.
 pub type PathValidationError = error::PathValidationError;
+/// Filesystem file source type alias.
+pub type FsFileSource = source::FsFileSource;
+/// In-memory file source type alias.
+pub type InMemoryFileSource = source::InMemoryFileSource;
 
 #[inline]
 #[must_use]
