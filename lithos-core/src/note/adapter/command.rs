@@ -10,7 +10,6 @@ use crate::{
     note::{
         aggregate::{Note, NoteId},
         db_table::{NOTES, PATH_TO_ID, TAGS_TO_NOTES},
-        error::NoteCommandError,
         ports::Command,
     },
 };
@@ -38,30 +37,31 @@ impl<'db> CommandAdapter<'db> {
     fn get_note_index_data(
         &self,
         id: Uuid,
-    ) -> Result<Option<IndexData>, NoteCommandError> {
-        self.db
-            .get::<Note, _, (String, Vec<String>)>(
-                NOTES,
-                &id.to_string(),
-                |archived| {
-                    let path = archived.path().as_str().to_owned();
-                    let tags: Vec<String> = archived
-                        .tags()
-                        .iter()
-                        .map(|t| t.full_path().as_str().to_owned())
-                        .collect();
-                    (path, tags)
-                },
-            )
-            .map_err(NoteCommandError::Storage)
+    ) -> Result<Option<IndexData>, crate::db::DbError> {
+        self.db.get::<Note, _, (String, Vec<String>)>(
+            NOTES,
+            &id.to_string(),
+            |archived| {
+                let path = archived.path().as_str().to_owned();
+                let tags: Vec<String> = archived
+                    .tags()
+                    .iter()
+                    .map(|t| t.full_path().as_str().to_owned())
+                    .collect();
+                (path, tags)
+            },
+        )
     }
 }
 
 impl Command for CommandAdapter<'_> {
+    type Error = crate::db::DbError;
+
     /// Creates a new note with the given vault-relative path.
     #[inline]
-    fn create(&self, path: &str) -> Result<Note, NoteCommandError> {
-        let note = Note::new(NoteId::new(), path)?;
+    fn create(&self, path: &str) -> Result<Note, Self::Error> {
+        let note = Note::new(NoteId::new(), path)
+            .map_err(|e| crate::db::DbError::Table(e.to_string()))?;
         let id = Uuid::from(note.id());
 
         self.db.batch_write(|batch| {
@@ -79,7 +79,7 @@ impl Command for CommandAdapter<'_> {
 
     /// Deletes a note by ID.
     #[inline]
-    fn delete(&self, id: Uuid) -> Result<(), NoteCommandError> {
+    fn delete(&self, id: Uuid) -> Result<(), Self::Error> {
         let old_data = self.get_note_index_data(id)?;
 
         if let Some((path, tags)) = old_data {
@@ -102,7 +102,7 @@ impl Command for CommandAdapter<'_> {
 
     /// Updates an existing note.
     #[inline]
-    fn update(&self, note: Note) -> Result<Note, NoteCommandError> {
+    fn update(&self, note: Note) -> Result<Note, Self::Error> {
         let id = Uuid::from(note.id());
         let old_data = self.get_note_index_data(id)?;
 
@@ -161,7 +161,7 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use super::*;
-    use crate::note::error::NoteError;
+    use crate::note::error::{NoteCommandError, NoteError};
 
     mod fixtures {
         use super::*;
@@ -181,21 +181,21 @@ mod tests {
             cmd: &CommandAdapter,
             path: &str,
         ) -> Result<Note, NoteCommandError> {
-            Command::create(cmd, path)
+            Ok(Command::create(cmd, path)?)
         }
 
         pub fn update_note(
             cmd: &CommandAdapter,
             note: Note,
         ) -> Result<Note, NoteCommandError> {
-            Command::update(cmd, note)
+            Ok(Command::update(cmd, note)?)
         }
 
         pub fn delete_note(
             cmd: &CommandAdapter,
             id: Uuid,
         ) -> Result<(), NoteCommandError> {
-            Command::delete(cmd, id)
+            Ok(Command::delete(cmd, id)?)
         }
 
         pub fn parse_path(path: &str) -> Result<NotePath, String> {

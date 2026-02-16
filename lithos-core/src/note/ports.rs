@@ -15,10 +15,7 @@
 
 use uuid::Uuid;
 
-use super::{
-    aggregate::Note,
-    error::{NoteCommandError, NoteQueryError},
-};
+use super::aggregate::Note;
 
 /// Command port for Note write operations.
 ///
@@ -26,35 +23,29 @@ use super::{
 /// Implementations handle the atomic persistence of notes and the maintenance
 /// of their secondary indexes.
 pub trait Command: Send + Sync {
+    /// Storage error type for command operations.
+    type Error: std::error::Error;
+
     /// Creates a new note with the given vault-relative path.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteCommandError`] if:
-    /// - The note already exists at the given path.
-    /// - Initial index population fails.
-    /// - The storage layer returns an error.
-    fn create(&self, path: &str) -> Result<Note, NoteCommandError>;
+    /// Returns a storage-specific error if creation fails.
+    fn create(&self, path: &str) -> Result<Note, Self::Error>;
 
     /// Deletes a note by its unique identifier.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteCommandError`] if:
-    /// - The note does not exist.
-    /// - Cleanup of secondary indexes fails.
-    /// - The storage layer returns an error.
-    fn delete(&self, id: Uuid) -> Result<(), NoteCommandError>;
+    /// Returns a storage-specific error if deletion fails.
+    fn delete(&self, id: Uuid) -> Result<(), Self::Error>;
 
     /// Updates an existing note aggregate.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteCommandError`] if:
-    /// - The note does not exist.
-    /// - Atomically updating the note and its indexes fails.
-    /// - The storage layer returns an error.
-    fn update(&self, note: Note) -> Result<Note, NoteCommandError>;
+    /// Returns a storage-specific error if update fails.
+    fn update(&self, note: Note) -> Result<Note, Self::Error>;
 }
 
 /// Query port for Note read operations.
@@ -63,6 +54,9 @@ pub trait Command: Send + Sync {
 /// Implementations provide high-performance, zero-copy access to note and
 /// task data through specialized indexes.
 pub trait Query: Send + Sync {
+    /// Storage error type for query operations.
+    type Error: std::error::Error;
+
     /// Archived note type for zero-copy reads.
     type NoteArchived<'archived>;
 
@@ -70,131 +64,125 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
-    fn find_by_alias(
-        &self,
-        alias: &str,
-    ) -> Result<Option<Note>, NoteQueryError>;
+    /// Returns a storage-specific error if query fails.
+    fn find_by_alias(&self, alias: &str) -> Result<Option<Note>, Self::Error>;
 
     /// Finds all notes belonging to a specific file class.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
-    fn find_by_file_class(
-        &self,
-        class: &str,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    /// Returns a storage-specific error if query fails.
+    fn find_by_file_class(&self, class: &str)
+    -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes located within a specific vault folder.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
-    fn find_by_folder(&self, folder: &str)
-    -> Result<Vec<Note>, NoteQueryError>;
+    /// Returns a storage-specific error if query fails.
+    fn find_by_folder(&self, folder: &str) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds a note by its unique UUID v7 identifier (owned).
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError>;
+    /// Returns a storage-specific error if query fails.
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, Self::Error>;
 
     /// Finds a note by its vault-relative path (owned).
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
-    fn find_by_path(&self, path: &str) -> Result<Option<Note>, NoteQueryError>;
+    /// Returns a storage-specific error if query fails.
+    fn find_by_path(&self, path: &str) -> Result<Option<Note>, Self::Error>;
 
     /// Finds all notes containing tasks completed on a specific date.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
+    /// Returns a storage-specific error if query fails.
     fn find_by_task_completed_date(
         &self,
         completed_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks created on a specific date.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
+    /// Returns a storage-specific error if query fails.
     fn find_by_task_created_date(
         &self,
         created_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks due on a specific date.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
+    /// Returns a storage-specific error if query fails.
     fn find_by_task_due_date(
         &self,
         due_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks with a specific priority level.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
+    /// Returns a storage-specific error if query fails.
     fn find_by_task_priority(
         &self,
         priority: f64,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks assigned to a specific project.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
+    /// Returns a storage-specific error if query fails.
     fn find_by_task_project(
         &self,
         project: &str,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks with a specific reminder date.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
+    /// Returns a storage-specific error if query fails.
     fn find_by_task_reminder_date(
         &self,
         reminder_date: i64,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks with a specific status name.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
+    /// Returns a storage-specific error if query fails.
     fn find_by_task_status(
         &self,
         status: &str,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    ) -> Result<Vec<Note>, Self::Error>;
 
     /// Lists all notes currently managed in the vault (owned).
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
-    fn list(&self) -> Result<Vec<Note>, NoteQueryError>;
+    /// Returns a storage-specific error if query fails.
+    fn list(&self) -> Result<Vec<Note>, Self::Error>;
 
     /// Queries notes by a generic frontmatter key-value pair.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if the underlying storage fails.
+    /// Returns a storage-specific error if query fails.
     fn query_frontmatter_kv(
         &self,
         key: &str,
         value: &str,
-    ) -> Result<Vec<Note>, NoteQueryError>;
+    ) -> Result<Vec<Note>, Self::Error>;
 
     /// Accesses a note by ID as archived data, enabling zero-copy reads.
     ///
@@ -203,15 +191,12 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteQueryError`] if:
-    /// - The note is not found.
-    /// - The storage layer fails.
-    /// - Zero-copy access validation fails.
+    /// Returns a storage-specific error if query fails.
     fn with_archived_by_id<F, R>(
         &self,
         id: Uuid,
         f: F,
-    ) -> Result<Option<R>, NoteQueryError>
+    ) -> Result<Option<R>, Self::Error>
     where
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R;
 }
@@ -219,12 +204,13 @@ pub trait Query: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::note::error::NoteCommandError;
 
     #[test]
     fn command_trait_is_object_safe() {
         // GIVEN: the Command trait
         // WHEN: used as a trait object
-        fn _assert_object_safe(_: &dyn Command) {}
+        fn _assert_object_safe(_: &dyn Command<Error = NoteCommandError>) {}
         // THEN: it compiles
     }
 
