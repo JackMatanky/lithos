@@ -18,6 +18,9 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use regex::Regex;
+use rkyv::{
+    Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
+};
 use uuid::Uuid;
 
 use super::{
@@ -55,6 +58,137 @@ const RESERVED_WORDS: &[&str] = &[
     "with",
 ];
 
+/// Unique template name enforced by domain constraints.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    RkyvSerialize,
+    RkyvDeserialize,
+)]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
+pub struct TemplateName(pub Box<str>);
+
+impl TemplateName {
+    /// Returns the template name as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for TemplateName {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<&str> for TemplateName {
+    type Error = TemplateError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        static RE: LazyLock<Result<Regex, regex::Error>> =
+            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME));
+
+        if value.is_empty() {
+            return Err(TemplateError::EmptyTemplateName);
+        }
+        if value.len() > 64 {
+            return Err(TemplateError::TemplateNameTooLong(value.len()));
+        }
+
+        let re = RE.as_ref().map_err(|error| {
+            TemplateError::ValidationFailed(format!(
+                "Invalid template name regex: {error}"
+            ))
+        })?;
+
+        if !re.is_match(value) {
+            return Err(TemplateError::InvalidTemplateName(value.to_owned()));
+        }
+        Ok(Self(value.into()))
+    }
+}
+
+/// Unique input name enforced by domain constraints.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    RkyvSerialize,
+    RkyvDeserialize,
+)]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
+pub struct InputName(pub Box<str>);
+
+impl InputName {
+    /// Returns the input name as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for InputName {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<&str> for InputName {
+    type Error = TemplateError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        static RE: LazyLock<Result<Regex, regex::Error>> =
+            LazyLock::new(|| Regex::new(patterns::IDENTIFIER_NAME));
+
+        if value.is_empty() {
+            return Err(TemplateError::EmptyInputName);
+        }
+        if value.len() > 32 {
+            return Err(TemplateError::InputNameTooLong(value.len()));
+        }
+
+        let re = RE.as_ref().map_err(|error| {
+            TemplateError::ValidationFailed(format!(
+                "Invalid input name regex: {error}"
+            ))
+        })?;
+
+        if !re.is_match(value) {
+            return Err(TemplateError::InvalidInputName(value.to_owned()));
+        }
+
+        if RESERVED_WORDS.contains(&value) {
+            return Err(TemplateError::InvalidInputName(format!(
+                "Input name '{value}' is a reserved word"
+            )));
+        }
+
+        Ok(Self(value.into()))
+    }
+}
+
 /// Metadata for template management.
 #[derive(
     Debug,
@@ -62,9 +196,9 @@ const RESERVED_WORDS: &[&str] = &[
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    RkyvSerialize,
+    RkyvDeserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -102,9 +236,9 @@ impl Default for Metadata {
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    RkyvSerialize,
+    RkyvDeserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -112,14 +246,13 @@ pub struct Template {
     /// UUID v7 identity.
     pub id: Uuid,
     /// Unique template name.
-    pub name: Box<str>,
+    pub name: TemplateName,
     /// Optional parent template name.
-    pub extends: Option<Box<str>>,
+    pub extends: Option<TemplateName>,
     /// Block definitions.
     pub blocks: Vec<TemplateBlock>,
     /// Input specifications.
-    pub inputs: HashMap<String, InputSpec>,
-
+    pub inputs: HashMap<InputName, InputSpec>,
     /// Metadata for template management.
     pub metadata: Metadata,
     /// Domain events pending emission.
@@ -132,17 +265,17 @@ impl Template {
     /// Creates a new template aggregate with validation.
     ///
     /// # Errors
-    /// Returns `TemplateError` if validation fails (name format, size limits,
-    /// etc).
+    /// Returns `TemplateError` if validation fails (duplicate blocks, etc).
     #[inline]
     pub fn new(
-        name: &str,
-        extends: Option<&str>,
+        name: &TemplateName,
+        extends: Option<TemplateName>,
         blocks: Vec<TemplateBlock>,
-        inputs: HashMap<String, InputSpec>,
+        inputs: HashMap<InputName, InputSpec>,
     ) -> Result<Self, TemplateError> {
-        Self::validate_name(name)?;
-        Self::validate_input_specs(&inputs)?;
+        if inputs.len() > 50 {
+            return Err(TemplateError::MaxInputsExceeded(inputs.len()));
+        }
 
         // Ensure block names are unique within the template
         let mut block_names = HashSet::new();
@@ -158,8 +291,8 @@ impl Template {
         let id = Uuid::now_v7();
         let mut template = Self {
             id,
-            name: name.into(),
-            extends: extends.map(Into::into),
+            name: name.clone(),
+            extends,
             blocks,
             inputs,
             metadata: Metadata::default(),
@@ -168,7 +301,7 @@ impl Template {
 
         template.add_event(Events::TemplateCreated(TemplateCreated::new(
             id,
-            name,
+            name.as_str(),
             chrono::Utc::now().timestamp(),
         )));
 
@@ -189,20 +322,20 @@ impl Template {
     #[inline]
     pub fn validate_composition(
         &self,
-        all_templates: &HashMap<&str, &Template>,
+        all_templates: &HashMap<TemplateName, &Template>,
     ) -> Result<(), TemplateError> {
         let mut visited = HashSet::new();
         let mut stack = Vec::new();
 
-        self.dfs(self.name(), all_templates, &mut visited, &mut stack)
+        self.dfs(&self.name, all_templates, &mut visited, &mut stack)
     }
 
     fn dfs<'ctx>(
         &self,
-        current: &'ctx str,
-        all_templates: &HashMap<&str, &'ctx Template>,
-        visited: &mut HashSet<&'ctx str>,
-        stack: &mut Vec<&'ctx str>,
+        current: &'ctx TemplateName,
+        all_templates: &HashMap<TemplateName, &'ctx Template>,
+        visited: &mut HashSet<&'ctx TemplateName>,
+        stack: &mut Vec<&'ctx TemplateName>,
     ) -> Result<(), TemplateError> {
         if stack.contains(&current) {
             return Err(TemplateError::CircularComposition(format!(
@@ -222,7 +355,7 @@ impl Template {
         visited.insert(current);
 
         if let Some(template) = all_templates.get(current)
-            && let Some(parent) = template.extends()
+            && let Some(parent) = template.extends.as_ref()
         {
             self.dfs(parent, all_templates, visited, stack)?;
         }
@@ -241,15 +374,15 @@ impl Template {
     /// Returns the template's unique name.
     #[inline]
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub fn name(&self) -> &TemplateName {
         &self.name
     }
 
     /// Returns the name of the template this one extends, if any.
     #[inline]
     #[must_use]
-    pub fn extends(&self) -> Option<&str> {
-        self.extends.as_deref()
+    pub fn extends(&self) -> Option<&TemplateName> {
+        self.extends.as_ref()
     }
 
     /// Returns the template's blocks.
@@ -262,7 +395,7 @@ impl Template {
     /// Returns the template's input specifications.
     #[inline]
     #[must_use]
-    pub fn inputs(&self) -> &HashMap<String, InputSpec> {
+    pub fn inputs(&self) -> &HashMap<InputName, InputSpec> {
         &self.inputs
     }
 
@@ -293,102 +426,6 @@ impl Template {
     pub fn has_inputs(&self) -> bool {
         !self.inputs.is_empty()
     }
-
-    // --- Validation Helpers ---
-
-    /// Validates a template name according to domain constraints.
-    ///
-    /// # Errors
-    /// Returns `TemplateError` if the name is invalid.
-    #[inline]
-    pub fn validate_name(name: &str) -> Result<(), TemplateError> {
-        static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME));
-
-        if name.is_empty() {
-            return Err(TemplateError::EmptyTemplateName);
-        }
-        if name.len() > 64 {
-            return Err(TemplateError::TemplateNameTooLong(name.len()));
-        }
-
-        let re = RE.as_ref().map_err(|error| {
-            TemplateError::ValidationFailed(format!(
-                "Invalid template name regex: {error}"
-            ))
-        })?;
-
-        if !re.is_match(name) {
-            return Err(TemplateError::InvalidTemplateName(name.to_owned()));
-        }
-        Ok(())
-    }
-
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "Validation checks all input specifications for correctness. \
-                  HashMap iteration order is irrelevant—all entries must pass \
-                  validation regardless of order."
-    )]
-    fn validate_input_specs(
-        inputs: &HashMap<String, InputSpec>,
-    ) -> Result<(), TemplateError> {
-        Self::validate_max_inputs_not_exceeded(inputs.len())?;
-
-        for input_name in inputs.keys() {
-            Self::validate_input_name(input_name)?;
-        }
-        Ok(())
-    }
-
-    /// Validates an input name according to domain constraints.
-    ///
-    /// # Errors
-    /// Returns `TemplateError` if the input name is invalid.
-    #[inline]
-    pub fn validate_input_name(name: &str) -> Result<(), TemplateError> {
-        static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(patterns::IDENTIFIER_NAME));
-
-        if name.is_empty() {
-            return Err(TemplateError::EmptyInputName);
-        }
-        if name.len() > 32 {
-            return Err(TemplateError::InputNameTooLong(name.len()));
-        }
-
-        let re = RE.as_ref().map_err(|error| {
-            TemplateError::ValidationFailed(format!(
-                "Invalid input name regex: {error}"
-            ))
-        })?;
-
-        if !re.is_match(name) {
-            return Err(TemplateError::InvalidInputName(name.to_owned()));
-        }
-        Self::validate_input_name_not_reserved(name)?;
-        Ok(())
-    }
-
-    fn validate_max_inputs_not_exceeded(
-        count: usize,
-    ) -> Result<(), TemplateError> {
-        if count > 50 {
-            return Err(TemplateError::MaxInputsExceeded(count));
-        }
-        Ok(())
-    }
-
-    fn validate_input_name_not_reserved(
-        name: &str,
-    ) -> Result<(), TemplateError> {
-        if RESERVED_WORDS.contains(&name) {
-            return Err(TemplateError::InvalidInputName(format!(
-                "Input name '{name}' is a reserved word"
-            )));
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -402,8 +439,13 @@ mod tests {
     mod fixtures {
         use super::*;
 
-        pub fn base_template() -> Result<Template, TemplateError> {
-            Template::new("base", None, vec![], HashMap::new())
+        pub fn base_note() -> Result<Template, TemplateError> {
+            Template::new(
+                &TemplateName::try_from("base")?,
+                None,
+                vec![],
+                HashMap::new(),
+            )
         }
     }
 
@@ -417,7 +459,7 @@ mod tests {
                       idiomatic in setup."
         )]
         fn base_template() -> Template {
-            fixtures::base_template().expect("Valid base template")
+            fixtures::base_note().expect("Valid base template")
         }
 
         #[test]
@@ -425,7 +467,7 @@ mod tests {
             let template = base_template();
 
             assert_eq!(
-                template.name(),
+                template.name().as_str(),
                 "base",
                 "Template name should be 'base'"
             );
@@ -484,23 +526,19 @@ mod tests {
 
         #[test]
         fn should_reject_template_when_name_is_empty() {
-            let result = Template::new("", None, vec![], HashMap::new());
-
+            let result = TemplateName::try_from("");
             assert!(result.is_err(), "Expected error for empty name");
         }
 
         #[test]
         fn should_reject_template_when_name_contains_spaces() {
-            let result =
-                Template::new("Invalid Name", None, vec![], HashMap::new());
-
+            let result = TemplateName::try_from("Invalid Name");
             assert!(result.is_err(), "Expected error for name with spaces");
         }
 
         #[test]
         fn should_reject_template_when_name_contains_invalid_characters() {
-            let result = Template::new("name!", None, vec![], HashMap::new());
-
+            let result = TemplateName::try_from("name!");
             assert!(
                 result.is_err(),
                 "Expected error for name with invalid characters"
@@ -510,16 +548,16 @@ mod tests {
         #[test]
         fn should_reject_template_when_name_is_too_long() {
             let invalid_long_name = "a".repeat(65);
-            let result =
-                Template::new(&invalid_long_name, None, vec![], HashMap::new());
-
+            let result = TemplateName::try_from(invalid_long_name.as_str());
             assert!(result.is_err(), "Expected error for overlong name");
         }
 
         #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test")]
         fn should_reject_duplicate_block_names() {
+            let name = TemplateName::try_from("duplicate").unwrap();
             let result = Template::new(
-                "duplicate",
+                &name,
                 None,
                 vec![
                     TemplateBlock::new(
@@ -551,7 +589,7 @@ mod tests {
         let strategy = "[a-zA-Z0-9_-]{1,64}";
 
         let run_result = runner.run(&strategy, |name| {
-            let result = Template::new(&name, None, vec![], HashMap::new());
+            let result = TemplateName::try_from(name.as_str());
 
             prop_assert!(
                 result.is_ok(),
@@ -570,14 +608,27 @@ mod tests {
     #[expect(clippy::disallowed_methods, reason = "Test")]
     fn validate_composition_detects_cycles() {
         // A -> B -> A
-        let a = Template::new("A", Some("B"), vec![], HashMap::new())
-            .expect("valid");
-        let b = Template::new("B", Some("A"), vec![], HashMap::new())
-            .expect("valid");
+        let a_name = TemplateName::try_from("A").unwrap();
+        let b_name = TemplateName::try_from("B").unwrap();
+
+        let a = Template::new(
+            &a_name,
+            Some(b_name.clone()),
+            vec![],
+            HashMap::new(),
+        )
+        .expect("valid");
+        let b = Template::new(
+            &b_name,
+            Some(a_name.clone()),
+            vec![],
+            HashMap::new(),
+        )
+        .expect("valid");
 
         let mut map = HashMap::new();
-        map.insert("A", &a);
-        map.insert("B", &b);
+        map.insert(a_name.clone(), &a);
+        map.insert(b_name.clone(), &b);
 
         let result = a.validate_composition(&map);
         assert!(matches!(result, Err(TemplateError::CircularComposition(_))));
@@ -587,11 +638,17 @@ mod tests {
     #[expect(clippy::disallowed_methods, reason = "Test")]
     fn validate_composition_detects_self_cycle() {
         // A -> A
-        let a = Template::new("A", Some("A"), vec![], HashMap::new())
-            .expect("valid");
+        let a_name = TemplateName::try_from("A").unwrap();
+        let a = Template::new(
+            &a_name,
+            Some(a_name.clone()),
+            vec![],
+            HashMap::new(),
+        )
+        .expect("valid");
 
         let mut map = HashMap::new();
-        map.insert("A", &a);
+        map.insert(a_name.clone(), &a);
 
         let result = a.validate_composition(&map);
         assert!(matches!(result, Err(TemplateError::CircularComposition(_))));
@@ -601,17 +658,31 @@ mod tests {
     #[expect(clippy::disallowed_methods, reason = "Test")]
     fn validate_composition_allows_valid_chain() {
         // A -> B -> C
-        let c =
-            Template::new("C", None, vec![], HashMap::new()).expect("valid");
-        let b = Template::new("B", Some("C"), vec![], HashMap::new())
+        let a_name = TemplateName::try_from("A").unwrap();
+        let b_name = TemplateName::try_from("B").unwrap();
+        let c_name = TemplateName::try_from("C").unwrap();
+
+        let c = Template::new(&c_name, None, vec![], HashMap::new())
             .expect("valid");
-        let a = Template::new("A", Some("B"), vec![], HashMap::new())
-            .expect("valid");
+        let b = Template::new(
+            &b_name,
+            Some(c_name.clone()),
+            vec![],
+            HashMap::new(),
+        )
+        .expect("valid");
+        let a = Template::new(
+            &a_name,
+            Some(b_name.clone()),
+            vec![],
+            HashMap::new(),
+        )
+        .expect("valid");
 
         let mut map = HashMap::new();
-        map.insert("A", &a);
-        map.insert("B", &b);
-        map.insert("C", &c);
+        map.insert(a_name.clone(), &a);
+        map.insert(b_name.clone(), &b);
+        map.insert(c_name.clone(), &c);
 
         a.validate_composition(&map).expect("should be valid");
     }
@@ -626,27 +697,25 @@ mod tests {
         let mut map = HashMap::new();
 
         for i in 0..=10 {
-            let name = i.to_string();
+            let name_str = i.to_string();
+            let name = TemplateName::try_from(name_str.as_str()).unwrap();
             let extends = if i == 10 {
                 None
             } else {
-                Some((i + 1).to_string())
+                let next_str = (i + 1).to_string();
+                Some(TemplateName::try_from(next_str.as_str()).unwrap())
             };
-            let t = Template::new(
-                &name,
-                extends.as_deref(),
-                vec![],
-                HashMap::new(),
-            )
-            .expect("valid");
+            let t = Template::new(&name, extends, vec![], HashMap::new())
+                .expect("valid");
             map_storage.insert(name, t);
         }
 
         for (k, v) in &map_storage {
-            map.insert(k.as_str(), v);
+            map.insert(k.clone(), v);
         }
 
-        let start = map.get("0").expect("start template");
+        let start_name = TemplateName::try_from("0").unwrap();
+        let start = map.get(&start_name).expect("start template");
         let result = start.validate_composition(&map);
         assert!(matches!(
             result,

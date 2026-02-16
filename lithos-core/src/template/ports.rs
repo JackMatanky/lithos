@@ -7,7 +7,10 @@ use std::{
 
 use uuid::Uuid;
 
-use super::{aggregate::Template, error::TemplateError};
+use super::{
+    aggregate::{Template, TemplateName},
+    error::TemplateError,
+};
 
 /// Command port for template-related write operations.
 pub trait Command: Send + Sync {
@@ -98,7 +101,7 @@ mod tests {
 #[derive(Clone, Default, Debug)]
 pub struct FakeTemplateStorage {
     templates: Arc<Mutex<HashMap<Uuid, Template>>>,
-    name_index: Arc<Mutex<HashMap<String, Uuid>>>,
+    name_index: Arc<Mutex<HashMap<TemplateName, Uuid>>>,
 }
 
 impl FakeTemplateStorage {
@@ -136,11 +139,13 @@ impl Query for FakeTemplateStorage {
             .lock()
             .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
 
-        if let Some(&id) = name_index.get(name) {
-            Ok(templates.get(&id).cloned())
-        } else {
-            Ok(None)
+        // We can create a TemplateName from &str for lookup if it's valid
+        if let Ok(tn) = TemplateName::try_from(name)
+            && let Some(&id) = name_index.get(&tn)
+        {
+            return Ok(templates.get(&id).cloned());
         }
+        Ok(None)
     }
 
     #[inline]
@@ -182,11 +187,13 @@ impl Command for FakeTemplateStorage {
             .map_err(|_e| TemplateError::Storage("Lock poisoned".into()))?;
 
         if name_index.contains_key(template.name()) {
-            return Err(TemplateError::AlreadyExists(template.name().into()));
+            return Err(TemplateError::AlreadyExists(
+                template.name().to_string(),
+            ));
         }
 
         templates.insert(template.id(), template.clone());
-        name_index.insert(template.name().into(), template.id());
+        name_index.insert(template.name().clone(), template.id());
 
         Ok(())
     }
@@ -209,12 +216,12 @@ impl Command for FakeTemplateStorage {
         if old.name() != template.name() {
             if name_index.contains_key(template.name()) {
                 return Err(TemplateError::AlreadyExists(
-                    template.name().into(),
+                    template.name().to_string(),
                 ));
             }
 
             name_index.remove(old.name());
-            name_index.insert(template.name().into(), template.id());
+            name_index.insert(template.name().clone(), template.id());
         }
 
         templates.insert(template.id(), template.clone());

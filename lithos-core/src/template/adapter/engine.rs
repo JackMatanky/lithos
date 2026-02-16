@@ -107,7 +107,7 @@ impl TemplateEngine {
         template: &crate::template::aggregate::Template,
     ) -> Result<(), TemplateError> {
         let source = super::SourceGenerator::generate(template);
-        self.compile(template.name(), &source)
+        self.compile(template.name().as_str(), &source)
     }
 
     /// Renders a compiled template with context.
@@ -149,7 +149,7 @@ mod tests {
 
         use super::*;
         use crate::template::{
-            aggregate::Template,
+            aggregate::{Template, TemplateName},
             block::{BlockStrategy, TemplateBlock},
         };
 
@@ -158,8 +158,9 @@ mod tests {
             let mut engine = TemplateEngine::new();
 
             // 1. Grandparent
+            let gp_name = TemplateName::try_from("grandparent").unwrap();
             let grandparent = Template::new(
-                "grandparent",
+                &gp_name,
                 None,
                 vec![TemplateBlock::new(
                     "base",
@@ -172,9 +173,10 @@ mod tests {
             engine.compile_from_template(&grandparent).unwrap();
 
             // 2. Parent
+            let p_name = TemplateName::try_from("parent").unwrap();
             let parent = Template::new(
-                "parent",
-                Some("grandparent"),
+                &p_name,
+                Some(TemplateName::try_from("grandparent").unwrap()),
                 vec![TemplateBlock::new(
                     "content",
                     "P({% block inner %}{% endblock %})",
@@ -186,9 +188,10 @@ mod tests {
             engine.compile_from_template(&parent).unwrap();
 
             // 3. Child
+            let c_name = TemplateName::try_from("child").unwrap();
             let child = Template::new(
-                "child",
-                Some("parent"),
+                &c_name,
+                Some(TemplateName::try_from("parent").unwrap()),
                 vec![TemplateBlock::new("inner", "C", BlockStrategy::Replace)],
                 HashMap::new(),
             )
@@ -207,8 +210,9 @@ mod tests {
             let mut engine = TemplateEngine::new();
 
             // Base
+            let b_name = TemplateName::try_from("base").unwrap();
             let base = Template::new(
-                "base",
+                &b_name,
                 None,
                 vec![
                     TemplateBlock::new("b1", "Base1", BlockStrategy::Replace),
@@ -221,9 +225,10 @@ mod tests {
             engine.compile_from_template(&base).unwrap();
 
             // Child
+            let c_name = TemplateName::try_from("child").unwrap();
             let child = Template::new(
-                "child",
-                Some("base"),
+                &c_name,
+                Some(TemplateName::try_from("base").unwrap()),
                 vec![
                     TemplateBlock::new("b1", "-Over-", BlockStrategy::Replace),
                     TemplateBlock::new("b2", "-Ext-", BlockStrategy::Extend),

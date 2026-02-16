@@ -26,7 +26,7 @@ impl SourceGenerator {
         // 1. Handle inheritance
         if let Some(parent) = template.extends() {
             source.push_str("{% extends \"");
-            source.push_str(parent);
+            source.push_str(parent.as_str());
             source.push_str("\" %}\n");
         }
 
@@ -63,12 +63,13 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::template::block::TemplateBlock;
+    use crate::template::{aggregate::TemplateName, block::TemplateBlock};
 
     #[test]
     fn generates_base_template_with_blocks() {
+        let name = TemplateName::try_from("base").unwrap();
         let template = Template::new(
-            "base",
+            &name,
             None,
             vec![
                 TemplateBlock::new(
@@ -97,9 +98,11 @@ mod tests {
 
     #[test]
     fn generates_child_template_with_inheritance() {
+        let name = TemplateName::try_from("child").unwrap();
+        let parent = TemplateName::try_from("base").unwrap();
         let template = Template::new(
-            "child",
-            Some("base"),
+            &name,
+            Some(parent),
             vec![TemplateBlock::new(
                 "content",
                 "Child Content",
@@ -119,9 +122,11 @@ mod tests {
 
     #[test]
     fn generates_block_with_extend_strategy() {
+        let name = TemplateName::try_from("child").unwrap();
+        let parent = TemplateName::try_from("base").unwrap();
         let template = Template::new(
-            "child",
-            Some("base"),
+            &name,
+            Some(parent),
             vec![TemplateBlock::new("content", "Extra", BlockStrategy::Extend)],
             HashMap::new(),
         )
@@ -138,9 +143,11 @@ mod tests {
 
     #[test]
     fn generates_block_with_prepend_strategy() {
+        let name = TemplateName::try_from("child").unwrap();
+        let parent = TemplateName::try_from("base").unwrap();
         let template = Template::new(
-            "child",
-            Some("base"),
+            &name,
+            Some(parent),
             vec![TemplateBlock::new(
                 "content",
                 "Extra",

@@ -90,7 +90,9 @@ impl super::ports::Query for RedbTemplateQuery<'_> {
         F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
     {
         self.db
-            .get::<Template, _, _>(TEMPLATES, &id.to_string(), f)
+            .get::<Template, _, _>(TEMPLATES, &id.to_string(), |archived| {
+                f(archived)
+            })
             .map_err(|e| TemplateError::Storage(e.to_string()))
     }
 }
@@ -103,6 +105,7 @@ mod tests {
 
     use super::*;
     use crate::template::{
+        aggregate::TemplateName,
         command::Command,
         ports::{Command as _, Query as _},
     };
@@ -120,16 +123,19 @@ mod tests {
         let query = RedbTemplateQuery::new(&db);
         let command = Command::new(&db);
 
+        let tn = TemplateName::try_from("test").unwrap();
         let template =
-            Template::new("test", None, vec![], HashMap::new()).unwrap();
+            Template::new(&tn, None, vec![], HashMap::new()).unwrap();
         command.create(&template).unwrap();
 
         // Zero-copy read
-        let name = query
-            .with_archived(template.id(), |archived| archived.name.to_string())
+        let name_read = query
+            .with_archived(template.id(), |archived| {
+                archived.name.0.to_string()
+            })
             .unwrap()
             .unwrap();
 
-        assert_eq!(name, "test");
+        assert_eq!(name_read, "test");
     }
 }

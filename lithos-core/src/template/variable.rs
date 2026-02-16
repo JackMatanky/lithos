@@ -6,6 +6,10 @@
               docs"
 )]
 
+use rkyv::{
+    Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
+};
+
 use crate::bounds::Bounds;
 
 /// Type-safe input specification with validation constraints.
@@ -15,9 +19,9 @@ use crate::bounds::Bounds;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    RkyvSerialize,
+    RkyvDeserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -179,10 +183,10 @@ impl InputSpec {
             Self::Boolean {
                 ..
             }
-            | Self::Date {
+            | Self::File {
                 ..
             }
-            | Self::File {
+            | Self::Date {
                 ..
             } => serde_json::Value::Null,
         }
@@ -224,8 +228,12 @@ impl InputSpec {
     #[must_use]
     #[expect(
         clippy::match_same_arms,
+        reason = "Bindings have different types (Option<f64> vs \
+                  Option<Box<str>>)"
+    )]
+    #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Enum has mixed Copy and non-Copy fields."
+        reason = "Mixed Copy and non-Copy enum fields."
     )]
     pub fn has_default(&self) -> bool {
         match self {

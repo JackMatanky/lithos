@@ -33,7 +33,7 @@ pub(crate) mod db_table {
         MultimapTableDefinition::new("name_to_id");
 }
 
-pub use aggregate::{Metadata, Template};
+pub use aggregate::{InputName, Metadata, Template, TemplateName};
 pub use block::{BlockStrategy, TemplateBlock};
 pub use catalog::TemplateCatalog;
 pub use variable::InputSpec;
