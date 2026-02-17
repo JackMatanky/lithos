@@ -2,19 +2,19 @@
   "name": "lib",
   "properties": {
     "title": {
-      "$ref": "#/properties/title"
+      "$ref": "property_bank#/title"
     },
     "aliases": {
-      "$ref": "#/properties/aliases"
+      "$ref": "property_bank#/aliases"
     },
     "main_title": {
-      "$ref": "#/properties/title"
+      "$ref": "property_bank#/title"
     },
     "subtitle": {
-      "$ref": "#/properties/title"
+      "$ref": "property_bank#/title"
     },
     "date_published": {
-      "$ref": "#/properties/date_iso_8601"
+      "$ref": "property_bank#/date_iso_8601"
     },
     "series": {
       "required": false,
@@ -22,13 +22,13 @@
       "type": "string"
     },
     "volume": {
-      "$ref": "#/properties/volume"
+      "$ref": "property_bank#/volume"
     },
     "url": {
-      "$ref": "#/properties/url"
+      "$ref": "property_bank#/url"
     },
     "about": {
-      "$ref": "#/properties/about"
+      "$ref": "property_bank#/about"
     },
     "status": {
       "required": false,
@@ -68,16 +68,16 @@
       ]
     },
     "author": {
-      "$ref": "#/properties/contact"
+      "$ref": "property_bank#/contact"
     },
     "editor": {
-      "$ref": "#/properties/contact"
+      "$ref": "property_bank#/contact"
     },
     "translator": {
-      "$ref": "#/properties/contact"
+      "$ref": "property_bank#/contact"
     },
     "publisher": {
-      "$ref": "#/properties/organization"
+      "$ref": "property_bank#/organization"
     }
   }
 }

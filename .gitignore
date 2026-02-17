@@ -89,6 +89,7 @@ go.work
 
 # Lithos-specific
 .lithos/
+!example_vault/.lithos/
 testdata/vault-copies/
 
 # Production test data (70+ MB Obsidian vault)

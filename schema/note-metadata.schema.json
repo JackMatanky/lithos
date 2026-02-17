@@ -1,0 +1,228 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "note-metadata.schema.json",
+  "title": "Lithos Note Schema",
+  "description": "Defines the format of a Lithos note schema file. A note schema describes the frontmatter properties expected on a type of markdown note in the vault. Properties may be defined inline or referenced from the property bank using '$ref: property_bank#/<name>'. Schemas may extend a parent schema and exclude inherited properties they don't need.",
+  "type": "object",
+  "required": ["name", "properties"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "title": "Schema Name",
+      "description": "The unique identifier for this schema. Must be lowercase, using only letters, digits, and underscores. This name is used in 'extends' fields of child schemas and in 'file_class' fields of file-type properties.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "properties": {
+      "title": "Property Definitions",
+      "description": "The properties defined or overridden by this schema. Each key is the frontmatter field name as it appears in the note. Each value is either an inline property definition or a property bank reference. Properties inherited from a parent schema via 'extends' do not need to be listed here unless they are being overridden.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Property"
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "description": "Property names must be lowercase and may only contain letters, digits, and underscores."
+      }
+    },
+    "extends": {
+      "title": "Parent Schema",
+      "description": "The name of a parent schema whose properties this schema inherits. The child schema receives all properties from the parent, minus any listed in 'excludes', plus the properties defined in this schema's own 'properties' map. Overriding an inherited property is done by re-defining it in 'properties'.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "excludes": {
+      "title": "Excluded Inherited Properties",
+      "description": "A list of property names inherited from the parent schema (via 'extends') that this schema does not use. These properties will not appear in notes using this schema. Only valid when 'extends' is also set.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "Property": {
+      "title": "Property",
+      "description": "A single property entry in a schema's 'properties' map. May be either an inline definition of the property's type and constraints, or a reference to a named property in the property bank.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/PropertyBankRef",
+          "title": "Property Bank Reference",
+          "description": "Reuse a property definition from the property bank. The referenced definition is resolved by Lithos tooling at ingestion time."
+        },
+        {
+          "$ref": "#/$defs/PropertyDefinition",
+          "title": "Inline Property Definition",
+          "description": "Define this property's type and constraints directly in the schema."
+        }
+      ]
+    },
+    "PropertyBankRef": {
+      "title": "Property Bank Reference",
+      "description": "A reference to a named property in the vault's property bank. The format is '$ref: property_bank#/<name>' where <name> is the key of the property in the property bank's 'properties' map. A property bank reference must have no other fields.",
+      "type": "object",
+      "required": ["$ref"],
+      "additionalProperties": false,
+      "properties": {
+        "$ref": {
+          "title": "Property Bank Reference Path",
+          "description": "Must follow the format 'property_bank#/<name>' where <name> is the exact key of a property defined in the vault's property_bank.json file.",
+          "type": "string",
+          "pattern": "^property_bank#/[a-z][a-z0-9_]*$"
+        }
+      }
+    },
+    "PropertyDefinition": {
+      "title": "Inline Property Definition",
+      "description": "A full definition of a property's type and constraints, written directly in the schema file. The valid fields depend on 'type'.",
+      "oneOf": [
+        { "$ref": "#/$defs/StringProperty" },
+        { "$ref": "#/$defs/NumberProperty" },
+        { "$ref": "#/$defs/BooleanProperty" },
+        { "$ref": "#/$defs/DateProperty" },
+        { "$ref": "#/$defs/FileProperty" }
+      ]
+    },
+    "CommonFields": {
+      "description": "Fields shared across all property types.",
+      "properties": {
+        "required": {
+          "title": "Required",
+          "description": "Whether this property must be present in every note using this schema. Defaults to false.",
+          "type": "boolean",
+          "default": false
+        },
+        "array": {
+          "title": "Array",
+          "description": "Whether this property holds multiple values (a list) rather than a single value. Defaults to false.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "StringProperty": {
+      "title": "String Property",
+      "description": "A property that holds a text value. Optionally constrained to a fixed set of allowed values via 'enum', or validated against a regular expression via 'pattern'.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "string"
+        },
+        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
+        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "enum": {
+          "title": "Allowed Values",
+          "description": "If present, the property value must be one of these strings. Values should be lowercase and use underscores instead of spaces.",
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "pattern": {
+          "title": "Validation Pattern",
+          "description": "A regular expression the property value must match.",
+          "type": "string",
+          "format": "regex"
+        }
+      }
+    },
+    "NumberProperty": {
+      "title": "Number Property",
+      "description": "A property that holds a numeric value (integer or float). Optionally constrained by minimum, maximum, and step values.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "number"
+        },
+        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
+        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "step": {
+          "title": "Step",
+          "description": "The increment/decrement step for UI controls. For example, 1.0 means whole numbers only.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "min": {
+          "title": "Minimum Value",
+          "description": "The minimum allowed value (inclusive).",
+          "type": "number"
+        },
+        "max": {
+          "title": "Maximum Value",
+          "description": "The maximum allowed value (inclusive).",
+          "type": "number"
+        }
+      }
+    },
+    "BooleanProperty": {
+      "title": "Boolean Property",
+      "description": "A property that holds a true/false value.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "boolean"
+        },
+        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
+        "array": { "$ref": "#/$defs/CommonFields/properties/array" }
+      }
+    },
+    "DateProperty": {
+      "title": "Date Property",
+      "description": "A property that holds a date, time, or datetime value. The format string uses Go reference time notation: '2006-01-02' for dates, '15:04' for times, '2006-01-02T15:04' for datetimes.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "date"
+        },
+        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
+        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "format": {
+          "title": "Date Format",
+          "description": "The display and parsing format using Go reference time notation. Common formats: '2006-01-02' (ISO date), '2006-01-02T15:04' (local datetime), '2006' (year only), '15:04' (time only).",
+          "type": "string"
+        }
+      }
+    },
+    "FileProperty": {
+      "title": "File Reference Property",
+      "description": "A property that links to one or more other notes in the vault. Use 'directory' to restrict valid link targets to a specific folder, and 'file_class' to require the linked note to use a specific schema.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "file"
+        },
+        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
+        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "directory": {
+          "title": "Target Directory",
+          "description": "A vault-relative path specifying where valid link targets must reside. Supports regex-style alternation for multiple directories: '(41_personal|42_education)/'. A trailing slash is required.",
+          "type": "string"
+        },
+        "file_class": {
+          "title": "Required Schema",
+          "description": "The name of the schema the linked note must use. Constrains link targets to notes of a specific type.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        }
+      }
+    }
+  }
+}

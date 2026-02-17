@@ -2,7 +2,7 @@
   "name": "goal_value",
   "properties": {
     "pillar": {
-      "$ref": "#/properties/pillar"
+      "$ref": "property_bank#/pillar"
     }
   }
 }

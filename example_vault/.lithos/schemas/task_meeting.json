@@ -19,9 +19,5 @@
       ]
     }
   },
-  "extends": "task",
-  "excludes": [
-    "date_start",
-    "date_end"
-  ]
+  "extends": "task"
 }

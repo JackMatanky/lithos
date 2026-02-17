@@ -17,7 +17,6 @@
     "isbn10",
     "isbn13",
     "cover_url",
-    "cover_path",
-    "type"
+    "cover_path"
   ]
 }

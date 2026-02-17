@@ -7,23 +7,23 @@
       "type": "string"
     },
     "date_start": {
-      "$ref": "#/properties/datetime_local"
+      "$ref": "property_bank#/datetime_local"
     },
     "date_end": {
-      "$ref": "#/properties/datetime_local"
+      "$ref": "property_bank#/datetime_local"
     },
     "year": {
-      "$ref": "#/properties/date_year"
+      "$ref": "property_bank#/date_year"
     },
     "year_day": {
       "required": false,
       "array": false,
-      "type": "date"
+      "type": "string"
     },
     "quarter": {
       "required": false,
       "array": false,
-      "type": "date"
+      "type": "string"
     },
     "month_name": {
       "required": false,
@@ -66,12 +66,12 @@
     "month_day": {
       "required": false,
       "array": false,
-      "type": "date"
+      "type": "string"
     },
     "week_number": {
       "required": false,
       "array": false,
-      "type": "date"
+      "type": "string"
     },
     "weekday_name": {
       "required": false,

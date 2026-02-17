@@ -27,6 +27,7 @@
         "offer",
         "on_hold",
         "rejected",
+        "review",
         "schedule",
         "to_do"
       ]

@@ -2,10 +2,10 @@
   "name": "pkm",
   "properties": {
     "title": {
-      "$ref": "#/properties/title"
+      "$ref": "property_bank#/title"
     },
     "aliases": {
-      "$ref": "#/properties/aliases"
+      "$ref": "property_bank#/aliases"
     },
     "type": {
       "required": false,
@@ -42,10 +42,7 @@
       ]
     },
     "pillar": {
-      "required": false,
-      "array": true,
-      "type": "file",
-      "directory": "(20_pillars)/"
+      "$ref": "property_bank#/pillar"
     },
     "category": {
       "required": false,
@@ -84,7 +81,7 @@
       "directory": "(70_pkm)/"
     },
     "library": {
-      "$ref": "#/properties/library"
+      "$ref": "property_bank#/library"
     }
   }
 }

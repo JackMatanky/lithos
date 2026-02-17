@@ -12,7 +12,7 @@
       "type": "string"
     },
     "about": {
-      "$ref": "#/properties/about"
+      "$ref": "property_bank#/about"
     },
     "industry": {
       "required": false,

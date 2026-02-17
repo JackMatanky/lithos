@@ -2,10 +2,10 @@
   "name": "dir",
   "properties": {
     "title": {
-      "$ref": "#/properties/title"
+      "$ref": "property_bank#/title"
     },
     "aliases": {
-      "$ref": "#/properties/aliases"
+      "$ref": "property_bank#/aliases"
     },
     "country": {
       "required": false,
@@ -13,13 +13,13 @@
       "type": "string"
     },
     "city": {
-      "$ref": "#/properties/city"
+      "$ref": "property_bank#/city"
     },
     "url": {
-      "$ref": "#/properties/url"
+      "$ref": "property_bank#/url"
     },
     "linkedin_url": {
-      "$ref": "#/properties/url"
+      "$ref": "property_bank#/url"
     },
     "connection": {
       "required": false,

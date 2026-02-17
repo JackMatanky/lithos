@@ -2,10 +2,10 @@
   "name": "goal",
   "properties": {
     "title": {
-      "$ref": "#/properties/title"
+      "$ref": "property_bank#/title"
     },
     "aliases": {
-      "$ref": "#/properties/aliases"
+      "$ref": "property_bank#/aliases"
     },
     "duration": {
       "required": false,
@@ -20,26 +20,22 @@
       ]
     },
     "date_start": {
-      "$ref": "#/properties/date_iso_8601"
+      "$ref": "property_bank#/date_iso_8601"
     },
     "date_end": {
-      "$ref": "#/properties/date_iso_8601"
+      "$ref": "property_bank#/date_iso_8601"
     },
     "context": {
-      "$ref": "#/properties/context"
+      "$ref": "property_bank#/context"
     },
     "pillar": {
-      "$ref": "#/properties/pillar"
+      "$ref": "property_bank#/pillar"
     },
     "organization": {
-      "required": false,
-      "array": true,
-      "type": "string"
+      "$ref": "property_bank#/organization"
     },
     "contact": {
-      "required": false,
-      "array": true,
-      "type": "string"
+      "$ref": "property_bank#/contact"
     },
     "priority": {
       "required": false,
@@ -54,7 +50,7 @@
       ]
     },
     "status": {
-      "$ref": "#/properties/task_status"
+      "$ref": "property_bank#/task_status"
     },
     "type": {
       "required": false,

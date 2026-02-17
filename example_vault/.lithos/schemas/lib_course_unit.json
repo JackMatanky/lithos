@@ -1,7 +1,7 @@
 {
-  "name": "lib_course_lecture",
+  "name": "lib_course_unit",
   "properties": {
-    "libraby": {
+    "library": {
       "required": false,
       "array": true,
       "type": "file",

@@ -84,7 +84,8 @@
     "pillar": {
       "required": false,
       "array": true,
-      "type": "string"
+      "type": "file",
+      "directory": "(20_pillars)/"
     },
     "project": {
       "required": false,
@@ -121,6 +122,12 @@
       "array": false,
       "type": "number",
       "step": 1.0
+    },
+    "year_published": {
+      "required": false,
+      "array": false,
+      "type": "date",
+      "format": "2006"
     }
   }
 }

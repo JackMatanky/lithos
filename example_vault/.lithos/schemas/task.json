@@ -2,7 +2,7 @@
   "name": "task",
   "properties": {
     "date": {
-      "$ref": "#/properties/date_iso_8601"
+      "$ref": "property_bank#/date_iso_8601"
     },
     "task_start": {
       "required": false,
@@ -26,25 +26,22 @@
       ]
     },
     "pillar": {
-      "required": false,
-      "array": true,
-      "type": "file",
-      "directory": "(20_pillars)/"
+      "$ref": "property_bank#/pillar"
     },
     "goal": {
-      "$ref": "#/properties/goal"
+      "$ref": "property_bank#/goal"
     },
     "context": {
-      "$ref": "#/properties/context"
+      "$ref": "property_bank#/context"
     },
     "project": {
-      "$ref": "#/properties/project"
+      "$ref": "property_bank#/project"
     },
     "parent_task": {
-      "$ref": "#/properties/parent_task"
+      "$ref": "property_bank#/parent_task"
     },
     "status": {
-      "$ref": "#/properties/task_status"
+      "$ref": "property_bank#/task_status"
     },
     "type": {
       "required": false,
@@ -60,16 +57,13 @@
       ]
     },
     "organization": {
-      "$ref": "#/properties/organization"
+      "$ref": "property_bank#/organization"
     },
     "contact": {
-      "required": false,
-      "array": true,
-      "type": "file",
-      "directory": "(51_contacts)/"
+      "$ref": "property_bank#/contact"
     },
     "library": {
-      "$ref": "#/properties/library"
+      "$ref": "property_bank#/library"
     }
   }
 }

@@ -1,0 +1,175 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "property-bank.schema.json",
+  "title": "Lithos Property Bank",
+  "description": "Defines the format of a Lithos property bank file. A property bank is a dictionary of reusable, named property definitions that individual note schemas can reference via '$ref: property_bank#/<name>'. The property bank itself is not a note schema — it has no 'name', 'extends', or 'excludes'.",
+  "type": "object",
+  "required": ["properties"],
+  "additionalProperties": false,
+  "properties": {
+    "properties": {
+      "title": "Property Definitions",
+      "description": "A map of named property definitions. Each key is the property name (lowercase, using only letters, digits, and underscores). Each value is a full property definition.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/PropertyDefinition"
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "description": "Property names must be lowercase and may only contain letters, digits, and underscores."
+      },
+      "minProperties": 1
+    }
+  },
+  "$defs": {
+    "PropertyDefinition": {
+      "title": "Property Definition",
+      "description": "A full inline definition of a metadata property. The valid fields depend on the 'type' — see the type-specific variants below.",
+      "oneOf": [
+        { "$ref": "#/$defs/StringProperty" },
+        { "$ref": "#/$defs/NumberProperty" },
+        { "$ref": "#/$defs/BooleanProperty" },
+        { "$ref": "#/$defs/DateProperty" },
+        { "$ref": "#/$defs/FileProperty" }
+      ]
+    },
+    "CommonFields": {
+      "description": "Fields present on every property definition regardless of type.",
+      "properties": {
+        "required": {
+          "title": "Required",
+          "description": "Whether this property must be present in every note that uses a schema containing it. Defaults to false.",
+          "type": "boolean",
+          "default": false
+        },
+        "array": {
+          "title": "Array",
+          "description": "Whether this property holds multiple values (a list) rather than a single value. Defaults to false.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "StringProperty": {
+      "title": "String Property",
+      "description": "A property that holds a text value. Optionally constrained to a fixed set of allowed values via 'enum', or validated against a regular expression via 'pattern'.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "string"
+        },
+        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
+        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "enum": {
+          "title": "Allowed Values",
+          "description": "If present, the property value must be one of these strings. Values should be lowercase and use underscores instead of spaces.",
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "pattern": {
+          "title": "Validation Pattern",
+          "description": "A regular expression the property value must match. Use this for structured string formats like email addresses or identifiers.",
+          "type": "string",
+          "format": "regex"
+        }
+      }
+    },
+    "NumberProperty": {
+      "title": "Number Property",
+      "description": "A property that holds a numeric value (integer or float). Optionally constrained by minimum, maximum, and step values.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "number"
+        },
+        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
+        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "step": {
+          "title": "Step",
+          "description": "The increment/decrement step for UI controls. For example, 1.0 means whole numbers only.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "min": {
+          "title": "Minimum Value",
+          "description": "The minimum allowed value (inclusive).",
+          "type": "number"
+        },
+        "max": {
+          "title": "Maximum Value",
+          "description": "The maximum allowed value (inclusive).",
+          "type": "number"
+        }
+      }
+    },
+    "BooleanProperty": {
+      "title": "Boolean Property",
+      "description": "A property that holds a true/false value.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "boolean"
+        },
+        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
+        "array": { "$ref": "#/$defs/CommonFields/properties/array" }
+      }
+    },
+    "DateProperty": {
+      "title": "Date Property",
+      "description": "A property that holds a date, time, or datetime value. The format string uses Go reference time notation: '2006-01-02' for dates, '15:04' for times, '2006-01-02T15:04' for datetimes.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "date"
+        },
+        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
+        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "format": {
+          "title": "Date Format",
+          "description": "The display and parsing format for this date field, using Go reference time notation. Common formats: '2006-01-02' (ISO date), '2006-01-02T15:04' (local datetime), '2006' (year only), '15:04' (time only).",
+          "type": "string"
+        }
+      }
+    },
+    "FileProperty": {
+      "title": "File Reference Property",
+      "description": "A property that links to one or more other notes in the vault, identified by file path. Use 'directory' to restrict which vault folder(s) are valid targets. Use 'file_class' to require the linked note to have a specific schema.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "file"
+        },
+        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
+        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "directory": {
+          "title": "Target Directory",
+          "description": "A vault-relative path (or regex-style alternation of paths) specifying where valid link targets must reside. Use parentheses and pipe for alternatives, e.g. '(41_personal|42_education)/'. A trailing slash is required.",
+          "type": "string"
+        },
+        "file_class": {
+          "title": "Required Schema",
+          "description": "The name of the schema that the linked note must use. This constrains link targets to notes of a specific type.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        }
+      }
+    }
+  }
+}

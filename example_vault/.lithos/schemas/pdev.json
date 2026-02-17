@@ -2,13 +2,13 @@
   "name": "pdev",
   "properties": {
     "title": {
-      "$ref": "#/properties/title"
+      "$ref": "property_bank#/title"
     },
     "aliases": {
-      "$ref": "#/properties/aliases"
+      "$ref": "property_bank#/aliases"
     },
     "date": {
-      "$ref": "#/properties/date_iso_8601"
+      "$ref": "property_bank#/date_iso_8601"
     },
     "subtype": {
       "required": false,
@@ -36,19 +36,16 @@
       ]
     },
     "pillar": {
-      "required": false,
-      "array": true,
-      "type": "file",
-      "directory": "(20_pillars)/"
+      "$ref": "property_bank#/pillar"
     },
     "goal": {
-      "$ref": "#/properties/goal"
+      "$ref": "property_bank#/goal"
     },
     "project": {
-      "$ref": "#/properties/project"
+      "$ref": "property_bank#/project"
     },
     "parent_task": {
-      "$ref": "#/properties/parent_task"
+      "$ref": "property_bank#/parent_task"
     }
   }
 }

@@ -2,10 +2,10 @@
   "name": "lib_documentation",
   "properties": {
     "aliases": {
-      "$ref": "#/properties/aliases"
+      "$ref": "property_bank#/aliases"
     },
     "title": {
-      "$ref": "#/properties/title"
+      "$ref": "property_bank#/title"
     },
     "application": {
       "required": false,
@@ -13,7 +13,7 @@
       "type": "string"
     },
     "url": {
-      "$ref": "#/properties/url"
+      "$ref": "property_bank#/url"
     },
     "type": {
       "required": false,

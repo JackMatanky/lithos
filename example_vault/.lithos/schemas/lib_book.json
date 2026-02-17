@@ -34,7 +34,7 @@
       "directory": "(52_organizations)/"
     },
     "doi": {
-      "$ref": "#/properties/doi"
+      "$ref": "property_bank#/doi"
     },
     "isbn10": {
       "required": false,
@@ -47,10 +47,10 @@
       "type": "string"
     },
     "year_published": {
-      "$ref": "#/properties/year_published"
+      "$ref": "property_bank#/year_published"
     },
     "city": {
-      "$ref": "#/properties/city"
+      "$ref": "property_bank#/city"
     },
     "edition": {
       "required": false,
@@ -58,7 +58,7 @@
       "type": "number"
     },
     "cover_url": {
-      "$ref": "#/properties/url"
+      "$ref": "property_bank#/url"
     },
     "cover_path": {
       "required": false,
