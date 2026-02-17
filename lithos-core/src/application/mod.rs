@@ -34,17 +34,6 @@
 //! - **Error translation**: Convert infrastructure/domain errors into
 //!   application errors
 //! - **Observability**: Services use tracing for workflow visibility
-//!
-//! ## Modules
-//!
-//! - **services**: Ingestion services for each bounded context (schema,
-//!   template, note)
-//! - **error**: Unified error types for application-layer failures
 
-/// Application-layer error types.
-pub mod error;
-/// Ingestion services for bounded contexts.
-pub mod services;
-
-/// Ingestion error type alias.
-pub type IngestionError = error::IngestionError;
+// NOTE: Ingestion services temporarily archived in _archive/ for future
+// re-implementation.
