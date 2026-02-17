@@ -2,31 +2,27 @@
   "name": "lib_book",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["book"]
+      "options": [
+        "book"
+      ]
     },
     "author": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "editor": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "translator": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "publisher": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(52_organizations)/"
@@ -35,13 +31,9 @@
       "$ref": "property_bank#/doi"
     },
     "isbn10": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "isbn13": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "year_published": {
@@ -51,16 +43,12 @@
       "$ref": "property_bank#/city"
     },
     "edition": {
-      "required": false,
-      "multi": false,
       "type": "number"
     },
     "cover_url": {
       "$ref": "property_bank#/url"
     },
     "cover_path": {
-      "required": false,
-      "multi": false,
       "type": "file"
     }
   },

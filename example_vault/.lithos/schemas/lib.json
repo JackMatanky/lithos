@@ -17,8 +17,6 @@
       "$ref": "property_bank#/date_iso_8601"
     },
     "series": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "volume": {
@@ -31,8 +29,6 @@
       "$ref": "property_bank#/about"
     },
     "status": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": {
         "1": "undetermined",
@@ -45,10 +41,25 @@
       }
     },
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["audio", "blog", "book", "book_chapter", "course", "course_lecture", "documentary", "documentation", "journal", "magazine", "news", "podcast", "report", "video", "webpage", "youtube"]
+      "options": [
+        "audio",
+        "blog",
+        "book",
+        "book_chapter",
+        "course",
+        "course_lecture",
+        "documentary",
+        "documentation",
+        "journal",
+        "magazine",
+        "news",
+        "podcast",
+        "report",
+        "video",
+        "webpage",
+        "youtube"
+      ]
     },
     "author": {
       "$ref": "property_bank#/contact"

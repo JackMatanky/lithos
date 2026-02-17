@@ -5,22 +5,19 @@
       "$ref": "property_bank#/date_iso_8601"
     },
     "task_start": {
-      "required": false,
-      "multi": false,
       "type": "date",
       "format": "%Y-%m-%d"
     },
     "task_end": {
-      "required": false,
-      "multi": false,
       "type": "date",
       "format": "%Y-%m-%d"
     },
     "due_do": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["do", "due"]
+      "options": [
+        "do",
+        "due"
+      ]
     },
     "pillar": {
       "$ref": "property_bank#/pillar"
@@ -41,10 +38,15 @@
       "$ref": "property_bank#/task_status"
     },
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["action_item", "habit", "meeting", "parent_task", "project", "ritual"]
+      "options": [
+        "action_item",
+        "habit",
+        "meeting",
+        "parent_task",
+        "project",
+        "ritual"
+      ]
     },
     "organization": {
       "$ref": "property_bank#/organization"

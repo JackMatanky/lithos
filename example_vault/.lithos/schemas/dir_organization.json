@@ -2,26 +2,19 @@
   "name": "dir_organization",
   "properties": {
     "phone": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "email": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "about": {
       "$ref": "property_bank#/about"
     },
     "industry": {
-      "required": false,
       "multi": true,
       "type": "string"
     },
     "specialties": {
-      "required": false,
-      "multi": false,
       "type": "string"
     }
   },

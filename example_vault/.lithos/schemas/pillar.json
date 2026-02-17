@@ -2,8 +2,6 @@
   "name": "pillar",
   "properties": {
     "status": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": {
         "1": "active",
@@ -12,10 +10,13 @@
       }
     },
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["growth", "interpersonal", "personal", "professional"]
+      "options": [
+        "growth",
+        "interpersonal",
+        "personal",
+        "professional"
+      ]
     }
   }
 }

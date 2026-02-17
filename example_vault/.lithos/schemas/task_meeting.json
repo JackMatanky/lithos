@@ -2,10 +2,19 @@
   "name": "task_meeting",
   "properties": {
     "subtype": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["appointment", "event", "gathering", "hangout", "interview", "lecture", "meeting", "phone_call", "tutorial", "video_call"]
+      "options": [
+        "appointment",
+        "event",
+        "gathering",
+        "hangout",
+        "interview",
+        "lecture",
+        "meeting",
+        "phone_call",
+        "tutorial",
+        "video_call"
+      ]
     }
   },
   "extends": "task"

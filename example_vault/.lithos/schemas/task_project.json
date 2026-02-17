@@ -2,12 +2,16 @@
   "name": "task_project",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["project"]
+      "options": [
+        "project"
+      ]
     }
   },
   "extends": "task",
-  "excludes": ["date", "project", "parent_task"]
+  "excludes": [
+    "date",
+    "project",
+    "parent_task"
+  ]
 }

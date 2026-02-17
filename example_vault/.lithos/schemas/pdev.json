@@ -11,16 +11,25 @@
       "$ref": "property_bank#/date_iso_8601"
     },
     "subtype": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["daily", "monthly", "prompt", "quarterly", "weekly", "yearly"]
+      "options": [
+        "daily",
+        "monthly",
+        "prompt",
+        "quarterly",
+        "weekly",
+        "yearly"
+      ]
     },
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["detachment", "general", "gratitude", "limiting_belief", "reflection"]
+      "options": [
+        "detachment",
+        "general",
+        "gratitude",
+        "limiting_belief",
+        "reflection"
+      ]
     },
     "pillar": {
       "$ref": "property_bank#/pillar"

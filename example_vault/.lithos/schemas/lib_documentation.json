@@ -8,18 +8,16 @@
       "$ref": "property_bank#/title"
     },
     "application": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "url": {
       "$ref": "property_bank#/url"
     },
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["documentation"]
+      "options": [
+        "documentation"
+      ]
     }
   },
   "extends": "lib"

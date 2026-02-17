@@ -2,12 +2,28 @@
   "name": "lib_video",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["documentary", "video", "youtube"]
+      "options": [
+        "documentary",
+        "video",
+        "youtube"
+      ]
     }
   },
   "extends": "lib",
-  "excludes": ["editor", "translator", "city", "edition", "volume", "issue", "page_start", "page_end", "isbn10", "isbn13", "doi", "cover_url", "cover_path"]
+  "excludes": [
+    "editor",
+    "translator",
+    "city",
+    "edition",
+    "volume",
+    "issue",
+    "page_start",
+    "page_end",
+    "isbn10",
+    "isbn13",
+    "doi",
+    "cover_url",
+    "cover_path"
+  ]
 }

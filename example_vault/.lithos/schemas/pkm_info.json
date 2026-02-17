@@ -2,10 +2,12 @@
   "name": "pkm_info",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["concept", "definition", "general"]
+      "options": [
+        "concept",
+        "definition",
+        "general"
+      ]
     }
   },
   "extends": "pkm"

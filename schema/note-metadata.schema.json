@@ -15,7 +15,7 @@
     },
     "properties": {
       "title": "Property Definitions",
-      "description": "The properties defined or overridden by this schema. Each key is the frontmatter field name as it appears in the note. Each value is either an inline property definition or a property bank reference. Properties inherited from a parent schema via 'extends' do not need to be listed here unless they are being overridden.",
+      "description": "The properties defined or overridden by this schema. Each key is the frontmatter field name as it appears in the note. Each value is either an inline property definition or a property bank reference (with optional overrides). Properties inherited from a parent schema via 'extends' do not need to be listed here unless they are being overridden.",
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/Property"
@@ -46,23 +46,23 @@
   "$defs": {
     "Property": {
       "title": "Property",
-      "description": "A single property entry in a schema's 'properties' map. May be either an inline definition of the property's type and constraints, or a reference to a named property in the property bank.",
+      "description": "A single property entry in a schema's 'properties' map. May be either an inline definition of the property's type and constraints, or a reference to a named property in the property bank (with optional override fields).",
       "oneOf": [
         {
           "$ref": "#/$defs/PropertyBankRef",
           "title": "Property Bank Reference",
-          "description": "Reuse a property definition from the property bank. The referenced definition is resolved by Lithos tooling at ingestion time."
+          "description": "Reference a property from the property bank. The '$ref' resolves the property definition, then any additional fields (like 'required', 'multi', 'options') override the defaults from the bank."
         },
         {
           "$ref": "#/$defs/PropertyDefinition",
           "title": "Inline Property Definition",
-          "description": "Define this property's type and constraints directly in the schema."
+          "description": "Define this property's type and constraints directly in the schema. Requires a 'type' field."
         }
       ]
     },
     "PropertyBankRef": {
-      "title": "Property Bank Reference",
-      "description": "A reference to a named property in the vault's property bank. The format is '$ref: property_bank#/<name>' where <name> is the key of the property in the property bank's 'properties' map. A property bank reference must have no other fields.",
+      "title": "Property Bank Reference with Overrides",
+      "description": "A reference to a named property in the vault's property bank, with optional override fields. The '$ref' field is required and must follow the format 'property_bank#/<name>'. Any additional fields (required, multi, type, options, etc.) override the defaults from the referenced property. This allows schemas to reuse property definitions while customizing constraints.",
       "type": "object",
       "required": ["$ref"],
       "additionalProperties": false,
@@ -72,12 +72,102 @@
           "description": "Must follow the format 'property_bank#/<name>' where <name> is the exact key of a property defined in the vault's property_bank.json file.",
           "type": "string",
           "pattern": "^property_bank#/[a-z][a-z0-9_]*$"
+        },
+        "required": {
+          "title": "Required",
+          "description": "Whether this property must be present in every note using this schema. Defaults to false. This field is only valid in schemas, not in the property bank.",
+          "type": "boolean",
+          "default": false
+        },
+        "multi": {
+          "title": "Multiple Values",
+          "description": "Override whether this property holds multiple values. If not specified, uses the value from the property bank.",
+          "type": "boolean"
+        },
+        "type": {
+          "title": "Property Type Override",
+          "description": "Override the property type. If specified, replaces the type from the property bank. Use with caution — changing type fundamentally changes the property.",
+          "type": "string",
+          "enum": ["string", "number", "boolean", "date", "file"]
+        },
+        "options": {
+          "title": "Allowed Values Override",
+          "description": "Override the allowed values for a string property. If specified, replaces the options from the property bank.",
+          "oneOf": [
+            {
+              "title": "Plain Value List",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            {
+              "title": "Ordered Value Map",
+              "type": "object",
+              "additionalProperties": { "type": "string", "minLength": 1 },
+              "propertyNames": { "pattern": "^[1-9][0-9]*$" },
+              "minProperties": 1
+            },
+            {
+              "title": "Value with Labels",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["value"],
+                "additionalProperties": false,
+                "properties": {
+                  "value": { "type": "string", "minLength": 1 },
+                  "label": { "type": "string", "minLength": 1 },
+                  "order": { "type": "integer", "minimum": 1 }
+                }
+              },
+              "minItems": 1
+            }
+          ]
+        },
+        "pattern": {
+          "title": "Validation Pattern Override",
+          "description": "Override the regex pattern for a string property.",
+          "type": "string",
+          "format": "regex"
+        },
+        "step": {
+          "title": "Step Override",
+          "description": "Override the step value for a number property.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "min": {
+          "title": "Minimum Override",
+          "description": "Override the minimum value for a number property.",
+          "type": "number"
+        },
+        "max": {
+          "title": "Maximum Override",
+          "description": "Override the maximum value for a number property.",
+          "type": "number"
+        },
+        "format": {
+          "title": "Date Format Override",
+          "description": "Override the format for a date property.",
+          "type": "string"
+        },
+        "directory": {
+          "title": "Target Directory Override",
+          "description": "Override the directory constraint for a file property.",
+          "type": "string"
+        },
+        "file_class": {
+          "title": "Required Schema Override",
+          "description": "Override the required schema for a file property.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
         }
       }
     },
     "PropertyDefinition": {
       "title": "Inline Property Definition",
-      "description": "A full definition of a property's type and constraints, written directly in the schema file. The valid fields depend on 'type'.",
+      "description": "A full definition of a property's type and constraints, written directly in the schema file. Requires a 'type' field.",
       "oneOf": [
         { "$ref": "#/$defs/StringProperty" },
         { "$ref": "#/$defs/NumberProperty" },
@@ -87,7 +177,7 @@
       ]
     },
     "CommonFields": {
-      "description": "Fields shared across all property types.",
+      "description": "Fields shared across all property types in inline definitions.",
       "properties": {
         "required": {
           "title": "Required",

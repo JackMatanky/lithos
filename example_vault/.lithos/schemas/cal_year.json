@@ -2,12 +2,22 @@
   "name": "cal_year",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["year"]
+      "options": [
+        "year"
+      ]
     }
   },
   "extends": "cal",
-  "excludes": ["date", "year_day", "quarter", "month_name", "month_number", "month_day", "week_number", "weekday_name", "weekday_number"]
+  "excludes": [
+    "date",
+    "year_day",
+    "quarter",
+    "month_name",
+    "month_number",
+    "month_day",
+    "week_number",
+    "weekday_name",
+    "weekday_number"
+  ]
 }

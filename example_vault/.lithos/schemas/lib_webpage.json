@@ -2,12 +2,26 @@
   "name": "lib_webpage",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["blog", "webpage"]
+      "options": [
+        "blog",
+        "webpage"
+      ]
     }
   },
   "extends": "lib",
-  "excludes": ["city", "edition", "series", "volume", "issue", "page_start", "page_end", "isbn10", "isbn13", "doi", "cover_url", "cover_path"]
+  "excludes": [
+    "city",
+    "edition",
+    "series",
+    "volume",
+    "issue",
+    "page_start",
+    "page_end",
+    "isbn10",
+    "isbn13",
+    "doi",
+    "cover_url",
+    "cover_path"
+  ]
 }

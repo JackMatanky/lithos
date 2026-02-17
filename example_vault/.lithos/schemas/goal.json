@@ -8,10 +8,14 @@
       "$ref": "property_bank#/aliases"
     },
     "duration": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["challenge_1-2_months", "immediate_2-4_months", "long_>1_year", "medium_6-12_months", "short_4-6_months"]
+      "options": [
+        "challenge_1-2_months",
+        "immediate_2-4_months",
+        "long_>1_year",
+        "medium_6-12_months",
+        "short_4-6_months"
+      ]
     },
     "date_start": {
       "$ref": "property_bank#/date_iso_8601"
@@ -32,19 +36,24 @@
       "$ref": "property_bank#/contact"
     },
     "priority": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["1st_highest", "2nd_high", "3rd_medium", "4th_low", "5th_lowest"]
+      "options": [
+        "1st_highest",
+        "2nd_high",
+        "3rd_medium",
+        "4th_low",
+        "5th_lowest"
+      ]
     },
     "status": {
       "$ref": "property_bank#/task_status"
     },
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["outcome", "value"]
+      "options": [
+        "outcome",
+        "value"
+      ]
     }
   }
 }

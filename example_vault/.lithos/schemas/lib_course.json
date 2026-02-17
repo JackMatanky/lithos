@@ -2,18 +2,21 @@
   "name": "lib_course",
   "properties": {
     "lecturer": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "institution": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(52_organizations)/"
     }
   },
   "extends": "lib",
-  "excludes": ["date_published", "city", "edition", "volume"]
+  "excludes": [
+    "date_published",
+    "city",
+    "edition",
+    "volume"
+  ]
 }

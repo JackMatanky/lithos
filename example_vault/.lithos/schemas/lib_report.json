@@ -2,12 +2,19 @@
   "name": "lib_report",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["report"]
+      "options": [
+        "report"
+      ]
     }
   },
   "extends": "lib",
-  "excludes": ["city", "edition", "isbn10", "isbn13", "cover_url", "cover_path"]
+  "excludes": [
+    "city",
+    "edition",
+    "isbn10",
+    "isbn13",
+    "cover_url",
+    "cover_path"
+  ]
 }

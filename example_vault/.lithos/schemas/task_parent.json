@@ -2,14 +2,18 @@
   "name": "task_parent",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["evening_ritual", "habit", "job_application", "morning_ritual", "parent_task", "workday_shutdown_ritual", "workday_startup_ritual"]
+      "options": [
+        "evening_ritual",
+        "habit",
+        "job_application",
+        "morning_ritual",
+        "parent_task",
+        "workday_shutdown_ritual",
+        "workday_startup_ritual"
+      ]
     },
     "status": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": {
         "1": "to_do",
@@ -26,5 +30,8 @@
     }
   },
   "extends": "task",
-  "excludes": ["date", "parent_task"]
+  "excludes": [
+    "date",
+    "parent_task"
+  ]
 }

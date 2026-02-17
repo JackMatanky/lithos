@@ -2,10 +2,18 @@
   "name": "pkm_zettel",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["conclusion", "evidence", "idea", "proof", "question", "quote", "step", "summary", "theorem"]
+      "options": [
+        "conclusion",
+        "evidence",
+        "idea",
+        "proof",
+        "question",
+        "quote",
+        "step",
+        "summary",
+        "theorem"
+      ]
     }
   },
   "extends": "pkm"

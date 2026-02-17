@@ -31,7 +31,9 @@ my-vault/
 
 The property bank is a dictionary of reusable property definitions. Schemas reference these with `$ref` instead of duplicating definitions everywhere.
 
-The property bank has **no** `name`, `extends`, or `excludes` fields — it is not itself a schema.
+The property bank has **no** `name`, `extends`, or `excludes` fields — it is not itself a schema. It also has **no** `required` field — that is a schema-level concern, not a property definition concern.
+
+Property bank definitions provide **defaults** that schemas can override when referencing them. For example, a property may define `multi: true` as a default, but a specific schema can override it to `multi: false`.
 
 ### Structure
 
@@ -62,14 +64,10 @@ properties:
 {
   "properties": {
     "date_iso_8601": {
-      "required": false,
-      "multi": false,
       "type": "date",
       "format": "%Y-%m-%d"
     },
     "task_status": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": {
         "1": "to_do",
@@ -80,7 +78,6 @@ properties:
       }
     },
     "contact": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "51_contacts/"
@@ -92,14 +89,10 @@ properties:
 **TOML**
 ```toml
 [properties.date_iso_8601]
-required = false
-multi = false
 type = "date"
 format = "%Y-%m-%d"
 
 [properties.task_status]
-required = false
-multi = false
 type = "string"
 
 [properties.task_status.options]
@@ -110,7 +103,6 @@ type = "string"
 "5" = "discarded"
 
 [properties.contact]
-required = false
 multi = true
 type = "file"
 directory = "51_contacts/"
@@ -120,13 +112,9 @@ directory = "51_contacts/"
 ```yaml
 properties:
   date_iso_8601:
-    required: false
-    multi: false
     type: date
     format: "%Y-%m-%d"
   task_status:
-    required: false
-    multi: false
     type: string
     options:
       "1": to_do
@@ -135,7 +123,6 @@ properties:
       "4": on_hold
       "5": discarded
   contact:
-    required: false
     multi: true
     type: file
     directory: "51_contacts/"
@@ -199,8 +186,6 @@ properties:
   "excludes": ["date", "project", "parent_task"],
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": ["project"]
     }
@@ -215,8 +200,6 @@ extends = "task"
 excludes = ["date", "project", "parent_task"]
 
 [properties.type]
-required = false
-multi = false
 type = "string"
 options = ["project"]
 ```
@@ -231,8 +214,6 @@ excludes:
   - parent_task
 properties:
   type:
-    required: false
-    multi: false
     type: string
     options:
       - project
@@ -242,11 +223,13 @@ properties:
 
 ## Property Definitions
 
-Every property is either an **inline definition** or a **property bank reference**.
+Every property is either an **inline definition** or a **property bank reference** (with optional overrides).
 
 ### Property Bank Reference
 
-The format is `property_bank#/<name>` where `<name>` is a key in the vault's property bank. A `$ref` entry must have no other fields.
+The format is `property_bank#/<name>` where `<name>` is a key in the vault's property bank. A `$ref` resolves the property definition from the bank, then any additional fields override the defaults.
+
+**Simple reference (no overrides):**
 
 **JSON**
 ```json
@@ -265,6 +248,38 @@ properties:
   status:
     $ref: "property_bank#/task_status"
 ```
+
+**Reference with overrides:**
+
+The `required` field is only valid in schemas (not in the property bank). Other fields like `multi`, `options`, `type`, etc. can also be overridden.
+
+**JSON**
+```json
+"contact": {
+  "$ref": "property_bank#/contact",
+  "multi": false,
+  "required": true
+}
+```
+
+**TOML**
+```toml
+[properties.contact]
+"$ref" = "property_bank#/contact"
+multi = false
+required = true
+```
+
+**YAML**
+```yaml
+properties:
+  contact:
+    $ref: "property_bank#/contact"
+    multi: false
+    required: true
+```
+
+In this example, the property bank defines `contact` with `multi: true`, but this schema overrides it to `multi: false` and adds `required: true`.
 
 ### Inline Definition
 
@@ -294,8 +309,6 @@ Holds a text value.
 **JSON**
 ```json
 "context": {
-  "required": false,
-  "multi": false,
   "type": "string",
   "options": ["education", "personal", "professional", "work"]
 }
@@ -304,8 +317,6 @@ Holds a text value.
 **TOML**
 ```toml
 [properties.context]
-required = false
-multi = false
 type = "string"
 options = ["education", "personal", "professional", "work"]
 ```
@@ -314,8 +325,6 @@ options = ["education", "personal", "professional", "work"]
 ```yaml
 properties:
   context:
-    required: false
-    multi: false
     type: string
     options:
       - education
@@ -339,8 +348,6 @@ Holds an integer or float value.
 **JSON**
 ```json
 "edition": {
-  "required": false,
-  "multi": false,
   "type": "number",
   "min": 1,
   "step": 1.0
@@ -350,8 +357,6 @@ Holds an integer or float value.
 **TOML**
 ```toml
 [properties.edition]
-required = false
-multi = false
 type = "number"
 min = 1
 step = 1.0
@@ -361,8 +366,6 @@ step = 1.0
 ```yaml
 properties:
   edition:
-    required: false
-    multi: false
     type: number
     min: 1
     step: 1.0
@@ -377,8 +380,6 @@ Holds a `true` or `false` value. No additional fields.
 **JSON**
 ```json
 "is_confidential": {
-  "required": false,
-  "multi": false,
   "type": "boolean"
 }
 ```
@@ -386,8 +387,6 @@ Holds a `true` or `false` value. No additional fields.
 **TOML**
 ```toml
 [properties.is_confidential]
-required = false
-multi = false
 type = "boolean"
 ```
 
@@ -395,8 +394,6 @@ type = "boolean"
 ```yaml
 properties:
   is_confidential:
-    required: false
-    multi: false
     type: boolean
 ```
 
@@ -420,8 +417,6 @@ Holds a date, time, or datetime value. Format strings use **strftime notation** 
 **JSON**
 ```json
 "date_published": {
-  "required": false,
-  "multi": false,
   "type": "date",
   "format": "%Y-%m-%d"
 }
@@ -430,8 +425,6 @@ Holds a date, time, or datetime value. Format strings use **strftime notation** 
 **TOML**
 ```toml
 [properties.date_published]
-required = false
-multi = false
 type = "date"
 format = "%Y-%m-%d"
 ```
@@ -440,8 +433,6 @@ format = "%Y-%m-%d"
 ```yaml
 properties:
   date_published:
-    required: false
-    multi: false
     type: date
     format: "%Y-%m-%d"
 ```
@@ -460,7 +451,6 @@ Links to one or more other notes in the vault.
 **JSON**
 ```json
 "parent_task": {
-  "required": false,
   "multi": true,
   "type": "file",
   "directory": "(41_personal|42_education|43_professional)/",
@@ -471,7 +461,6 @@ Links to one or more other notes in the vault.
 **TOML**
 ```toml
 [properties.parent_task]
-required = false
 multi = true
 type = "file"
 directory = "(41_personal|42_education|43_professional)/"
@@ -482,7 +471,6 @@ file_class = "task_parent"
 ```yaml
 properties:
   parent_task:
-    required: false
     multi: true
     type: file
     directory: "(41_personal|42_education|43_professional)/"
@@ -679,18 +667,13 @@ A contact schema with a property bank, base schema, and extended schema.
 {
   "properties": {
     "title": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "date_iso_8601": {
-      "required": false,
-      "multi": false,
       "type": "date",
       "format": "%Y-%m-%d"
     },
     "organization": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(52_organizations)/"
@@ -702,18 +685,13 @@ A contact schema with a property bank, base schema, and extended schema.
 **TOML (`property_bank.toml`)**
 ```toml
 [properties.title]
-required = false
-multi = false
 type = "string"
 
 [properties.date_iso_8601]
-required = false
-multi = false
 type = "date"
 format = "%Y-%m-%d"
 
 [properties.organization]
-required = false
 multi = true
 type = "file"
 directory = "(52_organizations)/"
@@ -723,16 +701,11 @@ directory = "(52_organizations)/"
 ```yaml
 properties:
   title:
-    required: false
-    multi: false
     type: string
   date_iso_8601:
-    required: false
-    multi: false
     type: date
     format: "%Y-%m-%d"
   organization:
-    required: false
     multi: true
     type: file
     directory: "(52_organizations)/"
@@ -749,13 +722,10 @@ properties:
   "properties": {
     "title": { "$ref": "property_bank#/title" },
     "country": {
-      "required": false,
       "multi": true,
       "type": "string"
     },
     "url": {
-      "required": false,
-      "multi": false,
       "type": "string"
     }
   }
@@ -770,13 +740,10 @@ name = "dir"
 "$ref" = "property_bank#/title"
 
 [properties.country]
-required = false
 multi = true
 type = "string"
 
 [properties.url]
-required = false
-multi = false
 type = "string"
 ```
 
@@ -787,12 +754,9 @@ properties:
   title:
     $ref: "property_bank#/title"
   country:
-    required: false
     multi: true
     type: string
   url:
-    required: false
-    multi: false
     type: string
 ```
 
@@ -807,20 +771,14 @@ properties:
   "extends": "dir",
   "properties": {
     "name_last": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "name_first": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "date_birth": { "$ref": "property_bank#/date_iso_8601" },
     "organization": { "$ref": "property_bank#/organization" },
     "gender": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": ["female", "male", "other"]
     }
@@ -834,13 +792,9 @@ name = "dir_contact"
 extends = "dir"
 
 [properties.name_last]
-required = false
-multi = false
 type = "string"
 
 [properties.name_first]
-required = false
-multi = false
 type = "string"
 
 [properties.date_birth]
@@ -850,8 +804,6 @@ type = "string"
 "$ref" = "property_bank#/organization"
 
 [properties.gender]
-required = false
-multi = false
 type = "string"
 options = ["female", "male", "other"]
 ```
@@ -862,20 +814,14 @@ name: dir_contact
 extends: dir
 properties:
   name_last:
-    required: false
-    multi: false
     type: string
   name_first:
-    required: false
-    multi: false
     type: string
   date_birth:
     $ref: "property_bank#/date_iso_8601"
   organization:
     $ref: "property_bank#/organization"
   gender:
-    required: false
-    multi: false
     type: string
     options:
       - female

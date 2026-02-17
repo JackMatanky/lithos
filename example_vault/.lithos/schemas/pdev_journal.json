@@ -2,16 +2,27 @@
   "name": "pdev_journal",
   "properties": {
     "subtype": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["daily", "general", "hirability", "monthly", "quarterly", "self_appreciation", "weekly", "yearly"]
+      "options": [
+        "daily",
+        "general",
+        "hirability",
+        "monthly",
+        "quarterly",
+        "self_appreciation",
+        "weekly",
+        "yearly"
+      ]
     },
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["detachment", "gratitude", "limiting_belief", "prompt", "reflection"]
+      "options": [
+        "detachment",
+        "gratitude",
+        "limiting_belief",
+        "prompt",
+        "reflection"
+      ]
     }
   },
   "extends": "pdev"

@@ -8,14 +8,26 @@
       "$ref": "property_bank#/aliases"
     },
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["branch", "category", "conclusion", "definition", "evidence", "field", "general", "idea", "question", "quote", "step", "subject", "subtopic", "summary", "topic"]
+      "options": [
+        "branch",
+        "category",
+        "conclusion",
+        "definition",
+        "evidence",
+        "field",
+        "general",
+        "idea",
+        "question",
+        "quote",
+        "step",
+        "subject",
+        "subtopic",
+        "summary",
+        "topic"
+      ]
     },
     "status": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": {
         "1": "clarify",
@@ -29,37 +41,31 @@
       "$ref": "property_bank#/pillar"
     },
     "category": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },
     "branch": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },
     "field": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },
     "subject": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },
     "topic": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },
     "subtopic": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"

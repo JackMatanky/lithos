@@ -2,14 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "property-bank.schema.json",
   "title": "Lithos Property Bank",
-  "description": "Defines the format of a Lithos property bank file. A property bank is a dictionary of reusable, named property definitions that individual note schemas can reference via '$ref: property_bank#/<name>'. The property bank itself is not a note schema — it has no 'name', 'extends', or 'excludes'.",
+  "description": "Defines the format of a Lithos property bank file. A property bank is a dictionary of reusable, named property definitions that individual note schemas can reference via '$ref: property_bank#/<name>'. The property bank itself is not a note schema — it has no 'name', 'extends', or 'excludes'. Property definitions here provide defaults; schemas can override 'multi', 'options', etc. when referencing them. The 'required' field is NOT allowed here — that is a schema-level concern.",
   "type": "object",
   "required": ["properties"],
   "additionalProperties": false,
   "properties": {
     "properties": {
       "title": "Property Definitions",
-      "description": "A map of named property definitions. Each key is the property name (lowercase, using only letters, digits, and underscores). Each value is a full property definition.",
+      "description": "A map of named property definitions. Each key is the property name (lowercase, using only letters, digits, and underscores). Each value is a property definition that provides defaults for schemas to use or override.",
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/PropertyDefinition"
@@ -24,7 +24,7 @@
   "$defs": {
     "PropertyDefinition": {
       "title": "Property Definition",
-      "description": "A full inline definition of a metadata property. The valid fields depend on the 'type' — see the type-specific variants below.",
+      "description": "A property definition in the property bank. Provides default values that schemas can reference and override. Does NOT include 'required' — that is a schema-level constraint.",
       "oneOf": [
         { "$ref": "#/$defs/StringProperty" },
         { "$ref": "#/$defs/NumberProperty" },
@@ -34,17 +34,11 @@
       ]
     },
     "CommonFields": {
-      "description": "Fields present on every property definition regardless of type.",
+      "description": "Fields present on every property definition regardless of type. Note: 'required' is NOT here — it's a schema-level concern.",
       "properties": {
-        "required": {
-          "title": "Required",
-          "description": "Whether this property must be present in every note that uses a schema containing it. Defaults to false.",
-          "type": "boolean",
-          "default": false
-        },
         "multi": {
           "title": "Multiple Values",
-          "description": "Whether this property holds multiple values (a list) rather than a single value. Defaults to false.",
+          "description": "Whether this property holds multiple values (a list) rather than a single value. Defaults to false. Schemas can override this when referencing the property.",
           "type": "boolean",
           "default": false
         }
@@ -61,7 +55,6 @@
           "type": "string",
           "const": "string"
         },
-        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
         "multi": { "$ref": "#/$defs/CommonFields/properties/multi" },
         "options": {
           "title": "Allowed Values",
@@ -135,7 +128,6 @@
           "type": "string",
           "const": "number"
         },
-        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
         "multi": { "$ref": "#/$defs/CommonFields/properties/multi" },
         "step": {
           "title": "Step",
@@ -166,7 +158,6 @@
           "type": "string",
           "const": "boolean"
         },
-        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
         "multi": { "$ref": "#/$defs/CommonFields/properties/multi" }
       }
     },
@@ -181,7 +172,6 @@
           "type": "string",
           "const": "date"
         },
-        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
         "multi": { "$ref": "#/$defs/CommonFields/properties/multi" },
         "format": {
           "title": "Date Format",
@@ -201,7 +191,6 @@
           "type": "string",
           "const": "file"
         },
-        "required": { "$ref": "#/$defs/CommonFields/properties/required" },
         "multi": { "$ref": "#/$defs/CommonFields/properties/multi" },
         "directory": {
           "title": "Target Directory",

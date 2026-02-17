@@ -2,19 +2,16 @@
   "name": "lib_journal",
   "properties": {
     "author": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "translator": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "publisher": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(52_organizations)/"
@@ -26,20 +23,14 @@
       "$ref": "property_bank#/volume"
     },
     "issue": {
-      "required": false,
-      "multi": false,
       "type": "number",
       "step": 1.0
     },
     "page_start": {
-      "required": false,
-      "multi": false,
       "type": "number",
       "step": 1.0
     },
     "page_end": {
-      "required": false,
-      "multi": false,
       "type": "number",
       "step": 1.0
     },

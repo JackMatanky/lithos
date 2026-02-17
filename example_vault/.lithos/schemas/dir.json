@@ -8,7 +8,6 @@
       "$ref": "property_bank#/aliases"
     },
     "country": {
-      "required": false,
       "multi": true,
       "type": "string"
     },
@@ -22,20 +21,29 @@
       "$ref": "property_bank#/url"
     },
     "connection": {
-      "required": false,
       "multi": true,
       "type": "string",
-      "options": ["education", "null", "personal", "professional", "work"]
+      "options": [
+        "education",
+        "null",
+        "personal",
+        "professional",
+        "work"
+      ]
     },
     "source": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["family", "garin_tsabar", "hatashtit", "informed_decisions", "jolt", "secular_yeshiva", "shalem_college"]
+      "options": [
+        "family",
+        "garin_tsabar",
+        "hatashtit",
+        "informed_decisions",
+        "jolt",
+        "secular_yeshiva",
+        "shalem_college"
+      ]
     },
     "picture_path": {
-      "required": false,
-      "multi": false,
       "type": "string"
     }
   }

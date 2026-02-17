@@ -2,12 +2,18 @@
   "name": "cal_day",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["lib", "pdev", "pkm", "task_event"]
+      "options": [
+        "lib",
+        "pdev",
+        "pkm",
+        "task_event"
+      ]
     }
   },
   "extends": "cal",
-  "excludes": ["date_start", "date_end"]
+  "excludes": [
+    "date_start",
+    "date_end"
+  ]
 }

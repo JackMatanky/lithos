@@ -2,12 +2,16 @@
   "name": "cal_week",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["week"]
+      "options": [
+        "week"
+      ]
     }
   },
   "extends": "cal",
-  "excludes": ["date", "weekday", "year_day"]
+  "excludes": [
+    "date",
+    "weekday",
+    "year_day"
+  ]
 }

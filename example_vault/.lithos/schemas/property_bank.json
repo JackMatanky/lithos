@@ -1,102 +1,77 @@
 {
   "properties": {
     "about": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "aliases": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "city": {
-      "required": false,
       "multi": true,
       "type": "string"
     },
     "contact": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "51_contacts/"
     },
     "context": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": ["education", "habit_ritual", "personal", "professional", "work"]
     },
     "date_iso_8601": {
-      "required": false,
-      "multi": false,
       "type": "date",
       "format": "%Y-%m-%d"
     },
     "date_year": {
-      "required": false,
-      "multi": false,
       "type": "date",
       "format": "%Y"
     },
     "datetime_local": {
-      "required": false,
-      "multi": false,
       "type": "date",
       "format": "%Y-%m-%dT%H:%M"
     },
     "doi": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "goal": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(30_goals)/"
     },
     "library": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(60_library)/"
     },
     "library_course": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(60_library/68_courses)/"
     },
     "organization": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(52_organizations)/"
     },
     "parent_task": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(41_personal|42_education|43_professional|44_work|45_habit_ritual)/",
       "file_class": "task_parent"
     },
     "pillar": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(20_pillars)/"
     },
     "project": {
-      "required": false,
       "multi": true,
       "type": "file",
       "directory": "(41_personal|42_education|43_professional|44_work|45_habit_ritual)/",
       "file_class": "task_project"
     },
     "task_status": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": {
         "1": "to_do",
@@ -108,24 +83,16 @@
       }
     },
     "title": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "url": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "volume": {
-      "required": false,
-      "multi": false,
       "type": "number",
       "step": 1.0
     },
     "year_published": {
-      "required": false,
-      "multi": false,
       "type": "date",
       "format": "%Y"
     }

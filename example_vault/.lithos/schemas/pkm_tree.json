@@ -2,10 +2,15 @@
   "name": "pkm_tree",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["branch", "category", "field", "subject", "subtopic", "topic"]
+      "options": [
+        "branch",
+        "category",
+        "field",
+        "subject",
+        "subtopic",
+        "topic"
+      ]
     }
   },
   "extends": "pkm"

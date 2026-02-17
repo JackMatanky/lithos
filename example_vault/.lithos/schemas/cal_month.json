@@ -2,12 +2,17 @@
   "name": "cal_month",
   "properties": {
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["month"]
+      "options": [
+        "month"
+      ]
     }
   },
   "extends": "cal",
-  "excludes": ["date", "weekday", "week", "year_day"]
+  "excludes": [
+    "date",
+    "weekday",
+    "week",
+    "year_day"
+  ]
 }

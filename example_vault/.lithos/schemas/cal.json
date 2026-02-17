@@ -2,8 +2,6 @@
   "name": "cal",
   "properties": {
     "date": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "date_start": {
@@ -16,75 +14,141 @@
       "$ref": "property_bank#/date_year"
     },
     "year_day": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "quarter": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "month_name": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": [
-        {"value": "january", "label": "January"},
-        {"value": "february", "label": "February"},
-        {"value": "march", "label": "March"},
-        {"value": "april", "label": "April"},
-        {"value": "may", "label": "May"},
-        {"value": "june", "label": "June"},
-        {"value": "july", "label": "July"},
-        {"value": "august", "label": "August"},
-        {"value": "september", "label": "September"},
-        {"value": "october", "label": "October"},
-        {"value": "november", "label": "November"},
-        {"value": "december", "label": "December"}
+        {
+          "value": "january",
+          "label": "January"
+        },
+        {
+          "value": "february",
+          "label": "February"
+        },
+        {
+          "value": "march",
+          "label": "March"
+        },
+        {
+          "value": "april",
+          "label": "April"
+        },
+        {
+          "value": "may",
+          "label": "May"
+        },
+        {
+          "value": "june",
+          "label": "June"
+        },
+        {
+          "value": "july",
+          "label": "July"
+        },
+        {
+          "value": "august",
+          "label": "August"
+        },
+        {
+          "value": "september",
+          "label": "September"
+        },
+        {
+          "value": "october",
+          "label": "October"
+        },
+        {
+          "value": "november",
+          "label": "November"
+        },
+        {
+          "value": "december",
+          "label": "December"
+        }
       ]
     },
     "month_number": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
+      "options": [
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09",
+        "10",
+        "11",
+        "12"
+      ]
     },
     "month_day": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "week_number": {
-      "required": false,
-      "multi": false,
       "type": "string"
     },
     "weekday_name": {
-      "required": false,
-      "multi": false,
       "type": "string",
       "options": [
-        {"value": "sunday", "label": "Sunday"},
-        {"value": "monday", "label": "Monday"},
-        {"value": "tuesday", "label": "Tuesday"},
-        {"value": "wednesday", "label": "Wednesday"},
-        {"value": "thursday", "label": "Thursday"},
-        {"value": "friday", "label": "Friday"},
-        {"value": "saturday", "label": "Saturday"}
+        {
+          "value": "sunday",
+          "label": "Sunday"
+        },
+        {
+          "value": "monday",
+          "label": "Monday"
+        },
+        {
+          "value": "tuesday",
+          "label": "Tuesday"
+        },
+        {
+          "value": "wednesday",
+          "label": "Wednesday"
+        },
+        {
+          "value": "thursday",
+          "label": "Thursday"
+        },
+        {
+          "value": "friday",
+          "label": "Friday"
+        },
+        {
+          "value": "saturday",
+          "label": "Saturday"
+        }
       ]
     },
     "weekday_number": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["00", "01", "02", "03", "04", "05", "06"]
+      "options": [
+        "00",
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06"
+      ]
     },
     "type": {
-      "required": false,
-      "multi": false,
       "type": "string",
-      "options": ["day", "month", "quarter", "week", "year"]
+      "options": [
+        "day",
+        "month",
+        "quarter",
+        "week",
+        "year"
+      ]
     }
   }
 }
