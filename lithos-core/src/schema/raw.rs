@@ -5,12 +5,6 @@
     reason = "RawSchema and RawProperty follow naming conventions for input \
               types"
 )]
-#![expect(
-    clippy::exhaustive_enums,
-    clippy::exhaustive_structs,
-    reason = "rkyv generates exhaustive archived types despite \
-              #[non_exhaustive] on source types."
-)]
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,7 +13,7 @@ use uuid::Uuid;
 use super::{
     error::SchemaError,
     property_spec::{
-        BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec,
+        BoolSpec, DateSpec, FileSpec, NumberSpec, OptionEntry, PropertySpec,
         PropertySpecType, StringSpec,
     },
 };
@@ -127,17 +121,7 @@ pub struct RawPropertyRef {
 }
 
 /// Raw property specification (serde-facing input type).
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum RawPropertySpec {
@@ -194,7 +178,7 @@ impl RawPropertySpec {
                 def.min_length,
                 def.max_length,
                 def.pattern,
-                def.enum_values,
+                def.options.map(RawOptions::into_entries),
             )?)),
         }
     }
@@ -202,33 +186,15 @@ impl RawPropertySpec {
 
 /// Boolean property definition (marker type).
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
-#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct BoolSpecDef;
 
 /// Date property definition.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
-#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct DateSpecDef {
     /// Date format string (using chrono format tokens).
@@ -237,17 +203,8 @@ pub struct DateSpecDef {
 
 /// File property definition.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
-#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct FileSpecDef {
     /// Optional directory restriction (vault-relative path).
@@ -258,17 +215,8 @@ pub struct FileSpecDef {
 
 /// Number property definition.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
-#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct NumberSpecDef {
     /// Optional maximum value.
@@ -281,21 +229,12 @@ pub struct NumberSpecDef {
 
 /// String property definition.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
-#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct StringSpecDef {
-    /// Optional enum of allowed values.
-    pub enum_values: Option<Vec<Box<str>>>,
+    /// Optional allowed values in one of three formats.
+    pub options: Option<RawOptions>,
     /// Optional max length.
     pub max_length: Option<usize>,
     /// Optional min length.
@@ -339,6 +278,68 @@ pub struct RawOptionEntry {
     pub label: Option<Box<str>>,
     /// Optional display order (lower = earlier).
     pub order: Option<u32>,
+}
+
+impl RawOptions {
+    /// Convert raw options to a normalized vector of `OptionEntry`.
+    ///
+    /// # Modes
+    ///
+    /// - **List**: entries have `value = item`, `label = None`, order
+    ///   preserved.
+    /// - **Map**: keys parsed as integers, sorted by key, entries have `value =
+    ///   map_value`, `label = None`.
+    /// - **Rich**: sorted by `order` field (then array position), entries have
+    ///   `value` and `label`.
+    #[inline]
+    #[must_use]
+    pub fn into_entries(self) -> Vec<OptionEntry> {
+        match self {
+            Self::List(items) => items
+                .into_iter()
+                .map(|value| OptionEntry {
+                    value,
+                    label: None,
+                })
+                .collect(),
+            Self::Map(map) => {
+                let mut entries: Vec<_> = map
+                    .into_iter()
+                    .filter_map(|(key, value)| {
+                        key.parse::<u32>().ok().map(|order| (order, value))
+                    })
+                    .collect();
+                entries.sort_by_key(|&(order, _)| order);
+                entries
+                    .into_iter()
+                    .map(|(_, value)| OptionEntry {
+                        value,
+                        label: None,
+                    })
+                    .collect()
+            }
+            Self::Rich(entries) => {
+                let mut entries: Vec<_> = entries
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, entry)| {
+                        let order = entry.order.unwrap_or_else(|| {
+                            u32::try_from(idx).unwrap_or(u32::MAX)
+                        });
+                        (order, entry)
+                    })
+                    .collect();
+                entries.sort_by_key(|&(order, _)| order);
+                entries
+                    .into_iter()
+                    .map(|(_, entry)| OptionEntry {
+                        value: entry.value,
+                        label: entry.label,
+                    })
+                    .collect()
+            }
+        }
+    }
 }
 
 #[cfg(test)]

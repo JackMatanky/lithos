@@ -28,6 +28,28 @@ use crate::bounds::{Bounds, BoundsError};
 //
 // Internal invariant helpers live near the bottom of the file.
 
+/// A validated option entry with optional display label.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct OptionEntry {
+    /// The option value used in validation.
+    pub value: Box<str>,
+    /// Optional display label for UI consumers.
+    pub label: Option<Box<str>>,
+}
+
 /// Supported property specification types.
 #[derive(
     Debug,
@@ -458,7 +480,7 @@ impl NumberSpec {
 )]
 #[non_exhaustive]
 pub struct StringSpec {
-    enum_values: Option<Vec<Box<str>>>,
+    options: Option<Vec<OptionEntry>>,
     length: Bounds<usize>,
     pattern: Option<Box<str>>,
 }
@@ -467,7 +489,7 @@ impl Default for StringSpec {
     #[inline]
     fn default() -> Self {
         Self {
-            enum_values: None,
+            options: None,
             length: Bounds::Unbounded,
             pattern: None,
         }
@@ -485,7 +507,7 @@ impl StringSpec {
         min_length: Option<usize>,
         max_length: Option<usize>,
         pattern: Option<Box<str>>,
-        enum_values: Option<Vec<Box<str>>>,
+        options: Option<Vec<OptionEntry>>,
     ) -> Result<Self, SchemaError> {
         let length = match Bounds::from_options(min_length, max_length) {
             None => Bounds::Unbounded,
@@ -506,7 +528,7 @@ impl StringSpec {
         };
 
         Ok(Self {
-            enum_values,
+            options,
             length,
             pattern,
         })
@@ -515,20 +537,20 @@ impl StringSpec {
     #[inline]
     fn validate_str(&self, value: &str) -> Result<(), SchemaError> {
         self.validate_length(value)?;
-        self.validate_enum(value)?;
+        self.validate_options(value)?;
         self.validate_pattern(value)?;
         Ok(())
     }
 
-    fn validate_enum(&self, value: &str) -> Result<(), SchemaError> {
-        if let Some(enums) = self.enum_values.as_ref()
-            && !enums.iter().any(|s| s.as_ref() == value)
+    fn validate_options(&self, value: &str) -> Result<(), SchemaError> {
+        if let Some(entries) = self.options.as_ref()
+            && !entries.iter().any(|e| e.value.as_ref() == value)
         {
             return Err(SchemaError::InvalidEnumValue {
                 value: value.into(),
-                allowed: enums
+                allowed: entries
                     .iter()
-                    .map(std::string::ToString::to_string)
+                    .map(|e| e.value.as_ref().into())
                     .collect(),
             });
         }
@@ -775,23 +797,25 @@ mod tests {
         use rstest::rstest;
 
         use crate::schema::{
-            error::SchemaError, property_spec::StringSpec, raw::StringSpecDef,
+            error::SchemaError,
+            property_spec::StringSpec,
+            raw::{RawOptions, StringSpecDef},
         };
 
         /// 3.3-UNIT-011: String Specification Validation Matrix.
         /// Priority: P1.
         #[rstest]
-        #[case::enum_match(
+        #[case::options_match(
             StringSpecDef {
-                enum_values: Some(vec!["A".into(), "B".into()]),
+                options: Some(RawOptions::List(vec!["A".into(), "B".into()])),
                 ..Default::default()
             },
             "A",
             Ok(())
         )]
-        #[case::enum_mismatch(
+        #[case::options_mismatch(
             StringSpecDef {
-                enum_values: Some(vec!["A".into(), "B".into()]),
+                options: Some(RawOptions::List(vec!["A".into(), "B".into()])),
                 ..Default::default()
             },
             "C",
@@ -845,7 +869,7 @@ mod tests {
                     def.min_length,
                     def.max_length,
                     def.pattern,
-                    def.enum_values,
+                    def.options.map(RawOptions::into_entries),
                 )
                 .expect("Expected valid StringSpecDef")
             }
