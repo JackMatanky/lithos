@@ -132,13 +132,13 @@ impl Database {
         batch_write_impl(&self.inner, f)
     }
 
-    /// Execute a read-write transaction with both read and write operations.
+    /// Execute a read-write unit of work with both read and write operations.
     ///
     /// This method allows atomic read and write operations within a single
     /// transaction, ensuring consistency for operations like "read current
     /// value, compute next value, write new value".
     ///
-    /// The closure receives a [`ReadWriteTransaction`] that supports both read
+    /// The closure receives a [`ReadWriteUnitOfWork`] that supports both read
     /// and write operations.
     ///
     /// # Errors
@@ -155,7 +155,7 @@ impl Database {
     /// # fn main() -> Result<(), lithos_core::db::DbError> {
     /// let db = Database::open(Path::new("/tmp/test.db"))?;
     /// let table = TableDefinition::new("counters");
-    /// db.read_write_transaction(|tx| {
+    /// db.read_write_unit_of_work(|tx| {
     ///     // Read current value
     ///     let current: Option<u64> = tx.get_owned(table, "counter")?;
     ///     let next = current.unwrap_or(0) + 1;
@@ -167,11 +167,11 @@ impl Database {
     /// # }
     /// ```
     #[inline]
-    pub fn read_write_transaction<R, F>(&self, f: F) -> Result<R, DbError>
+    pub fn read_write_unit_of_work<R, F>(&self, f: F) -> Result<R, DbError>
     where
-        F: FnOnce(&mut ReadWriteTransaction) -> Result<R, DbError>,
+        F: FnOnce(&mut ReadWriteUnitOfWork) -> Result<R, DbError>,
     {
-        read_write_transaction_impl(&self.inner, f)
+        read_write_uow_impl(&self.inner, f)
     }
 
     /// Insert a value into a multimap table definition (1:N relationship).
@@ -304,19 +304,19 @@ impl WriteBatch {
     }
 }
 
-/// A single read-write transaction supporting both read and write operations.
+/// A single read-write unit of work supporting both read and write operations.
 ///
 /// This is intentionally scoped to a closure (see
-/// `Database::read_write_transaction`) so callers cannot accidentally hold a
+/// `Database::read_write_unit_of_work`) so callers cannot accidentally hold a
 /// transaction across unrelated work.
 ///
 /// Unlike [`WriteBatch`], this type supports read operations for atomic
 /// read-compute-write patterns.
-pub struct ReadWriteTransaction {
+pub struct ReadWriteUnitOfWork {
     tx: redb::WriteTransaction,
 }
 
-impl ReadWriteTransaction {
+impl ReadWriteUnitOfWork {
     #[inline]
     pub(super) fn new(tx: redb::WriteTransaction) -> Self {
         Self {
@@ -540,16 +540,13 @@ where
     Ok(())
 }
 
-/// Execute a read-write transaction with both read and write operations.
-fn read_write_transaction_impl<R, F>(
-    db: &redb::Database,
-    f: F,
-) -> Result<R, DbError>
+/// Execute a read-write unit of work with both read and write operations.
+fn read_write_uow_impl<R, F>(db: &redb::Database, f: F) -> Result<R, DbError>
 where
-    F: FnOnce(&mut ReadWriteTransaction) -> Result<R, DbError>,
+    F: FnOnce(&mut ReadWriteUnitOfWork) -> Result<R, DbError>,
 {
     let tx = db.begin_write()?;
-    let mut tx = ReadWriteTransaction::new(tx);
+    let mut tx = ReadWriteUnitOfWork::new(tx);
 
     let result = f(&mut tx)?;
     tx.commit()?;
@@ -893,7 +890,7 @@ mod tests {
         }
     }
 
-    mod read_write_transaction {
+    mod read_write_unit_of_work {
         use super::*;
 
         mod tables {
@@ -904,11 +901,11 @@ mod tests {
         }
 
         #[test]
-        fn read_write_transaction_performs_atomic_read_modify_write() {
+        fn read_write_unit_of_work_performs_atomic_read_modify_write() {
             use tables::COUNTER_TABLE;
             let (_temp, db) = temp_db().expect("temp db");
 
-            let result = db.read_write_transaction(|tx| {
+            let result = db.read_write_unit_of_work(|tx| {
                 let current: Option<u64> =
                     tx.get_owned(COUNTER_TABLE, "counter")?;
                 let next = current.unwrap_or(0) + 1;
@@ -918,7 +915,7 @@ mod tests {
 
             assert_eq!(result.unwrap(), 1);
 
-            let result2 = db.read_write_transaction(|tx| {
+            let result2 = db.read_write_unit_of_work(|tx| {
                 let current: Option<u64> =
                     tx.get_owned(COUNTER_TABLE, "counter")?;
                 let next = current.unwrap_or(0) + 1;
@@ -930,11 +927,11 @@ mod tests {
         }
 
         #[test]
-        fn read_write_transaction_returns_none_for_missing_key() {
+        fn read_write_unit_of_work_returns_none_for_missing_key() {
             use tables::COUNTER_TABLE;
             let (_temp, db) = temp_db().expect("temp db");
 
-            let result = db.read_write_transaction(|tx| {
+            let result = db.read_write_unit_of_work(|tx| {
                 let current: Option<u64> =
                     tx.get_owned(COUNTER_TABLE, "missing")?;
                 Ok(current.is_none())
@@ -944,14 +941,15 @@ mod tests {
         }
 
         #[test]
-        fn read_write_transaction_rolls_back_on_error() {
+        fn read_write_unit_of_work_rolls_back_on_error() {
             use tables::COUNTER_TABLE;
             let (_temp, db) = temp_db().expect("temp db");
 
-            let result: Result<(), DbError> = db.read_write_transaction(|tx| {
-                tx.put(COUNTER_TABLE, "counter", &42u64)?;
-                Err(DbError::Transaction(String::from("intentional")))
-            });
+            let result: Result<(), DbError> =
+                db.read_write_unit_of_work(|tx| {
+                    tx.put(COUNTER_TABLE, "counter", &42u64)?;
+                    Err(DbError::Transaction(String::from("intentional")))
+                });
 
             assert!(result.is_err());
 

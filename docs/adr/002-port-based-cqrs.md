@@ -251,9 +251,9 @@ pub trait Command: Send + Sync {
     /// Reads current version, computes next, returns without persisting.
     fn get_next_version(&self, vault_id: VaultId) -> Result<Version, Self::Error>;
 
-    /// Rolls back the active version by `steps` atomically.
+    /// Activates a previous version by stepping back `steps` positions atomically.
     /// Reads current version, computes target, updates active pointer in one transaction.
-    fn rollback_active_version(
+    fn activate_previous_version(
         &self,
         vault_id: VaultId,
         steps: u32,
@@ -273,8 +273,8 @@ pub trait Command: Send + Sync {
 
 ### Implementation
 
-- Added `Database::read_write_transaction()` for atomic read+write in one transaction
-- Command adapter implements `get_next_version` and `rollback_active_version` using this API
+- Added `Database::read_write_unit_of_work()` for atomic read+write in one transaction
+- Command adapter implements `get_next_version` and `activate_previous_version` using this API
 - Command struct no longer depends on Query port—only Command port
 
 ## References

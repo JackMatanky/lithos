@@ -65,7 +65,7 @@ pub trait Command: Send + Sync {
     ///
     /// # Errors
     /// Returns an error if rollback would underflow or storage fails.
-    fn rollback_active_version(
+    fn activate_previous_version(
         &self,
         vault_id: VaultId,
         steps: u32,

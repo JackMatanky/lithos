@@ -167,7 +167,7 @@ where
         Ok(())
     }
 
-    /// Roll back the active merged config version by `steps`.
+    /// Activate a previous merged config version by `steps` back from current.
     ///
     /// # Errors
     /// Returns `ConfigCommandError` if rollback would underflow or storage
@@ -175,15 +175,15 @@ where
     #[inline]
     #[instrument(
         skip(self),
-        fields(operation = "rollback_version", vault_id = %vault_id, steps = %steps)
+        fields(operation = "activate_previous_version", vault_id = %vault_id, steps = %steps)
     )]
-    pub fn rollback(
+    pub fn activate_previous_version(
         &self,
         vault_id: VaultId,
         steps: u32,
     ) -> Result<Version, ConfigCommandError> {
         self.command_port
-            .rollback_active_version(vault_id, steps)
+            .activate_previous_version(vault_id, steps)
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
@@ -309,12 +309,12 @@ mod tests {
             Ok(candidate)
         }
 
-        fn rollback_active_version(
+        fn activate_previous_version(
             &self,
             vault_id: VaultId,
             steps: u32,
         ) -> Result<Version, Self::Error> {
-            self.db.read_write_transaction(|tx| {
+            self.db.read_write_unit_of_work(|tx| {
                 let current: Option<Version> =
                     tx.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
 
@@ -392,7 +392,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn rollback_updates_active_version() {
+        fn activate_previous_version_updates_active_version() {
             let (_dir, db) = fixtures::test_db().unwrap();
             let cmd = Command::new(DbCommandPort::new(&db));
             let vault_id = VaultId::new();
@@ -405,8 +405,8 @@ mod tests {
             )
             .unwrap();
 
-            // Rollback 1 step
-            let target = cmd.rollback(vault_id, 1).unwrap();
+            // Activate previous 1 step
+            let target = cmd.activate_previous_version(vault_id, 1).unwrap();
             assert_eq!(target.value(), 1);
 
             let active: Option<Version> = db

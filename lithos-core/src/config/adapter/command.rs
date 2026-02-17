@@ -129,14 +129,14 @@ impl Command for CommandAdapter<'_> {
     #[inline]
     #[instrument(
         skip(self),
-        fields(operation = "rollback_active_version", vault_id = %vault_id, steps = %steps)
+        fields(operation = "activate_previous_version", vault_id = %vault_id, steps = %steps)
     )]
-    fn rollback_active_version(
+    fn activate_previous_version(
         &self,
         vault_id: VaultId,
         steps: u32,
     ) -> Result<Version, Self::Error> {
-        self.db.read_write_transaction(|tx| {
+        self.db.read_write_unit_of_work(|tx| {
             let current: Option<Version> =
                 tx.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
 
