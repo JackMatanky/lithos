@@ -12,7 +12,7 @@
               #[non_exhaustive] on source types."
 )]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use uuid::Uuid;
 
@@ -302,6 +302,43 @@ pub struct StringSpecDef {
     pub min_length: Option<usize>,
     /// Optional regex pattern.
     pub pattern: Option<Box<str>>,
+}
+
+/// Raw options definition supporting three formats.
+///
+/// # Modes
+///
+/// - **Mode 1 (List)**: `["a", "b"]` — plain array of values
+/// - **Mode 2 (Map)**: `{"1": "to_do", "2": "done"}` — ordered integer-keyed
+///   object
+/// - **Mode 3 (Rich)**: `[{"value": "a", "label": "A", "order": 1}]` — rich
+///   entries
+///
+/// Serde deserializes untagged variants in declaration order. Arrays are tried
+/// as `List` first (strings), then `Rich` (objects). Objects are tried as
+/// `Map`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[non_exhaustive]
+pub enum RawOptions {
+    /// Mode 1: Plain array of string values.
+    List(Vec<Box<str>>),
+    /// Mode 2: Integer-keyed ordered object.
+    Map(BTreeMap<Box<str>, Box<str>>),
+    /// Mode 3: Rich entries with optional label and order.
+    Rich(Vec<RawOptionEntry>),
+}
+
+/// Rich option entry with optional label and display order.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawOptionEntry {
+    /// The option value.
+    pub value: Box<str>,
+    /// Optional display label.
+    pub label: Option<Box<str>>,
+    /// Optional display order (lower = earlier).
+    pub order: Option<u32>,
 }
 
 #[cfg(test)]
