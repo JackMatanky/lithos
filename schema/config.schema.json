@@ -1,0 +1,346 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "config.schema.json",
+  "title": "Lithos Configuration",
+  "description": "Unified configuration schema for global and vault-level Lithos config files. Supports TOML, YAML, and JSON formats. Some fields are context-specific: 'vault_path', 'name', 'version', and 'cache_dir' apply only to vault configs; 'trusted_vaults' applies only to global configs. For vault configs, 'vault_path' is required. Defaults shown reflect Rust implementation in lithos-core/src/config/raw.rs.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "vault_path": {
+      "title": "Vault Path",
+      "description": "Absolute path to the vault root directory. Required for vault configs (ignored in global config). This identifies where the vault is located on disk.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^/|^[A-Za-z]:"
+    },
+    "name": {
+      "title": "Vault Name",
+      "description": "Human-readable display name for the vault. Vault-only field (ignored in global config). If omitted, defaults to the vault root directory name.",
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "title": "App Version",
+      "description": "Lithos schema version this vault is compatible with. Vault-only field (ignored in global config). If omitted, defaults to the current Lithos version.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.]+)?$"
+    },
+    "log_level": {
+      "title": "Log Level",
+      "description": "Verbosity of log output. Use 'none' to disable logging entirely.",
+      "type": "string",
+      "enum": ["error", "warn", "info", "debug", "trace", "none"],
+      "default": "info"
+    },
+    "paths": {
+      "title": "Path Configuration",
+      "description": "Filesystem paths for Lithos resources. All paths are relative to the vault root.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cache_dir": {
+          "title": "Cache Directory",
+          "description": "Directory for cached data. Vault-only field (ignored in global config). Must be a relative path without '..' traversal.",
+          "type": "string",
+          "default": ".cache",
+          "pattern": "^[^/]|^[^./]|^(\\.[^./]|\\.\\.[^/])"
+        },
+        "templates_dir": {
+          "title": "Templates Directory",
+          "description": "Directory containing note templates. Must be a relative path without '..' traversal.",
+          "type": "string",
+          "default": "templates"
+        },
+        "schemas_dir": {
+          "title": "Schemas Directory",
+          "description": "Directory containing note schemas. Must be a relative path without '..' traversal.",
+          "type": "string",
+          "default": "schemas"
+        },
+        "property_bank_file": {
+          "title": "Property Bank File",
+          "description": "Filename for the property bank (within the schemas directory). Must not contain path separators.",
+          "type": "string",
+          "default": "property_bank.json",
+          "pattern": "^[^/\\\\]+$"
+        }
+      }
+    },
+    "frontmatter": {
+      "title": "Frontmatter Configuration",
+      "description": "Customize which keys Lithos looks for when parsing note frontmatter.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file_class_key": {
+          "title": "File Class Key",
+          "description": "Frontmatter key for the note's schema/file type.",
+          "type": "string",
+          "default": "file_class",
+          "minLength": 1
+        },
+        "alias_key": {
+          "title": "Alias Key",
+          "description": "Frontmatter key for note aliases.",
+          "type": "string",
+          "default": "aliases",
+          "minLength": 1
+        },
+        "title_key": {
+          "title": "Title Key",
+          "description": "Frontmatter key for note title.",
+          "type": "string",
+          "default": "title",
+          "minLength": 1
+        },
+        "date_created_key": {
+          "title": "Date Created Key",
+          "description": "Frontmatter key for creation date.",
+          "type": "string",
+          "default": "date_created",
+          "minLength": 1
+        },
+        "date_modified_key": {
+          "title": "Date Modified Key",
+          "description": "Frontmatter key for modification date.",
+          "type": "string",
+          "default": "date_modified",
+          "minLength": 1
+        }
+      }
+    },
+    "task": {
+      "title": "Task Configuration",
+      "description": "Configure how Lithos recognizes and processes tasks in markdown files.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "title": "Task Processing Enabled",
+          "description": "Whether to enable task processing for this vault.",
+          "type": "boolean",
+          "default": true
+        },
+        "task_tags": {
+          "title": "Task Tags",
+          "description": "Hashtags that identify a line as a task. Each tag must start with '#' followed by alphanumeric characters, underscores, or hyphens.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^#[a-zA-Z0-9_-]+$",
+            "minLength": 2
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["#task"]
+        },
+        "status": {
+          "title": "Checkbox Status Mapping",
+          "description": "Maps status names to checkbox symbols. Keys are status names (1-32 chars, alphanumeric/underscore). Values are single printable ASCII characters or space.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1
+          },
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_]{1,32}$"
+          },
+          "minProperties": 1,
+          "default": {
+            "todo": " ",
+            "done": "x"
+          }
+        },
+        "dates": {
+          "title": "Date Field Configuration",
+          "description": "Configure date fields recognized in task lines.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "due": { "$ref": "#/$defs/DateFieldSpec" },
+            "created": { "$ref": "#/$defs/DateFieldSpec" },
+            "completed": { "$ref": "#/$defs/DateFieldSpec" },
+            "reminder": { "$ref": "#/$defs/DateFieldSpec" }
+          }
+        },
+        "fields": {
+          "title": "Custom Task Fields",
+          "description": "User-defined metadata fields for tasks. Field names must be lowercase with letters, digits, or underscores.",
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": { "$ref": "#/$defs/FieldSpec" }
+          },
+          "minProperties": 1
+        },
+        "indexing": {
+          "title": "Field Indexing",
+          "description": "Configure which task fields should be indexed for fast queries.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "indexed_fields": {
+              "title": "Indexed Fields",
+              "description": "List of field keywords to index. Each must reference a field defined in 'fields'.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
+    "trusted_vaults": {
+      "title": "Trusted Vaults",
+      "description": "Global-only field (ignored in vault config). Lists vault paths that are trusted for cross-vault operations. Can be a list of absolute paths or a map of aliases to paths.",
+      "oneOf": [
+        {
+          "title": "List Format",
+          "description": "Simple list of absolute vault paths.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^/|^[A-Za-z]:"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        {
+          "title": "Map Format",
+          "description": "Map of aliases to absolute vault paths.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^/|^[A-Za-z]:"
+          },
+          "minProperties": 1
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "DateFieldSpec": {
+      "title": "Date Field Specification",
+      "description": "Configuration for a date field in tasks. The field name (due, created, completed, reminder) is used as the keyword in task text.",
+      "type": "object",
+      "required": ["format"],
+      "additionalProperties": false,
+      "properties": {
+        "emoji": {
+          "title": "Emoji",
+          "description": "Optional emoji prefix for visual identification.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2
+        },
+        "format": {
+          "title": "Date Format",
+          "description": "Chrono-compatible format string for parsing the date (e.g., '%Y-%m-%d', '%Y-%m-%dT%H:%M').",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "FieldSpec": {
+      "title": "Task Field Specification",
+      "description": "Defines a custom metadata field in tasks. The 'type' field determines which other fields are valid.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "title": "Field Type",
+          "description": "The data type of this field.",
+          "type": "string",
+          "enum": ["options", "datetime", "string", "integer", "float"]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "options" } } },
+          "then": {
+            "properties": {
+              "values": {
+                "title": "Allowed Values",
+                "description": "List of allowed values for this options field.",
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "required": ["values"]
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "datetime" } } },
+          "then": {
+            "properties": {
+              "format": {
+                "title": "DateTime Format",
+                "description": "Chrono-compatible format string.",
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["format"]
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "string" } } },
+          "then": {
+            "properties": {
+              "pattern": {
+                "title": "Validation Pattern",
+                "description": "Optional regex pattern for validating string values. Maximum 256 characters.",
+                "type": "string",
+                "maxLength": 256
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "integer" } } },
+          "then": {
+            "properties": {
+              "min": {
+                "title": "Minimum Value",
+                "description": "Minimum allowed value (inclusive).",
+                "type": "integer"
+              },
+              "max": {
+                "title": "Maximum Value",
+                "description": "Maximum allowed value (inclusive). Must be >= min if both specified.",
+                "type": "integer"
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "float" } } },
+          "then": {
+            "properties": {
+              "min": {
+                "title": "Minimum Value",
+                "description": "Minimum allowed value (inclusive).",
+                "type": "number"
+              },
+              "max": {
+                "title": "Maximum Value",
+                "description": "Maximum allowed value (inclusive). Must be >= min if both specified.",
+                "type": "number"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

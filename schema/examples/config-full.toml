@@ -1,0 +1,91 @@
+# Full Vault Configuration Example
+# Demonstrates all available options with their default values.
+# Fields marked "vault-only" are ignored when used in global config.
+
+# Vault root path (required for vault configs)
+vault_path = "/Users/username/vaults/my-vault"
+
+# Vault display name (vault-only)
+# If omitted, defaults to the vault root directory name.
+name = "My Personal Vault"
+
+# Lithos schema version (vault-only)
+# If omitted, defaults to the current Lithos version.
+version = "0.1.0"
+
+# Log verbosity: "error", "warn", "info", "debug", "trace", or "none"
+log_level = "info"
+
+[paths]
+# Cache directory for compiled data (vault-only)
+cache_dir = ".cache"
+
+# Directory containing note templates
+templates_dir = "templates"
+
+# Directory containing note schemas
+schemas_dir = "schemas"
+
+# Property bank filename (within schemas_dir)
+property_bank_file = "property_bank.json"
+
+[frontmatter]
+# Customize frontmatter key names
+file_class_key = "file_class"
+alias_key = "aliases"
+title_key = "title"
+date_created_key = "date_created"
+date_modified_key = "date_modified"
+
+[task]
+# Enable/disable task processing
+enabled = true
+
+# Hashtags that identify a task line
+task_tags = ["#task"]
+
+# Checkbox status symbols
+[task.status]
+todo = " "
+done = "x"
+
+# Date field configuration (field name is used as keyword)
+[task.dates.due]
+format = "%Y-%m-%d"
+
+[task.dates.created]
+format = "%Y-%m-%d"
+
+[task.dates.completed]
+format = "%Y-%m-%d"
+
+[task.dates.reminder]
+emoji = "⏰"
+format = "%Y-%m-%d"
+
+# Custom task fields (permissive - any field name matching ^[a-z][a-z0-9_]*$)
+[task.fields.priority]
+type = "options"
+values = ["low", "medium", "high", "urgent"]
+
+[task.fields.effort]
+type = "integer"
+min = 1
+max = 100
+
+[task.fields.estimate]
+type = "float"
+min = 0.0
+max = 24.0
+
+[task.fields.context]
+type = "string"
+pattern = "^@(home|work|errands|computer)$"
+
+[task.fields.due_time]
+type = "datetime"
+format = "%H:%M"
+
+# Field indexing for fast queries
+[task.indexing]
+indexed_fields = ["priority", "context"]

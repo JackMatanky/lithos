@@ -1,0 +1,69 @@
+{
+  "vault_path": "/Users/username/vaults/my-vault",
+  "name": "My Personal Vault",
+  "version": "0.1.0",
+  "log_level": "info",
+  "paths": {
+    "cache_dir": ".cache",
+    "templates_dir": "templates",
+    "schemas_dir": "schemas",
+    "property_bank_file": "property_bank.json"
+  },
+  "frontmatter": {
+    "file_class_key": "file_class",
+    "alias_key": "aliases",
+    "title_key": "title",
+    "date_created_key": "date_created",
+    "date_modified_key": "date_modified"
+  },
+  "task": {
+    "enabled": true,
+    "task_tags": ["#task"],
+    "status": {
+      "todo": " ",
+      "done": "x"
+    },
+    "dates": {
+      "due": {
+        "format": "%Y-%m-%d"
+      },
+      "created": {
+        "format": "%Y-%m-%d"
+      },
+      "completed": {
+        "format": "%Y-%m-%d"
+      },
+      "reminder": {
+        "emoji": "⏰",
+        "format": "%Y-%m-%d"
+      }
+    },
+    "fields": {
+      "priority": {
+        "type": "options",
+        "values": ["low", "medium", "high", "urgent"]
+      },
+      "effort": {
+        "type": "integer",
+        "min": 1,
+        "max": 100
+      },
+      "estimate": {
+        "type": "float",
+        "min": 0.0,
+        "max": 24.0
+      },
+      "context": {
+        "type": "string",
+        "pattern": "^@(home|work|errands|computer)$"
+      },
+      "due_time": {
+        "type": "datetime",
+        "format": "%H:%M"
+      }
+    },
+    "indexing": {
+      "indexed_fields": ["priority", "context"]
+    }
+  }
+}

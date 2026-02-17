@@ -1,0 +1,7 @@
+# Minimal Vault Configuration
+# Only specifies what's required; all other settings use defaults.
+
+# Vault root path (required for vault configs)
+vault_path = "/Users/username/vaults/my-vault"
+
+log_level = "debug"

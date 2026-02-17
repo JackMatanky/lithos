@@ -1,0 +1,52 @@
+# Global Lithos Configuration
+# Location: $LITHOS_GLOBAL_CONFIG (typically ~/.config/lithos/lithos.toml)
+#
+# Global config provides defaults shared across all vaults.
+# Vault configs can override most settings; some fields are global-only.
+
+# Log verbosity (global default, vaults can override)
+log_level = "info"
+
+[paths]
+# Templates directory (vaults can override)
+templates_dir = "templates"
+
+# Schemas directory (vaults can override)
+schemas_dir = "schemas"
+
+# Property bank filename (vaults can override)
+property_bank_file = "property_bank.json"
+# Note: cache_dir is vault-only and not available here
+
+[frontmatter]
+# Global frontmatter key defaults
+file_class_key = "file_class"
+alias_key = "aliases"
+title_key = "title"
+date_created_key = "date_created"
+date_modified_key = "date_modified"
+
+[task]
+# Default task configuration (vaults can override)
+enabled = true
+task_tags = ["#task"]
+
+[task.status]
+todo = " "
+done = "x"
+
+# Trusted Vaults (global-only)
+# Define vaults that can reference each other for cross-vault operations.
+# Can be a list or a map with aliases.
+
+# List format:
+# trusted_vaults = [
+#   "/Users/username/vaults/personal",
+#   "/Users/username/vaults/work"
+# ]
+
+# Map format (with aliases):
+[trusted_vaults]
+personal = "/Users/username/vaults/personal"
+work = "/Users/username/vaults/work"
+education = "/Users/username/vaults/education"

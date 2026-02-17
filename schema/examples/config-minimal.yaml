@@ -1,0 +1,3 @@
+# Minimal Vault Configuration
+vault_path: /Users/username/vaults/my-vault
+log_level: debug
