@@ -3,19 +3,11 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "lib",
-        "pdev",
-        "pkm",
-        "task_event"
-      ]
+      "options": ["lib", "pdev", "pkm", "task_event"]
     }
   },
   "extends": "cal",
-  "excludes": [
-    "date_start",
-    "date_end"
-  ]
+  "excludes": ["date_start", "date_end"]
 }

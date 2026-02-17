@@ -3,33 +3,31 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "book"
-      ]
+      "options": ["book"]
     },
     "author": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "editor": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "translator": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "publisher": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(52_organizations)/"
     },
@@ -38,12 +36,12 @@
     },
     "isbn10": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "isbn13": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "year_published": {
@@ -54,7 +52,7 @@
     },
     "edition": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "number"
     },
     "cover_url": {
@@ -62,7 +60,7 @@
     },
     "cover_path": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "file"
     }
   },

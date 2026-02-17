@@ -2,132 +2,132 @@
   "properties": {
     "about": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "aliases": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "city": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "string"
     },
     "contact": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "51_contacts/"
     },
     "context": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": ["education", "habit_ritual", "personal", "professional", "work"]
+      "options": ["education", "habit_ritual", "personal", "professional", "work"]
     },
     "date_iso_8601": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "date",
-      "format": "2006-01-02"
+      "format": "%Y-%m-%d"
     },
     "date_year": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "date",
-      "format": "2006"
+      "format": "%Y"
     },
     "datetime_local": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "date",
-      "format": "2006-01-02T15:04"
+      "format": "%Y-%m-%dT%H:%M"
     },
     "doi": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "goal": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(30_goals)/"
     },
     "library": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(60_library)/"
     },
     "library_course": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(60_library/68_courses)/"
     },
     "organization": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(52_organizations)/"
     },
     "parent_task": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(41_personal|42_education|43_professional|44_work|45_habit_ritual)/",
       "file_class": "task_parent"
     },
     "pillar": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(20_pillars)/"
     },
     "project": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(41_personal|42_education|43_professional|44_work|45_habit_ritual)/",
       "file_class": "task_project"
     },
     "task_status": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        {"1": "to_do"},
-        {"2": "in_progress"},
-        {"3": "done"},
-        {"4": "on_hold"},
-        {"5": "schedule"},
-        {"6": "discarded"}
-      ]
+      "options": {
+        "1": "to_do",
+        "2": "in_progress",
+        "3": "done",
+        "4": "on_hold",
+        "5": "schedule",
+        "6": "discarded"
+      }
     },
     "title": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "url": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "volume": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "number",
       "step": 1.0
     },
     "year_published": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "date",
-      "format": "2006"
+      "format": "%Y"
     }
   }
 }

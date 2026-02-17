@@ -3,19 +3,19 @@
   "properties": {
     "author": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "translator": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "publisher": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(52_organizations)/"
     },
@@ -27,19 +27,19 @@
     },
     "issue": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "number",
       "step": 1.0
     },
     "page_start": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "number",
       "step": 1.0
     },
     "page_end": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "number",
       "step": 1.0
     },

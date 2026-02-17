@@ -12,28 +12,15 @@
     },
     "subtype": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "daily",
-        "monthly",
-        "prompt",
-        "quarterly",
-        "weekly",
-        "yearly"
-      ]
+      "options": ["daily", "monthly", "prompt", "quarterly", "weekly", "yearly"]
     },
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "detachment",
-        "general",
-        "gratitude",
-        "limiting_belief",
-        "reflection"
-      ]
+      "options": ["detachment", "general", "gratitude", "limiting_belief", "reflection"]
     },
     "pillar": {
       "$ref": "property_bank#/pillar"

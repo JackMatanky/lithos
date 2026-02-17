@@ -3,30 +3,15 @@
   "properties": {
     "subtype": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "daily",
-        "general",
-        "hirability",
-        "monthly",
-        "quarterly",
-        "self_appreciation",
-        "weekly",
-        "yearly"
-      ]
+      "options": ["daily", "general", "hirability", "monthly", "quarterly", "self_appreciation", "weekly", "yearly"]
     },
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "detachment",
-        "gratitude",
-        "limiting_belief",
-        "prompt",
-        "reflection"
-      ]
+      "options": ["detachment", "gratitude", "limiting_belief", "prompt", "reflection"]
     }
   },
   "extends": "pdev"

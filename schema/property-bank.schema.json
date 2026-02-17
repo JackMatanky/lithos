@@ -42,8 +42,8 @@
           "type": "boolean",
           "default": false
         },
-        "array": {
-          "title": "Array",
+        "multi": {
+          "title": "Multiple Values",
           "description": "Whether this property holds multiple values (a list) rather than a single value. Defaults to false.",
           "type": "boolean",
           "default": false
@@ -52,7 +52,7 @@
     },
     "StringProperty": {
       "title": "String Property",
-      "description": "A property that holds a text value. Optionally constrained to a fixed set of allowed values via 'enum', or validated against a regular expression via 'pattern'.",
+      "description": "A property that holds a text value. Optionally constrained to a fixed set of allowed values via 'options', or validated against a regular expression via 'pattern'.",
       "type": "object",
       "required": ["type"],
       "additionalProperties": false,
@@ -62,10 +62,10 @@
           "const": "string"
         },
         "required": { "$ref": "#/$defs/CommonFields/properties/required" },
-        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
-        "enum": {
+        "multi": { "$ref": "#/$defs/CommonFields/properties/multi" },
+        "options": {
           "title": "Allowed Values",
-          "description": "Constrains the property to a fixed set of values. Supports three modes: (1) a plain array of strings when order is unimportant; (2) an ordered array of single-key objects mapping a positive integer to a value string, for explicit display order; (3) an ordered array of single-key objects mapping a stored value to a display label, for cases where the stored value and its human-readable label differ.",
+          "description": "Constrains the property to a fixed set of values. Supports three modes: (1) a plain array of strings when order is unimportant; (2) an object mapping position integers to values for explicit display order; (3) an array of objects with value, optional label, and optional order for cases where the stored value differs from display text.",
           "oneOf": [
             {
               "title": "Plain Value List",
@@ -76,28 +76,41 @@
               "uniqueItems": true
             },
             {
-              "title": "Ordered Numeric Map",
-              "description": "An ordered list of single-key objects where each key is a positive integer string encoding display position and the value is the stored string. Use when order has semantic meaning and the value is self-describing. Example: [{\"1\": \"to_do\"}, {\"2\": \"in_progress\"}, {\"3\": \"done\"}]",
-              "type": "array",
-              "items": {
-                "type": "object",
-                "minProperties": 1,
-                "maxProperties": 1,
-                "additionalProperties": { "type": "string", "minLength": 1 },
-                "propertyNames": { "pattern": "^[1-9][0-9]*$" }
-              },
-              "minItems": 1
+              "title": "Ordered Value Map",
+              "description": "An object where each key is a positive integer string (1-indexed) encoding display position and the value is the stored string. Use when order has semantic meaning (workflow states, priority levels). Example: {\"1\": \"to_do\", \"2\": \"in_progress\", \"3\": \"done\"}",
+              "type": "object",
+              "additionalProperties": { "type": "string", "minLength": 1 },
+              "propertyNames": { "pattern": "^[1-9][0-9]*$" },
+              "minProperties": 1
             },
             {
-              "title": "Value-to-Label Map",
-              "description": "An ordered list of single-key objects where each key is the stored value and the value is the human-readable display label. Use when the stored value (snake_case) differs from what should be shown to the user. Example: [{\"january\": \"January\"}, {\"february\": \"February\"}]",
+              "title": "Value with Labels",
+              "description": "An array of objects where each item has a 'value' (required), optional 'label' for display, and optional 'order' for explicit positioning. Use when stored values differ from display text. If 'order' is omitted, array position defines display order. Example: [{\"value\": \"january\", \"label\": \"January\"}, {\"value\": \"february\", \"label\": \"February\"}]",
               "type": "array",
               "items": {
                 "type": "object",
-                "minProperties": 1,
-                "maxProperties": 1,
-                "additionalProperties": { "type": "string", "minLength": 1 },
-                "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" }
+                "required": ["value"],
+                "additionalProperties": false,
+                "properties": {
+                  "value": {
+                    "title": "Stored Value",
+                    "description": "The value stored in the note's frontmatter.",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "label": {
+                    "title": "Display Label",
+                    "description": "Human-readable text shown in UI. If omitted, 'value' is used for display.",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "order": {
+                    "title": "Display Order",
+                    "description": "Explicit position for display sorting. Use for sparse numbering (10, 20, 30) to leave room for insertions. If omitted, array position defines order.",
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
               },
               "minItems": 1
             }
@@ -123,7 +136,7 @@
           "const": "number"
         },
         "required": { "$ref": "#/$defs/CommonFields/properties/required" },
-        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "multi": { "$ref": "#/$defs/CommonFields/properties/multi" },
         "step": {
           "title": "Step",
           "description": "The increment/decrement step for UI controls. For example, 1.0 means whole numbers only.",
@@ -154,12 +167,12 @@
           "const": "boolean"
         },
         "required": { "$ref": "#/$defs/CommonFields/properties/required" },
-        "array": { "$ref": "#/$defs/CommonFields/properties/array" }
+        "multi": { "$ref": "#/$defs/CommonFields/properties/multi" }
       }
     },
     "DateProperty": {
       "title": "Date Property",
-      "description": "A property that holds a date, time, or datetime value. The format string uses Go reference time notation: '2006-01-02' for dates, '15:04' for times, '2006-01-02T15:04' for datetimes.",
+      "description": "A property that holds a date, time, or datetime value. The format string uses strftime notation: '%Y-%m-%d' for ISO dates, '%H:%M' for times, '%Y-%m-%dT%H:%M' for local datetimes.",
       "type": "object",
       "required": ["type"],
       "additionalProperties": false,
@@ -169,10 +182,10 @@
           "const": "date"
         },
         "required": { "$ref": "#/$defs/CommonFields/properties/required" },
-        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "multi": { "$ref": "#/$defs/CommonFields/properties/multi" },
         "format": {
           "title": "Date Format",
-          "description": "The display and parsing format for this date field, using Go reference time notation. Common formats: '2006-01-02' (ISO date), '2006-01-02T15:04' (local datetime), '2006' (year only), '15:04' (time only).",
+          "description": "The display and parsing format for this date field, using strftime notation. Common formats: '%Y-%m-%d' (ISO date), '%Y-%m-%dT%H:%M' (local datetime), '%Y' (year only), '%H:%M' (time only).",
           "type": "string"
         }
       }
@@ -189,7 +202,7 @@
           "const": "file"
         },
         "required": { "$ref": "#/$defs/CommonFields/properties/required" },
-        "array": { "$ref": "#/$defs/CommonFields/properties/array" },
+        "multi": { "$ref": "#/$defs/CommonFields/properties/multi" },
         "directory": {
           "title": "Target Directory",
           "description": "A vault-relative path (or regex-style alternation of paths) specifying where valid link targets must reside. Use parentheses and pipe for alternatives, e.g. '(41_personal|42_education)/'. A trailing slash is required.",

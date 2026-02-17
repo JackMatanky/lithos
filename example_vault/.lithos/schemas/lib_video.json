@@ -3,29 +3,11 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "documentary",
-        "video",
-        "youtube"
-      ]
+      "options": ["documentary", "video", "youtube"]
     }
   },
   "extends": "lib",
-  "excludes": [
-    "editor",
-    "translator",
-    "city",
-    "edition",
-    "volume",
-    "issue",
-    "page_start",
-    "page_end",
-    "isbn10",
-    "isbn13",
-    "doi",
-    "cover_url",
-    "cover_path"
-  ]
+  "excludes": ["editor", "translator", "city", "edition", "volume", "issue", "page_start", "page_end", "isbn10", "isbn13", "doi", "cover_url", "cover_path"]
 }

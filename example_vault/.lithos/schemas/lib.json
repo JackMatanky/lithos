@@ -18,7 +18,7 @@
     },
     "series": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "volume": {
@@ -32,40 +32,23 @@
     },
     "status": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        {"1": "undetermined"},
-        {"2": "schedule"},
-        {"3": "to_do"},
-        {"4": "in_progress"},
-        {"5": "done"},
-        {"6": "resource"},
-        {"7": "on_hold"}
-      ]
+      "options": {
+        "1": "undetermined",
+        "2": "schedule",
+        "3": "to_do",
+        "4": "in_progress",
+        "5": "done",
+        "6": "resource",
+        "7": "on_hold"
+      }
     },
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "audio",
-        "blog",
-        "book",
-        "book_chapter",
-        "course",
-        "course_lecture",
-        "documentary",
-        "documentation",
-        "journal",
-        "magazine",
-        "news",
-        "podcast",
-        "report",
-        "video",
-        "webpage",
-        "youtube"
-      ]
+      "options": ["audio", "blog", "book", "book_chapter", "course", "course_lecture", "documentary", "documentation", "journal", "magazine", "news", "podcast", "report", "video", "webpage", "youtube"]
     },
     "author": {
       "$ref": "property_bank#/contact"

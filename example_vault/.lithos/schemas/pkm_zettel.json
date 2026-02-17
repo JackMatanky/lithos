@@ -3,19 +3,9 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "conclusion",
-        "evidence",
-        "idea",
-        "proof",
-        "question",
-        "quote",
-        "step",
-        "summary",
-        "theorem"
-      ]
+      "options": ["conclusion", "evidence", "idea", "proof", "question", "quote", "step", "summary", "theorem"]
     }
   },
   "extends": "pkm"

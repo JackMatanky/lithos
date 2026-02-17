@@ -3,22 +3,17 @@
   "properties": {
     "lecturer": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(51_contacts)/"
     },
     "institution": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(52_organizations)/"
     }
   },
   "extends": "lib",
-  "excludes": [
-    "date_published",
-    "city",
-    "edition",
-    "volume"
-  ]
+  "excludes": ["date_published", "city", "edition", "volume"]
 }

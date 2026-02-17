@@ -3,21 +3,11 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "magazine"
-      ]
+      "options": ["magazine"]
     }
   },
   "extends": "lib",
-  "excludes": [
-    "city",
-    "edition",
-    "isbn10",
-    "isbn13",
-    "doi",
-    "cover_url",
-    "cover_path"
-  ]
+  "excludes": ["city", "edition", "isbn10", "isbn13", "doi", "cover_url", "cover_path"]
 }

@@ -9,74 +9,58 @@
     },
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "branch",
-        "category",
-        "conclusion",
-        "definition",
-        "evidence",
-        "field",
-        "general",
-        "idea",
-        "question",
-        "quote",
-        "step",
-        "subject",
-        "subtopic",
-        "summary",
-        "topic"
-      ]
+      "options": ["branch", "category", "conclusion", "definition", "evidence", "field", "general", "idea", "question", "quote", "step", "subject", "subtopic", "summary", "topic"]
     },
     "status": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        {"1": "clarify"},
-        {"2": "develop"},
-        {"3": "review"},
-        {"4": "permanent"},
-        {"5": "resource"}
-      ]
+      "options": {
+        "1": "clarify",
+        "2": "develop",
+        "3": "review",
+        "4": "permanent",
+        "5": "resource"
+      }
     },
     "pillar": {
       "$ref": "property_bank#/pillar"
     },
     "category": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },
     "branch": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },
     "field": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },
     "subject": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },
     "topic": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },
     "subtopic": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(70_pkm)/"
     },

@@ -3,32 +3,27 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "book_chapter"
-      ]
+      "options": ["book_chapter"]
     },
     "page_start": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "number"
     },
     "page_end": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "number"
     },
     "library": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(60_library/61_books)/"
     }
   },
   "extends": "lib_book",
-  "excludes": [
-    "cover_url",
-    "issue"
-  ]
+  "excludes": ["cover_url", "issue"]
 }

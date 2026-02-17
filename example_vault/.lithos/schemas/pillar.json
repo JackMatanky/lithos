@@ -3,24 +3,19 @@
   "properties": {
     "status": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        {"1": "active"},
-        {"2": "on_hold"},
-        {"3": "inactive"}
-      ]
+      "options": {
+        "1": "active",
+        "2": "on_hold",
+        "3": "inactive"
+      }
     },
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "growth",
-        "interpersonal",
-        "personal",
-        "professional"
-      ]
+      "options": ["growth", "interpersonal", "personal", "professional"]
     }
   }
 }

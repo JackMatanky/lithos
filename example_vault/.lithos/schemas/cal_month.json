@@ -3,18 +3,11 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "month"
-      ]
+      "options": ["month"]
     }
   },
   "extends": "cal",
-  "excludes": [
-    "date",
-    "weekday",
-    "week",
-    "year_day"
-  ]
+  "excludes": ["date", "weekday", "week", "year_day"]
 }

@@ -3,24 +3,13 @@
   "properties": {
     "topic": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "string",
-      "enum": [
-        "autohotkey",
-        "git",
-        "google_apps_script",
-        "google_sheets",
-        "javascript",
-        "microsoft_excel",
-        "python",
-        "r",
-        "sql",
-        "tableau"
-      ]
+      "options": ["autohotkey", "git", "google_apps_script", "google_sheets", "javascript", "microsoft_excel", "python", "r", "sql", "tableau"]
     },
     "syntax": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "url": {
@@ -28,41 +17,15 @@
     },
     "subtype": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "string",
-      "enum": [
-        "array",
-        "boolean",
-        "dataframe",
-        "dictionary",
-        "file",
-        "general",
-        "list",
-        "math",
-        "numeric",
-        "object",
-        "regex",
-        "series",
-        "set",
-        "string",
-        "tuple"
-      ]
+      "options": ["array", "boolean", "dataframe", "dictionary", "file", "general", "list", "math", "numeric", "object", "regex", "series", "set", "string", "tuple"]
     },
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "clause",
-        "data_type",
-        "error",
-        "function",
-        "keyword",
-        "method",
-        "operator",
-        "snippet",
-        "statement"
-      ]
+      "options": ["clause", "data_type", "error", "function", "keyword", "method", "operator", "snippet", "statement"]
     }
   },
   "extends": "pkm"

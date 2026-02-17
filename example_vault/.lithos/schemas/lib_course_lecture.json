@@ -3,7 +3,7 @@
   "properties": {
     "library": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(60_library/68_courses)/"
     }

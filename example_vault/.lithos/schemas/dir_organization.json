@@ -3,12 +3,12 @@
   "properties": {
     "phone": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "email": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "about": {
@@ -16,12 +16,12 @@
     },
     "industry": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "string"
     },
     "specialties": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     }
   },

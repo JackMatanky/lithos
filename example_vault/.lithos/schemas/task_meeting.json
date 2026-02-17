@@ -3,20 +3,9 @@
   "properties": {
     "subtype": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "appointment",
-        "event",
-        "gathering",
-        "hangout",
-        "interview",
-        "lecture",
-        "meeting",
-        "phone_call",
-        "tutorial",
-        "video_call"
-      ]
+      "options": ["appointment", "event", "gathering", "hangout", "interview", "lecture", "meeting", "phone_call", "tutorial", "video_call"]
     }
   },
   "extends": "task"

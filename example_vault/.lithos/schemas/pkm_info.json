@@ -3,13 +3,9 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "concept",
-        "definition",
-        "general"
-      ]
+      "options": ["concept", "definition", "general"]
     }
   },
   "extends": "pkm"

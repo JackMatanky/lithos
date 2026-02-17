@@ -9,7 +9,7 @@
     },
     "application": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "url": {
@@ -17,11 +17,9 @@
     },
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "documentation"
-      ]
+      "options": ["documentation"]
     }
   },
   "extends": "lib"

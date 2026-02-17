@@ -6,24 +6,21 @@
     },
     "task_start": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "date",
-      "format": "2006-01-02"
+      "format": "%Y-%m-%d"
     },
     "task_end": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "date",
-      "format": "2006-01-02"
+      "format": "%Y-%m-%d"
     },
     "due_do": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "do",
-        "due"
-      ]
+      "options": ["do", "due"]
     },
     "pillar": {
       "$ref": "property_bank#/pillar"
@@ -45,16 +42,9 @@
     },
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "action_item",
-        "habit",
-        "meeting",
-        "parent_task",
-        "project",
-        "ritual"
-      ]
+      "options": ["action_item", "habit", "meeting", "parent_task", "project", "ritual"]
     },
     "organization": {
       "$ref": "property_bank#/organization"

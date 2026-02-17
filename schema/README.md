@@ -4,10 +4,10 @@ This directory contains the JSON Schema meta-schema files used by Lithos to vali
 
 ## Meta-Schema Files
 
-| File                        | Validates                                                                  |
-| --------------------------- | -------------------------------------------------------------------------- |
+| File | Validates |
+|------|-----------|
 | `property-bank.schema.json` | `property_bank.{json,toml,yaml}` in a vault's `.lithos/schemas/` directory |
-| `note-metadata.schema.json` | Every other schema file in a vault's `.lithos/schemas/` directory          |
+| `note-metadata.schema.json` | Every other schema file in a vault's `.lithos/schemas/` directory |
 
 ---
 
@@ -36,23 +36,20 @@ The property bank has **no** `name`, `extends`, or `excludes` fields — it is n
 ### Structure
 
 **JSON**
-
 ```json
 {
   "properties": {
-    "<property_name>": {}
+    "<property_name>": { }
   }
 }
 ```
 
 **TOML**
-
 ```toml
 [properties.<property_name>]
 ```
 
 **YAML**
-
 ```yaml
 properties:
   <property_name>:
@@ -61,31 +58,30 @@ properties:
 ### Example
 
 **JSON**
-
 ```json
 {
   "properties": {
     "date_iso_8601": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "date",
-      "format": "2006-01-02"
+      "format": "%Y-%m-%d"
     },
     "task_status": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        { "1": "to_do" },
-        { "2": "in_progress" },
-        { "3": "done" },
-        { "4": "on_hold" },
-        { "5": "discarded" }
-      ]
+      "options": {
+        "1": "to_do",
+        "2": "in_progress",
+        "3": "done",
+        "4": "on_hold",
+        "5": "discarded"
+      }
     },
     "contact": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "51_contacts/"
     }
@@ -94,55 +90,53 @@ properties:
 ```
 
 **TOML**
-
 ```toml
 [properties.date_iso_8601]
 required = false
-array = false
+multi = false
 type = "date"
-format = "2006-01-02"
+format = "%Y-%m-%d"
 
 [properties.task_status]
 required = false
-array = false
+multi = false
 type = "string"
-enum = [
-  {"1" = "to_do"},
-  {"2" = "in_progress"},
-  {"3" = "done"},
-  {"4" = "on_hold"},
-  {"5" = "discarded"},
-]
+
+[properties.task_status.options]
+"1" = "to_do"
+"2" = "in_progress"
+"3" = "done"
+"4" = "on_hold"
+"5" = "discarded"
 
 [properties.contact]
 required = false
-array = true
+multi = true
 type = "file"
 directory = "51_contacts/"
 ```
 
 **YAML**
-
 ```yaml
 properties:
   date_iso_8601:
     required: false
-    array: false
+    multi: false
     type: date
-    format: "2006-01-02"
+    format: "%Y-%m-%d"
   task_status:
     required: false
-    array: false
+    multi: false
     type: string
-    enum:
-      - "1": to_do
-      - "2": in_progress
-      - "3": done
-      - "4": on_hold
-      - "5": discarded
+    options:
+      "1": to_do
+      "2": in_progress
+      "3": done
+      "4": on_hold
+      "5": discarded
   contact:
     required: false
-    array: true
+    multi: true
     type: file
     directory: "51_contacts/"
 ```
@@ -155,30 +149,28 @@ Each note schema file defines the frontmatter properties expected on a type of m
 
 ### Fields
 
-| Field        | Required | Description                                                 |
-| ------------ | -------- | ----------------------------------------------------------- |
-| `name`       | yes      | Unique identifier, lowercase with underscores               |
-| `properties` | yes      | The properties this schema defines or overrides             |
-| `extends`    | no       | Name of a parent schema to inherit from                     |
-| `excludes`   | no       | Inherited property names to drop. Only valid with `extends` |
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Unique identifier, lowercase with underscores |
+| `properties` | yes | The properties this schema defines or overrides |
+| `extends` | no | Name of a parent schema to inherit from |
+| `excludes` | no | Inherited property names to drop. Only valid with `extends` |
 
 ### Structure
 
 **JSON**
-
 ```json
 {
   "name": "<schema_name>",
   "extends": "<parent_schema_name>",
   "excludes": ["<field_to_remove>"],
   "properties": {
-    "<field_name>": {}
+    "<field_name>": { }
   }
 }
 ```
 
 **TOML**
-
 ```toml
 name = "<schema_name>"
 extends = "<parent_schema_name>"
@@ -188,7 +180,6 @@ excludes = ["<field_to_remove>"]
 ```
 
 **YAML**
-
 ```yaml
 name: <schema_name>
 extends: <parent_schema_name>
@@ -201,7 +192,6 @@ properties:
 ### Example
 
 **JSON**
-
 ```json
 {
   "name": "task_project",
@@ -210,16 +200,15 @@ properties:
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": ["project"]
+      "options": ["project"]
     }
   }
 }
 ```
 
 **TOML**
-
 ```toml
 name = "task_project"
 extends = "task"
@@ -227,13 +216,12 @@ excludes = ["date", "project", "parent_task"]
 
 [properties.type]
 required = false
-array = false
+multi = false
 type = "string"
-enum = ["project"]
+options = ["project"]
 ```
 
 **YAML**
-
 ```yaml
 name: task_project
 extends: task
@@ -244,9 +232,9 @@ excludes:
 properties:
   type:
     required: false
-    array: false
+    multi: false
     type: string
-    enum:
+    options:
       - project
 ```
 
@@ -261,20 +249,17 @@ Every property is either an **inline definition** or a **property bank reference
 The format is `property_bank#/<name>` where `<name>` is a key in the vault's property bank. A `$ref` entry must have no other fields.
 
 **JSON**
-
 ```json
 "status": { "$ref": "property_bank#/task_status" }
 ```
 
 **TOML**
-
 ```toml
 [properties.status]
 "$ref" = "property_bank#/task_status"
 ```
 
 **YAML**
-
 ```yaml
 properties:
   status:
@@ -285,11 +270,11 @@ properties:
 
 All inline definitions share two common fields plus a required `type`:
 
-| Field      | Type    | Default | Description                                                        |
-| ---------- | ------- | ------- | ------------------------------------------------------------------ |
-| `type`     | string  | —       | **Required.** One of `string`, `number`, `boolean`, `date`, `file` |
-| `required` | boolean | `false` | Whether the field must be present in every note                    |
-| `array`    | boolean | `false` | Whether the field holds multiple values                            |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `type` | string | — | **Required.** One of `string`, `number`, `boolean`, `date`, `file` |
+| `required` | boolean | `false` | Whether the field must be present in every note |
+| `multi` | boolean | `false` | Whether the field holds multiple values |
 
 Additional fields depend on `type`.
 
@@ -301,41 +286,38 @@ Additional fields depend on `type`.
 
 Holds a text value.
 
-| Field     | Description                                                       |
-| --------- | ----------------------------------------------------------------- |
-| `enum`    | Restrict to a fixed set of values — see [Enum Modes](#enum-modes) |
-| `pattern` | Regular expression the value must match                           |
+| Field | Description |
+|-------|-------------|
+| `options` | Restrict to a fixed set of values — see [Options Modes](#options-modes) |
+| `pattern` | Regular expression the value must match |
 
 **JSON**
-
 ```json
 "context": {
   "required": false,
-  "array": false,
+  "multi": false,
   "type": "string",
-  "enum": ["education", "personal", "professional", "work"]
+  "options": ["education", "personal", "professional", "work"]
 }
 ```
 
 **TOML**
-
 ```toml
 [properties.context]
 required = false
-array = false
+multi = false
 type = "string"
-enum = ["education", "personal", "professional", "work"]
+options = ["education", "personal", "professional", "work"]
 ```
 
 **YAML**
-
 ```yaml
 properties:
   context:
     required: false
-    array: false
+    multi: false
     type: string
-    enum:
+    options:
       - education
       - personal
       - professional
@@ -348,18 +330,17 @@ properties:
 
 Holds an integer or float value.
 
-| Field  | Description                                                             |
-| ------ | ----------------------------------------------------------------------- |
-| `min`  | Minimum allowed value (inclusive)                                       |
-| `max`  | Maximum allowed value (inclusive)                                       |
+| Field | Description |
+|-------|-------------|
 | `step` | Increment/decrement step for UI controls (e.g. `1.0` for whole numbers) |
+| `min` | Minimum allowed value (inclusive) |
+| `max` | Maximum allowed value (inclusive) |
 
 **JSON**
-
 ```json
 "edition": {
   "required": false,
-  "array": false,
+  "multi": false,
   "type": "number",
   "min": 1,
   "step": 1.0
@@ -367,23 +348,21 @@ Holds an integer or float value.
 ```
 
 **TOML**
-
 ```toml
 [properties.edition]
 required = false
-array = false
+multi = false
 type = "number"
 min = 1
 step = 1.0
 ```
 
 **YAML**
-
 ```yaml
 properties:
   edition:
     required: false
-    array: false
+    multi: false
     type: number
     min: 1
     step: 1.0
@@ -396,31 +375,28 @@ properties:
 Holds a `true` or `false` value. No additional fields.
 
 **JSON**
-
 ```json
 "is_confidential": {
   "required": false,
-  "array": false,
+  "multi": false,
   "type": "boolean"
 }
 ```
 
 **TOML**
-
 ```toml
 [properties.is_confidential]
 required = false
-array = false
+multi = false
 type = "boolean"
 ```
 
 **YAML**
-
 ```yaml
 properties:
   is_confidential:
     required: false
-    array: false
+    multi: false
     type: boolean
 ```
 
@@ -428,49 +404,46 @@ properties:
 
 ### `date`
 
-Holds a date, time, or datetime value. Format strings use Go reference time notation.
+Holds a date, time, or datetime value. Format strings use **strftime notation** (standard across most programming languages).
 
-| Field    | Description                                                 |
-| -------- | ----------------------------------------------------------- |
-| `format` | Display and parsing format using Go reference time notation |
+| Field | Description |
+|-------|-------------|
+| `format` | Display and parsing format using strftime tokens |
 
-| Format             | Example            | Use            |
-| ------------------ | ------------------ | -------------- |
-| `2006-01-02`       | `2025-10-29`       | ISO date       |
-| `2006-01-02T15:04` | `2025-10-29T14:30` | Local datetime |
-| `2006`             | `2025`             | Year only      |
-| `15:04`            | `14:30`            | Time only      |
+| Format | Example | Use |
+|--------|---------|-----|
+| `%Y-%m-%d` | `2025-10-29` | ISO date |
+| `%Y-%m-%dT%H:%M` | `2025-10-29T14:30` | Local datetime |
+| `%Y` | `2025` | Year only |
+| `%H:%M` | `14:30` | Time only |
 
 **JSON**
-
 ```json
 "date_published": {
   "required": false,
-  "array": false,
+  "multi": false,
   "type": "date",
-  "format": "2006-01-02"
+  "format": "%Y-%m-%d"
 }
 ```
 
 **TOML**
-
 ```toml
 [properties.date_published]
 required = false
-array = false
+multi = false
 type = "date"
-format = "2006-01-02"
+format = "%Y-%m-%d"
 ```
 
 **YAML**
-
 ```yaml
 properties:
   date_published:
     required: false
-    array: false
+    multi: false
     type: date
-    format: "2006-01-02"
+    format: "%Y-%m-%d"
 ```
 
 ---
@@ -479,17 +452,16 @@ properties:
 
 Links to one or more other notes in the vault.
 
-| Field        | Description                                                                                       |
-| ------------ | ------------------------------------------------------------------------------------------------- |
-| `directory`  | Vault-relative path where link targets must reside. Supports alternation: `(folder_a\|folder_b)/` |
-| `file_class` | Schema name the linked note must use                                                              |
+| Field | Description |
+|-------|-------------|
+| `directory` | Vault-relative path where link targets must reside. Supports alternation: `(folder_a\|folder_b)/` |
+| `file_class` | Schema name the linked note must use |
 
 **JSON**
-
 ```json
 "parent_task": {
   "required": false,
-  "array": true,
+  "multi": true,
   "type": "file",
   "directory": "(41_personal|42_education|43_professional)/",
   "file_class": "task_parent"
@@ -497,23 +469,21 @@ Links to one or more other notes in the vault.
 ```
 
 **TOML**
-
 ```toml
 [properties.parent_task]
 required = false
-array = true
+multi = true
 type = "file"
 directory = "(41_personal|42_education|43_professional)/"
 file_class = "task_parent"
 ```
 
 **YAML**
-
 ```yaml
 properties:
   parent_task:
     required: false
-    array: true
+    multi: true
     type: file
     directory: "(41_personal|42_education|43_professional)/"
     file_class: task_parent
@@ -521,30 +491,27 @@ properties:
 
 ---
 
-## Enum Modes
+## Options Modes
 
-The `enum` field on `string` properties supports three modes. All three use arrays of items, preserving order regardless of formatters.
+The `options` field on `string` properties supports three modes for different use cases.
 
 ### Mode 1 — Plain Value List
 
 Use when display order is unimportant or alphabetical is acceptable.
 
 **JSON**
-
 ```json
-"enum": ["education", "personal", "professional", "work"]
+"options": ["education", "personal", "professional", "work"]
 ```
 
 **TOML**
-
 ```toml
-enum = ["education", "personal", "professional", "work"]
+options = ["education", "personal", "professional", "work"]
 ```
 
 **YAML**
-
 ```yaml
-enum:
+options:
   - education
   - personal
   - professional
@@ -553,105 +520,128 @@ enum:
 
 ---
 
-### Mode 2 — Ordered Numeric Map
+### Mode 2 — Ordered Value Map
 
-Use when the order of values has semantic meaning (workflow states, priority levels, etc.). Each entry is a single-key object where the key is a positive integer string encoding display position.
+Use when the order of values has semantic meaning (workflow states, priority levels, steps in a cycle). Keys are **1-indexed** position integers. The order of keys in the file does not matter — the integer keys define display order.
 
 **JSON**
-
 ```json
-"enum": [
-  {"1": "to_do"},
-  {"2": "in_progress"},
-  {"3": "done"},
-  {"4": "on_hold"},
-  {"5": "discarded"}
-]
+"options": {
+  "1": "to_do",
+  "2": "in_progress",
+  "3": "done",
+  "4": "on_hold",
+  "5": "discarded"
+}
 ```
 
 **TOML**
-
 ```toml
-enum = [
-  {"1" = "to_do"},
-  {"2" = "in_progress"},
-  {"3" = "done"},
-  {"4" = "on_hold"},
-  {"5" = "discarded"},
-]
+[properties.status.options]
+"1" = "to_do"
+"2" = "in_progress"
+"3" = "done"
+"4" = "on_hold"
+"5" = "discarded"
 ```
 
 **YAML**
-
 ```yaml
-enum:
-  - "1": to_do
-  - "2": in_progress
-  - "3": done
-  - "4": on_hold
-  - "5": discarded
+options:
+  "1": to_do
+  "2": in_progress
+  "3": done
+  "4": on_hold
+  "5": discarded
 ```
 
 ---
 
-### Mode 3 — Value-to-Label Map
+### Mode 3 — Value with Labels
 
-Use when the stored value (snake_case) differs from what should be shown to the user. Each entry is a single-key object where the key is the stored value and the value is the display label.
+Use when the stored value differs from the display label. Each item has:
+- `value` (required) — the value stored in frontmatter
+- `label` (optional) — human-readable display text
+- `order` (optional) — explicit display position (useful for sparse numbering like 10, 20, 30)
+
+If `order` is omitted, array position defines display order. If `label` is omitted, `value` is used for display.
 
 **JSON**
-
 ```json
-"enum": [
-  {"january": "January"},
-  {"february": "February"},
-  {"march": "March"},
-  {"april": "April"},
-  {"may": "May"},
-  {"june": "June"},
-  {"july": "July"},
-  {"august": "August"},
-  {"september": "September"},
-  {"october": "October"},
-  {"november": "November"},
-  {"december": "December"}
+"options": [
+  {"value": "january", "label": "January"},
+  {"value": "february", "label": "February"},
+  {"value": "march", "label": "March"}
 ]
 ```
 
 **TOML**
-
 ```toml
-enum = [
-  {january = "January"},
-  {february = "February"},
-  {march = "March"},
-  {april = "April"},
-  {may = "May"},
-  {june = "June"},
-  {july = "July"},
-  {august = "August"},
-  {september = "September"},
-  {october = "October"},
-  {november = "November"},
-  {december = "December"},
-]
+[[properties.month_name.options]]
+value = "january"
+label = "January"
+
+[[properties.month_name.options]]
+value = "february"
+label = "February"
+
+[[properties.month_name.options]]
+value = "march"
+label = "March"
 ```
 
 **YAML**
-
 ```yaml
-enum:
-  - january: January
-  - february: February
-  - march: March
-  - april: April
-  - may: May
-  - june: June
-  - july: July
-  - august: August
-  - september: September
-  - october: October
-  - november: November
-  - december: December
+options:
+  - value: january
+    label: January
+  - value: february
+    label: February
+  - value: march
+    label: March
+```
+
+With explicit order:
+
+**JSON**
+```json
+"options": [
+  {"value": "low", "label": "Low Priority", "order": 10},
+  {"value": "medium", "label": "Medium Priority", "order": 20},
+  {"value": "high", "label": "High Priority", "order": 30}
+]
+```
+
+**TOML**
+```toml
+[[properties.priority.options]]
+value = "low"
+label = "Low Priority"
+order = 10
+
+[[properties.priority.options]]
+value = "medium"
+label = "Medium Priority"
+order = 20
+
+[[properties.priority.options]]
+value = "high"
+label = "High Priority"
+order = 30
+```
+
+**YAML**
+```yaml
+options:
+  - value: low
+    label: Low Priority
+    order: 10
+  - value: medium
+    label: Medium Priority
+    order: 20
+  - value: high
+    label: High Priority
+    order: 30
 ```
 
 ---
@@ -685,24 +675,23 @@ A contact schema with a property bank, base schema, and extended schema.
 ### Property Bank
 
 **JSON (`property_bank.json`)**
-
 ```json
 {
   "properties": {
     "title": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "date_iso_8601": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "date",
-      "format": "2006-01-02"
+      "format": "%Y-%m-%d"
     },
     "organization": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "file",
       "directory": "(52_organizations)/"
     }
@@ -711,42 +700,40 @@ A contact schema with a property bank, base schema, and extended schema.
 ```
 
 **TOML (`property_bank.toml`)**
-
 ```toml
 [properties.title]
 required = false
-array = false
+multi = false
 type = "string"
 
 [properties.date_iso_8601]
 required = false
-array = false
+multi = false
 type = "date"
-format = "2006-01-02"
+format = "%Y-%m-%d"
 
 [properties.organization]
 required = false
-array = true
+multi = true
 type = "file"
 directory = "(52_organizations)/"
 ```
 
 **YAML (`property_bank.yaml`)**
-
 ```yaml
 properties:
   title:
     required: false
-    array: false
+    multi: false
     type: string
   date_iso_8601:
     required: false
-    array: false
+    multi: false
     type: date
-    format: "2006-01-02"
+    format: "%Y-%m-%d"
   organization:
     required: false
-    array: true
+    multi: true
     type: file
     directory: "(52_organizations)/"
 ```
@@ -756,7 +743,6 @@ properties:
 ### Base Schema: `dir`
 
 **JSON (`dir.json`)**
-
 ```json
 {
   "name": "dir",
@@ -764,12 +750,12 @@ properties:
     "title": { "$ref": "property_bank#/title" },
     "country": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "string"
     },
     "url": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     }
   }
@@ -777,7 +763,6 @@ properties:
 ```
 
 **TOML (`dir.toml`)**
-
 ```toml
 name = "dir"
 
@@ -786,17 +771,16 @@ name = "dir"
 
 [properties.country]
 required = false
-array = true
+multi = true
 type = "string"
 
 [properties.url]
 required = false
-array = false
+multi = false
 type = "string"
 ```
 
 **YAML (`dir.yaml`)**
-
 ```yaml
 name: dir
 properties:
@@ -804,11 +788,11 @@ properties:
     $ref: "property_bank#/title"
   country:
     required: false
-    array: true
+    multi: true
     type: string
   url:
     required: false
-    array: false
+    multi: false
     type: string
 ```
 
@@ -817,7 +801,6 @@ properties:
 ### Extended Schema: `dir_contact`
 
 **JSON (`dir_contact.json`)**
-
 ```json
 {
   "name": "dir_contact",
@@ -825,40 +808,39 @@ properties:
   "properties": {
     "name_last": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "name_first": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     },
     "date_birth": { "$ref": "property_bank#/date_iso_8601" },
     "organization": { "$ref": "property_bank#/organization" },
     "gender": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": ["female", "male", "other"]
+      "options": ["female", "male", "other"]
     }
   }
 }
 ```
 
 **TOML (`dir_contact.toml`)**
-
 ```toml
 name = "dir_contact"
 extends = "dir"
 
 [properties.name_last]
 required = false
-array = false
+multi = false
 type = "string"
 
 [properties.name_first]
 required = false
-array = false
+multi = false
 type = "string"
 
 [properties.date_birth]
@@ -869,24 +851,23 @@ type = "string"
 
 [properties.gender]
 required = false
-array = false
+multi = false
 type = "string"
-enum = ["female", "male", "other"]
+options = ["female", "male", "other"]
 ```
 
 **YAML (`dir_contact.yaml`)**
-
 ```yaml
 name: dir_contact
 extends: dir
 properties:
   name_last:
     required: false
-    array: false
+    multi: false
     type: string
   name_first:
     required: false
-    array: false
+    multi: false
     type: string
   date_birth:
     $ref: "property_bank#/date_iso_8601"
@@ -894,9 +875,9 @@ properties:
     $ref: "property_bank#/organization"
   gender:
     required: false
-    array: false
+    multi: false
     type: string
-    enum:
+    options:
       - female
       - male
       - other

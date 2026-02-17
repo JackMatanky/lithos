@@ -3,17 +3,11 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "project"
-      ]
+      "options": ["project"]
     }
   },
   "extends": "task",
-  "excludes": [
-    "date",
-    "project",
-    "parent_task"
-  ]
+  "excludes": ["date", "project", "parent_task"]
 }

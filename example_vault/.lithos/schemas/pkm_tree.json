@@ -3,16 +3,9 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "branch",
-        "category",
-        "field",
-        "subject",
-        "subtopic",
-        "topic"
-      ]
+      "options": ["branch", "category", "field", "subject", "subtopic", "topic"]
     }
   },
   "extends": "pkm"

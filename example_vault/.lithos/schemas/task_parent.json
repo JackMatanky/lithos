@@ -3,39 +3,28 @@
   "properties": {
     "type": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "evening_ritual",
-        "habit",
-        "job_application",
-        "morning_ritual",
-        "parent_task",
-        "workday_shutdown_ritual",
-        "workday_startup_ritual"
-      ]
+      "options": ["evening_ritual", "habit", "job_application", "morning_ritual", "parent_task", "workday_shutdown_ritual", "workday_startup_ritual"]
     },
     "status": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        {"1": "to_do"},
-        {"2": "in_progress"},
-        {"3": "review"},
-        {"4": "done"},
-        {"5": "on_hold"},
-        {"6": "schedule"},
-        {"7": "applied"},
-        {"8": "offer"},
-        {"9": "rejected"},
-        {"10": "discarded"}
-      ]
+      "options": {
+        "1": "to_do",
+        "2": "in_progress",
+        "3": "review",
+        "4": "done",
+        "5": "on_hold",
+        "6": "schedule",
+        "7": "applied",
+        "8": "offer",
+        "9": "rejected",
+        "10": "discarded"
+      }
     }
   },
   "extends": "task",
-  "excludes": [
-    "date",
-    "parent_task"
-  ]
+  "excludes": ["date", "parent_task"]
 }

@@ -9,7 +9,7 @@
     },
     "country": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "string"
     },
     "city": {
@@ -23,33 +23,19 @@
     },
     "connection": {
       "required": false,
-      "array": true,
+      "multi": true,
       "type": "string",
-      "enum": [
-        "education",
-        "null",
-        "personal",
-        "professional",
-        "work"
-      ]
+      "options": ["education", "null", "personal", "professional", "work"]
     },
     "source": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string",
-      "enum": [
-        "family",
-        "garin_tsabar",
-        "hatashtit",
-        "informed_decisions",
-        "jolt",
-        "secular_yeshiva",
-        "shalem_college"
-      ]
+      "options": ["family", "garin_tsabar", "hatashtit", "informed_decisions", "jolt", "secular_yeshiva", "shalem_college"]
     },
     "picture_path": {
       "required": false,
-      "array": false,
+      "multi": false,
       "type": "string"
     }
   }
