@@ -162,7 +162,6 @@ GEMINI.md
 WARP.md
 
 # -------------- Repository Summarization Output ------------- #
-*digest.txt
 codebase.xml
 codebase.stats.md
 
@@ -172,3 +171,8 @@ _old/
 _archive/
 artifacts/
 vendor/
+
+
+*digest.txt
+docs/refs/digests/
+docs/refs/vault/

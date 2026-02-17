@@ -6,12 +6,12 @@ This directory contains real-world Obsidian vault data from Jack's personal vaul
 
 ## Location
 
-**Path**: `docs/refs/obsidian/`
+**Path**: `docs/refs/vault/`
 
 **Note**: This folder contains 70+ MB of data and is added to `.gitignore`. For development access:
 ```bash
-ls docs/refs/obsidian/
-find docs/refs/obsidian/ -name "*.md" | head -20
+ls docs/refs/vault/
+find docs/refs/vault/ -name "*.md" | head -20
 ```
 
 ## Structure
@@ -39,17 +39,17 @@ To create test vaults for Epic 3:
 
 ```bash
 # Count total notes
-find docs/refs/obsidian/ -name "*.md" | wc -l
+find docs/refs/vault/ -name "*.md" | wc -l
 
 # Create subset for testing (first 100 notes)
 mkdir -p testdata/vault-large/
-find docs/refs/obsidian/ -name "*.md" | head -100 | xargs -I {} cp {} testdata/vault-large/
+find docs/refs/vault/ -name "*.md" | head -100 | xargs -I {} cp {} testdata/vault-large/
 
 # Sample by folder for diversity
 mkdir -p testdata/vault-diverse/
-find docs/refs/obsidian/00_system/07_templates/ -name "*.md" | head -20 | xargs -I {} cp {} testdata/vault-diverse/
-find docs/refs/obsidian/44_work/ -name "*.md" | head -20 | xargs -I {} cp {} testdata/vault-diverse/
-find docs/refs/obsidian/70_pkm/ -name "*.md" | head -20 | xargs -I {} cp {} testdata/vault-diverse/
+find docs/refs/vault/00_system/07_templates/ -name "*.md" | head -20 | xargs -I {} cp {} testdata/vault-diverse/
+find docs/refs/vault/44_work/ -name "*.md" | head -20 | xargs -I {} cp {} testdata/vault-diverse/
+find docs/refs/vault/70_pkm/ -name "*.md" | head -20 | xargs -I {} cp {} testdata/vault-diverse/
 ```
 
 ## File Class Examples
