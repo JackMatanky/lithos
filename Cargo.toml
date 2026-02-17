@@ -63,7 +63,7 @@ predicates = "3.1"
 tempfile = "3.12"
 mockall = "0.13"
 proptest = "1.5"
-rstest = "0.23"
+rstest = "0.26"
 
 # Internal Workspace Crates
 lithos-core = { path = "lithos-core" }
