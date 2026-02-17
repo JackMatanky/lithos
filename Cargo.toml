@@ -31,7 +31,7 @@ miette = { version = "7.6", features = ["fancy"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 serde_yaml = "0.9"
-toml = "0.8"
+toml = "0.9"
 redb = "3.1"
 rkyv = { version = "0.8", features = ["bytecheck", "std", "uuid-1", "unaligned"] }
 uuid = { version = "1.19", features = ["v7", "v5", "serde"] }
