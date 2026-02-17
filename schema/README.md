@@ -1,560 +1,378 @@
-# Schema Documentation
+# Lithos Schema Format
 
-This document provides comprehensive guidance for creating and using schemas in Lithos to define note structure and validation rules.
+This directory contains the JSON Schema meta-schema files used by Lithos to validate vault schema files at ingestion time.
 
-## What are Schemas?
+## Meta-Schema Files
 
-Schemas in Lithos define the structure and validation rules for your notes. They ensure consistent frontmatter properties, automatic validation during note creation, and property reuse across your vault.
+| File                        | Validates                                                           |
+| --------------------------- | ------------------------------------------------------------------- |
+| `property-bank.schema.json` | `property_bank.json` in a vault's `.lithos/schemas/` directory      |
+| `note-metadata.schema.json` | Every other `*.json` file in a vault's `.lithos/schemas/` directory |
 
-### Purpose
+---
 
-- **Consistency**: Ensure all notes of a type have the same frontmatter structure
-- **Validation**: Automatically validate property types and constraints before note creation
-- **Reuse**: Define properties once in a property bank and reference them across schemas
-- **Inheritance**: Build complex schemas by extending simpler base schemas
+## Vault Schema Files
 
-### Benefits
+In a vault, schemas live at `.lithos/schemas/` and consist of two kinds of files:
 
-- **DRY Principle**: Define properties once, use everywhere
-- **Type Safety**: Automatic validation of property types and values
-- **Error Prevention**: Catch configuration errors before note creation
-- **Maintainability**: Centralized property definitions make updates easy
+```
+my-vault/
+└── .lithos/
+    └── schemas/
+        ├── property_bank.json   ← reusable property definitions
+        ├── task.json            ← note schema
+        ├── task_project.json    ← note schema (extends task)
+        └── ...
+```
+
+---
 
 ## Property Bank
 
-The property bank is a single source of truth for reusable property definitions, stored in `schemas/property_bank.json`.
-
-### Purpose
-
-- Centralize common property definitions
-- Enable property reuse across multiple schemas
-- Maintain consistency in property types and constraints
-- Simplify schema maintenance
-
-### Location
-
-`schemas/property_bank.json` (relative to vault root)
+`property_bank.json` is a dictionary of reusable property definitions. Schemas reference these with `$ref` instead of duplicating the definition everywhere.
 
 ### Structure
 
-Each property in the bank has an ID and a complete property specification:
-
 ```json
 {
-  "property_id": {
-    "type": "string|number|boolean|date|file",
-    "required": true|false,
-    "default": "optional default value",
-    "metadata": {
-      "description": "Human-readable description"
-    },
-    "spec": {
-      // Type-specific constraints
-    }
+  "properties": {
+    "<property_name>": <PropertyDefinition>
   }
 }
 ```
 
-### Property Types and Constraints
-
-#### String Properties
-
-```json
-{
-  "title": {
-    "type": "string",
-    "required": true,
-    "spec": {
-      "regex": "^[A-Z][a-zA-Z0-9 ]*$",
-      "enum": ["value1", "value2", "value3"]
-    }
-  }
-}
-```
-
-#### Number Properties
-
-```json
-{
-  "priority": {
-    "type": "number",
-    "required": false,
-    "default": 1,
-    "spec": {
-      "min": 1,
-      "max": 5,
-      "step": 1
-    }
-  }
-}
-```
-
-#### Boolean Properties
-
-```json
-{
-  "completed": {
-    "type": "boolean",
-    "required": false,
-    "default": false
-  }
-}
-```
-
-#### Date Properties
-
-```json
-{
-  "created": {
-    "type": "date",
-    "required": true,
-    "spec": {
-      "format": "2006-01-02"
-    }
-  }
-}
-```
-
-#### File Properties
-
-```json
-{
-  "attachment": {
-    "type": "file",
-    "required": false,
-    "spec": {
-      "directory": "attachments/",
-      "fileClass": "image"
-    }
-  }
-}
-```
-
-### Example Property Bank
-
-```json
-{
-  "standard_title": {
-    "type": "string",
-    "required": true,
-    "metadata": {"description": "Standard title property"}
-  },
-  "standard_created": {
-    "type": "date",
-    "required": true,
-    "metadata": {"description": "Creation timestamp"}
-  },
-  "email_address": {
-    "type": "string",
-    "required": true,
-    "spec": {
-      "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-    },
-    "metadata": {"description": "Email address with validation"}
-  },
-  "priority_level": {
-    "type": "number",
-    "required": false,
-    "default": 3,
-    "spec": {
-      "min": 1,
-      "max": 5
-    },
-    "metadata": {"description": "Priority level from 1-5"}
-  }
-}
-```
-
-## Schema Structure
-
-Schemas are JSON files that define the structure and validation rules for notes.
-
-### File Format
-
-- JSON format (`.schema.json` extension recommended)
-- Located in `schemas/` directory
-- Named descriptively (e.g., `contact.schema.json`, `meeting.schema.json`)
-
-### Required Fields
-
-- `name`: Unique identifier for the schema
-- `properties`: Array of property definitions
-
-### Optional Fields
-
-- `extends`: Name of parent schema to inherit from
-- `excludes`: Array of property IDs to exclude from inherited schema
-
-### Property Definitions
-
-Properties can be defined inline or reference the property bank:
-
-#### Inline Property Definition
-
-```json
-{
-  "id": "custom_property",
-  "type": "string",
-  "required": true,
-  "spec": {
-    "regex": "^[A-Z].*"
-  }
-}
-```
-
-#### Property Bank Reference
-
-```json
-{
-  "$ref": "property_bank_property_id"
-}
-```
-
-## Inheritance
-
-Schemas can inherit properties from parent schemas using the `extends` field.
-
-### Basic Inheritance
-
-```json
-{
-  "name": "contact",
-  "extends": "base_note",
-  "properties": [
-    {"$ref": "email_address"}
-  ]
-}
-```
-
-### Excluding Inherited Properties
-
-```json
-{
-  "name": "minimal_contact",
-  "extends": "contact",
-  "excludes": ["phone", "address"],
-  "properties": [
-    {"$ref": "emergency_contact"}
-  ]
-}
-```
-
-### Multi-level Inheritance
-
-Schemas can extend schemas that themselves extend other schemas:
-
-```
-base_note (title, created)
-  ↓
-person (extends base_note + name, email)
-  ↓
-contact (extends person + phone, address)
-```
-
-### Cycle Detection
-
-Lithos detects circular inheritance and reports an error:
-
-```
-Error: Circular inheritance detected in schema chain: contact -> person -> contact
-Hint: Remove the circular reference by changing the extends field
-```
-
-## Property References
-
-Use `$ref` to reference properties defined in the property bank.
-
-### Benefits
-
-- **DRY Principle**: Define once, use everywhere
-- **Consistency**: Same property definition across schemas
-- **Maintenance**: Update property in one place
-
-### Syntax
-
-```json
-{
-  "$ref": "property_id"
-}
-```
+The property bank has **no** `name`, `extends`, or `excludes` fields — it is not itself a schema.
 
 ### Example
 
 ```json
 {
-  "name": "meeting",
-  "properties": [
-    {"$ref": "standard_title"},
-    {"$ref": "standard_created"},
-    {
-      "id": "attendees",
-      "type": "string",
+  "properties": {
+    "date_iso_8601": {
       "required": false,
-      "spec": {
-        "regex": "^([^,]+,)*[^,]+$"
-      }
+      "array": false,
+      "type": "date",
+      "format": "2006-01-02"
+    },
+    "task_status": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        { "1": "to_do" },
+        { "2": "in_progress" },
+        { "3": "done" },
+        { "4": "on_hold" },
+        { "5": "schedule" },
+        { "6": "discarded" }
+      ]
+    },
+    "contact": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "51_contacts/"
     }
-  ]
-}
-```
-
-## Validation
-
-Lithos automatically validates notes against their schema during creation.
-
-### When Validation Occurs
-
-- After template rendering
-- Before note file is written
-- If validation fails, note creation is aborted
-
-### Validation Types
-
-#### Structural Validation
-
-- Required properties present
-- Property types match schema
-- Referenced properties exist in property bank
-
-#### Constraint Validation
-
-- Regex patterns match
-- Numbers within min/max range
-- Values in enum lists
-- Files exist and meet criteria
-
-#### Cross-schema Validation
-
-- Inheritance chains are valid
-- No circular references
-- Parent schemas exist
-
-### Error Messages
-
-Validation errors include actionable remediation hints:
-
-```
-Error: Required property 'email' missing from frontmatter
-Hint: Add email field to the frontmatter or mark as optional in schema
-
-Error: Property 'priority' value 10 exceeds maximum 5
-Hint: Change priority value to be between 1 and 5
-
-Error: Property reference '$ref: "missing_prop"' not found in property bank
-Hint: Add the missing property to schemas/property_bank.json or fix the reference
-```
-
-## Examples
-
-### Complete Example 1: Simple Contact Schema
-
-**Property Bank** (`schemas/property_bank.json`):
-
-```json
-{
-  "standard_title": {
-    "type": "string",
-    "required": true,
-    "metadata": {"description": "Standard title property"}
-  },
-  "standard_created": {
-    "type": "date",
-    "required": true,
-    "metadata": {"description": "Creation timestamp"}
   }
 }
 ```
 
-**Schema** (`schemas/contact.schema.json`):
+---
+
+## Note Schemas
+
+Each note schema file defines the frontmatter properties expected on a type of markdown note.
+
+### Structure
+
+```json
+{
+  "name": "<schema_name>",
+  "extends": "<parent_schema_name>",
+  "excludes": ["<inherited_field_to_remove>"],
+  "properties": {
+    "<field_name>": <Property>
+  }
+}
+```
+
+- `name` — required. Unique identifier, lowercase with underscores.
+- `properties` — required. The properties this schema defines or overrides.
+- `extends` — optional. Inherit all properties from another schema.
+- `excludes` — optional. List of inherited property names to drop. Only valid with `extends`.
+
+### Example
+
+```json
+{
+  "name": "task_project",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": ["project"]
+    }
+  },
+  "extends": "task",
+  "excludes": ["date", "project", "parent_task"]
+}
+```
+
+---
+
+## Property Definitions
+
+Every property is either an **inline definition** or a **property bank reference**.
+
+### Property Bank Reference
+
+```json
+"status": { "$ref": "property_bank#/task_status" }
+```
+
+The format is `property_bank#/<name>` where `<name>` is a key in the vault's `property_bank.json`. A `$ref` entry must have no other fields.
+
+### Inline Definition
+
+All inline definitions share two common fields:
+
+| Field      | Type    | Default | Description                                                        |
+| ---------- | ------- | ------- | ------------------------------------------------------------------ |
+| `type`     | string  | —       | **Required.** One of `string`, `number`, `boolean`, `date`, `file` |
+| `required` | boolean | `false` | Whether the field must be present in every note                    |
+| `array`    | boolean | `false` | Whether the field holds multiple values                            |
+
+Additional fields depend on `type`.
+
+---
+
+## Property Types
+
+### `string`
+
+Holds a text value. Optional constraints:
+
+| Field     | Description                                                             |
+| --------- | ----------------------------------------------------------------------- |
+| `enum`    | Restrict to a fixed set of values — see [Enum Modes](#enum-modes) below |
+| `pattern` | Regular expression the value must match                                 |
+
+```json
+"context": {
+  "required": false,
+  "array": false,
+  "type": "string",
+  "enum": ["education", "personal", "professional", "work"]
+}
+```
+
+### `number`
+
+Holds an integer or float value. Optional constraints:
+
+| Field  | Description                                                             |
+| ------ | ----------------------------------------------------------------------- |
+| `step` | Increment/decrement step for UI controls (e.g. `1.0` for whole numbers) |
+| `min`  | Minimum allowed value (inclusive)                                       |
+| `max`  | Maximum allowed value (inclusive)                                       |
+
+```json
+"edition": {
+  "required": false,
+  "array": false,
+  "type": "number",
+  "min": 1,
+  "step": 1.0
+}
+```
+
+### `boolean`
+
+Holds a `true` or `false` value. No additional fields.
+
+```json
+"is_confidential": {
+  "required": false,
+  "array": false,
+  "type": "boolean"
+}
+```
+
+### `date`
+
+Holds a date, time, or datetime value. Optional constraints:
+
+| Field    | Description                                                 |
+| -------- | ----------------------------------------------------------- |
+| `format` | Display and parsing format using Go reference time notation |
+
+Common formats:
+
+| Format             | Example            | Use            |
+| ------------------ | ------------------ | -------------- |
+| `2006-01-02`       | `2025-10-29`       | ISO date       |
+| `2006-01-02T15:04` | `2025-10-29T14:30` | Local datetime |
+| `2006`             | `2025`             | Year only      |
+| `15:04`            | `14:30`            | Time only      |
+
+```json
+"date_published": {
+  "required": false,
+  "array": false,
+  "type": "date",
+  "format": "2006-01-02"
+}
+```
+
+### `file`
+
+Links to one or more other notes in the vault. Optional constraints:
+
+| Field        | Description                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| `directory`  | Vault-relative path where valid link targets must reside. Supports alternation: `(41_personal\|42_education)/` |
+| `file_class` | The schema name the linked note must use                                                                       |
+
+```json
+"parent_task": {
+  "required": false,
+  "array": true,
+  "type": "file",
+  "directory": "(41_personal|42_education|43_professional)/",
+  "file_class": "task_parent"
+}
+```
+
+---
+
+## Enum Modes
+
+The `enum` field on `string` properties supports three modes. All three use arrays, preserving order regardless of formatters.
+
+### Mode 1 — Plain Value List
+
+Use when display order is unimportant or alphabetical is acceptable.
+
+```json
+"enum": ["education", "personal", "professional", "work"]
+```
+
+### Mode 2 — Ordered Numeric Map
+
+Use when the order of values has semantic meaning (workflow states, priority levels, etc.). Each entry is a single-key object where the key is a positive integer encoding display position.
+
+```json
+"enum": [
+  {"1": "to_do"},
+  {"2": "in_progress"},
+  {"3": "done"},
+  {"4": "on_hold"},
+  {"5": "discarded"}
+]
+```
+
+### Mode 3 — Value-to-Label Map
+
+Use when the stored value (snake_case) differs from what should be shown to the user. Each entry is a single-key object where the key is the stored value and the value is the display label.
+
+```json
+"enum": [
+  {"january": "January"},
+  {"february": "February"},
+  {"march": "March"},
+  {"april": "April"},
+  {"may": "May"},
+  {"june": "June"},
+  {"july": "July"},
+  {"august": "August"},
+  {"september": "September"},
+  {"october": "October"},
+  {"november": "November"},
+  {"december": "December"}
+]
+```
+
+---
+
+## Inheritance
+
+Schemas can inherit from a parent schema using `extends`. The resolved property set of a child schema is:
+
+```
+parent properties − excludes + child properties
+```
+
+Child properties override parent properties of the same name.
+
+```
+task
+  ├── task_project   (extends task, excludes: date, project, parent_task)
+  ├── task_parent    (extends task, excludes: date, parent_task)
+  ├── task_meeting   (extends task)
+  └── task_child     (extends task, excludes: date_start, date_end)
+```
+
+Lithos detects circular inheritance and reports an error at ingestion time.
+
+---
+
+## Complete Example
+
+**`property_bank.json`:**
+
+```json
+{
+  "properties": {
+    "title": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "date_iso_8601": {
+      "required": false,
+      "array": false,
+      "type": "date",
+      "format": "2006-01-02"
+    },
+    "organization": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(52_organizations)/"
+    }
+  }
+}
+```
+
+**`contact.json`:**
 
 ```json
 {
   "name": "contact",
-  "properties": [
-    {"$ref": "standard_title"},
-    {"$ref": "standard_created"},
-    {
-      "id": "email",
-      "type": "string",
-      "required": true,
-      "spec": {
-        "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-      }
-    },
-    {
-      "id": "phone",
-      "type": "string",
-      "required": false
-    }
-  ]
-}
-```
-
-**Template** (`templates/contact.md`):
-
-```markdown
----
-schema: contact
-title: {{ prompt "name" "Contact Name" "" }}
-created: {{ now "2006-01-02" }}
-email: {{ prompt "email" "Email Address" "" }}
-phone: {{ prompt "phone" "Phone Number" "" }}
----
-
-# {{ .Frontmatter.title }}
-
-- **Email:** {{ .Frontmatter.email }}
-- **Phone:** {{ .Frontmatter.phone }}
-- **Created:** {{ .Frontmatter.created }}
-```
-
-### Complete Example 2: Inheritance with Base Schema
-
-**Base Schema** (`schemas/base_note.schema.json`):
-
-```json
-{
-  "name": "base_note",
-  "properties": [
-    {"$ref": "standard_title"},
-    {"$ref": "standard_created"}
-  ]
-}
-```
-
-**Extended Schema** (`schemas/meeting.schema.json`):
-
-```json
-{
-  "name": "meeting",
-  "extends": "base_note",
-  "properties": [
-    {
-      "id": "date",
-      "type": "date",
-      "required": true
-    },
-    {
-      "id": "attendees",
-      "type": "string",
-      "required": false
-    }
-  ]
-}
-```
-
-### Complete Example 3: Complex Schema with All Constraint Types
-
-```json
-{
-  "name": "project",
-  "properties": [
-    {"$ref": "standard_title"},
-    {"$ref": "standard_created"},
-    {"$ref": "priority_level"},
-    {
-      "id": "status",
-      "type": "string",
-      "required": true,
-      "spec": {
-        "enum": ["planning", "active", "on-hold", "completed"]
-      }
-    },
-    {
-      "id": "budget",
-      "type": "number",
+  "properties": {
+    "name_last": {
       "required": false,
-      "spec": {
-        "min": 0,
-        "max": 1000000,
-        "step": 100
-      }
+      "array": false,
+      "type": "string"
     },
-    {
-      "id": "is_confidential",
-      "type": "boolean",
+    "name_first": {
       "required": false,
-      "default": false
+      "array": false,
+      "type": "string"
     },
-    {
-      "id": "deadline",
-      "type": "date",
-      "required": false
+    "date_birth": {
+      "$ref": "property_bank#/date_iso_8601"
     },
-    {
-      "id": "documentation",
-      "type": "file",
+    "organization": {
+      "$ref": "property_bank#/organization"
+    },
+    "gender": {
       "required": false,
-      "spec": {
-        "directory": "docs/",
-        "fileClass": "document"
-      }
+      "array": false,
+      "type": "string",
+      "enum": ["female", "male", "other"]
     }
-  ]
+  }
 }
 ```
-
-### Complete Example 4: Full Workflow from Schema to Note
-
-1. **Setup vault structure:**
-   ```
-   my-vault/
-   ├── schemas/
-   │   ├── property_bank.json
-   │   └── contact.schema.json
-   └── templates/
-       └── contact.md
-   ```
-
-2. **Create property bank:**
-   ```json
-   {
-     "standard_title": {"type": "string", "required": true},
-     "standard_created": {"type": "date", "required": true}
-   }
-   ```
-
-3. **Create schema:**
-   ```json
-   {
-     "name": "contact",
-     "properties": [
-       {"$ref": "standard_title"},
-       {"$ref": "standard_created"},
-       {"id": "email", "type": "string", "required": true}
-     ]
-   }
-   ```
-
-4. **Create template:**
-   ```markdown
-   ---
-   schema: contact
-   title: {{ prompt "name" "Name" "" }}
-   created: {{ now "2006-01-02" }}
-   email: {{ prompt "email" "Email" "" }}
-   ---
-
-   # {{ .Frontmatter.title }}
-   Email: {{ .Frontmatter.email }}
-   ```
-
-5. **Generate note:**
-   ```bash
-   cd my-vault
-   lithos new contact
-   ```
-
-6. **Resulting note** (`contact.md`):
-   ```markdown
-   ---
-   title: John Doe
-   created: 2025-10-29
-   email: john@example.com
-   ---
-
-   # John Doe
-   Email: john@example.com
-   ```
-
-The frontmatter is automatically validated against the schema during creation.
