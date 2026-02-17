@@ -34,11 +34,11 @@
       "array": false,
       "type": "string",
       "enum": [
-        "clarify",
-        "develop",
-        "permanent",
-        "resource",
-        "review"
+        {"1": "clarify"},
+        {"2": "develop"},
+        {"3": "review"},
+        {"4": "permanent"},
+        {"5": "resource"}
       ]
     },
     "pillar": {

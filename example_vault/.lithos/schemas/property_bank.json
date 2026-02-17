@@ -99,12 +99,12 @@
       "array": false,
       "type": "string",
       "enum": [
-        "discarded",
-        "done",
-        "in_progress",
-        "on_hold",
-        "schedule",
-        "to_do"
+        {"1": "to_do"},
+        {"2": "in_progress"},
+        {"3": "done"},
+        {"4": "on_hold"},
+        {"5": "schedule"},
+        {"6": "discarded"}
       ]
     },
     "title": {

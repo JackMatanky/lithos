@@ -118,11 +118,43 @@
         "array": { "$ref": "#/$defs/CommonFields/properties/array" },
         "enum": {
           "title": "Allowed Values",
-          "description": "If present, the property value must be one of these strings. Values should be lowercase and use underscores instead of spaces.",
-          "type": "array",
-          "items": { "type": "string" },
-          "minItems": 1,
-          "uniqueItems": true
+          "description": "Constrains the property to a fixed set of values. Supports three modes: (1) a plain array of strings when order is unimportant; (2) an ordered array of single-key objects mapping a positive integer to a value string, for explicit display order; (3) an ordered array of single-key objects mapping a stored value to a display label, for cases where the stored value and its human-readable label differ.",
+          "oneOf": [
+            {
+              "title": "Plain Value List",
+              "description": "An unordered set of allowed string values. Use when display order is unimportant or alphabetical order is acceptable. Example: [\"education\", \"personal\", \"professional\"]",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            {
+              "title": "Ordered Numeric Map",
+              "description": "An ordered list of single-key objects where each key is a positive integer string encoding display position and the value is the stored string. Use when order has semantic meaning and the value is self-describing. Example: [{\"1\": \"to_do\"}, {\"2\": \"in_progress\"}, {\"3\": \"done\"}]",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 1,
+                "additionalProperties": { "type": "string", "minLength": 1 },
+                "propertyNames": { "pattern": "^[1-9][0-9]*$" }
+              },
+              "minItems": 1
+            },
+            {
+              "title": "Value-to-Label Map",
+              "description": "An ordered list of single-key objects where each key is the stored value and the value is the human-readable display label. Use when the stored value (snake_case) differs from what should be shown to the user. Example: [{\"january\": \"January\"}, {\"february\": \"February\"}]",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 1,
+                "additionalProperties": { "type": "string", "minLength": 1 },
+                "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" }
+              },
+              "minItems": 1
+            }
+          ]
         },
         "pattern": {
           "title": "Validation Pattern",

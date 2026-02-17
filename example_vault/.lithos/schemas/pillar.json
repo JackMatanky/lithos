@@ -6,9 +6,9 @@
       "array": false,
       "type": "string",
       "enum": [
-        "active",
-        "inactive",
-        "on_hold"
+        {"1": "active"},
+        {"2": "on_hold"},
+        {"3": "inactive"}
       ]
     },
     "type": {

@@ -30,18 +30,18 @@
       "array": false,
       "type": "string",
       "enum": [
-        "April",
-        "August",
-        "December",
-        "February",
-        "January",
-        "July",
-        "June",
-        "March",
-        "May",
-        "November",
-        "October",
-        "September"
+        {"january": "January"},
+        {"february": "February"},
+        {"march": "March"},
+        {"april": "April"},
+        {"may": "May"},
+        {"june": "June"},
+        {"july": "July"},
+        {"august": "August"},
+        {"september": "September"},
+        {"october": "October"},
+        {"november": "November"},
+        {"december": "December"}
       ]
     },
     "month_number": {
@@ -78,40 +78,26 @@
       "array": false,
       "type": "string",
       "enum": [
-        "Friday",
-        "Monday",
-        "Saturday",
-        "Sunday",
-        "Thursday",
-        "Tuesday",
-        "Wednesday"
+        {"sunday": "Sunday"},
+        {"monday": "Monday"},
+        {"tuesday": "Tuesday"},
+        {"wednesday": "Wednesday"},
+        {"thursday": "Thursday"},
+        {"friday": "Friday"},
+        {"saturday": "Saturday"}
       ]
     },
     "weekday_number": {
       "required": false,
       "array": false,
       "type": "string",
-      "enum": [
-        "00",
-        "01",
-        "02",
-        "03",
-        "04",
-        "05",
-        "06"
-      ]
+      "enum": ["00", "01", "02", "03", "04", "05", "06"]
     },
     "type": {
       "required": false,
       "array": false,
       "type": "string",
-      "enum": [
-        "day",
-        "month",
-        "quarter",
-        "week",
-        "year"
-      ]
+      "enum": ["day", "month", "quarter", "week", "year"]
     }
   }
 }

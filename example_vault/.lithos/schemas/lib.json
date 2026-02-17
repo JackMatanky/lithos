@@ -35,13 +35,13 @@
       "array": false,
       "type": "string",
       "enum": [
-        "done",
-        "in_progress",
-        "on_hold",
-        "resource",
-        "schedule",
-        "to_do",
-        "undetermined"
+        {"1": "undetermined"},
+        {"2": "schedule"},
+        {"3": "to_do"},
+        {"4": "in_progress"},
+        {"5": "done"},
+        {"6": "resource"},
+        {"7": "on_hold"}
       ]
     },
     "type": {

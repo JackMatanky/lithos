@@ -20,16 +20,16 @@
       "array": false,
       "type": "string",
       "enum": [
-        "applied",
-        "discarded",
-        "done",
-        "in_progress",
-        "offer",
-        "on_hold",
-        "rejected",
-        "review",
-        "schedule",
-        "to_do"
+        {"1": "to_do"},
+        {"2": "in_progress"},
+        {"3": "review"},
+        {"4": "done"},
+        {"5": "on_hold"},
+        {"6": "schedule"},
+        {"7": "applied"},
+        {"8": "offer"},
+        {"9": "rejected"},
+        {"10": "discarded"}
       ]
     }
   },
