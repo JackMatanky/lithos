@@ -4,24 +4,24 @@ This directory contains the JSON Schema meta-schema files used by Lithos to vali
 
 ## Meta-Schema Files
 
-| File                        | Validates                                                           |
-| --------------------------- | ------------------------------------------------------------------- |
-| `property-bank.schema.json` | `property_bank.json` in a vault's `.lithos/schemas/` directory      |
-| `note-metadata.schema.json` | Every other `*.json` file in a vault's `.lithos/schemas/` directory |
+| File                        | Validates                                                                  |
+| --------------------------- | -------------------------------------------------------------------------- |
+| `property-bank.schema.json` | `property_bank.{json,toml,yaml}` in a vault's `.lithos/schemas/` directory |
+| `note-metadata.schema.json` | Every other schema file in a vault's `.lithos/schemas/` directory          |
 
 ---
 
 ## Vault Schema Files
 
-In a vault, schemas live at `.lithos/schemas/` and consist of two kinds of files:
+In a vault, schemas live at `.lithos/schemas/` and can be written in **JSON**, **TOML**, or **YAML**. All three formats are equivalent — use whichever you prefer.
 
 ```
 my-vault/
 └── .lithos/
     └── schemas/
-        ├── property_bank.json   ← reusable property definitions
-        ├── task.json            ← note schema
-        ├── task_project.json    ← note schema (extends task)
+        ├── property_bank.json    ← reusable property definitions
+        ├── task.toml             ← note schema (TOML)
+        ├── task_project.yaml     ← note schema (YAML, extends task)
         └── ...
 ```
 
@@ -29,21 +29,38 @@ my-vault/
 
 ## Property Bank
 
-`property_bank.json` is a dictionary of reusable property definitions. Schemas reference these with `$ref` instead of duplicating the definition everywhere.
+The property bank is a dictionary of reusable property definitions. Schemas reference these with `$ref` instead of duplicating definitions everywhere.
+
+The property bank has **no** `name`, `extends`, or `excludes` fields — it is not itself a schema.
 
 ### Structure
+
+**JSON**
 
 ```json
 {
   "properties": {
-    "<property_name>": <PropertyDefinition>
+    "<property_name>": {}
   }
 }
 ```
 
-The property bank has **no** `name`, `extends`, or `excludes` fields — it is not itself a schema.
+**TOML**
+
+```toml
+[properties.<property_name>]
+```
+
+**YAML**
+
+```yaml
+properties:
+  <property_name>:
+```
 
 ### Example
+
+**JSON**
 
 ```json
 {
@@ -63,8 +80,7 @@ The property bank has **no** `name`, `extends`, or `excludes` fields — it is n
         { "2": "in_progress" },
         { "3": "done" },
         { "4": "on_hold" },
-        { "5": "schedule" },
-        { "6": "discarded" }
+        { "5": "discarded" }
       ]
     },
     "contact": {
@@ -77,35 +93,120 @@ The property bank has **no** `name`, `extends`, or `excludes` fields — it is n
 }
 ```
 
+**TOML**
+
+```toml
+[properties.date_iso_8601]
+required = false
+array = false
+type = "date"
+format = "2006-01-02"
+
+[properties.task_status]
+required = false
+array = false
+type = "string"
+enum = [
+  {"1" = "to_do"},
+  {"2" = "in_progress"},
+  {"3" = "done"},
+  {"4" = "on_hold"},
+  {"5" = "discarded"},
+]
+
+[properties.contact]
+required = false
+array = true
+type = "file"
+directory = "51_contacts/"
+```
+
+**YAML**
+
+```yaml
+properties:
+  date_iso_8601:
+    required: false
+    array: false
+    type: date
+    format: "2006-01-02"
+  task_status:
+    required: false
+    array: false
+    type: string
+    enum:
+      - "1": to_do
+      - "2": in_progress
+      - "3": done
+      - "4": on_hold
+      - "5": discarded
+  contact:
+    required: false
+    array: true
+    type: file
+    directory: "51_contacts/"
+```
+
 ---
 
 ## Note Schemas
 
 Each note schema file defines the frontmatter properties expected on a type of markdown note.
 
+### Fields
+
+| Field        | Required | Description                                                 |
+| ------------ | -------- | ----------------------------------------------------------- |
+| `name`       | yes      | Unique identifier, lowercase with underscores               |
+| `properties` | yes      | The properties this schema defines or overrides             |
+| `extends`    | no       | Name of a parent schema to inherit from                     |
+| `excludes`   | no       | Inherited property names to drop. Only valid with `extends` |
+
 ### Structure
+
+**JSON**
 
 ```json
 {
   "name": "<schema_name>",
   "extends": "<parent_schema_name>",
-  "excludes": ["<inherited_field_to_remove>"],
+  "excludes": ["<field_to_remove>"],
   "properties": {
-    "<field_name>": <Property>
+    "<field_name>": {}
   }
 }
 ```
 
-- `name` — required. Unique identifier, lowercase with underscores.
-- `properties` — required. The properties this schema defines or overrides.
-- `extends` — optional. Inherit all properties from another schema.
-- `excludes` — optional. List of inherited property names to drop. Only valid with `extends`.
+**TOML**
+
+```toml
+name = "<schema_name>"
+extends = "<parent_schema_name>"
+excludes = ["<field_to_remove>"]
+
+[properties.<field_name>]
+```
+
+**YAML**
+
+```yaml
+name: <schema_name>
+extends: <parent_schema_name>
+excludes:
+  - <field_to_remove>
+properties:
+  <field_name>:
+```
 
 ### Example
+
+**JSON**
 
 ```json
 {
   "name": "task_project",
+  "extends": "task",
+  "excludes": ["date", "project", "parent_task"],
   "properties": {
     "type": {
       "required": false,
@@ -113,10 +214,40 @@ Each note schema file defines the frontmatter properties expected on a type of m
       "type": "string",
       "enum": ["project"]
     }
-  },
-  "extends": "task",
-  "excludes": ["date", "project", "parent_task"]
+  }
 }
+```
+
+**TOML**
+
+```toml
+name = "task_project"
+extends = "task"
+excludes = ["date", "project", "parent_task"]
+
+[properties.type]
+required = false
+array = false
+type = "string"
+enum = ["project"]
+```
+
+**YAML**
+
+```yaml
+name: task_project
+extends: task
+excludes:
+  - date
+  - project
+  - parent_task
+properties:
+  type:
+    required: false
+    array: false
+    type: string
+    enum:
+      - project
 ```
 
 ---
@@ -127,15 +258,32 @@ Every property is either an **inline definition** or a **property bank reference
 
 ### Property Bank Reference
 
+The format is `property_bank#/<name>` where `<name>` is a key in the vault's property bank. A `$ref` entry must have no other fields.
+
+**JSON**
+
 ```json
 "status": { "$ref": "property_bank#/task_status" }
 ```
 
-The format is `property_bank#/<name>` where `<name>` is a key in the vault's `property_bank.json`. A `$ref` entry must have no other fields.
+**TOML**
+
+```toml
+[properties.status]
+"$ref" = "property_bank#/task_status"
+```
+
+**YAML**
+
+```yaml
+properties:
+  status:
+    $ref: "property_bank#/task_status"
+```
 
 ### Inline Definition
 
-All inline definitions share two common fields:
+All inline definitions share two common fields plus a required `type`:
 
 | Field      | Type    | Default | Description                                                        |
 | ---------- | ------- | ------- | ------------------------------------------------------------------ |
@@ -151,12 +299,14 @@ Additional fields depend on `type`.
 
 ### `string`
 
-Holds a text value. Optional constraints:
+Holds a text value.
 
-| Field     | Description                                                             |
-| --------- | ----------------------------------------------------------------------- |
-| `enum`    | Restrict to a fixed set of values — see [Enum Modes](#enum-modes) below |
-| `pattern` | Regular expression the value must match                                 |
+| Field     | Description                                                       |
+| --------- | ----------------------------------------------------------------- |
+| `enum`    | Restrict to a fixed set of values — see [Enum Modes](#enum-modes) |
+| `pattern` | Regular expression the value must match                           |
+
+**JSON**
 
 ```json
 "context": {
@@ -167,15 +317,44 @@ Holds a text value. Optional constraints:
 }
 ```
 
+**TOML**
+
+```toml
+[properties.context]
+required = false
+array = false
+type = "string"
+enum = ["education", "personal", "professional", "work"]
+```
+
+**YAML**
+
+```yaml
+properties:
+  context:
+    required: false
+    array: false
+    type: string
+    enum:
+      - education
+      - personal
+      - professional
+      - work
+```
+
+---
+
 ### `number`
 
-Holds an integer or float value. Optional constraints:
+Holds an integer or float value.
 
 | Field  | Description                                                             |
 | ------ | ----------------------------------------------------------------------- |
-| `step` | Increment/decrement step for UI controls (e.g. `1.0` for whole numbers) |
 | `min`  | Minimum allowed value (inclusive)                                       |
 | `max`  | Maximum allowed value (inclusive)                                       |
+| `step` | Increment/decrement step for UI controls (e.g. `1.0` for whole numbers) |
+
+**JSON**
 
 ```json
 "edition": {
@@ -187,9 +366,36 @@ Holds an integer or float value. Optional constraints:
 }
 ```
 
+**TOML**
+
+```toml
+[properties.edition]
+required = false
+array = false
+type = "number"
+min = 1
+step = 1.0
+```
+
+**YAML**
+
+```yaml
+properties:
+  edition:
+    required: false
+    array: false
+    type: number
+    min: 1
+    step: 1.0
+```
+
+---
+
 ### `boolean`
 
 Holds a `true` or `false` value. No additional fields.
+
+**JSON**
 
 ```json
 "is_confidential": {
@@ -199,15 +405,34 @@ Holds a `true` or `false` value. No additional fields.
 }
 ```
 
+**TOML**
+
+```toml
+[properties.is_confidential]
+required = false
+array = false
+type = "boolean"
+```
+
+**YAML**
+
+```yaml
+properties:
+  is_confidential:
+    required: false
+    array: false
+    type: boolean
+```
+
+---
+
 ### `date`
 
-Holds a date, time, or datetime value. Optional constraints:
+Holds a date, time, or datetime value. Format strings use Go reference time notation.
 
 | Field    | Description                                                 |
 | -------- | ----------------------------------------------------------- |
 | `format` | Display and parsing format using Go reference time notation |
-
-Common formats:
 
 | Format             | Example            | Use            |
 | ------------------ | ------------------ | -------------- |
@@ -215,6 +440,8 @@ Common formats:
 | `2006-01-02T15:04` | `2025-10-29T14:30` | Local datetime |
 | `2006`             | `2025`             | Year only      |
 | `15:04`            | `14:30`            | Time only      |
+
+**JSON**
 
 ```json
 "date_published": {
@@ -225,14 +452,39 @@ Common formats:
 }
 ```
 
+**TOML**
+
+```toml
+[properties.date_published]
+required = false
+array = false
+type = "date"
+format = "2006-01-02"
+```
+
+**YAML**
+
+```yaml
+properties:
+  date_published:
+    required: false
+    array: false
+    type: date
+    format: "2006-01-02"
+```
+
+---
+
 ### `file`
 
-Links to one or more other notes in the vault. Optional constraints:
+Links to one or more other notes in the vault.
 
-| Field        | Description                                                                                                    |
-| ------------ | -------------------------------------------------------------------------------------------------------------- |
-| `directory`  | Vault-relative path where valid link targets must reside. Supports alternation: `(41_personal\|42_education)/` |
-| `file_class` | The schema name the linked note must use                                                                       |
+| Field        | Description                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| `directory`  | Vault-relative path where link targets must reside. Supports alternation: `(folder_a\|folder_b)/` |
+| `file_class` | Schema name the linked note must use                                                              |
+
+**JSON**
 
 ```json
 "parent_task": {
@@ -244,23 +496,68 @@ Links to one or more other notes in the vault. Optional constraints:
 }
 ```
 
+**TOML**
+
+```toml
+[properties.parent_task]
+required = false
+array = true
+type = "file"
+directory = "(41_personal|42_education|43_professional)/"
+file_class = "task_parent"
+```
+
+**YAML**
+
+```yaml
+properties:
+  parent_task:
+    required: false
+    array: true
+    type: file
+    directory: "(41_personal|42_education|43_professional)/"
+    file_class: task_parent
+```
+
 ---
 
 ## Enum Modes
 
-The `enum` field on `string` properties supports three modes. All three use arrays, preserving order regardless of formatters.
+The `enum` field on `string` properties supports three modes. All three use arrays of items, preserving order regardless of formatters.
 
 ### Mode 1 — Plain Value List
 
 Use when display order is unimportant or alphabetical is acceptable.
 
+**JSON**
+
 ```json
 "enum": ["education", "personal", "professional", "work"]
 ```
 
+**TOML**
+
+```toml
+enum = ["education", "personal", "professional", "work"]
+```
+
+**YAML**
+
+```yaml
+enum:
+  - education
+  - personal
+  - professional
+  - work
+```
+
+---
+
 ### Mode 2 — Ordered Numeric Map
 
-Use when the order of values has semantic meaning (workflow states, priority levels, etc.). Each entry is a single-key object where the key is a positive integer encoding display position.
+Use when the order of values has semantic meaning (workflow states, priority levels, etc.). Each entry is a single-key object where the key is a positive integer string encoding display position.
+
+**JSON**
 
 ```json
 "enum": [
@@ -272,9 +569,36 @@ Use when the order of values has semantic meaning (workflow states, priority lev
 ]
 ```
 
+**TOML**
+
+```toml
+enum = [
+  {"1" = "to_do"},
+  {"2" = "in_progress"},
+  {"3" = "done"},
+  {"4" = "on_hold"},
+  {"5" = "discarded"},
+]
+```
+
+**YAML**
+
+```yaml
+enum:
+  - "1": to_do
+  - "2": in_progress
+  - "3": done
+  - "4": on_hold
+  - "5": discarded
+```
+
+---
+
 ### Mode 3 — Value-to-Label Map
 
 Use when the stored value (snake_case) differs from what should be shown to the user. Each entry is a single-key object where the key is the stored value and the value is the display label.
+
+**JSON**
 
 ```json
 "enum": [
@@ -291,6 +615,43 @@ Use when the stored value (snake_case) differs from what should be shown to the 
   {"november": "November"},
   {"december": "December"}
 ]
+```
+
+**TOML**
+
+```toml
+enum = [
+  {january = "January"},
+  {february = "February"},
+  {march = "March"},
+  {april = "April"},
+  {may = "May"},
+  {june = "June"},
+  {july = "July"},
+  {august = "August"},
+  {september = "September"},
+  {october = "October"},
+  {november = "November"},
+  {december = "December"},
+]
+```
+
+**YAML**
+
+```yaml
+enum:
+  - january: January
+  - february: February
+  - march: March
+  - april: April
+  - may: May
+  - june: June
+  - july: July
+  - august: August
+  - september: September
+  - october: October
+  - november: November
+  - december: December
 ```
 
 ---
@@ -319,7 +680,11 @@ Lithos detects circular inheritance and reports an error at ingestion time.
 
 ## Complete Example
 
-**`property_bank.json`:**
+A contact schema with a property bank, base schema, and extended schema.
+
+### Property Bank
+
+**JSON (`property_bank.json`)**
 
 ```json
 {
@@ -345,11 +710,118 @@ Lithos detects circular inheritance and reports an error at ingestion time.
 }
 ```
 
-**`contact.json`:**
+**TOML (`property_bank.toml`)**
+
+```toml
+[properties.title]
+required = false
+array = false
+type = "string"
+
+[properties.date_iso_8601]
+required = false
+array = false
+type = "date"
+format = "2006-01-02"
+
+[properties.organization]
+required = false
+array = true
+type = "file"
+directory = "(52_organizations)/"
+```
+
+**YAML (`property_bank.yaml`)**
+
+```yaml
+properties:
+  title:
+    required: false
+    array: false
+    type: string
+  date_iso_8601:
+    required: false
+    array: false
+    type: date
+    format: "2006-01-02"
+  organization:
+    required: false
+    array: true
+    type: file
+    directory: "(52_organizations)/"
+```
+
+---
+
+### Base Schema: `dir`
+
+**JSON (`dir.json`)**
 
 ```json
 {
-  "name": "contact",
+  "name": "dir",
+  "properties": {
+    "title": { "$ref": "property_bank#/title" },
+    "country": {
+      "required": false,
+      "array": true,
+      "type": "string"
+    },
+    "url": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    }
+  }
+}
+```
+
+**TOML (`dir.toml`)**
+
+```toml
+name = "dir"
+
+[properties.title]
+"$ref" = "property_bank#/title"
+
+[properties.country]
+required = false
+array = true
+type = "string"
+
+[properties.url]
+required = false
+array = false
+type = "string"
+```
+
+**YAML (`dir.yaml`)**
+
+```yaml
+name: dir
+properties:
+  title:
+    $ref: "property_bank#/title"
+  country:
+    required: false
+    array: true
+    type: string
+  url:
+    required: false
+    array: false
+    type: string
+```
+
+---
+
+### Extended Schema: `dir_contact`
+
+**JSON (`dir_contact.json`)**
+
+```json
+{
+  "name": "dir_contact",
+  "extends": "dir",
   "properties": {
     "name_last": {
       "required": false,
@@ -361,12 +833,8 @@ Lithos detects circular inheritance and reports an error at ingestion time.
       "array": false,
       "type": "string"
     },
-    "date_birth": {
-      "$ref": "property_bank#/date_iso_8601"
-    },
-    "organization": {
-      "$ref": "property_bank#/organization"
-    },
+    "date_birth": { "$ref": "property_bank#/date_iso_8601" },
+    "organization": { "$ref": "property_bank#/organization" },
     "gender": {
       "required": false,
       "array": false,
@@ -375,4 +843,61 @@ Lithos detects circular inheritance and reports an error at ingestion time.
     }
   }
 }
+```
+
+**TOML (`dir_contact.toml`)**
+
+```toml
+name = "dir_contact"
+extends = "dir"
+
+[properties.name_last]
+required = false
+array = false
+type = "string"
+
+[properties.name_first]
+required = false
+array = false
+type = "string"
+
+[properties.date_birth]
+"$ref" = "property_bank#/date_iso_8601"
+
+[properties.organization]
+"$ref" = "property_bank#/organization"
+
+[properties.gender]
+required = false
+array = false
+type = "string"
+enum = ["female", "male", "other"]
+```
+
+**YAML (`dir_contact.yaml`)**
+
+```yaml
+name: dir_contact
+extends: dir
+properties:
+  name_last:
+    required: false
+    array: false
+    type: string
+  name_first:
+    required: false
+    array: false
+    type: string
+  date_birth:
+    $ref: "property_bank#/date_iso_8601"
+  organization:
+    $ref: "property_bank#/organization"
+  gender:
+    required: false
+    array: false
+    type: string
+    enum:
+      - female
+      - male
+      - other
 ```
