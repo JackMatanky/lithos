@@ -1,7 +1,8 @@
 //! Configuration port definitions for the CQRS pattern.
 //!
-//! This module defines the [`Command`] and [`Query`] trait interfaces,
-//! decoupling domain logic from storage implementation details (like Redb).
+//! This module defines the [`Command`], [`CommandState`], and [`Query`] trait
+//! interfaces, decoupling domain logic from storage implementation details
+//! (like Redb).
 
 use super::{
     aggregate::{Config, Version},
@@ -9,7 +10,42 @@ use super::{
     vault::{Vault, VaultId, VaultRoot},
 };
 
-/// Command port for configuration write operations.
+/// Selection strategy for activating a config version.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ActivationTarget {
+    /// Activate a specific exact version.
+    Exact(Version),
+    /// Activate a version by stepping back from the current active version.
+    Previous {
+        /// Number of steps to go back from the current active version.
+        steps: u32,
+    },
+}
+
+impl ActivationTarget {
+    /// Creates an `ActivationTarget` for a specific exact version.
+    #[inline]
+    #[must_use]
+    pub const fn exact(version: Version) -> Self {
+        Self::Exact(version)
+    }
+
+    /// Creates an `ActivationTarget` for a previous version by steps.
+    #[inline]
+    #[must_use]
+    pub const fn previous(steps: u32) -> Self {
+        Self::Previous {
+            steps,
+        }
+    }
+}
+
+/// Command port for configuration write operations (task-oriented).
+///
+/// This trait defines the public write API for configuration commands.
+/// Methods use task-oriented verbs (record_*, activate_*) rather than storage
+/// verbs.
 #[expect(
     clippy::arbitrary_source_item_ordering,
     reason = "Methods grouped by functionality, not strict alphabetization"
@@ -18,11 +54,67 @@ pub trait Command: Send + Sync {
     /// Storage error type for command operations.
     type Error: std::error::Error + Send + Sync + 'static;
 
+    /// Records the global configuration.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the operation fails.
+    fn record_global(&self, config: &Global) -> Result<(), Self::Error>;
+
+    /// Records a merged configuration snapshot.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the operation fails.
+    fn record_merged(
+        &self,
+        vault_id: VaultId,
+        version: Version,
+        config: &Config,
+    ) -> Result<(), Self::Error>;
+
+    /// Records vault-specific configuration.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the operation fails.
+    fn record_vault(
+        &self,
+        vault_id: VaultId,
+        config: &Vault,
+    ) -> Result<(), Self::Error>;
+
+    /// Records the vault ID to root path mapping.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the operation fails.
+    fn record_vault_path_mapping(
+        &self,
+        vault_id: VaultId,
+        vault_root: &VaultRoot,
+    ) -> Result<(), Self::Error>;
+
+    /// Activates a configuration version for a vault.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the operation fails.
+    fn activate_version(
+        &self,
+        vault_id: VaultId,
+        target: ActivationTarget,
+    ) -> Result<Version, Self::Error>;
+}
+
+/// Internal command-state port for read-for-write operations.
+///
+/// This port is crate-private and encapsulates atomic read-modify-write
+/// operations needed by command handlers. It is not exposed in the public API.
+pub(crate) trait CommandState: Send + Sync {
+    /// Storage error type for command operations.
+    type Error: std::error::Error + Send + Sync + 'static;
+
     /// Allocates the next version number for a vault atomically.
     ///
     /// This method reads the current active version (if any), computes the next
     /// version, and returns it without persisting. The caller is responsible
-    /// for saving the merged config and setting the active version.
+    /// for recording the merged config and activating the version.
     ///
     /// # Errors
     /// Returns a storage-specific error if the read fails.
@@ -30,66 +122,6 @@ pub trait Command: Send + Sync {
         &self,
         vault_id: VaultId,
     ) -> Result<Version, Self::Error>;
-
-    /// Persists the global configuration.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the save operation fails.
-    fn save_global(&self, config: &Global) -> Result<(), Self::Error>;
-
-    /// Persists a merged configuration snapshot.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the save operation fails.
-    fn save_merged(
-        &self,
-        vault_id: VaultId,
-        version: Version,
-        config: &Config,
-    ) -> Result<(), Self::Error>;
-
-    /// Persists vault-specific configuration.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the save operation fails.
-    fn save_vault(
-        &self,
-        vault_id: VaultId,
-        config: &Vault,
-    ) -> Result<(), Self::Error>;
-
-    /// Rolls back the active version by the given number of steps atomically.
-    ///
-    /// This reads the current active version, computes the target version after
-    /// rolling back `steps`, and updates the active pointer.
-    ///
-    /// # Errors
-    /// Returns an error if rollback would underflow or storage fails.
-    fn activate_previous_version(
-        &self,
-        vault_id: VaultId,
-        steps: u32,
-    ) -> Result<Version, Self::Error>;
-
-    /// Persists the vault ID to root path mapping.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the save operation fails.
-    fn save_vault_path_mapping(
-        &self,
-        vault_id: VaultId,
-        vault_root: &VaultRoot,
-    ) -> Result<(), Self::Error>;
-
-    /// Sets the active merged configuration version for a vault.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the update fails.
-    fn set_active_version(
-        &self,
-        vault_id: VaultId,
-        version: Version,
-    ) -> Result<(), Self::Error>;
 }
 
 /// Query port for configuration read operations.

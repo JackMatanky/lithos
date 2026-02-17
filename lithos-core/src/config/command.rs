@@ -1,9 +1,9 @@
 //! Configuration command implementations (CQRS write operations).
 //!
 //! This module provides the [`Command`] type, which handles configuration
-//! mutations (saving settings, rebuilding snapshots). Version allocation and
-//! rollback are handled atomically within the command port to maintain CQRS
-//! boundaries (command side owns read-for-write logic).
+//! mutations (recording settings, rebuilding snapshots). Version allocation is
+//! handled atomically within the command adapter via [`CommandState`] to
+//! maintain CQRS boundaries.
 
 use tracing::instrument;
 
@@ -12,16 +12,30 @@ use super::{
     error::ConfigCommandError,
     global::Global,
     ingest,
-    ports::{self as config_ports},
+    ports::{self as config_ports, ActivationTarget},
     vault::{Vault, VaultId, VaultRoot},
 };
 
-/// Command implementation for configuration write operations.
+/// Helper trait that combines Command and `CommandState` for convenience.
+/// This avoids ambiguous Error type bounds when both are needed.
 ///
-/// This struct handles configuration mutations (saving, rebuilding, version
-/// activation) using only the command port. Version allocation and rollback
-/// are handled atomically within the command adapter to maintain CQRS
-/// boundaries.
+/// This trait is pub(crate) because `CommandState` is crate-private.
+pub(crate) trait CommandPorts:
+    config_ports::Command + config_ports::CommandState
+{
+}
+
+impl<T> CommandPorts for T where
+    T: config_ports::Command + config_ports::CommandState
+{
+}
+
+/// # Examples
+///
+/// This struct handles configuration mutations (recording, rebuilding, version
+/// activation) using both the Command port (for writes) and `CommandState` port
+/// (for read-for-write operations). The `CommandState` port is internal and not
+/// exposed in the public API.
 ///
 /// # Examples
 ///
@@ -37,7 +51,7 @@ use super::{
 /// let dir = tempdir()?;
 /// let db = Database::open(&dir.path().join("config.redb"))?;
 /// let command = RedbConfigCommand::new(CommandAdapter::new(&db));
-/// command.save_global(&Global::default())?;
+/// command.record_global(&Global::default())?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct Command<C> {
@@ -56,42 +70,44 @@ impl<C> Command<C> {
     }
 }
 
+#[expect(private_bounds, reason = "CommandState is crate-private")]
 impl<C> Command<C>
 where
-    C: config_ports::Command,
-    C::Error: Into<crate::db::DbError>,
+    C: CommandPorts,
+    <C as config_ports::Command>::Error: Into<crate::db::DbError>,
+    <C as config_ports::CommandState>::Error: Into<crate::db::DbError>,
 {
-    /// Saves the global configuration.
+    /// Records the global configuration.
     ///
     /// # Errors
     /// Returns [`ConfigCommandError::Storage`] if persistence fails.
     #[inline]
-    #[instrument(skip(self, config), fields(operation = "save_global"))]
-    pub fn save_global(
+    #[instrument(skip(self, config), fields(operation = "record_global"))]
+    pub fn record_global(
         &self,
         config: &Global,
     ) -> Result<(), ConfigCommandError> {
         self.command_port
-            .save_global(config)
+            .record_global(config)
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
-    /// Saves a vault-specific configuration.
+    /// Records a vault-specific configuration.
     ///
     /// # Errors
     /// Returns [`ConfigCommandError::Storage`] if persistence fails.
     #[inline]
     #[instrument(
         skip(self, config),
-        fields(operation = "save_vault", vault_id = %vault_id)
+        fields(operation = "record_vault", vault_id = %vault_id)
     )]
-    pub fn save_vault(
+    pub fn record_vault(
         &self,
         vault_id: VaultId,
         config: &Vault,
     ) -> Result<(), ConfigCommandError> {
         self.command_port
-            .save_vault(vault_id, config)
+            .record_vault(vault_id, config)
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
@@ -104,7 +120,7 @@ where
     /// 3. **Validation**: Transforms merged raw data into an "Always Valid"
     ///    [`Config`].
     /// 4. **Versioning**: Generates a new [`Version`].
-    /// 5. **Persistence**: Saves the new snapshot and updates the active
+    /// 5. **Persistence**: Records the new snapshot and updates the active
     ///    pointer.
     ///
     /// # Errors
@@ -125,65 +141,39 @@ where
         let merged = Config::build(&raw_merged, vault_id, vault_root.clone())
             .map_err(ConfigCommandError::Domain)?;
 
-        // Save vault path mapping
+        // Record vault path mapping
         self.command_port
-            .save_vault_path_mapping(vault_id, vault_root)
+            .record_vault_path_mapping(vault_id, vault_root)
             .map_err(|error| ConfigCommandError::Storage(error.into()))?;
 
-        // Save merged config and set as active
+        // Record merged config and activate
         let version = self.next_version(vault_id)?;
         self.command_port
-            .save_merged(vault_id, version, &merged)
+            .record_merged(vault_id, version, &merged)
             .map_err(|error| ConfigCommandError::Storage(error.into()))?;
         self.command_port
-            .set_active_version(vault_id, version)
+            .activate_version(vault_id, ActivationTarget::exact(version))
             .map_err(|error| ConfigCommandError::Storage(error.into()))?;
 
         Ok(version)
     }
 
-    /// Activate a specific merged config version for a vault.
+    /// Activates a configuration version for a vault.
     ///
     /// # Errors
-    /// Returns `ConfigCommandError` if the version does not exist or the
-    /// storage operation fails.
+    /// Returns `ConfigCommandError` if the activation fails.
     #[inline]
     #[instrument(
         skip(self),
-        fields(
-            operation = "activate_version",
-            vault_id = %vault_id,
-            version = %version
-        )
+        fields(operation = "activate_version", vault_id = %vault_id)
     )]
     pub fn activate_version(
         &self,
         vault_id: VaultId,
-        version: Version,
-    ) -> Result<(), ConfigCommandError> {
-        self.command_port
-            .set_active_version(vault_id, version)
-            .map_err(|error| ConfigCommandError::Storage(error.into()))?;
-        Ok(())
-    }
-
-    /// Activate a previous merged config version by `steps` back from current.
-    ///
-    /// # Errors
-    /// Returns `ConfigCommandError` if rollback would underflow or storage
-    /// access fails.
-    #[inline]
-    #[instrument(
-        skip(self),
-        fields(operation = "activate_previous_version", vault_id = %vault_id, steps = %steps)
-    )]
-    pub fn activate_previous_version(
-        &self,
-        vault_id: VaultId,
-        steps: u32,
+        target: ActivationTarget,
     ) -> Result<Version, ConfigCommandError> {
         self.command_port
-            .activate_previous_version(vault_id, steps)
+            .activate_version(vault_id, target)
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
@@ -250,11 +240,11 @@ mod tests {
     impl config_ports::Command for DbCommandPort<'_> {
         type Error = DbError;
 
-        fn save_global(&self, config: &Global) -> Result<(), Self::Error> {
+        fn record_global(&self, config: &Global) -> Result<(), Self::Error> {
             self.db.put(CONFIG, "global", config)
         }
 
-        fn save_vault(
+        fn record_vault(
             &self,
             vault_id: VaultId,
             config: &Vault,
@@ -262,7 +252,7 @@ mod tests {
             self.db.put(CONFIG, &vault_id.to_string(), config)
         }
 
-        fn save_merged(
+        fn record_merged(
             &self,
             vault_id: VaultId,
             version: Version,
@@ -272,15 +262,7 @@ mod tests {
             self.db.put(MERGED_CONFIG_VERSIONS, &key, config)
         }
 
-        fn set_active_version(
-            &self,
-            vault_id: VaultId,
-            version: Version,
-        ) -> Result<(), Self::Error> {
-            self.db.put(MERGED_CONFIG_ACTIVE, &vault_id.to_string(), &version)
-        }
-
-        fn save_vault_path_mapping(
+        fn record_vault_path_mapping(
             &self,
             vault_id: VaultId,
             vault_root: &VaultRoot,
@@ -292,6 +274,62 @@ mod tests {
             )?;
             self.db.put(VAULT_PATH_BY_ID, &vault_id.to_string(), vault_root)
         }
+
+        fn activate_version(
+            &self,
+            vault_id: VaultId,
+            target: ActivationTarget,
+        ) -> Result<Version, Self::Error> {
+            match target {
+                ActivationTarget::Exact(version) => {
+                    self.db.put(
+                        MERGED_CONFIG_ACTIVE,
+                        &vault_id.to_string(),
+                        &version,
+                    )?;
+                    Ok(version)
+                }
+                ActivationTarget::Previous {
+                    steps,
+                } => self.db.read_write_unit_of_work(|tx| {
+                    let current: Option<Version> = tx.get_owned(
+                        MERGED_CONFIG_ACTIVE,
+                        &vault_id.to_string(),
+                    )?;
+
+                    let current = current.ok_or_else(|| {
+                        DbError::Serialization("no active version".into())
+                    })?;
+
+                    let steps = u64::from(steps);
+                    let current_val = current.value();
+                    let target_version_val = current_val.saturating_sub(steps);
+
+                    if target_version_val == 0 {
+                        return Err(DbError::Serialization(
+                            "activation underflow".into(),
+                        ));
+                    }
+
+                    let target_version = Version::try_from(target_version_val)
+                        .map_err(|_e| {
+                            DbError::Serialization("invalid version".into())
+                        })?;
+
+                    tx.put(
+                        MERGED_CONFIG_ACTIVE,
+                        &vault_id.to_string(),
+                        &target_version,
+                    )?;
+
+                    Ok(target_version)
+                }),
+            }
+        }
+    }
+
+    impl config_ports::CommandState for DbCommandPort<'_> {
+        type Error = DbError;
 
         fn get_next_version(
             &self,
@@ -308,56 +346,18 @@ mod tests {
 
             Ok(candidate)
         }
-
-        fn activate_previous_version(
-            &self,
-            vault_id: VaultId,
-            steps: u32,
-        ) -> Result<Version, Self::Error> {
-            self.db.read_write_unit_of_work(|tx| {
-                let current: Option<Version> =
-                    tx.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
-
-                let current = current.ok_or_else(|| {
-                    DbError::Serialization("no active version".into())
-                })?;
-
-                let steps = u64::from(steps);
-                let current_val = current.value();
-                let target = current_val.saturating_sub(steps);
-
-                if target == 0 {
-                    return Err(DbError::Serialization(
-                        "rollback underflow".into(),
-                    ));
-                }
-
-                let target_version =
-                    Version::try_from(target).map_err(|_e| {
-                        DbError::Serialization("invalid version".into())
-                    })?;
-
-                tx.put(
-                    MERGED_CONFIG_ACTIVE,
-                    &vault_id.to_string(),
-                    &target_version,
-                )?;
-
-                Ok(target_version)
-            })
-        }
     }
 
     mod persistence {
         use super::*;
 
         #[test]
-        fn save_global_persists_configuration() {
+        fn record_global_persists_configuration() {
             let (_dir, db) = fixtures::test_db().unwrap();
             let cmd = Command::new(DbCommandPort::new(&db));
 
             let global = Global::default();
-            cmd.save_global(&global).unwrap();
+            cmd.record_global(&global).unwrap();
 
             let stored = db.get_owned::<Global>(CONFIG, "global").unwrap();
             let stored_global =
@@ -369,13 +369,13 @@ mod tests {
         }
 
         #[test]
-        fn save_vault_persists_configuration() {
+        fn record_vault_persists_configuration() {
             let (_dir, db) = fixtures::test_db().unwrap();
             let cmd = Command::new(DbCommandPort::new(&db));
 
             let vault = Vault::default();
             let vault_id = VaultId::new();
-            cmd.save_vault(vault_id, &vault).unwrap();
+            cmd.record_vault(vault_id, &vault).unwrap();
 
             let stored =
                 db.get_owned::<Vault>(CONFIG, &vault_id.to_string()).unwrap();
@@ -406,7 +406,9 @@ mod tests {
             .unwrap();
 
             // Activate previous 1 step
-            let target = cmd.activate_previous_version(vault_id, 1).unwrap();
+            let target = cmd
+                .activate_version(vault_id, ActivationTarget::previous(1))
+                .unwrap();
             assert_eq!(target.value(), 1);
 
             let active: Option<Version> = db
@@ -422,7 +424,8 @@ mod tests {
             let vault_id = VaultId::new();
             let version = Version::try_from(5).unwrap();
 
-            cmd.activate_version(vault_id, version).unwrap();
+            cmd.activate_version(vault_id, ActivationTarget::exact(version))
+                .unwrap();
 
             let active: Option<Version> = db
                 .get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())
