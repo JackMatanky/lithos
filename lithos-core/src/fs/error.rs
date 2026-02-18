@@ -105,11 +105,11 @@ pub enum PathValidationError {
     EmptyPath,
     /// Path is absolute when only relative paths are allowed.
     #[error("Absolute path not allowed: {0}")]
-    AbsolutePathError(String),
+    AbsolutePathError(std::path::PathBuf),
 
     /// Path contains invalid encoding (non-UTF8).
     #[error("Path contains invalid encoding: {0}")]
-    InvalidPathEncoding(String),
+    InvalidPathEncoding(std::path::PathBuf),
 
     /// I/O error during symlink resolution.
     #[error("I/O error during symlink resolution: {0}")]
@@ -122,7 +122,16 @@ pub enum PathValidationError {
 
     /// Path accesses restricted or hidden files.
     #[error("Restricted path access denied: {0}")]
-    RestrictedPathError(String),
+    RestrictedPathError(std::path::PathBuf),
+
+    /// Path does not match the required extension.
+    #[error("Invalid path extension for {path}: expected .{required}")]
+    InvalidExtension {
+        /// File path with the wrong extension.
+        path: std::path::PathBuf,
+        /// Required extension (without a leading dot).
+        required: Box<str>,
+    },
 
     /// Symlink target escapes the configured root directory.
     #[error("Symlink escape detected: target is outside root boundary")]

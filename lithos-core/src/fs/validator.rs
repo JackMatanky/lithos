@@ -135,9 +135,9 @@ impl Validator {
             Mode::Flexible
             | Mode::Strict {
                 ..
-            } => Err(PathValidationError::AbsolutePathError(
-                path.display().to_string(),
-            )),
+            } => {
+                Err(PathValidationError::AbsolutePathError(path.to_path_buf()))
+            }
         }
     }
 
@@ -153,7 +153,7 @@ impl Validator {
             Component::Normal(os_str) => {
                 if Self::is_hidden_os_str(os_str) {
                     Err(PathValidationError::RestrictedPathError(
-                        os_str.to_string_lossy().into_owned(),
+                        PathBuf::from(os_str),
                     ))
                 } else {
                     Ok(())
@@ -389,7 +389,7 @@ impl Validator {
         // 0. UTF-8 Encoding Validation
         if path_ref.to_str().is_none() {
             return Err(PathValidationError::InvalidPathEncoding(
-                path_ref.to_string_lossy().into_owned(),
+                path_ref.to_path_buf(),
             ));
         }
 
@@ -435,9 +435,9 @@ pub fn validate_vault_path(
     Validator::new_flexible().validate(path)?;
 
     if is_windows_absolute_path(path) {
-        return Err(PathValidationError::AbsolutePathError(
-            "Path must be relative (Windows absolute paths not allowed)".into(),
-        ));
+        return Err(PathValidationError::AbsolutePathError(PathBuf::from(
+            path,
+        )));
     }
 
     if let Some(required_ext) = require_extension
@@ -446,9 +446,10 @@ pub fn validate_vault_path(
             .and_then(|ext| ext.to_str())
             .is_some_and(|ext| ext.eq_ignore_ascii_case(required_ext))
     {
-        return Err(PathValidationError::RestrictedPathError(format!(
-            "Path must end with .{required_ext}"
-        )));
+        return Err(PathValidationError::InvalidExtension {
+            path: PathBuf::from(path),
+            required: required_ext.into(),
+        });
     }
 
     Ok(())
