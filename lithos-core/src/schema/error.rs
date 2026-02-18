@@ -114,24 +114,6 @@ pub enum SchemaError {
         step: f64,
     },
 
-    /// String too long.
-    #[error("String too long: {actual} (max: {max})")]
-    StringTooLong {
-        /// Maximum length allowed.
-        max: usize,
-        /// Actual length provided.
-        actual: usize,
-    },
-
-    /// String too short.
-    #[error("String too short: {actual} (min: {min})")]
-    StringTooShort {
-        /// Minimum length required.
-        min: usize,
-        /// Actual length provided.
-        actual: usize,
-    },
-
     /// Invalid enum value.
     #[error("Invalid enum value: {value} (allowed: {allowed:?})")]
     InvalidEnumValue {
@@ -144,6 +126,25 @@ pub enum SchemaError {
     /// Invalid regex pattern.
     #[error("Invalid regex pattern: {0}")]
     InvalidRegex(String),
+
+    /// Invalid property reference format.
+    #[error(
+        "Invalid property reference: '{0}' (expected format: \
+         property_bank#/<name>)"
+    )]
+    InvalidPropertyRef(String),
+
+    /// Property type mismatch on $ref override.
+    #[error(
+        "Cannot change property type via $ref override: expected {expected}, \
+         got {actual}"
+    )]
+    PropertyTypeMismatch {
+        /// Expected type from bank property.
+        expected: String,
+        /// Actual type from override fields.
+        actual: String,
+    },
 
     /// Property validation error.
     #[error("property error: {0}")]

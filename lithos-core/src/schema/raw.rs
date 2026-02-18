@@ -21,7 +21,7 @@ use super::{
 /// # Examples
 /// ```ignore
 /// use lithos_core::schema::raw::{RawSchema, RawPropertyEntry, RawPropertyInline};
-/// use lithos_core::schema::raw::{RawPropertySpec, BoolSpecDef};
+/// use lithos_core::schema::raw::{RawPropertySpec, RawBoolSpec};
 /// use std::collections::HashMap;
 /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
 ///
@@ -31,7 +31,7 @@ use super::{
 ///     RawPropertyEntry::Inline(RawPropertyInline {
 ///         required: false,
 ///         multi: false,
-///         spec: RawPropertySpec::Bool(BoolSpecDef::default()),
+///         spec: RawPropertySpec::Bool(RawBoolSpec),
 ///     }),
 /// );
 /// let schema = RawSchema {
@@ -102,6 +102,9 @@ pub struct RawPropertyInline {
 }
 
 /// Reference variant of a raw property with optional overrides.
+///
+/// Override fields are grouped by type via flattened `Raw*Spec` structs.
+/// All override fields are `Option<T>` — `None` means "don't override".
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyRef {
@@ -112,22 +115,18 @@ pub struct RawPropertyRef {
     pub required: Option<bool>,
     /// Override whether property accepts multiple values.
     pub multi: Option<bool>,
-    /// Override allowed values (string type only).
-    pub options: Option<RawOptions>,
-    /// Override regex pattern (string type only).
-    pub pattern: Option<Box<str>>,
-    /// Override minimum value (number type only).
-    pub min: Option<f64>,
-    /// Override maximum value (number type only).
-    pub max: Option<f64>,
-    /// Override step increment (number type only).
-    pub step: Option<f64>,
-    /// Override date format (date type only).
-    pub format: Option<Box<str>>,
-    /// Override directory restriction (file type only).
-    pub directory: Option<Box<str>>,
-    /// Override file class restriction (file type only).
-    pub file_class: Option<Box<str>>,
+    /// Number-type overrides (min, max, step).
+    #[serde(flatten)]
+    pub number: RawNumberSpec,
+    /// String-type overrides (options, pattern).
+    #[serde(flatten)]
+    pub string: RawStringSpec,
+    /// Date-type overrides (format).
+    #[serde(flatten)]
+    pub date: RawDateSpec,
+    /// File-type overrides (directory, `file_class`).
+    #[serde(flatten)]
+    pub file: RawFileSpec,
 }
 
 /// Raw property specification (serde-facing input type).
@@ -136,15 +135,15 @@ pub struct RawPropertyRef {
 #[non_exhaustive]
 pub enum RawPropertySpec {
     /// Boolean property definition (marker type).
-    Bool(BoolSpecDef),
+    Bool(RawBoolSpec),
     /// Date property definition.
-    Date(DateSpecDef),
+    Date(RawDateSpec),
     /// File property definition.
-    File(FileSpecDef),
+    File(RawFileSpec),
     /// Number property definition.
-    Number(NumberSpecDef),
+    Number(RawNumberSpec),
     /// String property definition.
-    String(StringSpecDef),
+    String(RawStringSpec),
 }
 
 impl RawPropertySpec {
@@ -156,7 +155,7 @@ impl RawPropertySpec {
         reason = "Match ergonomics on &enum are intentional here for \
                   readability"
     )]
-    pub fn spec_type(&self) -> PropertySpecType {
+    pub const fn spec_type(&self) -> PropertySpecType {
         match self {
             Self::Bool(_) => PropertySpecType::Bool,
             Self::Date(_) => PropertySpecType::Date,
@@ -175,7 +174,12 @@ impl RawPropertySpec {
         match self {
             Self::Bool(_) => Ok(PropertySpec::Bool(BoolSpec::default())),
             Self::Date(def) => {
-                Ok(PropertySpec::Date(DateSpec::try_new(&def.format)?))
+                let format = def.format.ok_or_else(|| {
+                    SchemaError::ValidationFailed(
+                        "date format is required".into(),
+                    )
+                })?;
+                Ok(PropertySpec::Date(DateSpec::try_new(&format)?))
             }
             Self::File(def) => Ok(PropertySpec::File(FileSpec::try_new(
                 def.directory.map(String::from),
@@ -185,8 +189,6 @@ impl RawPropertySpec {
                 def.min, def.max, def.step,
             )?)),
             Self::String(def) => Ok(PropertySpec::String(StringSpec::try_new(
-                def.min_length,
-                def.max_length,
                 def.pattern,
                 def.options.map(RawOptions::into_entries),
             )?)),
@@ -196,27 +198,44 @@ impl RawPropertySpec {
 
 /// Boolean property definition (marker type).
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
 )]
-#[non_exhaustive]
-pub struct BoolSpecDef;
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "Marker type with no fields; non_exhaustive prevents construction"
+)]
+pub struct RawBoolSpec;
 
 /// Date property definition.
+///
+/// All fields are `Option<T>` to support both inline definitions
+/// (where `format` is required) and override contexts (where `None`
+/// means "don't override").
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+    Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
 #[non_exhaustive]
-pub struct DateSpecDef {
+pub struct RawDateSpec {
     /// Date format string (using chrono format tokens).
-    pub format: Box<str>,
+    pub format: Option<Box<str>>,
 }
 
 /// File property definition.
+///
+/// All fields are `Option<T>` to support both inline definitions
+/// and override contexts.
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+    Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
 #[non_exhaustive]
-pub struct FileSpecDef {
+pub struct RawFileSpec {
     /// Optional directory restriction (vault-relative path).
     pub directory: Option<Box<str>>,
     /// Optional file class restriction (schema name).
@@ -224,11 +243,14 @@ pub struct FileSpecDef {
 }
 
 /// Number property definition.
+///
+/// All fields are `Option<T>` to support both inline definitions
+/// and override contexts.
 #[derive(
     Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
 #[non_exhaustive]
-pub struct NumberSpecDef {
+pub struct RawNumberSpec {
     /// Optional maximum value.
     pub max: Option<f64>,
     /// Optional minimum value.
@@ -238,17 +260,17 @@ pub struct NumberSpecDef {
 }
 
 /// String property definition.
+///
+/// Only `options` and `pattern` are supported per the meta-schema.
+/// All fields are `Option<T>` to support both inline definitions
+/// and override contexts.
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+    Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
 #[non_exhaustive]
-pub struct StringSpecDef {
+pub struct RawStringSpec {
     /// Optional allowed values in one of three formats.
     pub options: Option<RawOptions>,
-    /// Optional max length.
-    pub max_length: Option<usize>,
-    /// Optional min length.
-    pub min_length: Option<usize>,
     /// Optional regex pattern.
     pub pattern: Option<Box<str>>,
 }
@@ -289,7 +311,7 @@ pub struct RawPropertyBankEntry {
 /// Serde deserializes untagged variants in declaration order. Arrays are tried
 /// as `List` first (strings), then `Rich` (objects). Objects are tried as
 /// `Map`.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
 pub enum RawOptions {
@@ -302,7 +324,7 @@ pub enum RawOptions {
 }
 
 /// Rich option entry with optional label and display order.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawOptionEntry {
     /// The option value.
@@ -420,7 +442,7 @@ mod tests {
         let inline = RawPropertyInline {
             required: false,
             multi: false,
-            spec: RawPropertySpec::Bool(BoolSpecDef::default()),
+            spec: RawPropertySpec::Bool(RawBoolSpec),
         };
         let inline_variant = RawProperty::Inline(inline);
 
@@ -436,14 +458,10 @@ mod tests {
             ref_path: "property_bank#/status".into(),
             required: None,
             multi: None,
-            options: None,
-            pattern: None,
-            min: None,
-            max: None,
-            step: None,
-            format: None,
-            directory: None,
-            file_class: None,
+            number: RawNumberSpec::default(),
+            string: RawStringSpec::default(),
+            date: RawDateSpec::default(),
+            file: RawFileSpec::default(),
         };
         let reference_variant = RawProperty::Ref(reference);
 
@@ -458,7 +476,7 @@ mod tests {
         let inline = RawPropertyInline {
             required: false,
             multi: false,
-            spec: RawPropertySpec::Bool(BoolSpecDef::default()),
+            spec: RawPropertySpec::Bool(RawBoolSpec),
         };
         let entry = RawPropertyEntry::Inline(inline);
 
@@ -474,14 +492,10 @@ mod tests {
             ref_path: "property_bank#/status".into(),
             required: None,
             multi: None,
-            options: None,
-            pattern: None,
-            min: None,
-            max: None,
-            step: None,
-            format: None,
-            directory: None,
-            file_class: None,
+            number: RawNumberSpec::default(),
+            string: RawStringSpec::default(),
+            date: RawDateSpec::default(),
+            file: RawFileSpec::default(),
         };
         let entry = RawPropertyEntry::Ref(reference);
 

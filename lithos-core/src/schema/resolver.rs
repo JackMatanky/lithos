@@ -436,14 +436,7 @@ impl<'bank> ResolutionContext<'bank> {
                 ref_path,
                 required,
                 multi,
-                options: _options,
-                pattern: _pattern,
-                min: _min,
-                max: _max,
-                step: _step,
-                format: _format,
-                directory: _directory,
-                file_class: _file_class,
+                ..
             }) => {
                 let prop_ref = PropertyRef::try_from(ref_path.as_ref())?;
                 let base_prop = match prop_ref {
@@ -706,7 +699,10 @@ mod tests {
 
     mod resolution_logic {
         use super::*;
-        use crate::schema::raw::RawPropertyEntry;
+        use crate::schema::raw::{
+            RawDateSpec, RawFileSpec, RawNumberSpec, RawPropertyEntry,
+            RawStringSpec,
+        };
 
         #[test]
         fn resolves_ref_property_by_plain_name() -> Result<(), SchemaError> {
@@ -716,14 +712,10 @@ mod tests {
                 ref_path: "status".into(),
                 required: None,
                 multi: None,
-                options: None,
-                pattern: None,
-                min: None,
-                max: None,
-                step: None,
-                format: None,
-                directory: None,
-                file_class: None,
+                number: RawNumberSpec::default(),
+                string: RawStringSpec::default(),
+                date: RawDateSpec::default(),
+                file: RawFileSpec::default(),
             });
             let ctx = ResolutionContext::new(&bank, 0);
             let prop = ctx.resolve_property("status", entry)?;

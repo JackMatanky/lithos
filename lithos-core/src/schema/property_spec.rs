@@ -167,9 +167,9 @@ impl PropertySpec {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::schema::raw::{RawPropertySpec, BoolSpecDef};
+    /// # use lithos_core::schema::raw::{RawPropertySpec, RawBoolSpec};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let def = RawPropertySpec::Bool(BoolSpecDef::default());
+    /// let def = RawPropertySpec::Bool(RawBoolSpec);
     /// let spec = def.try_into_validated()?;
     /// spec.validate(&serde_json::json!(true))?;
     /// # Ok(())
@@ -602,6 +602,7 @@ impl NumberSpec {
     Debug,
     Clone,
     PartialEq,
+    Eq,
     Hash,
     serde::Serialize,
     serde::Deserialize,
@@ -612,7 +613,6 @@ impl NumberSpec {
 #[non_exhaustive]
 pub struct StringSpec {
     options: Option<Vec<OptionEntry>>,
-    length: Bounds<usize>,
     pattern: Option<Box<str>>,
 }
 
@@ -621,7 +621,6 @@ impl Default for StringSpec {
     fn default() -> Self {
         Self {
             options: None,
-            length: Bounds::Unbounded,
             pattern: None,
         }
     }
@@ -631,25 +630,12 @@ impl StringSpec {
     /// Create a validated `StringSpec`.
     ///
     /// # Errors
-    /// Returns `SchemaError` if `min_length > max_length` or if `pattern` is
-    /// present but not a valid regex.
+    /// Returns `SchemaError` if `pattern` is present but not a valid regex.
     #[inline]
     pub fn try_new(
-        min_length: Option<usize>,
-        max_length: Option<usize>,
         pattern: Option<Box<str>>,
         options: Option<Vec<OptionEntry>>,
     ) -> Result<Self, SchemaError> {
-        let length = match Bounds::from_options(min_length, max_length) {
-            None => Bounds::Unbounded,
-            Some(Ok(bounds)) => bounds,
-            Some(Err(BoundsError::InvalidRange)) => {
-                return Err(SchemaError::ValidationFailed(
-                    "min_length cannot be greater than max_length".into(),
-                ));
-            }
-        };
-
         let pattern = match pattern {
             Some(p) => {
                 get_cached_regex(&p)?;
@@ -660,14 +646,12 @@ impl StringSpec {
 
         Ok(Self {
             options,
-            length,
             pattern,
         })
     }
 
     #[inline]
     fn validate_str(&self, value: &str) -> Result<(), SchemaError> {
-        self.validate_length(value)?;
         self.validate_options(value)?;
         self.validate_pattern(value)?;
         Ok(())
@@ -688,38 +672,6 @@ impl StringSpec {
         Ok(())
     }
 
-    /// Validates that a string length falls within optional min/max bounds.
-    ///
-    /// Length is measured in UTF-8 bytes (i.e., `value.len()`), not Unicode
-    /// scalar values or grapheme clusters.
-    ///
-    /// # Errors
-    /// Returns `SchemaError::StringTooShort` or `SchemaError::StringTooLong` if
-    /// validation fails.
-    #[inline]
-    pub fn validate_length(&self, value: &str) -> Result<(), SchemaError> {
-        let len = value.len();
-        if !self.length.validate(len) {
-            if let Some(min) = self.length.min()
-                && len < min
-            {
-                return Err(SchemaError::StringTooShort {
-                    min,
-                    actual: len,
-                });
-            }
-            if let Some(max) = self.length.max()
-                && len > max
-            {
-                return Err(SchemaError::StringTooLong {
-                    max,
-                    actual: len,
-                });
-            }
-        }
-        Ok(())
-    }
-
     fn validate_pattern(&self, value: &str) -> Result<(), SchemaError> {
         if let Some(pattern) = self.pattern.as_ref() {
             let re = get_cached_regex(pattern)?;
@@ -736,13 +688,12 @@ impl StringSpec {
     #[inline]
     #[expect(
         clippy::as_conversions,
-        reason = "usize to u64 conversion for hash stability; usize <= u64 on \
-                  all supported platforms"
+        reason = "usize to u64 for hash stability; usize <= u64 on all \
+                  platforms"
     )]
     #[expect(
         clippy::little_endian_bytes,
-        reason = "Little-endian is intentional for consistent hash values \
-                  across platforms"
+        reason = "Little-endian for consistent hash values across platforms"
     )]
     pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
         if let Some(entries) = self.options.as_ref() {
@@ -758,27 +709,6 @@ impl StringSpec {
             }
         } else {
             hasher.update(&0u64.to_le_bytes());
-        }
-        match self.length {
-            Bounds::Unbounded => {
-                hasher.update(&[0u8]);
-            }
-            Bounds::Min(min) => {
-                hasher.update(&[1u8]);
-                hasher.update(&(min as u64).to_le_bytes());
-            }
-            Bounds::Max(max) => {
-                hasher.update(&[2u8]);
-                hasher.update(&(max as u64).to_le_bytes());
-            }
-            Bounds::Range {
-                min,
-                max,
-            } => {
-                hasher.update(&[3u8]);
-                hasher.update(&(min as u64).to_le_bytes());
-                hasher.update(&(max as u64).to_le_bytes());
-            }
         }
         if let Some(pattern) = self.pattern.as_ref() {
             hasher.update(&[1u8]);
@@ -986,14 +916,14 @@ mod tests {
         use crate::schema::{
             error::SchemaError,
             property_spec::StringSpec,
-            raw::{RawOptions, StringSpecDef},
+            raw::{RawOptions, RawStringSpec},
         };
 
         /// 3.3-UNIT-011: String Specification Validation Matrix.
         /// Priority: P1.
         #[rstest]
         #[case::options_match(
-            StringSpecDef {
+            RawStringSpec {
                 options: Some(RawOptions::List(vec!["A".into(), "B".into()])),
                 ..Default::default()
             },
@@ -1001,7 +931,7 @@ mod tests {
             Ok(())
         )]
         #[case::options_mismatch(
-            StringSpecDef {
+            RawStringSpec {
                 options: Some(RawOptions::List(vec!["A".into(), "B".into()])),
                 ..Default::default()
             },
@@ -1012,53 +942,26 @@ mod tests {
             })
         )]
         #[case::regex_match(
-            StringSpecDef { pattern: Some(r"^\d+$".into()), ..Default::default() },
+            RawStringSpec { pattern: Some(r"^\d+$".into()), ..Default::default() },
             "123",
             Ok(())
         )]
         #[case::regex_mismatch(
-            StringSpecDef { pattern: Some(r"^\d+$".into()), ..Default::default() },
+            RawStringSpec { pattern: Some(r"^\d+$".into()), ..Default::default() },
             "abc",
             Err(SchemaError::ValidationFailed("Value abc does not match pattern ^\\d+$".to_owned()))
         )]
-        #[case::length_match(
-            StringSpecDef { min_length: Some(2), max_length: Some(5), ..Default::default() },
-            "abc",
-            Ok(())
-        )]
-        #[case::length_utf8_bytes_match(
-            StringSpecDef { min_length: Some(5), max_length: Some(5), ..Default::default() },
-            "caf\u{00e9}",
-            Ok(())
-        )]
-        #[case::length_utf8_bytes_too_long(
-            StringSpecDef { max_length: Some(4), ..Default::default() },
-            "caf\u{00e9}",
-            Err(SchemaError::StringTooLong { max: 4, actual: 5 })
-        )]
-        #[case::too_short(
-            StringSpecDef { min_length: Some(2), ..Default::default() },
-            "a",
-            Err(SchemaError::StringTooShort { min: 2, actual: 1 })
-        )]
-        #[case::too_long(
-            StringSpecDef { max_length: Some(5), ..Default::default() },
-            "abcdef",
-            Err(SchemaError::StringTooLong { max: 5, actual: 6 })
-        )]
         fn string_spec_validation_matrix(
-            #[case] def: StringSpecDef,
+            #[case] def: RawStringSpec,
             #[case] value: &str,
             #[case] expected: Result<(), SchemaError>,
         ) {
-            fn validated_spec(def: StringSpecDef) -> StringSpec {
+            fn validated_spec(def: RawStringSpec) -> StringSpec {
                 StringSpec::try_new(
-                    def.min_length,
-                    def.max_length,
                     def.pattern,
                     def.options.map(RawOptions::into_entries),
                 )
-                .expect("Expected valid StringSpecDef")
+                .expect("Expected valid RawStringSpec")
             }
 
             let spec = validated_spec(def);
@@ -1079,34 +982,34 @@ mod tests {
         use rstest::rstest;
 
         use crate::schema::{
-            error::SchemaError, property_spec::NumberSpec, raw::NumberSpecDef,
+            error::SchemaError, property_spec::NumberSpec, raw::RawNumberSpec,
         };
 
-        fn validated_spec(def: &NumberSpecDef) -> NumberSpec {
+        fn validated_spec(def: &RawNumberSpec) -> NumberSpec {
             NumberSpec::try_new(def.min, def.max, def.step)
-                .expect("Expected valid NumberSpecDef")
+                .expect("Expected valid RawNumberSpec")
         }
 
         /// 3.3-UNIT-012: Number Specification Validation Matrix.
         /// Priority: P1.
         #[rstest]
         #[case::in_range(
-            NumberSpecDef { min: Some(0.0f64), max: Some(10.0f64), step: None },
+            RawNumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
             5.0f64,
             Ok(())
         )]
         #[case::at_min(
-            NumberSpecDef { min: Some(0.0f64), max: Some(10.0f64), step: None },
+            RawNumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
             0.0f64,
             Ok(())
         )]
         #[case::at_max(
-            NumberSpecDef { min: Some(0.0f64), max: Some(10.0f64), step: None },
+            RawNumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
             10.0f64,
             Ok(())
         )]
         #[case::below_min(
-            NumberSpecDef { min: Some(0.0f64), max: Some(10.0f64), step: None },
+            RawNumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
             -1.0f64,
             Err(SchemaError::NumberOutOfRange {
                 value: -1.0f64,
@@ -1115,7 +1018,7 @@ mod tests {
             })
         )]
         #[case::above_max(
-            NumberSpecDef { min: Some(0.0f64), max: Some(10.0f64), step: None },
+            RawNumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
             11.0f64,
             Err(SchemaError::NumberOutOfRange {
                 value: 11.0f64,
@@ -1124,17 +1027,17 @@ mod tests {
             })
         )]
         #[case::valid_step(
-            NumberSpecDef { min: Some(0.0f64), max: None, step: Some(0.5f64) },
+            RawNumberSpec { min: Some(0.0f64), max: None, step: Some(0.5f64) },
             5.5f64,
             Ok(())
         )]
         #[case::invalid_step(
-            NumberSpecDef { min: Some(0.0f64), max: None, step: Some(0.5f64) },
+            RawNumberSpec { min: Some(0.0f64), max: None, step: Some(0.5f64) },
             5.2f64,
             Err(SchemaError::InvalidStepValue { value: 5.2f64, step: 0.5f64 })
         )]
         fn number_spec_validation_matrix(
-            #[case] def: NumberSpecDef,
+            #[case] def: RawNumberSpec,
             #[case] value: f64,
             #[case] expected: Result<(), SchemaError>,
         ) {
@@ -1385,23 +1288,23 @@ mod tests {
     mod property_spec {
         use crate::schema::{
             property_spec::{PropertySpec, PropertySpecType},
-            raw::{BoolSpecDef, NumberSpecDef, RawPropertySpec, StringSpecDef},
+            raw::{RawBoolSpec, RawNumberSpec, RawPropertySpec, RawStringSpec},
         };
 
         fn bool_spec() -> PropertySpec {
-            RawPropertySpec::Bool(BoolSpecDef::default())
+            RawPropertySpec::Bool(RawBoolSpec)
                 .try_into_validated()
                 .expect("Expected default BoolSpec to validate")
         }
 
         fn string_spec() -> PropertySpec {
-            RawPropertySpec::String(StringSpecDef::default())
+            RawPropertySpec::String(RawStringSpec::default())
                 .try_into_validated()
                 .expect("Expected default StringSpec to validate")
         }
 
         fn number_spec() -> PropertySpec {
-            RawPropertySpec::Number(NumberSpecDef::default())
+            RawPropertySpec::Number(RawNumberSpec::default())
                 .try_into_validated()
                 .expect("Expected default NumberSpec to validate")
         }
