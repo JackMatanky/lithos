@@ -194,13 +194,13 @@ impl Dispatcher {
 
         error!(
             path = %path.display(),
-            supported = ?vec!["toml", "json", "yaml", "yml"],
+            supported = ?["toml", "json", "yaml", "yml"],
             "Unsupported file format"
         );
 
         Err(ParseError::UnsupportedFormat {
             path: path.into(),
-            supported: vec!["toml", "json", "yaml", "yml"],
+            supported: &["toml", "json", "yaml", "yml"],
         })
     }
 }

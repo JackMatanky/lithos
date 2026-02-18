@@ -28,7 +28,7 @@ pub enum ParseError {
     #[error("I/O error reading {path}: {source}")]
     Io {
         /// File path where error occurred.
-        path: Box<std::path::Path>,
+        path: std::path::PathBuf,
         /// Source I/O error.
         #[source]
         source: std::io::Error,
@@ -41,7 +41,7 @@ pub enum ParseError {
     )]
     Json {
         /// File path where error occurred.
-        path: Box<std::path::Path>,
+        path: std::path::PathBuf,
         /// Error message from parser.
         message: Box<str>,
         /// Line number where error occurred.
@@ -57,7 +57,7 @@ pub enum ParseError {
     )]
     Toml {
         /// File path where error occurred.
-        path: Box<std::path::Path>,
+        path: std::path::PathBuf,
         /// Error message from parser.
         message: Box<str>,
         /// Line number where error occurred.
@@ -70,9 +70,9 @@ pub enum ParseError {
     #[error("Unsupported format for {path:?}: expected one of {supported:?}")]
     UnsupportedFormat {
         /// File path with unsupported extension.
-        path: Box<std::path::Path>,
+        path: std::path::PathBuf,
         /// List of supported extensions.
-        supported: Vec<&'static str>,
+        supported: &'static [&'static str],
     },
 
     /// YAML parsing failed.
@@ -82,7 +82,7 @@ pub enum ParseError {
     )]
     Yaml {
         /// File path where error occurred.
-        path: Box<std::path::Path>,
+        path: std::path::PathBuf,
         /// Error message from parser.
         message: Box<str>,
         /// Line number where error occurred.
@@ -109,6 +109,11 @@ pub enum PathValidationError {
     InvalidPathEncoding(String),
 
     /// I/O error during symlink resolution.
+    ///
+    /// # Note
+    ///
+    /// This stores a string because `PathValidationError` requires `Clone +
+    /// Eq`, which `std::io::Error` does not implement.
     #[error("I/O error during symlink resolution: {0}")]
     IoError(String),
 
