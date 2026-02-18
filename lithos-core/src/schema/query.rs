@@ -221,8 +221,7 @@ mod tests {
                 BankVersion::initial(),
                 None,
             );
-            cmd.save_with_metadata(&schema, &metadata)
-                .expect("Save should succeed");
+            cmd.save_one(&schema, &metadata).expect("Save should succeed");
 
             let result = qry
                 .find_by_id(fixtures::TEST_SCHEMA_ID_A)
@@ -248,8 +247,7 @@ mod tests {
                 BankVersion::initial(),
                 None,
             );
-            cmd.save_with_metadata(&schema, &metadata)
-                .expect("Save should succeed");
+            cmd.save_one(&schema, &metadata).expect("Save should succeed");
 
             let name =
                 SchemaName::new("note").expect("Failed to create schema name");
@@ -292,10 +290,8 @@ mod tests {
                 None,
             );
 
-            cmd.save_with_metadata(&schema_a, &metadata_a)
-                .expect("Save should succeed");
-            cmd.save_with_metadata(&schema_b, &metadata_b)
-                .expect("Save should succeed");
+            cmd.save_one(&schema_a, &metadata_a).expect("Save should succeed");
+            cmd.save_one(&schema_b, &metadata_b).expect("Save should succeed");
 
             let schemas = qry.list().expect("List should succeed");
             let names: HashSet<&str> =
@@ -326,8 +322,7 @@ mod tests {
                 None,
             );
 
-            cmd.save_with_metadata(&schema, &metadata)
-                .expect("Save should succeed");
+            cmd.save_one(&schema, &metadata).expect("Save should succeed");
 
             let items = qry.list_metadata().expect("List should succeed");
             assert_eq!(
@@ -356,8 +351,7 @@ mod tests {
                 None,
             );
 
-            cmd.save_with_metadata(&schema, &metadata)
-                .expect("Save should succeed");
+            cmd.save_one(&schema, &metadata).expect("Save should succeed");
 
             let stored = qry
                 .find_metadata_by_id(schema.id())

@@ -44,26 +44,24 @@ where
         })
     }
 
-    /// Save a schema to persistence.
+    /// Save a single schema and its metadata to persistence.
+    ///
+    /// Convenience method that delegates to `save_batch`.
     ///
     /// # Errors
     /// Returns `SchemaCommandError` if saving fails.
     #[inline]
-    pub fn save_with_metadata(
+    pub fn save_one(
         &self,
         schema: &Schema,
         metadata: &ResolutionMetadata,
     ) -> Result<(), SchemaCommandError> {
-        self.command_port.save_with_metadata(schema, metadata).map_err(
-            |error| {
-                SchemaCommandError::Storage(Into::<crate::db::DbError>::into(
-                    error,
-                ))
-            },
-        )
+        self.save_batch(&[(schema.clone(), metadata.clone())])
     }
 
     /// Save multiple schemas and metadata entries as a batch.
+    ///
+    /// All saves are atomic within a single write transaction.
     ///
     /// # Errors
     /// Returns `SchemaCommandError` if saving fails.
@@ -160,8 +158,7 @@ mod tests {
                 BankVersion::initial(),
                 None,
             );
-            cmd.save_with_metadata(&schema, &metadata)
-                .expect("Save should succeed");
+            cmd.save_one(&schema, &metadata).expect("Save should succeed");
 
             let id_key = schema.id().as_uuid().to_string();
             let stored = db
@@ -216,8 +213,7 @@ mod tests {
                 BankVersion::initial(),
                 None,
             );
-            cmd.save_with_metadata(&schema, &metadata)
-                .expect("Save should succeed");
+            cmd.save_one(&schema, &metadata).expect("Save should succeed");
 
             cmd.delete(schema_id).expect("Delete should succeed");
 

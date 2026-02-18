@@ -19,7 +19,9 @@ pub trait Command: Send + Sync {
     /// Returns a storage-specific error if deletion fails.
     fn delete(&self, id: SchemaId) -> Result<(), Self::Error>;
 
-    /// Save a schema and resolution metadata to persistence.
+    /// Save a batch of schemas and resolution metadata to persistence.
+    ///
+    /// All saves are atomic within a single write transaction.
     ///
     /// # Errors
     /// Returns a storage-specific error if saving fails.
@@ -35,16 +37,6 @@ pub trait Command: Send + Sync {
     fn save_property_bank(
         &self,
         bank: &PropertyBank,
-    ) -> Result<(), Self::Error>;
-
-    /// Save a schema and resolution metadata to persistence.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if saving fails.
-    fn save_with_metadata(
-        &self,
-        schema: &Schema,
-        metadata: &ResolutionMetadata,
     ) -> Result<(), Self::Error>;
 }
 

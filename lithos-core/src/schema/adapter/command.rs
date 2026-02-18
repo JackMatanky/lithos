@@ -35,36 +35,6 @@ impl Command for CommandAdapter<'_> {
 
     #[inline]
     #[instrument(
-        skip(self, schema),
-        fields(operation = "save_schema", schema_id = %schema.id().as_uuid())
-    )]
-    fn save_with_metadata(
-        &self,
-        schema: &Schema,
-        metadata: &ResolutionMetadata,
-    ) -> Result<(), Self::Error> {
-        let id = schema.id();
-        let id_uuid = id.into_uuid();
-
-        if let Some(existing) = self
-            .db
-            .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, schema.name().as_str())?
-            && existing != id
-        {
-            return Err(DbError::Transaction(format!(
-                "schema name already exists: {}",
-                schema.name().as_str()
-            )));
-        }
-
-        self.db.put_by_uuid(SCHEMA_BY_ID, id_uuid, schema)?;
-        self.db.put_by_uuid(SCHEMA_METADATA, id_uuid, metadata)?;
-        self.db.put(SCHEMA_ID_BY_NAME, schema.name().as_str(), &id)?;
-        Ok(())
-    }
-
-    #[inline]
-    #[instrument(
         skip(self, schemas),
         fields(operation = "save_schema_batch", schema_count = schemas.len())
     )]
