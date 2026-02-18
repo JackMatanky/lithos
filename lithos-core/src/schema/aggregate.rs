@@ -170,14 +170,20 @@ impl Schema {
     #[inline]
     #[must_use]
     pub fn get(&self, name: &PropertyName) -> Option<&Property> {
-        self.properties.iter().find(|p| p.name() == name)
+        let i = self
+            .properties
+            .binary_search_by(|p| p.name().as_str().cmp(name.as_str()))
+            .ok()?;
+        self.properties.get(i)
     }
 
     /// Checks if a property exists by name.
     #[inline]
     #[must_use]
     pub fn has(&self, name: &PropertyName) -> bool {
-        self.properties.iter().any(|p| p.name() == name)
+        self.properties
+            .binary_search_by(|p| p.name().as_str().cmp(name.as_str()))
+            .is_ok()
     }
 
     /// Returns a reference to pending domain events.
