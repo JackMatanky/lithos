@@ -34,7 +34,7 @@ impl Query for QueryAdapter<'_> {
 
     #[inline]
     fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error> {
-        self.db.get_owned(SCHEMA_BY_ID, &id.into_uuid().to_string())
+        self.db.get_owned_by_uuid(SCHEMA_BY_ID, id.into_uuid())
     }
 
     #[inline]
@@ -42,14 +42,13 @@ impl Query for QueryAdapter<'_> {
         &self,
         id: SchemaId,
     ) -> Result<Option<ResolutionMetadata>, Self::Error> {
-        self.db.get_owned(SCHEMA_METADATA, &id.into_uuid().to_string())
+        self.db.get_owned_by_uuid(SCHEMA_METADATA, id.into_uuid())
     }
 
     #[inline]
     fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
         let id = PropertyBankId::singleton();
-        let key = id.into_uuid().to_string();
-        self.db.get_owned(PROPERTY_BANK, &key)
+        self.db.get_owned_by_uuid(PROPERTY_BANK, id.into_uuid())
     }
 
     #[inline]
@@ -79,11 +78,7 @@ impl Query for QueryAdapter<'_> {
     where
         F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
     {
-        self.db.get::<Schema, _, R>(
-            SCHEMA_BY_ID,
-            &id.into_uuid().to_string(),
-            f,
-        )
+        self.db.get_by_uuid::<Schema, _, R>(SCHEMA_BY_ID, id.into_uuid(), f)
     }
 
     #[inline]
