@@ -6,9 +6,7 @@
               types"
 )]
 
-use std::collections::{BTreeMap, BTreeSet};
-
-use uuid::Uuid;
+use std::collections::BTreeMap;
 
 use super::{
     error::SchemaError,
@@ -18,29 +16,30 @@ use super::{
     },
 };
 
-/// Raw schema definition (Input).
+/// Raw schema definition loaded from vault files.
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::raw::{RawSchema, RawProperty, RawPropertyInline};
+/// use lithos_core::schema::raw::{RawSchema, RawPropertyEntry, RawPropertyInline};
 /// use lithos_core::schema::raw::{RawPropertySpec, BoolSpecDef};
-/// use std::collections::BTreeSet;
-/// use uuid::Uuid;
+/// use std::collections::HashMap;
 /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// let schema = RawSchema::new(
-///     Uuid::now_v7(),
-///     "note".into(),
-///     None,
-///     BTreeSet::new(),
-///     vec![RawProperty::Inline(RawPropertyInline {
-///         id: Uuid::now_v7(),
-///         name: "archived".into(),
+/// let mut properties = HashMap::new();
+/// properties.insert(
+///     "archived".into(),
+///     RawPropertyEntry::Inline(RawPropertyInline {
 ///         required: false,
-///         array: false,
+///         multi: false,
 ///         spec: RawPropertySpec::Bool(BoolSpecDef::default()),
-///     })],
+///     }),
 /// );
+/// let schema = RawSchema {
+///     name: "note".into(),
+///     extends: None,
+///     excludes: Vec::new(),
+///     properties,
+/// };
 /// assert_eq!(schema.properties.len(), 1, "Schema should contain one property");
 /// # Ok(())
 /// # }
@@ -48,76 +47,87 @@ use super::{
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawSchema {
-    /// Unique identity for the schema definition.
-    pub id: Uuid,
     /// Unique schema name.
     pub name: Box<str>,
     /// Optional parent schema name for inheritance.
     pub extends: Option<Box<str>>,
     /// Property names to exclude from parent schema.
     #[serde(default)]
-    pub excludes: BTreeSet<Box<str>>,
-    /// List of raw property definitions.
-    pub properties: Vec<RawProperty>,
-}
-
-impl RawSchema {
-    /// Create a new `RawSchema`.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        id: Uuid,
-        name: Box<str>,
-        extends: Option<Box<str>>,
-        excludes: BTreeSet<Box<str>>,
-        properties: Vec<RawProperty>,
-    ) -> Self {
-        Self {
-            id,
-            name,
-            extends,
-            excludes,
-            properties,
-        }
-    }
+    pub excludes: Vec<Box<str>>,
+    /// Map of property name to property definition.
+    pub properties: std::collections::HashMap<Box<str>, RawPropertyEntry>,
 }
 
 /// Raw property input definition (Inline or Ref).
+///
+/// Discriminated by presence of `$ref` field. Ref is tried first because
+/// it has a required `$ref` field that Inline never has.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
 pub enum RawProperty {
+    /// A reference to a property in the property bank with optional overrides.
+    Ref(RawPropertyRef),
     /// An inline property definition.
     Inline(RawPropertyInline),
-    /// A reference to a property in the `PropertyBank`.
+}
+
+/// Raw property entry for schema properties map.
+///
+/// Used in `RawSchema.properties` where the name is the map key.
+/// Discriminated by presence of `$ref` field.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[non_exhaustive]
+pub enum RawPropertyEntry {
+    /// A reference to a property in the property bank with optional overrides.
     Ref(RawPropertyRef),
+    /// An inline property definition.
+    Inline(RawPropertyInline),
 }
 
 /// Inline variant of a raw property.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyInline {
-    /// Unique identity assigned by adapter.
-    pub id: Uuid,
-    /// Property name.
-    pub name: Box<str>,
     /// Whether property is required.
     #[serde(default)]
     pub required: bool,
-    /// Whether property accepts array of values.
+    /// Whether property accepts multiple values.
     #[serde(default)]
-    pub array: bool,
+    pub multi: bool,
     /// Type-specific validation constraints.
+    #[serde(flatten)]
     pub spec: RawPropertySpec,
 }
 
-/// Reference variant of a raw property.
+/// Reference variant of a raw property with optional overrides.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyRef {
-    /// The reference string (e.g., "#/properties/title").
+    /// The reference path (e.g., `property_bank#/date_iso_8601`).
     #[serde(rename = "$ref")]
     pub ref_path: Box<str>,
+    /// Override whether property is required.
+    pub required: Option<bool>,
+    /// Override whether property accepts multiple values.
+    pub multi: Option<bool>,
+    /// Override allowed values (string type only).
+    pub options: Option<RawOptions>,
+    /// Override regex pattern (string type only).
+    pub pattern: Option<Box<str>>,
+    /// Override minimum value (number type only).
+    pub min: Option<f64>,
+    /// Override maximum value (number type only).
+    pub max: Option<f64>,
+    /// Override step increment (number type only).
+    pub step: Option<f64>,
+    /// Override date format (date type only).
+    pub format: Option<Box<str>>,
+    /// Override directory restriction (file type only).
+    pub directory: Option<Box<str>>,
+    /// Override file class restriction (file type only).
+    pub file_class: Option<Box<str>>,
 }
 
 /// Raw property specification (serde-facing input type).
@@ -243,6 +253,29 @@ pub struct StringSpecDef {
     pub pattern: Option<Box<str>>,
 }
 
+/// Raw property bank loaded from vault files.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawPropertyBank {
+    /// Map of property name to property definition.
+    pub properties: std::collections::HashMap<Box<str>, RawPropertyBankEntry>,
+}
+
+/// Entry in the raw property bank.
+///
+/// The property name is the map key, not a field here.
+/// `required` is not present because the bank is schema-agnostic.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawPropertyBankEntry {
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+    /// Type-specific validation constraints.
+    #[serde(flatten)]
+    pub spec: RawPropertySpec,
+}
+
 /// Raw options definition supporting three formats.
 ///
 /// # Modes
@@ -344,15 +377,9 @@ impl RawOptions {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::collections::HashMap;
 
     use super::*;
-    use crate::schema::raw::BoolSpecDef;
-
-    const TEST_SCHEMA_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0601);
-    const TEST_PROPERTY_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0602);
 
     fn schema_name() -> Box<str> {
         "note".into()
@@ -360,13 +387,12 @@ mod tests {
 
     #[test]
     fn raw_schema_defaults_to_empty_excludes() {
-        let schema = RawSchema::new(
-            TEST_SCHEMA_ID,
-            schema_name(),
-            None,
-            BTreeSet::new(),
-            Vec::new(),
-        );
+        let schema = RawSchema {
+            name: schema_name(),
+            extends: None,
+            excludes: Vec::new(),
+            properties: HashMap::new(),
+        };
 
         assert!(
             schema.excludes.is_empty(),
@@ -376,13 +402,12 @@ mod tests {
 
     #[test]
     fn raw_schema_defaults_to_no_extends() {
-        let schema = RawSchema::new(
-            TEST_SCHEMA_ID,
-            schema_name(),
-            None,
-            BTreeSet::new(),
-            Vec::new(),
-        );
+        let schema = RawSchema {
+            name: schema_name(),
+            extends: None,
+            excludes: Vec::new(),
+            properties: HashMap::new(),
+        };
 
         assert!(
             schema.extends.is_none(),
@@ -393,10 +418,8 @@ mod tests {
     #[test]
     fn raw_property_inline_variant_constructs() {
         let inline = RawPropertyInline {
-            id: TEST_PROPERTY_ID,
-            name: "archived".into(),
             required: false,
-            array: false,
+            multi: false,
             spec: RawPropertySpec::Bool(BoolSpecDef::default()),
         };
         let inline_variant = RawProperty::Inline(inline);
@@ -410,13 +433,61 @@ mod tests {
     #[test]
     fn raw_property_ref_variant_constructs() {
         let reference = RawPropertyRef {
-            ref_path: "status".into(),
+            ref_path: "property_bank#/status".into(),
+            required: None,
+            multi: None,
+            options: None,
+            pattern: None,
+            min: None,
+            max: None,
+            step: None,
+            format: None,
+            directory: None,
+            file_class: None,
         };
         let reference_variant = RawProperty::Ref(reference);
 
         assert!(
             matches!(reference_variant, RawProperty::Ref(_)),
             "RawProperty should be Ref variant"
+        );
+    }
+
+    #[test]
+    fn raw_property_entry_inline_constructs() {
+        let inline = RawPropertyInline {
+            required: false,
+            multi: false,
+            spec: RawPropertySpec::Bool(BoolSpecDef::default()),
+        };
+        let entry = RawPropertyEntry::Inline(inline);
+
+        assert!(
+            matches!(entry, RawPropertyEntry::Inline(_)),
+            "RawPropertyEntry should be Inline variant"
+        );
+    }
+
+    #[test]
+    fn raw_property_entry_ref_constructs() {
+        let reference = RawPropertyRef {
+            ref_path: "property_bank#/status".into(),
+            required: None,
+            multi: None,
+            options: None,
+            pattern: None,
+            min: None,
+            max: None,
+            step: None,
+            format: None,
+            directory: None,
+            file_class: None,
+        };
+        let entry = RawPropertyEntry::Ref(reference);
+
+        assert!(
+            matches!(entry, RawPropertyEntry::Ref(_)),
+            "RawPropertyEntry should be Ref variant"
         );
     }
 }

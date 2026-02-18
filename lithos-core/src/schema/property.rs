@@ -459,19 +459,21 @@ impl PropertyRef {
     /// Parse a reference string into a typed property reference.
     ///
     /// Accepted forms:
-    /// - "#/properties/<name>" (by name)
-    /// - "$bank:<uuid>" (by id)
-    /// - "<name>" (by name)
-    /// - "<uuid>" (by id)
+    /// - `property_bank#/<name>` (vault format, by name)
+    /// - `$bank:<uuid>` (programmatic format, by id)
+    /// - `<uuid>` (plain UUID, by id)
+    /// - `<name>` (plain name, by name)
     ///
     /// # Errors
     /// Returns `SchemaError` when the reference is not valid.
     #[inline]
     pub fn parse(reference: &str) -> Result<Self, SchemaError> {
-        if let Some(name) = reference.strip_prefix("#/properties/") {
+        // 1. Actual vault format: property_bank#/<name>
+        if let Some(name) = reference.strip_prefix("property_bank#/") {
             return Ok(Self::ByName(PropertyName::try_from(name)?));
         }
 
+        // 2. Programmatic UUID format: $bank:<uuid>
         if let Some(id_str) = reference.strip_prefix("$bank:") {
             let id = Uuid::parse_str(id_str).map_err(|error| {
                 SchemaError::ValidationFailed(format!(
@@ -481,10 +483,12 @@ impl PropertyRef {
             return Ok(Self::ById(PropertyId::from_uuid(id)));
         }
 
+        // 3. Plain UUID
         if let Ok(id) = Uuid::parse_str(reference) {
             return Ok(Self::ById(PropertyId::from_uuid(id)));
         }
 
+        // 4. Plain name (fallback)
         Ok(Self::ByName(PropertyName::try_from(reference)?))
     }
 }

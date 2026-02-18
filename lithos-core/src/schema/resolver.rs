@@ -25,7 +25,7 @@ use super::{
         Cardinality, Multiplicity, Property, PropertyId, PropertyName,
         PropertyRef,
     },
-    raw::{RawProperty, RawPropertyRef, RawSchema},
+    raw::{RawPropertyEntry, RawPropertyRef, RawSchema},
 };
 
 /// Domain Service: Resolves raw schemas into fully resolved Schema entities.
@@ -51,7 +51,7 @@ impl<'bank> SchemaResolver<'bank> {
     #[inline]
     pub fn process(
         &self,
-        raw_schemas: Vec<RawSchema>,
+        raw_schemas: Vec<(SchemaId, RawSchema)>,
     ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError> {
         self.process_with_loader(raw_schemas, None, |_| Ok(None))
     }
@@ -63,7 +63,7 @@ impl<'bank> SchemaResolver<'bank> {
     #[inline]
     pub fn process_changed<F>(
         &self,
-        raw_schemas: Vec<RawSchema>,
+        raw_schemas: Vec<(SchemaId, RawSchema)>,
         existing_metadata: &[ResolutionMetadata],
         parent_loader: F,
     ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError>
@@ -79,7 +79,7 @@ impl<'bank> SchemaResolver<'bank> {
 
     fn process_with_loader<F>(
         &self,
-        raw_schemas: Vec<RawSchema>,
+        raw_schemas: Vec<(SchemaId, RawSchema)>,
         existing_metadata: Option<&[ResolutionMetadata]>,
         parent_loader: F,
     ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError>
@@ -134,7 +134,7 @@ impl<'bank> ResolutionContext<'bank> {
 
     fn build_forest(
         &mut self,
-        raw_schemas: Vec<RawSchema>,
+        raw_schemas: Vec<(SchemaId, RawSchema)>,
         existing_metadata: Option<&[ResolutionMetadata]>,
     ) -> Result<(), SchemaError> {
         let mut name_to_id = HashMap::with_capacity(raw_schemas.len());
@@ -145,8 +145,7 @@ impl<'bank> ResolutionContext<'bank> {
             }
         }
 
-        for raw in raw_schemas {
-            let id = SchemaId::from_uuid(raw.id);
+        for (id, raw) in raw_schemas {
             let name = SchemaName::try_from(raw.name.as_ref())?;
 
             if name_to_id.insert(name.clone(), id).is_some() {
@@ -269,7 +268,7 @@ impl<'bank> ResolutionContext<'bank> {
         })?;
         let parent = self.load_parent(&id, parent_loader)?;
 
-        let schema = self.resolve_single(raw, parent.as_ref())?;
+        let schema = self.resolve_single(id, raw, parent.as_ref())?;
         let metadata = self.create_metadata(&schema, parent.as_ref());
 
         self.resolved_cache.insert(id, schema.clone());
@@ -295,15 +294,18 @@ impl<'bank> ResolutionContext<'bank> {
 
     fn resolve_single(
         &self,
+        id: SchemaId,
         raw: RawSchema,
         parent: Option<&Schema>,
     ) -> Result<Schema, SchemaError> {
         let mut own_props = Vec::with_capacity(raw.properties.len());
-        for raw_prop in raw.properties {
-            own_props.push(self.resolve_property(raw_prop)?);
+        // Sort property names for deterministic ordering
+        let mut sorted_entries: Vec<_> = raw.properties.into_iter().collect();
+        sorted_entries.sort_by(|a, b| a.0.cmp(&b.0));
+        for (name, entry) in sorted_entries {
+            own_props.push(self.resolve_property(&name, entry)?);
         }
-        // Ensure own properties are sorted for the merge
-        own_props.sort_by(|a, b| a.name().as_str().cmp(b.name().as_str()));
+        // Properties are already sorted by name
 
         let excludes: HashSet<PropertyName> = raw
             .excludes
@@ -317,7 +319,6 @@ impl<'bank> ResolutionContext<'bank> {
             own_props
         };
 
-        let id = SchemaId::from_uuid(raw.id);
         let name = self.names.get(&id).cloned().ok_or_else(|| {
             SchemaError::NotFound(format!("Name for {id} missing"))
         })?;
@@ -326,50 +327,95 @@ impl<'bank> ResolutionContext<'bank> {
 
     fn resolve_property(
         &self,
-        raw: RawProperty,
+        name: &str,
+        entry: RawPropertyEntry,
     ) -> Result<Property, SchemaError> {
-        match raw {
-            RawProperty::Inline(inline) => {
-                let name = PropertyName::new(inline.name.as_ref())?;
+        match entry {
+            RawPropertyEntry::Inline(inline) => {
+                let prop_name = PropertyName::new(name)?;
                 let spec = inline.spec.try_into_validated()?;
                 let cardinality = if inline.required {
                     Cardinality::Required
                 } else {
                     Cardinality::Optional
                 };
-                let multiplicity = if inline.array {
+                let multiplicity = if inline.multi {
                     Multiplicity::Many
                 } else {
                     Multiplicity::Single
                 };
                 Property::new(
-                    PropertyId::from_uuid(inline.id),
-                    name,
+                    PropertyId::new(),
+                    prop_name,
                     cardinality,
                     multiplicity,
                     spec,
                 )
             }
-            RawProperty::Ref(RawPropertyRef {
+            RawPropertyEntry::Ref(RawPropertyRef {
                 ref_path,
+                required,
+                multi,
+                options: _options,
+                pattern: _pattern,
+                min: _min,
+                max: _max,
+                step: _step,
+                format: _format,
+                directory: _directory,
+                file_class: _file_class,
             }) => {
                 let prop_ref = PropertyRef::try_from(ref_path.as_ref())?;
-                match prop_ref {
+                let base_prop = match prop_ref {
                     PropertyRef::ById(id) => {
                         self.bank.get_by_id(id).cloned().ok_or_else(|| {
                             SchemaError::PropertyRefNotFound(
                                 ref_path.to_string(),
                             )
-                        })
+                        })?
                     }
-                    PropertyRef::ByName(name) => {
-                        self.bank.get_by_name(&name).cloned().ok_or_else(|| {
-                            SchemaError::PropertyRefNotFound(
-                                ref_path.to_string(),
-                            )
-                        })
+                    PropertyRef::ByName(bank_name) => {
+                        self.bank.get_by_name(&bank_name).cloned().ok_or_else(
+                            || {
+                                SchemaError::PropertyRefNotFound(
+                                    ref_path.to_string(),
+                                )
+                            },
+                        )?
                     }
-                }
+                };
+
+                // Apply overrides
+                let cardinality =
+                    required.map_or(base_prop.cardinality(), |r| {
+                        if r {
+                            Cardinality::Required
+                        } else {
+                            Cardinality::Optional
+                        }
+                    });
+
+                let multiplicity =
+                    multi.map_or(base_prop.multiplicity(), |m| {
+                        if m {
+                            Multiplicity::Many
+                        } else {
+                            Multiplicity::Single
+                        }
+                    });
+
+                // TODO: Handle type-specific overrides (options, pattern, min,
+                // max, step, format, directory, file_class)
+                // This requires updating PropertySpec to support merging
+                // overrides
+
+                Property::new(
+                    base_prop.id(),
+                    PropertyName::new(name)?,
+                    cardinality,
+                    multiplicity,
+                    base_prop.spec().clone(),
+                )
             }
         }
     }
@@ -454,7 +500,7 @@ fn merge_sorted_properties(
 #[cfg(test)]
 mod tests {
     mod fixtures {
-        use std::collections::BTreeSet;
+        use std::collections::HashMap;
 
         use super::*;
 
@@ -500,28 +546,24 @@ mod tests {
             ])
         }
 
-        pub fn child_raw_schema() -> RawSchema {
-            RawSchema::new(
-                TEST_SCHEMA_ID_CHILD,
-                "child".into(),
-                None,
-                BTreeSet::new(),
-                Vec::new(),
-            )
+        pub fn child_raw_schema() -> (SchemaId, RawSchema) {
+            (SchemaId::from_uuid(TEST_SCHEMA_ID_CHILD), RawSchema {
+                name: "child".into(),
+                extends: None,
+                excludes: Vec::new(),
+                properties: HashMap::new(),
+            })
         }
 
         pub fn child_raw_schema_with_excludes(
             exclude_name: &PropertyName,
-        ) -> RawSchema {
-            let mut excludes = BTreeSet::new();
-            excludes.insert(exclude_name.as_str().into());
-            RawSchema::new(
-                TEST_SCHEMA_ID_CHILD,
-                "child".into(),
-                None,
-                excludes,
-                Vec::new(),
-            )
+        ) -> (SchemaId, RawSchema) {
+            (SchemaId::from_uuid(TEST_SCHEMA_ID_CHILD), RawSchema {
+                name: "child".into(),
+                extends: None,
+                excludes: vec![exclude_name.as_str().into()],
+                properties: HashMap::new(),
+            })
         }
 
         pub fn property_bank_with(
@@ -542,13 +584,12 @@ mod tests {
             let property = fixtures::parent_property()?;
             let parent_schema =
                 fixtures::parent_schema_with_property(property)?;
-            let raw = fixtures::child_raw_schema();
+            let (id, raw) = fixtures::child_raw_schema();
 
             // Internal use of context for testing single resolution
             let mut ctx = ResolutionContext::new(&bank, 1);
-            ctx.names
-                .insert(SchemaId::from_uuid(raw.id), SchemaName::new("child")?);
-            let schema = ctx.resolve_single(raw, Some(&parent_schema))?;
+            ctx.names.insert(id, SchemaName::new("child")?);
+            let schema = ctx.resolve_single(id, raw, Some(&parent_schema))?;
 
             let name = PropertyName::new("parent")?;
             if !schema.has(&name) {
@@ -566,12 +607,12 @@ mod tests {
             let parent_schema =
                 fixtures::parent_schema_with_property(property)?;
             let exclude_name = PropertyName::new("p")?;
-            let raw = fixtures::child_raw_schema_with_excludes(&exclude_name);
+            let (id, raw) =
+                fixtures::child_raw_schema_with_excludes(&exclude_name);
 
             let mut ctx = ResolutionContext::new(&bank, 1);
-            ctx.names
-                .insert(SchemaId::from_uuid(raw.id), SchemaName::new("child")?);
-            let schema = ctx.resolve_single(raw, Some(&parent_schema))?;
+            ctx.names.insert(id, SchemaName::new("child")?);
+            let schema = ctx.resolve_single(id, raw, Some(&parent_schema))?;
 
             if schema.has(&exclude_name) {
                 return Err(SchemaError::ValidationFailed(
@@ -585,16 +626,27 @@ mod tests {
 
     mod resolution_logic {
         use super::*;
+        use crate::schema::raw::RawPropertyEntry;
 
         #[test]
         fn resolves_ref_property_by_plain_name() -> Result<(), SchemaError> {
             let property = fixtures::status_property()?;
             let bank = fixtures::property_bank_with(property)?;
-            let raw = RawProperty::Ref(RawPropertyRef {
+            let entry = RawPropertyEntry::Ref(RawPropertyRef {
                 ref_path: "status".into(),
+                required: None,
+                multi: None,
+                options: None,
+                pattern: None,
+                min: None,
+                max: None,
+                step: None,
+                format: None,
+                directory: None,
+                file_class: None,
             });
             let ctx = ResolutionContext::new(&bank, 0);
-            let prop = ctx.resolve_property(raw)?;
+            let prop = ctx.resolve_property("status", entry)?;
 
             if prop.name().as_str() != "status" {
                 return Err(SchemaError::ValidationFailed(
