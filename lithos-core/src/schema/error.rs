@@ -68,10 +68,6 @@ pub enum SchemaError {
     #[error("Parent not found: {0}")]
     ParentNotFound(String),
 
-    /// Resolver error.
-    #[error("resolver error: {0}")]
-    Resolver(String),
-
     // --- Validation Errors ---
     /// Schema validation failed.
     #[error("schema validation failed: {0}")]
@@ -152,11 +148,6 @@ pub enum SchemaError {
     /// Property validation error.
     #[error("property error: {0}")]
     Property(String),
-
-    // --- System Errors ---
-    /// Storage error.
-    #[error("storage error: {0}")]
-    Storage(String),
 }
 
 /// Schema command errors.
@@ -235,8 +226,6 @@ mod tests {
     #[case(SchemaError::ParentNotFound("parent".into()))]
     #[case(SchemaError::PropertyRefNotFound("ref".into()))]
     #[case(SchemaError::Property("invalid property".into()))]
-    #[case(SchemaError::Resolver("missing reference".into()))]
-    #[case(SchemaError::Storage("io error".into()))]
     fn schema_error_display_is_comprehensive(#[case] error: SchemaError) {
         assert!(
             !error.to_string().is_empty(),
