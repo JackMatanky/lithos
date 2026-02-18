@@ -100,6 +100,9 @@ pub enum ParseError {
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PathValidationError {
+    /// Path is empty.
+    #[error("Path cannot be empty")]
+    EmptyPath,
     /// Path is absolute when only relative paths are allowed.
     #[error("Absolute path not allowed: {0}")]
     AbsolutePathError(String),

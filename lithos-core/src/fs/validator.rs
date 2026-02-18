@@ -259,9 +259,10 @@ impl Validator {
     ///
     /// # Panics
     ///
-    /// Panics if `root` is not an absolute path. The root should be
-    /// canonicalized and absolute (provided by Figment/Config) before
-    /// passing it here.
+    /// Panics if `root` is not an absolute path. The caller is responsible for
+    /// canonicalizing the root with `std::fs::canonicalize` before calling this
+    /// constructor. Passing a non-canonicalized path containing symlinks may
+    /// cause `resolve_safe_symlink` to reject valid paths.
     #[inline]
     #[must_use]
     pub fn new_strict(root: PathBuf) -> Self {
@@ -428,9 +429,7 @@ pub fn validate_vault_path(
     require_extension: Option<&str>,
 ) -> Result<(), PathValidationError> {
     if path.is_empty() {
-        return Err(PathValidationError::AbsolutePathError(
-            "Path cannot be empty".into(),
-        ));
+        return Err(PathValidationError::EmptyPath);
     }
 
     Validator::new_flexible().validate(path)?;
