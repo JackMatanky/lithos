@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use super::{
     error::SchemaError,
-    events::{Events, PropertyBankUpdated},
+    events::{Events, PropertyRegistered},
     property::{Property, PropertyId, PropertyName},
 };
 
@@ -99,6 +99,53 @@ impl PropertyBank {
         }
     }
 
+    /// Build a `PropertyBank` from raw vault data.
+    ///
+    /// Preserves existing property IDs by name when `existing` is provided.
+    /// New properties (not found in existing by name) get generated IDs.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if any property fails validation.
+    #[inline]
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Property order in bank is not deterministic; from_raw \
+                  preserves insertion order"
+    )]
+    pub fn from_raw(
+        raw: super::raw::RawPropertyBank,
+        existing: Option<&Self>,
+    ) -> Result<Self, SchemaError> {
+        let mut bank = Self::new();
+
+        for (name, entry) in raw.properties {
+            let prop_name = PropertyName::new(&name)?;
+            let spec = entry.spec.try_into_validated()?;
+            let multiplicity = if entry.multi {
+                super::property::Multiplicity::Many
+            } else {
+                super::property::Multiplicity::Single
+            };
+
+            // Reuse ID from existing bank if name matches
+            let id = existing
+                .and_then(|b| b.get_by_name(&prop_name))
+                .map_or_else(PropertyId::new, super::property::Property::id);
+
+            let property = Property::new(
+                id,
+                prop_name,
+                super::property::Cardinality::Optional,
+                multiplicity,
+                spec,
+            )?;
+
+            bank.register(property)?;
+        }
+
+        Ok(bank)
+    }
+
     /// Returns the `PropertyBank`'s unique identifier.
     #[inline]
     #[must_use]
@@ -155,12 +202,9 @@ impl PropertyBank {
         let id = property.id();
         let name = property.name().clone();
 
-        // Use Entry API to minimize hash lookups
         match self.id_index.entry(id) {
             Entry::Occupied(_) => {
-                // Idempotent success if ID already exists
-                let event = self.create_updated_event();
-                self.add_event(event);
+                // Idempotent success: no event, no version increment
                 Ok(())
             }
             Entry::Vacant(id_entry) => {
@@ -173,11 +217,16 @@ impl PropertyBank {
 
                 let idx = self.properties.len();
                 id_entry.insert(idx);
-                self.name_index.insert(name, idx);
+                self.name_index.insert(name.clone(), idx);
                 self.properties.push(property);
                 self.version = self.version.increment();
 
-                let event = self.create_updated_event();
+                let event =
+                    Events::PropertyRegistered(PropertyRegistered::new(
+                        id,
+                        &name,
+                        super::aggregate::Timestamp::now(),
+                    ));
                 self.add_event(event);
                 Ok(())
             }
@@ -298,13 +347,6 @@ impl PropertyBank {
     #[inline]
     fn add_event(&mut self, event: Events) {
         self.pending_events.get_or_insert_with(Vec::new).push(event);
-    }
-
-    fn create_updated_event(&self) -> Events {
-        Events::PropertyBankUpdated(PropertyBankUpdated::new(
-            self.properties.len(),
-            super::aggregate::Timestamp::now(),
-        ))
     }
 }
 
