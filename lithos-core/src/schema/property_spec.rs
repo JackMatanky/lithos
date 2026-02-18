@@ -277,15 +277,46 @@ pub struct DateSpec {
 impl DateSpec {
     /// Create a validated `DateSpec`.
     ///
+    /// Validates that the format string is a valid strftime pattern by probing
+    /// it with a known datetime.
+    ///
     /// # Errors
-    /// Returns `SchemaError::InvalidDateFormat` if the format is empty.
+    /// Returns `SchemaError::InvalidDateFormat` if the format is empty or not
+    /// a valid strftime pattern.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic. The `expect` calls are infallible because
+    /// the probe datetime is statically known to be valid.
     #[inline]
+    #[expect(
+        clippy::expect_used,
+        reason = "Probe datetime 2000-01-01 00:00:00 is statically valid"
+    )]
     pub fn try_new(format: &str) -> Result<Self, SchemaError> {
         if format.is_empty() {
             return Err(SchemaError::InvalidDateFormat(
                 "Format cannot be empty".into(),
             ));
         }
+
+        // Probe: attempt to format a known datetime with this format string
+        // Use NaiveDateTime to support both date and datetime format strings
+        let probe = chrono::NaiveDate::from_ymd_opt(2000, 1, 1)
+            .expect("static date should be valid")
+            .and_hms_opt(0, 0, 0)
+            .expect("static time should be valid");
+        let result = probe.format(format).to_string();
+
+        // Verify the format string can parse its own output
+        if chrono::NaiveDate::parse_from_str(&result, format).is_err()
+            && chrono::NaiveDateTime::parse_from_str(&result, format).is_err()
+        {
+            return Err(SchemaError::InvalidDateFormat(format!(
+                "Format string '{format}' is not a valid strftime pattern"
+            )));
+        }
+
         Ok(Self {
             format: format.into(),
         })
