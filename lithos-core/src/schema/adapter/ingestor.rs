@@ -2,11 +2,9 @@
 //!
 //! Pure file-to-raw translation. No DB access. No ID assignment.
 
-use glob::glob;
-
 use crate::{
     config::aggregate::Config,
-    fs::{Json, Toml, Yaml},
+    fs::reader::FsReader,
     schema::{
         aggregate::Timestamp,
         error::SchemaIngestionError,
@@ -34,24 +32,26 @@ pub type RawSchemaWithMtime = (RawSchema, Option<Timestamp>);
 ///
 /// The ingestor takes a `&Config` reference to ensure it uses the final
 /// merged path values after config loading completes.
-pub struct Ingestor<'config> {
+pub struct Ingestor<'config, S> {
+    source: S,
     config: &'config Config,
 }
 
-impl<'config> Ingestor<'config> {
+impl<'config, S> Ingestor<'config, S> {
     /// Create a new ingestor with the given file source and config.
     ///
     /// The config reference ensures paths are the final merged values.
     #[inline]
     #[must_use]
-    pub const fn new(config: &'config Config) -> Self {
+    pub const fn new(source: S, config: &'config Config) -> Self {
         Self {
+            source,
             config,
         }
     }
 }
 
-impl Ingestor<'_> {
+impl<S: FsReader<Error = std::io::Error>> Ingestor<'_, S> {
     /// Load and deserialize the property bank file.
     ///
     /// Supports JSON, TOML, and YAML formats (detected by extension or
@@ -63,33 +63,8 @@ impl Ingestor<'_> {
     pub fn load_raw_property_bank(
         &self,
     ) -> Result<RawPropertyBank, SchemaIngestionError> {
-        let relative_path = self.config.paths().property_bank_path();
-        let path =
-            self.config.vault_metadata().root().as_path().join(relative_path);
-        let content = std::fs::read_to_string(&path).map_err(|error| {
-            SchemaIngestionError::Io {
-                path: path.to_string_lossy().into(),
-                reason: error.to_string().into(),
-            }
-        })?;
-
-        if Json::is_supported(&path) {
-            return Json::parse(&path, &content)
-                .map_err(SchemaIngestionError::from);
-        }
-        if Toml::is_supported(&path) {
-            return Toml::parse(&path, &content)
-                .map_err(SchemaIngestionError::from);
-        }
-        if Yaml::is_supported(&path) {
-            return Yaml::parse(&path, &content)
-                .map_err(SchemaIngestionError::from);
-        }
-
-        Err(SchemaIngestionError::UnsupportedFormat {
-            path: path.to_string_lossy().into(),
-            supported: "json, toml, yaml, yml".into(),
-        })
+        let path = self.config.paths().property_bank_path();
+        self.source.parse_structured(&path).map_err(SchemaIngestionError::from)
     }
 
     /// Scan the schemas directory for all schema files.
@@ -106,12 +81,7 @@ impl Ingestor<'_> {
         &self,
     ) -> Result<Vec<RawSchemaWithMtime>, SchemaIngestionError> {
         let paths = self.config.paths();
-        let schemas_dir = self
-            .config
-            .vault_metadata()
-            .root()
-            .as_path()
-            .join(paths.schema.schemas_dir().as_path());
+        let schemas_dir = paths.schema.schemas_dir().as_path();
         let property_bank_filename = paths.property_bank.as_str();
 
         let mut results = Vec::new();
@@ -119,17 +89,11 @@ impl Ingestor<'_> {
         // Scan for each supported extension
         for ext in SCHEMA_EXTENSIONS {
             let pattern = format!("{}/**/*.{}", schemas_dir.display(), ext);
-            let files = glob(&pattern).map_err(|error| {
+            let files = self.source.list_files(&pattern).map_err(|error| {
                 SchemaIngestionError::FileSystem(error.to_string().into())
             })?;
 
-            for entry in files {
-                let path = entry.map_err(|error| {
-                    SchemaIngestionError::FileSystem(error.to_string().into())
-                })?;
-                if !path.is_file() {
-                    continue;
-                }
+            for path in files {
                 // Skip the property bank file
                 if path
                     .file_name()
@@ -137,34 +101,27 @@ impl Ingestor<'_> {
                 {
                     continue;
                 }
+                let raw: RawSchema = self
+                    .source
+                    .parse_structured(&path)
+                    .map_err(SchemaIngestionError::from)?;
 
-                let content =
-                    std::fs::read_to_string(&path).map_err(|error| {
-                        SchemaIngestionError::Io {
-                            path: path.to_string_lossy().into(),
-                            reason: error.to_string().into(),
-                        }
-                    })?;
-
-                let raw = if Json::is_supported(&path) {
-                    Json::parse(&path, &content)
-                        .map_err(SchemaIngestionError::from)?
-                } else if Toml::is_supported(&path) {
-                    Toml::parse(&path, &content)
-                        .map_err(SchemaIngestionError::from)?
-                } else if Yaml::is_supported(&path) {
-                    Yaml::parse(&path, &content)
-                        .map_err(SchemaIngestionError::from)?
-                } else {
-                    return Err(SchemaIngestionError::UnsupportedFormat {
-                        path: path.to_string_lossy().into(),
-                        supported: "json, toml, yaml, yml".into(),
+                let modified = self
+                    .source
+                    .metadata(&path)
+                    .ok()
+                    .and_then(|meta| meta.modified)
+                    .and_then(|time| {
+                        time.duration_since(std::time::SystemTime::UNIX_EPOCH)
+                            .ok()
+                    })
+                    .and_then(|duration| {
+                        i64::try_from(duration.as_secs())
+                            .ok()
+                            .map(Timestamp::from_secs)
                     });
-                };
 
-                // File modification time not available from FileSource trait
-                // This is intentional - the trait is minimal and cross-platform
-                results.push((raw, None));
+                results.push((raw, modified));
             }
         }
 
@@ -179,10 +136,13 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::config::{
-        aggregate::Config,
-        raw::RawConfig,
-        vault::{VaultId, VaultRoot},
+    use crate::{
+        config::{
+            aggregate::Config,
+            raw::RawConfig,
+            vault::{VaultId, VaultRoot},
+        },
+        fs::OsFsReader,
     };
 
     fn write_file(root: &Path, relative: &str, content: &str) -> PathBuf {
@@ -220,7 +180,7 @@ mod tests {
         );
 
         let config = test_config(dir.path(), None);
-        let ingestor = Ingestor::new(&config);
+        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_ok());
@@ -234,7 +194,7 @@ mod tests {
         write_file(dir.path(), "schemas/property_bank.yaml", "properties: {}");
 
         let config = test_config(dir.path(), Some("property_bank.yaml"));
-        let ingestor = Ingestor::new(&config);
+        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_ok());
@@ -248,7 +208,7 @@ mod tests {
         write_file(dir.path(), "schemas/property_bank.toml", "[properties]");
 
         let config = test_config(dir.path(), Some("property_bank.toml"));
-        let ingestor = Ingestor::new(&config);
+        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_ok());
@@ -262,7 +222,7 @@ mod tests {
         write_file(dir.path(), "schemas/property_bank.json", "not valid json");
 
         let config = test_config(dir.path(), None);
-        let ingestor = Ingestor::new(&config);
+        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_err());
@@ -280,7 +240,7 @@ mod tests {
         );
 
         let config = test_config(dir.path(), Some("property_bank.xml"));
-        let ingestor = Ingestor::new(&config);
+        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_err());
@@ -308,7 +268,7 @@ mod tests {
         );
 
         let config = test_config(dir.path(), None);
-        let ingestor = Ingestor::new(&config);
+        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
         let result = ingestor.scan_raw_schemas();
 
         assert!(result.is_ok());
@@ -332,7 +292,7 @@ mod tests {
         );
 
         let config = test_config(dir.path(), None);
-        let ingestor = Ingestor::new(&config);
+        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
         let result = ingestor.scan_raw_schemas();
 
         assert!(result.is_ok());
@@ -352,7 +312,7 @@ mod tests {
         );
 
         let config = test_config(dir.path(), None);
-        let ingestor = Ingestor::new(&config);
+        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
         let result = ingestor.scan_raw_schemas();
 
         assert!(result.is_ok());

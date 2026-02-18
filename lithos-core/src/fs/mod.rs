@@ -27,7 +27,7 @@ pub mod error;
 /// Markdown parsing utilities.
 pub mod markdown;
 /// File system abstraction for testable file I/O.
-pub mod source;
+pub mod reader;
 /// Structured data parsers (TOML/JSON/YAML).
 pub mod types;
 /// Security-critical path validation utilities.
@@ -56,10 +56,10 @@ pub type Yaml = types::Yaml;
 pub type PathValidator = validator::Validator;
 /// Path validation error type alias.
 pub type PathValidationError = error::PathValidationError;
-/// Filesystem file source type alias.
-pub type FsFileSource = source::FsFileSource;
-/// In-memory file source type alias.
-pub type InMemoryFileSource = source::InMemoryFileSource;
+/// Filesystem reader type alias.
+pub type OsFsReader = reader::OsFsReader;
+/// File metadata type alias.
+pub type FileMetadata = reader::FileMetadata;
 
 /// Checks if a path is a Windows-style absolute path or drive-relative path.
 #[inline]
