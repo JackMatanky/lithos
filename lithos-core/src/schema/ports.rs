@@ -7,6 +7,7 @@ use super::{
     aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName},
     bank::PropertyBank,
 };
+use crate::db::BatchReader;
 
 /// A schema name-to-ID pair returned by [`Query::list_name_id_pairs`].
 pub type NameIdPair = (SchemaName, SchemaId);
@@ -49,6 +50,17 @@ pub trait Query: Send + Sync {
     type Archived<'archived>;
     /// Storage error type for query operations.
     type Error: std::error::Error;
+
+    /// Execute multiple read operations within a single transaction.
+    ///
+    /// This amortizes transaction creation cost across multiple reads,
+    /// improving performance for batch operations.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the transaction fails.
+    fn batch_read<R, F>(&self, f: F) -> Result<R, Self::Error>
+    where
+        F: FnOnce(&BatchReader) -> Result<R, Self::Error>;
 
     /// Find a schema by its ID.
     ///

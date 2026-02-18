@@ -192,7 +192,7 @@ impl Database {
     /// # use lithos_core::db::Database;
     /// # fn example(db: &Database) -> Result<(), Box<dyn std::error::Error>> {
     /// // Execute multiple reads in a single transaction
-    /// let count = db.batch_read(|_tx| {
+    /// let count = db.batch_read(|reader| {
     ///     // Perform multiple table operations within one transaction
     ///     // This is more efficient than separate transactions
     ///     Ok(42usize)
@@ -208,10 +208,123 @@ impl Database {
     #[inline]
     pub fn batch_read<R, F>(&self, f: F) -> Result<R, DbError>
     where
-        F: FnOnce(&redb::ReadTransaction) -> Result<R, DbError>,
+        F: FnOnce(&BatchReader) -> Result<R, DbError>,
     {
         let tx = self.inner.begin_read()?;
-        f(&tx)
+        let reader = BatchReader::new(tx);
+        f(&reader)
+    }
+}
+
+/// A single read transaction for batching many read operations.
+///
+/// This is intentionally scoped to a closure (see `Database::batch_read`) so
+/// callers cannot accidentally hold a transaction across unrelated work.
+pub struct BatchReader {
+    tx: redb::ReadTransaction,
+}
+
+impl BatchReader {
+    #[inline]
+    pub(super) fn new(tx: redb::ReadTransaction) -> Self {
+        Self {
+            tx,
+        }
+    }
+
+    /// Zero-copy read from a specific table definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if deserialization or transaction fails.
+    #[inline]
+    pub fn get<V, F, R>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        key: &str,
+        f: F,
+    ) -> Result<Option<R>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            >,
+        F: FnOnce(&rkyv::Archived<V>) -> R,
+    {
+        read_archived_tx::<V, _, _>(&self.tx, table, key, f)
+    }
+
+    /// Full deserialization from a specific table definition.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if deserialization or transaction fails.
+    #[inline]
+    pub fn get_owned<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        key: &str,
+    ) -> Result<Option<V>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        get_owned_tx(&self.tx, table, key)
+    }
+
+    /// Scan a table and return all owned values.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if transaction or deserialization fails.
+    #[inline]
+    pub fn list_owned<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+    ) -> Result<Vec<V>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        scan_table_tx::<V>(&self.tx, table)
+    }
+
+    /// Scan a table and return key-value pairs as owned types.
+    ///
+    /// Keys are returned as `String`, values are deserialized via rkyv.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if transaction or deserialization fails.
+    #[inline]
+    pub fn list_key_value_pairs<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+    ) -> Result<Vec<(String, V)>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        scan_table_key_value_tx::<V>(&self.tx, table)
     }
 }
 
@@ -444,6 +557,194 @@ fn uuid_to_str(id: uuid::Uuid) -> String {
     // should be updated in a future PR to use a more sophisticated approach
     // like accepting &str keys or using a buffer pool
     id.to_string()
+}
+
+// Transaction-based helper functions for BatchReader
+
+/// Zero-copy read of archived data with closure from a table within a
+/// transaction.
+fn read_archived_tx<V, F, R>(
+    tx: &redb::ReadTransaction,
+    table: TableDefinition<&str, &[u8]>,
+    key: &str,
+    f: F,
+) -> Result<Option<R>, DbError>
+where
+    V: rkyv::Archive,
+    V::Archived: rkyv::Portable
+        + for<'archived> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+        >,
+    F: FnOnce(&rkyv::Archived<V>) -> R,
+{
+    let table_ref = match tx.open_table(table) {
+        Ok(table_ref) => table_ref,
+        Err(TableError::TableDoesNotExist(_)) => return Ok(None),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
+
+    match table_ref.get(key)? {
+        Some(value) => {
+            let bytes: &[u8] = value.value();
+
+            #[expect(
+                clippy::as_conversions,
+                reason = "Pointer to usize conversion required for alignment \
+                          check"
+            )]
+            let ptr_usize: usize = bytes.as_ptr() as usize;
+            if ptr_usize.is_multiple_of(16) {
+                let archived = rkyv::access::<
+                    rkyv::Archived<V>,
+                    rkyv::rancor::Error,
+                >(bytes)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                let result = f(archived);
+                Ok(Some(result))
+            } else {
+                let mut aligned = AlignedVec::<16>::new();
+                aligned.extend_from_slice(bytes);
+
+                let archived = rkyv::access::<
+                    rkyv::Archived<V>,
+                    rkyv::rancor::Error,
+                >(&aligned)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                let result = f(archived);
+                Ok(Some(result))
+            }
+        }
+        None => Ok(None),
+    }
+}
+
+/// Full deserialization of archived data into owned value from a table within a
+/// transaction.
+fn get_owned_tx<V>(
+    tx: &redb::ReadTransaction,
+    table: TableDefinition<&str, &[u8]>,
+    key: &str,
+) -> Result<Option<V>, DbError>
+where
+    V: rkyv::Archive,
+    V::Archived: rkyv::Portable
+        + for<'archived> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+        > + rkyv::Deserialize<
+            V,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+{
+    let table_ref = match tx.open_table(table) {
+        Ok(table_ref) => table_ref,
+        Err(TableError::TableDoesNotExist(_)) => return Ok(None),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
+
+    match table_ref.get(key)? {
+        Some(value) => {
+            let bytes: &[u8] = value.value();
+
+            let mut aligned = AlignedVec::<16>::new();
+            aligned.extend_from_slice(bytes);
+
+            let archived =
+                rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(
+                    &aligned,
+                )
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+            let deserialized =
+                rkyv::deserialize::<V, rkyv::rancor::Error>(archived)
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
+            Ok(Some(deserialized))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Scan all entries in a table definition and deserialize to owned values
+/// within a transaction.
+fn scan_table_tx<V>(
+    tx: &redb::ReadTransaction,
+    table: TableDefinition<&str, &[u8]>,
+) -> Result<Vec<V>, DbError>
+where
+    V: rkyv::Archive,
+    V::Archived: rkyv::Portable
+        + for<'archived> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+        > + rkyv::Deserialize<
+            V,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+{
+    let table_ref = match tx.open_table(table) {
+        Ok(table_ref) => table_ref,
+        Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
+
+    let mut results = Vec::new();
+    for result in table_ref.iter()? {
+        let (_key, value): (_, redb::AccessGuard<&[u8]>) = result?;
+        let bytes: &[u8] = value.value();
+
+        let mut aligned = AlignedVec::<16>::new();
+        aligned.extend_from_slice(bytes);
+
+        let archived =
+            rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(&aligned)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+        let deserialized =
+            rkyv::deserialize::<V, rkyv::rancor::Error>(archived)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+        results.push(deserialized);
+    }
+
+    Ok(results)
+}
+
+/// Scan all entries in a table and return key-value pairs within a transaction.
+fn scan_table_key_value_tx<V>(
+    tx: &redb::ReadTransaction,
+    table: TableDefinition<&str, &[u8]>,
+) -> Result<Vec<(String, V)>, DbError>
+where
+    V: rkyv::Archive,
+    V::Archived: rkyv::Portable
+        + for<'archived> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+        > + rkyv::Deserialize<
+            V,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+{
+    let table_ref = match tx.open_table(table) {
+        Ok(table_ref) => table_ref,
+        Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
+
+    let mut results = Vec::new();
+    for result in table_ref.iter()? {
+        let (key, value): (redb::AccessGuard<&str>, redb::AccessGuard<&[u8]>) =
+            result?;
+        let key_str = key.value().to_owned();
+        let bytes: &[u8] = value.value();
+
+        let mut aligned = AlignedVec::<16>::new();
+        aligned.extend_from_slice(bytes);
+
+        let archived =
+            rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(&aligned)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+        let deserialized =
+            rkyv::deserialize::<V, rkyv::rancor::Error>(archived)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+        results.push((key_str, deserialized));
+    }
+
+    Ok(results)
 }
 
 #[cfg(test)]

@@ -40,6 +40,7 @@ mod writer;
 use std::path::Path;
 
 pub use error::DbError;
+pub use reader::BatchReader;
 use redb::ReadableDatabase as _;
 pub use writer::WriteBatch;
 

@@ -167,6 +167,25 @@ where
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
+
+    /// Execute multiple read operations within a single transaction.
+    ///
+    /// This amortizes transaction creation cost across multiple reads,
+    /// improving performance for batch operations.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if query fails.
+    #[inline]
+    pub fn batch_read<R, F>(&self, f: F) -> Result<R, SchemaQueryError>
+    where
+        F: FnOnce(
+            &crate::db::BatchReader,
+        ) -> Result<R, <Q as schema_ports::Query>::Error>,
+    {
+        self.query_port.batch_read(f).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
+    }
 }
 
 #[cfg(test)]

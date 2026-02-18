@@ -1,7 +1,7 @@
 //! Redb-backed implementation of the [`crate::schema::ports::Query`] trait.
 
 use crate::{
-    db::{Database, DbError},
+    db::{BatchReader, Database, DbError},
     schema::{
         aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName},
         bank::{PropertyBank, PropertyBankId},
@@ -31,6 +31,14 @@ impl<'db> QueryAdapter<'db> {
 impl Query for QueryAdapter<'_> {
     type Archived<'archived> = &'archived rkyv::Archived<Schema>;
     type Error = DbError;
+
+    #[inline]
+    fn batch_read<R, F>(&self, f: F) -> Result<R, Self::Error>
+    where
+        F: FnOnce(&BatchReader) -> Result<R, Self::Error>,
+    {
+        self.db.batch_read(f)
+    }
 
     #[inline]
     fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error> {
