@@ -4,7 +4,7 @@
 
 use crate::{
     config::aggregate::Config,
-    fs::source::FileSource,
+    fs::{parsers::parse_file, source::FileSource},
     schema::{
         aggregate::Timestamp,
         error::SchemaIngestionError,
@@ -12,15 +12,18 @@ use crate::{
     },
 };
 
+/// Supported schema file extensions.
+const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
+
 /// A raw schema with optional file modification time.
 pub type RawSchemaWithMtime = (RawSchema, Option<Timestamp>);
 
 /// Ingestor for loading raw schema files from a file source.
 ///
 /// This adapter is responsible for:
-/// - Loading the property bank JSON file
+/// - Loading the property bank file (JSON, TOML, or YAML)
 /// - Scanning the schemas directory for schema files
-/// - Deserializing files into raw types
+/// - Deserializing files into raw types using format auto-detection
 ///
 /// It does NOT:
 /// - Assign IDs
@@ -48,8 +51,11 @@ impl<'config, S> Ingestor<'config, S> {
     }
 }
 
-impl<S: FileSource> Ingestor<'_, S> {
+impl<S: FileSource<Error = std::io::Error>> Ingestor<'_, S> {
     /// Load and deserialize the property bank file.
+    ///
+    /// Supports JSON, TOML, and YAML formats (detected by extension or
+    /// content).
     ///
     /// # Errors
     /// Returns `SchemaIngestionError` if the file cannot be read or parsed.
@@ -58,28 +64,14 @@ impl<S: FileSource> Ingestor<'_, S> {
         &self,
     ) -> Result<RawPropertyBank, SchemaIngestionError> {
         let path = self.config.paths().property_bank_path();
-        let content = self.source.read_to_string(&path).map_err(|e| {
-            SchemaIngestionError::ReadFailed {
-                path: path.to_string_lossy().into(),
-                reason: e.to_string().into(),
-            }
-        })?;
-
-        let raw: RawPropertyBank =
-            serde_json::from_str(&content).map_err(|e| {
-                SchemaIngestionError::ParseFailed {
-                    path: path.to_string_lossy().into(),
-                    reason: e.to_string().into(),
-                }
-            })?;
-
-        Ok(raw)
+        parse_file(&self.source, &path).map_err(SchemaIngestionError::from)
     }
 
     /// Scan the schemas directory for all schema files.
     ///
     /// Returns a vector of (`RawSchema`, file modification time) pairs.
-    /// The property bank file is excluded from the results.
+    /// Supports JSON, TOML, and YAML formats. The property bank file is
+    /// excluded.
     ///
     /// # Errors
     /// Returns `SchemaIngestionError` if the directory cannot be scanned or
@@ -92,41 +84,31 @@ impl<S: FileSource> Ingestor<'_, S> {
         let schemas_dir = paths.schema.schemas_dir().as_path();
         let property_bank_filename = paths.property_bank.as_str();
 
-        // Find all JSON files in the schemas directory
-        let pattern = format!("{}/**/*.json", schemas_dir.display());
-        let files = self.source.list_files(&pattern).map_err(|e| {
-            SchemaIngestionError::FileSystem(e.to_string().into())
-        })?;
+        let mut results = Vec::new();
 
-        let mut results = Vec::with_capacity(files.len());
-
-        for path in files {
-            // Skip the property bank file
-            if path
-                .file_name()
-                .is_some_and(|name| name == property_bank_filename)
-            {
-                continue;
-            }
-
-            let content = self.source.read_to_string(&path).map_err(|e| {
-                SchemaIngestionError::ReadFailed {
-                    path: path.to_string_lossy().into(),
-                    reason: e.to_string().into(),
-                }
+        // Scan for each supported extension
+        for ext in SCHEMA_EXTENSIONS {
+            let pattern = format!("{}/**/*.{}", schemas_dir.display(), ext);
+            let files = self.source.list_files(&pattern).map_err(|e| {
+                SchemaIngestionError::FileSystem(e.to_string().into())
             })?;
 
-            let raw: RawSchema =
-                serde_json::from_str(&content).map_err(|e| {
-                    SchemaIngestionError::ParseFailed {
-                        path: path.to_string_lossy().into(),
-                        reason: e.to_string().into(),
-                    }
-                })?;
+            for path in files {
+                // Skip the property bank file
+                if path
+                    .file_name()
+                    .is_some_and(|name| name == property_bank_filename)
+                {
+                    continue;
+                }
 
-            // File modification time not available from FileSource trait
-            // This is intentional - the trait is minimal and cross-platform
-            results.push((raw, None));
+                let raw: RawSchema = parse_file(&self.source, &path)
+                    .map_err(SchemaIngestionError::from)?;
+
+                // File modification time not available from FileSource trait
+                // This is intentional - the trait is minimal and cross-platform
+                results.push((raw, None));
+            }
         }
 
         Ok(results)
@@ -174,6 +156,65 @@ mod tests {
     }
 
     #[test]
+    fn load_raw_property_bank_parses_valid_yaml() {
+        let mut source = InMemoryFileSource::new();
+        source.insert(
+            Path::new("schemas/property_bank.yaml"),
+            "properties: {}".to_owned(),
+        );
+
+        // Config with yaml extension for property bank
+        let config = Config::build(
+            &RawConfig {
+                paths: crate::config::raw::RawPathsConfig {
+                    property_bank_file: Some("property_bank.yaml".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            VaultId::new(),
+            VaultRoot::try_new(PathBuf::from("/vault")).expect("vault root"),
+        )
+        .expect("failed to build test config");
+
+        let ingestor = Ingestor::new(source, &config);
+        let result = ingestor.load_raw_property_bank();
+
+        assert!(result.is_ok());
+        let bank = result.expect("Should parse property bank");
+        assert!(bank.properties.is_empty());
+    }
+
+    #[test]
+    fn load_raw_property_bank_parses_valid_toml() {
+        let mut source = InMemoryFileSource::new();
+        source.insert(
+            Path::new("schemas/property_bank.toml"),
+            "[properties]".to_owned(),
+        );
+
+        let config = Config::build(
+            &RawConfig {
+                paths: crate::config::raw::RawPathsConfig {
+                    property_bank_file: Some("property_bank.toml".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            VaultId::new(),
+            VaultRoot::try_new(PathBuf::from("/vault")).expect("vault root"),
+        )
+        .expect("failed to build test config");
+
+        let ingestor = Ingestor::new(source, &config);
+        let result = ingestor.load_raw_property_bank();
+
+        assert!(result.is_ok());
+        let bank = result.expect("Should parse property bank");
+        assert!(bank.properties.is_empty());
+    }
+
+    #[test]
     fn load_raw_property_bank_returns_error_for_invalid_json() {
         let mut source = InMemoryFileSource::new();
         source.insert(
@@ -187,7 +228,47 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.expect_err("Should fail to parse");
-        assert!(matches!(err, SchemaIngestionError::ParseFailed { .. }));
+        // Invalid JSON content may be detected as YAML/TOML and fail parsing,
+        // or may return unsupported format if all detection methods fail
+        assert!(
+            matches!(
+                err,
+                SchemaIngestionError::Json { .. }
+                    | SchemaIngestionError::Toml { .. }
+                    | SchemaIngestionError::Yaml { .. }
+                    | SchemaIngestionError::UnsupportedFormat { .. }
+            ),
+            "Unexpected error type: {err:?}"
+        );
+    }
+
+    #[test]
+    fn load_raw_property_bank_returns_error_for_unsupported_format() {
+        let mut source = InMemoryFileSource::new();
+        source.insert(
+            Path::new("schemas/property_bank.xml"),
+            "<properties></properties>".to_owned(),
+        );
+
+        let config = Config::build(
+            &RawConfig {
+                paths: crate::config::raw::RawPathsConfig {
+                    property_bank_file: Some("property_bank.xml".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            VaultId::new(),
+            VaultRoot::try_new(PathBuf::from("/vault")).expect("vault root"),
+        )
+        .expect("failed to build test config");
+
+        let ingestor = Ingestor::new(source, &config);
+        let result = ingestor.load_raw_property_bank();
+
+        assert!(result.is_err());
+        let err = result.expect_err("Should fail for unsupported format");
+        assert!(matches!(err, SchemaIngestionError::UnsupportedFormat { .. }));
     }
 
     #[test]
@@ -198,8 +279,8 @@ mod tests {
             r#"{"name": "note", "properties": {}}"#.to_owned(),
         );
         source.insert(
-            Path::new("schemas/task.json"),
-            r#"{"name": "task", "properties": {}}"#.to_owned(),
+            Path::new("schemas/task.yaml"),
+            "name: task\nproperties: {}".to_owned(),
         );
         // Property bank should be excluded
         source.insert(
@@ -219,6 +300,27 @@ mod tests {
             schemas.iter().map(|tuple| tuple.0.name.as_ref()).collect();
         assert!(names.contains(&"note"));
         assert!(names.contains(&"task"));
+    }
+
+    #[test]
+    fn scan_raw_schemas_supports_toml_format() {
+        let mut source = InMemoryFileSource::new();
+        source.insert(
+            Path::new("schemas/project.toml"),
+            r#"name = "project"
+[properties]"#
+                .to_owned(),
+        );
+
+        let config = test_config();
+        let ingestor = Ingestor::new(source, &config);
+        let result = ingestor.scan_raw_schemas();
+
+        assert!(result.is_ok());
+        let schemas = result.expect("Should scan schemas");
+        assert_eq!(schemas.len(), 1);
+        let schema = schemas.first().expect("should have one schema");
+        assert_eq!(schema.0.name.as_ref(), "project");
     }
 
     #[test]

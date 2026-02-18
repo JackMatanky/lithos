@@ -200,27 +200,101 @@ pub enum SchemaQueryError {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaIngestionError {
-    /// Failed to read file.
+    /// I/O error reading file.
     #[error("Failed to read file {path}: {reason}")]
-    ReadFailed {
+    Io {
         /// Path to the file.
         path: Box<str>,
         /// Reason for failure.
         reason: Box<str>,
     },
 
-    /// Failed to parse file content.
-    #[error("Failed to parse {path}: {reason}")]
-    ParseFailed {
+    /// JSON parsing failed.
+    #[error("JSON parse error in {path}: {message}")]
+    Json {
         /// Path to the file.
         path: Box<str>,
-        /// Reason for failure.
-        reason: Box<str>,
+        /// Error message from parser.
+        message: Box<str>,
+    },
+
+    /// TOML parsing failed.
+    #[error("TOML parse error in {path}: {message}")]
+    Toml {
+        /// Path to the file.
+        path: Box<str>,
+        /// Error message from parser.
+        message: Box<str>,
+    },
+
+    /// YAML parsing failed.
+    #[error("YAML parse error in {path}: {message}")]
+    Yaml {
+        /// Path to the file.
+        path: Box<str>,
+        /// Error message from parser.
+        message: Box<str>,
+    },
+
+    /// Unsupported file format.
+    #[error("Unsupported format for {path}: expected one of {supported}")]
+    UnsupportedFormat {
+        /// Path to the file.
+        path: Box<str>,
+        /// Supported formats.
+        supported: Box<str>,
     },
 
     /// File system error.
     #[error("File system error: {0}")]
     FileSystem(Box<str>),
+}
+
+impl From<crate::fs::error::ParseError> for SchemaIngestionError {
+    #[inline]
+    fn from(err: crate::fs::error::ParseError) -> Self {
+        use crate::fs::error::ParseError;
+        match err {
+            ParseError::Io {
+                path,
+                source,
+            } => Self::Io {
+                path: path.to_string_lossy().into(),
+                reason: source.to_string().into(),
+            },
+            ParseError::Json {
+                path,
+                message,
+                ..
+            } => Self::Json {
+                path: path.to_string_lossy().into(),
+                message,
+            },
+            ParseError::Toml {
+                path,
+                message,
+                ..
+            } => Self::Toml {
+                path: path.to_string_lossy().into(),
+                message,
+            },
+            ParseError::Yaml {
+                path,
+                message,
+                ..
+            } => Self::Yaml {
+                path: path.to_string_lossy().into(),
+                message,
+            },
+            ParseError::UnsupportedFormat {
+                path,
+                supported,
+            } => Self::UnsupportedFormat {
+                path: path.to_string_lossy().into(),
+                supported: supported.join(", ").into(),
+            },
+        }
+    }
 }
 
 #[cfg(test)]
