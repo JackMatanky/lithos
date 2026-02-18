@@ -32,6 +32,8 @@ pub mod reader;
 pub mod types;
 /// Security-critical path validation utilities.
 pub mod validator;
+/// File system writer utilities.
+pub mod writer;
 
 // Ergonomic aliases with domain-clarifying names (avoid `pub use` re-exports).
 
@@ -58,6 +60,8 @@ pub type PathValidator = validator::Validator;
 pub type PathValidationError = error::PathValidationError;
 /// Filesystem reader type alias.
 pub type OsFsReader = reader::OsFsReader;
+/// Filesystem writer type alias.
+pub type OsFsWriter = writer::OsFsWriter;
 /// File metadata type alias.
 pub type FileMetadata = reader::FileMetadata;
 
