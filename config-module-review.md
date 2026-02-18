@@ -106,120 +106,204 @@ Move the `ingest::build_merged_raw(vault_root.as_path())` call to an application
 
 **Location:** `config/ingest.rs`, `config/command.rs`, `config/query.rs`
 **Severity:** MAJOR
-**Status:** DESIGN PROVIDED - Needs implementation
+**Status:** DESIGN FINALIZED - Ready for implementation
+
+**User Requirements Confirmed:**
+- Goal: Sensible defaults so configs rarely change (users should almost never need to edit configs)
+- Comparison: "Is this different from file?" is sufficient (content hash + file mtime)
+- Version tracking: Uses existing `config::aggregate::Version` for config history
+- Approach: Full hybrid loading (Option A) matching other parts of the system
 
 **Problem:**
-Currently, the system always performs a full Figment merge and rebuild from files. There's no optimization for the case where configs haven't changed. The desired hybrid strategy is not implemented:
+Currently, the system always performs a full Figment merge and rebuild from files. There's no optimization for the case where configs haven't changed.
 
-**Target Architecture (Per User Specification):**
+**Target Architecture (Final Design):**
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Config Loading Flow                       │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Hybrid Config Loading Flow                        │
+└─────────────────────────────────────────────────────────────────────┘
 
-Step 1: Load Global Config from file
-    ↓
-Step 2: Query DB for persisted Global
-    ↓
-Step 3: Compare (hash? timestamp? content?)
-    ↓
-    ├─► Match? Use persisted Global ───────┐
-    └─► Different? Parse and store new      │
-                                             │
-Step 4: Load Vault Config from file         │
-    ↓                                        │
-Step 5: Query DB for persisted Vault        │
-    ↓                                        │
-Step 6: Compare                              │
-    ↓                                        │
-    ├─► Match? Use persisted Vault ────────┤
-    └─► Different? Parse and store new      │
-                                             │
-Step 7: Decision based on matches:          │
-    ├─► Both match? Load merged from DB ───►┘
-    ├─► One matches? Merge DB + file
-    └─► Neither matches? Full Figment merge
+Step 1: Ingest files (via FileSource trait)
+    ├─ Global config file → (RawGlobalConfig, content_hash, mtime)
+    └─ Vault config file  → (RawVaultConfig, content_hash, mtime)
+
+Step 2: Batch query DB (single read transaction)
+    ├─ Query::get_global() → Option<(Global, GlobalMetadata)>
+    └─ Query::get_vault()  → Option<(Vault, VaultMetadata)>
+
+Step 3: Compare and decide
+    ├─ Global file_hash == stored_hash? → Use cached Global
+    │                                      (Domain → Raw conversion for merge)
+    └─ Different? → Parse fresh, validate, store
+
+Step 4: Hybrid merge when one cached, one fresh
+    ├─ Convert cached Global → RawConfig (via From<&Global> for RawConfig)
+    ├─ Load fresh Vault RawConfig from file
+    └─ Figment merge: Serialized::defaults(cached_raw) + Serialized::defaults(fresh_vault)
+
+Step 5: Build final Config
+    └─ Config::build(&merged_raw, vault_id, vault_root)
 ```
 
-**Why This Matters:**
+**Key Design Decisions:**
 
-1. **Performance:** Avoids unnecessary parsing/validation on every startup
-2. **Consistency:** Allows atomic config changes (update DB, then use DB version)
-3. **Flexibility:** Supports config editing while vault is open (ingest changed files)
-4. **User expectation:** Most systems cache configs; users expect fast reloads
+1. **Store validated Domain types, not RawConfig**
+   - Database always contains valid data (Global, Vault, Config domain types)
+   - Metadata stored separately: `ConfigMetadata { content_hash, file_mtime, version }`
+   - **Rationale:** Zero validation risk. RawConfig can be corrupted/malformed; domain types guarantee invariants.
 
-**Current State:**
+2. **Convert Domain → Raw when merge needed**
+   ```rust
+   impl From<&Global> for RawConfig { ... }
+   impl From<&Vault> for RawConfig { ... }
+   ```
+   - Conversion is infallible (valid domain data → valid raw data)
+   - Context-appropriate: Global sets `vault_path: None`, Vault sets `trusted_vaults: None`
 
-- `Global` and `Vault` types exist and are persisted via `record_global()` / `record_vault()`
-- But they're **NEVER READ BACK** to influence `Config::build()`
-- `Config::build()` only reads from `RawConfig` (file-based via Figment)
-- The persisted `Global`/`Vault` are effectively write-only dead ends
+3. **Use Figment's Serialized provider for merge**
+   ```rust
+   let merged: RawConfig = Figment::new()
+       .merge(Serialized::defaults(cached_global_raw))  // No string round-trip!
+       .merge(Serialized::defaults(fresh_vault_raw))
+       .extract()?;
+   ```
 
-**Design Questions to Resolve:**
+**Why This Approach:**
 
-1. **Comparison mechanism:** How do we detect if file config matches DB config?
-   - Option A: Store content hash in DB alongside config
-   - Option B: Store last-modified timestamp
-   - Option C: Deep equality comparison (expensive)
-   - Option D: Version/token system
+| Approach | Safety | Performance | Complexity |
+|----------|--------|-------------|------------|
+| Store RawConfig in DB | ❌ Risky (no validation) | ✅ Fast | Low |
+| **Domain → Raw conversion** | ✅ Safe (validated data) | ✅ Fast (no I/O) | Medium |
+| Figment every time | ✅ Safe | ❌ Slow (always read files) | Low |
 
-2. **Merge semantics:** When one config matches DB but other doesn't, what's the merge priority?
-   - DB version (persisted) treated as "base layer"?
-   - File version overrides DB fields?
-   - Figment-style deep merge?
-
-3. **Validation:** If we use persisted config, do we skip validation? (Assume DB config was validated when stored)
-
-**Required Action:**
-
-1. Define comparison strategy (recommend: content hash)
-2. Modify `Global`/`Vault` persistence to include hash/timestamp
-3. Implement hybrid loading logic in application service
-4. Update `Config::build()` to accept `Global` + `Vault` as alternative to `RawConfig`
-5. Or: Create `ConfigBuilder` that can source from either files or persisted configs
+**Trade-offs Accepted:**
+- ~200 lines of `From` implementations (acceptable maintenance burden)
+- Store metadata alongside domain types (minimal storage overhead)
 
 **Files to Modify:**
 
-- `config/ingest.rs` → Move and extend with comparison logic
-- `config/command.rs` → Update `rebuild_merged` to support hybrid flow
-- `config/global.rs` → Add hash/timestamp fields
-- `config/vault.rs` → Add hash/timestamp fields
-- `config/adapter/command.rs` → Update storage format
+- `config/raw.rs` → Update RawConfig to match schema (add vault_path, name, version, flatten logging)
+- `config/global.rs` → Add ConfigMetadata, implement From<&Global> for RawConfig
+- `config/vault.rs` → Add ConfigMetadata, implement From<&Vault> for RawConfig
+- `config/adapter/command.rs` → Update storage to include metadata
+- `config/adapter/query.rs` → Add get_global(), get_vault() with metadata
+- `config/application/` → Create new application service for hybrid loading
 
 ---
 
-### 2.2 Global and Vault Configs Are Effectively Dead Code
+### 2.2 Global and Vault Configs Purpose Clarification
 
 **Location:** `config/global.rs`, `config/vault.rs`, `config/aggregate.rs`
-**Severity:** MAJOR
+**Severity:** MAJOR → RESOLVED
 **Related to:** 2.1
 
+**Clarification:**
+`Global` and `Vault` are NOT dead code - they serve a critical purpose in the hybrid loading strategy:
+
+**Three Config Representations (Each Has a Role):**
+
+1. **`Config`** - Fully merged, always-valid aggregate (runtime truth)
+   - Used by: Application code, queries, business logic
+   - Storage: Yes, as the final merged result
+
+2. **`Global`** - Global-layer settings (intermediate representation)
+   - Used by: Hybrid loading as cached base layer
+   - Storage: Yes, with metadata for staleness detection
+   - Conversion: `From<&Global> for RawConfig` for Figment merge
+
+3. **`Vault`** - Vault-layer overrides (intermediate representation)
+   - Used by: Hybrid loading as cached overrides
+   - Storage: Yes, with metadata for staleness detection
+   - Conversion: `From<&Vault> for RawConfig` for Figment merge
+
+**Separation Rationale:**
+As user noted: "their clarity comes from their full qualification, e.g. vault::Paths and global::Paths"
+
+- **Type safety:** Can't accidentally use vault-only `cache` in global context
+- **Clear intent:** Full qualification shows purpose (`vault::Paths` vs `global::Paths`)
+- **Different validation:** Global and Vault have different field requirements
+
+**Implementation Required:**
+- ✅ Keep separation (do not unify structs)
+- ✅ Add `From<&Global> for RawConfig` conversion
+- ✅ Add `From<&Vault> for RawConfig` conversion
+- ✅ Add metadata fields for staleness detection
+- ✅ Document the three-representation architecture
+
+---
+
+### 2.3 RawConfig Schema Compatibility Gap
+
+**Location:** `config/raw.rs`
+**Severity:** CRITICAL
+**Status:** MUST FIX BEFORE SCHEMA CAN BE USED
+
 **Problem:**
-Three representations of config exist:
+The current `RawConfig` struct does NOT match the schema defined in `schema/config.schema.json`. This means config files written to the schema cannot be parsed by the current code.
 
-1. `Config` - fully merged, always-valid aggregate (runtime truth)
-2. `Global` - global-layer settings (persisted but never read for merging)
-3. `Vault` - vault-layer overrides (persisted but never read for merging)
+**Schema Structure (Expected):**
+```json
+{
+  "vault_path": "/path/to/vault",  // ← TOP LEVEL (required for vault)
+  "name": "My Vault",               // ← TOP LEVEL (optional)
+  "version": "0.1.0",               // ← TOP LEVEL (optional)
+  "log_level": "info",              // ← TOP LEVEL (flattened)
+  "paths": { ... },                 // ← NESTED
+  "frontmatter": { ... },           // ← NESTED
+  "task": { ... },                  // ← NESTED
+  "trusted_vaults": { ... }         // ← NESTED (global-only)
+}
+```
 
-The CQRS operations `record_global()` and `record_vault()` store these types, but `Config::build()` ignores them. The "merging" happens at the file level via Figment, not at the domain level from persisted types.
+**Current RawConfig (Wrong):**
+```rust
+pub struct RawConfig {
+    // MISSING: vault_path, name, version
+    pub logging: Option<RawLogging>,  // ← Nested [logging] section
+    pub paths: RawPathsConfig,
+    pub frontmatter: Option<RawFrontmatter>,
+    pub task: Option<RawTaskConfig>,
+    pub trusted_vaults: Option<RawTrustedVaults>,
+}
+```
 
-**Why This Is Problematic:**
+**Required Changes to `raw.rs`:**
 
-1. **Code clutter:** Three types where two might suffice
-2. **Confusion:** Contributors see `Global`/`Vault` persistence and assume it's used
-3. **Data inconsistency:** File-based `RawConfig` and persisted `Global`/`Vault` can diverge
-4. **Missed optimization:** Can't use hybrid loading strategy without fixing this
+```rust
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct RawConfig {
+    // Top-level vault metadata (vault configs only)
+    pub vault_path: Option<String>,
+    pub name: Option<String>,
+    pub version: Option<String>,
 
-**Counter-Argument (Preservation):**
-As the user noted: "their clarity comes from their full qualification, e.g. vault::Paths and global::Paths". The separation is architecturally clean.
+    // Flattened logging - exposes log_level at top level
+    #[serde(flatten)]
+    pub logging: Option<RawLogging>,
 
-**Resolution:**
-Keep the separation (do not unify structs per user instruction), but:
+    // Nested configuration sections
+    #[serde(default)]
+    pub paths: RawPathsConfig,
+    pub frontmatter: Option<RawFrontmatter>,
+    pub task: Option<RawTaskConfig>,
+    pub trusted_vaults: Option<RawTrustedVaults>,
+}
+```
 
-1. Document that these are intermediate representations for hybrid loading
-2. Implement the hybrid loading strategy that actually uses them
-3. Remove `record_global`/`record_vault` if hybrid strategy isn't implemented soon
+**Impact of Missing Fields:**
+
+| Field | Impact | Required For |
+|-------|--------|--------------|
+| `vault_path` | CRITICAL | Vault configs won't work without it |
+| `name` | Medium | Nice-to-have display name |
+| `version` | Low | Future migration tracking |
+| `log_level` flattened | High | Schema shows top-level, code expects nested |
+
+**Testing Required:**
+- Round-trip tests: RawConfig → Domain → RawConfig produces equivalent result
+- Schema validation: All examples in `schema/examples/` parse correctly
+- Hybrid loading: Domain → Raw conversion works for merge scenarios
 
 ---
 
@@ -963,6 +1047,57 @@ Add integration test: `rebuild_merged` → `Query::get` → verify retrieved con
 
 ---
 
+### 6.8 Domain → Raw → Domain Round-Trip Tests
+
+**Location:** `config/global.rs`, `config/vault.rs` (tests)
+**Severity:** MAJOR
+**Related to:** 2.1, 2.3
+
+**Gap:**
+No tests verify that `From<&Global> for RawConfig` and `From<&Vault> for RawConfig` produce valid RawConfig that can be parsed back into equivalent domain types.
+
+**Why This Is Critical:**
+The hybrid loading strategy depends on this round-trip working correctly:
+1. Global stored in DB (domain type)
+2. Convert to RawConfig for Figment merge
+3. Merge with fresh Vault RawConfig
+4. Build new Config
+
+If the conversion loses data or produces invalid RawConfig, the merge will fail or produce wrong results.
+
+**Test Scenarios:**
+
+```rust
+#[test]
+fn global_round_trip_preserves_data() {
+    let original = Global::new(...);  // Create with all fields populated
+    let raw = RawConfig::from(&original);
+    let reconstructed = Global::try_from(raw).unwrap();
+
+    assert_eq!(original.logging(), reconstructed.logging());
+    assert_eq!(original.paths().templates_dir(), reconstructed.paths().templates_dir());
+    // ... all fields
+}
+
+#[test]
+fn vault_round_trip_preserves_data() {
+    let original = Vault::new(...);
+    let raw = RawConfig::from(&original);
+    let reconstructed = Vault::try_from(raw).unwrap();
+
+    assert_eq!(original.name(), reconstructed.name());
+    assert_eq!(original.root(), reconstructed.root());
+    // ... all fields
+}
+```
+
+**Note:** While these are similar to e2e tests, they're actually **unit tests for the conversion logic** that the hybrid loading depends on. They should be fast, deterministic, and not require filesystem or database access.
+
+**Required Action:**
+Add comprehensive round-trip tests for both Global and Vault conversions.
+
+---
+
 ## 7. Performance Issues
 
 ### 7.1 glob::Pattern Recompiled Per File
@@ -1103,17 +1238,19 @@ No changes required here.
 
 ### Immediate (This Week)
 
-| Priority | Issue                   | Action                                          | Files                                    |
-| -------- | ----------------------- | ----------------------------------------------- | ---------------------------------------- |
-| P0       | ingest.rs location      | Move to `adapter/` layer, update imports        | `config/ingest.rs` → `adapter/`          |
-| P0       | Command coupling        | Refactor `rebuild_merged` to accept `RawConfig` | `config/command.rs`                      |
-| P0       | Version overflow        | Replace `unwrap_or_else` with error propagation | `adapter/command.rs`, `command.rs`       |
-| P1       | Trusted vaults          | Add to `Config` and populate from `RawConfig`   | `config/aggregate.rs`, `raw.rs`          |
-| P1       | VaultRoot validation    | Use `AbsolutePath` wrapper                      | `config/vault.rs`                        |
-| P1       | String anti-patterns    | Systematic fix of `.to_owned().into()`          | `paths.rs`, `task.rs`, `value.rs`        |
-| P1       | Dispatcher errors       | Return format-specific errors                   | `fs/parsers.rs`                          |
-| P2       | FrontmatterKey Box<str> | Change from String to Box<str>                  | `config/frontmatter.rs`                  |
-| P2       | Vault ID string alloc   | Cache vault_id.to_string() in methods           | `adapter/command.rs`, `adapter/query.rs` |
+| Priority | Issue | Action | Files |
+|----------|-------|--------|-------|
+| P0 | RawConfig schema compatibility | Add vault_path, name, version, flatten logging | `config/raw.rs` |
+| P0 | ingest.rs location | Move to `adapter/` layer, update imports | `config/ingest.rs` → `adapter/` |
+| P0 | Command coupling | Refactor `rebuild_merged` to accept `RawConfig` | `config/command.rs` |
+| P0 | Version overflow | Replace `unwrap_or_else` with error propagation | `adapter/command.rs`, `command.rs` |
+| P1 | Trusted vaults | Add to `Config` and populate from `RawConfig` | `config/aggregate.rs`, `raw.rs` |
+| P1 | VaultRoot validation | Use `AbsolutePath` wrapper | `config/vault.rs` |
+| P1 | String anti-patterns | Systematic fix of `.to_owned().into()` | `paths.rs`, `task.rs`, `value.rs` |
+| P1 | Dispatcher errors | Return format-specific errors | `fs/parsers.rs` |
+| P1 | Domain→Raw conversions | Implement From<&Global> and From<&Vault> | `config/global.rs`, `config/vault.rs` |
+| P2 | FrontmatterKey Box<str> | Change from String to Box<str> | `config/frontmatter.rs` |
+| P2 | Vault ID string alloc | Cache vault_id.to_string() in methods | `adapter/command.rs`, `adapter/query.rs` |
 
 ### Short Term (Next 2 Weeks)
 
@@ -1189,7 +1326,13 @@ lithos-core/src/fs/
 
 ---
 
-**Document Version:** 1.1
+**Document Version:** 1.2
 **Last Updated:** 2026-02-17
 **Next Review:** After immediate actions completed
-**Total Issues Documented:** 58 (7 Critical/Major Architecture, 13 Edge Cases, 18 Code Quality, 7 Test Gaps, 4 Performance, 9 Redundancy)
+**Total Issues Documented:** 60 (8 Critical/Major Architecture, 13 Edge Cases, 18 Code Quality, 8 Test Gaps, 4 Performance, 9 Redundancy)
+
+**Key Updates in v1.2:**
+- Added RawConfig schema compatibility analysis (Section 2.3)
+- Clarified Global/Vault purpose in hybrid loading (Section 2.2)
+- Added Domain→Raw round-trip test requirement (Section 6.8)
+- Finalized hybrid loading design with Figment Serialized provider approach
