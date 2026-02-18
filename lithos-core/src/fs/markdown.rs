@@ -5,9 +5,6 @@
 
 use pulldown_cmark::{Options, Parser};
 
-/// Offset-aware markdown iterator type.
-pub type MarkdownOffsetIter<'markdown> = pulldown_cmark::OffsetIter<'markdown>;
-
 /// Markdown parser configuration wrapper.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
@@ -73,7 +70,10 @@ impl MarkdownParser {
     pub fn parse_offsets<'markdown>(
         &self,
         markdown: &'markdown str,
-    ) -> MarkdownOffsetIter<'markdown> {
+    ) -> pulldown_cmark::OffsetIter<
+        'markdown,
+        pulldown_cmark::DefaultBrokenLinkCallback,
+    > {
         Parser::new_ext(markdown, self.options).into_offset_iter()
     }
 }

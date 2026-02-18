@@ -68,6 +68,20 @@ use std::path::{Component, Path, PathBuf};
 
 use super::error::PathValidationError;
 
+#[inline]
+#[must_use]
+fn check_windows_path_bytes(bytes: &[u8]) -> bool {
+    bytes.first().is_some_and(u8::is_ascii_alphabetic)
+        && bytes.get(1) == Some(&b':')
+}
+
+/// Checks if a path is a Windows-style absolute path or drive-relative path.
+#[inline]
+#[must_use]
+pub fn is_windows_absolute_path(path: &str) -> bool {
+    check_windows_path_bytes(path.as_bytes())
+}
+
 /// Internal validation mode representation.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -397,6 +411,48 @@ impl Validator {
         }
         Ok(())
     }
+}
+
+/// Validates a vault-relative path.
+///
+/// Bundles common path constraints: non-empty, relative, no traversal,
+/// optional extension.
+///
+/// # Errors
+///
+/// Returns [`PathValidationError`] if the path is empty, absolute, contains
+/// traversal segments (`..`), or does not match the required extension.
+#[inline]
+pub fn validate_vault_path(
+    path: &str,
+    require_extension: Option<&str>,
+) -> Result<(), PathValidationError> {
+    if path.is_empty() {
+        return Err(PathValidationError::AbsolutePathError(
+            "Path cannot be empty".into(),
+        ));
+    }
+
+    Validator::new_flexible().validate(path)?;
+
+    if is_windows_absolute_path(path) {
+        return Err(PathValidationError::AbsolutePathError(
+            "Path must be relative (Windows absolute paths not allowed)".into(),
+        ));
+    }
+
+    if let Some(required_ext) = require_extension
+        && !Path::new(path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(required_ext))
+    {
+        return Err(PathValidationError::RestrictedPathError(format!(
+            "Path must end with .{required_ext}"
+        )));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

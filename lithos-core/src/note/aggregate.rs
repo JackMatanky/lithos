@@ -365,9 +365,47 @@ impl NotePath {
             std::borrow::Cow::Borrowed(path)
         };
 
-        // Use core filesystem validator
-        crate::fs::validate_vault_path(&normalized, Some("md"))
-            .map_err(|e| NoteError::InvalidPath(e.clone()))?;
+        if normalized.is_empty() {
+            return Err(NoteError::InvalidPath("path cannot be empty".into()));
+        }
+
+        let normalized_path = std::path::Path::new(normalized.as_ref());
+        if normalized_path.is_absolute() {
+            return Err(NoteError::InvalidPath("path must be relative".into()));
+        }
+
+        for component in normalized_path.components() {
+            match component {
+                std::path::Component::ParentDir => {
+                    return Err(NoteError::InvalidPath(
+                        "path traversal not allowed".into(),
+                    ));
+                }
+                std::path::Component::Normal(segment) => {
+                    if segment
+                        .to_str()
+                        .is_some_and(|segment| segment.starts_with('.'))
+                    {
+                        return Err(NoteError::InvalidPath(
+                            "hidden path components not allowed".into(),
+                        ));
+                    }
+                }
+                std::path::Component::Prefix(_)
+                | std::path::Component::RootDir
+                | std::path::Component::CurDir => {}
+            }
+        }
+
+        if !normalized_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+        {
+            return Err(NoteError::InvalidPath(
+                "path must have .md extension".into(),
+            ));
+        }
 
         Ok(Self(normalized.into()))
     }
