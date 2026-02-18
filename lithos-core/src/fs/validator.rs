@@ -64,19 +64,14 @@
 //! - `SchemaAdapter` (Flexible mode)
 //! - `NoteAdapter` (Strict mode)
 
-use std::{
-    borrow::Cow,
-    path::{Component, Path, PathBuf},
-};
-
-use tracing::{debug, warn};
+use std::path::{Component, Path, PathBuf};
 
 use super::error::PathValidationError;
 
 /// Internal validation mode representation.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub enum Mode {
+pub(crate) enum Mode {
     /// Flexible mode: allows external symlinks (e.g., dotfiles), still checks
     /// input traversal.
     Flexible,
@@ -86,9 +81,6 @@ pub enum Mode {
         root: PathBuf,
     },
 }
-
-/// Public alias for validation mode configuration.
-pub type ValidationMode = Mode;
 
 /// Path validator with configurable security modes.
 ///
@@ -142,17 +134,10 @@ impl Validator {
     ) -> Result<(), PathValidationError> {
         match *component {
             Component::ParentDir => {
-                warn!(
-                    "Path traversal attempt blocked: contains '..' component"
-                );
                 Err(PathValidationError::PathTraversalError)
             }
             Component::Normal(os_str) => {
                 if Self::is_hidden_os_str(os_str) {
-                    warn!(
-                        file = %os_str.to_string_lossy(),
-                        "Restricted path access blocked: hidden/sensitive file"
-                    );
                     Err(PathValidationError::RestrictedPathError(
                         os_str.to_string_lossy().into_owned(),
                     ))
@@ -322,7 +307,7 @@ impl Validator {
         let path_ref = path.as_ref();
 
         // 1. Validate the input path itself first
-        let _validated: Cow<'_, Path> = self.validate(path_ref)?;
+        self.validate(path_ref)?;
 
         // 2. Resolve symlinks
         #[expect(
@@ -367,7 +352,7 @@ impl Validator {
     ///
     /// # Returns
     ///
-    /// - `Ok(Cow<'_, Path>)`: Path is safe, returns borrowed path
+    /// - `Ok(())`: Path is safe
     /// - `Err(PathValidationError)`: Path is unsafe, returns specific error
     ///
     /// # Errors
@@ -377,10 +362,10 @@ impl Validator {
     /// - [`PathValidationError::RestrictedPathError`]: Path accesses hidden
     ///   files
     #[inline]
-    pub fn validate<'path, PathType>(
+    pub fn validate<PathType>(
         &self,
-        path: &'path PathType,
-    ) -> Result<Cow<'path, Path>, PathValidationError>
+        path: &PathType,
+    ) -> Result<(), PathValidationError>
     where
         PathType: AsRef<Path> + ?Sized,
     {
@@ -400,13 +385,7 @@ impl Validator {
         let check_path = self.get_relative_validation_path(path_ref);
         Self::validate_core(check_path)?;
 
-        debug!(
-            path = %path_ref.display(),
-            mode = ?self.mode,
-            "Path validation succeeded"
-        );
-
-        Ok(Cow::Borrowed(path_ref))
+        Ok(())
     }
 
     /// Internal core validation logic. Performs traversal and hidden checks in
@@ -830,7 +809,9 @@ mod tests {
 
         impl Drop for CwdGuard {
             fn drop(&mut self) {
-                if std::env::set_current_dir(&self.previous).is_err() {}
+                if let Err(error) = std::env::set_current_dir(&self.previous) {
+                    eprintln!("CwdGuard: failed to restore CWD: {error}");
+                }
             }
         }
 
