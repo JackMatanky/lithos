@@ -193,6 +193,36 @@ pub enum SchemaQueryError {
     },
 }
 
+/// Schema ingestion errors.
+///
+/// Errors that occur during file-to-raw translation (loading schema files
+/// from the filesystem).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum SchemaIngestionError {
+    /// Failed to read file.
+    #[error("Failed to read file {path}: {reason}")]
+    ReadFailed {
+        /// Path to the file.
+        path: Box<str>,
+        /// Reason for failure.
+        reason: Box<str>,
+    },
+
+    /// Failed to parse file content.
+    #[error("Failed to parse {path}: {reason}")]
+    ParseFailed {
+        /// Path to the file.
+        path: Box<str>,
+        /// Reason for failure.
+        reason: Box<str>,
+    },
+
+    /// File system error.
+    #[error("File system error: {0}")]
+    FileSystem(Box<str>),
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
@@ -215,6 +245,12 @@ mod tests {
     fn schema_query_error_is_send_and_sync() {
         fn is_send_sync<T: Send + Sync>() {}
         is_send_sync::<SchemaQueryError>();
+    }
+
+    #[test]
+    fn schema_ingestion_error_is_send_and_sync() {
+        fn is_send_sync<T: Send + Sync>() {}
+        is_send_sync::<SchemaIngestionError>();
     }
 
     #[rstest]

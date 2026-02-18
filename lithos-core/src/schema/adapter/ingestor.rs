@@ -3,40 +3,14 @@
 //! Pure file-to-raw translation. No DB access. No ID assignment.
 
 use crate::{
-    config::paths::Paths,
+    config::aggregate::Config,
     fs::source::FileSource,
     schema::{
         aggregate::Timestamp,
+        error::SchemaIngestionError,
         raw::{RawPropertyBank, RawSchema},
     },
 };
-
-/// Errors that can occur during schema ingestion.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[non_exhaustive]
-pub enum IngestionError {
-    /// Failed to read file.
-    #[error("Failed to read file {path}: {reason}")]
-    ReadFailed {
-        /// Path to the file.
-        path: Box<str>,
-        /// Reason for failure.
-        reason: Box<str>,
-    },
-
-    /// Failed to parse file content.
-    #[error("Failed to parse {path}: {reason}")]
-    ParseFailed {
-        /// Path to the file.
-        path: Box<str>,
-        /// Reason for failure.
-        reason: Box<str>,
-    },
-
-    /// File system error.
-    #[error("File system error: {0}")]
-    FileSystem(Box<str>),
-}
 
 /// A raw schema with optional file modification time.
 pub type RawSchemaWithMtime = (RawSchema, Option<Timestamp>);
@@ -52,35 +26,40 @@ pub type RawSchemaWithMtime = (RawSchema, Option<Timestamp>);
 /// - Assign IDs
 /// - Query the database
 /// - Perform validation beyond deserialization
-pub struct Ingestor<S> {
+///
+/// The ingestor takes a `&Config` reference to ensure it uses the final
+/// merged path values after config loading completes.
+pub struct Ingestor<'config, S> {
     source: S,
-    paths: Paths,
+    config: &'config Config,
 }
 
-impl<S> Ingestor<S> {
-    /// Create a new ingestor with the given file source and paths.
+impl<'config, S> Ingestor<'config, S> {
+    /// Create a new ingestor with the given file source and config.
+    ///
+    /// The config reference ensures paths are the final merged values.
     #[inline]
     #[must_use]
-    pub const fn new(source: S, paths: Paths) -> Self {
+    pub const fn new(source: S, config: &'config Config) -> Self {
         Self {
             source,
-            paths,
+            config,
         }
     }
 }
 
-impl<S: FileSource> Ingestor<S> {
+impl<S: FileSource> Ingestor<'_, S> {
     /// Load and deserialize the property bank file.
     ///
     /// # Errors
-    /// Returns `IngestionError` if the file cannot be read or parsed.
+    /// Returns `SchemaIngestionError` if the file cannot be read or parsed.
     #[inline]
     pub fn load_raw_property_bank(
         &self,
-    ) -> Result<RawPropertyBank, IngestionError> {
-        let path = self.paths.property_bank_path();
+    ) -> Result<RawPropertyBank, SchemaIngestionError> {
+        let path = self.config.paths().property_bank_path();
         let content = self.source.read_to_string(&path).map_err(|e| {
-            IngestionError::ReadFailed {
+            SchemaIngestionError::ReadFailed {
                 path: path.to_string_lossy().into(),
                 reason: e.to_string().into(),
             }
@@ -88,7 +67,7 @@ impl<S: FileSource> Ingestor<S> {
 
         let raw: RawPropertyBank =
             serde_json::from_str(&content).map_err(|e| {
-                IngestionError::ParseFailed {
+                SchemaIngestionError::ParseFailed {
                     path: path.to_string_lossy().into(),
                     reason: e.to_string().into(),
                 }
@@ -103,21 +82,21 @@ impl<S: FileSource> Ingestor<S> {
     /// The property bank file is excluded from the results.
     ///
     /// # Errors
-    /// Returns `IngestionError` if the directory cannot be scanned or files
-    /// cannot be read or parsed.
+    /// Returns `SchemaIngestionError` if the directory cannot be scanned or
+    /// files cannot be read or parsed.
     #[inline]
     pub fn scan_raw_schemas(
         &self,
-    ) -> Result<Vec<RawSchemaWithMtime>, IngestionError> {
-        let schemas_dir = self.paths.schema.schemas_dir().as_path();
-        let property_bank_filename = self.paths.property_bank.as_str();
+    ) -> Result<Vec<RawSchemaWithMtime>, SchemaIngestionError> {
+        let paths = self.config.paths();
+        let schemas_dir = paths.schema.schemas_dir().as_path();
+        let property_bank_filename = paths.property_bank.as_str();
 
         // Find all JSON files in the schemas directory
         let pattern = format!("{}/**/*.json", schemas_dir.display());
-        let files = self
-            .source
-            .list_files(&pattern)
-            .map_err(|e| IngestionError::FileSystem(e.to_string().into()))?;
+        let files = self.source.list_files(&pattern).map_err(|e| {
+            SchemaIngestionError::FileSystem(e.to_string().into())
+        })?;
 
         let mut results = Vec::with_capacity(files.len());
 
@@ -131,7 +110,7 @@ impl<S: FileSource> Ingestor<S> {
             }
 
             let content = self.source.read_to_string(&path).map_err(|e| {
-                IngestionError::ReadFailed {
+                SchemaIngestionError::ReadFailed {
                     path: path.to_string_lossy().into(),
                     reason: e.to_string().into(),
                 }
@@ -139,7 +118,7 @@ impl<S: FileSource> Ingestor<S> {
 
             let raw: RawSchema =
                 serde_json::from_str(&content).map_err(|e| {
-                    IngestionError::ParseFailed {
+                    SchemaIngestionError::ParseFailed {
                         path: path.to_string_lossy().into(),
                         reason: e.to_string().into(),
                     }
@@ -156,21 +135,25 @@ impl<S: FileSource> Ingestor<S> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use super::*;
     use crate::{
-        config::paths::{PropertyBank, Schema},
+        config::{
+            aggregate::Config,
+            raw::RawConfig,
+            vault::{VaultId, VaultRoot},
+        },
         fs::source::InMemoryFileSource,
     };
 
-    fn test_paths() -> Paths {
-        Paths::new(
-            crate::config::paths::Cache::default(),
-            crate::config::paths::Template::default(),
-            Schema::default(),
-            PropertyBank::default(),
+    fn test_config() -> Config {
+        Config::build(
+            &RawConfig::default(),
+            VaultId::new(),
+            VaultRoot::try_new(PathBuf::from("/vault")).expect("vault root"),
         )
+        .expect("failed to build test config")
     }
 
     #[test]
@@ -181,7 +164,8 @@ mod tests {
             r#"{"properties": {}}"#.to_owned(),
         );
 
-        let ingestor = Ingestor::new(source, test_paths());
+        let config = test_config();
+        let ingestor = Ingestor::new(source, &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_ok());
@@ -197,12 +181,13 @@ mod tests {
             "not valid json".to_owned(),
         );
 
-        let ingestor = Ingestor::new(source, test_paths());
+        let config = test_config();
+        let ingestor = Ingestor::new(source, &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_err());
         let err = result.expect_err("Should fail to parse");
-        assert!(matches!(err, IngestionError::ParseFailed { .. }));
+        assert!(matches!(err, SchemaIngestionError::ParseFailed { .. }));
     }
 
     #[test]
@@ -222,7 +207,8 @@ mod tests {
             r#"{"properties": {}}"#.to_owned(),
         );
 
-        let ingestor = Ingestor::new(source, test_paths());
+        let config = test_config();
+        let ingestor = Ingestor::new(source, &config);
         let result = ingestor.scan_raw_schemas();
 
         assert!(result.is_ok());
@@ -243,7 +229,8 @@ mod tests {
             r#"{"properties": {}}"#.to_owned(),
         );
 
-        let ingestor = Ingestor::new(source, test_paths());
+        let config = test_config();
+        let ingestor = Ingestor::new(source, &config);
         let result = ingestor.scan_raw_schemas();
 
         assert!(result.is_ok());
