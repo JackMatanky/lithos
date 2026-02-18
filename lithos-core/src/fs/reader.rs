@@ -355,3 +355,170 @@ fn is_likely_binary(path: &Path) -> bool {
         )
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use tempfile::TempDir;
+
+    use super::*;
+
+    fn write_file(root: &Path, relative: &str, contents: &[u8]) -> PathBuf {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create test dirs");
+        }
+        std::fs::write(&path, contents).expect("write test file");
+        path
+    }
+
+    #[test]
+    fn list_files_returns_sorted_matches() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(dir.path(), "schemas/b.json", b"{}");
+        write_file(dir.path(), "schemas/a.json", b"{}");
+        write_file(dir.path(), "schemas/c.toml", b"key = 1");
+
+        let reader = OsFsReader::new(dir.path());
+        let files = reader.list_files("schemas/**/*.json").expect("list files");
+
+        assert_eq!(files, vec![
+            PathBuf::from("schemas/a.json"),
+            PathBuf::from("schemas/b.json"),
+        ]);
+    }
+
+    #[test]
+    fn list_files_supports_root_patterns() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(dir.path(), "note.md", b"# Title");
+        write_file(dir.path(), "note.txt", b"plain");
+
+        let reader = OsFsReader::new(dir.path());
+        let files = reader.list_files("*.md").expect("list files");
+
+        assert_eq!(files, vec![PathBuf::from("note.md")]);
+    }
+
+    #[test]
+    fn list_files_rejects_invalid_pattern() {
+        let dir = TempDir::new().expect("tempdir");
+        let reader = OsFsReader::new(dir.path());
+        let result = reader.list_files("[invalid");
+
+        result.unwrap_err();
+    }
+
+    #[test]
+    fn read_to_string_reads_content() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(dir.path(), "schemas/note.json", b"{}");
+
+        let reader = OsFsReader::new(dir.path());
+        let content = reader
+            .read_to_string(Path::new("schemas/note.json"))
+            .expect("read to string");
+
+        assert_eq!(content, "{}");
+    }
+
+    #[test]
+    fn read_bytes_reads_binary() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(dir.path(), "bin/blob.bin", b"\x00\x01\x02");
+
+        let reader = OsFsReader::new(dir.path());
+        let bytes =
+            reader.read_bytes(Path::new("bin/blob.bin")).expect("read bytes");
+
+        assert_eq!(bytes, b"\x00\x01\x02");
+    }
+
+    #[test]
+    fn metadata_returns_size() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(dir.path(), "schemas/note.json", b"{}");
+
+        let reader = OsFsReader::new(dir.path());
+        let metadata =
+            reader.metadata(Path::new("schemas/note.json")).expect("metadata");
+
+        assert_eq!(metadata.size, 2);
+        assert!(!metadata.is_symlink);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn metadata_marks_symlink() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(dir.path(), "schemas/real.json", b"{}");
+
+        let link = dir.path().join("schemas/link.json");
+        std::os::unix::fs::symlink(dir.path().join("schemas/real.json"), &link)
+            .expect("symlink");
+
+        let reader = OsFsReader::new(dir.path());
+        let metadata =
+            reader.metadata(Path::new("schemas/link.json")).expect("metadata");
+
+        assert!(metadata.is_symlink);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn list_files_includes_symlinks() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(dir.path(), "schemas/real.json", b"{}");
+
+        let link = dir.path().join("schemas/link.json");
+        std::os::unix::fs::symlink(dir.path().join("schemas/real.json"), &link)
+            .expect("symlink");
+
+        let reader = OsFsReader::new(dir.path());
+        let files = reader.list_files("schemas/**/*.json").expect("list files");
+
+        assert!(files.contains(&PathBuf::from("schemas/real.json")));
+        assert!(files.contains(&PathBuf::from("schemas/link.json")));
+    }
+
+    #[test]
+    fn parse_structured_reads_json() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(dir.path(), "schemas/note.json", b"{\"name\":\"note\"}");
+
+        let reader = OsFsReader::new(dir.path());
+        let value: serde_json::Value = reader
+            .parse_structured(Path::new("schemas/note.json"))
+            .expect("parse structured");
+
+        assert_eq!(value.get("name").and_then(|v| v.as_str()), Some("note"));
+    }
+
+    #[test]
+    fn parse_structured_rejects_unknown_format() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(dir.path(), "schemas/note.xml", b"<note></note>");
+
+        let reader = OsFsReader::new(dir.path());
+        let result: Result<serde_json::Value, _> =
+            reader.parse_structured(Path::new("schemas/note.xml"));
+
+        assert!(matches!(result, Err(ParseError::UnsupportedFormat { .. })));
+    }
+
+    #[test]
+    fn read_with_invokes_closure() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(dir.path(), "notes/readme.md", b"# Title");
+
+        let reader = OsFsReader::new(dir.path());
+        let result = reader
+            .read_with(Path::new("notes/readme.md"), |_, text| {
+                Ok(text.trim_start().starts_with('#'))
+            })
+            .expect("read with");
+
+        assert!(result);
+    }
+}
