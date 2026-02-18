@@ -944,10 +944,223 @@ ADR for blake3 SchemaHash    [after D1]
 
 ---
 
-## Part 6: ADRs Required
+## Part 6: Resolver Refactor — Clean-Slate Redesign
+
+**Date**: 2026-02-18
+**Scope**: `resolver.rs`, `raw.rs`, `property.rs`, `property_spec.rs`, `error.rs`
+
+The previous implementation of `resolver.rs` contained a `ResolutionContext` god object that conflated four separate concerns: property resolution, schema assembly, dependency ordering, and staleness/incremental loading. This section documents the clean-slate redesign.
+
+---
+
+### R-01 — `ResolutionContext` Eliminated
+
+**Problem**: `ResolutionContext` was a 385-line struct with 10 methods and 5 fields used by disjoint subsets of those methods. It existed to shuttle data between phases rather than encapsulate a concept. Tests had to reach into internal struct fields to test individual functions.
+
+**Solution**: Delete `ResolutionContext` entirely. Replace with:
+- Free function `resolve_property(bank, name, entry) -> Result<Property, SchemaError>`
+- Free function `assemble_schema(id, name, raw_props, parent, excludes, bank) -> Result<Schema, SchemaError>`
+- New type `InheritanceForest` with pure `topo_order()` method
+
+---
+
+### R-02 — `InheritanceForest` for Pure Topological Sort
+
+**Problem**: The `visit` function called `parent_loader` (a DB operation) during topological sort, making an otherwise pure algorithm impure.
+
+**Solution**: `InheritanceForest` holds only the parent map and name lookup. Its `topo_order` method takes `known_external: &HashSet<SchemaId>` (IDs already loaded from cache) and is completely pure — no I/O, no `parent_loader` parameter. External parent existence is validated during the load phase, not during topo-sort.
+
+```rust
+struct InheritanceForest {
+    parents: HashMap<SchemaId, Option<SchemaId>>,
+    names: HashMap<SchemaId, SchemaName>,
+}
+
+impl InheritanceForest {
+    fn build(schemas: &[(SchemaId, &RawSchema)]) -> Result<Self, SchemaError>;
+    fn topo_order(&self, known_external: &HashSet<SchemaId>) -> Result<Vec<SchemaId>, SchemaError>;
+}
+```
+
+---
+
+### R-03 — `RawPropertyRef` Restructured with Flattened Spec Structs
+
+**Problem**: `RawPropertyRef` had 11 flat fields for type-specific overrides, pattern-matching 9 of them just to ignore 7. The override fields duplicated what's already in `Raw*Spec` structs.
+
+**Solution**: Use `#[serde(flatten)]` with the existing `Raw*Spec` types. All `Raw*Spec` fields become `Option<T>` so the same struct serves as both inline definition (validation at `try_into_validated`) and override container (`None` means "don't override").
+
+```rust
+pub struct RawPropertyRef {
+    #[serde(rename = "$ref")]
+    pub ref_path: Box<str>,
+    pub required: Option<bool>,
+    pub multi: Option<bool>,
+    #[serde(flatten)]
+    pub number: RawNumberSpec,   // min, max, step — all Option<f64>
+    #[serde(flatten)]
+    pub string: RawStringSpec,   // options, pattern — all Option<T>
+    #[serde(flatten)]
+    pub date: RawDateSpec,       // format — Option<Box<str>>
+    #[serde(flatten)]
+    pub file: RawFileSpec,       // directory, file_class — all Option<Box<str>>
+}
+```
+
+---
+
+### R-04 — `RawStringSpec` Removes `min_length`/`max_length`
+
+**Problem**: The README defines only `options` and `pattern` for string types. `min_length`/`max_length` were never part of the meta-schema.
+
+**Solution**: Remove from both `RawStringSpec` and `StringSpec`. Remove `validate_length` and its hash code. Remove `StringTooShort` and `StringTooLong` error variants.
+
+---
+
+### R-05 — `Raw*Spec` Renamed from `*Def`
+
+**Problem**: `BoolSpecDef`, `DateSpecDef`, etc. were inconsistently named compared to the validated `*Spec` types.
+
+**Solution**: Rename all `*Def` → `Raw*Spec`:
+- `BoolSpecDef` → `RawBoolSpec`
+- `DateSpecDef` → `RawDateSpec`
+- `FileSpecDef` → `RawFileSpec`
+- `NumberSpecDef` → `RawNumberSpec`
+- `StringSpecDef` → `RawStringSpec`
+
+---
+
+### R-06 — `Raw*Spec` Fields Made `Option<T>`
+
+**Problem**: `RawDateSpec.format` was `Box<str>` (required), preventing use as an override struct where all fields should be optional.
+
+**Solution**: All fields in `Raw*Spec` structs become `Option<T>`. `RawPropertySpec::try_into_validated` returns an error if a required field is `None` for inline use (e.g., `date.format`).
+
+---
+
+### R-07 — `PropertyRef` Simplified to Single Format
+
+**Problem**: `PropertyRef::parse` supported four formats, but the README defines exactly one valid format: `property_bank#/<name>`. The `ById(PropertyId)` variant was never valid per the schema format.
+
+**Solution**: Reduce `PropertyRef` to a newtype:
+
+```rust
+pub struct PropertyRef(PropertyName);
+
+impl PropertyRef {
+    pub fn parse(reference: &str) -> Result<Self, SchemaError> {
+        let name = reference
+            .strip_prefix("property_bank#/")
+            .ok_or_else(|| SchemaError::InvalidPropertyRef(reference.into()))?;
+        Ok(Self(PropertyName::try_from(name)?))
+    }
+    pub fn name(&self) -> &PropertyName { &self.0 }
+}
+```
+
+Remove `ById`, `ByName` variants and all UUID/plain-name fallback paths.
+
+---
+
+### R-08 — `From<bool>` for `Cardinality` and `Multiplicity`
+
+**Problem**: Bool-to-enum conversion was repeated identically in both `Inline` and `Ref` arms of `resolve_property`.
+
+**Solution**: Implement `From<bool>` on the enum types themselves:
+
+```rust
+impl From<bool> for Cardinality {
+    fn from(required: bool) -> Self {
+        if required { Self::Required } else { Self::Optional }
+    }
+}
+
+impl From<bool> for Multiplicity {
+    fn from(multi: bool) -> Self {
+        if multi { Self::Many } else { Self::Single }
+    }
+}
+```
+
+---
+
+### R-09 — `apply_overrides` Methods on `*Spec` Types
+
+**Problem**: `$ref` override fields were ignored (TODO comment). The resolver doesn't know each spec's internal structure, so spec-specific merge logic belonged elsewhere.
+
+**Solution**: Each validated `*Spec` gets an `apply_overrides` method that takes the corresponding `Raw*Spec` (all fields `Option<T>`) and returns a new validated spec:
+
+```rust
+impl NumberSpec {
+    pub fn apply_overrides(self, raw: &RawNumberSpec) -> Result<Self, SchemaError> {
+        let base_min = self.bounds.min().map(FiniteF64::get);
+        let base_max = self.bounds.max().map(FiniteF64::get);
+        let base_step = self.step.map(Step::get);
+        Self::try_new(
+            raw.min.or(base_min),
+            raw.max.or(base_max),
+            raw.step.or(base_step),
+        )
+    }
+}
+```
+
+This keeps spec internals encapsulated — the resolver doesn't reach into spec fields.
+
+---
+
+### R-10 — Type-Change Override Rejection
+
+**Problem**: The README says `$ref` override fields can include `type`, but allowing type changes from the bank definition would be semantically incorrect.
+
+**Solution**: In `resolve_property`, after fetching the base `Property` from the bank, check that any override spec type matches the base spec type. If the inferred override type differs, return `SchemaError::PropertyTypeMismatch`. Type changes between parent/child schema properties are allowed; type changes via `$ref` override are not.
+
+---
+
+### R-11 — Error Variants Added/Removed
+
+**Added**:
+- `SchemaError::InvalidPropertyRef(String)` — invalid `$ref` format
+- `SchemaError::PropertyTypeMismatch { expected, actual }` — type change via `$ref` override
+
+**Removed**:
+- `SchemaError::StringTooShort` — only produced by removed `validate_length`
+- `SchemaError::StringTooLong` — only produced by removed `validate_length`
+
+---
+
+### R-12 — Staleness Ordering Dependency Made Explicit
+
+**Problem**: The old `check_staleness` tried to compute parent hash using `resolved_cache`, but the cache was only populated for schemas already processed in the loop — an undocumented ordering dependency.
+
+**Solution**: Staleness check runs independently of topo-sort. The resolved cache is populated in topo order during resolution. `topo_order` receives `known_external: &HashSet<SchemaId>` (IDs already loaded from DB during staleness check) so external parents are correctly excluded from "missing parent" errors.
+
+---
+
+### Execution Order for Resolver Refactor
+
+```
+R-05 (rename *Def → Raw*Spec)
+R-06 (Raw*Spec fields Option<T>)
+R-04 (remove min_length/max_length)
+  → R-03 (RawPropertyRef with flattened specs)
+  → R-07 (PropertyRef simplified)
+  → R-08 (From<bool> impls)
+  → R-09 (apply_overrides methods)
+  → R-11 (error variants)
+  → R-01 (delete ResolutionContext)
+  → R-02 (InheritanceForest)
+  → R-10 (type-change rejection)
+  → R-12 (explicit staleness ordering)
+```
+
+---
+
+## Part 7: ADRs Required
 
 | Decision | File |
 |---|---|
 | Use blake3 (existing dep) for `SchemaHash` instead of `DefaultHasher` or rkyv-bytes | `docs/adr/XXXX-schema-hash-blake3.md` |
 | `Ingestor` is pure file-to-raw; `Query<Q>` handles all read-side DB needs via `batch_read` + `list_name_id_pairs`; no separate catalog adapter | `docs/adr/XXXX-schema-ingestion-adapter-split.md` |
 | Remove `save_with_metadata` from port; `save_batch` is the sole write path | `docs/adr/XXXX-schema-command-save-batch-only.md` |
+| `ResolutionContext` eliminated; free functions and `InheritanceForest` for resolver | `docs/adr/XXXX-resolver-clean-slate.md` |
