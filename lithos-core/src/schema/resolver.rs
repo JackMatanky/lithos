@@ -19,7 +19,7 @@ use super::{
     aggregate::{
         ResolutionMetadata, Schema, SchemaHash, SchemaId, SchemaName, Timestamp,
     },
-    bank::PropertyBank,
+    bank::{BankVersion, PropertyBank},
     error::SchemaError,
     property::{
         Cardinality, Multiplicity, Property, PropertyId, PropertyName,
@@ -53,17 +53,25 @@ impl<'bank> SchemaResolver<'bank> {
         &self,
         raw_schemas: Vec<(SchemaId, RawSchema)>,
     ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError> {
-        self.process_with_loader(raw_schemas, None, |_| Ok(None))
+        // Convert to format with timestamps (all None)
+        let with_mtimes =
+            raw_schemas.into_iter().map(|(id, raw)| (id, raw, None)).collect();
+        self.process_with_loader(with_mtimes, None, |_| Ok(None))
     }
 
     /// Process only changed schemas (incremental resolution).
+    ///
+    /// Each raw schema is accompanied by its file modification time.
+    /// Schemas that are not stale (bank version, parent hash, file mtime
+    /// unchanged) are skipped and loaded from the database via
+    /// `parent_loader`.
     ///
     /// # Errors
     /// Returns `SchemaError` if resolution fails.
     #[inline]
     pub fn process_changed<F>(
         &self,
-        raw_schemas: Vec<(SchemaId, RawSchema)>,
+        raw_schemas: Vec<(SchemaId, RawSchema, Option<Timestamp>)>,
         existing_metadata: &[ResolutionMetadata],
         parent_loader: F,
     ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError>
@@ -79,7 +87,7 @@ impl<'bank> SchemaResolver<'bank> {
 
     fn process_with_loader<F>(
         &self,
-        raw_schemas: Vec<(SchemaId, RawSchema)>,
+        raw_schemas: Vec<(SchemaId, RawSchema, Option<Timestamp>)>,
         existing_metadata: Option<&[ResolutionMetadata]>,
         parent_loader: F,
     ) -> Result<Vec<(Schema, ResolutionMetadata)>, SchemaError>
@@ -88,8 +96,8 @@ impl<'bank> SchemaResolver<'bank> {
     {
         let mut ctx = ResolutionContext::new(self.bank, raw_schemas.len());
 
-        // 1. Index and build forest
-        ctx.build_forest(raw_schemas, existing_metadata)?;
+        // 1. Index and build forest (includes staleness checking)
+        ctx.build_forest(raw_schemas, existing_metadata, &parent_loader)?;
 
         // 2. Compute topological order (roots to leaves)
         let order = ctx.compute_order(&parent_loader)?;
@@ -132,20 +140,29 @@ impl<'bank> ResolutionContext<'bank> {
         }
     }
 
-    fn build_forest(
+    fn build_forest<F>(
         &mut self,
-        raw_schemas: Vec<(SchemaId, RawSchema)>,
+        raw_schemas: Vec<(SchemaId, RawSchema, Option<Timestamp>)>,
         existing_metadata: Option<&[ResolutionMetadata]>,
-    ) -> Result<(), SchemaError> {
+        parent_loader: &F,
+    ) -> Result<(), SchemaError>
+    where
+        F: Fn(&SchemaId) -> Result<Option<Schema>, SchemaError>,
+    {
+        // Build lookup for existing metadata by ID
+        let metadata_by_id: HashMap<SchemaId, &ResolutionMetadata> =
+            existing_metadata
+                .map(|m| {
+                    m.iter().map(|meta| (meta.schema_id(), meta)).collect()
+                })
+                .unwrap_or_default();
+
+        // Get current bank version for staleness checking
+        let current_bank_version = self.bank.version();
+
         let mut name_to_id = HashMap::with_capacity(raw_schemas.len());
 
-        if let Some(metadata) = existing_metadata {
-            for meta in metadata {
-                self.file_mtimes.insert(meta.schema_id(), meta.file_modified());
-            }
-        }
-
-        for (id, raw) in raw_schemas {
+        for (id, raw, file_mtime) in raw_schemas {
             let name = SchemaName::try_from(raw.name.as_ref())?;
 
             if name_to_id.insert(name.clone(), id).is_some() {
@@ -153,12 +170,26 @@ impl<'bank> ResolutionContext<'bank> {
             }
 
             self.names.insert(id, name);
-            self.raw_by_id.insert(id, raw);
+
+            // Check staleness - determine if we need to resolve this schema
+            let existing_meta = metadata_by_id.get(&id).copied();
+            let should_resolve = self.check_staleness(
+                id,
+                &raw,
+                file_mtime,
+                existing_meta,
+                &name_to_id,
+                current_bank_version,
+                parent_loader,
+            )?;
+
+            if should_resolve {
+                self.raw_by_id.insert(id, raw);
+                self.file_mtimes.insert(id, file_mtime);
+            }
         }
 
         // Second pass to resolve parent pointers within the batch
-        // We use a sorted vec of keys to satisfy clippy::iter_over_hash_type
-        // and ensure deterministic forest construction.
         let mut sorted_ids: Vec<_> = self.raw_by_id.keys().copied().collect();
         sorted_ids.sort();
 
@@ -178,6 +209,55 @@ impl<'bank> ResolutionContext<'bank> {
         }
 
         Ok(())
+    }
+
+    /// Check if a schema needs to be resolved or can be loaded from DB.
+    ///
+    /// Returns `true` if resolution is needed, `false` if loaded from cache.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Internal helper with clear parameter grouping"
+    )]
+    fn check_staleness<F>(
+        &mut self,
+        id: SchemaId,
+        raw: &RawSchema,
+        file_mtime: Option<Timestamp>,
+        existing_meta: Option<&ResolutionMetadata>,
+        name_to_id: &HashMap<SchemaName, SchemaId>,
+        current_bank_version: BankVersion,
+        parent_loader: &F,
+    ) -> Result<bool, SchemaError>
+    where
+        F: Fn(&SchemaId) -> Result<Option<Schema>, SchemaError>,
+    {
+        let Some(existing_meta) = existing_meta else {
+            return Ok(true);
+        };
+
+        // Compute parent hash for staleness check
+        let parent_hash = raw.extends.as_ref().and_then(|parent_name_str| {
+            let parent_name = SchemaName::new(parent_name_str).ok()?;
+            let parent_id = name_to_id.get(&parent_name)?;
+            self.resolved_cache.get(parent_id).map(SchemaHash::compute)
+        });
+
+        let is_stale = existing_meta.is_stale(
+            current_bank_version,
+            parent_hash,
+            file_mtime,
+        );
+
+        if !is_stale {
+            // Non-stale: try to load from DB
+            if let Some(schema) = parent_loader(&id)? {
+                self.resolved_cache.insert(id, schema);
+                return Ok(false);
+            }
+            // Not found in DB, must resolve
+        }
+
+        Ok(true)
     }
 
     fn compute_order<F>(
