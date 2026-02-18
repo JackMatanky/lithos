@@ -65,10 +65,6 @@ pub enum SchemaError {
     CircularInheritance(String),
 
     /// Parent schema not found.
-    #[error("Parent schema not found: {0}")]
-    ParentSchemaNotFound(String),
-
-    /// Parent schema not found.
     #[error("Parent not found: {0}")]
     ParentNotFound(String),
 
