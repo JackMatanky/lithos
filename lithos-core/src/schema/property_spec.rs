@@ -343,6 +343,25 @@ impl DateSpec {
     pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
         hasher.update(self.format.as_bytes());
     }
+
+    /// Apply overrides from a raw date spec.
+    ///
+    /// If the override format is `None`, the base format is preserved.
+    ///
+    /// # Errors
+    /// Returns `SchemaError::InvalidDateFormat` if the override format is
+    /// invalid.
+    #[inline]
+    pub fn apply_overrides(
+        self,
+        overrides: &crate::schema::raw::RawDateSpec,
+    ) -> Result<Self, SchemaError> {
+        if let Some(format) = overrides.format.as_ref() {
+            Self::try_new(format.as_ref())
+        } else {
+            Ok(self)
+        }
+    }
 }
 
 /// File property validation constraints.
@@ -428,6 +447,34 @@ impl FileSpec {
         } else {
             hasher.update(&[0u8]);
         }
+    }
+
+    /// Apply overrides from a raw file spec.
+    ///
+    /// Fields that are `None` in the overrides preserve the base values.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if override values are invalid.
+    #[inline]
+    pub fn apply_overrides(
+        self,
+        overrides: &crate::schema::raw::RawFileSpec,
+    ) -> Result<Self, SchemaError> {
+        let directory = overrides
+            .directory
+            .as_ref()
+            .map(std::convert::AsRef::as_ref)
+            .map(String::from)
+            .or_else(|| self.directory.as_ref().map(|d| d.as_str().to_owned()));
+        let file_class = overrides
+            .file_class
+            .as_ref()
+            .map(std::convert::AsRef::as_ref)
+            .map(String::from)
+            .or_else(|| {
+                self.file_class.as_ref().map(|fc| fc.as_ref().to_owned())
+            });
+        Self::try_new(directory, file_class)
     }
 }
 
@@ -595,6 +642,23 @@ impl NumberSpec {
             hasher.update(&[0u8]);
         }
     }
+
+    /// Apply overrides from a raw number spec.
+    ///
+    /// Fields that are `None` in the overrides preserve the base values.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if override values are invalid.
+    #[inline]
+    pub fn apply_overrides(
+        self,
+        overrides: &crate::schema::raw::RawNumberSpec,
+    ) -> Result<Self, SchemaError> {
+        let min = overrides.min.or(self.bounds.min().map(FiniteF64::get));
+        let max = overrides.max.or(self.bounds.max().map(FiniteF64::get));
+        let step = overrides.step.or(self.step.map(Step::get));
+        Self::try_new(min, max, step)
+    }
 }
 
 /// String property validation constraints.
@@ -716,6 +780,26 @@ impl StringSpec {
         } else {
             hasher.update(&[0u8]);
         }
+    }
+
+    /// Apply overrides from a raw string spec.
+    ///
+    /// Fields that are `None` in the overrides preserve the base values.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if override values are invalid.
+    #[inline]
+    pub fn apply_overrides(
+        self,
+        overrides: &crate::schema::raw::RawStringSpec,
+    ) -> Result<Self, SchemaError> {
+        let pattern = overrides.pattern.clone().or(self.pattern);
+        let options = overrides
+            .options
+            .as_ref()
+            .map(|o| o.clone().into_entries())
+            .or(self.options);
+        Self::try_new(pattern, options)
     }
 }
 
