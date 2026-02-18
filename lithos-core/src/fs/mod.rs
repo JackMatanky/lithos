@@ -26,17 +26,15 @@
 pub mod error;
 /// Markdown parsing utilities.
 pub mod markdown;
-/// Structured data parsers (TOML/JSON/YAML).
-pub mod parsers;
 /// File system abstraction for testable file I/O.
 pub mod source;
+/// Structured data parsers (TOML/JSON/YAML).
+pub mod types;
 /// Security-critical path validation utilities.
 pub mod validator;
 
 // Ergonomic aliases with domain-clarifying names (avoid `pub use` re-exports).
 
-/// Format dispatcher type alias.
-pub type FormatDispatcher = parsers::Dispatcher;
 /// Markdown parser type alias.
 pub type MarkdownParser = markdown::MarkdownParser;
 /// Markdown offset iterator type alias.
@@ -48,6 +46,12 @@ pub type MarkdownOffsetIter<'markdown> = pulldown_cmark::OffsetIter<
 pub type FsError = error::FsError;
 /// Parse error type alias.
 pub type ParseError = error::ParseError;
+/// JSON parser type alias.
+pub type Json = types::Json;
+/// TOML parser type alias.
+pub type Toml = types::Toml;
+/// YAML parser type alias.
+pub type Yaml = types::Yaml;
 /// Path validator type alias.
 pub type PathValidator = validator::Validator;
 /// Path validation error type alias.
