@@ -439,43 +439,19 @@ impl<'bank> ResolutionContext<'bank> {
                 ..
             }) => {
                 let prop_ref = PropertyRef::try_from(ref_path.as_ref())?;
-                let base_prop = match prop_ref {
-                    PropertyRef::ById(id) => {
-                        self.bank.get_by_id(id).cloned().ok_or_else(|| {
-                            SchemaError::PropertyRefNotFound(
-                                ref_path.to_string(),
-                            )
-                        })?
-                    }
-                    PropertyRef::ByName(bank_name) => {
-                        self.bank.get_by_name(&bank_name).cloned().ok_or_else(
-                            || {
-                                SchemaError::PropertyRefNotFound(
-                                    ref_path.to_string(),
-                                )
-                            },
-                        )?
-                    }
-                };
+                let base_prop = self
+                    .bank
+                    .get_by_name(prop_ref.name())
+                    .cloned()
+                    .ok_or_else(|| {
+                        SchemaError::PropertyRefNotFound(ref_path.to_string())
+                    })?;
 
                 // Apply overrides
-                let cardinality =
-                    required.map_or(base_prop.cardinality(), |r| {
-                        if r {
-                            Cardinality::Required
-                        } else {
-                            Cardinality::Optional
-                        }
-                    });
-
-                let multiplicity =
-                    multi.map_or(base_prop.multiplicity(), |m| {
-                        if m {
-                            Multiplicity::Many
-                        } else {
-                            Multiplicity::Single
-                        }
-                    });
+                let cardinality = required
+                    .map_or(base_prop.cardinality(), std::convert::Into::into);
+                let multiplicity = multi
+                    .map_or(base_prop.multiplicity(), std::convert::Into::into);
 
                 // TODO: Handle type-specific overrides (options, pattern, min,
                 // max, step, format, directory, file_class)
@@ -709,7 +685,7 @@ mod tests {
             let property = fixtures::status_property()?;
             let bank = fixtures::property_bank_with(property)?;
             let entry = RawPropertyEntry::Ref(RawPropertyRef {
-                ref_path: "status".into(),
+                ref_path: "property_bank#/status".into(),
                 required: None,
                 multi: None,
                 number: RawNumberSpec::default(),

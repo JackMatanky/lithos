@@ -467,51 +467,34 @@ impl TryFrom<String> for PropertyName {
     }
 }
 
-/// Typed reference to a property definition.
+/// Typed reference to a property definition in the property bank.
+///
+/// The only valid format is `property_bank#/<name>` where `<name>` is a
+/// valid property name. This format is defined by the vault schema format.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum PropertyRef {
-    /// Reference by property id.
-    ById(PropertyId),
-    /// Reference by property name.
-    ByName(PropertyName),
-}
+#[repr(transparent)]
+pub struct PropertyRef(PropertyName);
 
 impl PropertyRef {
     /// Parse a reference string into a typed property reference.
     ///
-    /// Accepted forms:
-    /// - `property_bank#/<name>` (vault format, by name)
-    /// - `$bank:<uuid>` (programmatic format, by id)
-    /// - `<uuid>` (plain UUID, by id)
-    /// - `<name>` (plain name, by name)
+    /// The only accepted format is `property_bank#/<name>`.
     ///
     /// # Errors
-    /// Returns `SchemaError` when the reference is not valid.
+    /// Returns `SchemaError::InvalidPropertyRef` if the format is invalid.
     #[inline]
     pub fn parse(reference: &str) -> Result<Self, SchemaError> {
-        // 1. Actual vault format: property_bank#/<name>
-        if let Some(name) = reference.strip_prefix("property_bank#/") {
-            return Ok(Self::ByName(PropertyName::try_from(name)?));
-        }
+        let name = reference
+            .strip_prefix("property_bank#/")
+            .ok_or_else(|| SchemaError::InvalidPropertyRef(reference.into()))?;
+        Ok(Self(PropertyName::try_from(name)?))
+    }
 
-        // 2. Programmatic UUID format: $bank:<uuid>
-        if let Some(id_str) = reference.strip_prefix("$bank:") {
-            let id = Uuid::parse_str(id_str).map_err(|error| {
-                SchemaError::ValidationFailed(format!(
-                    "Invalid property id reference: {error}"
-                ))
-            })?;
-            return Ok(Self::ById(PropertyId::from_uuid(id)));
-        }
-
-        // 3. Plain UUID
-        if let Ok(id) = Uuid::parse_str(reference) {
-            return Ok(Self::ById(PropertyId::from_uuid(id)));
-        }
-
-        // 4. Plain name (fallback)
-        Ok(Self::ByName(PropertyName::try_from(reference)?))
+    /// Returns the property name being referenced.
+    #[inline]
+    #[must_use]
+    pub const fn name(&self) -> &PropertyName {
+        &self.0
     }
 }
 
