@@ -1,7 +1,7 @@
 //! Filesystem-related utilities and infrastructure.
 //!
 //! This module contains file system infrastructure for security validation,
-//! path manipulation, and structured data parsing.
+//! deterministic discovery, read pipelines, and safe write orchestration.
 //!
 //! ## Security-Critical Modules
 //!
@@ -12,20 +12,16 @@
 //!
 //! ## Data Processing Modules
 //!
-//! - **parsers**: TOML/JSON/YAML parsing strategies with auto-detection.
-//!   - Strategy pattern implementation for structured data formats.
-//!   - Re-exported as `FormatDispatcher` for clarity in calling code.
-//! - **markdown**: Offset-aware markdown parsing utilities.
-//!   - Wraps pulldown-cmark for adapter layers.
+//! - **reader**: Root-scoped file access with validation and classification.
+//!   - Read pipeline: validate → classify → read → parse.
+//! - **types**: TOML/JSON/YAML parsing helpers with explicit format guards.
+//! - **writer**: Root-scoped writes with atomic replace.
+//! - **markdown**: Offset-aware markdown parsing utilities (crate-local).
 
-#![expect(
-    clippy::module_name_repetitions,
-    reason = "Namespaced types improve clarity in calling code"
-)]
 /// Filesystem error types.
 pub mod error;
 /// Markdown parsing utilities.
-pub mod markdown;
+pub(crate) mod markdown;
 /// File system abstraction for testable file I/O.
 pub mod reader;
 /// Structured data parsers (TOML/JSON/YAML).
@@ -38,13 +34,12 @@ pub mod writer;
 // Ergonomic aliases with domain-clarifying names (avoid `pub use` re-exports).
 
 /// Markdown parser type alias.
-pub type MarkdownParser = markdown::MarkdownParser;
-/// Markdown offset iterator type alias.
-pub type MarkdownOffsetIter<'markdown> = pulldown_cmark::OffsetIter<
-    'markdown,
-    pulldown_cmark::DefaultBrokenLinkCallback,
->;
+pub(crate) type MarkdownParser = markdown::MarkdownParser;
 /// Filesystem error type alias.
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Alias keeps explicit fs namespace in callers."
+)]
 pub type FsError = error::FsError;
 /// Parse error type alias.
 pub type ParseError = error::ParseError;

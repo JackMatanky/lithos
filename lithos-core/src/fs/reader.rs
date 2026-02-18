@@ -50,6 +50,10 @@ pub struct FileMetadata {
 ///
 /// Implementations must be `Send + Sync` to support concurrent access in
 /// ingestion services.
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Trait name matches fs module namespace for clarity."
+)]
 pub trait FsReader: Send + Sync {
     /// Error type for file operations.
     type Error: std::error::Error + Send + Sync + 'static;
@@ -171,6 +175,10 @@ pub trait FsReader: Send + Sync {
 
 /// Production file reader using `std::fs` for real filesystem access.
 #[derive(Debug, Clone)]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Struct name matches fs module namespace for clarity."
+)]
 pub struct OsFsReader {
     /// Root directory for scoped file access.
     root: PathBuf,

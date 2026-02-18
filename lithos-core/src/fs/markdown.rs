@@ -13,24 +13,6 @@ pub struct MarkdownParser {
 }
 
 impl MarkdownParser {
-    /// Create a new markdown parser with the provided options.
-    #[inline]
-    #[must_use]
-    pub const fn new(options: Options) -> Self {
-        Self {
-            options,
-        }
-    }
-
-    /// Create a parser that enables task list markers.
-    #[inline]
-    #[must_use]
-    pub const fn with_tasklists() -> Self {
-        Self {
-            options: Options::ENABLE_TASKLISTS,
-        }
-    }
-
     /// Create a parser with full Obsidian feature support.
     ///
     /// Enables:
@@ -57,23 +39,14 @@ impl MarkdownParser {
         }
     }
 
-    /// Return the underlying pulldown-cmark options.
-    #[inline]
-    #[must_use]
-    pub const fn options(&self) -> Options {
-        self.options
-    }
-
     /// Parse markdown into offset-aware events.
     #[inline]
     #[must_use]
-    pub fn parse_offsets<'markdown>(
-        &self,
-        markdown: &'markdown str,
-    ) -> pulldown_cmark::OffsetIter<
-        'markdown,
-        pulldown_cmark::DefaultBrokenLinkCallback,
-    > {
+    pub fn parse_offsets(
+        self,
+        markdown: &str,
+    ) -> pulldown_cmark::OffsetIter<'_, pulldown_cmark::DefaultBrokenLinkCallback>
+    {
         Parser::new_ext(markdown, self.options).into_offset_iter()
     }
 }
@@ -86,7 +59,7 @@ mod tests {
 
     #[test]
     fn parse_offsets_exposes_text_ranges() {
-        let parser = MarkdownParser::with_tasklists();
+        let parser = MarkdownParser::with_obsidian_features();
         let markdown = "Hello";
         let iter = parser.parse_offsets(markdown);
 

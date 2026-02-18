@@ -8,6 +8,10 @@ use std::{
 use super::validator::Validator;
 
 /// Abstraction over filesystem write operations.
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Trait name matches fs module namespace for clarity."
+)]
 pub trait FsWriter: Send + Sync {
     /// Error type for file operations.
     type Error: std::error::Error + Send + Sync + 'static;
@@ -58,6 +62,10 @@ pub trait FsWriter: Send + Sync {
 
 /// Production filesystem writer using `std::fs`.
 #[derive(Debug, Clone)]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Struct name matches fs module namespace for clarity."
+)]
 pub struct OsFsWriter {
     /// Root directory for scoped file access.
     root: PathBuf,
