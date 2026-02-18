@@ -125,6 +125,22 @@ where
         })
     }
 
+    /// List all schema name-to-ID pairs.
+    ///
+    /// This is a bulk operation that scans the entire name index in one pass.
+    /// Use this instead of `find_by_name` when preloading all mappings.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if query fails.
+    #[inline]
+    pub fn list_name_id_pairs(
+        &self,
+    ) -> Result<Vec<schema_ports::NameIdPair>, SchemaQueryError> {
+        self.query_port.list_name_id_pairs().map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
+    }
+
     /// Find resolution metadata by schema ID.
     ///
     /// # Errors

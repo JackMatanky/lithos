@@ -8,6 +8,9 @@ use super::{
     bank::PropertyBank,
 };
 
+/// A schema name-to-ID pair returned by [`Query::list_name_id_pairs`].
+pub type NameIdPair = (SchemaName, SchemaId);
+
 /// Command port for Schema write operations.
 pub trait Command: Send + Sync {
     /// Storage error type for command operations.
@@ -79,6 +82,15 @@ pub trait Query: Send + Sync {
     /// # Errors
     /// Returns a storage-specific error if query fails.
     fn list_metadata(&self) -> Result<Vec<ResolutionMetadata>, Self::Error>;
+
+    /// List all schema name-to-ID pairs.
+    ///
+    /// This is a bulk operation that scans the entire name index in one pass.
+    /// Use this instead of `lookup_id_by_name` when preloading all mappings.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if query fails.
+    fn list_name_id_pairs(&self) -> Result<Vec<NameIdPair>, Self::Error>;
 
     /// Lookup a schema ID by name.
     ///

@@ -8,7 +8,7 @@ use crate::{
         db_table::{
             PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
         },
-        ports::Query,
+        ports::{NameIdPair, Query},
     },
 };
 
@@ -59,6 +59,20 @@ impl Query for QueryAdapter<'_> {
     #[inline]
     fn list_metadata(&self) -> Result<Vec<ResolutionMetadata>, Self::Error> {
         self.db.list_owned(SCHEMA_METADATA)
+    }
+
+    #[inline]
+    fn list_name_id_pairs(&self) -> Result<Vec<NameIdPair>, Self::Error> {
+        self.db.list_key_value_pairs::<SchemaId>(SCHEMA_ID_BY_NAME).map(
+            |pairs| {
+                pairs
+                    .into_iter()
+                    .filter_map(|(name, id)| {
+                        SchemaName::new(&name).ok().map(|name| (name, id))
+                    })
+                    .collect()
+            },
+        )
     }
 
     #[inline]
