@@ -155,6 +155,110 @@ Solutions:
 
 ---
 
+## Cross-module impact analysis
+
+A full codebase search was performed to find every file outside `lithos-core/src/fs/` that
+references symbols changed by this refactor. Results are listed with their impact.
+
+### Files outside fs/ that are affected
+
+| File | Affected symbols | Requires code change? |
+|---|---|---|
+| `lithos-core/src/note/aggregate.rs` | `crate::fs::validate_vault_path` (line 369) | **Yes** — step 4 replaces with inline validation |
+| `lithos-core/src/note/parser.rs` | `crate::fs::MarkdownParser` (line 23) | **No** — `pub(crate)` is visible within the same crate; no change required |
+| `lithos-core/src/schema/adapter/ingestor.rs` | `FileSource`, `parse_file` (lines 7, 54, 67, 105) | **Yes** — steps 5h and 6i |
+| `lithos-core/src/schema/error.rs` | `From<ParseError>` impl (line 254) — destructures `Box<Path>` and `Vec<&'static str>` | **No** — `PathBuf::to_string_lossy()` and `<[_]>::join()` both compile after step 1 changes |
+| `lithos-core/src/template/adapter/filters.rs` | `crate::fs::validate_vault_path` (line 216) | **No** — uses `format!("{e}")` which works for any `Display` type; compiles after step 3 changes return type |
+| `lithos-core/src/application/mod.rs` | doc comment mentions `FileSource` (line 31) | **Minor** — update in step 10b, add to files-changed table |
+| `lithos-core/tests/architecture.rs` | Uses `FileSource` only in assertion message strings | **No** — not a Rust import; unaffected |
+| `lithos-cli/src/` | Zero usages of any affected symbol | **No** |
+
+### Gap: steps 3 and 4 must be treated as an atomic unit
+
+After step 3 changes `validate_vault_path` to return `Result<(), PathValidationError>`,
+the existing code in `note/aggregate.rs:370` will **fail to compile**:
+
+```rust
+// Currently compiles: NoteError::InvalidPath(String) ← e: String
+crate::fs::validate_vault_path(&normalized, Some("md"))
+    .map_err(|e| NoteError::InvalidPath(e.clone()))?;
+
+// After step 3: NoteError::InvalidPath(String) ← e: PathValidationError ← COMPILE ERROR
+```
+
+`PathValidationError` is `Clone`, so `.clone()` is fine, but `NoteError::InvalidPath` takes
+`String`, not `PathValidationError`. Therefore:
+
+- **Step 3 verify command `mise run test:unit:fs` is insufficient** — it does not compile the note
+  module. A `cargo check` after step 3 alone would fail.
+- **Mitigation**: treat steps 3 and 4 as a single atomic commit. Complete both before running
+  `cargo check` or `mise run verify`. The verify command listed in step 4
+  (`mise run test:unit:note`) covers both.
+
+### Gap: step 10a wording is incorrect
+
+Step 10a says "Remove `pub mod markdown;` from `mod.rs`". This is wrong — removing the `mod`
+declaration entirely would break `note/parser.rs` which imports `crate::fs::MarkdownParser`.
+
+**Correct action**: change `pub mod markdown;` to `pub(crate) mod markdown;` and change the
+type aliases in `mod.rs`:
+
+```rust
+// before
+pub type MarkdownParser = markdown::MarkdownParser;
+pub type MarkdownOffsetIter<'markdown> = markdown::MarkdownOffsetIter<'markdown>;
+
+// after
+pub(crate) type MarkdownParser = markdown::MarkdownParser;
+pub(crate) type MarkdownOffsetIter<'markdown> = markdown::MarkdownOffsetIter<'markdown>;
+```
+
+`note/parser.rs` accesses `crate::fs::MarkdownParser` — `pub(crate)` is sufficient since both
+files are in the same crate. **No change to `note/parser.rs` is required.**
+
+### Gap: `ParseError::UnsupportedFormat.supported` type change
+
+The plan uses `supported: &["json"]` (a `&'static [&'static str]`) in new code (steps 5e, 6d),
+but the current `error.rs` field is `supported: Vec<&'static str>`. Step 1 must also change
+this field:
+
+```rust
+// step 1 change to error.rs
+UnsupportedFormat {
+    path: PathBuf,                      // was Box<Path>
+    supported: &'static [&'static str], // was Vec<&'static str>
+}
+```
+
+The `From<ParseError>` impl in `schema/error.rs:295` uses `supported.join(", ")` — this
+compiles unchanged because `<[&str]>::join()` exists for slices.
+
+### Gap: step 5h — `Ingestor` temporary bridge needs explicit struct change
+
+Step 5h adds a "temporary bridge" with inline `std::fs::read_to_string` calls. But
+`Ingestor<'config, S>` has a bound `S: FileSource<Error = io::Error>` at line 54 that
+references the now-deleted `FileSource` trait. After step 5 removes `FileSource`, the struct
+bound must be removed entirely and the `source` field must either:
+
+- Be removed and replaced with direct `std::fs` calls in the impl body, OR
+- Keep a `PhantomData<S>` placeholder if `S` is still needed
+
+**Minimum change for step 5**: remove the `source: S` field and `impl<S: FileSource...>` bound
+from `Ingestor`. The struct becomes:
+
+```rust
+pub struct Ingestor<'config> {
+    root: PathBuf,   // temporary: hardcoded from config.paths()
+    config: &'config Config,
+}
+```
+
+Step 6i then replaces this with `source: S where S: FsReader`, restoring the abstraction.
+
+This must be reflected in step 5h and step 6i in the plan.
+
+---
+
 ## Refactoring plan
 
 This plan is executable in strict step order. Each step compiles and passes
@@ -165,13 +269,18 @@ Legend: `[ ]` pending · `[x]` done
 
 ---
 
-### Step 1 — `error.rs`: fix `ParseError` path types
+### Step 1 — `error.rs`: fix `ParseError` path types and `UnsupportedFormat.supported` type
 
 **Status:** `[ ]`
 
 **What:**
 - Replace `Box<std::path::Path>` with `PathBuf` in all four `ParseError`
   variants (`Io`, `Json`, `Toml`, `Yaml`, `UnsupportedFormat`).
+- Change `UnsupportedFormat.supported` from `Vec<&'static str>` to
+  `&'static [&'static str]` (a static slice). This aligns with the new
+  pipeline code in `reader.rs` and is required for consistency.
+  Note: `schema/error.rs:295` uses `supported.join(", ")` which compiles
+  unchanged for slices — no change to `schema/error.rs` required.
 - Change `path: path.into()` at every construction site in `parsers.rs`
   (lines 236, 283, 328, 373, 202) from `Box<Path>` to `PathBuf`.
   Both use `.into()` so only the field type changes.
@@ -233,6 +342,15 @@ Step 3 moves `validate_vault_path` into `validator.rs` and calls
 ---
 
 ### Step 3 — `validator.rs` + `mod.rs`: move path helpers, fix `validate_vault_path`
+
+> ⚠️ **Atomicity note**: Steps 3 and 4 must be committed together. After step 3
+> changes `validate_vault_path` to return `Result<(), PathValidationError>`, the
+> call at `note/aggregate.rs:370` — `NoteError::InvalidPath(e.clone())` where
+> `NoteError::InvalidPath(String)` — will fail to compile because `e` is now
+> `PathValidationError`, not `String`. Step 4 fixes this by replacing the call
+> entirely. Do not run `cargo check` on a step-3-only tree; run it only after
+> step 4 is complete. The verify command is the step 4 command:
+> `mise run test:unit:fs && mise run test:unit:note`.
 
 **Status:** `[ ]`
 
@@ -407,18 +525,47 @@ and `parse` methods. Keep all existing tests, updating module path from
   alias entirely (Dispatcher is gone).
 - Add re-exports: `pub use types::{Json, Toml, Yaml};`
 
-5h. Update `schema/adapter/ingestor.rs` (lines 7, 67, 105):
-- Remove `use crate::fs::parsers::parse_file;` import.
-- `parse_file` calls will be replaced by `FsReader::read_structured` in step 6.
-  For now, replace them with equivalent inline calls:
+5h. Update `schema/adapter/ingestor.rs` (lines 7, 54, 67, 105):
+- Remove `use crate::fs::parsers::parse_file;` import (line 7).
+- Remove `use crate::fs::source::FileSource;` import (line 7).
+- The `impl<S: FileSource<Error = std::io::Error>> Ingestor<'_, S>` bound (line 54)
+  references the deleted `FileSource` trait. Remove the generic parameter `S` from
+  `Ingestor` entirely. The struct becomes:
   ```rust
-  let content = std::fs::read_to_string(&path)
-      .map_err(|e| ParseError::Io { path: path.clone().into(), source: e })?;
-  let raw: T = if Json::is_supported(&path) { Json::parse(&path, &content)? }
-               else if Yaml::is_supported(&path) { Yaml::parse(&path, &content)? }
-               else { return Err(...) };
+  pub struct Ingestor<'config> {
+      config: &'config Config,
+  }
+  impl<'config> Ingestor<'config> {
+      pub const fn new(config: &'config Config) -> Self { Self { config } }
+  }
   ```
-  This is a temporary bridge until `FsReader` is built in step 6.
+  Note: the `source: S` field is dropped; I/O is done directly via `std::fs`.
+- Replace `parse_file(&self.source, &path)` calls with equivalent inline calls
+  using `std::fs::read_to_string` + `Json::parse`/`Yaml::parse`/`Toml::parse`:
+  ```rust
+  use crate::fs::types::{Json, Toml, Yaml};
+  let content = std::fs::read_to_string(&path)
+      .map_err(|e| SchemaIngestionError::Io {
+          path: path.to_string_lossy().into(),
+          reason: e.to_string().into(),
+      })?;
+  let raw = if Json::is_supported(&path) {
+      Json::parse(&path, &content).map_err(SchemaIngestionError::from)?
+  } else if Toml::is_supported(&path) {
+      Toml::parse(&path, &content).map_err(SchemaIngestionError::from)?
+  } else if Yaml::is_supported(&path) {
+      Yaml::parse(&path, &content).map_err(SchemaIngestionError::from)?
+  } else {
+      return Err(SchemaIngestionError::UnsupportedFormat {
+          path: path.to_string_lossy().into(),
+          supported: "json, toml, yaml, yml".into(),
+      });
+  };
+  ```
+- Replace `self.source.list_files(&pattern)` with `glob::glob(&pattern)` inline.
+  This is a **temporary bridge** — the abstraction is restored in step 6i via `FsReader`.
+- Update all call sites in tests to use `Ingestor::new(&config)` (no `source` arg).
+  Tests that previously used `InMemoryFileSource` will be rewritten in step 9c.
 
 **Verify:** `mise run test:unit:fs && mise run test:unit:schema`
 
@@ -577,13 +724,25 @@ fn metadata(&self, path: &Path) -> Result<FileMetadata, io::Error> {
   ```
 
 6i. Update `schema/adapter/ingestor.rs`:
-- Replace the temporary bridge from step 5h with
-  `reader.parse_structured(&path)` calls via `FsReader`.
-- Rename `FsFileSource` to `OsFsReader` at the construction site.
-- Remove `InMemoryFileSource` import; tests rewritten in step 9.
+- Restore the generic parameter `S: FsReader` on `Ingestor`:
+  ```rust
+  pub struct Ingestor<'config, S> {
+      source: S,
+      config: &'config Config,
+  }
+  impl<'config, S> Ingestor<'config, S> {
+      pub const fn new(source: S, config: &'config Config) -> Self { ... }
+  }
+  impl<S: FsReader<Error = io::Error>> Ingestor<'_, S> {
+      // use self.source.parse_structured(&path)?
+  }
+  ```
+- Replace the temporary `std::fs` + `glob` bridge from step 5h with
+  `self.source.parse_structured(&path)` and `self.source.list_files(&pattern)`.
 - The `// File modification time not available from FileSource trait` comment
   at line 108 can now be removed and replaced with
-  `reader.metadata(&path)?.modified`.
+  `self.source.metadata(&path).ok().and_then(|m| m.modified)`.
+- Update `Ingestor::new` call sites in non-test code to pass an `OsFsReader`.
 
 **Verify:** `mise run test:unit:fs && mise run test:unit:schema`
 
@@ -739,25 +898,36 @@ Confirm with `cargo check` before committing.
 
 **What:**
 
-10a. Remove `pub mod markdown;` from `mod.rs` — `markdown.rs` content is no
-longer part of the public fs API in this design.
+10a. Change `pub mod markdown;` to `pub(crate) mod markdown;` in `mod.rs`.
+Do NOT remove the `mod` declaration — `note/parser.rs:23` imports
+`crate::fs::MarkdownParser` and must continue to compile.
+
+Change the type aliases in `mod.rs` from `pub` to `pub(crate)`:
+```rust
+// before
+pub type MarkdownParser = markdown::MarkdownParser;
+pub type MarkdownOffsetIter<'markdown> = markdown::MarkdownOffsetIter<'markdown>;
+
+// after
+pub(crate) type MarkdownParser = markdown::MarkdownParser;
+pub(crate) type MarkdownOffsetIter<'markdown> = markdown::MarkdownOffsetIter<'markdown>;
+```
+
+No change to `note/parser.rs` is needed — `pub(crate)` is fully visible
+within the same crate.
 
 Rationale: `MarkdownParser` and its Obsidian options belong to the note
-context. The current `markdown.rs` only wraps pulldown-cmark options with no
-fs-specific logic. Moving it out of `fs` respects the boundary decision
-(context-specific parsing stays in context adapters).
-
-Keep `markdown.rs` in place as a file but make it `pub(crate)` only; the
-note parser already imports from it at
-`note/parser.rs`. This avoids breaking the note context in this refactor.
-A follow-up ADR can decide whether `markdown.rs` moves into the note context
-entirely.
+context. Making the module `pub(crate)` prevents external crates from
+depending on it while deferring the full move to a follow-up ADR.
 
 10b. Update `mod.rs` module doc comment to reflect the new structure:
 - Remove references to `parsers`, `source`, `FormatDispatcher`,
   `InMemoryFileSource`, `FsFileSource`.
 - Add descriptions of `reader`, `writer`, `types`.
 - Document the read pipeline order.
+
+10b2. Update `application/mod.rs` doc comment (line 31): change
+`FileSource` reference to `FsReader`.
 
 10c. Remove `#[expect(clippy::module_name_repetitions)]` crate-wide
 suppression from `mod.rs` if individual suppressions in each file are
@@ -788,13 +958,24 @@ Step 10 (mod.rs + markdown.rs final cleanup)         ← needs all prior steps
 
 | File | Step(s) | Change |
 |---|---|---|
-| `lithos-core/src/fs/error.rs` | 1, 8 | `Box<Path>` → `PathBuf`; add `EmptyPath` variant |
+| `lithos-core/src/fs/error.rs` | 1, 8 | `Box<Path>` → `PathBuf`; `Vec<&'static str>` → `&'static [&'static str]` in `UnsupportedFormat`; add `EmptyPath` variant |
 | `lithos-core/src/fs/validator.rs` | 2, 3, 8 | `validate()` return; `Mode` visibility; tracing removed; path helpers moved in; Windows fix; `validate_vault_path` added; `new_strict` doc fixed |
-| `lithos-core/src/fs/mod.rs` | 3, 5, 6, 10 | Remove moved fns; update re-exports; update docs |
+| `lithos-core/src/fs/mod.rs` | 3, 5, 6, 10 | Remove moved fns; update re-exports; update docs; `pub` → `pub(crate)` for markdown types |
 | `lithos-core/src/fs/parsers.rs` → `types.rs` | 5 | Rename; remove `Dispatcher`, `parse_file`, tracing; add `is_supported` guard in `parse` methods |
 | `lithos-core/src/fs/source.rs` → `reader.rs` | 6 | Rename; `FileSource` → `FsReader`; `FsFileSource` → `OsFsReader`; remove `InMemoryFileSource`; add `FormatKind`, `FileMetadata`, pipeline methods; fix `list_files` |
 | `lithos-core/src/fs/writer.rs` | 7 | New file: `FsWriter`, `OsFsWriter`, `atomic_write` |
-| `lithos-core/src/fs/markdown.rs` | 10 | Make `pub(crate)`; remove from public re-exports |
+| `lithos-core/src/fs/markdown.rs` | 10 | Change to `pub(crate)` module; keep in place; `note/parser.rs` unchanged |
 | `lithos-core/Cargo.toml` | 9 | Remove `walkdir` from `[dependencies]` |
 | `lithos-core/src/note/aggregate.rs` | 4 | Remove `crate::fs` import; inline domain validation |
-| `lithos-core/src/schema/adapter/ingestor.rs` | 5, 6, 9 | Update imports; use `FsReader::parse_structured`; replace in-memory tests |
+| `lithos-core/src/schema/adapter/ingestor.rs` | 5, 6, 9 | Step 5: remove `S` generic + `FileSource` bound, inline `std::fs`; step 6: restore `S: FsReader` abstraction; step 9: replace in-memory tests with `tempfile` |
+| `lithos-core/src/application/mod.rs` | 10 | Doc comment only: `FileSource` → `FsReader` |
+
+### Files that do NOT need changes despite referencing affected symbols
+
+| File | Symbol referenced | Reason no change needed |
+|---|---|---|
+| `lithos-core/src/template/adapter/filters.rs` | `validate_vault_path` (line 216) | Uses only `format!("{e}")` — `PathValidationError: Display`; compiles after step 3 |
+| `lithos-core/src/schema/error.rs` | `From<ParseError>` (line 254) | `PathBuf::to_string_lossy()` and `<[_]>::join()` work for changed types |
+| `lithos-core/src/note/parser.rs` | `crate::fs::MarkdownParser` (line 23) | `pub(crate)` is visible within the crate; no change needed |
+| `lithos-core/tests/architecture.rs` | `FileSource` in string literals only | Not a Rust import; assertion messages only |
+| `lithos-cli/src/` | None | No fs symbols used |
