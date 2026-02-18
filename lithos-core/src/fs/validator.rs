@@ -331,7 +331,7 @@ impl Validator {
                       resolve all symlink components for boundary checking."
         )]
         let resolved = std::fs::canonicalize(path_ref)
-            .map_err(|e| PathValidationError::IoError(e.to_string()))?;
+            .map_err(PathValidationError::IoError)?;
 
         // 3. Enforce boundary constraints based on mode
         self.check_strict_boundary(&resolved)?;

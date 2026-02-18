@@ -97,7 +97,7 @@ pub enum ParseError {
     clippy::module_name_repetitions,
     reason = "Context-specific error name is intentional"
 )]
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum PathValidationError {
     /// Path is empty.
@@ -112,13 +112,8 @@ pub enum PathValidationError {
     InvalidPathEncoding(String),
 
     /// I/O error during symlink resolution.
-    ///
-    /// # Note
-    ///
-    /// This stores a string because `PathValidationError` requires `Clone +
-    /// Eq`, which `std::io::Error` does not implement.
     #[error("I/O error during symlink resolution: {0}")]
-    IoError(String),
+    IoError(#[source] std::io::Error),
 
     /// Path contains `..` components attempting traversal outside allowed
     /// directory.
