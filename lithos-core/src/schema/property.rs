@@ -227,6 +227,17 @@ pub enum Cardinality {
     Required,
 }
 
+impl From<bool> for Cardinality {
+    #[inline]
+    fn from(required: bool) -> Self {
+        if required {
+            Self::Required
+        } else {
+            Self::Optional
+        }
+    }
+}
+
 /// Whether a property accepts a single value or multiple values.
 #[derive(
     Debug,
@@ -248,6 +259,17 @@ pub enum Multiplicity {
     Single,
     /// Multiple values (array).
     Many,
+}
+
+impl From<bool> for Multiplicity {
+    #[inline]
+    fn from(multi: bool) -> Self {
+        if multi {
+            Self::Many
+        } else {
+            Self::Single
+        }
+    }
 }
 
 /// Unique identity for a property.
