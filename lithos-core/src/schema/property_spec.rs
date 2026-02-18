@@ -124,6 +124,38 @@ impl PropertySpec {
         }
     }
 
+    /// Feed spec content into a blake3 hasher for stable hashing.
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &enum are intentional here for \
+                  readability"
+    )]
+    pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
+        match self {
+            Self::Bool(spec) => {
+                hasher.update(&[0u8]);
+                spec.hash_into_blake3(hasher);
+            }
+            Self::Date(spec) => {
+                hasher.update(&[1u8]);
+                spec.hash_into_blake3(hasher);
+            }
+            Self::File(spec) => {
+                hasher.update(&[2u8]);
+                spec.hash_into_blake3(hasher);
+            }
+            Self::Number(spec) => {
+                hasher.update(&[3u8]);
+                spec.hash_into_blake3(hasher);
+            }
+            Self::String(spec) => {
+                hasher.update(&[4u8]);
+                spec.hash_into_blake3(hasher);
+            }
+        }
+    }
+
     /// Validate a value against this spec's constraints.
     ///
     /// This method uses `serde_json::Value` as a universal Intermediate
@@ -216,6 +248,14 @@ impl PropertySpec {
 #[non_exhaustive]
 pub struct BoolSpec;
 
+impl BoolSpec {
+    /// Feed spec content into a blake3 hasher for stable hashing.
+    #[inline]
+    pub fn hash_into_blake3(&self, _hasher: &mut blake3::Hasher) {
+        // BoolSpec is a marker type with no fields
+    }
+}
+
 /// Date property validation constraints.
 #[derive(
     Debug,
@@ -265,6 +305,12 @@ impl DateSpec {
             )));
         }
         Ok(())
+    }
+
+    /// Feed spec content into a blake3 hasher for stable hashing.
+    #[inline]
+    pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
+        hasher.update(self.format.as_bytes());
     }
 }
 
@@ -334,6 +380,23 @@ impl FileSpec {
         }
 
         Ok(())
+    }
+
+    /// Feed spec content into a blake3 hasher for stable hashing.
+    #[inline]
+    pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
+        if let Some(dir) = self.directory.as_ref() {
+            hasher.update(&[1u8]);
+            hasher.update(dir.as_str().as_bytes());
+        } else {
+            hasher.update(&[0u8]);
+        }
+        if let Some(fc) = self.file_class.as_ref() {
+            hasher.update(&[1u8]);
+            hasher.update(fc.as_bytes());
+        } else {
+            hasher.update(&[0u8]);
+        }
     }
 }
 
@@ -463,6 +526,43 @@ impl NumberSpec {
             }
         }
         Ok(())
+    }
+
+    /// Feed spec content into a blake3 hasher for stable hashing.
+    #[inline]
+    #[expect(
+        clippy::little_endian_bytes,
+        reason = "Little-endian is intentional for consistent hash values \
+                  across platforms"
+    )]
+    pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
+        match self.bounds {
+            Bounds::Unbounded => {
+                hasher.update(&[0u8]);
+            }
+            Bounds::Min(min) => {
+                hasher.update(&[1u8]);
+                hasher.update(&min.get().to_le_bytes());
+            }
+            Bounds::Max(max) => {
+                hasher.update(&[2u8]);
+                hasher.update(&max.get().to_le_bytes());
+            }
+            Bounds::Range {
+                min,
+                max,
+            } => {
+                hasher.update(&[3u8]);
+                hasher.update(&min.get().to_le_bytes());
+                hasher.update(&max.get().to_le_bytes());
+            }
+        }
+        if let Some(step) = self.step {
+            hasher.update(&[1u8]);
+            hasher.update(&step.get().to_le_bytes());
+        } else {
+            hasher.update(&[0u8]);
+        }
     }
 }
 
@@ -599,6 +699,62 @@ impl StringSpec {
             }
         }
         Ok(())
+    }
+
+    /// Feed spec content into a blake3 hasher for stable hashing.
+    #[inline]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to u64 conversion for hash stability; usize <= u64 on \
+                  all supported platforms"
+    )]
+    #[expect(
+        clippy::little_endian_bytes,
+        reason = "Little-endian is intentional for consistent hash values \
+                  across platforms"
+    )]
+    pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
+        if let Some(entries) = self.options.as_ref() {
+            hasher.update(&(entries.len() as u64).to_le_bytes());
+            for entry in entries {
+                hasher.update(entry.value.as_bytes());
+                if let Some(label) = entry.label.as_ref() {
+                    hasher.update(&[1u8]);
+                    hasher.update(label.as_bytes());
+                } else {
+                    hasher.update(&[0u8]);
+                }
+            }
+        } else {
+            hasher.update(&0u64.to_le_bytes());
+        }
+        match self.length {
+            Bounds::Unbounded => {
+                hasher.update(&[0u8]);
+            }
+            Bounds::Min(min) => {
+                hasher.update(&[1u8]);
+                hasher.update(&(min as u64).to_le_bytes());
+            }
+            Bounds::Max(max) => {
+                hasher.update(&[2u8]);
+                hasher.update(&(max as u64).to_le_bytes());
+            }
+            Bounds::Range {
+                min,
+                max,
+            } => {
+                hasher.update(&[3u8]);
+                hasher.update(&(min as u64).to_le_bytes());
+                hasher.update(&(max as u64).to_le_bytes());
+            }
+        }
+        if let Some(pattern) = self.pattern.as_ref() {
+            hasher.update(&[1u8]);
+            hasher.update(pattern.as_bytes());
+        } else {
+            hasher.update(&[0u8]);
+        }
     }
 }
 

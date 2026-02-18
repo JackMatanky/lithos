@@ -557,25 +557,45 @@ impl SchemaHash {
     }
 
     /// Compute a stable content hash for a schema.
+    ///
+    /// Uses blake3 for stable, cross-version hashing.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic. The `expect` call is infallible because
+    /// blake3 always produces at least 8 bytes of output.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::as_conversions,
+        reason = "Cardinality and Multiplicity are repr(u8) enums; conversion \
+                  is safe"
+    )]
+    #[expect(
+        clippy::expect_used,
+        reason = "blake3 always produces 32 bytes; slicing 8 bytes is \
+                  infallible"
+    )]
+    #[expect(
+        clippy::little_endian_bytes,
+        reason = "Little-endian is intentional for consistent hash values \
+                  across platforms"
+    )]
     pub fn compute(schema: &Schema) -> Self {
-        use std::{
-            collections::hash_map::DefaultHasher,
-            hash::{Hash as _, Hasher as _},
-        };
-
-        let mut hasher = DefaultHasher::new();
-
-        schema.name().as_str().hash(&mut hasher);
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(schema.name().as_str().as_bytes());
         for prop in schema.properties() {
-            prop.name().as_str().hash(&mut hasher);
-            prop.cardinality().hash(&mut hasher);
-            prop.multiplicity().hash(&mut hasher);
-            prop.spec().hash(&mut hasher);
+            hasher.update(prop.name().as_str().as_bytes());
+            hasher
+                .update(&[prop.cardinality() as u8, prop.multiplicity() as u8]);
+            prop.spec().hash_into_blake3(&mut hasher);
         }
-
-        Self::from_u64(hasher.finish())
+        let hash_bytes = hasher.finalize();
+        Self::from_u64(u64::from_le_bytes(
+            hash_bytes.as_bytes()[..8]
+                .try_into()
+                .expect("blake3 output >= 8 bytes"),
+        ))
     }
 }
 
