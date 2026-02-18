@@ -32,18 +32,18 @@ pub type RawSchemaWithMtime = (RawSchema, Option<Timestamp>);
 ///
 /// The ingestor takes a `&Config` reference to ensure it uses the final
 /// merged path values after config loading completes.
-pub struct Ingestor<'config, S> {
-    source: S,
+pub struct Ingestor<'config> {
+    source: FsReader,
     config: &'config Config,
 }
 
-impl<'config, S> Ingestor<'config, S> {
+impl<'config> Ingestor<'config> {
     /// Create a new ingestor with the given file source and config.
     ///
     /// The config reference ensures paths are the final merged values.
     #[inline]
     #[must_use]
-    pub const fn new(source: S, config: &'config Config) -> Self {
+    pub fn new(source: FsReader, config: &'config Config) -> Self {
         Self {
             source,
             config,
@@ -51,7 +51,7 @@ impl<'config, S> Ingestor<'config, S> {
     }
 }
 
-impl<S: FsReader<Error = std::io::Error>> Ingestor<'_, S> {
+impl Ingestor<'_> {
     /// Load and deserialize the property bank file.
     ///
     /// Supports JSON, TOML, and YAML formats (detected by extension or
@@ -142,7 +142,7 @@ mod tests {
             raw::RawConfig,
             vault::{VaultId, VaultRoot},
         },
-        fs::OsFsReader,
+        fs::FsReader,
     };
 
     fn write_file(root: &Path, relative: &str, content: &str) -> PathBuf {
@@ -180,7 +180,7 @@ mod tests {
         );
 
         let config = test_config(dir.path(), None);
-        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
+        let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_ok());
@@ -194,7 +194,7 @@ mod tests {
         write_file(dir.path(), "schemas/property_bank.yaml", "properties: {}");
 
         let config = test_config(dir.path(), Some("property_bank.yaml"));
-        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
+        let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_ok());
@@ -208,7 +208,7 @@ mod tests {
         write_file(dir.path(), "schemas/property_bank.toml", "[properties]");
 
         let config = test_config(dir.path(), Some("property_bank.toml"));
-        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
+        let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_ok());
@@ -222,7 +222,7 @@ mod tests {
         write_file(dir.path(), "schemas/property_bank.json", "not valid json");
 
         let config = test_config(dir.path(), None);
-        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
+        let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_err());
@@ -240,7 +240,7 @@ mod tests {
         );
 
         let config = test_config(dir.path(), Some("property_bank.xml"));
-        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
+        let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
         let result = ingestor.load_raw_property_bank();
 
         assert!(result.is_err());
@@ -268,7 +268,7 @@ mod tests {
         );
 
         let config = test_config(dir.path(), None);
-        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
+        let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
         let result = ingestor.scan_raw_schemas();
 
         assert!(result.is_ok());
@@ -292,7 +292,7 @@ mod tests {
         );
 
         let config = test_config(dir.path(), None);
-        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
+        let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
         let result = ingestor.scan_raw_schemas();
 
         assert!(result.is_ok());
@@ -312,7 +312,7 @@ mod tests {
         );
 
         let config = test_config(dir.path(), None);
-        let ingestor = Ingestor::new(OsFsReader::new(dir.path()), &config);
+        let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
         let result = ingestor.scan_raw_schemas();
 
         assert!(result.is_ok());

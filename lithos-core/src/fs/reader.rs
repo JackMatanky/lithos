@@ -1,7 +1,7 @@
 //! File system abstraction for testable file I/O.
 //!
-//! This module provides the [`FsReader`] trait and its production
-//! implementation for scoped filesystem access.
+//! This module provides the [`FsReader`] concrete type for scoped filesystem
+//! access.
 
 use std::{
     io,
@@ -46,145 +46,18 @@ pub struct FileMetadata {
     pub is_symlink: bool,
 }
 
-/// Abstraction over file system operations for dependency injection.
-///
-/// Implementations must be `Send + Sync` to support concurrent access in
-/// ingestion services.
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Trait name matches fs module namespace for clarity."
-)]
-pub trait FsReader: Send + Sync {
-    /// Error type for file operations.
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    /// Classifies the format based on extension and heuristics.
-    #[inline]
-    #[must_use]
-    fn classify(&self, path: &Path) -> FormatKind {
-        classify_path(path)
-    }
-
-    /// Checks if a file exists at the given path.
-    ///
-    /// Returns `true` if the file exists, `false` otherwise.
-    /// Does not distinguish between "file not found" and other errors.
-    #[must_use]
-    fn exists(&self, path: &Path) -> bool;
-
-    /// Lists all files matching a glob pattern.
-    ///
-    /// The pattern syntax follows standard glob conventions:
-    /// - `*.json` - all JSON files in the root directory
-    /// - `**/*.json` - all JSON files recursively
-    /// - `schemas/*.{json,toml,yaml}` - schema files with multiple extensions
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The glob pattern is invalid
-    /// - Directory traversal fails (permissions, I/O error)
-    fn list_files(&self, pattern: &str) -> Result<Vec<PathBuf>, Self::Error>;
-
-    /// Returns metadata for a file path.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if metadata cannot be read.
-    fn metadata(&self, path: &Path) -> Result<FileMetadata, Self::Error>;
-
-    /// Parse a structured file into type `T` using extension-based routing.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ParseError`] for I/O, parse, or unsupported format errors.
-    #[inline]
-    fn parse_structured<T: DeserializeOwned>(
-        &self,
-        path: &Path,
-    ) -> Result<T, ParseError>
-    where
-        Self::Error: Into<io::Error>,
-    {
-        let content =
-            self.read_to_string(path).map_err(|error| ParseError::Io {
-                path: path.to_path_buf(),
-                source: error.into(),
-            })?;
-
-        match self.classify(path) {
-            FormatKind::Json => Json::parse(path, &content),
-            FormatKind::Toml => Toml::parse(path, &content),
-            FormatKind::Yaml => Yaml::parse(path, &content),
-            FormatKind::Markdown | FormatKind::Binary | FormatKind::Unknown => {
-                Err(ParseError::UnsupportedFormat {
-                    path: path.to_path_buf(),
-                    supported: &["json", "toml", "yaml", "yml"],
-                })
-            }
-        }
-    }
-
-    /// Reads the entire contents of a file as bytes.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the file cannot be read.
-    fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, Self::Error>;
-
-    /// Reads the entire contents of a file as a UTF-8 string.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The file does not exist
-    /// - The file cannot be read (permissions, I/O error)
-    /// - The file contents are not valid UTF-8
-    fn read_to_string(&self, path: &Path) -> Result<String, Self::Error>;
-
-    /// Read a file and parse it with a custom closure.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ParseError`] for I/O or closure failures.
-    #[inline]
-    fn read_with<T, F>(&self, path: &Path, f: F) -> Result<T, ParseError>
-    where
-        F: FnOnce(&Path, &str) -> Result<T, ParseError>,
-        Self::Error: Into<io::Error>,
-    {
-        let content =
-            self.read_to_string(path).map_err(|error| ParseError::Io {
-                path: path.to_path_buf(),
-                source: error.into(),
-            })?;
-
-        f(path, &content)
-    }
-
-    /// Validates the path against the configured policy.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`PathValidationError`] if the path is invalid.
-    #[inline]
-    fn validate_path(&self, path: &Path) -> Result<(), PathValidationError> {
-        Validator::new_flexible().validate(path)
-    }
-}
-
 /// Production file reader using `std::fs` for real filesystem access.
 #[derive(Debug, Clone)]
 #[expect(
     clippy::module_name_repetitions,
-    reason = "Struct name matches fs module namespace for clarity."
+    reason = "Type name matches fs module namespace for clarity."
 )]
-pub struct OsFsReader {
+pub struct FsReader {
     /// Root directory for scoped file access.
     root: PathBuf,
 }
 
-impl OsFsReader {
+impl FsReader {
     /// Creates a new filesystem reader scoped to the given root directory.
     #[inline]
     #[must_use]
@@ -206,23 +79,28 @@ impl OsFsReader {
     fn resolve_path(&self, path: &Path) -> PathBuf {
         self.root.join(path)
     }
-}
 
-impl FsReader for OsFsReader {
-    type Error = io::Error;
-
+    /// Classify a path based on extension and heuristics.
     #[inline]
-    fn classify(&self, path: &Path) -> FormatKind {
+    #[must_use]
+    pub fn classify(&self, path: &Path) -> FormatKind {
         classify_path(path)
     }
 
+    /// Check whether a file exists at the given path.
     #[inline]
-    fn exists(&self, path: &Path) -> bool {
+    #[must_use]
+    pub fn exists(&self, path: &Path) -> bool {
         self.resolve_path(path).exists()
     }
 
+    /// List files matching a glob pattern, relative to the root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the pattern is invalid or traversal fails.
     #[inline]
-    fn list_files(&self, pattern: &str) -> Result<Vec<PathBuf>, Self::Error> {
+    pub fn list_files(&self, pattern: &str) -> Result<Vec<PathBuf>, io::Error> {
         let full_pattern = self.root.join(pattern);
         let pattern_str = full_pattern.to_str().ok_or_else(|| {
             io::Error::new(
@@ -248,8 +126,13 @@ impl FsReader for OsFsReader {
         Ok(paths)
     }
 
+    /// Read metadata for a path without following symlinks.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if metadata cannot be read.
     #[inline]
-    fn metadata(&self, path: &Path) -> Result<FileMetadata, Self::Error> {
+    pub fn metadata(&self, path: &Path) -> Result<FileMetadata, io::Error> {
         let metadata = std::fs::symlink_metadata(self.resolve_path(path))?;
         Ok(FileMetadata {
             modified: metadata.modified().ok(),
@@ -258,14 +141,16 @@ impl FsReader for OsFsReader {
         })
     }
 
+    /// Parse a structured file into type `T` based on its extension.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError`] for I/O, parse, or unsupported format errors.
     #[inline]
-    fn parse_structured<T: DeserializeOwned>(
+    pub fn parse_structured<T: DeserializeOwned>(
         &self,
         path: &Path,
-    ) -> Result<T, ParseError>
-    where
-        Self::Error: Into<io::Error>,
-    {
+    ) -> Result<T, ParseError> {
         let content =
             self.read_to_string(path).map_err(|error| ParseError::Io {
                 path: path.to_path_buf(),
@@ -285,21 +170,35 @@ impl FsReader for OsFsReader {
         }
     }
 
+    /// Read the entire file contents as bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read.
     #[inline]
-    fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, Self::Error> {
+    pub fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, io::Error> {
         std::fs::read(self.resolve_path(path))
     }
 
+    /// Read the entire file contents as a UTF-8 string.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read or is not valid UTF-8.
     #[inline]
-    fn read_to_string(&self, path: &Path) -> Result<String, Self::Error> {
+    pub fn read_to_string(&self, path: &Path) -> Result<String, io::Error> {
         std::fs::read_to_string(self.resolve_path(path))
     }
 
+    /// Read a file and parse it with a caller-provided closure.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError`] for I/O or closure failures.
     #[inline]
-    fn read_with<T, F>(&self, path: &Path, f: F) -> Result<T, ParseError>
+    pub fn read_with<T, F>(&self, path: &Path, f: F) -> Result<T, ParseError>
     where
         F: FnOnce(&Path, &str) -> Result<T, ParseError>,
-        Self::Error: Into<io::Error>,
     {
         let content =
             self.read_to_string(path).map_err(|error| ParseError::Io {
@@ -310,8 +209,16 @@ impl FsReader for OsFsReader {
         f(path, &content)
     }
 
+    /// Validate a path against the configured policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathValidationError`] if the path is invalid.
     #[inline]
-    fn validate_path(&self, path: &Path) -> Result<(), PathValidationError> {
+    pub fn validate_path(
+        &self,
+        path: &Path,
+    ) -> Result<(), PathValidationError> {
         Validator::new_flexible().validate(path)
     }
 }
@@ -388,7 +295,7 @@ mod tests {
         write_file(dir.path(), "schemas/a.json", b"{}");
         write_file(dir.path(), "schemas/c.toml", b"key = 1");
 
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let files = reader.list_files("schemas/**/*.json").expect("list files");
 
         assert_eq!(files, vec![
@@ -403,7 +310,7 @@ mod tests {
         write_file(dir.path(), "note.md", b"# Title");
         write_file(dir.path(), "note.txt", b"plain");
 
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let files = reader.list_files("*.md").expect("list files");
 
         assert_eq!(files, vec![PathBuf::from("note.md")]);
@@ -412,7 +319,7 @@ mod tests {
     #[test]
     fn list_files_rejects_invalid_pattern() {
         let dir = TempDir::new().expect("tempdir");
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let result = reader.list_files("[invalid");
 
         result.unwrap_err();
@@ -423,7 +330,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "schemas/note.json", b"{}");
 
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let content = reader
             .read_to_string(Path::new("schemas/note.json"))
             .expect("read to string");
@@ -436,7 +343,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "bin/blob.bin", b"\x00\x01\x02");
 
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let bytes =
             reader.read_bytes(Path::new("bin/blob.bin")).expect("read bytes");
 
@@ -448,7 +355,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "schemas/note.json", b"{}");
 
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let metadata =
             reader.metadata(Path::new("schemas/note.json")).expect("metadata");
 
@@ -466,7 +373,7 @@ mod tests {
         std::os::unix::fs::symlink(dir.path().join("schemas/real.json"), &link)
             .expect("symlink");
 
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let metadata =
             reader.metadata(Path::new("schemas/link.json")).expect("metadata");
 
@@ -483,7 +390,7 @@ mod tests {
         std::os::unix::fs::symlink(dir.path().join("schemas/real.json"), &link)
             .expect("symlink");
 
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let files = reader.list_files("schemas/**/*.json").expect("list files");
 
         assert!(files.contains(&PathBuf::from("schemas/real.json")));
@@ -495,7 +402,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "schemas/note.json", b"{\"name\":\"note\"}");
 
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let value: serde_json::Value = reader
             .parse_structured(Path::new("schemas/note.json"))
             .expect("parse structured");
@@ -508,7 +415,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "schemas/note.xml", b"<note></note>");
 
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let result: Result<serde_json::Value, _> =
             reader.parse_structured(Path::new("schemas/note.xml"));
 
@@ -520,7 +427,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "notes/readme.md", b"# Title");
 
-        let reader = OsFsReader::new(dir.path());
+        let reader = FsReader::new(dir.path());
         let result = reader
             .read_with(Path::new("notes/readme.md"), |_, text| {
                 Ok(text.trim_start().starts_with('#'))

@@ -31,7 +31,7 @@ pub mod validator;
 /// File system writer utilities.
 pub mod writer;
 
-// Ergonomic aliases with domain-clarifying names (avoid `pub use` re-exports).
+// Ergonomic aliases with domain-clarifying names.
 
 /// Markdown parser type alias.
 pub(crate) type MarkdownParser = markdown::MarkdownParser;
@@ -54,9 +54,17 @@ pub type PathValidator = validator::Validator;
 /// Path validation error type alias.
 pub type PathValidationError = error::PathValidationError;
 /// Filesystem reader type alias.
-pub type OsFsReader = reader::OsFsReader;
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Alias keeps explicit fs namespace in callers."
+)]
+pub type FsReader = reader::FsReader;
 /// Filesystem writer type alias.
-pub type OsFsWriter = writer::OsFsWriter;
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Alias keeps explicit fs namespace in callers."
+)]
+pub type FsWriter = writer::FsWriter;
 /// File metadata type alias.
 pub type FileMetadata = reader::FileMetadata;
 

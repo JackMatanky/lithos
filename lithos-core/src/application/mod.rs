@@ -27,8 +27,8 @@
 //!
 //! ## Design Principles
 //!
-//! - **Port-based dependencies**: Services depend on traits (`FsReader`, Query,
-//!   Command) not concrete types
+//! - **Port-based dependencies**: Services use explicit ports (`Query`,
+//!   `Command`) and infrastructure types (`FsReader`)
 //! - **Thin services**: Business logic lives in domain aggregates, services
 //!   only orchestrate
 //! - **Error translation**: Convert infrastructure/domain errors into

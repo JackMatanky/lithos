@@ -7,71 +7,18 @@ use std::{
 
 use super::validator::Validator;
 
-/// Abstraction over filesystem write operations.
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Trait name matches fs module namespace for clarity."
-)]
-pub trait FsWriter: Send + Sync {
-    /// Error type for file operations.
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    /// Writes bytes to a file using an atomic replace strategy.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the file cannot be written or renamed.
-    fn atomic_write(
-        &self,
-        path: &Path,
-        contents: &[u8],
-    ) -> Result<(), Self::Error>;
-
-    /// Creates all directories in the given path.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if directories cannot be created.
-    fn create_dir_all(&self, path: &Path) -> Result<(), Self::Error>;
-
-    /// Removes a file.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the file cannot be removed.
-    fn remove_file(&self, path: &Path) -> Result<(), Self::Error>;
-
-    /// Renames a file.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the rename fails.
-    fn rename(&self, from: &Path, to: &Path) -> Result<(), Self::Error>;
-
-    /// Writes bytes to a file, creating or truncating it.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the file cannot be written.
-    fn write_file(
-        &self,
-        path: &Path,
-        contents: &[u8],
-    ) -> Result<(), Self::Error>;
-}
-
 /// Production filesystem writer using `std::fs`.
 #[derive(Debug, Clone)]
 #[expect(
     clippy::module_name_repetitions,
-    reason = "Struct name matches fs module namespace for clarity."
+    reason = "Type name matches fs module namespace for clarity."
 )]
-pub struct OsFsWriter {
+pub struct FsWriter {
     /// Root directory for scoped file access.
     root: PathBuf,
 }
 
-impl OsFsWriter {
+impl FsWriter {
     /// Creates a new filesystem writer scoped to the given root directory.
     #[inline]
     #[must_use]
@@ -92,33 +39,44 @@ impl OsFsWriter {
             .validate(path)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))
     }
-}
 
-impl FsWriter for OsFsWriter {
-    type Error = io::Error;
-
+    /// Creates all directories in the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if directories cannot be created.
     #[inline]
-    fn create_dir_all(&self, path: &Path) -> Result<(), Self::Error> {
+    pub fn create_dir_all(&self, path: &Path) -> Result<(), io::Error> {
         Self::validate_path(path)?;
         std::fs::create_dir_all(self.resolve(path))
     }
 
+    /// Writes bytes to a file, creating or truncating it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be written.
     #[inline]
-    fn write_file(
+    pub fn write_file(
         &self,
         path: &Path,
         contents: &[u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), io::Error> {
         Self::validate_path(path)?;
         std::fs::write(self.resolve(path), contents)
     }
 
+    /// Writes bytes to a file using an atomic replace strategy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be written or renamed.
     #[inline]
-    fn atomic_write(
+    pub fn atomic_write(
         &self,
         path: &Path,
         contents: &[u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), io::Error> {
         use std::io::Write as _;
 
         Self::validate_path(path)?;
@@ -146,15 +104,25 @@ impl FsWriter for OsFsWriter {
         std::fs::rename(&tmp_path, &target)
     }
 
+    /// Renames a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the rename fails.
     #[inline]
-    fn rename(&self, from: &Path, to: &Path) -> Result<(), Self::Error> {
+    pub fn rename(&self, from: &Path, to: &Path) -> Result<(), io::Error> {
         Self::validate_path(from)?;
         Self::validate_path(to)?;
         std::fs::rename(self.resolve(from), self.resolve(to))
     }
 
+    /// Removes a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be removed.
     #[inline]
-    fn remove_file(&self, path: &Path) -> Result<(), Self::Error> {
+    pub fn remove_file(&self, path: &Path) -> Result<(), io::Error> {
         Self::validate_path(path)?;
         std::fs::remove_file(self.resolve(path))
     }
