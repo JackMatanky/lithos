@@ -509,7 +509,7 @@ pub type FileMetadata = reader::FileMetadata;
 
 ## Step 7 — `writer.rs`: store `Validator`; fix `atomic_write`; make `pub(crate)`; add tests
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** `Writer` has three independent problems: its validator is reconstructed per-call,
 its `atomic_write` uses a fragile hand-rolled temp file, and it has zero unit tests for
