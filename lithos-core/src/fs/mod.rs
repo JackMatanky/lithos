@@ -49,12 +49,6 @@ pub type FsReader = reader::Reader;
 pub type FsWriter = writer::Writer;
 /// File metadata type alias.
 pub type FileMetadata = reader::FileMetadata;
-/// Filesystem error type alias.
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Alias keeps explicit fs namespace in callers."
-)]
-pub type FsError = error::FsError;
 /// Parse error type alias.
 pub type ParseError = error::ParseError;
 /// JSON parser type alias.
