@@ -1,140 +1,139 @@
-//! Markdown parsing adapter for extracting structural note data.
+//! Markdown ingestion adapter for note parsing.
 //!
-//! Responsible for converting raw markdown strings into domain entities
-//! like lists, tasks, and headings using `pulldown-cmark`.
+//! This adapter keeps file I/O and `pulldown-cmark` details out of the note
+//! domain. It reads markdown content with [`crate::fs::FsReader`] and produces
+//! domain entities by streaming parser events. The design makes parsing
+//! deterministic and test-friendly while keeping storage concerns centralized
+//! in the adapter layer.
 
-use std::ops::Range;
+use std::{ops::Range, path::Path};
 
-use pulldown_cmark::{Event, Tag, TagEnd};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
-use super::{
-    aggregate::Note,
-    error::NoteError,
-    frontmatter::Frontmatter,
-    link::{Anchor, EmbedType, Link, Target},
-    list::{List, ListItem, ListType},
-    structure::{Heading, HeadingLevel},
-    task::Task,
-    types::SourceByteOffset,
-    value::FieldValue,
-};
 use crate::{
     config::{aggregate::Config, task::StatusSymbol},
-    fs::MarkdownParser,
+    fs::FsReader,
+    note::{
+        aggregate::Note,
+        error::NoteError,
+        frontmatter::Frontmatter,
+        link::{Anchor, EmbedType, Link, Target},
+        list::{List, ListItem, ListType},
+        structure::{Heading, HeadingLevel},
+        task::Task,
+        types::SourceByteOffset,
+        value::FieldValue,
+    },
 };
 
-/// Markdown parser for extracting note structural elements.
+/// Markdown reader for extracting note structural elements.
 ///
-/// `NoteParser` uses `pulldown-cmark` to traverse a markdown document and
+/// `NoteReader` uses `pulldown-cmark` to traverse a markdown document and
 /// extract structural elements such as headings, lists, tasks, and links.
-/// It is bound to a specific [`Config`] which defines the rules for
-/// task promotion and metadata parsing.
+/// It is bound to a specific [`Config`] which defines the rules for task
+/// promotion and metadata parsing.
 ///
 /// # Examples
 ///
 /// ```
-/// # use std::path::PathBuf;
-/// # use lithos_core::note::parser::NoteParser;
-/// # use lithos_core::config::{aggregate::Config, raw::RawConfig, vault::{VaultId, VaultRoot}};
-/// # let config = Config::build(&RawConfig::default(), VaultId::new(), VaultRoot::try_new(PathBuf::from("/vault")).unwrap()).unwrap();
-/// let parser = NoteParser::new(&config);
+/// # use std::path::Path;
+/// # use lithos_core::config::{
+/// #     aggregate::Config,
+/// #     raw::RawConfig,
+/// #     vault::{VaultId, VaultRoot},
+/// # };
+/// # use lithos_core::fs::FsReader;
+/// # use lithos_core::note::adapter::reader::NoteReader;
+/// # let unique = format!(
+/// #     "lithos_note_reader_example_{}",
+/// #     std::process::id()
+/// # );
+/// # let root = std::env::temp_dir().join(unique);
+/// # std::fs::create_dir_all(&root)?;
+/// # std::fs::write(
+/// #     root.join("note.md"),
+/// #     "# Heading\n- [ ] #task Review PR",
+/// # )?;
+/// # let config = Config::build(
+/// #     &RawConfig::default(),
+/// #     VaultId::new(),
+/// #     VaultRoot::try_new(root.clone())?,
+/// # )?;
+/// let reader = FsReader::new(root.as_path());
+/// let note_reader = NoteReader::new(&config);
 ///
-/// let markdown = "# Heading\n- [ ] #task Review PR";
 /// let (lists, tasks, headings, links, _frontmatter) =
-///     parser.parse_all(markdown).unwrap();
+///     note_reader.parse(&reader, Path::new("note.md"))?;
 ///
 /// assert_eq!(tasks.len(), 1);
 /// assert_eq!(headings.len(), 1);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
-pub struct NoteParser<'config> {
+pub struct NoteReader<'config> {
     config: &'config Config,
-    markdown_parser: MarkdownParser,
+    options: Options,
 }
 
-impl<'config> NoteParser<'config> {
-    /// Creates a new [`NoteParser`] bound to the provided configuration.
+impl<'config> NoteReader<'config> {
+    /// Creates a new [`NoteReader`] bound to the provided configuration.
+    ///
+    /// The reader stores the markdown options once so repeated parses do not
+    /// rebuild the flag set, keeping parsing overhead minimal.
     #[inline]
     #[must_use]
     pub const fn new(config: &'config Config) -> Self {
         Self {
             config,
-            markdown_parser: MarkdownParser::with_obsidian_features(),
+            options: obsidian_options(),
         }
     }
 
-    /// Parses markdown into lists and promoted tasks.
+    /// Parse a markdown file into lists, tasks, headings, links, and
+    /// frontmatter.
+    ///
+    /// This is the adapter's primary parsing entry point. It keeps file I/O
+    /// and parsing together while leaving the note domain independent of the
+    /// filesystem and markdown crate choice.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError`] when task promotion or list extraction fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::path::PathBuf;
-    /// # use lithos_core::note::parser::NoteParser;
-    /// # use lithos_core::config::{aggregate::Config, raw::RawConfig, vault::{VaultId, VaultRoot}};
-    /// # let config = Config::build(&RawConfig::default(), VaultId::new(), VaultRoot::try_new(PathBuf::from("/vault")).unwrap()).unwrap();
-    /// let parser = NoteParser::new(&config);
-    /// let (lists, tasks) = parser.parse_lists_and_tasks("- [ ] task").unwrap();
-    /// ```
+    /// Returns [`NoteError`] when file I/O or parsing fails.
+    #[inline]
+    pub fn parse(
+        &self,
+        reader: &FsReader,
+        path: &Path,
+    ) -> Result<ParseOutcome, NoteError> {
+        let markdown = reader
+            .read_with(path, |_, content| Ok(content.to_owned()))
+            .map_err(|error| NoteError::Storage(format!("{error}")))?;
+        self.parse_str(&markdown)
+    }
+
     /// Parses markdown into lists, tasks, headings, and links.
+    ///
+    /// This is crate-visible to support unit tests and in-memory parsing while
+    /// keeping the public API focused on file-based ingestion.
     ///
     /// # Errors
     ///
     /// Returns [`NoteError`] when parsing fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::path::PathBuf;
-    /// # use lithos_core::note::parser::NoteParser;
-    /// # use lithos_core::config::{aggregate::Config, raw::RawConfig, vault::{VaultId, VaultRoot}};
-    /// # let config = Config::build(&RawConfig::default(), VaultId::new(), VaultRoot::try_new(PathBuf::from("/vault")).unwrap()).unwrap();
-    /// let parser = NoteParser::new(&config);
-    /// let (lists, tasks, headings, links, _frontmatter) =
-    ///     parser.parse_all("# Heading\n- [ ] task").unwrap();
-    /// ```
     #[inline]
-    pub fn parse_all(&self, markdown: &str) -> Result<ParseOutcome, NoteError> {
+    pub(crate) fn parse_str(
+        &self,
+        markdown: &str,
+    ) -> Result<ParseOutcome, NoteError> {
         let mut state = ParseState::new(self.config);
 
-        for (event, range) in self.markdown_parser.parse_offsets(markdown) {
+        for (event, range) in
+            Parser::new_ext(markdown, self.options).into_offset_iter()
+        {
             state.handle_event(event, range)?;
         }
 
         Ok(state.finish())
-    }
-
-    /// Parses markdown into lists and promoted tasks.
-    ///
-    /// # Deprecated
-    ///
-    /// Use [`parse_all`](Self::parse_all) instead to get headings, links, and
-    /// frontmatter as well.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] when task promotion or list extraction fails.
-    #[inline]
-    #[deprecated(
-        since = "0.1.0",
-        note = "Use parse_all() instead to get headings, links, and \
-                frontmatter as well"
-    )]
-    #[expect(
-        clippy::type_complexity,
-        reason = "Backward compatibility for deprecated method"
-    )]
-    pub fn parse_lists_and_tasks(
-        &self,
-        markdown: &str,
-    ) -> Result<(Vec<List>, Vec<Task>), NoteError> {
-        let (lists, tasks, _headings, _links, _frontmatter) =
-            self.parse_all(markdown)?;
-        Ok((lists, tasks))
     }
 
     /// Parses markdown and applies extracted elements to a note.
@@ -145,30 +144,81 @@ impl<'config> NoteParser<'config> {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError`] when parsing fails.
+    /// Returns [`NoteError`] when file I/O or parsing fails.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use std::path::PathBuf;
-    /// # use lithos_core::note::{aggregate::{Note, NoteId}, parser::NoteParser};
-    /// # use lithos_core::config::{aggregate::Config, raw::RawConfig, vault::{VaultId, VaultRoot}};
-    /// # let config = Config::build(&RawConfig::default(), VaultId::new(), VaultRoot::try_new(PathBuf::from("/vault")).unwrap()).unwrap();
-    /// let mut note = Note::new(NoteId::new(), "test.md").unwrap();
-    /// let parser = NoteParser::new(&config);
+    /// # use std::path::Path;
+    /// # use lithos_core::fs::FsReader;
+    /// # use lithos_core::note::{
+    /// #     adapter::reader::NoteReader,
+    /// #     aggregate::{Note, NoteId},
+    /// # };
+    /// # use lithos_core::config::{
+    /// #     aggregate::Config,
+    /// #     raw::RawConfig,
+    /// #     vault::{VaultId, VaultRoot},
+    /// # };
+    /// # let unique = format!(
+    /// #     "lithos_note_reader_apply_example_{}",
+    /// #     std::process::id()
+    /// # );
+    /// # let root = std::env::temp_dir().join(unique);
+    /// # std::fs::create_dir_all(&root)?;
+    /// # std::fs::write(
+    /// #     root.join("test.md"),
+    /// #     "# Heading\n- [ ] #task Review PR",
+    /// # )?;
+    /// # let config = Config::build(
+    /// #     &RawConfig::default(),
+    /// #     VaultId::new(),
+    /// #     VaultRoot::try_new(root.clone())?,
+    /// # )?;
+    /// let reader = FsReader::new(root.as_path());
+    /// let note_reader = NoteReader::new(&config);
+    /// let mut note = Note::new(NoteId::new(), "test.md")?;
     ///
-    /// parser.apply(&mut note, "# Heading\n- [ ] #task Review PR").unwrap();
+    /// note_reader.apply(&reader, &mut note, Path::new("test.md"))?;
     /// assert_eq!(note.tasks().count(), 1);
     /// assert_eq!(note.headings().count(), 1);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
     pub fn apply(
         &self,
+        reader: &FsReader,
+        note: &mut Note,
+        path: &Path,
+    ) -> Result<(), NoteError> {
+        let parsed = self.parse(reader, path)?;
+        Self::apply_parts(note, parsed);
+        Ok(())
+    }
+
+    /// Parses markdown from a string slice and applies extracted elements to a
+    /// note.
+    ///
+    /// This is test-only to keep the public API centered on file ingestion.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] when parsing fails.
+    #[cfg(test)]
+    #[inline]
+    pub(crate) fn apply_str(
+        &self,
         note: &mut Note,
         markdown: &str,
     ) -> Result<(), NoteError> {
-        let (lists, tasks, headings, links, frontmatter) =
-            self.parse_all(markdown)?;
+        let parsed = self.parse_str(markdown)?;
+        Self::apply_parts(note, parsed);
+        Ok(())
+    }
+
+    #[inline]
+    fn apply_parts(note: &mut Note, parsed: ParseOutcome) {
+        let (lists, tasks, headings, links, frontmatter) = parsed;
         for list in lists {
             note.add_list(list);
         }
@@ -184,8 +234,32 @@ impl<'config> NoteParser<'config> {
         if let Some(fm) = frontmatter {
             note.set_frontmatter(Some(fm));
         }
-        Ok(())
     }
+}
+
+/// Build the pulldown-cmark option set used for Obsidian-compatible parsing.
+///
+/// This centralizes feature toggles so adapters and tests share identical
+/// parsing behavior.
+///
+/// Enables:
+/// - `WikiLinks`: `[[link]]`, `[[link|alias]]`, `![[embed]]`
+/// - Frontmatter: YAML metadata blocks
+/// - Tables: GFM tables
+/// - Footnotes: Markdown footnotes
+/// - Math: Inline `$...$` and display `$$...$$`
+/// - Strikethrough: `~~text~~`
+/// - Heading Attributes: `# Title {#id .class}`
+/// - Task Lists: `- [ ] task`
+const fn obsidian_options() -> Options {
+    Options::ENABLE_TASKLISTS
+        .union(Options::ENABLE_WIKILINKS)
+        .union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
+        .union(Options::ENABLE_HEADING_ATTRIBUTES)
+        .union(Options::ENABLE_TABLES)
+        .union(Options::ENABLE_FOOTNOTES)
+        .union(Options::ENABLE_STRIKETHROUGH)
+        .union(Options::ENABLE_MATH)
 }
 
 type ParseOutcome =
@@ -757,16 +831,13 @@ mod tests {
         clippy::pattern_type_mismatch,
         reason = "Test matches &ListItem using match ergonomics."
     )]
-    #[expect(
-        deprecated,
-        reason = "Testing backward compatibility of deprecated method"
-    )]
     fn parses_checkbox_list_and_promotes_tasks() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "- [ ] #task Review PR [priority:: 1]\n- [x] Buy milk\n";
 
-        let (lists, tasks) = parser.parse_lists_and_tasks(markdown)?;
+        let (lists, tasks, _headings, _links, _frontmatter) =
+            reader.parse_str(markdown)?;
         assert_eq!(lists.len(), 1, "expected one list");
         assert_eq!(tasks.len(), 1, "expected one promoted task");
 
@@ -798,16 +869,13 @@ mod tests {
     }
 
     #[test]
-    #[expect(
-        deprecated,
-        reason = "Testing backward compatibility of deprecated method"
-    )]
     fn captures_list_depths() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "1. First\n   - [ ] #task Nested\n";
 
-        let (lists, _tasks) = parser.parse_lists_and_tasks(markdown)?;
+        let (lists, _tasks, _headings, _links, _frontmatter) =
+            reader.parse_str(markdown)?;
         assert_eq!(lists.len(), 2, "expected two lists");
 
         let ordered = lists
@@ -827,12 +895,12 @@ mod tests {
     #[test]
     fn apply_appends_lists_and_tasks() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "- [ ] #task Review PR\n";
 
         let mut note = Note::new(NoteId::new(), "notes/test.md")?;
 
-        parser.apply(&mut note, markdown)?;
+        reader.apply_str(&mut note, markdown)?;
 
         assert_eq!(note.lists().count(), 1, "note should have 1 list");
         assert_eq!(note.tasks().count(), 1, "note should have 1 task");
@@ -846,12 +914,12 @@ mod tests {
     )]
     fn apply_appends_headings() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "# Section 1\n\nContent\n\n## Section 2";
 
         let mut note = Note::new(NoteId::new(), "notes/test.md")?;
 
-        parser.apply(&mut note, markdown)?;
+        reader.apply_str(&mut note, markdown)?;
 
         assert_eq!(note.headings().count(), 2, "note should have 2 headings");
         let headings: Vec<_> = note.headings().collect();
@@ -867,11 +935,11 @@ mod tests {
     )]
     fn parses_wikilink_simple() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "[[target note]]";
 
         let (_lists, _tasks, _headings, links, _frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].style(), Style::WikiLink));
         assert_eq!(links[0].target().vault_path(), Some("target note"));
@@ -887,11 +955,11 @@ mod tests {
     )]
     fn parses_wikilink_with_alias() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "[[target|display text]]";
 
         let (_lists, _tasks, _headings, links, _frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].style(), Style::WikiLink));
         assert_eq!(links[0].target().vault_path(), Some("target"));
@@ -907,16 +975,17 @@ mod tests {
     )]
     fn parses_wikilink_with_heading_anchor() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "[[note#Section Title]]";
 
         let (_lists, _tasks, _headings, links, _frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert_eq!(links[0].target().vault_path(), Some("note"));
-        assert!(
-            matches!(links[0].anchor(), Some(Anchor::Heading(text)) if text.as_ref() == "Section Title")
-        );
+        assert!(matches!(
+            links[0].anchor(),
+            Some(Anchor::Heading(text)) if text.as_ref() == "Section Title"
+        ));
 
         Ok(())
     }
@@ -928,16 +997,17 @@ mod tests {
     )]
     fn parses_wikilink_with_blockref_anchor() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "[[note#^block123]]";
 
         let (_lists, _tasks, _headings, links, _frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert_eq!(links[0].target().vault_path(), Some("note"));
-        assert!(
-            matches!(links[0].anchor(), Some(Anchor::BlockRef(text)) if text.as_ref() == "block123")
-        );
+        assert!(matches!(
+            links[0].anchor(),
+            Some(Anchor::BlockRef(text)) if text.as_ref() == "block123"
+        ));
 
         Ok(())
     }
@@ -949,11 +1019,11 @@ mod tests {
     )]
     fn parses_embed_image() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "![[image.png]]";
 
         let (_lists, _tasks, _headings, links, _frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(links[0].is_embed());
         assert!(matches!(links[0].embed_type(), Some(EmbedType::Image)));
@@ -969,11 +1039,11 @@ mod tests {
     )]
     fn parses_embed_video() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "![[video.mp4]]";
 
         let (_lists, _tasks, _headings, links, _frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(links[0].is_embed());
         assert!(matches!(links[0].embed_type(), Some(EmbedType::Video)));
@@ -988,11 +1058,11 @@ mod tests {
     )]
     fn parses_standard_markdown_link() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "[link text](target.md)";
 
         let (_lists, _tasks, _headings, links, _frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].style(), Style::MdLink));
         assert_eq!(links[0].target().vault_path(), Some("target.md"));
@@ -1007,11 +1077,11 @@ mod tests {
     )]
     fn parses_external_url_link() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "[example](https://example.com)";
 
         let (_lists, _tasks, _headings, links, _frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].target(), Target::External { .. }));
 
@@ -1021,12 +1091,12 @@ mod tests {
     #[test]
     fn apply_appends_links() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "[[link1]] and [[link2]]";
 
         let mut note = Note::new(NoteId::new(), "notes/test.md")?;
 
-        parser.apply(&mut note, markdown)?;
+        reader.apply_str(&mut note, markdown)?;
 
         assert_eq!(note.links().count(), 2, "note should have 2 links");
         Ok(())
@@ -1035,7 +1105,7 @@ mod tests {
     #[test]
     fn parses_frontmatter() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "---
 title: Test Note
 tags:
@@ -1047,7 +1117,7 @@ priority: 1
 # Content";
 
         let (_lists, _tasks, _headings, _links, frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         let fm = frontmatter.expect("should have frontmatter");
 
         assert_eq!(
@@ -1065,7 +1135,7 @@ priority: 1
     #[test]
     fn parses_frontmatter_with_nested_objects() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "---
 metadata:
   author: John Doe
@@ -1075,7 +1145,7 @@ metadata:
 Content";
 
         let (_lists, _tasks, _headings, _links, frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         let fm = frontmatter.expect("should have frontmatter");
 
         // Check nested object access
@@ -1088,11 +1158,11 @@ Content";
     #[test]
     fn no_frontmatter_when_missing() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "# Just a heading\n\nSome content";
 
         let (_lists, _tasks, _headings, _links, frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
         assert!(frontmatter.is_none(), "should not have frontmatter");
 
         Ok(())
@@ -1101,7 +1171,7 @@ Content";
     #[test]
     fn apply_sets_frontmatter() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "---
 title: My Note
 ---
@@ -1110,7 +1180,7 @@ title: My Note
 
         let mut note = Note::new(NoteId::new(), "notes/test.md")?;
 
-        parser.apply(&mut note, markdown)?;
+        reader.apply_str(&mut note, markdown)?;
 
         let frontmatter =
             note.frontmatter().expect("note should have frontmatter");
@@ -1124,7 +1194,7 @@ title: My Note
     #[test]
     fn code_blocks_do_not_produce_tasks() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "```rust
 // - [ ] #task This is in a code block
 ```
@@ -1132,7 +1202,7 @@ title: My Note
 - [ ] #task This is outside code block";
 
         let (_lists, tasks, _headings, _links, _frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
 
         // Should only find the task outside the code block
         assert_eq!(tasks.len(), 1, "should only find task outside code block");
@@ -1148,7 +1218,7 @@ title: My Note
     #[test]
     fn code_blocks_do_not_produce_headings() -> Result<(), NoteError> {
         let config = test_config();
-        let parser = NoteParser::new(&config);
+        let reader = NoteReader::new(&config);
         let markdown = "```markdown
 # Heading in code block
 ```
@@ -1156,7 +1226,7 @@ title: My Note
 # Real heading";
 
         let (_lists, _tasks, headings, _links, _frontmatter) =
-            parser.parse_all(markdown)?;
+            reader.parse_str(markdown)?;
 
         // Should only find the heading outside the code block
         assert_eq!(

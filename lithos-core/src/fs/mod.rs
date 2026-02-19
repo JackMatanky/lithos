@@ -16,12 +16,9 @@
 //!   - Read pipeline: validate → classify → read → parse.
 //! - **types**: TOML/JSON/YAML parsing helpers with explicit format guards.
 //! - **writer**: Root-scoped writes with atomic replace.
-//! - **markdown**: Offset-aware markdown parsing utilities (crate-local).
 
 /// Filesystem error types.
 pub mod error;
-/// Markdown parsing utilities.
-pub(crate) mod markdown;
 /// File system abstraction for testable file I/O.
 pub mod reader;
 /// Structured data parsers (TOML/JSON/YAML).
@@ -33,8 +30,6 @@ pub mod writer;
 
 // Ergonomic aliases with domain-clarifying names.
 
-/// Markdown parser type alias.
-pub(crate) type MarkdownParser = markdown::MarkdownParser;
 /// Filesystem error type alias.
 #[expect(
     clippy::module_name_repetitions,

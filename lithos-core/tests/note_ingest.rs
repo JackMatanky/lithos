@@ -6,10 +6,11 @@ use lithos_core::{
         raw::RawConfig,
         vault::{VaultId, VaultRoot},
     },
+    fs::FsReader,
     note::{
+        adapter::reader::NoteReader,
         aggregate::{Note, NoteId},
         list::{List, ListItem, ListType},
-        parser::NoteParser,
     },
 };
 
@@ -29,10 +30,13 @@ mod tests {
     )]
     fn ingest_markdown_promotes_tasks_and_tracks_lists()
     -> Result<(), Box<dyn std::error::Error>> {
+        let unique = format!("lithos_note_ingest_{}", std::process::id());
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(root.join("notes"))?;
         let config = Config::build(
             &RawConfig::default(),
             VaultId::new(),
-            VaultRoot::try_new(std::path::PathBuf::from("/vault"))?,
+            VaultRoot::try_new(root.clone())?,
         )?;
         let markdown = concat!(
             "# Title\n\n",
@@ -42,8 +46,15 @@ mod tests {
             "2. Second\n",
         );
 
+        std::fs::write(root.join("notes/ingest.md"), markdown)?;
+
         let mut note = Note::new(NoteId::new(), "notes/ingest.md")?;
-        NoteParser::new(&config).apply(&mut note, markdown)?;
+        let reader = FsReader::new(root.as_path());
+        NoteReader::new(&config).apply(
+            &reader,
+            &mut note,
+            std::path::Path::new("notes/ingest.md"),
+        )?;
 
         let lists: Vec<&List> = note.lists().collect();
         assert_eq!(lists.len(), 2, "expected unordered + ordered lists");

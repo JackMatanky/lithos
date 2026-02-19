@@ -21,11 +21,11 @@
 //! - Tag extraction (hashtag syntax)
 //! - Heading extraction
 //! - Section construction
+//! - File I/O (adapter reads from a temp file)
 //!
 //! **Excluded**:
 //! - Frontmatter YAML parsing (small overhead relative to markdown)
 //! - Database storage (see `db_storage.rs`)
-//! - File I/O (benchmarks use in-memory strings)
 //!
 //! # Benchmark Style
 //!
@@ -113,9 +113,10 @@ use lithos_core::{
         raw::RawConfig,
         vault::{VaultId, VaultRoot},
     },
+    fs::FsReader,
     note::{
+        adapter::reader::NoteReader,
         aggregate::{Note, NoteId},
-        parser::NoteParser,
     },
 };
 
@@ -139,7 +140,7 @@ fn sample_markdown() -> &'static str {
 ///
 /// # What is Measured
 ///
-/// - **Metric**: Latency per `NoteParser::apply()` call
+/// - **Metric**: Latency per `NoteReader::apply()` call
 /// - **Throughput**: Markdown bytes processed per second
 /// - **Input**: 6-line sample (1 heading, 3 tasks, 2 list items, ~100 bytes)
 ///
@@ -160,14 +161,21 @@ fn sample_markdown() -> &'static str {
 /// - Fixed simple input (does not test large notes or complex frontmatter)
 /// - Does not measure memory allocations
 fn bench_note_ingest(c: &mut Criterion) {
+    let root = std::env::temp_dir()
+        .join(format!("lithos_note_bench_{}", std::process::id()));
     let config = Config::build(
         &RawConfig::default(),
         VaultId::new(),
-        VaultRoot::try_new(std::path::PathBuf::from("/vault"))
-            .expect("valid vault root"),
+        VaultRoot::try_new(root.clone()).expect("valid vault root"),
     )
     .expect("config");
     let markdown = sample_markdown();
+    std::fs::create_dir_all(root.join("notes"))
+        .expect("create bench notes dir");
+    std::fs::write(root.join("notes/bench.md"), markdown)
+        .expect("write bench markdown");
+    let reader = FsReader::new(root.as_path());
+    let note_reader = NoteReader::new(&config);
 
     let mut group = c.benchmark_group("note_parsing");
     group.throughput(Throughput::Bytes(markdown.len() as u64));
@@ -176,8 +184,12 @@ fn bench_note_ingest(c: &mut Criterion) {
         b.iter(|| {
             let mut note =
                 Note::new(NoteId::new(), "notes/bench.md").expect("valid note");
-            NoteParser::new(&config)
-                .apply(&mut note, black_box(markdown))
+            note_reader
+                .apply(
+                    &reader,
+                    &mut note,
+                    std::path::Path::new("notes/bench.md"),
+                )
                 .expect("ingest markdown");
             black_box(note);
         });
