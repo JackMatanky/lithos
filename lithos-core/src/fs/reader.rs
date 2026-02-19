@@ -1,6 +1,6 @@
 //! File system abstraction for testable file I/O.
 //!
-//! This module provides the [`FsReader`] concrete type for scoped filesystem
+//! This module provides the [`Reader`] concrete type for scoped filesystem
 //! access. The reader keeps path resolution anchored to a root directory so
 //! adapters can perform deterministic file access without leaking filesystem
 //! details into domain logic.
@@ -57,27 +57,23 @@ pub struct FileMetadata {
 ///
 /// ```
 /// # use std::path::Path;
-/// # use lithos_core::fs::FsReader;
+/// # use lithos_core::fs::reader::Reader;
 /// # let unique = format!("lithos_fs_reader_example_{}", std::process::id());
 /// # let root = std::env::temp_dir().join(unique);
 /// # std::fs::create_dir_all(&root)?;
 /// # std::fs::write(root.join("config.json"), "{}")?;
-/// let reader = FsReader::new(root.as_path());
+/// let reader = Reader::new(root.as_path());
 /// let content = reader.read_to_string(Path::new("config.json"))?;
 /// assert_eq!(content, "{}");
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Type name matches fs module namespace for clarity."
-)]
-pub struct FsReader {
+pub struct Reader {
     /// Root directory for scoped file access.
     root: PathBuf,
 }
 
-impl FsReader {
+impl Reader {
     /// Creates a new filesystem reader scoped to the given root directory.
     #[inline]
     #[must_use]
@@ -307,7 +303,7 @@ mod tests {
         write_file(dir.path(), "schemas/a.json", b"{}");
         write_file(dir.path(), "schemas/c.toml", b"key = 1");
 
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let files = reader.list_files("schemas/**/*.json").expect("list files");
 
         assert_eq!(files, vec![
@@ -322,7 +318,7 @@ mod tests {
         write_file(dir.path(), "note.md", b"# Title");
         write_file(dir.path(), "note.txt", b"plain");
 
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let files = reader.list_files("*.md").expect("list files");
 
         assert_eq!(files, vec![PathBuf::from("note.md")]);
@@ -331,7 +327,7 @@ mod tests {
     #[test]
     fn list_files_rejects_invalid_pattern() {
         let dir = TempDir::new().expect("tempdir");
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let result = reader.list_files("[invalid");
 
         result.unwrap_err();
@@ -342,7 +338,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "schemas/note.json", b"{}");
 
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let content = reader
             .read_to_string(Path::new("schemas/note.json"))
             .expect("read to string");
@@ -355,7 +351,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "bin/blob.bin", b"\x00\x01\x02");
 
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let bytes =
             reader.read_bytes(Path::new("bin/blob.bin")).expect("read bytes");
 
@@ -367,7 +363,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "schemas/note.json", b"{}");
 
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let metadata =
             reader.metadata(Path::new("schemas/note.json")).expect("metadata");
 
@@ -385,7 +381,7 @@ mod tests {
         std::os::unix::fs::symlink(dir.path().join("schemas/real.json"), &link)
             .expect("symlink");
 
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let metadata =
             reader.metadata(Path::new("schemas/link.json")).expect("metadata");
 
@@ -402,7 +398,7 @@ mod tests {
         std::os::unix::fs::symlink(dir.path().join("schemas/real.json"), &link)
             .expect("symlink");
 
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let files = reader.list_files("schemas/**/*.json").expect("list files");
 
         assert!(files.contains(&PathBuf::from("schemas/real.json")));
@@ -414,7 +410,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "schemas/note.json", b"{\"name\":\"note\"}");
 
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let value: serde_json::Value = reader
             .parse_structured(Path::new("schemas/note.json"))
             .expect("parse structured");
@@ -427,7 +423,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "schemas/note.xml", b"<note></note>");
 
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let result: Result<serde_json::Value, _> =
             reader.parse_structured(Path::new("schemas/note.xml"));
 
@@ -439,7 +435,7 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         write_file(dir.path(), "notes/readme.md", b"# Title");
 
-        let reader = FsReader::new(dir.path());
+        let reader = Reader::new(dir.path());
         let result = reader
             .read_with(Path::new("notes/readme.md"), |_, text| {
                 Ok(text.trim_start().starts_with('#'))

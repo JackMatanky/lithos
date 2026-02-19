@@ -40,13 +40,13 @@ pub mod writer;
     clippy::module_name_repetitions,
     reason = "Alias keeps explicit fs namespace in callers."
 )]
-pub type FsReader = reader::FsReader;
+pub type FsReader = reader::Reader;
 /// Filesystem writer type alias.
 #[expect(
     clippy::module_name_repetitions,
     reason = "Alias keeps explicit fs namespace in callers."
 )]
-pub type FsWriter = writer::FsWriter;
+pub type FsWriter = writer::Writer;
 /// File metadata type alias.
 pub type FileMetadata = reader::FileMetadata;
 /// Filesystem error type alias.

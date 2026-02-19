@@ -17,25 +17,21 @@ use super::validator::Validator;
 ///
 /// ```
 /// # use std::path::Path;
-/// # use lithos_core::fs::FsWriter;
+/// # use lithos_core::fs::writer::Writer;
 /// # let unique = format!("lithos_fs_writer_example_{}", std::process::id());
 /// # let root = std::env::temp_dir().join(unique);
 /// # std::fs::create_dir_all(&root)?;
-/// let writer = FsWriter::new(root.as_path());
+/// let writer = Writer::new(root.as_path());
 /// writer.write_file(Path::new("output.txt"), b"hello")?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Type name matches fs module namespace for clarity."
-)]
-pub struct FsWriter {
+pub struct Writer {
     /// Root directory for scoped file access.
     root: PathBuf,
 }
 
-impl FsWriter {
+impl Writer {
     /// Creates a new filesystem writer scoped to the given root directory.
     #[inline]
     #[must_use]

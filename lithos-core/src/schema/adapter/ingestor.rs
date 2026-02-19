@@ -4,7 +4,7 @@
 
 use crate::{
     config::aggregate::Config,
-    fs::reader::FsReader,
+    fs::FsReader,
     schema::{
         aggregate::Timestamp,
         error::SchemaIngestionError,
