@@ -37,3 +37,5 @@
 
 // NOTE: Ingestion services temporarily archived in _archive/ for future
 // re-implementation.
+
+pub mod schema;

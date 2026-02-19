@@ -4,13 +4,8 @@
 
 #![allow(
     clippy::module_name_repetitions,
-    reason = "Core domain logic and naming convention where \
-              Schema/PropertyBank prefixes are descriptive"
-)]
-#![allow(
-    clippy::pub_use,
-    reason = "Re-exports from bank.rs for backward compatibility after module \
-              extraction"
+    reason = "Core domain logic and naming convention where Schema/SchemaName \
+              prefixes are descriptive"
 )]
 
 use std::{
@@ -23,7 +18,6 @@ use regex::Regex;
 use uuid::Uuid;
 
 use super::{
-    bank::BankVersion,
     error::SchemaError,
     events::{Events, SchemaCreated},
     property::{Property, PropertyName},
@@ -223,110 +217,6 @@ impl Schema {
     #[inline]
     fn add_event(&mut self, event: Events) {
         self.pending_events.push(event);
-    }
-}
-
-/// Resolution metadata for incremental schema resolution.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct ResolutionMetadata {
-    schema_id: SchemaId,
-    resolved_at: Timestamp,
-    parent_hash: Option<SchemaHash>,
-    bank_version: BankVersion,
-    file_modified: Option<Timestamp>,
-}
-
-impl ResolutionMetadata {
-    /// Create a new resolution metadata snapshot.
-    #[inline]
-    #[must_use]
-    pub const fn new(
-        schema_id: SchemaId,
-        resolved_at: Timestamp,
-        parent_hash: Option<SchemaHash>,
-        bank_version: BankVersion,
-        file_modified: Option<Timestamp>,
-    ) -> Self {
-        Self {
-            schema_id,
-            resolved_at,
-            parent_hash,
-            bank_version,
-            file_modified,
-        }
-    }
-
-    /// Returns the schema id associated with this metadata.
-    #[inline]
-    #[must_use]
-    pub const fn schema_id(&self) -> SchemaId {
-        self.schema_id
-    }
-
-    /// Returns the resolution timestamp.
-    #[inline]
-    #[must_use]
-    pub const fn resolved_at(&self) -> Timestamp {
-        self.resolved_at
-    }
-
-    /// Returns the stored parent hash.
-    #[inline]
-    #[must_use]
-    pub const fn parent_hash(&self) -> Option<SchemaHash> {
-        self.parent_hash
-    }
-
-    /// Returns the property bank version.
-    #[inline]
-    #[must_use]
-    pub const fn bank_version(&self) -> BankVersion {
-        self.bank_version
-    }
-
-    /// Returns the file modification timestamp, if any.
-    #[inline]
-    #[must_use]
-    pub const fn file_modified(&self) -> Option<Timestamp> {
-        self.file_modified
-    }
-
-    /// Returns true if this metadata is stale relative to current values.
-    #[inline]
-    #[must_use]
-    pub fn is_stale(
-        &self,
-        current_bank_version: BankVersion,
-        current_parent_hash: Option<SchemaHash>,
-        current_file_mtime: Option<Timestamp>,
-    ) -> bool {
-        if self.bank_version.is_older_than(current_bank_version) {
-            return true;
-        }
-
-        if self.parent_hash != current_parent_hash {
-            return true;
-        }
-
-        if let Some(stored_mtime) = self.file_modified
-            && let Some(current_mtime) = current_file_mtime
-            && stored_mtime < current_mtime
-        {
-            return true;
-        }
-
-        false
     }
 }
 
@@ -540,83 +430,6 @@ impl TryFrom<String> for SchemaName {
 // ----------------------------------------------------------- //
 //                  Supporting Value Objects                   //
 // ----------------------------------------------------------- //
-
-/// Content hash for schema staleness detection.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct SchemaHash(u64);
-
-impl SchemaHash {
-    /// Wraps a raw hash value.
-    #[inline]
-    #[must_use]
-    pub const fn from_u64(value: u64) -> Self {
-        Self(value)
-    }
-
-    /// Returns the hash as a raw integer.
-    #[inline]
-    #[must_use]
-    pub const fn as_u64(self) -> u64 {
-        self.0
-    }
-
-    /// Compute a stable content hash for a schema.
-    ///
-    /// Uses blake3 for stable, cross-version hashing.
-    ///
-    /// # Panics
-    ///
-    /// This function will not panic. The `expect` call is infallible because
-    /// blake3 always produces at least 8 bytes of output.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::as_conversions,
-        reason = "Cardinality and Multiplicity are repr(u8) enums; conversion \
-                  is safe"
-    )]
-    #[expect(
-        clippy::expect_used,
-        reason = "blake3 always produces 32 bytes; slicing 8 bytes is \
-                  infallible"
-    )]
-    #[expect(
-        clippy::little_endian_bytes,
-        reason = "Little-endian is intentional for consistent hash values \
-                  across platforms"
-    )]
-    pub fn compute(schema: &Schema) -> Self {
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(schema.name().as_str().as_bytes());
-        for prop in schema.properties() {
-            hasher.update(prop.name().as_str().as_bytes());
-            hasher
-                .update(&[prop.cardinality() as u8, prop.multiplicity() as u8]);
-            prop.spec().hash_into_blake3(&mut hasher);
-        }
-        let hash_bytes = hasher.finalize();
-        Self::from_u64(u64::from_le_bytes(
-            hash_bytes.as_bytes()[..8]
-                .try_into()
-                .expect("blake3 output >= 8 bytes"),
-        ))
-    }
-}
 
 /// Unix timestamp (seconds since epoch).
 #[derive(

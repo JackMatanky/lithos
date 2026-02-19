@@ -13,10 +13,14 @@ pub mod aggregate;
 pub mod bank;
 /// Schema command implementations (CQRS write operations).
 pub mod command;
+/// Property-bank dereferencer pipeline stage.
+pub(crate) mod dereferencer;
 /// Schema errors.
 pub mod error;
 /// Schema domain events.
 pub mod events;
+/// Schema inheritance-tree builder pipeline stage.
+pub(crate) mod extender;
 /// Schema ports for CQRS.
 pub mod ports;
 /// Property domain entities.
@@ -28,7 +32,7 @@ pub mod query;
 /// Raw schema input definitions.
 pub mod raw;
 /// Schema resolution service.
-pub mod resolver;
+pub(crate) mod resolver;
 
 pub(crate) mod db_table {
     use redb::TableDefinition;
