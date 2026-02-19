@@ -644,7 +644,7 @@ module eliminates the duplication.
 
 ## Step 10 — Final verification
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **What:**
 
