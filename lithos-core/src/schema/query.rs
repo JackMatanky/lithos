@@ -4,8 +4,8 @@
 //! through the schema query port.
 
 use super::{
-    aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName},
-    bank::PropertyBank,
+    aggregate::{Schema, SchemaId, SchemaName, Timestamp},
+    bank::{BankVersion, PropertyBank},
     error::SchemaQueryError,
     ports as schema_ports,
 };
@@ -76,55 +76,6 @@ where
         })
     }
 
-    /// Access a schema by ID as archived data.
-    ///
-    /// # Errors
-    /// Returns `SchemaQueryError` if query fails.
-    #[inline]
-    pub fn with_archived_by_id<F, R>(
-        &self,
-        id: SchemaId,
-        f: F,
-    ) -> Result<Option<R>, SchemaQueryError>
-    where
-        F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
-    {
-        self.query_port.with_archived_by_id(id, f).map_err(|error| {
-            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
-        })
-    }
-
-    /// Access a schema by name as archived data.
-    ///
-    /// # Errors
-    /// Returns `SchemaQueryError` if query fails.
-    #[inline]
-    pub fn with_archived_by_name<F, R>(
-        &self,
-        name: &SchemaName,
-        f: F,
-    ) -> Result<Option<R>, SchemaQueryError>
-    where
-        F: for<'archived> FnOnce(Q::Archived<'archived>) -> R,
-    {
-        self.query_port.with_archived_by_name(name, f).map_err(|error| {
-            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
-        })
-    }
-
-    /// List all resolution metadata entries.
-    ///
-    /// # Errors
-    /// Returns `SchemaQueryError` if query fails.
-    #[inline]
-    pub fn list_metadata(
-        &self,
-    ) -> Result<Vec<ResolutionMetadata>, SchemaQueryError> {
-        self.query_port.list_metadata().map_err(|error| {
-            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
-        })
-    }
-
     /// List all schema name-to-ID pairs.
     ///
     /// This is a bulk operation that scans the entire name index in one pass.
@@ -141,20 +92,6 @@ where
         })
     }
 
-    /// Find resolution metadata by schema ID.
-    ///
-    /// # Errors
-    /// Returns `SchemaQueryError` if query fails.
-    #[inline]
-    pub fn find_metadata_by_id(
-        &self,
-        id: SchemaId,
-    ) -> Result<Option<ResolutionMetadata>, SchemaQueryError> {
-        self.query_port.find_metadata_by_id(id).map_err(|error| {
-            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
-        })
-    }
-
     /// Find the `PropertyBank` registry.
     ///
     /// # Errors
@@ -164,6 +101,41 @@ where
         &self,
     ) -> Result<Option<PropertyBank>, SchemaQueryError> {
         self.query_port.find_property_bank().map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
+    }
+
+    /// Returns `true` if the stored schema for `id` is stale.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if query fails.
+    #[inline]
+    pub fn is_schema_stale(
+        &self,
+        id: SchemaId,
+        file_mtime: Option<Timestamp>,
+        current_bank_version: BankVersion,
+    ) -> Result<bool, SchemaQueryError> {
+        self.query_port
+            .is_schema_stale(id, file_mtime, current_bank_version)
+            .map_err(|error| {
+                SchemaQueryError::Storage(Into::<crate::db::DbError>::into(
+                    error,
+                ))
+            })
+    }
+
+    /// Returns `true` if the stored bank version differs from
+    /// `current_version`.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if query fails.
+    #[inline]
+    pub fn is_bank_stale(
+        &self,
+        current_version: BankVersion,
+    ) -> Result<bool, SchemaQueryError> {
+        self.query_port.is_bank_stale(current_version).map_err(|error| {
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
@@ -231,15 +203,15 @@ mod tests {
     use crate::schema::{
         RedbSchemaCommand, RedbSchemaQuery,
         adapter::{command::CommandAdapter, query::QueryAdapter},
-        aggregate::{SchemaName, Timestamp},
+        aggregate::{SchemaId, SchemaName, Timestamp},
         bank::BankVersion,
+        ports::SchemaRecord,
     };
 
     mod queries {
         use super::*;
 
         #[test]
-
         fn find_by_id_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
@@ -249,14 +221,15 @@ mod tests {
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
-            let metadata = ResolutionMetadata::new(
-                schema.id(),
-                Timestamp::now(),
+
+            cmd.save_one(SchemaRecord::new(
+                schema.clone(),
                 None,
                 BankVersion::initial(),
-                None,
-            );
-            cmd.save_one(&schema, &metadata).expect("Save should succeed");
+                Timestamp::now(),
+                Timestamp::now(),
+            ))
+            .expect("Save should succeed");
 
             let result = qry
                 .find_by_id(fixtures::TEST_SCHEMA_ID_A)
@@ -265,7 +238,6 @@ mod tests {
         }
 
         #[test]
-
         fn find_by_name_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
@@ -275,14 +247,15 @@ mod tests {
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
-            let metadata = ResolutionMetadata::new(
-                schema.id(),
-                Timestamp::now(),
+
+            cmd.save_one(SchemaRecord::new(
+                schema,
                 None,
                 BankVersion::initial(),
-                None,
-            );
-            cmd.save_one(&schema, &metadata).expect("Save should succeed");
+                Timestamp::now(),
+                Timestamp::now(),
+            ))
+            .expect("Save should succeed");
 
             let name =
                 SchemaName::new("note").expect("Failed to create schema name");
@@ -296,7 +269,6 @@ mod tests {
         }
 
         #[test]
-
         fn list_returns_all_saved_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
@@ -310,23 +282,23 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_B, "project")
                     .expect("Failed to create schema fixture");
 
-            let metadata_a = ResolutionMetadata::new(
-                schema_a.id(),
-                Timestamp::now(),
-                None,
-                BankVersion::initial(),
-                None,
-            );
-            let metadata_b = ResolutionMetadata::new(
-                schema_b.id(),
-                Timestamp::now(),
-                None,
-                BankVersion::initial(),
-                None,
-            );
-
-            cmd.save_one(&schema_a, &metadata_a).expect("Save should succeed");
-            cmd.save_one(&schema_b, &metadata_b).expect("Save should succeed");
+            cmd.save_batch(&[
+                SchemaRecord::new(
+                    schema_a,
+                    None,
+                    BankVersion::initial(),
+                    Timestamp::now(),
+                    Timestamp::now(),
+                ),
+                SchemaRecord::new(
+                    schema_b,
+                    None,
+                    BankVersion::initial(),
+                    Timestamp::now(),
+                    Timestamp::now(),
+                ),
+            ])
+            .expect("Save should succeed");
 
             let schemas = qry.list().expect("List should succeed");
             let names: HashSet<&str> =
@@ -339,37 +311,20 @@ mod tests {
         }
 
         #[test]
-
-        fn list_metadata_returns_saved_entries() {
+        fn is_schema_stale_returns_true_for_missing_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
             let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
-            let schema =
-                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
-                    .expect("Failed to create schema fixture");
-            let metadata = ResolutionMetadata::new(
-                schema.id(),
-                Timestamp::now(),
-                None,
-                BankVersion::initial(),
-                None,
-            );
-
-            cmd.save_one(&schema, &metadata).expect("Save should succeed");
-
-            let items = qry.list_metadata().expect("List should succeed");
-            assert_eq!(
-                items.len(),
-                1,
-                "Expected one metadata entry after save"
-            );
+            let missing_id = fixtures::TEST_SCHEMA_ID_A;
+            let stale = qry
+                .is_schema_stale(missing_id, None, BankVersion::initial())
+                .expect("Staleness check should succeed");
+            assert!(stale, "Missing schema should be stale");
         }
 
         #[test]
-
-        fn find_metadata_by_id_returns_entry() {
+        fn is_schema_stale_returns_false_for_fresh_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
@@ -378,20 +333,25 @@ mod tests {
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
-            let metadata = ResolutionMetadata::new(
-                schema.id(),
-                Timestamp::now(),
+            let ts = Timestamp::from_secs(1_000_000);
+
+            cmd.save_one(SchemaRecord::new(
+                schema,
                 None,
                 BankVersion::initial(),
-                None,
-            );
+                ts,
+                ts,
+            ))
+            .expect("Save should succeed");
 
-            cmd.save_one(&schema, &metadata).expect("Save should succeed");
-
-            let stored = qry
-                .find_metadata_by_id(schema.id())
-                .expect("Lookup should succeed");
-            assert!(stored.is_some(), "Metadata should be found");
+            let stale = qry
+                .is_schema_stale(
+                    fixtures::TEST_SCHEMA_ID_A,
+                    Some(ts),
+                    BankVersion::initial(),
+                )
+                .expect("Staleness check should succeed");
+            assert!(!stale, "Freshly saved schema should not be stale");
         }
     }
 }

@@ -125,6 +125,25 @@ impl Schema {
         Ok(schema)
     }
 
+    /// Reconstruct a schema loaded from storage without emitting domain events.
+    ///
+    /// Use this when loading a previously-persisted schema from the database.
+    /// Unlike [`Schema::new`], no `SchemaCreated` event is emitted.
+    #[inline]
+    #[must_use]
+    pub(crate) fn reconstruct(
+        id: SchemaId,
+        name: SchemaName,
+        properties: Vec<Property>,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            properties,
+            pending_events: vec![],
+        }
+    }
+
     /// Returns the schema's unique identifier.
     #[inline]
     #[must_use]

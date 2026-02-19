@@ -4,13 +4,53 @@
 //! aggregate and PropertyBank registry.
 
 use super::{
-    aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName},
-    bank::PropertyBank,
+    aggregate::{Schema, SchemaId, SchemaName, Timestamp},
+    bank::{BankVersion, PropertyBank},
 };
 use crate::db::BatchReader;
 
 /// A schema name-to-ID pair returned by [`Query::list_name_id_pairs`].
 pub type NameIdPair = (SchemaName, SchemaId);
+
+/// All fields required to persist a resolved schema.
+///
+/// Passed to [`Command::save_batch`]. The command adapter converts each
+/// record into a `StoredSchema` before writing to the database.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct SchemaRecord {
+    /// The resolved domain schema.
+    pub schema: Schema,
+    /// Parent schema ID for tree reconstruction, or `None` for roots.
+    pub parent_id: Option<SchemaId>,
+    /// Property bank version at time of resolution.
+    pub bank_version: BankVersion,
+    /// File modification time at first ingestion.
+    pub created_at: Timestamp,
+    /// File modification time at last re-ingestion.
+    pub modified_at: Timestamp,
+}
+
+impl SchemaRecord {
+    /// Construct a new schema record.
+    #[inline]
+    #[must_use]
+    pub const fn new(
+        schema: Schema,
+        parent_id: Option<SchemaId>,
+        bank_version: BankVersion,
+        created_at: Timestamp,
+        modified_at: Timestamp,
+    ) -> Self {
+        Self {
+            schema,
+            parent_id,
+            bank_version,
+            created_at,
+            modified_at,
+        }
+    }
+}
 
 /// Command port for Schema write operations.
 pub trait Command: Send + Sync {
@@ -23,16 +63,15 @@ pub trait Command: Send + Sync {
     /// Returns a storage-specific error if deletion fails.
     fn delete(&self, id: SchemaId) -> Result<(), Self::Error>;
 
-    /// Save a batch of schemas and resolution metadata to persistence.
+    /// Save a batch of schema records to persistence.
     ///
-    /// All saves are atomic within a single write transaction.
+    /// Each [`SchemaRecord`] bundles the resolved schema with the metadata
+    /// needed for staleness checking and tree reconstruction. All saves are
+    /// atomic within a single write transaction.
     ///
     /// # Errors
     /// Returns a storage-specific error if saving fails.
-    fn save_batch(
-        &self,
-        schemas: &[(Schema, ResolutionMetadata)],
-    ) -> Result<(), Self::Error>;
+    fn save_batch(&self, records: &[SchemaRecord]) -> Result<(), Self::Error>;
 
     /// Save the `PropertyBank` to persistence.
     ///
@@ -46,8 +85,6 @@ pub trait Command: Send + Sync {
 
 /// Query port for Schema read operations.
 pub trait Query: Send + Sync {
-    /// Archived schema type for zero-copy reads.
-    type Archived<'archived>;
     /// Storage error type for query operations.
     type Error: std::error::Error;
 
@@ -68,32 +105,43 @@ pub trait Query: Send + Sync {
     /// Returns a storage-specific error if query fails.
     fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error>;
 
-    /// Find resolution metadata by schema ID.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if query fails.
-    fn find_metadata_by_id(
-        &self,
-        id: SchemaId,
-    ) -> Result<Option<ResolutionMetadata>, Self::Error>;
-
     /// Find the `PropertyBank` registry.
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
     fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error>;
 
+    /// Returns `true` if the stored bank version differs from
+    /// `current_version`.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if query fails.
+    fn is_bank_stale(
+        &self,
+        current_version: BankVersion,
+    ) -> Result<bool, Self::Error>;
+
+    /// Returns `true` if the stored schema for `id` is stale.
+    ///
+    /// A schema is considered stale when:
+    /// - No stored record exists for `id`, or
+    /// - `stored.bank_version != current_bank_version`, or
+    /// - `stored.modified_at < file_mtime` (file changed since last ingestion).
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if query fails.
+    fn is_schema_stale(
+        &self,
+        id: SchemaId,
+        file_mtime: Option<Timestamp>,
+        current_bank_version: BankVersion,
+    ) -> Result<bool, Self::Error>;
+
     /// List all available schemas.
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
     fn list(&self) -> Result<Vec<Schema>, Self::Error>;
-
-    /// List all resolution metadata entries.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if query fails.
-    fn list_metadata(&self) -> Result<Vec<ResolutionMetadata>, Self::Error>;
 
     /// List all schema name-to-ID pairs.
     ///
@@ -112,28 +160,4 @@ pub trait Query: Send + Sync {
         &self,
         name: &SchemaName,
     ) -> Result<Option<SchemaId>, Self::Error>;
-
-    /// Access a schema by ID as archived data.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if query fails.
-    fn with_archived_by_id<F, R>(
-        &self,
-        id: SchemaId,
-        f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R;
-
-    /// Access a schema by name as archived data.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if query fails.
-    fn with_archived_by_name<F, R>(
-        &self,
-        name: &SchemaName,
-        f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R;
 }

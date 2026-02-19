@@ -5,12 +5,11 @@ use tracing::instrument;
 use crate::{
     db::{Database, DbError},
     schema::{
-        aggregate::{ResolutionMetadata, Schema, SchemaId},
+        adapter::stored::to_stored,
+        aggregate::SchemaId,
         bank::PropertyBank,
-        db_table::{
-            PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
-        },
-        ports::Command,
+        db_table::{PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
+        ports::{Command, SchemaRecord},
     },
 };
 
@@ -35,17 +34,14 @@ impl Command for CommandAdapter<'_> {
 
     #[inline]
     #[instrument(
-        skip(self, schemas),
-        fields(operation = "save_schema_batch", schema_count = schemas.len())
+        skip(self, records),
+        fields(operation = "save_schema_batch", record_count = records.len())
     )]
-    fn save_batch(
-        &self,
-        schemas: &[(Schema, ResolutionMetadata)],
-    ) -> Result<(), Self::Error> {
+    fn save_batch(&self, records: &[SchemaRecord]) -> Result<(), Self::Error> {
         let mut name_index = std::collections::HashMap::new();
 
-        for pair in schemas {
-            let schema = &pair.0;
+        for record in records {
+            let schema = &record.schema;
             if let Some(_existing) =
                 name_index.insert(schema.name().clone(), schema.id())
             {
@@ -68,14 +64,17 @@ impl Command for CommandAdapter<'_> {
         }
 
         self.db.batch_write(|batch| {
-            for pair in schemas {
-                let schema = &pair.0;
-                let metadata = &pair.1;
-                let id_uuid = schema.id().into_uuid();
-                let id_key = id_uuid.to_string();
-
-                batch.put(SCHEMA_BY_ID, id_key.as_str(), schema)?;
-                batch.put(SCHEMA_METADATA, id_key.as_str(), metadata)?;
+            for record in records {
+                let schema = &record.schema;
+                let stored = to_stored(
+                    schema,
+                    record.parent_id,
+                    record.bank_version,
+                    record.created_at,
+                    record.modified_at,
+                );
+                let id_key = schema.id().into_uuid().to_string();
+                batch.put(SCHEMA_BY_ID, id_key.as_str(), &stored)?;
                 batch.put(
                     SCHEMA_ID_BY_NAME,
                     schema.name().as_str(),
@@ -92,15 +91,18 @@ impl Command for CommandAdapter<'_> {
         fields(operation = "delete_schema", schema_id = %id.as_uuid())
     )]
     fn delete(&self, id: SchemaId) -> Result<(), Self::Error> {
-        let id_uuid = id.into_uuid();
-        let key = id_uuid.to_string();
+        use crate::schema::adapter::stored::StoredSchema;
 
-        if let Some(schema) = self.db.get_owned::<Schema>(SCHEMA_BY_ID, &key)? {
-            self.db.delete(SCHEMA_ID_BY_NAME, schema.name().as_str())?;
+        let id_uuid = id.into_uuid();
+        if let Some(stored) =
+            self.db.get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id_uuid)?
+        {
+            self.db.delete(SCHEMA_ID_BY_NAME, stored.name.as_ref())?;
         }
 
-        self.db.delete_by_uuid(SCHEMA_BY_ID, id_uuid)?;
-        self.db.delete_by_uuid(SCHEMA_METADATA, id_uuid)?;
+        // Use the string key for deletion (same format as put).
+        let id_key = id_uuid.to_string();
+        self.db.delete(SCHEMA_BY_ID, id_key.as_str())?;
         Ok(())
     }
 

@@ -3,11 +3,10 @@
 use crate::{
     db::{BatchReader, Database, DbError},
     schema::{
-        aggregate::{ResolutionMetadata, Schema, SchemaId, SchemaName},
-        bank::{PropertyBank, PropertyBankId},
-        db_table::{
-            PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
-        },
+        adapter::stored::StoredSchema,
+        aggregate::{Schema, SchemaId, SchemaName, Timestamp},
+        bank::{BankVersion, PropertyBank, PropertyBankId},
+        db_table::{PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
         ports::{NameIdPair, Query},
     },
 };
@@ -29,7 +28,6 @@ impl<'db> QueryAdapter<'db> {
 }
 
 impl Query for QueryAdapter<'_> {
-    type Archived<'archived> = &'archived rkyv::Archived<Schema>;
     type Error = DbError;
 
     #[inline]
@@ -42,15 +40,11 @@ impl Query for QueryAdapter<'_> {
 
     #[inline]
     fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error> {
-        self.db.get_owned_by_uuid(SCHEMA_BY_ID, id.into_uuid())
-    }
-
-    #[inline]
-    fn find_metadata_by_id(
-        &self,
-        id: SchemaId,
-    ) -> Result<Option<ResolutionMetadata>, Self::Error> {
-        self.db.get_owned_by_uuid(SCHEMA_METADATA, id.into_uuid())
+        self.db
+            .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
+            .map(Schema::try_from)
+            .transpose()
+            .map_err(|e| DbError::Transaction(e.to_string()))
     }
 
     #[inline]
@@ -60,13 +54,58 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn list(&self) -> Result<Vec<Schema>, Self::Error> {
-        self.db.list_owned(SCHEMA_BY_ID)
+    fn is_bank_stale(
+        &self,
+        current_version: BankVersion,
+    ) -> Result<bool, Self::Error> {
+        let id = PropertyBankId::singleton();
+        let Some(bank) = self
+            .db
+            .get_owned_by_uuid::<PropertyBank>(PROPERTY_BANK, id.into_uuid())?
+        else {
+            return Ok(true);
+        };
+        Ok(bank.version() != current_version)
     }
 
     #[inline]
-    fn list_metadata(&self) -> Result<Vec<ResolutionMetadata>, Self::Error> {
-        self.db.list_owned(SCHEMA_METADATA)
+    fn is_schema_stale(
+        &self,
+        id: SchemaId,
+        file_mtime: Option<Timestamp>,
+        current_bank_version: BankVersion,
+    ) -> Result<bool, Self::Error> {
+        let Some(stored) = self
+            .db
+            .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
+        else {
+            // No stored record — always stale.
+            return Ok(true);
+        };
+
+        if stored.bank_version != current_bank_version {
+            return Ok(true);
+        }
+
+        if let Some(mtime) = file_mtime
+            && stored.modified_at.as_secs() < mtime.as_secs()
+        {
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    #[inline]
+    fn list(&self) -> Result<Vec<Schema>, Self::Error> {
+        let stored: Vec<StoredSchema> = self.db.list_owned(SCHEMA_BY_ID)?;
+        stored
+            .into_iter()
+            .map(|s| {
+                Schema::try_from(s)
+                    .map_err(|e| DbError::Transaction(e.to_string()))
+            })
+            .collect()
     }
 
     #[inline]
@@ -89,35 +128,5 @@ impl Query for QueryAdapter<'_> {
         name: &SchemaName,
     ) -> Result<Option<SchemaId>, Self::Error> {
         self.db.get_owned(SCHEMA_ID_BY_NAME, name.as_str())
-    }
-
-    #[inline]
-    fn with_archived_by_id<F, R>(
-        &self,
-        id: SchemaId,
-        f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
-    {
-        self.db.get_by_uuid::<Schema, _, R>(SCHEMA_BY_ID, id.into_uuid(), f)
-    }
-
-    #[inline]
-    fn with_archived_by_name<F, R>(
-        &self,
-        name: &SchemaName,
-        f: F,
-    ) -> Result<Option<R>, Self::Error>
-    where
-        F: for<'archived> FnOnce(Self::Archived<'archived>) -> R,
-    {
-        if let Some(id) =
-            self.db.get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name.as_str())?
-        {
-            self.with_archived_by_id(id, f)
-        } else {
-            Ok(None)
-        }
     }
 }
