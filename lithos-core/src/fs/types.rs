@@ -1,8 +1,9 @@
-//! Structured data format parsing strategies for TOML, JSON, and YAML.
+//! File type markers and parsing helpers for structured formats.
 //!
-//! This module provides parser strategies used by adapters to deserialize
-//! structured configuration files into domain types. Each format has a
-//! dedicated parser with extension checks and rich errors.
+//! This module defines file type helpers used to classify and parse
+//! structured configuration files. JSON/TOML/YAML expose detect + parse
+//! helpers; Markdown is represented as a file type without detect/parse
+//! support.
 //!
 //! # Usage
 //!
@@ -38,6 +39,11 @@ pub struct Toml;
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Yaml;
+
+/// Markdown file type marker.
+#[derive(Debug, Clone, Default, PartialEq)]
+#[non_exhaustive]
+pub struct Markdown;
 
 impl Json {
     /// Detect if content looks like JSON format.
@@ -186,6 +192,18 @@ impl Yaml {
                 line,
                 column,
             }
+        })
+    }
+}
+
+impl Markdown {
+    /// Check if this marker can handle the given file path by extension.
+    #[inline]
+    #[must_use]
+    pub fn is_supported(path: &Path) -> bool {
+        path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("md")
+                || ext.eq_ignore_ascii_case("markdown")
         })
     }
 }
@@ -451,6 +469,27 @@ mod tests {
             assert!(
                 !Yaml::is_supported(Path::new("config.toml")),
                 "YAML should reject non-.yaml/.yml extensions"
+            );
+        }
+
+        #[rstest]
+        #[case::standard_md("readme.md")]
+        #[case::standard_markdown("readme.markdown")]
+        #[case::caps("README.MD")]
+        #[case::mixed("Readme.Markdown")]
+        fn should_recognize_valid_markdown_extensions(#[case] path: &str) {
+            assert!(
+                Markdown::is_supported(Path::new(path)),
+                "Markdown should support .md/.markdown extensions \
+                 (case-insensitive): {path}"
+            );
+        }
+
+        #[test]
+        fn should_reject_invalid_markdown_extensions() {
+            assert!(
+                !Markdown::is_supported(Path::new("readme.txt")),
+                "Markdown should reject non-.md/.markdown extensions"
             );
         }
     }

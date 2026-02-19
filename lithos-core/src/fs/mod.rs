@@ -49,6 +49,8 @@ pub type Json = types::Json;
 pub type Toml = types::Toml;
 /// YAML parser type alias.
 pub type Yaml = types::Yaml;
+/// Markdown file type alias.
+pub type Markdown = types::Markdown;
 /// Path validator type alias.
 pub type PathValidator = validator::Validator;
 /// Path validation error type alias.

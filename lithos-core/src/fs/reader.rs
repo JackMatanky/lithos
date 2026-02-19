@@ -11,7 +11,7 @@ use std::{
 use serde::de::DeserializeOwned;
 
 use super::{
-    Json, Toml, Yaml,
+    Json, Markdown, Toml, Yaml,
     error::{ParseError, PathValidationError},
     validator::Validator,
 };
@@ -235,21 +235,13 @@ fn classify_path(path: &Path) -> FormatKind {
     if Yaml::is_supported(path) {
         return FormatKind::Yaml;
     }
-    if is_markdown(path) {
+    if Markdown::is_supported(path) {
         return FormatKind::Markdown;
     }
     if is_likely_binary(path) {
         return FormatKind::Binary;
     }
     FormatKind::Unknown
-}
-
-#[inline]
-#[must_use]
-fn is_markdown(path: &Path) -> bool {
-    path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
-        ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("markdown")
-    })
 }
 
 #[inline]
