@@ -1,90 +1,87 @@
-//! Filesystem-related utilities and infrastructure.
+//! Filesystem infrastructure for the Lithos core library.
 //!
-//! This module contains file system infrastructure for security validation,
-//! deterministic discovery, read pipelines, and safe write orchestration.
-//! It centralizes the file I/O policy surface so adapter layers can depend on
-//! consistent, audited behavior instead of ad-hoc filesystem calls.
+//! This module centralises all file I/O policy so adapter layers depend on
+//! consistent, audited behaviour instead of ad-hoc `std::fs` calls. It
+//! provides:
 //!
-//! ## Security-Critical Modules
+//! - **Security validation** — path traversal protection, symlink escape
+//!   detection, and hidden-file blocking via [`PathValidator`].
+//! - **Root-scoped file access** — deterministic discovery, read pipelines, and
+//!   metadata access via [`FsReader`].
+//! - **Safe write orchestration** — atomic replace semantics via [`FsWriter`].
+//! - **Structured data parsing** — JSON/TOML/YAML parsing helpers with explicit
+//!   format guards (module-internal).
 //!
-//! - **validator**: Path traversal protection and security validation.
-//!   - Prevents path traversal attacks, symlink escapes, and arbitrary file
-//!     access.
-//!   - Re-exported as `PathValidator` for ergonomic imports.
+//! # Access points
 //!
-//! ## Data Processing Modules
+//! | What you need                    | How to get it                                    |
+//! |----------------------------------|--------------------------------------------------|
+//! | Validate a vault path string     | [`PathValidator::validate_vault_path`]           |
+//! | Validate an arbitrary path       | [`PathValidator::new_flexible`] + `.validate()`  |
+//! | Read files from a vault root     | [`FsReader::new`]                                |
+//! | Write files to a vault root      | [`FsWriter::new`]                                |
 //!
-//! - **reader**: Root-scoped file access with validation and classification.
-//!   - Read pipeline: validate → classify → read → parse.
-//! - **types**: TOML/JSON/YAML parsing helpers with explicit format guards.
-//! - **writer**: Root-scoped writes with atomic replace.
+//! # Security note
+//!
+//! All path validation for vault operations is centralised in
+//! [`PathValidator`]. Bypassing it in adapter code creates path-traversal and
+//! symlink-escape vulnerabilities.
 
 /// Filesystem error types.
 pub mod error;
-/// File system abstraction for testable file I/O.
+/// Root-scoped file reader with validation and format-classification pipeline.
 pub mod reader;
-/// Structured data parsers (TOML/JSON/YAML).
-pub mod types;
+/// Structured data parsers (TOML/JSON/YAML) — module-internal.
+pub(crate) mod types;
 /// Security-critical path validation utilities.
 pub mod validator;
-/// File system writer utilities.
+/// Root-scoped filesystem writer with atomic-replace semantics.
 pub mod writer;
 
-// Ergonomic aliases with domain-clarifying names.
+// ─── Public type aliases ────────────────────────────────────────────────────
 //
-// These aliases keep call sites explicit about filesystem boundaries while
-// avoiding long module paths in adapters.
+// These aliases surface the most commonly used types at the `fs::` path so
+// adapter call sites stay readable without long module chains.
 
-/// Filesystem reader type alias.
+/// Root-scoped filesystem reader.
+///
+/// See [`reader::Reader`] for the full API.
 #[expect(
     clippy::module_name_repetitions,
-    reason = "Alias keeps explicit fs namespace in callers."
+    reason = "The `Fs` prefix is intentional: it makes the filesystem \
+              boundary explicit at call sites (`FsReader` vs a bare \
+              `Reader`). Removing the prefix would conflict with domain \
+              reader types."
 )]
 pub type FsReader = reader::Reader;
-/// Filesystem writer type alias.
+
+/// Root-scoped filesystem writer.
+///
+/// See [`writer::Writer`] for the full API.
+///
+/// Currently `pub(crate)` — will be promoted to `pub` when the template
+/// module provides its first caller.
 #[expect(
-    clippy::module_name_repetitions,
-    reason = "Alias keeps explicit fs namespace in callers."
+    dead_code,
+    reason = "FsWriter has no external callers yet; it will be promoted to \
+              `pub` when the template module adapter is implemented."
 )]
-pub type FsWriter = writer::Writer;
-/// File metadata type alias.
-pub type FileMetadata = reader::FileMetadata;
+pub(crate) type FsWriter = writer::Writer;
+
 /// Parse error type alias.
+///
+/// See [`error::ParseError`] for all variants.
 pub type ParseError = error::ParseError;
-/// JSON parser type alias.
-pub type Json = types::Json;
-/// TOML parser type alias.
-pub type Toml = types::Toml;
-/// YAML parser type alias.
-pub type Yaml = types::Yaml;
-/// Markdown file type alias.
-pub type Markdown = types::Markdown;
+
 /// Path validator type alias.
+///
+/// The primary entry point for all path validation. Use
+/// [`PathValidator::validate_vault_path`] for string-based vault path
+/// validation, or construct a validator with [`PathValidator::new_flexible`] /
+/// [`PathValidator::try_new_strict`] for finer control.
 pub type PathValidator = validator::Validator;
+
 /// Path validation error type alias.
+///
+/// See [`error::PathValidationError`] for all variants.
 pub type PathValidationError = error::PathValidationError;
-
-/// Checks if a path is a Windows-style absolute path or drive-relative path.
-#[inline]
-#[must_use]
-pub fn is_windows_absolute_path(path: &str) -> bool {
-    validator::is_windows_absolute_path(path)
-}
-
-/// Validates a vault-relative path.
-///
-/// Bundles common path constraints: non-empty, relative, no traversal,
-/// optional extension. Use this helper to keep adapter call sites aligned on
-/// the same security rules.
-///
-/// # Errors
-///
-/// Returns [`PathValidationError`] if the path is invalid or does not match
-/// the required extension.
-#[inline]
-pub fn validate_vault_path(
-    path: &str,
-    require_extension: Option<&str>,
-) -> Result<(), PathValidationError> {
-    validator::validate_vault_path(path, require_extension)
-}

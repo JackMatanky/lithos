@@ -13,15 +13,14 @@ use std::{
 use serde::de::DeserializeOwned;
 
 use super::{
-    Json, Markdown, Toml, Yaml,
     error::{ParseError, PathValidationError},
+    types::{Json, Markdown, Toml, Yaml},
     validator::Validator,
 };
 
 /// Internal file classification for read pipelines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum FormatKind {
+pub(crate) enum FormatKind {
     /// JSON structured data.
     Json,
     /// TOML structured data.
@@ -96,11 +95,15 @@ impl Reader {
         self.root.join(path)
     }
 
-    /// Classify a path based on extension and heuristics.
+    /// Classify a path based on extension with optional content-sniffing
+    /// fallback.
+    ///
+    /// When content is provided and the extension is unknown or absent, the
+    /// method uses format detection heuristics to identify JSON, YAML, or TOML.
     #[inline]
     #[must_use]
-    pub fn classify(&self, path: &Path) -> FormatKind {
-        classify_path(path)
+    pub(crate) fn classify(path: &Path, content: Option<&str>) -> FormatKind {
+        classify_path(path, content)
     }
 
     /// Check whether a file exists at the given path.
@@ -173,7 +176,7 @@ impl Reader {
                 source: error,
             })?;
 
-        match self.classify(path) {
+        match Self::classify(path, Some(&content)) {
             FormatKind::Json => Json::parse(path, &content),
             FormatKind::Toml => Toml::parse(path, &content),
             FormatKind::Yaml => Yaml::parse(path, &content),
@@ -192,7 +195,15 @@ impl Reader {
     ///
     /// Returns an error if the file cannot be read.
     #[inline]
-    pub fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, io::Error> {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "pub(crate) API for future callers; tested but not yet \
+                      used outside the fs module."
+        )
+    )]
+    pub(crate) fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, io::Error> {
         std::fs::read(self.resolve_path(path))
     }
 
@@ -241,7 +252,8 @@ impl Reader {
 
 #[inline]
 #[must_use]
-fn classify_path(path: &Path) -> FormatKind {
+fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
+    // 1. Extension-first (fast, zero allocation)
     if Json::is_supported(path) {
         return FormatKind::Json;
     }
@@ -257,6 +269,23 @@ fn classify_path(path: &Path) -> FormatKind {
     if is_likely_binary(path) {
         return FormatKind::Binary;
     }
+
+    // 2. Content-sniffing fallback (extension-less or unknown files)
+    // Detection order: JSON → YAML → TOML
+    // JSON is unambiguous ({/[, YAML before TOML because --- is unambiguous,
+    // TOML's heuristic (= without :) is most likely to produce false positives.
+    if let Some(content) = content {
+        if Json::detect(content) {
+            return FormatKind::Json;
+        }
+        if Yaml::detect(content) {
+            return FormatKind::Yaml;
+        }
+        if Toml::detect(content) {
+            return FormatKind::Toml;
+        }
+    }
+
     FormatKind::Unknown
 }
 
@@ -281,6 +310,70 @@ fn is_likely_binary(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    mod content_sniffing {
+        use super::*;
+
+        #[test]
+        fn detects_json_from_content() {
+            assert_eq!(
+                classify_path(Path::new("data"), Some("{\"key\": \"value\"}")),
+                FormatKind::Json
+            );
+            assert_eq!(
+                classify_path(Path::new("data"), Some("[1, 2, 3]")),
+                FormatKind::Json
+            );
+        }
+
+        #[test]
+        fn detects_toml_from_content() {
+            // Note: content starting with '[' is ambiguous (could be JSON array
+            // or TOML table header). Use key-value format for unambiguous TOML.
+            assert_eq!(
+                classify_path(
+                    Path::new("data"),
+                    Some("name = \"test\"\nversion = \"1.0\"")
+                ),
+                FormatKind::Toml
+            );
+            assert_eq!(
+                classify_path(Path::new("data"), Some("name = \"test\"")),
+                FormatKind::Toml
+            );
+        }
+
+        #[test]
+        fn returns_unknown_for_unrecognized_content() {
+            assert_eq!(
+                classify_path(
+                    Path::new("data"),
+                    Some("plain text without structure")
+                ),
+                FormatKind::Unknown
+            );
+        }
+
+        #[test]
+        fn returns_unknown_without_content() {
+            assert_eq!(
+                classify_path(Path::new("data"), None),
+                FormatKind::Unknown
+            );
+        }
+
+        #[test]
+        fn extension_takes_precedence_over_content() {
+            // A .json file with TOML content should still be classified as JSON
+            assert_eq!(
+                classify_path(
+                    Path::new("config.json"),
+                    Some("name = \"toml content\"")
+                ),
+                FormatKind::Json
+            );
+        }
+    }
+
     use std::path::{Path, PathBuf};
 
     use tempfile::TempDir;

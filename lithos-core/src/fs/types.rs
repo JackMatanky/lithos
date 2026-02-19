@@ -1,24 +1,10 @@
 //! File type markers and parsing helpers for structured formats.
 //!
-//! This module defines file type helpers used to classify and parse
-//! structured configuration files. JSON/TOML/YAML expose detect + parse
-//! helpers; Markdown is represented as a file type without detect/parse
-//! support. This keeps format identification centralized so reader pipelines
-//! remain deterministic and adapter code can avoid ad-hoc extension checks.
-//!
-//! # Usage
-//!
-//! ```
-//! use std::path::Path;
-//!
-//! use lithos_core::fs::Json;
-//! use serde_json::Value;
-//!
-//! let content = r#"{"name": "lithos"}"#;
-//! let value: Value = Json::parse(Path::new("config.json"), content)?;
-//! println!("{:?}", value);
-//! # Ok::<(), Box<dyn std::error::Error>>(())
-//! ```
+//! This module is internal to the `fs` crate. It defines zero-sized type
+//! markers for JSON, TOML, YAML, and Markdown together with their
+//! extension-detection and content-sniffing helpers. All parsing goes through
+//! [`crate::fs::reader::Reader::parse_structured`]; these types are not part
+//! of the public API.
 
 use std::path::Path;
 
@@ -28,32 +14,28 @@ use super::error::ParseError;
 
 /// JSON parser strategy.
 #[derive(Debug, Clone, Default, PartialEq)]
-#[non_exhaustive]
-pub struct Json;
+pub(crate) struct Json;
 
 /// TOML parser strategy.
 #[derive(Debug, Clone, Default, PartialEq)]
-#[non_exhaustive]
-pub struct Toml;
+pub(crate) struct Toml;
 
 /// YAML parser strategy.
 #[derive(Debug, Clone, Default, PartialEq)]
-#[non_exhaustive]
-pub struct Yaml;
+pub(crate) struct Yaml;
 
 /// Markdown file type marker.
 ///
 /// Markdown does not use `detect`/`parse` here because parsing is delegated to
 /// adapter-specific markdown implementations (e.g., pulldown-cmark).
 #[derive(Debug, Clone, Default, PartialEq)]
-#[non_exhaustive]
-pub struct Markdown;
+pub(crate) struct Markdown;
 
 impl Json {
     /// Detect if content looks like JSON format.
     #[inline]
     #[must_use]
-    pub fn detect(content: &str) -> bool {
+    pub(crate) fn detect(content: &str) -> bool {
         let trimmed = content.trim_start();
         trimmed.starts_with('{') || trimmed.starts_with('[')
     }
@@ -61,7 +43,7 @@ impl Json {
     /// Check if this parser can handle the given file path by extension.
     #[inline]
     #[must_use]
-    pub fn is_supported(path: &Path) -> bool {
+    pub(crate) fn is_supported(path: &Path) -> bool {
         path.extension()
             .and_then(|ext| ext.to_str())
             .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
@@ -72,7 +54,7 @@ impl Json {
     /// # Errors
     /// Returns `ParseError` if parsing fails or the extension is not JSON.
     #[inline]
-    pub fn parse<T: DeserializeOwned>(
+    pub(crate) fn parse<T: DeserializeOwned>(
         path: &Path,
         content: &str,
     ) -> Result<T, ParseError> {
@@ -96,7 +78,7 @@ impl Toml {
     /// Detect if content looks like TOML format.
     #[inline]
     #[must_use]
-    pub fn detect(content: &str) -> bool {
+    pub(crate) fn detect(content: &str) -> bool {
         let trimmed = content.trim_start();
         !trimmed.starts_with('{')
             && (trimmed.contains('[')
@@ -106,7 +88,7 @@ impl Toml {
     /// Check if this parser can handle the given file path by extension.
     #[inline]
     #[must_use]
-    pub fn is_supported(path: &Path) -> bool {
+    pub(crate) fn is_supported(path: &Path) -> bool {
         path.extension()
             .and_then(|ext| ext.to_str())
             .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
@@ -117,7 +99,7 @@ impl Toml {
     /// # Errors
     /// Returns `ParseError` if parsing fails or the extension is not TOML.
     #[inline]
-    pub fn parse<T: DeserializeOwned>(
+    pub(crate) fn parse<T: DeserializeOwned>(
         path: &Path,
         content: &str,
     ) -> Result<T, ParseError> {
@@ -152,7 +134,7 @@ impl Yaml {
     /// Detect if content looks like YAML format.
     #[inline]
     #[must_use]
-    pub fn detect(content: &str) -> bool {
+    pub(crate) fn detect(content: &str) -> bool {
         let trimmed = content.trim_start();
         !trimmed.starts_with('{')
             && !trimmed.starts_with('[')
@@ -163,7 +145,7 @@ impl Yaml {
     /// Check if this parser can handle the given file path by extension.
     #[inline]
     #[must_use]
-    pub fn is_supported(path: &Path) -> bool {
+    pub(crate) fn is_supported(path: &Path) -> bool {
         path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
             ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml")
         })
@@ -174,7 +156,7 @@ impl Yaml {
     /// # Errors
     /// Returns `ParseError` if parsing fails or the extension is not YAML.
     #[inline]
-    pub fn parse<T: DeserializeOwned>(
+    pub(crate) fn parse<T: DeserializeOwned>(
         path: &Path,
         content: &str,
     ) -> Result<T, ParseError> {
@@ -204,7 +186,7 @@ impl Markdown {
     /// Check if this marker can handle the given file path by extension.
     #[inline]
     #[must_use]
-    pub fn is_supported(path: &Path) -> bool {
+    pub(crate) fn is_supported(path: &Path) -> bool {
         path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
             ext.eq_ignore_ascii_case("md")
                 || ext.eq_ignore_ascii_case("markdown")

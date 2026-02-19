@@ -1,95 +1,67 @@
-//! **Security-Critical Path Validation Utilities.**
+//! **Security-critical path validation utilities.**
 //!
 //! This module provides path validation to prevent **path traversal attacks**,
-//! **arbitrary file access**, and **symlink escape vulnerabilities**.
+//! **arbitrary file access**, and **symlink escape vulnerabilities**. All
+//! file I/O operations in adapters must pass paths through a [`Validator`]
+//! before touching the filesystem; bypassing these checks creates critical
+//! security vulnerabilities.
 //!
-//! **SECURITY REQUIREMENT**: All file I/O operations in adapters MUST use these
-//! validation utilities before accessing the filesystem. Bypassing these checks
-//! creates critical security vulnerabilities.
+//! # Security guarantees
 //!
-//! # Security Guarantees
+//! - **Path traversal prevention** — rejects paths containing `..` components.
+//! - **Absolute path rejection** — ensures only relative paths are used (unless
+//!   within a strict root).
+//! - **Restricted file protection** — blocks access to hidden or sensitive
+//!   files (components starting with `.`, e.g. `.git`, `.env`, `.ssh`).
+//! - **Symlink escape detection** — validates symlinks stay within root
+//!   boundaries in strict mode.
 //!
-//! - **Path Traversal Prevention**: Rejects paths containing `..` components
-//! - **Absolute Path Rejection**: Ensures only relative paths are used (unless
-//!   within strict root)
-//! - **Restricted File Protection**: Blocks access to hidden/sensitive files
-//!   (`.git`, `.env`, `.ssh`)
-//! - **Symlink Escape Detection**: Validates symlinks stay within root
-//!   boundaries (strict mode)
+//! # Validation modes
 //!
-//! # Validation Modes
-//!
-//! - **Strict**: Enforces root boundary and rejects symlinks escaping the root
-//!   - Use for: Vault files, user-controlled content
-//!   - Example: `PathValidator::new_strict(vault_root)`
-//!
-//! - **Flexible**: Allows external symlinks (e.g., dotfiles) while still
-//!   checking input traversal
-//!   - Use for: Configuration files, schema files
-//!   - Example: `PathValidator::new_flexible()`
+//! - **Flexible** — allows external symlinks (e.g. dotfiles) while still
+//!   checking input traversal. Use for configuration files and schema files.
+//! - **Strict** — enforces a root boundary and rejects symlinks that escape it.
+//!   Use for vault files and user-controlled content.
 //!
 //! # Examples
 //!
 //! ```
 //! use std::path::PathBuf;
 //!
-//! use lithos_core::fs::PathValidator; // Re-exported for ergonomics
+//! use lithos_core::fs::PathValidator;
 //!
-//! // Flexible validator for config files (allows dotfile symlinks)
+//! // Flexible validator for config files (allows dotfile symlinks).
 //! let validator = PathValidator::new_flexible();
-//! assert!(
-//!     validator.validate("config/lithos.toml").is_ok(),
-//!     "Expected config path to be accepted"
-//! );
-//! assert!(
-//!     validator.validate("../../etc/passwd").is_err(),
-//!     "Traversal should be blocked"
-//! );
+//! assert!(validator.validate("config/lithos.toml").is_ok());
+//! assert!(validator.validate("../../etc/passwd").is_err());
 //!
-//! // Strict validator for vault files (enforces root boundary)
-//! // Note: Root must be absolute (provided by Figment config)
+//! // Strict validator for vault files (enforces root boundary).
+//! // Note: root must be absolute and canonicalized.
 //! let root = PathBuf::from("/absolute/path/to/vault");
-//! let validator = PathValidator::new_strict(root);
-//! assert!(
-//!     validator.validate("notes/daily.md").is_ok(),
-//!     "Expected note path to be accepted"
-//! );
+//! let validator = PathValidator::try_new_strict(root)?;
+//! assert!(validator.validate("notes/daily.md").is_ok());
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! # Architecture Context
+//! # Architecture context
 //!
-//! This module represents the file loading strategy foundation (epic 4).
-//! It provides the security foundation for all file-based adapters:
-//! - `ConfigAdapter` (Flexible mode)
-//! - `SchemaAdapter` (Flexible mode)
-//! - `NoteAdapter` (Strict mode)
+//! This module is the security foundation for all file-based adapters:
+//!
+//! - `ConfigAdapter` — flexible mode
+//! - `SchemaAdapter` — flexible mode
+//! - `NoteAdapter` — strict mode
 
 use std::path::{Component, Path, PathBuf};
 
 use super::error::PathValidationError;
 
-#[inline]
-#[must_use]
-fn check_windows_path_bytes(bytes: &[u8]) -> bool {
-    bytes.first().is_some_and(u8::is_ascii_alphabetic)
-        && bytes.get(1) == Some(&b':')
-}
-
-/// Checks if a path is a Windows-style absolute path or drive-relative path.
-#[inline]
-#[must_use]
-pub fn is_windows_absolute_path(path: &str) -> bool {
-    check_windows_path_bytes(path.as_bytes())
-}
-
 /// Internal validation mode representation.
 #[derive(Debug, Clone)]
-#[non_exhaustive]
 pub(crate) enum Mode {
-    /// Flexible mode: allows external symlinks (e.g., dotfiles), still checks
-    /// input traversal.
+    /// Flexible mode: allows external symlinks (e.g. dotfiles) while still
+    /// checking input traversal and hidden-file access.
     Flexible,
-    /// Strict mode: enforces root boundary, rejects symlinks escaping root.
+    /// Strict mode: enforces root boundary and rejects symlinks that escape it.
     Strict {
         /// The canonicalized root directory.
         root: PathBuf,
@@ -98,25 +70,325 @@ pub(crate) enum Mode {
 
 /// Path validator with configurable security modes.
 ///
-/// # Constraints
+/// Construct with [`Validator::new_flexible`] or [`Validator::try_new_strict`]
+/// and then call [`Validator::validate`] on each path before passing it to
+/// filesystem operations. For symlink-following operations use
+/// [`Validator::resolve_safe_symlink`].
 ///
-/// - **Security Focused**: Always rejects `..` components in input paths
-/// - **Platform Agnostic**: Correctly handles Windows and Unix path separators
-/// - **Resource Safe**: Validates paths before expensive I/O operations
+/// # Security properties
+///
+/// - Always rejects `..` components in input paths.
+/// - Always rejects hidden path components (those starting with `.`).
+/// - Always rejects non-UTF-8 paths.
+/// - Strict mode additionally rejects symlinks whose targets escape the root.
 #[derive(Debug, Clone)]
 pub struct Validator {
     mode: Mode,
 }
 
 impl Validator {
-    /// Internal helper to enforce absolute path policy based on mode.
+    // -----------------------------------------------------------------------
+    // Constructors
+    // -----------------------------------------------------------------------
+
+    /// Creates a flexible validator that allows external symlinks.
+    ///
+    /// Flexible mode is appropriate for configuration and schema files that
+    /// may legitimately be symlinked from a dotfile repository.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::validator::Validator;
+    ///
+    /// let validator = Validator::new_flexible();
+    /// assert!(validator.validate("config.toml").is_ok());
+    /// assert!(validator.validate("../../escape").is_err());
+    /// ```
     #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics allow borrowing PathBuf from &Mode without \
-                  explicit ref patterns. This is idiomatic Rust 2021 and \
-                  avoids verbose &Mode::Strict { root: ref r } syntax."
-    )]
+    #[must_use]
+    pub fn new_flexible() -> Self {
+        Self {
+            mode: Mode::Flexible,
+        }
+    }
+
+    /// Creates a strict validator with root boundary enforcement.
+    ///
+    /// Strict mode is appropriate for vault files and user-controlled content
+    /// where symlinks must not escape the root directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathValidationError::RelativeRoot`] if `root` is not an
+    /// absolute path. Callers must canonicalize the root with
+    /// [`std::fs::canonicalize`] before calling this constructor; a
+    /// non-canonicalized root containing symlinks may cause
+    /// [`resolve_safe_symlink`] to reject valid paths.
+    ///
+    /// [`resolve_safe_symlink`]: Validator::resolve_safe_symlink
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::path::PathBuf;
+    ///
+    /// use lithos_core::fs::validator::Validator;
+    ///
+    /// let root = PathBuf::from("/path/to/vault");
+    /// let validator = Validator::try_new_strict(root)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn try_new_strict(root: PathBuf) -> Result<Self, PathValidationError> {
+        if !root.is_absolute() {
+            return Err(PathValidationError::RelativeRoot(root));
+        }
+        Ok(Self {
+            mode: Mode::Strict {
+                root,
+            },
+        })
+    }
+
+    // -----------------------------------------------------------------------
+    // Public validation API
+    // -----------------------------------------------------------------------
+
+    /// Validates a vault-relative path string against common security
+    /// constraints.
+    ///
+    /// This is the preferred entry point for validating paths that arrive as
+    /// strings (e.g. from user input or configuration). It checks, in order:
+    ///
+    /// 1. The path must not be empty.
+    /// 2. The path must not be a Windows drive-absolute or drive-relative path
+    ///    (e.g. `C:\foo` or `C:relative`). This check runs before the standard
+    ///    validator because on Unix `Path::is_absolute("C:\\foo")` returns
+    ///    `false`, so the standard check alone is insufficient on
+    ///    cross-platform code.
+    /// 3. Standard validation via [`Validator::new_flexible`]: no traversal
+    ///    (`..`), no hidden components, no absolute paths, valid UTF-8.
+    /// 4. If `require_extension` is `Some`, the path must end with that
+    ///    extension (case-insensitive).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathValidationError`] if any constraint is violated.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::PathValidator;
+    ///
+    /// assert!(
+    ///     PathValidator::validate_vault_path("notes/daily.md", Some("md"))
+    ///         .is_ok()
+    /// );
+    /// assert!(PathValidator::validate_vault_path("", None).is_err());
+    /// assert!(
+    ///     PathValidator::validate_vault_path("../../etc/passwd", None).is_err()
+    /// );
+    /// assert!(
+    ///     PathValidator::validate_vault_path("note.txt", Some("md")).is_err()
+    /// );
+    /// ```
+    #[inline]
+    pub fn validate_vault_path(
+        path: &str,
+        require_extension: Option<&str>,
+    ) -> Result<(), PathValidationError> {
+        // 1. Empty check.
+        if path.is_empty() {
+            return Err(PathValidationError::EmptyPath);
+        }
+
+        // 2. Windows drive-absolute / drive-relative check. Must run before the
+        //    standard validator because on Unix, Path::is_absolute("C:\\foo")
+        //    returns false, so check_absolute_path_policy would pass it through
+        //    unchanged.
+        if Self::is_windows_absolute(path) {
+            return Err(PathValidationError::AbsolutePathError(PathBuf::from(
+                path,
+            )));
+        }
+
+        // 3. Standard validation (traversal, hidden files, absolute paths,
+        //    UTF-8 encoding).
+        Self::new_flexible().validate(path)?;
+
+        // 4. Extension check.
+        if let Some(required_ext) = require_extension {
+            let has_ext = Path::new(path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e.eq_ignore_ascii_case(required_ext));
+            if !has_ext {
+                return Err(PathValidationError::InvalidExtension {
+                    path: PathBuf::from(path),
+                    required: required_ext.into(),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validates a path for security issues.
+    ///
+    /// Performs the following checks in order:
+    ///
+    /// 1. **UTF-8 encoding** — the path must be representable as a UTF-8 string
+    ///    (required for cross-platform consistency).
+    /// 2. **Absolute path** — rejected unless in strict mode and the path
+    ///    starts with the configured root.
+    /// 3. **Traversal and hidden files** — each component is checked for `..`
+    ///    (traversal) and a leading `.` (hidden/restricted file).
+    ///
+    /// # Errors
+    ///
+    /// - [`PathValidationError::InvalidPathEncoding`] — path is not valid
+    ///   UTF-8.
+    /// - [`PathValidationError::AbsolutePathError`] — path is absolute and not
+    ///   permitted by the current mode.
+    /// - [`PathValidationError::PathTraversalError`] — path contains `..`.
+    /// - [`PathValidationError::RestrictedPathError`] — path accesses a hidden
+    ///   file or directory.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::validator::Validator;
+    ///
+    /// let v = Validator::new_flexible();
+    /// assert!(v.validate("safe/path.txt").is_ok());
+    /// assert!(v.validate("../../unsafe").is_err());
+    /// assert!(v.validate(".hidden/file").is_err());
+    /// ```
+    #[inline]
+    pub fn validate<PathType>(
+        &self,
+        path: &PathType,
+    ) -> Result<(), PathValidationError>
+    where
+        PathType: AsRef<Path> + ?Sized,
+    {
+        let path_ref = path.as_ref();
+
+        // 1. UTF-8 encoding check.
+        if path_ref.to_str().is_none() {
+            return Err(PathValidationError::InvalidPathEncoding(
+                path_ref.to_path_buf(),
+            ));
+        }
+
+        // 2. Absolute path check.
+        self.check_absolute_path_policy(path_ref)?;
+
+        // 3. Traversal and hidden-file check on the relevant path portion. In
+        //    strict mode, strip the known-good root prefix before checking so
+        //    that root components (which are absolute) are not flagged.
+        let check_path = match self.mode.clone() {
+            Mode::Strict {
+                root,
+            } => path_ref.strip_prefix(&root).unwrap_or(path_ref),
+            Mode::Flexible => path_ref,
+        };
+        Self::validate_core(check_path)?;
+
+        Ok(())
+    }
+
+    /// Safely resolves a symlink target, validating the resolved path against
+    /// the current mode's security policy.
+    ///
+    /// # Behaviour by mode
+    ///
+    /// - **Flexible** — follows the symlink without boundary checks, permitting
+    ///   external targets (e.g. dotfile symlinks). Input traversal checks still
+    ///   apply.
+    /// - **Strict** — resolves the full canonical target and rejects it if it
+    ///   escapes the configured root or resolves to a hidden path within the
+    ///   vault.
+    ///
+    /// # Errors
+    ///
+    /// - [`PathValidationError::PathTraversalError`] — input path contains
+    ///   `..`.
+    /// - [`PathValidationError::IoError`] — OS error during canonicalization
+    ///   (e.g. a symlink loop or permission denial).
+    /// - [`PathValidationError::SymlinkEscapeError`] — resolved target is
+    ///   outside the strict root.
+    /// - [`PathValidationError::RestrictedPathError`] — resolved target is a
+    ///   hidden path within the strict root.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::path::PathBuf;
+    ///
+    /// use lithos_core::fs::validator::Validator;
+    ///
+    /// let root = PathBuf::from("/path/to/vault");
+    /// let validator = Validator::try_new_strict(root)?;
+    ///
+    /// let resolved = validator.resolve_safe_symlink("link_to_file")?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn resolve_safe_symlink<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<PathBuf, PathValidationError> {
+        let path_ref = path.as_ref();
+
+        // Validate the input path before touching the filesystem.
+        self.validate(path_ref)?;
+
+        // Resolve all symlink components to a canonical absolute path.
+        // canonicalize() is required here: only the fully-resolved path can
+        // be compared against the root boundary.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Security validation requires canonicalization to \
+                      resolve all symlink components for boundary checking. \
+                      There is no alternative API that provides the same \
+                      guarantee."
+        )]
+        let resolved = std::fs::canonicalize(path_ref)
+            .map_err(PathValidationError::IoError)?;
+
+        // Enforce boundary (symlink escape) and vault hidden-file policy on
+        // the resolved target. These are distinct checks: boundary prevents
+        // escape, hidden-file prevents access to restricted vault contents.
+        self.check_strict_boundary_and_hidden(&resolved)?;
+
+        Ok(resolved)
+    }
+
+    // -----------------------------------------------------------------------
+    // Private helpers
+    // -----------------------------------------------------------------------
+
+    /// Returns `true` if `path` looks like a Windows drive-absolute or
+    /// drive-relative path (e.g. `C:\foo`, `C:/foo`, or `C:relative`).
+    ///
+    /// On Unix, `Path::is_absolute("C:\\foo")` returns `false`, so this check
+    /// is necessary to catch Windows-style absolute paths on all platforms.
+    #[inline]
+    #[must_use]
+    fn is_windows_absolute(path: &str) -> bool {
+        let b = path.as_bytes();
+        b.first().is_some_and(u8::is_ascii_alphabetic)
+            && b.get(1) == Some(&b':')
+    }
+
+    /// Enforces the absolute-path policy for the current mode.
+    ///
+    /// - **Flexible** — all absolute paths are rejected.
+    /// - **Strict** — absolute paths that start with the root are allowed; all
+    ///   other absolute paths are rejected.
+    #[inline]
     fn check_absolute_path_policy(
         &self,
         path: &Path,
@@ -125,23 +397,22 @@ impl Validator {
             return Ok(());
         }
 
-        match &self.mode {
-            Mode::Strict {
-                root,
-            } if path.starts_with(root) => {
-                // Allowed if within strict root
-                Ok(())
-            }
-            Mode::Flexible
-            | Mode::Strict {
-                ..
-            } => {
-                Err(PathValidationError::AbsolutePathError(path.to_path_buf()))
-            }
+        // Strict mode allows absolute paths that are within the configured
+        // root; all other absolute paths (flexible mode, or strict mode but
+        // outside the root) are rejected.
+        let within_strict_root = matches!(
+            &self.mode,
+            Mode::Strict { root } if path.starts_with(root)
+        );
+        if within_strict_root {
+            Ok(())
+        } else {
+            Err(PathValidationError::AbsolutePathError(path.to_path_buf()))
         }
     }
 
-    /// Validates a single path component for security violations.
+    /// Checks a single path component for traversal (`..`) and hidden-file
+    /// (leading `.`) violations.
     #[inline]
     fn check_component_security(
         component: &Component<'_>,
@@ -151,7 +422,7 @@ impl Validator {
                 Err(PathValidationError::PathTraversalError)
             }
             Component::Normal(os_str) => {
-                if Self::is_hidden_os_str(os_str) {
+                if os_str.to_str().is_some_and(|s| s.starts_with('.')) {
                     Err(PathValidationError::RestrictedPathError(
                         PathBuf::from(os_str),
                     ))
@@ -165,246 +436,43 @@ impl Validator {
         }
     }
 
-    /// Internal helper to verify a resolved path stays within the strict root.
+    /// Verifies that a canonicalized symlink target stays within the strict
+    /// root and does not resolve to a hidden path within the vault.
+    ///
+    /// This function enforces two distinct security properties:
+    /// 1. **Boundary check** — the resolved path must start with the root.
+    /// 2. **Hidden-file check** — the relative portion of the resolved path
+    ///    must not contain hidden components.
+    ///
+    /// Only operates in strict mode; returns `Ok(())` in flexible mode.
     #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics allow borrowing PathBuf from &Mode without \
-                  explicit ref patterns. This is idiomatic Rust 2021 and \
-                  avoids verbose &Mode::Strict { root: ref r } syntax."
-    )]
-    fn check_strict_boundary(
+    fn check_strict_boundary_and_hidden(
         &self,
         resolved: &Path,
     ) -> Result<(), PathValidationError> {
-        if let Mode::Strict {
-            root,
-        } = &self.mode
-        {
-            if !resolved.starts_with(root) {
-                return Err(PathValidationError::SymlinkEscapeError);
-            }
-
-            // Hidden check on the relative portion only
-            let relative = resolved.strip_prefix(root).unwrap_or(resolved);
-            Self::validate_core(relative)?;
-        }
-        Ok(())
-    }
-
-    /// Internal helper to extract the path portion for security validation.
-    #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics allow borrowing PathBuf from &Mode without \
-                  explicit ref patterns. This is idiomatic Rust 2021 and \
-                  avoids verbose &Mode::Strict { root: ref r } syntax."
-    )]
-    fn get_relative_validation_path<'path>(
-        &self,
-        path: &'path Path,
-    ) -> &'path Path {
-        match &self.mode {
+        match self.mode.clone() {
             Mode::Strict {
                 root,
-            } => path.strip_prefix(root).unwrap_or(path),
-            Mode::Flexible => path,
+            } => {
+                if !resolved.starts_with(&root) {
+                    return Err(PathValidationError::SymlinkEscapeError);
+                }
+
+                // Run traversal and hidden checks on the relative portion only,
+                // so the known-good root components are not flagged.
+                let relative = resolved.strip_prefix(&root).unwrap_or(resolved);
+                Self::validate_core(relative)?;
+            }
+            Mode::Flexible => {}
         }
-    }
-
-    /// Robust check for hidden status of an `OsStr` across platforms.
-    #[inline]
-    fn is_hidden_os_str(os_str: &std::ffi::OsStr) -> bool {
-        os_str.to_str().is_some_and(|s| s.starts_with('.'))
-    }
-
-    /// Creates a flexible validator that allows external symlinks.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use lithos_core::fs::validator::Validator;
-    ///
-    /// let validator = Validator::new_flexible();
-    /// assert!(
-    ///     validator.validate("config.toml").is_ok(),
-    ///     "Expected config path to be accepted"
-    /// );
-    /// ```
-    ///
-    /// # Use Cases
-    ///
-    /// - Configuration files that may be symlinked from dotfile repositories
-    /// - Schema files in shared locations
-    #[inline]
-    #[must_use]
-    pub fn new_flexible() -> Self {
-        Self {
-            mode: Mode::Flexible,
-        }
-    }
-
-    /// Creates a strict validator with root boundary enforcement.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use std::path::PathBuf;
-    ///
-    /// use lithos_core::fs::validator::Validator;
-    ///
-    /// let root = PathBuf::from("/path/to/vault");
-    /// let validator = Validator::new_strict(root);
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// Panics if `root` is not an absolute path. The caller is responsible for
-    /// canonicalizing the root with `std::fs::canonicalize` before calling this
-    /// constructor. Passing a non-canonicalized path containing symlinks may
-    /// cause `resolve_safe_symlink` to reject valid paths.
-    #[inline]
-    #[must_use]
-    pub fn new_strict(root: PathBuf) -> Self {
-        assert!(
-            root.is_absolute(),
-            "Validator root must be absolute: {}",
-            root.display()
-        );
-        Self {
-            mode: Mode::Strict {
-                root,
-            },
-        }
-    }
-
-    /// Safely resolves a symlink, ensuring it stays within bounds.
-    ///
-    /// # Behavior by Mode
-    ///
-    /// - **Flexible**: Follows symlink without boundary checks (allows
-    ///   dotfiles)
-    /// - **Strict**: Ensures resolved target stays within configured root
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(PathBuf)`: Resolved symlink target path
-    /// - `Err(PathValidationError)`: Validation or I/O failure
-    ///
-    /// # Errors
-    ///
-    /// - [`PathValidationError::SymlinkEscapeError`]: Target is outside root
-    ///   (strict)
-    /// - [`PathValidationError::IoError`]: File system error
-    /// - [`PathValidationError::PathTraversalError`]: Input path contains `..`
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use std::path::PathBuf;
-    ///
-    /// use lithos_core::fs::validator::Validator;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///
-    /// let root = std::env::current_dir()?.join("/path/to/vault");
-    /// let validator = Validator::new_strict(root);
-    ///
-    /// let symlink_path = PathBuf::from("link_to_file");
-    /// let resolved = validator.resolve_safe_symlink(&symlink_path)?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn resolve_safe_symlink<P: AsRef<Path>>(
-        &self,
-        path: P,
-    ) -> Result<PathBuf, PathValidationError> {
-        let path_ref = path.as_ref();
-
-        // 1. Validate the input path itself first
-        self.validate(path_ref)?;
-
-        // 2. Resolve symlinks
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Security validation requires canonicalization to \
-                      resolve all symlink components for boundary checking."
-        )]
-        let resolved = std::fs::canonicalize(path_ref)
-            .map_err(PathValidationError::IoError)?;
-
-        // 3. Enforce boundary constraints based on mode
-        self.check_strict_boundary(&resolved)?;
-
-        Ok(resolved)
-    }
-
-    /// Validates a path for security issues.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use lithos_core::fs::validator::Validator;
-    ///
-    /// let validator = Validator::new_flexible();
-    /// assert!(
-    ///     validator.validate("safe/path.txt").is_ok(),
-    ///     "Expected safe path to be accepted"
-    /// );
-    /// assert!(
-    ///     validator.validate("../../unsafe").is_err(),
-    ///     "Traversal should be blocked"
-    /// );
-    /// ```
-    ///
-    /// # Checks Performed
-    ///
-    /// 1. **Traversal Check**: Rejects paths with `..` components
-    /// 2. **Absolute Path Check**: Rejects absolute paths (unless within strict
-    ///    root)
-    /// 3. **Restricted File Check**: Rejects hidden/sensitive files (those
-    ///    starting with `.`)
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(())`: Path is safe
-    /// - `Err(PathValidationError)`: Path is unsafe, returns specific error
-    ///
-    /// # Errors
-    ///
-    /// - [`PathValidationError::PathTraversalError`]: Path contains `..`
-    /// - [`PathValidationError::AbsolutePathError`]: Path is absolute
-    /// - [`PathValidationError::RestrictedPathError`]: Path accesses hidden
-    ///   files
-    #[inline]
-    pub fn validate<PathType>(
-        &self,
-        path: &PathType,
-    ) -> Result<(), PathValidationError>
-    where
-        PathType: AsRef<Path> + ?Sized,
-    {
-        let path_ref = path.as_ref();
-
-        // 0. UTF-8 Encoding Validation
-        if path_ref.to_str().is_none() {
-            return Err(PathValidationError::InvalidPathEncoding(
-                path_ref.to_path_buf(),
-            ));
-        }
-
-        // 1. Absolute Path Validation
-        self.check_absolute_path_policy(path_ref)?;
-
-        // 2. Core Security Validation (Traversal + Hidden)
-        let check_path = self.get_relative_validation_path(path_ref);
-        Self::validate_core(check_path)?;
-
         Ok(())
     }
 
-    /// Internal core validation logic. Performs traversal and hidden checks in
-    /// a single pass.
+    /// Core validation: iterates components and rejects traversal or hidden
+    /// file violations. Used by both [`validate`] and
+    /// [`check_strict_boundary_and_hidden`].
+    ///
+    /// [`validate`]: Validator::validate
     #[inline]
     fn validate_core(path: &Path) -> Result<(), PathValidationError> {
         for component in path.components() {
@@ -412,49 +480,6 @@ impl Validator {
         }
         Ok(())
     }
-}
-
-/// Validates a vault-relative path.
-///
-/// Bundles common path constraints: non-empty, relative, no traversal,
-/// optional extension. This helper exists to standardize the rules used for
-/// vault paths across adapters and avoid duplicating security checks at each
-/// call site.
-///
-/// # Errors
-///
-/// Returns [`PathValidationError`] if the path is empty, absolute, contains
-/// traversal segments (`..`), or does not match the required extension.
-#[inline]
-pub fn validate_vault_path(
-    path: &str,
-    require_extension: Option<&str>,
-) -> Result<(), PathValidationError> {
-    if path.is_empty() {
-        return Err(PathValidationError::EmptyPath);
-    }
-
-    Validator::new_flexible().validate(path)?;
-
-    if is_windows_absolute_path(path) {
-        return Err(PathValidationError::AbsolutePathError(PathBuf::from(
-            path,
-        )));
-    }
-
-    if let Some(required_ext) = require_extension
-        && !Path::new(path)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case(required_ext))
-    {
-        return Err(PathValidationError::InvalidExtension {
-            path: PathBuf::from(path),
-            required: required_ext.into(),
-        });
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -469,17 +494,23 @@ mod tests {
         pub const DEFAULT_CONTENT: &str = "test content";
 
         pub struct Workspace {
-            #[expect(
-                dead_code,
-                reason = "TempDir never read but must be stored for RAII \
-                          lifecycle. Drop order ensures filesystem cleanup \
-                          after test completion."
-            )]
-            pub temp_dir: TempDir,
+            // Prefixed with `_` to suppress dead_code lint. TempDir must be
+            // stored here so the directory stays alive for the test's
+            // duration; Drop cleans it up afterward.
+            pub _temp_dir: TempDir,
             pub root: PathBuf,
         }
 
         impl Workspace {
+            pub fn new() -> Result<Self, std::io::Error> {
+                let temp_dir = TempDir::new()?;
+                let root = temp_dir.path().canonicalize()?;
+                Ok(Self {
+                    _temp_dir: temp_dir,
+                    root,
+                })
+            }
+
             pub fn create_file<P: AsRef<Path>>(
                 &self,
                 path: P,
@@ -490,7 +521,7 @@ mod tests {
                     let result = std::fs::create_dir_all(parent);
                     assert!(
                         result.is_ok(),
-                        "Test setup: Failed to create parent directories: \
+                        "test setup: failed to create parent directories: \
                          {result:?}"
                     );
                 }
@@ -500,7 +531,7 @@ mod tests {
                 );
                 assert!(
                     result.is_ok(),
-                    "Test setup: Failed to write file: {result:?}"
+                    "test setup: failed to write file: {result:?}"
                 );
                 full_path
             }
@@ -515,19 +546,21 @@ mod tests {
                     let result = std::fs::create_dir_all(parent);
                     assert!(
                         result.is_ok(),
-                        "Test setup: Failed to create parent directories: \
+                        "test setup: failed to create parent directories: \
                          {result:?}"
                     );
                 }
 
                 #[cfg(unix)]
-                let result =
-                    std::os::unix::fs::symlink(target, &full_link_path);
-                #[cfg(unix)]
-                assert!(
-                    result.is_ok(),
-                    "Test setup: Failed to create symlink: {result:?}"
-                );
+                {
+                    let result =
+                        std::os::unix::fs::symlink(target, &full_link_path);
+                    assert!(
+                        result.is_ok(),
+                        "test setup: failed to create symlink: {result:?}"
+                    );
+                };
+
                 #[cfg(windows)]
                 {
                     let result = std::os::windows::fs::symlink_file(
@@ -536,20 +569,11 @@ mod tests {
                     );
                     assert!(
                         result.is_ok(),
-                        "Test setup: Failed to create symlink: {result:?}"
+                        "test setup: failed to create symlink: {result:?}"
                     );
-                }
+                };
 
                 full_link_path
-            }
-
-            pub fn new() -> Result<Self, std::io::Error> {
-                let temp_dir = TempDir::new()?;
-                let root = temp_dir.path().canonicalize()?;
-                Ok(Self {
-                    temp_dir,
-                    root,
-                })
             }
         }
     }
@@ -561,75 +585,140 @@ mod tests {
 
         #[test]
         fn creates_flexible_validator() {
-            // GIVEN the need for a flexible validator that allows external
-            // symlinks
             let validator = Validator::new_flexible();
-
-            // WHEN checking the validator mode
-            // THEN it should be configured with Flexible mode
             assert!(
                 matches!(validator.mode, Mode::Flexible),
-                "Expected Flexible mode, found {:?}",
+                "expected Flexible mode, found {:?}",
                 validator.mode
             );
         }
 
         #[test]
+        fn creates_strict_validator_with_absolute_root() {
+            let temp_dir = TempDir::new().expect("tempdir");
+            let root_path = temp_dir.path().to_path_buf();
+            let validator =
+                Validator::try_new_strict(root_path).expect("strict validator");
+            assert!(
+                matches!(&validator.mode, Mode::Strict { root } if root.is_absolute()),
+                "expected Strict mode with absolute root, found {:?}",
+                validator.mode
+            );
+        }
 
-        fn creates_strict_validator_with_root() {
-            // GIVEN an absolute root path
-            let temp_dir = TempDir::new().expect("TempDir should be created");
-            let root = temp_dir.path().join("test_root");
+        #[test]
+        fn try_new_strict_rejects_relative_root() {
+            let result =
+                Validator::try_new_strict(PathBuf::from("relative/path"));
+            assert!(
+                matches!(result, Err(PathValidationError::RelativeRoot(_))),
+                "expected RelativeRoot error, got {result:?}"
+            );
+        }
+    }
 
-            // WHEN creating a strict validator with the root
-            let validator = Validator::new_strict(root);
+    mod validate_vault_path {
+        use super::*;
 
-            // THEN it should be configured with Strict mode and an absolute
-            // root
+        #[test]
+        fn rejects_empty_path() {
+            let result = Validator::validate_vault_path("", None);
+            assert!(
+                matches!(result, Err(PathValidationError::EmptyPath)),
+                "expected EmptyPath, got {result:?}"
+            );
+        }
+
+        #[test]
+        fn rejects_windows_absolute_path_before_validator() {
+            // C:\foo is not absolute on Unix (Path::is_absolute returns false),
+            // so the Windows check must run first.
+            let result = Validator::validate_vault_path("C:\\Users\\foo", None);
             assert!(
                 matches!(
-                    &validator.mode,
-                    Mode::Strict { root: validator_root }
-                        if validator_root.is_absolute()
+                    result,
+                    Err(PathValidationError::AbsolutePathError(_))
                 ),
-                "Expected Strict mode with absolute root, found {:?}",
-                validator.mode
+                "expected AbsolutePathError for Windows drive path, got \
+                 {result:?}"
+            );
+        }
+
+        #[test]
+        fn rejects_windows_drive_relative_path() {
+            let result = Validator::validate_vault_path("C:relative", None);
+            assert!(
+                matches!(
+                    result,
+                    Err(PathValidationError::AbsolutePathError(_))
+                ),
+                "expected AbsolutePathError for Windows drive-relative path, \
+                 got {result:?}"
+            );
+        }
+
+        #[test]
+        fn rejects_traversal() {
+            let result =
+                Validator::validate_vault_path("../../etc/passwd", None);
+            assert!(
+                matches!(result, Err(PathValidationError::PathTraversalError)),
+                "expected PathTraversalError, got {result:?}"
+            );
+        }
+
+        #[test]
+        fn rejects_wrong_extension() {
+            let result = Validator::validate_vault_path("note.txt", Some("md"));
+            assert!(
+                matches!(
+                    result,
+                    Err(PathValidationError::InvalidExtension { .. })
+                ),
+                "expected InvalidExtension, got {result:?}"
+            );
+        }
+
+        #[test]
+        fn accepts_valid_path_with_extension() {
+            Validator::validate_vault_path("notes/daily.md", Some("md"))
+                .expect("valid vault path with extension should be accepted");
+        }
+
+        #[test]
+        fn accepts_valid_path_without_extension_requirement() {
+            Validator::validate_vault_path("schemas/note.json", None).expect(
+                "valid vault path without extension check should be accepted",
             );
         }
     }
 
     mod validate {
-        use super::*;
-
         mod traversal {
             use rstest::rstest;
 
-            use super::*;
+            use super::super::*;
 
             #[rstest]
             #[case::double_dot("../../etc/passwd")]
             #[case::single_parent("../config.toml")]
             #[case::mid_path("valid/../../etc/passwd")]
             fn rejects_traversal_attacks(#[case] input: &str) {
-                let validator = Validator::new_flexible();
-                let result = validator.validate(input);
+                let v = Validator::new_flexible();
                 assert!(
                     matches!(
-                        result,
+                        v.validate(input),
                         Err(PathValidationError::PathTraversalError)
                     ),
-                    "Expected PathTraversalError for '{input}', found \
-                     {result:?}"
+                    "expected PathTraversalError for '{input}'"
                 );
             }
 
             #[test]
             fn accepts_encoded_path_as_literal() {
-                let validator = Validator::new_flexible();
-                let result = validator.validate("safe%2Ffile");
-                assert!(
-                    result.is_ok(),
-                    "safe encoded characters should pass, got: {result:?}"
+                let v = Validator::new_flexible();
+                v.validate("safe%2Ffile").expect(
+                    "percent-encoded path should be treated as a literal",
                 );
             }
         }
@@ -637,42 +726,34 @@ mod tests {
         mod absolute {
             use rstest::rstest;
 
-            use super::*;
+            use super::super::*;
 
             #[rstest]
             #[case::unix("/etc/hosts")]
-            #[cfg_attr(
-                target_os = "windows",
-                case::windows("C:\\Windows\\System32")
-            )]
+            #[cfg_attr(windows, case::windows("C:\\Windows\\System32"))]
             fn rejects_absolute_paths(#[case] input: &str) {
-                let validator = Validator::new_flexible();
-                let result = validator.validate(input);
+                let v = Validator::new_flexible();
                 assert!(
                     matches!(
-                        result,
+                        v.validate(input),
                         Err(PathValidationError::AbsolutePathError(_))
                     ),
-                    "Expected AbsolutePathError for '{input}', found \
-                     {result:?}"
+                    "expected AbsolutePathError for '{input}'"
                 );
             }
 
             #[test]
             fn accepts_relative_paths() {
-                let validator = Validator::new_flexible();
-                let result = validator.validate("config/lithos.toml");
-                assert!(
-                    result.is_ok(),
-                    "relative path should be valid, got: {result:?}"
-                );
+                let v = Validator::new_flexible();
+                v.validate("config/lithos.toml")
+                    .expect("relative path should be valid");
             }
         }
 
         mod restricted {
             use rstest::rstest;
 
-            use super::*;
+            use super::super::*;
 
             #[rstest]
             #[case::git(".git/config")]
@@ -680,26 +761,21 @@ mod tests {
             #[case::nested_env("config/.env")]
             #[case::ssh(".ssh/id_rsa")]
             fn rejects_hidden_files(#[case] input: &str) {
-                let validator = Validator::new_flexible();
-                let result = validator.validate(input);
+                let v = Validator::new_flexible();
                 assert!(
                     matches!(
-                        result,
+                        v.validate(input),
                         Err(PathValidationError::RestrictedPathError(_))
                     ),
-                    "Expected RestrictedPathError for '{input}', found \
-                     {result:?}"
+                    "expected RestrictedPathError for '{input}'"
                 );
             }
 
             #[test]
             fn accepts_normal_files() {
-                let validator = Validator::new_flexible();
-                let result = validator.validate("notes/daily.md");
-                assert!(
-                    result.is_ok(),
-                    "normal file should be valid, got: {result:?}"
-                );
+                let v = Validator::new_flexible();
+                v.validate("notes/daily.md")
+                    .expect("normal file should be valid");
             }
         }
     }
@@ -708,73 +784,58 @@ mod tests {
         mod strict {
             use std::io::Write as _;
 
-            use super::{
-                super::{PathValidationError, Validator, fixtures::Workspace},
-                NamedTempFile,
-            };
+            use super::*;
 
             #[test]
-
             fn rejects_escaped_symlinks() {
-                let ws = Workspace::new().expect("Workspace should be created");
-                let mut outside_file = NamedTempFile::new()
-                    .expect("Outside file should be created");
-                outside_file
-                    .write_all(b"outside")
-                    .expect("Test setup: Failed to write outside target");
-                let outside_target = outside_file.path();
-
+                let ws = Workspace::new().expect("workspace");
+                let mut outside = NamedTempFile::new().expect("outside file");
+                outside.write_all(b"outside").expect("write");
                 let symlink_path =
-                    ws.create_symlink("escaped_link", outside_target);
+                    ws.create_symlink("escaped_link", outside.path());
 
-                let validator = Validator::new_strict(ws.root.clone());
-                let resolve_result =
-                    validator.resolve_safe_symlink(&symlink_path);
-
+                let v = Validator::try_new_strict(ws.root.clone())
+                    .expect("strict validator");
                 assert!(
                     matches!(
-                        resolve_result,
+                        v.resolve_safe_symlink(&symlink_path),
                         Err(PathValidationError::SymlinkEscapeError)
                     ),
-                    "Expected SymlinkEscapeError, found {resolve_result:?}"
+                    "expected SymlinkEscapeError for symlink escaping root"
                 );
             }
 
             #[test]
-
             fn detects_symlink_loops() {
-                let ws = Workspace::new().expect("Workspace should be created");
+                let ws = Workspace::new().expect("workspace");
                 let link_a = ws.root.join("link_a");
                 let link_b = ws.root.join("link_b");
+                create_symlink_loop(&link_a, &link_b);
 
-                super::create_symlink_loop(&link_a, &link_b);
-
-                let validator = Validator::new_strict(ws.root.clone());
-                let result = validator.resolve_safe_symlink(&link_a);
-
+                let v = Validator::try_new_strict(ws.root.clone())
+                    .expect("strict validator");
                 assert!(
-                    matches!(result, Err(PathValidationError::IoError(_))),
-                    "Expected IoError for loop, found {result:?}"
+                    matches!(
+                        v.resolve_safe_symlink(&link_a),
+                        Err(PathValidationError::IoError(_))
+                    ),
+                    "expected IoError for symlink loop"
                 );
             }
 
             #[test]
-
             fn rejects_internal_hidden_targets() {
-                let ws = Workspace::new().expect("Workspace should be created");
-                let hidden_file = ws.create_file(".secret.txt", None);
-                let symlink_path =
-                    ws.create_symlink("link_to_secret", &hidden_file);
-                let validator = Validator::new_strict(ws.root.clone());
-
-                let result = validator.resolve_safe_symlink(&symlink_path);
-
+                let ws = Workspace::new().expect("workspace");
+                let hidden = ws.create_file(".secret.txt", None);
+                let symlink_path = ws.create_symlink("link_to_secret", &hidden);
+                let v = Validator::try_new_strict(ws.root.clone())
+                    .expect("strict validator");
                 assert!(
                     matches!(
-                        result,
+                        v.resolve_safe_symlink(&symlink_path),
                         Err(PathValidationError::RestrictedPathError(_))
                     ),
-                    "Expected RestrictedPathError, found {result:?}"
+                    "expected RestrictedPathError for symlink to hidden file"
                 );
             }
         }
@@ -782,51 +843,33 @@ mod tests {
         mod flexible {
             use std::io::Write as _;
 
-            use super::{
-                super::{fixtures::Workspace, *},
-                CwdGuard, NamedTempFile,
-            };
+            use super::*;
 
             #[test]
-
             fn allows_external_symlinks() {
-                let ws = Workspace::new().expect("Workspace should be created");
-                let mut outside_file = NamedTempFile::new()
-                    .expect("Outside file should be created");
-                outside_file
-                    .write_all(b"dotfile")
-                    .expect("Test setup: Failed to write outside target");
-                let outside_target = outside_file.path();
+                let ws = Workspace::new().expect("workspace");
+                let mut outside = NamedTempFile::new().expect("outside file");
+                outside.write_all(b"dotfile").expect("write");
+                ws.create_symlink("dotfile_link", outside.path());
 
-                let _link_path =
-                    ws.create_symlink("dotfile_link", outside_target);
-
-                let validator = Validator::new_flexible();
-
-                let _cwd_guard = CwdGuard::new(&ws.root)
-                    .expect("Test setup: Failed to change directory");
-
-                let resolve_result =
-                    validator.resolve_safe_symlink("dotfile_link");
-
+                let v = Validator::new_flexible();
+                let _guard = CwdGuard::new(&ws.root)
+                    .expect("failed to change directory");
                 assert!(
-                    resolve_result.is_ok(),
-                    "flexible mode should allow external symlinks, found \
-                     {resolve_result:?}"
+                    v.resolve_safe_symlink("dotfile_link").is_ok(),
+                    "flexible mode should allow external symlinks"
                 );
             }
 
             #[test]
             fn enforces_input_traversal_checks() {
-                let validator = Validator::new_flexible();
-                let result = validator.resolve_safe_symlink("../../../dotfile");
-
+                let v = Validator::new_flexible();
                 assert!(
                     matches!(
-                        result,
+                        v.resolve_safe_symlink("../../../dotfile"),
                         Err(PathValidationError::PathTraversalError)
                     ),
-                    "Expected PathTraversalError on input, found {result:?}"
+                    "expected PathTraversalError on traversal input"
                 );
             }
         }
@@ -835,6 +878,8 @@ mod tests {
 
         use tempfile::NamedTempFile;
 
+        use super::{fixtures::Workspace, *};
+
         fn cwd_lock() -> &'static Mutex<()> {
             static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
             LOCK.get_or_init(|| Mutex::new(()))
@@ -842,21 +887,22 @@ mod tests {
 
         struct CwdGuard {
             _guard: MutexGuard<'static, ()>,
-            previous: std::path::PathBuf,
+            previous: PathBuf,
         }
 
         impl CwdGuard {
-            fn new(path: &std::path::Path) -> Result<Self, std::io::Error> {
+            fn new(path: &Path) -> Result<Self, std::io::Error> {
                 let guard = cwd_lock().lock().map_err(|err| {
                     std::io::Error::other(format!("CWD lock poisoned: {err}"))
                 })?;
                 #[expect(
                     clippy::disallowed_methods,
-                    reason = "Test-only CWD guard needs current working \
-                              directory to restore state after test."
+                    reason = "Test-only CWD guard needs current_dir to \
+                              restore state after the test. No alternative \
+                              API exists for saving and restoring the working \
+                              directory."
                 )]
                 let previous = std::env::current_dir()?;
-
                 std::env::set_current_dir(path)?;
                 Ok(Self {
                     _guard: guard,
@@ -867,49 +913,26 @@ mod tests {
 
         impl Drop for CwdGuard {
             fn drop(&mut self) {
-                if let Err(error) = std::env::set_current_dir(&self.previous) {
-                    eprintln!("CwdGuard: failed to restore CWD: {error}");
+                if let Err(err) = std::env::set_current_dir(&self.previous) {
+                    eprintln!("CwdGuard: failed to restore CWD: {err}");
                 }
             }
         }
 
-        /// Helper to create circular symlinks (extracted to reduce nesting).
         #[cfg(unix)]
-        fn create_symlink_loop(
-            link_a: &std::path::Path,
-            link_b: &std::path::Path,
-        ) {
-            let symlink_result = std::os::unix::fs::symlink(link_b, link_a);
-            assert!(
-                symlink_result.is_ok(),
-                "Test setup: Failed to create symlink: {symlink_result:?}"
-            );
-            let symlink_result_second =
-                std::os::unix::fs::symlink(link_a, link_b);
-            assert!(
-                symlink_result_second.is_ok(),
-                "Test setup: Failed to create symlink: \
-                 {symlink_result_second:?}"
-            );
+        fn create_symlink_loop(link_a: &Path, link_b: &Path) {
+            let r1 = std::os::unix::fs::symlink(link_b, link_a);
+            assert!(r1.is_ok(), "test setup: failed to create symlink: {r1:?}");
+            let r2 = std::os::unix::fs::symlink(link_a, link_b);
+            assert!(r2.is_ok(), "test setup: failed to create symlink: {r2:?}");
         }
 
         #[cfg(windows)]
-        fn create_symlink_loop(
-            link_a: &std::path::Path,
-            link_b: &std::path::Path,
-        ) {
-            let symlink_result =
-                std::os::windows::fs::symlink_file(link_b, link_a);
-            assert!(
-                symlink_result.is_ok(),
-                "Test setup: Failed to create symlink: {symlink_result:?}"
-            );
-            let symlink_result =
-                std::os::windows::fs::symlink_file(link_a, link_b);
-            assert!(
-                symlink_result.is_ok(),
-                "Test setup: Failed to create symlink: {symlink_result:?}"
-            );
+        fn create_symlink_loop(link_a: &Path, link_b: &Path) {
+            let r1 = std::os::windows::fs::symlink_file(link_b, link_a);
+            assert!(r1.is_ok(), "test setup: failed to create symlink: {r1:?}");
+            let r2 = std::os::windows::fs::symlink_file(link_a, link_b);
+            assert!(r2.is_ok(), "test setup: failed to create symlink: {r2:?}");
         }
     }
 
@@ -918,34 +941,14 @@ mod tests {
 
         #[test]
         fn handles_platform_separators_consistently() {
-            let validator = Validator::new_flexible();
+            let v = Validator::new_flexible();
             #[cfg(unix)]
             let path = "config/notes/file.md";
             #[cfg(windows)]
             let path = "config\\notes\\file.md";
-
-            let result = validator.validate(path);
             assert!(
-                result.is_ok(),
-                "platform separators should be handled correctly, got: \
-                 {result:?}"
-            );
-        }
-
-        #[test]
-        #[cfg(unix)]
-        fn rejects_non_utf8_hidden_files() {
-            use std::{ffi::OsStr, os::unix::ffi::OsStrExt as _};
-
-            let validator = Validator::new_flexible();
-            let bytes = b".\xffinvalid";
-            let os_str = OsStr::from_bytes(bytes);
-            let path = Path::new(os_str);
-            let result = validator.validate(path);
-
-            assert!(
-                result.is_err(),
-                "Expected error for non-UTF8 hidden file, found success"
+                v.validate(path).is_ok(),
+                "platform separators should be handled correctly"
             );
         }
 
@@ -954,19 +957,27 @@ mod tests {
         fn rejects_non_utf8_paths() {
             use std::{ffi::OsStr, os::unix::ffi::OsStrExt as _};
 
-            let validator = Validator::new_flexible();
-            let bytes = b"invalid\xffutf8";
-            let os_str = OsStr::from_bytes(bytes);
-            let path = Path::new(os_str);
-            let result = validator.validate(path);
-
+            let v = Validator::new_flexible();
+            let os_str = OsStr::from_bytes(b"invalid\xffutf8");
             assert!(
                 matches!(
-                    result,
+                    v.validate(std::path::Path::new(os_str)),
                     Err(PathValidationError::InvalidPathEncoding(_))
                 ),
-                "Expected InvalidPathEncoding error for non-UTF8 path, found \
-                 {result:?}"
+                "expected InvalidPathEncoding for non-UTF-8 path"
+            );
+        }
+
+        #[test]
+        #[cfg(unix)]
+        fn rejects_non_utf8_hidden_files() {
+            use std::{ffi::OsStr, os::unix::ffi::OsStrExt as _};
+
+            let v = Validator::new_flexible();
+            let os_str = OsStr::from_bytes(b".\xffinvalid");
+            assert!(
+                v.validate(std::path::Path::new(os_str)).is_err(),
+                "expected error for non-UTF-8 hidden file"
             );
         }
     }

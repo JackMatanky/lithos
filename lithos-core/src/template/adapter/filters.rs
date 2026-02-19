@@ -213,12 +213,14 @@ impl FilterRegistry {
     ///
     /// Usage: `{{ path | vault_path }}`.
     fn vault_path(path: String) -> Result<String, minijinja::Error> {
-        crate::fs::validate_vault_path(&path, None).map_err(|e| {
-            minijinja::Error::new(
-                minijinja::ErrorKind::InvalidOperation,
-                format!("Invalid vault path: {e}"),
-            )
-        })?;
+        crate::fs::PathValidator::validate_vault_path(&path, None).map_err(
+            |e| {
+                minijinja::Error::new(
+                    minijinja::ErrorKind::InvalidOperation,
+                    format!("Invalid vault path: {e}"),
+                )
+            },
+        )?;
 
         Ok(path)
     }

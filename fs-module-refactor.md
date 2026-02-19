@@ -27,7 +27,7 @@ The review identified three categories of problem:
 
 ## Step 1 — `Cargo.toml`: promote `tempfile` to a regular dependency
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why first:** `atomic_write` (Step 6) uses `tempfile::NamedTempFile` in production code.
 `tempfile` is currently a dev-dependency only. It must be promoted before Step 6 touches
@@ -44,7 +44,7 @@ to `[dependencies]`.
 
 ## Step 2 — `error.rs`: delete `FsError`; add `PathValidationError::RelativeRoot`
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** `FsError` is a one-variant passthrough of `std::io::Error` with no callers anywhere in
 the codebase. It adds no context, enforces no invariant, and has no justification for existing.
@@ -68,7 +68,7 @@ RelativeRoot(std::path::PathBuf),
 
 ## Step 3 — `validator.rs`: all structural and logic fixes
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** The validator has the most issues of any single file: a panicking constructor, a
 misplaced Windows path check, dead indirection, an opaque match arm, silent hidden-coupling
@@ -243,7 +243,7 @@ path check fires *before* the standard validator (verifies the ordering fix).
 
 ## Step 4 — `mod.rs`: remove deleted/privatised re-exports; update docs
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** `mod.rs` is the public surface of the `fs` module. After Steps 2 and 3 it re-exports
 types that no longer exist and exposes free functions that are now methods. This step cleans
@@ -281,7 +281,7 @@ pub(crate) type Markdown = types::Markdown;
 
 ## Step 5 — `types.rs`: make `pub(crate)`; wire `detect()` into `classify_path`
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** `Json`, `Toml`, `Yaml`, `Markdown` have no external callers — they are implementation
 detail of `parse_structured`. The `detect()` methods exist but are never called; the
@@ -592,7 +592,7 @@ Required test cases:
 
 ## Step 8 — `template/adapter/filters.rs`: update `validate_vault_path` call site
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** The only external caller of `validate_vault_path` uses it as a free function from
 `crate::fs`. After Step 3 it is an associated function on `Validator`.
