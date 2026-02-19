@@ -5,6 +5,7 @@ This document captures the fs module review, including the full set of problems 
 ## Scope and intent
 
 The fs module must provide capabilities beyond std::fs by centralizing:
+
 - root scoping and path validation policy
 - deterministic discovery (glob-based, stable order)
 - a well-defined read pipeline (validation → classify → read → parse)
@@ -18,10 +19,12 @@ Domain types must not import fs. Context-specific parsing (notably Markdown opti
 ### 1) Path validation split and context boundary violations
 
 Problem:
+
 - `NotePath::new()` imports `crate::fs::validate_vault_path` (infrastructure dependency in a domain type).
 - `validate_vault_path` and `PathValidator` duplicate logic and disagree on `..` handling.
 
 Solutions:
+
 - Inline domain-level validation in `NotePath::new()` (relative, `.md`, no `..`, no dotfiles). No fs import.
 - Move `validate_vault_path` into `validator.rs` and make it delegate to `PathValidator`.
 - Fix `validate_vault_path` to check `Component::ParentDir` rather than substring `".."`.
@@ -30,23 +33,27 @@ Solutions:
 ### 2) Read vs parse pipeline ambiguity
 
 Problem:
+
 - Reading and parsing were conflated, leading to confusion over responsibilities and public APIs.
 
 Solutions:
+
 - Define the pipeline explicitly in `FsReader`:
-  1) `validate_path`
-  2) `classify(path)`
-  3) `read_bytes` / `read_to_string`
-  4) `parse_structured<T>` (JSON/TOML/YAML only)
-  5) `read<T>` convenience method that dispatches via classification and parsing
+  1. `validate_path`
+  2. `classify(path)`
+  3. `read_bytes` / `read_to_string`
+  4. `parse_structured<T>` (JSON/TOML/YAML only)
+  5. `read<T>` convenience method that dispatches via classification and parsing
 - Keep parsing for JSON/TOML/YAML in fs, but allow context-specific Markdown parsing through a closure hook.
 
 ### 3) Format identification should be explicit and type-safe
 
 Problem:
+
 - A generic “Structured” bucket is too coarse, and risks parsing JSON as TOML or YAML.
 
 Solutions:
+
 - Keep Json/Toml/Yaml structs and rely on existing `is_supported(path)` methods.
 - `FsReader::classify(path)` uses the public type-level predicates (e.g., `Json::is_supported(path)`), and each type’s `parse` must call its own `is_supported` guard to prevent mismatches.
 - Ensure `parse_structured<T>` checks the file type before parsing to prevent mismatches.
@@ -54,9 +61,11 @@ Solutions:
 ### 4) Parsing should not force context-specific Markdown decisions
 
 Problem:
+
 - Markdown parsing is context-dependent (Obsidian options), and fs should not own those policies.
 
 Solutions:
+
 - FsReader exposes `read_with<T>(path, f)` where `f` is a closure `(path, text) -> Result<T, ParseError>`.
 - Contexts inject their own Markdown parsing without fs depending on pulldown-cmark.
 - FsReader can still classify Markdown by extension for pipeline dispatch.
@@ -64,9 +73,11 @@ Solutions:
 ### 5) FsReader/FsWriter split and value beyond std
 
 Problem:
+
 - The current `FileSource` is a thin wrapper and not worth its maintenance cost.
 
 Solutions:
+
 - Rename `FileSource` to `FsReader` in `reader.rs`.
 - Introduce `FsWriter` in `writer.rs` with safe write orchestration.
 - Ensure fs adds value beyond std via:
@@ -79,10 +90,12 @@ Solutions:
 ### 6) Glob discovery and traversal correctness
 
 Problem:
+
 - `list_files` compiles the glob per entry and silently drops errors.
 - `walkdir` is unnecessary for simple globbing.
 
 Solutions:
+
 - Use `glob::glob()` with a single compiled pattern.
 - Return errors on invalid patterns.
 - Make ordering deterministic by sorting results.
@@ -91,9 +104,11 @@ Solutions:
 ### 7) Symlink policy must be context-dependent
 
 Problem:
+
 - Hard-coded symlink exclusion is incorrect for some contexts (e.g., config files often symlinked).
 
 Solutions:
+
 - Default to **including symlinks** in discovery.
 - Add a policy hook or configuration for stricter contexts later.
 - Document the future policy option in fs docs.
@@ -101,9 +116,11 @@ Solutions:
 ### 8) Atomic write durability decision
 
 Problem:
+
 - `rename` is not a full durability guarantee; parent-dir fsync may be required for crash safety.
 
 Recommendation:
+
 - Default to a lean, safe approach:
   - write temp file with `create_new`
   - `sync_all` on the file
@@ -113,9 +130,11 @@ Recommendation:
 ### 9) Tests must use tempfile only
 
 Problem:
+
 - In-memory sources diverge from real filesystem behavior.
 
 Solutions:
+
 - Remove in-memory implementations.
 - Replace tests with `tempfile::TempDir` integration tests.
 - Ensure tests cover glob patterns, symlink handling, and read/parse pipeline dispatch.
@@ -123,6 +142,7 @@ Solutions:
 ## File-level plan (summary)
 
 ### fs/reader.rs (renamed from source.rs)
+
 - Rename `FileSource` -> `FsReader`.
 - Add pipeline methods: `validate_path`, `classify`, `read_bytes`, `read_to_string`, `parse_structured<T>`.
 - Add convenience `read<T>` that dispatches by file type.
@@ -131,27 +151,31 @@ Solutions:
 - Fix `list_files()` to use `glob::glob()` with deterministic ordering.
 
 ### fs/types.rs (renamed from parsers.rs)
+
 - Keep Json/Toml/Yaml structs only (no FsParser).
 - Use existing `is_supported(path)` in each type’s `parse` method (no separate helpers).
 - Keep parse methods for each struct and ensure they validate the file type.
 
 ### fs/writer.rs (new)
+
 - Add `FsWriter` and `OsFsWriter`.
 - Implement `atomic_write` (no parent-dir fsync by default).
 
 ### fs/validator.rs
+
 - Move `validate_vault_path` here and delegate to `PathValidator`.
 - Fix Windows drive-relative check.
 
 ### note/aggregate.rs
+
 - Inline `NotePath::new` domain validation with no fs dependency.
 
 ## Open questions resolved by this review
 
-1) **Format classification**: `FsReader::classify(path)` with type helpers in `types.rs`.
-2) **Convenience read**: provide `read<T>(path)` that dispatches to the correct read/parse path.
-3) **Markdown parsing hook**: use closure-based `read_with<T>` to avoid coupling to pulldown-cmark.
-4) **Public surface**: keep FormatKind internal where possible; prefer `FsReader` as the main entry point.
+1. **Format classification**: `FsReader::classify(path)` with type helpers in `types.rs`.
+2. **Convenience read**: provide `read<T>(path)` that dispatches to the correct read/parse path.
+3. **Markdown parsing hook**: use closure-based `read_with<T>` to avoid coupling to pulldown-cmark.
+4. **Public surface**: keep FormatKind internal where possible; prefer `FsReader` as the main entry point.
 
 ---
 
@@ -162,16 +186,16 @@ references symbols changed by this refactor. Results are listed with their impac
 
 ### Files outside fs/ that are affected
 
-| File | Affected symbols | Requires code change? |
-|---|---|---|
-| `lithos-core/src/note/aggregate.rs` | `crate::fs::validate_vault_path` (line 369) | **Yes** — step 4 replaces with inline validation |
-| `lithos-core/src/note/parser.rs` | `crate::fs::MarkdownParser` (line 23) | **No** — `pub(crate)` is visible within the same crate; no change required |
-| `lithos-core/src/schema/adapter/ingestor.rs` | `FileSource`, `parse_file` (lines 7, 54, 67, 105) | **Yes** — steps 5h and 6i |
-| `lithos-core/src/schema/error.rs` | `From<ParseError>` impl (line 254) — destructures `Box<Path>` and `Vec<&'static str>` | **No** — `PathBuf::to_string_lossy()` and `<[_]>::join()` both compile after step 1 changes |
-| `lithos-core/src/template/adapter/filters.rs` | `crate::fs::validate_vault_path` (line 216) | **No** — uses `format!("{e}")` which works for any `Display` type; compiles after step 3 changes return type |
-| `lithos-core/src/application/mod.rs` | doc comment mentions `FileSource` (line 31) | **Minor** — update in step 10b, add to files-changed table |
-| `lithos-core/tests/architecture.rs` | Uses `FileSource` only in assertion message strings | **No** — not a Rust import; unaffected |
-| `lithos-cli/src/` | Zero usages of any affected symbol | **No** |
+| File                                          | Affected symbols                                                                      | Requires code change?                                                                                        |
+| --------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `lithos-core/src/note/aggregate.rs`           | `crate::fs::validate_vault_path` (line 369)                                           | **Yes** — step 4 replaces with inline validation                                                             |
+| `lithos-core/src/note/parser.rs`              | `crate::fs::MarkdownParser` (line 23)                                                 | **No** — `pub(crate)` is visible within the same crate; no change required                                   |
+| `lithos-core/src/schema/adapter/ingestor.rs`  | `FileSource`, `parse_file` (lines 7, 54, 67, 105)                                     | **Yes** — steps 5h and 6i                                                                                    |
+| `lithos-core/src/schema/error.rs`             | `From<ParseError>` impl (line 254) — destructures `Box<Path>` and `Vec<&'static str>` | **No** — `PathBuf::to_string_lossy()` and `<[_]>::join()` both compile after step 1 changes                  |
+| `lithos-core/src/template/adapter/filters.rs` | `crate::fs::validate_vault_path` (line 216)                                           | **No** — uses `format!("{e}")` which works for any `Display` type; compiles after step 3 changes return type |
+| `lithos-core/src/application/mod.rs`          | doc comment mentions `FileSource` (line 31)                                           | **Minor** — update in step 10b, add to files-changed table                                                   |
+| `lithos-core/tests/architecture.rs`           | Uses `FileSource` only in assertion message strings                                   | **No** — not a Rust import; unaffected                                                                       |
+| `lithos-cli/src/`                             | Zero usages of any affected symbol                                                    | **No**                                                                                                       |
 
 ### Gap: steps 3 and 4 must be treated as an atomic unit
 
@@ -274,6 +298,7 @@ Legend: `[ ]` pending · `[x]` done
 **Status:** `[ ]`
 
 **What:**
+
 - Replace `Box<std::path::Path>` with `PathBuf` in all four `ParseError`
   variants (`Io`, `Json`, `Toml`, `Yaml`, `UnsupportedFormat`).
 - Change `UnsupportedFormat.supported` from `Vec<&'static str>` to
@@ -303,15 +328,19 @@ a second touch when `parsers.rs` is restructured in step 3.
 **What:**
 
 2a. Change `validate()` signature from
+
 ```rust
 pub fn validate<'path, PathType>(&self, path: &'path PathType)
     -> Result<Cow<'path, Path>, PathValidationError>
 ```
+
 to
+
 ```rust
 pub fn validate<PathType>(&self, path: &PathType)
     -> Result<(), PathValidationError>
 ```
+
 Update the single internal caller at `validator.rs:325`:
 `let _validated: Cow<'_, Path> = self.validate(path_ref)?;`
 becomes `self.validate(path_ref)?;`
@@ -324,6 +353,7 @@ Remove `pub type ValidationMode = Mode;` (line 91) — it has zero callers.
 Remove the `use tracing::{debug, warn};` import (line 72).
 
 2d. Fix `CwdGuard::drop` (line 833):
+
 ```rust
 // before
 if std::env::set_current_dir(&self.previous).is_err() {}
@@ -357,6 +387,7 @@ Step 3 moves `validate_vault_path` into `validator.rs` and calls
 **What:**
 
 3a. Move from `mod.rs` into `validator.rs` (make private):
+
 - `check_windows_separator` — inline its body directly into
   `check_windows_path_bytes` (it is a one-line predicate);
   delete the separate function.
@@ -366,6 +397,7 @@ Step 3 moves `validate_vault_path` into `validator.rs` and calls
 3b. Fix `is_windows_absolute_path` / `check_windows_path_bytes` to also catch
 drive-relative paths (e.g., `C:relative` where position 2 is neither `/`
 nor `\`). New logic:
+
 ```rust
 fn check_windows_path_bytes(bytes: &[u8]) -> bool {
     // Matches C:\ C:/ C:relative — any path starting with [alpha]:
@@ -373,16 +405,20 @@ fn check_windows_path_bytes(bytes: &[u8]) -> bool {
         && bytes.get(1) == Some(&b':')
 }
 ```
+
 This correctly rejects all Windows absolute AND drive-relative paths.
 
 3c. Add `validate_vault_path` to `validator.rs` as a `pub fn`:
+
 ```rust
 pub fn validate_vault_path(
     path: &str,
     require_extension: Option<&str>,
 ) -> Result<(), PathValidationError>
 ```
+
 Implementation:
+
 - Reject empty string → `PathValidationError::AbsolutePathError` (reuse
   or add a dedicated `EmptyPath` variant — prefer dedicated variant).
 - Call `Validator::new_flexible().validate(path)?` for traversal, hidden
@@ -396,6 +432,7 @@ Implementation:
 - Return type is `Result<(), PathValidationError>` (not `String`).
 
 3d. In `mod.rs`:
+
 - Remove the four functions that moved to `validator.rs`.
 - Add `pub use validator::validate_vault_path;` and
   `pub use validator::is_windows_absolute_path;` re-exports so existing
@@ -465,6 +502,7 @@ fn validate_note_path(path: &str) -> Result<(), NoteError> {
 ```
 
 Add the comment:
+
 ```rust
 // TODO(future): filesystem-level validation (symlink resolution, vault
 // boundary checking) belongs in the note ingestion adapter using
@@ -499,6 +537,7 @@ Remove `crate::fs` import from `note/aggregate.rs`.
 5e. In each type's `parse` method, add an `is_supported` guard at the top
 that returns `ParseError::UnsupportedFormat` if the path extension does not
 match, preventing cross-format misparse:
+
 ```rust
 // Example for Json::parse
 pub fn parse<T: DeserializeOwned>(path: &Path, content: &str)
@@ -513,6 +552,7 @@ pub fn parse<T: DeserializeOwned>(path: &Path, content: &str)
     serde_json::from_str(content).map_err(|e| ParseError::Json { ... })
 }
 ```
+
 Do the same for `Toml::parse` and `Yaml::parse`.
 
 5f. Keep `Json`, `Toml`, `Yaml` structs and their `is_supported`, `detect`,
@@ -520,12 +560,14 @@ and `parse` methods. Keep all existing tests, updating module path from
 `parsers` to `types` in `mod.rs`.
 
 5g. Update `mod.rs`:
+
 - Change `pub mod parsers;` to `pub mod types;`.
 - Change `pub type FormatDispatcher = parsers::Dispatcher;` — remove this
   alias entirely (Dispatcher is gone).
 - Add re-exports: `pub use types::{Json, Toml, Yaml};`
 
 5h. Update `schema/adapter/ingestor.rs` (lines 7, 54, 67, 105):
+
 - Remove `use crate::fs::parsers::parse_file;` import (line 7).
 - Remove `use crate::fs::source::FileSource;` import (line 7).
 - The `impl<S: FileSource<Error = std::io::Error>> Ingestor<'_, S>` bound (line 54)
@@ -585,6 +627,7 @@ throughout the file. Remove `InMemoryFileSource` entirely
 (its tests are replaced in step 9).
 
 6c. Add `FormatKind` as a `pub(crate)` enum in `reader.rs`:
+
 ```rust
 pub(crate) enum FormatKind {
     Json,
@@ -597,6 +640,7 @@ pub(crate) enum FormatKind {
 ```
 
 6d. Add `FileMetadata` as a `pub` struct in `reader.rs`:
+
 ```rust
 pub struct FileMetadata {
     pub modified: Option<std::time::SystemTime>,
@@ -673,6 +717,7 @@ common binary extensions (`["png", "jpg", "jpeg", "gif", "pdf", "mp3", "mp4",
 "zip", "wasm"]`).
 
 6f. Fix `OsFsReader::list_files`:
+
 - Replace `walkdir::WalkDir` + per-entry `glob::Pattern::new()` with a
   single `glob::glob()` call:
   ```rust
@@ -697,6 +742,7 @@ common binary extensions (`["png", "jpg", "jpeg", "gif", "pdf", "mp3", "mp4",
   Document: symlinks are included by default; policy tightening is deferred.
 
 6g. Implement `read_bytes` and `metadata` on `OsFsReader`:
+
 ```rust
 fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, io::Error> {
     std::fs::read(self.resolve_path(path))
@@ -714,6 +760,7 @@ fn metadata(&self, path: &Path) -> Result<FileMetadata, io::Error> {
 ```
 
 6h. Update `mod.rs`:
+
 - Change `pub mod source;` to `pub mod reader;`.
 - Remove `pub type FsFileSource = source::FsFileSource;`
   and `pub type InMemoryFileSource = source::InMemoryFileSource;`.
@@ -724,6 +771,7 @@ fn metadata(&self, path: &Path) -> Result<FileMetadata, io::Error> {
   ```
 
 6i. Update `schema/adapter/ingestor.rs`:
+
 - Restore the generic parameter `S: FsReader` on `Ingestor`:
   ```rust
   pub struct Ingestor<'config, S> {
@@ -769,6 +817,7 @@ pub trait FsWriter: Send + Sync {
 ```
 
 7b. Implement `OsFsWriter`:
+
 ```rust
 pub struct OsFsWriter { root: PathBuf }
 
@@ -817,6 +866,7 @@ impl FsWriter for OsFsWriter {
     }
 }
 ```
+
 `tmp_name` generates a unique temp filename in the same directory using the
 target filename + a random suffix (`format!(".{}.tmp", rand_suffix)`).
 Use `std::time::SystemTime` nanos or a simple counter for the suffix — no
@@ -840,13 +890,16 @@ converting `PathValidationError` to `io::Error` via `io::Error::other(e)`.
 **What:**
 
 8a. Add a new `PathValidationError::EmptyPath` variant:
+
 ```rust
 #[error("Path cannot be empty")]
 EmptyPath,
 ```
+
 Used by `validate_vault_path` (step 3c) and documented for external callers.
 
 8b. Ensure `new_strict` `# Panics` doc reads:
+
 > Panics if `root` is not an absolute path. The caller is responsible for
 > canonicalizing the root with `std::fs::canonicalize` before calling this
 > constructor. Passing a non-canonicalized path containing symlinks may cause
@@ -866,6 +919,7 @@ Used by `validate_vault_path` (step 3c) and documented for external callers.
 `reader.rs`). These are fully replaced.
 
 9b. Add integration tests in `reader.rs` using `tempfile::TempDir` covering:
+
 - `list_files("**/*.json")` — returns only json files, sorted, relative.
 - `list_files("*.md")` — flat directory, correct files only.
 - `list_files("[invalid")` — returns `InvalidInput` error.
@@ -879,6 +933,7 @@ Used by `validate_vault_path` (step 3c) and documented for external callers.
 - `read_with` — invokes closure with content, closure result propagated.
 
 9c. Update `schema/adapter/ingestor.rs` tests (lines 129–439):
+
 - Remove `use fs::source::InMemoryFileSource;` import.
 - Replace all `InMemoryFileSource::new()` / `source.insert(...)` patterns
   with a helper that creates a `TempDir`, writes files to disk, and
@@ -903,6 +958,7 @@ Do NOT remove the `mod` declaration — `note/parser.rs:23` imports
 `crate::fs::MarkdownParser` and must continue to compile.
 
 Change the type aliases in `mod.rs` from `pub` to `pub(crate)`:
+
 ```rust
 // before
 pub type MarkdownParser = markdown::MarkdownParser;
@@ -921,6 +977,7 @@ context. Making the module `pub(crate)` prevents external crates from
 depending on it while deferring the full move to a follow-up ADR.
 
 10b. Update `mod.rs` module doc comment to reflect the new structure:
+
 - Remove references to `parsers`, `source`, `FormatDispatcher`,
   `InMemoryFileSource`, `FsFileSource`.
 - Add descriptions of `reader`, `writer`, `types`.
@@ -956,26 +1013,26 @@ Step 10 (mod.rs + markdown.rs final cleanup)         ← needs all prior steps
 
 ### Files changed (complete list)
 
-| File | Step(s) | Change |
-|---|---|---|
-| `lithos-core/src/fs/error.rs` | 1, 8 | `Box<Path>` → `PathBuf`; `Vec<&'static str>` → `&'static [&'static str]` in `UnsupportedFormat`; add `EmptyPath` variant |
-| `lithos-core/src/fs/validator.rs` | 2, 3, 8 | `validate()` return; `Mode` visibility; tracing removed; path helpers moved in; Windows fix; `validate_vault_path` added; `new_strict` doc fixed |
-| `lithos-core/src/fs/mod.rs` | 3, 5, 6, 10 | Remove moved fns; update re-exports; update docs; `pub` → `pub(crate)` for markdown types |
-| `lithos-core/src/fs/parsers.rs` → `types.rs` | 5 | Rename; remove `Dispatcher`, `parse_file`, tracing; add `is_supported` guard in `parse` methods |
-| `lithos-core/src/fs/source.rs` → `reader.rs` | 6 | Rename; `FileSource` → `FsReader`; `FsFileSource` → `OsFsReader`; remove `InMemoryFileSource`; add `FormatKind`, `FileMetadata`, pipeline methods; fix `list_files` |
-| `lithos-core/src/fs/writer.rs` | 7 | New file: `FsWriter`, `OsFsWriter`, `atomic_write` |
-| `lithos-core/src/fs/markdown.rs` | 10 | Change to `pub(crate)` module; keep in place; `note/parser.rs` unchanged |
-| `lithos-core/Cargo.toml` | 9 | Remove `walkdir` from `[dependencies]` |
-| `lithos-core/src/note/aggregate.rs` | 4 | Remove `crate::fs` import; inline domain validation |
-| `lithos-core/src/schema/adapter/ingestor.rs` | 5, 6, 9 | Step 5: remove `S` generic + `FileSource` bound, inline `std::fs`; step 6: restore `S: FsReader` abstraction; step 9: replace in-memory tests with `tempfile` |
-| `lithos-core/src/application/mod.rs` | 10 | Doc comment only: `FileSource` → `FsReader` |
+| File                                         | Step(s)     | Change                                                                                                                                                              |
+| -------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lithos-core/src/fs/error.rs`                | 1, 8        | `Box<Path>` → `PathBuf`; `Vec<&'static str>` → `&'static [&'static str]` in `UnsupportedFormat`; add `EmptyPath` variant                                            |
+| `lithos-core/src/fs/validator.rs`            | 2, 3, 8     | `validate()` return; `Mode` visibility; tracing removed; path helpers moved in; Windows fix; `validate_vault_path` added; `new_strict` doc fixed                    |
+| `lithos-core/src/fs/mod.rs`                  | 3, 5, 6, 10 | Remove moved fns; update re-exports; update docs; `pub` → `pub(crate)` for markdown types                                                                           |
+| `lithos-core/src/fs/parsers.rs` → `types.rs` | 5           | Rename; remove `Dispatcher`, `parse_file`, tracing; add `is_supported` guard in `parse` methods                                                                     |
+| `lithos-core/src/fs/source.rs` → `reader.rs` | 6           | Rename; `FileSource` → `FsReader`; `FsFileSource` → `OsFsReader`; remove `InMemoryFileSource`; add `FormatKind`, `FileMetadata`, pipeline methods; fix `list_files` |
+| `lithos-core/src/fs/writer.rs`               | 7           | New file: `FsWriter`, `OsFsWriter`, `atomic_write`                                                                                                                  |
+| `lithos-core/src/fs/markdown.rs`             | 10          | Change to `pub(crate)` module; keep in place; `note/parser.rs` unchanged                                                                                            |
+| `lithos-core/Cargo.toml`                     | 9           | Remove `walkdir` from `[dependencies]`                                                                                                                              |
+| `lithos-core/src/note/aggregate.rs`          | 4           | Remove `crate::fs` import; inline domain validation                                                                                                                 |
+| `lithos-core/src/schema/adapter/ingestor.rs` | 5, 6, 9     | Step 5: remove `S` generic + `FileSource` bound, inline `std::fs`; step 6: restore `S: FsReader` abstraction; step 9: replace in-memory tests with `tempfile`       |
+| `lithos-core/src/application/mod.rs`         | 10          | Doc comment only: `FileSource` → `FsReader`                                                                                                                         |
 
 ### Files that do NOT need changes despite referencing affected symbols
 
-| File | Symbol referenced | Reason no change needed |
-|---|---|---|
-| `lithos-core/src/template/adapter/filters.rs` | `validate_vault_path` (line 216) | Uses only `format!("{e}")` — `PathValidationError: Display`; compiles after step 3 |
-| `lithos-core/src/schema/error.rs` | `From<ParseError>` (line 254) | `PathBuf::to_string_lossy()` and `<[_]>::join()` work for changed types |
-| `lithos-core/src/note/parser.rs` | `crate::fs::MarkdownParser` (line 23) | `pub(crate)` is visible within the crate; no change needed |
-| `lithos-core/tests/architecture.rs` | `FileSource` in string literals only | Not a Rust import; assertion messages only |
-| `lithos-cli/src/` | None | No fs symbols used |
+| File                                          | Symbol referenced                     | Reason no change needed                                                            |
+| --------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------- |
+| `lithos-core/src/template/adapter/filters.rs` | `validate_vault_path` (line 216)      | Uses only `format!("{e}")` — `PathValidationError: Display`; compiles after step 3 |
+| `lithos-core/src/schema/error.rs`             | `From<ParseError>` (line 254)         | `PathBuf::to_string_lossy()` and `<[_]>::join()` work for changed types            |
+| `lithos-core/src/note/parser.rs`              | `crate::fs::MarkdownParser` (line 23) | `pub(crate)` is visible within the crate; no change needed                         |
+| `lithos-core/tests/architecture.rs`           | `FileSource` in string literals only  | Not a Rust import; assertion messages only                                         |
+| `lithos-cli/src/`                             | None                                  | No fs symbols used                                                                 |
