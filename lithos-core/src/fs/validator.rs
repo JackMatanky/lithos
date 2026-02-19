@@ -417,7 +417,9 @@ impl Validator {
 /// Validates a vault-relative path.
 ///
 /// Bundles common path constraints: non-empty, relative, no traversal,
-/// optional extension.
+/// optional extension. This helper exists to standardize the rules used for
+/// vault paths across adapters and avoid duplicating security checks at each
+/// call site.
 ///
 /// # Errors
 ///

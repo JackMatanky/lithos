@@ -1,6 +1,12 @@
 //! Error types for filesystem and parsing operations.
+//!
+//! These errors preserve contextual data (paths, line/column, or extensions)
+//! so adapter layers can surface actionable diagnostics without leaking
+//! low-level I/O details into domain logic.
 
 /// File system error types.
+///
+/// Kept minimal to avoid coupling callers to any particular storage backend.
 #[expect(
     clippy::module_name_repetitions,
     reason = "Context-specific error name is intentional"
@@ -93,6 +99,9 @@ pub enum ParseError {
 }
 
 /// Path validation error types.
+///
+/// This enum is designed for human-readable reporting while still retaining
+/// structured fields for logging and testing.
 #[expect(
     clippy::module_name_repetitions,
     reason = "Context-specific error name is intentional"

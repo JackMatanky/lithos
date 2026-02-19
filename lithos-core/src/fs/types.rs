@@ -3,7 +3,8 @@
 //! This module defines file type helpers used to classify and parse
 //! structured configuration files. JSON/TOML/YAML expose detect + parse
 //! helpers; Markdown is represented as a file type without detect/parse
-//! support.
+//! support. This keeps format identification centralized so reader pipelines
+//! remain deterministic and adapter code can avoid ad-hoc extension checks.
 //!
 //! # Usage
 //!
@@ -41,6 +42,9 @@ pub struct Toml;
 pub struct Yaml;
 
 /// Markdown file type marker.
+///
+/// Markdown does not use `detect`/`parse` here because parsing is delegated to
+/// adapter-specific markdown implementations (e.g., pulldown-cmark).
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Markdown;

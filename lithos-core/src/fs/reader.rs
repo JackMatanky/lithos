@@ -1,7 +1,9 @@
 //! File system abstraction for testable file I/O.
 //!
 //! This module provides the [`FsReader`] concrete type for scoped filesystem
-//! access.
+//! access. The reader keeps path resolution anchored to a root directory so
+//! adapters can perform deterministic file access without leaking filesystem
+//! details into domain logic.
 
 use std::{
     io,
@@ -47,6 +49,24 @@ pub struct FileMetadata {
 }
 
 /// Production file reader using `std::fs` for real filesystem access.
+///
+/// The reader enforces root-scoped access and is intended for adapter layers
+/// that ingest files into domain models.
+///
+/// # Examples
+///
+/// ```
+/// # use std::path::Path;
+/// # use lithos_core::fs::FsReader;
+/// # let unique = format!("lithos_fs_reader_example_{}", std::process::id());
+/// # let root = std::env::temp_dir().join(unique);
+/// # std::fs::create_dir_all(&root)?;
+/// # std::fs::write(root.join("config.json"), "{}")?;
+/// let reader = FsReader::new(root.as_path());
+/// let content = reader.read_to_string(Path::new("config.json"))?;
+/// assert_eq!(content, "{}");
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Debug, Clone)]
 #[expect(
     clippy::module_name_repetitions,

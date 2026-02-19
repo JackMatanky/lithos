@@ -2,6 +2,8 @@
 //!
 //! This module contains file system infrastructure for security validation,
 //! deterministic discovery, read pipelines, and safe write orchestration.
+//! It centralizes the file I/O policy surface so adapter layers can depend on
+//! consistent, audited behavior instead of ad-hoc filesystem calls.
 //!
 //! ## Security-Critical Modules
 //!
@@ -29,7 +31,24 @@ pub mod validator;
 pub mod writer;
 
 // Ergonomic aliases with domain-clarifying names.
+//
+// These aliases keep call sites explicit about filesystem boundaries while
+// avoiding long module paths in adapters.
 
+/// Filesystem reader type alias.
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Alias keeps explicit fs namespace in callers."
+)]
+pub type FsReader = reader::FsReader;
+/// Filesystem writer type alias.
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Alias keeps explicit fs namespace in callers."
+)]
+pub type FsWriter = writer::FsWriter;
+/// File metadata type alias.
+pub type FileMetadata = reader::FileMetadata;
 /// Filesystem error type alias.
 #[expect(
     clippy::module_name_repetitions,
@@ -50,20 +69,6 @@ pub type Markdown = types::Markdown;
 pub type PathValidator = validator::Validator;
 /// Path validation error type alias.
 pub type PathValidationError = error::PathValidationError;
-/// Filesystem reader type alias.
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Alias keeps explicit fs namespace in callers."
-)]
-pub type FsReader = reader::FsReader;
-/// Filesystem writer type alias.
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Alias keeps explicit fs namespace in callers."
-)]
-pub type FsWriter = writer::FsWriter;
-/// File metadata type alias.
-pub type FileMetadata = reader::FileMetadata;
 
 /// Checks if a path is a Windows-style absolute path or drive-relative path.
 #[inline]
@@ -75,7 +80,8 @@ pub fn is_windows_absolute_path(path: &str) -> bool {
 /// Validates a vault-relative path.
 ///
 /// Bundles common path constraints: non-empty, relative, no traversal,
-/// optional extension.
+/// optional extension. Use this helper to keep adapter call sites aligned on
+/// the same security rules.
 ///
 /// # Errors
 ///

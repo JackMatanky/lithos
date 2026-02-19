@@ -1,4 +1,8 @@
 //! Filesystem writer utilities for safe writes.
+//!
+//! The writer keeps all paths scoped to a root directory and validates inputs
+//! before touching the filesystem. This preserves adapter safety guarantees
+//! while providing atomic replace semantics for file updates.
 
 use std::{
     io,
@@ -8,6 +12,19 @@ use std::{
 use super::validator::Validator;
 
 /// Production filesystem writer using `std::fs`.
+///
+/// # Examples
+///
+/// ```
+/// # use std::path::Path;
+/// # use lithos_core::fs::FsWriter;
+/// # let unique = format!("lithos_fs_writer_example_{}", std::process::id());
+/// # let root = std::env::temp_dir().join(unique);
+/// # std::fs::create_dir_all(&root)?;
+/// let writer = FsWriter::new(root.as_path());
+/// writer.write_file(Path::new("output.txt"), b"hello")?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Debug, Clone)]
 #[expect(
     clippy::module_name_repetitions,
