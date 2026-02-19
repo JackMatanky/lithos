@@ -39,6 +39,9 @@ minijinja.workspace = true
 pulldown-cmark.workspace = true
 figment.workspace = true
 
+# Safe temporary file creation (used by atomic_write in production code)
+tempfile.workspace = true
+
 [dev-dependencies]
 # NO tokio - deferred to Phase 2 (LSP)
 rstest = { workspace = true }
