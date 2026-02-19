@@ -944,223 +944,301 @@ ADR for blake3 SchemaHash    [after D1]
 
 ---
 
-## Part 6: Resolver Refactor — Clean-Slate Redesign
+## Part 6: Resolver Refactor — Intermediate Design (Superseded by Part 7)
 
 **Date**: 2026-02-18
-**Scope**: `resolver.rs`, `raw.rs`, `property.rs`, `property_spec.rs`, `error.rs`
+**Status**: SUPERSEDED — Part 7 replaces the component design described here.
 
-The previous implementation of `resolver.rs` contained a `ResolutionContext` god object that conflated four separate concerns: property resolution, schema assembly, dependency ordering, and staleness/incremental loading. This section documents the clean-slate redesign.
+The intermediate design replaced `ResolutionContext` with free functions and `InheritanceForest`. This was an improvement but still conflated property-bank dereferencing, inheritance extension, and final assembly inside a single `SchemaResolver`. Part 7 documents the final decomposed design.
 
----
+The following individual decisions from this part remain valid and are carried forward:
 
-### R-01 — `ResolutionContext` Eliminated
-
-**Problem**: `ResolutionContext` was a 385-line struct with 10 methods and 5 fields used by disjoint subsets of those methods. It existed to shuttle data between phases rather than encapsulate a concept. Tests had to reach into internal struct fields to test individual functions.
-
-**Solution**: Delete `ResolutionContext` entirely. Replace with:
-- Free function `resolve_property(bank, name, entry) -> Result<Property, SchemaError>`
-- Free function `assemble_schema(id, name, raw_props, parent, excludes, bank) -> Result<Schema, SchemaError>`
-- New type `InheritanceForest` with pure `topo_order()` method
+- **R-03 through R-09** (`Raw*Spec` rename, flattened overrides, `apply_overrides` methods, `From<bool>` impls) — implemented and committed, still correct.
+- **R-10** (type-change override rejection via `is_type_mismatch`) — carried into `Dereferencer`.
+- **R-11** (error variants `InvalidPropertyRef`, `PropertyTypeMismatch`) — implemented and committed, still correct.
+- **R-01, R-02, R-12** (`ResolutionContext` elimination, `InheritanceForest`, staleness ordering) — superseded by the `Dereferencer`/`Extender`/`Resolver` split in Part 7.
 
 ---
 
-### R-02 — `InheritanceForest` for Pure Topological Sort
+## Part 7: Pipeline Decomposition — Full Redesign
 
-**Problem**: The `visit` function called `parent_loader` (a DB operation) during topological sort, making an otherwise pure algorithm impure.
+**Date**: 2026-02-19
+**Scope**: `resolver.rs`, `dereferencer.rs` (new), `extender.rs` (new), `adapter/stored.rs` (new),
+`aggregate.rs`, `ports.rs`, `adapter/query.rs`, `adapter/command.rs`, `raw.rs`, `application/schema.rs` (new)
 
-**Solution**: `InheritanceForest` holds only the parent map and name lookup. Its `topo_order` method takes `known_external: &HashSet<SchemaId>` (IDs already loaded from cache) and is completely pure — no I/O, no `parent_loader` parameter. External parent existence is validated during the load phase, not during topo-sort.
+### Core Insight
+
+The `SchemaResolver` conflated three distinct concerns. Each maps to a separate, independently-testable component with a clean I/O contract. Staleness checking moves entirely out of the resolver pipeline and into the `Query` port.
+
+### Execution Pipeline
+
+```
+Ingestor
+  → Vec<(RawSchema, Option<Timestamp>)>
+
+Query port (is_schema_stale, is_bank_stale)
+  → partition: stale Vec<(SchemaId, RawSchema, Option<Timestamp>)>
+             + fresh Vec<SchemaId>  (load from DB as known_parents)
+
+Dereferencer  (holds &PropertyBank)
+  → Vec<(SchemaId, DereferencedSchema)>
+     PropertyBank no longer needed after this step.
+
+Extender
+  → SchemaTree  (nodes in topological order, cycles rejected)
+
+Resolver
+  → Vec<Schema>
+
+SchemaService  (application/schema.rs)
+  → saves Vec<Schema> via Command port using StoredSchema adapter type
+```
+
+---
+
+### Component 1: `StoredSchema` — `schema/adapter/stored.rs`
+
+`StoredSchema` is the rkyv-serialized storage representation of a schema. It lives in the adapter layer (`schema/adapter/stored.rs`), not in the domain. The domain `Schema` struct stays minimal: `id`, `name`, `properties`, `pending_events` — no storage metadata embedded.
+
+`StoredSchema` carries all fields needed for staleness checking and tree reconstruction, eliminating the need for a separate `SCHEMA_METADATA` / `SCHEMA_RESOLUTION_RECORD` table entirely.
 
 ```rust
-struct InheritanceForest {
-    parents: HashMap<SchemaId, Option<SchemaId>>,
-    names: HashMap<SchemaId, SchemaName>,
+// schema/adapter/stored.rs
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub(crate) struct StoredSchema {
+    pub id: SchemaId,
+    pub name: Box<str>,               // flattened from SchemaName newtype
+    pub parent_id: Option<SchemaId>,  // for SchemaTree reconstruction
+    pub properties: Vec<StoredProperty>,
+    pub bank_version: BankVersion,    // staleness: did the bank change?
+    pub created_at: Timestamp,        // from file metadata at first ingestion
+    pub modified_at: Timestamp,       // from file metadata, updated on re-ingestion
 }
 
-impl InheritanceForest {
-    fn build(schemas: &[(SchemaId, &RawSchema)]) -> Result<Self, SchemaError>;
-    fn topo_order(&self, known_external: &HashSet<SchemaId>) -> Result<Vec<SchemaId>, SchemaError>;
+pub(crate) struct StoredProperty {
+    pub id: Uuid,          // flattened from PropertyId newtype
+    pub name: Box<str>,    // flattened from PropertyName newtype
+    pub required: bool,    // flattened from Cardinality
+    pub multi: bool,       // flattened from Multiplicity
+    pub spec: PropertySpec, // already has rkyv derives; kept as-is
 }
 ```
 
+Conversions:
+- `StoredSchema` → `Schema`: `TryFrom<StoredSchema> for Schema` — infallible in practice (all fields already validated at write time), returns `SchemaError` on name/property validation failure.
+- `Schema` + metadata → `StoredSchema`: a `fn to_stored(schema: &Schema, parent_id, bank_version, created_at, modified_at) -> StoredSchema` free function in `stored.rs`, called by `CommandAdapter::save_batch`.
+
+**Eliminates**: `ResolutionMetadata` struct, `SCHEMA_METADATA` table constant, `find_metadata_by_id` and `list_metadata` port methods.
+
 ---
 
-### R-03 — `RawPropertyRef` Restructured with Flattened Spec Structs
+### Component 2: Staleness — `ports::Query` additions
 
-**Problem**: `RawPropertyRef` had 11 flat fields for type-specific overrides, pattern-matching 9 of them just to ignore 7. The override fields duplicated what's already in `Raw*Spec` structs.
-
-**Solution**: Use `#[serde(flatten)]` with the existing `Raw*Spec` types. All `Raw*Spec` fields become `Option<T>` so the same struct serves as both inline definition (validation at `try_into_validated`) and override container (`None` means "don't override").
+Two new methods on the `Query` trait. Both are implemented by `QueryAdapter` by reading the `StoredSchema` from `SCHEMA_BY_ID` and comparing fields directly — a single table read, no second table.
 
 ```rust
-pub struct RawPropertyRef {
-    #[serde(rename = "$ref")]
-    pub ref_path: Box<str>,
-    pub required: Option<bool>,
-    pub multi: Option<bool>,
-    #[serde(flatten)]
-    pub number: RawNumberSpec,   // min, max, step — all Option<f64>
-    #[serde(flatten)]
-    pub string: RawStringSpec,   // options, pattern — all Option<T>
-    #[serde(flatten)]
-    pub date: RawDateSpec,       // format — Option<Box<str>>
-    #[serde(flatten)]
-    pub file: RawFileSpec,       // directory, file_class — all Option<Box<str>>
-}
+// ports::Query
+fn is_schema_stale(
+    &self,
+    id: SchemaId,
+    file_mtime: Option<Timestamp>,
+    current_bank_version: BankVersion,
+) -> Result<bool, Self::Error>;
+
+fn is_bank_stale(
+    &self,
+    current_version: BankVersion,
+) -> Result<bool, Self::Error>;
 ```
 
----
+`is_schema_stale`: loads `StoredSchema` for `id`; returns `true` if no stored record exists, or if `stored.bank_version != current_bank_version`, or if `stored.modified_at < file_mtime` (file has changed since last ingestion).
 
-### R-04 — `RawStringSpec` Removes `min_length`/`max_length`
-
-**Problem**: The README defines only `options` and `pattern` for string types. `min_length`/`max_length` were never part of the meta-schema.
-
-**Solution**: Remove from both `RawStringSpec` and `StringSpec`. Remove `validate_length` and its hash code. Remove `StringTooShort` and `StringTooLong` error variants.
+`is_bank_stale`: loads the stored `PropertyBank`; returns `true` if no stored bank exists or its version differs from `current_version`.
 
 ---
 
-### R-05 — `Raw*Spec` Renamed from `*Def`
+### Component 3: `Dereferencer` — `schema/dereferencer.rs`
 
-**Problem**: `BoolSpecDef`, `DateSpecDef`, etc. were inconsistently named compared to the validated `*Spec` types.
-
-**Solution**: Rename all `*Def` → `Raw*Spec`:
-- `BoolSpecDef` → `RawBoolSpec`
-- `DateSpecDef` → `RawDateSpec`
-- `FileSpecDef` → `RawFileSpec`
-- `NumberSpecDef` → `RawNumberSpec`
-- `StringSpecDef` → `RawStringSpec`
-
----
-
-### R-06 — `Raw*Spec` Fields Made `Option<T>`
-
-**Problem**: `RawDateSpec.format` was `Box<str>` (required), preventing use as an override struct where all fields should be optional.
-
-**Solution**: All fields in `Raw*Spec` structs become `Option<T>`. `RawPropertySpec::try_into_validated` returns an error if a required field is `None` for inline use (e.g., `date.format`).
-
----
-
-### R-07 — `PropertyRef` Simplified to Single Format
-
-**Problem**: `PropertyRef::parse` supported four formats, but the README defines exactly one valid format: `property_bank#/<name>`. The `ById(PropertyId)` variant was never valid per the schema format.
-
-**Solution**: Reduce `PropertyRef` to a newtype:
+**Input**: `Vec<(SchemaId, RawSchema)>` (stale schemas only) + `&PropertyBank`
+**Output**: `Vec<(SchemaId, DereferencedSchema)>`
+**Visibility**: `pub(crate)`
 
 ```rust
-pub struct PropertyRef(PropertyName);
-
-impl PropertyRef {
-    pub fn parse(reference: &str) -> Result<Self, SchemaError> {
-        let name = reference
-            .strip_prefix("property_bank#/")
-            .ok_or_else(|| SchemaError::InvalidPropertyRef(reference.into()))?;
-        Ok(Self(PropertyName::try_from(name)?))
-    }
-    pub fn name(&self) -> &PropertyName { &self.0 }
+pub(crate) struct DereferencedSchema {
+    pub name: Box<str>,
+    pub extends: Option<Box<str>>,
+    pub excludes: Vec<Box<str>>,
+    pub properties: Vec<Property>,  // fully initialized, sorted by name
 }
 ```
 
-Remove `ById`, `ByName` variants and all UUID/plain-name fallback paths.
+For each `RawProperty` in the schema:
+- `RawProperty::Inline(inline)` → `RawPropertySpec::try_into_validated()` → `Property::new(...)`
+- `RawProperty::Ref(ref_entry)` → bank lookup by `PropertyRef` → apply overrides → `Property::new(...)`
+
+Properties are sorted by name before storage so `Extender` and `Resolver` can use two-pointer merges.
+
+**Private methods**:
+- `deref_entry(&str, RawProperty) -> Result<Property, SchemaError>`
+- `apply_ref_overrides(&Property, &RawPropertyRef) -> Result<Property, SchemaError>` — applies `required`/`multi` overrides and spec-level overrides; calls `is_type_mismatch`
+- `is_type_mismatch(PropertySpecType, &RawPropertyRef) -> bool` — returns `true` if any override field belongs to a type incompatible with the base spec type (carries forward R-10)
+
+After `Dereferencer`, the `PropertyBank` is no longer referenced anywhere in the pipeline.
 
 ---
 
-### R-08 — `From<bool>` for `Cardinality` and `Multiplicity`
+### Component 4: `Extender` — `schema/extender.rs`
 
-**Problem**: Bool-to-enum conversion was repeated identically in both `Inline` and `Ref` arms of `resolve_property`.
-
-**Solution**: Implement `From<bool>` on the enum types themselves:
+**Input**: `Vec<(SchemaId, DereferencedSchema)>` + `&HashMap<SchemaId, Schema>` (known-fresh parents pre-loaded from DB by `SchemaService`)
+**Output**: `SchemaTree`
+**Visibility**: `pub(crate)`
 
 ```rust
-impl From<bool> for Cardinality {
-    fn from(required: bool) -> Self {
-        if required { Self::Required } else { Self::Optional }
-    }
+pub(crate) struct SchemaTree {
+    roots: Vec<SchemaId>,                    // schemas with parent_id = None
+    nodes: HashMap<SchemaId, SchemaNode>,    // O(1) lookup by ID
+    order: Vec<SchemaId>,                    // topological order (roots first)
 }
 
-impl From<bool> for Multiplicity {
-    fn from(multi: bool) -> Self {
-        if multi { Self::Many } else { Self::Single }
-    }
+pub(crate) struct SchemaNode {
+    pub id: SchemaId,
+    pub name: Box<str>,
+    pub own_properties: Vec<Property>,  // from DereferencedSchema, sorted
+    pub excludes: Vec<Box<str>>,
+    pub parent_id: Option<SchemaId>,
+    pub children: Vec<SchemaId>,
 }
 ```
 
+`Extender::build` is the only public method. It:
+1. Resolves `extends` name strings to `SchemaId`s (batch first, then `known_parents`)
+2. Calls private `is_treelike()` — DFS cycle detection → `Err(SchemaError::CircularInheritance)` on cycle
+3. Validates no missing parents → `Err(SchemaError::ParentNotFound)`
+4. Populates `children` on each node
+5. Emits `SchemaTree` with `roots` and `order` computed via Kahn's algorithm
+
+`SchemaTree` exposes `fn nodes(&self) -> &[SchemaId]` returning `order` for iteration in dependency order, and `fn get(&self, id: SchemaId) -> Option<&SchemaNode>` for O(1) node lookup.
+
 ---
 
-### R-09 — `apply_overrides` Methods on `*Spec` Types
+### Component 5: `Resolver` — `schema/resolver.rs` (rewritten)
 
-**Problem**: `$ref` override fields were ignored (TODO comment). The resolver doesn't know each spec's internal structure, so spec-specific merge logic belonged elsewhere.
-
-**Solution**: Each validated `*Spec` gets an `apply_overrides` method that takes the corresponding `Raw*Spec` (all fields `Option<T>`) and returns a new validated spec:
+**Input**: `&SchemaTree` + `&HashMap<SchemaId, Schema>` (known-fresh parents)
+**Output**: `Vec<Schema>`
+**Visibility**: `pub`
 
 ```rust
-impl NumberSpec {
-    pub fn apply_overrides(self, raw: &RawNumberSpec) -> Result<Self, SchemaError> {
-        let base_min = self.bounds.min().map(FiniteF64::get);
-        let base_max = self.bounds.max().map(FiniteF64::get);
-        let base_step = self.step.map(Step::get);
-        Self::try_new(
-            raw.min.or(base_min),
-            raw.max.or(base_max),
-            raw.step.or(base_step),
-        )
-    }
+pub struct Resolver;
+
+impl Resolver {
+    pub fn resolve(
+        tree: &SchemaTree,
+        known_parents: &HashMap<SchemaId, Schema>,
+    ) -> Result<Vec<Schema>, SchemaError>
 }
 ```
 
-This keeps spec internals encapsulated — the resolver doesn't reach into spec fields.
+Walks `tree.nodes()` in topological order. For each `SchemaNode`:
+1. Get parent's resolved `Vec<Property>` — from `resolved_cache` (in-batch parent resolved earlier) or `known_parents` (fresh DB parent) or `[]` (root)
+2. Call private `merge_properties(parent_props, &node.own_properties, &node.excludes)` → sorted `Vec<Property>`
+3. Construct `Schema::new(node.id, name, merged_props)` or `Schema::resolve(...)` depending on whether the ID existed in DB (determined by presence in `known_parents`)
+4. Insert into `resolved_cache` for use by children
+
+**`merge_properties`** is a private method on `Resolver`. It performs a two-pointer sorted merge: parent properties + node's own properties, child overrides same-named parent properties, excluded names filtered from parent. It is not exposed as `pub(crate)` to prevent bypassing the correct pipeline.
 
 ---
 
-### R-10 — Type-Change Override Rejection
+### Component 6: `SchemaService` — `application/schema.rs`
 
-**Problem**: The README says `$ref` override fields can include `type`, but allowing type changes from the bank definition would be semantically incorrect.
+Thin orchestration only. Sequences adapters and domain components. Lives at `lithos-core/src/application/schema.rs`.
 
-**Solution**: In `resolve_property`, after fetching the base `Property` from the bank, check that any override spec type matches the base spec type. If the inferred override type differs, return `SchemaError::PropertyTypeMismatch`. Type changes between parent/child schema properties are allowed; type changes via `$ref` override are not.
-
----
-
-### R-11 — Error Variants Added/Removed
-
-**Added**:
-- `SchemaError::InvalidPropertyRef(String)` — invalid `$ref` format
-- `SchemaError::PropertyTypeMismatch { expected, actual }` — type change via `$ref` override
-
-**Removed**:
-- `SchemaError::StringTooShort` — only produced by removed `validate_length`
-- `SchemaError::StringTooLong` — only produced by removed `validate_length`
-
----
-
-### R-12 — Staleness Ordering Dependency Made Explicit
-
-**Problem**: The old `check_staleness` tried to compute parent hash using `resolved_cache`, but the cache was only populated for schemas already processed in the loop — an undocumented ordering dependency.
-
-**Solution**: Staleness check runs independently of topo-sort. The resolved cache is populated in topo order during resolution. `topo_order` receives `known_external: &HashSet<SchemaId>` (IDs already loaded from DB during staleness check) so external parents are correctly excluded from "missing parent" errors.
+Full pipeline:
+1. `Ingestor::load_raw_property_bank()` → `RawPropertyBank`
+2. `Ingestor::scan_raw_schemas()` → `Vec<(RawSchema, Option<Timestamp>)>`
+3. `query.batch_read(|tx| { list_name_id_pairs(), find_property_bank() })` — single read transaction
+4. `PropertyBank::from_raw(raw_bank, existing_bank)` → `PropertyBank`
+5. `query.is_bank_stale(bank.version())` — if stale, all schemas are stale regardless of mtime
+6. For each raw schema: look up `SchemaId` by name (reuse or generate); call `query.is_schema_stale(id, mtime, bank_version)` to partition stale vs fresh
+7. Load fresh schemas from DB into `known_parents: HashMap<SchemaId, Schema>`
+8. `Dereferencer::deref(stale_schemas, &bank)` → `Vec<(SchemaId, DereferencedSchema)>`
+9. `Extender::build(deref_schemas, &known_parents)` → `SchemaTree`
+10. `Resolver::resolve(&tree, &known_parents)` → `Vec<Schema>`
+11. `Command::save_batch(&schemas, metadata...)` + `Command::save_property_bank(&bank)`
 
 ---
 
-### Execution Order for Resolver Refactor
+### `raw.rs` rename — `RawPropertyEntry` → `RawProperty`
+
+`RawPropertyEntry` is renamed to `RawProperty` everywhere. The now-redundant old `RawProperty` enum (structurally identical) is removed. `RawSchema.properties` type changes from `HashMap<Box<str>, RawPropertyEntry>` to `HashMap<Box<str>, RawProperty>`.
+
+---
+
+### Files Changed by Part 7
+
+| File                        | Action      | What changes                                                                              |
+| --------------------------- | ----------- | ----------------------------------------------------------------------------------------- |
+| `schema/adapter/stored.rs`    | **Create**  | `StoredSchema`, `StoredProperty`, `to_stored(...)`, `TryFrom<StoredSchema> for Schema`       |
+| `schema/adapter/command.rs`   | Modify      | Write `StoredSchema` to `SCHEMA_BY_ID`; remove all `SCHEMA_METADATA` writes                   |
+| `schema/adapter/query.rs`     | Modify      | Read `StoredSchema`, convert to `Schema`; implement `is_schema_stale`, `is_bank_stale`        |
+| `schema/adapter/mod.rs`       | Modify      | Declare `stored` submodule                                                                  |
+| `schema/dereferencer.rs`      | **Create**  | `Dereferencer`, `pub(crate) DereferencedSchema`                                               |
+| `schema/extender.rs`          | **Create**  | `Extender`, `pub(crate) SchemaTree`, `pub(crate) SchemaNode`                                  |
+| `schema/resolver.rs`          | **Rewrite** | `Resolver` struct, `resolve()`, private `merge_properties()`; no bank, no staleness          |
+| `schema/ports.rs`             | Modify      | Add `is_schema_stale`, `is_bank_stale`; remove `find_metadata_by_id`, `list_metadata`        |
+| `schema/aggregate.rs`         | Modify      | Remove `ResolutionMetadata`, `SchemaHash`; keep `Schema` minimal                             |
+| `schema/raw.rs`               | Modify      | Rename `RawPropertyEntry` → `RawProperty`; remove duplicate `RawProperty` enum               |
+| `schema/mod.rs`               | Modify      | Remove `SCHEMA_METADATA` constant; add `dereferencer`, `extender` module declarations        |
+| `schema/command.rs`           | Modify      | Update `save_batch` — metadata now embedded in `StoredSchema`, not a separate parameter       |
+| `schema/query.rs`             | Modify      | Remove `list_metadata`, `find_metadata_by_id`; add `is_schema_stale`, `is_bank_stale`        |
+| `application/schema.rs`       | **Create**  | `SchemaService` stub with `load` signature                                                    |
+| `application/mod.rs`          | Modify      | Declare `schema` submodule                                                                    |
+
+---
+
+### Implementation Order for Part 7
 
 ```
-R-05 (rename *Def → Raw*Spec)
-R-06 (Raw*Spec fields Option<T>)
-R-04 (remove min_length/max_length)
-  → R-03 (RawPropertyRef with flattened specs)
-  → R-07 (PropertyRef simplified)
-  → R-08 (From<bool> impls)
-  → R-09 (apply_overrides methods)
-  → R-11 (error variants)
-  → R-01 (delete ResolutionContext)
-  → R-02 (InheritanceForest)
-  → R-10 (type-change rejection)
-  → R-12 (explicit staleness ordering)
+(a) raw.rs: rename RawPropertyEntry → RawProperty, remove duplicate
+      [purely mechanical; run verify]
+
+(b) schema/adapter/stored.rs: define StoredSchema + StoredProperty + conversions
+      [no other files touched; run verify]
+
+(c) adapter/command.rs + adapter/query.rs: write/read StoredSchema;
+    remove SCHEMA_METADATA references; implement is_schema_stale, is_bank_stale
+      [run verify]
+
+(d) ports.rs + query.rs + command.rs: add new trait methods; remove
+    find_metadata_by_id, list_metadata from trait and Query<Q> impl
+      [run verify]
+
+(e) aggregate.rs + mod.rs: remove ResolutionMetadata, SchemaHash;
+    remove SCHEMA_METADATA constant
+      [run verify]
+
+(f) schema/dereferencer.rs: implement Dereferencer and DereferencedSchema
+      [run verify]
+
+(g) schema/extender.rs: implement Extender, SchemaTree, SchemaNode
+      [run verify]
+
+(h) schema/resolver.rs: rewrite as pure Resolver; merge_properties private
+      [run verify]
+
+(i) application/schema.rs + application/mod.rs: SchemaService stub
+      [run verify]
 ```
+
+Each step ends with `mise run verify` before proceeding to the next.
 
 ---
 
-## Part 7: ADRs Required
+## Part 8: ADRs Required
 
 | Decision | File |
 |---|---|
-| Use blake3 (existing dep) for `SchemaHash` instead of `DefaultHasher` or rkyv-bytes | `docs/adr/XXXX-schema-hash-blake3.md` |
-| `Ingestor` is pure file-to-raw; `Query<Q>` handles all read-side DB needs via `batch_read` + `list_name_id_pairs`; no separate catalog adapter | `docs/adr/XXXX-schema-ingestion-adapter-split.md` |
-| Remove `save_with_metadata` from port; `save_batch` is the sole write path | `docs/adr/XXXX-schema-command-save-batch-only.md` |
-| `ResolutionContext` eliminated; free functions and `InheritanceForest` for resolver | `docs/adr/XXXX-resolver-clean-slate.md` |
+| Use blake3 for `SchemaHash` instead of `DefaultHasher` | `docs/adr/XXXX-schema-hash-blake3.md` |
+| `Ingestor` is pure file-to-raw; `Query<Q>` handles all read-side DB needs | `docs/adr/XXXX-schema-ingestion-adapter-split.md` |
+| `save_batch` is the sole write path; `save_with_metadata` removed | `docs/adr/XXXX-schema-command-save-batch-only.md` |
+| `StoredSchema` in adapter layer replaces `ResolutionMetadata` and second table | `docs/adr/XXXX-stored-schema-adapter-layer.md` |
+| Pipeline decomposed into `Dereferencer`, `Extender`, `Resolver` | `docs/adr/XXXX-pipeline-decomposition.md` |

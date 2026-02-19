@@ -13,9 +13,9 @@
 //!    loaded from the DB so they are correctly excluded from "missing parent"
 //!    errors.
 //!
-//! 2. **Free function `resolve_property`** — resolves a single
-//!    `RawPropertyEntry` into a `Property` using the bank. For `$ref` entries,
-//!    applies type-specific overrides and rejects type changes.
+//! 2. **Free function `resolve_property`** — resolves a single `RawProperty`
+//!    into a `Property` using the bank. For `$ref` entries, applies
+//!    type-specific overrides and rejects type changes.
 //!
 //! 3. **Free function `assemble_schema`** — merges parent properties with the
 //!    schema's own resolved properties (applying excludes) and constructs the
@@ -52,7 +52,7 @@ use super::{
         PropertyRef,
     },
     property_spec::PropertySpec,
-    raw::{RawPropertyEntry, RawPropertyRef, RawSchema},
+    raw::{RawProperty, RawPropertyRef, RawSchema},
 };
 
 /// Domain Service: Resolves raw schemas into fully resolved Schema entities.
@@ -474,10 +474,10 @@ where
 pub fn resolve_property(
     bank: &PropertyBank,
     name: &str,
-    entry: RawPropertyEntry,
+    entry: RawProperty,
 ) -> Result<Property, SchemaError> {
     match entry {
-        RawPropertyEntry::Inline(inline) => {
+        RawProperty::Inline(inline) => {
             let prop_name = PropertyName::new(name)?;
             let spec = inline.spec.try_into_validated()?;
             let cardinality = Cardinality::from(inline.required);
@@ -491,7 +491,7 @@ pub fn resolve_property(
             )
         }
 
-        RawPropertyEntry::Ref(ref_entry) => {
+        RawProperty::Ref(ref_entry) => {
             resolve_ref_property(bank, name, &ref_entry)
         }
     }
@@ -667,13 +667,13 @@ fn type_mismatch(expected: &str, actual: &str) -> SchemaError {
 pub fn assemble_schema(
     id: SchemaId,
     name: SchemaName,
-    raw_props: std::collections::HashMap<Box<str>, RawPropertyEntry>,
+    raw_props: std::collections::HashMap<Box<str>, RawProperty>,
     parent: Option<&Schema>,
     excludes: &[Box<str>],
     bank: &PropertyBank,
 ) -> Result<Schema, SchemaError> {
     // Resolve and sort own properties.
-    let mut sorted_entries: Vec<(Box<str>, RawPropertyEntry)> =
+    let mut sorted_entries: Vec<(Box<str>, RawProperty)> =
         raw_props.into_iter().collect();
     sorted_entries.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -915,16 +915,15 @@ mod tests {
     mod resolve_property_tests {
         use super::*;
         use crate::schema::raw::{
-            RawBoolSpec, RawDateSpec, RawFileSpec, RawNumberSpec,
-            RawPropertyEntry, RawPropertyInline, RawPropertyRef,
-            RawPropertySpec, RawStringSpec,
+            RawBoolSpec, RawDateSpec, RawFileSpec, RawNumberSpec, RawProperty,
+            RawPropertyInline, RawPropertyRef, RawPropertySpec, RawStringSpec,
         };
 
         #[test]
         fn resolves_ref_property_by_bank_name() -> Result<(), SchemaError> {
             let property = fixtures::status_property()?;
             let bank = fixtures::property_bank_with(property)?;
-            let entry = RawPropertyEntry::Ref(RawPropertyRef {
+            let entry = RawProperty::Ref(RawPropertyRef {
                 ref_path: "property_bank#/status".into(),
                 required: None,
                 multi: None,
@@ -942,7 +941,7 @@ mod tests {
         #[test]
         fn resolves_inline_property() -> Result<(), SchemaError> {
             let bank = PropertyBank::new();
-            let entry = RawPropertyEntry::Inline(RawPropertyInline {
+            let entry = RawProperty::Inline(RawPropertyInline {
                 required: true,
                 multi: false,
                 spec: RawPropertySpec::Bool(RawBoolSpec),
@@ -960,7 +959,7 @@ mod tests {
         {
             let property = fixtures::status_property()?;
             let bank = fixtures::property_bank_with(property)?;
-            let entry = RawPropertyEntry::Ref(RawPropertyRef {
+            let entry = RawProperty::Ref(RawPropertyRef {
                 ref_path: "property_bank#/status".into(),
                 required: Some(false), // override: base is Required
                 multi: Some(true),     // override: base is Single
@@ -983,7 +982,7 @@ mod tests {
                 fixtures::status_property().expect("valid status property");
             let bank = fixtures::property_bank_with(property)
                 .expect("valid property bank");
-            let entry = RawPropertyEntry::Ref(RawPropertyRef {
+            let entry = RawProperty::Ref(RawPropertyRef {
                 ref_path: "property_bank#/status".into(),
                 required: None,
                 multi: None,
@@ -1007,7 +1006,7 @@ mod tests {
         #[test]
         fn ref_invalid_path_rejected() {
             let bank = PropertyBank::new();
-            let entry = RawPropertyEntry::Ref(RawPropertyRef {
+            let entry = RawProperty::Ref(RawPropertyRef {
                 ref_path: "bad_format".into(),
                 required: None,
                 multi: None,

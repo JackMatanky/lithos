@@ -20,7 +20,7 @@ use super::{
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::raw::{RawSchema, RawPropertyEntry, RawPropertyInline};
+/// use lithos_core::schema::raw::{RawSchema, RawProperty, RawPropertyInline};
 /// use lithos_core::schema::raw::{RawPropertySpec, RawBoolSpec};
 /// use std::collections::HashMap;
 /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,7 +28,7 @@ use super::{
 /// let mut properties = HashMap::new();
 /// properties.insert(
 ///     "archived".into(),
-///     RawPropertyEntry::Inline(RawPropertyInline {
+///     RawProperty::Inline(RawPropertyInline {
 ///         required: false,
 ///         multi: false,
 ///         spec: RawPropertySpec::Bool(RawBoolSpec),
@@ -55,31 +55,18 @@ pub struct RawSchema {
     #[serde(default)]
     pub excludes: Vec<Box<str>>,
     /// Map of property name to property definition.
-    pub properties: std::collections::HashMap<Box<str>, RawPropertyEntry>,
+    pub properties: std::collections::HashMap<Box<str>, RawProperty>,
 }
 
-/// Raw property input definition (Inline or Ref).
+/// Raw property for schema properties map.
 ///
+/// Used in `RawSchema.properties` where the name is the map key.
 /// Discriminated by presence of `$ref` field. Ref is tried first because
 /// it has a required `$ref` field that Inline never has.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
 pub enum RawProperty {
-    /// A reference to a property in the property bank with optional overrides.
-    Ref(RawPropertyRef),
-    /// An inline property definition.
-    Inline(RawPropertyInline),
-}
-
-/// Raw property entry for schema properties map.
-///
-/// Used in `RawSchema.properties` where the name is the map key.
-/// Discriminated by presence of `$ref` field.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(untagged)]
-#[non_exhaustive]
-pub enum RawPropertyEntry {
     /// A reference to a property in the property bank with optional overrides.
     Ref(RawPropertyRef),
     /// An inline property definition.
@@ -468,40 +455,6 @@ mod tests {
         assert!(
             matches!(reference_variant, RawProperty::Ref(_)),
             "RawProperty should be Ref variant"
-        );
-    }
-
-    #[test]
-    fn raw_property_entry_inline_constructs() {
-        let inline = RawPropertyInline {
-            required: false,
-            multi: false,
-            spec: RawPropertySpec::Bool(RawBoolSpec),
-        };
-        let entry = RawPropertyEntry::Inline(inline);
-
-        assert!(
-            matches!(entry, RawPropertyEntry::Inline(_)),
-            "RawPropertyEntry should be Inline variant"
-        );
-    }
-
-    #[test]
-    fn raw_property_entry_ref_constructs() {
-        let reference = RawPropertyRef {
-            ref_path: "property_bank#/status".into(),
-            required: None,
-            multi: None,
-            number: RawNumberSpec::default(),
-            string: RawStringSpec::default(),
-            date: RawDateSpec::default(),
-            file: RawFileSpec::default(),
-        };
-        let entry = RawPropertyEntry::Ref(reference);
-
-        assert!(
-            matches!(entry, RawPropertyEntry::Ref(_)),
-            "RawPropertyEntry should be Ref variant"
         );
     }
 }
