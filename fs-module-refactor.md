@@ -617,7 +617,7 @@ No other changes to this file.
 
 ## Step 9 — Extract shared test fixture
 
-**Status:** `[ ]`
+**Status:** `[x]` (Skipped — fixtures are for unit tests and should remain local)
 
 **Why:** `validator.rs` has a 108-line `Workspace` test fixture. `reader.rs` has a `write_file`
 helper. Both provide filesystem setup for tests but are duplicated. A shared `#[cfg(test)]`
