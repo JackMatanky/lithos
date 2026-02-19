@@ -110,7 +110,7 @@ impl Ingestor<'_> {
                     .source
                     .metadata(&path)
                     .ok()
-                    .and_then(|meta| meta.modified)
+                    .and_then(|meta| meta.modified().ok())
                     .and_then(|time| {
                         time.duration_since(std::time::SystemTime::UNIX_EPOCH)
                             .ok()

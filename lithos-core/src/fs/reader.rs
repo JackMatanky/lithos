@@ -13,7 +13,8 @@ use std::{
 use serde::de::DeserializeOwned;
 
 use super::{
-    error::{ParseError, PathValidationError},
+    PathValidationError,
+    error::ParseError,
     types::{Json, Markdown, Toml, Yaml},
     validator::Validator,
 };
@@ -33,18 +34,6 @@ pub(crate) enum FormatKind {
     Binary,
     /// Unknown or unsupported format.
     Unknown,
-}
-
-/// Lightweight file metadata used by ingestion pipelines.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct FileMetadata {
-    /// Last modification time, if available.
-    pub modified: Option<std::time::SystemTime>,
-    /// File size in bytes.
-    pub size: u64,
-    /// True when the path is a symlink.
-    pub is_symlink: bool,
 }
 
 /// Production file reader using `std::fs` for real filesystem access.
@@ -70,16 +59,48 @@ pub struct FileMetadata {
 pub struct Reader {
     /// Root directory for scoped file access.
     root: PathBuf,
+    /// Path validator for security checks.
+    ///
+    /// Stored for future use when strict mode path validation is needed
+    /// (e.g., validating paths before file operations in vault mode).
+    #[expect(
+        dead_code,
+        reason = "Stored for strict mode path validation; will be used when \
+                  Reader exposes path validation to callers."
+    )]
+    validator: Validator,
 }
 
 impl Reader {
-    /// Creates a new filesystem reader scoped to the given root directory.
+    /// Creates a new filesystem reader with flexible path validation.
+    ///
+    /// Flexible mode allows external symlinks (e.g., dotfiles) while still
+    /// checking input traversal and hidden-file access.
     #[inline]
     #[must_use]
     pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
+            validator: Validator::new_flexible(),
         }
+    }
+
+    /// Creates a new filesystem reader with strict path validation.
+    ///
+    /// Strict mode enforces a root boundary and rejects symlinks that escape
+    /// it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathValidationError::RelativeRoot`] if `root` is not an
+    /// absolute path.
+    #[inline]
+    pub fn new_strict(root: PathBuf) -> Result<Self, PathValidationError> {
+        let validator = Validator::try_new_strict(root.clone())?;
+        Ok(Self {
+            root,
+            validator,
+        })
     }
 
     /// Returns the root directory for this reader.
@@ -117,7 +138,8 @@ impl Reader {
     ///
     /// # Errors
     ///
-    /// Returns an error if the pattern is invalid or traversal fails.
+    /// Returns an error if the pattern is invalid or if any per-entry operation
+    /// fails (e.g., permission denied, broken symlink).
     #[inline]
     pub fn list_files(&self, pattern: &str) -> Result<Vec<PathBuf>, io::Error> {
         let full_pattern = self.root.join(pattern);
@@ -132,14 +154,15 @@ impl Reader {
             .map_err(|error| {
                 io::Error::new(io::ErrorKind::InvalidInput, error)
             })?
-            .filter_map(|entry| {
-                let path = entry.ok()?;
+            .map(|entry| -> io::Result<Option<PathBuf>> {
+                let path = entry.map_err(io::Error::other)?;
                 if !path.is_file() && !path.is_symlink() {
-                    return None;
+                    return Ok(None);
                 }
-                path.strip_prefix(&self.root).ok().map(Path::to_path_buf)
+                Ok(path.strip_prefix(&self.root).ok().map(Path::to_path_buf))
             })
-            .collect();
+            .filter_map(io::Result::transpose)
+            .collect::<io::Result<_>>()?;
 
         paths.sort();
         Ok(paths)
@@ -147,17 +170,18 @@ impl Reader {
 
     /// Read metadata for a path without following symlinks.
     ///
+    /// Uses `symlink_metadata` to avoid following symlinks, ensuring the caller
+    /// sees the symlink itself rather than its target.
+    ///
     /// # Errors
     ///
     /// Returns an error if metadata cannot be read.
     #[inline]
-    pub fn metadata(&self, path: &Path) -> Result<FileMetadata, io::Error> {
-        let metadata = std::fs::symlink_metadata(self.resolve_path(path))?;
-        Ok(FileMetadata {
-            modified: metadata.modified().ok(),
-            size: metadata.len(),
-            is_symlink: metadata.file_type().is_symlink(),
-        })
+    pub fn metadata(
+        &self,
+        path: &Path,
+    ) -> Result<std::fs::Metadata, io::Error> {
+        std::fs::symlink_metadata(self.resolve_path(path))
     }
 
     /// Parse a structured file into type `T` based on its extension.
@@ -219,34 +243,27 @@ impl Reader {
 
     /// Read a file and parse it with a caller-provided closure.
     ///
+    /// The closure can return any error type that implements
+    /// `From<ParseError>`, allowing callers to produce domain-specific
+    /// errors directly.
+    ///
     /// # Errors
     ///
-    /// Returns [`ParseError`] for I/O or closure failures.
+    /// Returns the closure's error type for I/O or closure failures.
     #[inline]
-    pub fn read_with<T, F>(&self, path: &Path, f: F) -> Result<T, ParseError>
+    pub fn read_with<T, E, F>(&self, path: &Path, f: F) -> Result<T, E>
     where
-        F: FnOnce(&Path, &str) -> Result<T, ParseError>,
+        F: FnOnce(&Path, &str) -> Result<T, E>,
+        E: From<ParseError>,
     {
-        let content =
-            self.read_to_string(path).map_err(|error| ParseError::Io {
+        let content = self.read_to_string(path).map_err(|error| {
+            E::from(ParseError::Io {
                 path: path.to_path_buf(),
                 source: error,
-            })?;
+            })
+        })?;
 
         f(path, &content)
-    }
-
-    /// Validate a path against the configured policy.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`PathValidationError`] if the path is invalid.
-    #[inline]
-    pub fn validate_path(
-        &self,
-        path: &Path,
-    ) -> Result<(), PathValidationError> {
-        Validator::new_flexible().validate(path)
     }
 }
 
@@ -293,18 +310,15 @@ fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
 #[must_use]
 fn is_likely_binary(path: &Path) -> bool {
     path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
-        matches!(
-            ext.to_ascii_lowercase().as_str(),
-            "png"
-                | "jpg"
-                | "jpeg"
-                | "gif"
-                | "pdf"
-                | "mp3"
-                | "mp4"
-                | "zip"
-                | "wasm"
-        )
+        ext.eq_ignore_ascii_case("png")
+            || ext.eq_ignore_ascii_case("jpg")
+            || ext.eq_ignore_ascii_case("jpeg")
+            || ext.eq_ignore_ascii_case("gif")
+            || ext.eq_ignore_ascii_case("pdf")
+            || ext.eq_ignore_ascii_case("mp3")
+            || ext.eq_ignore_ascii_case("mp4")
+            || ext.eq_ignore_ascii_case("zip")
+            || ext.eq_ignore_ascii_case("wasm")
     })
 }
 
@@ -460,8 +474,8 @@ mod tests {
         let metadata =
             reader.metadata(Path::new("schemas/note.json")).expect("metadata");
 
-        assert_eq!(metadata.size, 2);
-        assert!(!metadata.is_symlink);
+        assert_eq!(metadata.len(), 2);
+        assert!(!metadata.file_type().is_symlink());
     }
 
     #[cfg(unix)]
@@ -478,7 +492,7 @@ mod tests {
         let metadata =
             reader.metadata(Path::new("schemas/link.json")).expect("metadata");
 
-        assert!(metadata.is_symlink);
+        assert!(metadata.file_type().is_symlink());
     }
 
     #[cfg(unix)]
@@ -530,9 +544,10 @@ mod tests {
 
         let reader = Reader::new(dir.path());
         let result = reader
-            .read_with(Path::new("notes/readme.md"), |_, text| {
-                Ok(text.trim_start().starts_with('#'))
-            })
+            .read_with::<bool, ParseError, _>(
+                Path::new("notes/readme.md"),
+                |_, text| Ok(text.trim_start().starts_with('#')),
+            )
             .expect("read with");
 
         assert!(result);

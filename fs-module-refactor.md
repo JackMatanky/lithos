@@ -355,7 +355,7 @@ pub fn classify(&self, path: &Path, content: Option<&str>) -> FormatKind {
 
 ## Step 6 — `reader.rs`: delete `FileMetadata`; store `Validator`; fix all reader defects
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 **Why:** Multiple independent defects in `reader.rs` are addressed together because several
 interact (e.g., storing `Validator` affects `validate_path` deletion; the `classify` signature
