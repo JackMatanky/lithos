@@ -154,3 +154,111 @@ pub enum PathValidationError {
     #[error("Validator root must be absolute, got: {0}")]
     RelativeRoot(std::path::PathBuf),
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test modules use conventional use-before-mod ordering"
+)]
+mod tests {
+    use std::path::PathBuf;
+
+    use rstest::rstest;
+
+    use super::*;
+
+    mod parse_error {
+        use super::*;
+
+        #[test]
+        fn io_error_includes_path() {
+            let error = ParseError::Io {
+                path: PathBuf::from("config/missing.json"),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "not found",
+                ),
+            };
+            let msg = format!("{error}");
+            assert!(msg.contains("config/missing.json"));
+        }
+
+        #[rstest]
+        #[case::json(ParseError::Json {
+            path: PathBuf::from("data.json"),
+            message: "unexpected token".into(),
+            line: Some(10),
+            column: Some(5),
+        }, "data.json")]
+        #[case::toml(ParseError::Toml {
+            path: PathBuf::from("config.toml"),
+            message: "invalid key".into(),
+            line: None,
+            column: None,
+        }, "config.toml")]
+        fn includes_path_in_message(
+            #[case] error: ParseError,
+            #[case] expected_path: &str,
+        ) {
+            let msg = format!("{error}");
+            assert!(msg.contains(expected_path));
+        }
+
+        #[test]
+        fn unsupported_format_lists_formats() {
+            let error = ParseError::UnsupportedFormat {
+                path: PathBuf::from("data.xml"),
+                supported: &["json", "toml", "yaml"],
+            };
+            let msg = format!("{error}");
+            assert!(
+                msg.contains("json")
+                    && msg.contains("toml")
+                    && msg.contains("yaml")
+            );
+        }
+    }
+
+    mod path_validation_error {
+        use super::*;
+
+        #[rstest]
+        #[case::empty(PathValidationError::EmptyPath, "empty")]
+        #[case::traversal(PathValidationError::PathTraversalError, "traversal")]
+        #[case::symlink(PathValidationError::SymlinkEscapeError, "symlink")]
+        fn message_contains_keyword(
+            #[case] error: PathValidationError,
+            #[case] keyword: &str,
+        ) {
+            let msg = format!("{error}").to_lowercase();
+            assert!(msg.contains(keyword), "Expected '{keyword}' in: {msg}");
+        }
+
+        #[test]
+        fn restricted_path_includes_path() {
+            let error = PathValidationError::RestrictedPathError(
+                PathBuf::from(".git/config"),
+            );
+            assert!(format!("{error}").contains(".git/config"));
+        }
+
+        #[test]
+        fn invalid_extension_includes_required() {
+            let error = PathValidationError::InvalidExtension {
+                path: PathBuf::from("note.txt"),
+                required: "md".into(),
+            };
+            let msg = format!("{error}");
+            assert!(msg.contains("note.txt") && msg.contains(".md"));
+        }
+
+        #[test]
+        fn relative_root_includes_path() {
+            let error = PathValidationError::RelativeRoot(PathBuf::from(
+                "relative/path",
+            ));
+            let msg = format!("{error}");
+            assert!(msg.contains("relative/path") && msg.contains("absolute"));
+        }
+    }
+}

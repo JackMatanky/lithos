@@ -323,47 +323,61 @@ fn is_likely_binary(path: &Path) -> bool {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test modules use conventional use-before-mod ordering"
+)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
+    use rstest::rstest;
+    use tempfile::TempDir;
+
+    use super::*;
+
     mod content_sniffing {
         use super::*;
 
-        #[test]
-        fn detects_json_from_content() {
+        #[rstest]
+        #[case::json_obj("{\"key\": \"value\"}", FormatKind::Json)]
+        #[case::json_array("[1, 2, 3]", FormatKind::Json)]
+        #[case::toml("name = \"test\"", FormatKind::Toml)]
+        #[case::yaml("name: test\nvalue: 42", FormatKind::Yaml)]
+        #[case::yaml_doc("---\nname: test", FormatKind::Yaml)]
+        #[case::unknown("plain text", FormatKind::Unknown)]
+        fn classifies_content_correctly(
+            #[case] content: &str,
+            #[case] expected: FormatKind,
+        ) {
             assert_eq!(
-                classify_path(Path::new("data"), Some("{\"key\": \"value\"}")),
-                FormatKind::Json
-            );
-            assert_eq!(
-                classify_path(Path::new("data"), Some("[1, 2, 3]")),
-                FormatKind::Json
-            );
-        }
-
-        #[test]
-        fn detects_toml_from_content() {
-            // Note: content starting with '[' is ambiguous (could be JSON array
-            // or TOML table header). Use key-value format for unambiguous TOML.
-            assert_eq!(
-                classify_path(
-                    Path::new("data"),
-                    Some("name = \"test\"\nversion = \"1.0\"")
-                ),
-                FormatKind::Toml
-            );
-            assert_eq!(
-                classify_path(Path::new("data"), Some("name = \"test\"")),
-                FormatKind::Toml
+                classify_path(Path::new("data"), Some(content)),
+                expected
             );
         }
 
+        #[rstest]
+        #[case::json("config.json", FormatKind::Json)]
+        #[case::toml("config.toml", FormatKind::Toml)]
+        #[case::yaml("config.yaml", FormatKind::Yaml)]
+        #[case::yml("config.yml", FormatKind::Yaml)]
+        #[case::md("readme.md", FormatKind::Markdown)]
+        #[case::png("image.png", FormatKind::Binary)]
+        #[case::pdf("doc.pdf", FormatKind::Binary)]
+        fn classifies_by_extension(
+            #[case] path: &str,
+            #[case] expected: FormatKind,
+        ) {
+            assert_eq!(classify_path(Path::new(path), None), expected);
+        }
+
         #[test]
-        fn returns_unknown_for_unrecognized_content() {
+        fn extension_takes_precedence_over_content() {
             assert_eq!(
                 classify_path(
-                    Path::new("data"),
-                    Some("plain text without structure")
+                    Path::new("config.json"),
+                    Some("name = \"toml\"")
                 ),
-                FormatKind::Unknown
+                FormatKind::Json
             );
         }
 
@@ -374,25 +388,268 @@ mod tests {
                 FormatKind::Unknown
             );
         }
+    }
+
+    mod constructor {
+        use super::*;
 
         #[test]
-        fn extension_takes_precedence_over_content() {
-            // A .json file with TOML content should still be classified as JSON
-            assert_eq!(
-                classify_path(
-                    Path::new("config.json"),
-                    Some("name = \"toml content\"")
-                ),
-                FormatKind::Json
-            );
+        fn creates_flexible_reader() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            assert_eq!(reader.root(), dir.path());
+        }
+
+        #[test]
+        fn creates_strict_reader_with_absolute_root() {
+            let dir = TempDir::new().expect("tempdir");
+            let canonical = dir.path().canonicalize().expect("canonicalize");
+            let reader =
+                Reader::new_strict(canonical.clone()).expect("strict reader");
+            assert_eq!(reader.root(), canonical);
+        }
+
+        #[test]
+        fn rejects_relative_root_in_strict_mode() {
+            let result = Reader::new_strict(PathBuf::from("relative/path"));
+            assert!(matches!(
+                result,
+                Err(PathValidationError::RelativeRoot(_))
+            ));
         }
     }
 
-    use std::path::{Path, PathBuf};
+    mod exists {
+        use super::*;
 
-    use tempfile::TempDir;
+        #[test]
+        fn returns_true_for_existing_file() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "file.json", b"{}");
+            let reader = Reader::new(dir.path());
+            assert!(reader.exists(Path::new("file.json")));
+        }
 
-    use super::*;
+        #[test]
+        fn returns_false_for_nonexistent_file() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            assert!(!reader.exists(Path::new("nonexistent.json")));
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn returns_false_for_broken_symlink() {
+            let dir = TempDir::new().expect("tempdir");
+            std::os::unix::fs::symlink(
+                dir.path().join("nonexistent"),
+                dir.path().join("broken"),
+            )
+            .expect("symlink");
+            let reader = Reader::new(dir.path());
+            assert!(!reader.exists(Path::new("broken")));
+        }
+    }
+
+    mod list_files {
+        use super::*;
+
+        #[test]
+        fn returns_sorted_matches() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "schemas/b.json", b"{}");
+            write_file(dir.path(), "schemas/a.json", b"{}");
+            let reader = Reader::new(dir.path());
+            let files = reader.list_files("schemas/**/*.json").expect("list");
+            assert_eq!(files, vec![
+                PathBuf::from("schemas/a.json"),
+                PathBuf::from("schemas/b.json")
+            ]);
+        }
+
+        #[test]
+        fn excludes_directories() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "file.json", b"{}");
+            std::fs::create_dir_all(dir.path().join("subdir.json"))
+                .expect("dir");
+            let reader = Reader::new(dir.path());
+            let files = reader.list_files("*.json").expect("list");
+            assert_eq!(files.len(), 1);
+        }
+
+        #[test]
+        fn rejects_invalid_pattern() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            reader.list_files("[invalid").unwrap_err();
+        }
+
+        #[test]
+        fn returns_empty_when_no_matches() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            let files = reader.list_files("*.json").expect("list");
+            assert!(files.is_empty());
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn includes_symlinks() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "real.json", b"{}");
+            std::os::unix::fs::symlink(
+                dir.path().join("real.json"),
+                dir.path().join("link.json"),
+            )
+            .expect("symlink");
+            let reader = Reader::new(dir.path());
+            let files = reader.list_files("*.json").expect("list");
+            assert_eq!(files.len(), 2);
+        }
+    }
+
+    mod parse_structured {
+        use super::*;
+
+        #[rstest]
+        #[case::json("data.json", &b"{\"key\":\"value\"}"[..], true)]
+        #[case::toml("data.toml", b"key = \"value\"", true)]
+        #[case::yaml("data.yaml", b"key: value", true)]
+        #[case::yml("data.yml", b"key: value", true)]
+        #[case::bad_json("bad.json", b"{invalid}", false)]
+        #[case::bad_toml("bad.toml", b"invalid = [", false)]
+        #[case::bad_yaml("bad.yaml", b"key: [unclosed", false)]
+        fn parses_formats(
+            #[case] path: &str,
+            #[case] content: &[u8],
+            #[case] should_succeed: bool,
+        ) {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), path, content);
+            let reader = Reader::new(dir.path());
+            let result: Result<serde_json::Value, _> =
+                reader.parse_structured(Path::new(path));
+            assert_eq!(result.is_ok(), should_succeed);
+        }
+
+        #[test]
+        fn rejects_unknown_format() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "data.xml", b"<root/>");
+            let reader = Reader::new(dir.path());
+            let result: Result<serde_json::Value, _> =
+                reader.parse_structured(Path::new("data.xml"));
+            assert!(matches!(
+                result,
+                Err(ParseError::UnsupportedFormat { .. })
+            ));
+        }
+
+        #[test]
+        fn returns_io_error_for_nonexistent_file() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            let result: Result<serde_json::Value, _> =
+                reader.parse_structured(Path::new("nonexistent.json"));
+            assert!(matches!(result, Err(ParseError::Io { .. })));
+        }
+    }
+
+    mod read_operations {
+        use super::*;
+
+        #[test]
+        fn read_to_string_returns_content() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "file.txt", b"content");
+            let reader = Reader::new(dir.path());
+            assert_eq!(
+                reader.read_to_string(Path::new("file.txt")).expect("read"),
+                "content"
+            );
+        }
+
+        #[test]
+        fn read_to_string_rejects_invalid_utf8() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "binary.bin", b"\xff\xfe");
+            let reader = Reader::new(dir.path());
+            reader.read_to_string(Path::new("binary.bin")).unwrap_err();
+        }
+
+        #[test]
+        fn read_bytes_preserves_content() {
+            let dir = TempDir::new().expect("tempdir");
+            let original: Vec<u8> = vec![0x00, 0xFF, 0xAB, 0xCD];
+            write_file(dir.path(), "file.bin", &original);
+            let reader = Reader::new(dir.path());
+            assert_eq!(
+                reader.read_bytes(Path::new("file.bin")).expect("read"),
+                original
+            );
+        }
+
+        #[test]
+        fn metadata_returns_file_size() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "file.json", b"{}");
+            let reader = Reader::new(dir.path());
+            let meta = reader.metadata(Path::new("file.json")).expect("meta");
+            assert_eq!(meta.len(), 2);
+        }
+
+        #[test]
+        fn operations_return_error_for_nonexistent_file() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            let path = Path::new("nonexistent");
+            reader.read_to_string(path).unwrap_err();
+            reader.read_bytes(path).unwrap_err();
+            reader.metadata(path).unwrap_err();
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn metadata_detects_symlink() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "real.json", b"{}");
+            std::os::unix::fs::symlink(
+                dir.path().join("real.json"),
+                dir.path().join("link.json"),
+            )
+            .expect("symlink");
+            let reader = Reader::new(dir.path());
+            let meta = reader.metadata(Path::new("link.json")).expect("meta");
+            assert!(meta.file_type().is_symlink());
+        }
+    }
+
+    mod read_with {
+        use super::*;
+
+        #[test]
+        fn invokes_closure_with_content() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "file.txt", b"# Title");
+            let reader = Reader::new(dir.path());
+            let has_heading: bool = reader
+                .read_with::<_, ParseError, _>(Path::new("file.txt"), |_, s| {
+                    Ok(s.trim_start().starts_with('#'))
+                })
+                .expect("read_with");
+            assert!(has_heading);
+        }
+
+        #[test]
+        fn propagates_io_error() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            let result: Result<String, ParseError> = reader
+                .read_with(Path::new("nonexistent"), |_, _| Ok("x".into()));
+            assert!(matches!(result, Err(ParseError::Io { .. })));
+        }
+    }
 
     fn write_file(root: &Path, relative: &str, contents: &[u8]) -> PathBuf {
         let path = root.join(relative);
@@ -401,155 +658,5 @@ mod tests {
         }
         std::fs::write(&path, contents).expect("write test file");
         path
-    }
-
-    #[test]
-    fn list_files_returns_sorted_matches() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "schemas/b.json", b"{}");
-        write_file(dir.path(), "schemas/a.json", b"{}");
-        write_file(dir.path(), "schemas/c.toml", b"key = 1");
-
-        let reader = Reader::new(dir.path());
-        let files = reader.list_files("schemas/**/*.json").expect("list files");
-
-        assert_eq!(files, vec![
-            PathBuf::from("schemas/a.json"),
-            PathBuf::from("schemas/b.json"),
-        ]);
-    }
-
-    #[test]
-    fn list_files_supports_root_patterns() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "note.md", b"# Title");
-        write_file(dir.path(), "note.txt", b"plain");
-
-        let reader = Reader::new(dir.path());
-        let files = reader.list_files("*.md").expect("list files");
-
-        assert_eq!(files, vec![PathBuf::from("note.md")]);
-    }
-
-    #[test]
-    fn list_files_rejects_invalid_pattern() {
-        let dir = TempDir::new().expect("tempdir");
-        let reader = Reader::new(dir.path());
-        let result = reader.list_files("[invalid");
-
-        result.unwrap_err();
-    }
-
-    #[test]
-    fn read_to_string_reads_content() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "schemas/note.json", b"{}");
-
-        let reader = Reader::new(dir.path());
-        let content = reader
-            .read_to_string(Path::new("schemas/note.json"))
-            .expect("read to string");
-
-        assert_eq!(content, "{}");
-    }
-
-    #[test]
-    fn read_bytes_reads_binary() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "bin/blob.bin", b"\x00\x01\x02");
-
-        let reader = Reader::new(dir.path());
-        let bytes =
-            reader.read_bytes(Path::new("bin/blob.bin")).expect("read bytes");
-
-        assert_eq!(bytes, b"\x00\x01\x02");
-    }
-
-    #[test]
-    fn metadata_returns_size() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "schemas/note.json", b"{}");
-
-        let reader = Reader::new(dir.path());
-        let metadata =
-            reader.metadata(Path::new("schemas/note.json")).expect("metadata");
-
-        assert_eq!(metadata.len(), 2);
-        assert!(!metadata.file_type().is_symlink());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn metadata_marks_symlink() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "schemas/real.json", b"{}");
-
-        let link = dir.path().join("schemas/link.json");
-        std::os::unix::fs::symlink(dir.path().join("schemas/real.json"), &link)
-            .expect("symlink");
-
-        let reader = Reader::new(dir.path());
-        let metadata =
-            reader.metadata(Path::new("schemas/link.json")).expect("metadata");
-
-        assert!(metadata.file_type().is_symlink());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn list_files_includes_symlinks() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "schemas/real.json", b"{}");
-
-        let link = dir.path().join("schemas/link.json");
-        std::os::unix::fs::symlink(dir.path().join("schemas/real.json"), &link)
-            .expect("symlink");
-
-        let reader = Reader::new(dir.path());
-        let files = reader.list_files("schemas/**/*.json").expect("list files");
-
-        assert!(files.contains(&PathBuf::from("schemas/real.json")));
-        assert!(files.contains(&PathBuf::from("schemas/link.json")));
-    }
-
-    #[test]
-    fn parse_structured_reads_json() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "schemas/note.json", b"{\"name\":\"note\"}");
-
-        let reader = Reader::new(dir.path());
-        let value: serde_json::Value = reader
-            .parse_structured(Path::new("schemas/note.json"))
-            .expect("parse structured");
-
-        assert_eq!(value.get("name").and_then(|v| v.as_str()), Some("note"));
-    }
-
-    #[test]
-    fn parse_structured_rejects_unknown_format() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "schemas/note.xml", b"<note></note>");
-
-        let reader = Reader::new(dir.path());
-        let result: Result<serde_json::Value, _> =
-            reader.parse_structured(Path::new("schemas/note.xml"));
-
-        assert!(matches!(result, Err(ParseError::UnsupportedFormat { .. })));
-    }
-
-    #[test]
-    fn read_with_invokes_closure() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "notes/readme.md", b"# Title");
-
-        let reader = Reader::new(dir.path());
-        let result = reader
-            .read_with::<bool, ParseError, _>(
-                Path::new("notes/readme.md"),
-                |_, text| Ok(text.trim_start().starts_with('#')),
-            )
-            .expect("read with");
-
-        assert!(result);
     }
 }

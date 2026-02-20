@@ -145,12 +145,222 @@ impl Writer {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test modules use conventional use-before-mod ordering"
+)]
 mod tests {
     use std::path::{Path, PathBuf};
 
+    use rstest::rstest;
     use tempfile::TempDir;
 
     use super::*;
+
+    mod write_operations {
+        use super::*;
+
+        #[test]
+        fn write_file_creates_and_overwrites() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+
+            writer.write_file(Path::new("file.txt"), b"first").expect("write");
+            writer
+                .write_file(Path::new("file.txt"), b"second")
+                .expect("overwrite");
+
+            let content =
+                std::fs::read(dir.path().join("file.txt")).expect("read");
+            assert_eq!(content, b"second");
+        }
+
+        #[rstest]
+        #[case::traversal("../escape.txt")]
+        #[case::hidden(".secret")]
+        fn write_file_rejects_invalid_paths(#[case] path: &str) {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            assert!(writer.write_file(Path::new(path), b"data").is_err());
+        }
+
+        #[test]
+        fn write_file_returns_error_when_parent_missing() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            assert!(
+                writer
+                    .write_file(Path::new("nested/deep/file.txt"), b"data")
+                    .is_err()
+            );
+        }
+    }
+
+    mod atomic_write {
+        use super::*;
+
+        #[test]
+        fn writes_content_correctly() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+
+            writer
+                .atomic_write(Path::new("file.txt"), b"content")
+                .expect("write");
+
+            let content =
+                std::fs::read(dir.path().join("file.txt")).expect("read");
+            assert_eq!(content, b"content");
+        }
+
+        #[test]
+        fn no_orphaned_temp_file() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            writer.atomic_write(Path::new("file.txt"), b"data").expect("write");
+
+            let count =
+                std::fs::read_dir(dir.path()).expect("read dir").count();
+            assert_eq!(count, 1);
+        }
+
+        #[test]
+        fn overwrites_existing_file() {
+            let dir = TempDir::new().expect("tempdir");
+            std::fs::write(dir.path().join("file.txt"), b"original")
+                .expect("write");
+            let writer = Writer::new(dir.path());
+
+            writer
+                .atomic_write(Path::new("file.txt"), b"replaced")
+                .expect("write");
+
+            let content =
+                std::fs::read(dir.path().join("file.txt")).expect("read");
+            assert_eq!(content, b"replaced");
+        }
+
+        #[rstest]
+        #[case::traversal("../escape.txt")]
+        #[case::hidden(".secret")]
+        fn rejects_invalid_paths(#[case] path: &str) {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            assert!(writer.atomic_write(Path::new(path), b"data").is_err());
+        }
+
+        #[test]
+        fn returns_error_when_parent_missing() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            assert!(
+                writer
+                    .atomic_write(Path::new("nested/file.txt"), b"data")
+                    .is_err()
+            );
+        }
+
+        #[test]
+        fn creates_in_existing_subdirectory() {
+            let dir = TempDir::new().expect("tempdir");
+            std::fs::create_dir_all(dir.path().join("sub")).expect("create");
+            let writer = Writer::new(dir.path());
+
+            writer
+                .atomic_write(Path::new("sub/file.txt"), b"data")
+                .expect("write");
+            assert!(dir.path().join("sub/file.txt").exists());
+        }
+    }
+
+    mod create_dir_all {
+        use super::*;
+
+        #[test]
+        fn creates_nested_directories() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            writer.create_dir_all(Path::new("a/b/c")).expect("create");
+            assert!(dir.path().join("a/b/c").exists());
+        }
+
+        #[test]
+        fn idempotent_for_existing() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            writer.create_dir_all(Path::new("dir")).expect("create");
+            writer.create_dir_all(Path::new("dir")).expect("create again");
+        }
+
+        #[test]
+        fn rejects_traversal() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            assert!(writer.create_dir_all(Path::new("../escape")).is_err());
+        }
+    }
+
+    mod rename {
+        use super::*;
+
+        #[test]
+        fn moves_file() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "old.txt", b"data");
+            let writer = Writer::new(dir.path());
+
+            writer
+                .rename(Path::new("old.txt"), Path::new("new.txt"))
+                .expect("rename");
+
+            assert!(!dir.path().join("old.txt").exists());
+            assert!(dir.path().join("new.txt").exists());
+        }
+
+        #[rstest]
+        #[case::source_traversal("../escape", "safe.txt")]
+        #[case::dest_traversal("safe.txt", "../escape")]
+        #[case::source_hidden(".secret", "public.txt")]
+        #[case::dest_hidden("public.txt", ".secret")]
+        fn rejects_invalid_paths(#[case] from: &str, #[case] to: &str) {
+            let dir = TempDir::new().expect("tempdir");
+            if !from.starts_with('.') && !from.starts_with('.') {
+                write_file(dir.path(), from, b"data");
+            }
+            let writer = Writer::new(dir.path());
+            assert!(writer.rename(Path::new(from), Path::new(to)).is_err());
+        }
+    }
+
+    mod remove_file {
+        use super::*;
+
+        #[test]
+        fn deletes_file() {
+            let dir = TempDir::new().expect("tempdir");
+            write_file(dir.path(), "file.txt", b"data");
+            let writer = Writer::new(dir.path());
+
+            writer.remove_file(Path::new("file.txt")).expect("remove");
+            assert!(!dir.path().join("file.txt").exists());
+        }
+
+        #[test]
+        fn returns_error_for_nonexistent() {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            assert!(writer.remove_file(Path::new("nonexistent.txt")).is_err());
+        }
+
+        #[rstest]
+        #[case::traversal("../escape.txt")]
+        #[case::hidden(".secret")]
+        fn rejects_invalid_paths(#[case] path: &str) {
+            let dir = TempDir::new().expect("tempdir");
+            let writer = Writer::new(dir.path());
+            assert!(writer.remove_file(Path::new(path)).is_err());
+        }
+    }
 
     fn write_file(root: &Path, relative: &str, contents: &[u8]) -> PathBuf {
         let path = root.join(relative);
@@ -159,139 +369,5 @@ mod tests {
         }
         std::fs::write(&path, contents).expect("write test file");
         path
-    }
-
-    #[test]
-    fn write_file_creates_file_with_correct_content() {
-        let dir = TempDir::new().expect("tempdir");
-        let writer = Writer::new(dir.path());
-
-        writer
-            .write_file(Path::new("output.txt"), b"hello world")
-            .expect("write file");
-
-        let content =
-            std::fs::read(dir.path().join("output.txt")).expect("read file");
-        assert_eq!(content, b"hello world");
-    }
-
-    #[test]
-    fn write_file_overwrites_existing_file() {
-        let dir = TempDir::new().expect("tempdir");
-        let writer = Writer::new(dir.path());
-
-        writer
-            .write_file(Path::new("output.txt"), b"original")
-            .expect("write file");
-        writer
-            .write_file(Path::new("output.txt"), b"replaced")
-            .expect("overwrite file");
-
-        let content =
-            std::fs::read(dir.path().join("output.txt")).expect("read file");
-        assert_eq!(content, b"replaced");
-    }
-
-    #[test]
-    fn write_file_rejects_path_traversal() {
-        let dir = TempDir::new().expect("tempdir");
-        let writer = Writer::new(dir.path());
-
-        let result = writer.write_file(Path::new("../escape.txt"), b"data");
-        assert!(result.is_err(), "should reject path traversal");
-    }
-
-    #[test]
-    fn write_file_rejects_hidden_file() {
-        let dir = TempDir::new().expect("tempdir");
-        let writer = Writer::new(dir.path());
-
-        let result = writer.write_file(Path::new(".secret"), b"data");
-        assert!(result.is_err(), "should reject hidden file");
-    }
-
-    #[test]
-    fn atomic_write_content_is_correct() {
-        let dir = TempDir::new().expect("tempdir");
-        let writer = Writer::new(dir.path());
-
-        writer
-            .atomic_write(Path::new("atomic.txt"), b"atomic content")
-            .expect("atomic write");
-
-        let content =
-            std::fs::read(dir.path().join("atomic.txt")).expect("read file");
-        assert_eq!(content, b"atomic content");
-    }
-
-    #[test]
-    fn atomic_write_no_orphaned_temp_file() {
-        let dir = TempDir::new().expect("tempdir");
-        let writer = Writer::new(dir.path());
-
-        writer
-            .atomic_write(Path::new("atomic.txt"), b"content")
-            .expect("atomic write");
-
-        // Count files in the directory - should only have the target file
-        let file_count =
-            std::fs::read_dir(dir.path()).expect("read dir").count();
-        assert_eq!(
-            file_count, 1,
-            "should have exactly one file (no temp orphan)"
-        );
-    }
-
-    #[test]
-    fn atomic_write_rejects_path_traversal() {
-        let dir = TempDir::new().expect("tempdir");
-        let writer = Writer::new(dir.path());
-
-        let result = writer.atomic_write(Path::new("../escape.txt"), b"data");
-        assert!(result.is_err(), "should reject path traversal");
-    }
-
-    #[test]
-    fn create_dir_all_creates_nested_directories() {
-        let dir = TempDir::new().expect("tempdir");
-        let writer = Writer::new(dir.path());
-
-        writer.create_dir_all(Path::new("a/b/c/d")).expect("create dirs");
-
-        assert!(dir.path().join("a/b/c/d").exists());
-    }
-
-    #[test]
-    fn rename_moves_file() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "old.txt", b"data");
-        let writer = Writer::new(dir.path());
-
-        writer
-            .rename(Path::new("old.txt"), Path::new("new.txt"))
-            .expect("rename");
-
-        assert!(!dir.path().join("old.txt").exists());
-        assert!(dir.path().join("new.txt").exists());
-    }
-
-    #[test]
-    fn remove_file_deletes_file() {
-        let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "to_delete.txt", b"data");
-        let writer = Writer::new(dir.path());
-
-        writer.remove_file(Path::new("to_delete.txt")).expect("remove file");
-
-        assert!(!dir.path().join("to_delete.txt").exists());
-    }
-
-    #[test]
-    fn remove_file_returns_error_for_non_existent() {
-        let dir = TempDir::new().expect("tempdir");
-        let writer = Writer::new(dir.path());
-
-        let result = writer.remove_file(Path::new("nonexistent.txt"));
-        assert!(result.is_err(), "should error for non-existent file");
     }
 }

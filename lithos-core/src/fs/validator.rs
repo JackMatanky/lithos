@@ -874,6 +874,115 @@ mod tests {
             }
         }
 
+        mod security_edge_cases {
+            use super::*;
+
+            #[cfg(unix)]
+            #[test]
+            fn rejects_symlink_chain_escaping_root() {
+                // Given: A chain of symlinks that eventually escapes root
+                let ws = Workspace::new().expect("workspace");
+                ws.create_file("target.txt", Some("inside"));
+                // First symlink points to second symlink
+                let link1 = ws.root.join("link1.txt");
+                let link2 = ws.root.join("link2.txt");
+                // Second symlink points outside
+                std::os::unix::fs::symlink(
+                    ws.root.parent().unwrap_or(&ws.root),
+                    &link2,
+                )
+                .expect("symlink");
+                std::os::unix::fs::symlink(&link2, &link1).expect("symlink");
+
+                // When: Resolving the chain in strict mode
+                let v = Validator::try_new_strict(ws.root.clone())
+                    .expect("strict validator");
+                let result = v.resolve_safe_symlink(&link1);
+
+                // Then: Rejects chain that escapes
+                assert!(
+                    matches!(
+                        result,
+                        Err(PathValidationError::SymlinkEscapeError)
+                    ),
+                    "Expected SymlinkEscapeError for chain escaping root, \
+                     got: {result:?}"
+                );
+            }
+
+            #[cfg(unix)]
+            #[test]
+            fn resolves_valid_internal_symlink() {
+                // Given: A valid symlink within the root
+                let ws = Workspace::new().expect("workspace");
+                let target = ws.create_file("target.txt", Some("content"));
+                let symlink_path = ws.create_symlink("link.txt", &target);
+
+                // When: Resolving in strict mode
+                let v = Validator::try_new_strict(ws.root.clone())
+                    .expect("strict validator");
+                let result = v.resolve_safe_symlink(&symlink_path);
+
+                // Then: Resolves to canonical target
+                assert!(
+                    result.is_ok(),
+                    "Expected successful resolution for valid internal \
+                     symlink, got: {result:?}"
+                );
+                let resolved = result.expect("resolved path");
+                assert!(
+                    resolved.starts_with(&ws.root),
+                    "Resolved path should be within root"
+                );
+            }
+
+            #[test]
+            fn returns_error_for_nonexistent_symlink_target() {
+                // Given: A symlink pointing to non-existent target
+                let v = Validator::new_flexible();
+
+                // When: Resolving broken symlink (relative to CWD)
+                let result = v.resolve_safe_symlink("nonexistent_link");
+
+                // Then: Returns IoError (canonicalize fails)
+                assert!(
+                    matches!(result, Err(PathValidationError::IoError(_))),
+                    "Expected IoError for non-existent target, got: {result:?}"
+                );
+            }
+
+            #[cfg(unix)]
+            #[test]
+            fn rejects_symlink_to_symlink_escaping() {
+                // Given: A symlink pointing to another symlink that escapes
+                let ws = Workspace::new().expect("workspace");
+                let outside_dir = ws.root.parent().unwrap_or(&ws.root);
+                let link1 = ws.root.join("inner_link.txt");
+                let link2 = ws.root.join("outer_link.txt");
+
+                // link2 points outside
+                std::os::unix::fs::symlink(outside_dir, &link2)
+                    .expect("symlink");
+                // link1 points to link2
+                std::os::unix::fs::symlink(&link2, &link1).expect("symlink");
+
+                // When: Resolving link1
+                let v = Validator::try_new_strict(ws.root.clone())
+                    .expect("strict validator");
+                let result = v.resolve_safe_symlink(&link1);
+
+                // Then: Rejects because chain escapes
+                assert!(
+                    matches!(
+                        result,
+                        Err(PathValidationError::SymlinkEscapeError)
+                    ),
+                    "Expected SymlinkEscapeError for symlink chain, got: \
+                     {result:?}"
+                );
+            }
+        }
+
         use std::sync::{Mutex, MutexGuard, OnceLock};
 
         use tempfile::NamedTempFile;
