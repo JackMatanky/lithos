@@ -5,142 +5,123 @@
 //! low-level I/O details into domain logic.
 
 /// Errors that can occur during config file parsing.
-///
-/// Each variant carries enough context (file path, line/column, parser
-/// message) for the caller to produce a human-readable diagnostic without
-/// re-reading the file.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 #[expect(
     clippy::module_name_repetitions,
-    reason = "Context-specific error name is intentional; re-exported as \
-              ParseError from the fs module root."
+    reason = "Enum name reflects specific parsing context within the error \
+              module"
 )]
-#[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
 pub enum ParseError {
-    /// I/O error reading the file at `path`.
-    #[error("I/O error reading {path}: {source}")]
+    /// An I/O error occurred while reading the file.
+    #[error("Failed to read {path}: {source}")]
     Io {
-        /// File path where the error occurred.
+        /// The path to the file that failed to be read.
         path: std::path::PathBuf,
-        /// Underlying I/O error.
-        #[source]
+        /// The underlying I/O error.
         source: std::io::Error,
     },
 
-    /// JSON parsing failed at the given location.
+    /// A JSON parsing error occurred.
     #[error(
-        "JSON parse error in {path}: {message} at line {line:?}, column \
-         {column:?}"
+        "JSON error in {path} at line {line:?}, column {column:?}: {message}"
     )]
     Json {
-        /// File path where the error occurred.
+        /// The path to the malformed JSON file.
         path: std::path::PathBuf,
-        /// Parser error message.
+        /// The error message from the JSON parser.
         message: Box<str>,
-        /// Line number of the error, if available.
+        /// The line number where the error occurred.
         line: Option<usize>,
-        /// Column number of the error, if available.
+        /// The column number where the error occurred.
         column: Option<usize>,
     },
 
-    /// TOML parsing failed at the given location.
+    /// A TOML parsing error occurred.
     #[error(
-        "TOML parse error in {path}: {message} at line {line:?}, column \
-         {column:?}"
+        "TOML error in {path} at line {line:?}, column {column:?}: {message}"
     )]
     Toml {
-        /// File path where the error occurred.
+        /// The path to the malformed TOML file.
         path: std::path::PathBuf,
-        /// Parser error message.
+        /// The error message from the TOML parser.
         message: Box<str>,
-        /// Line number of the error, if available.
+        /// The line number where the error occurred.
         line: Option<usize>,
-        /// Column number of the error, if available.
+        /// The column number where the error occurred.
         column: Option<usize>,
     },
 
-    /// The file format is not supported by the parser.
-    ///
-    /// `supported` lists the extensions that the parser accepts. The caller
-    /// should surface this to the user with a suggestion to rename the file.
-    #[error("Unsupported format for {path:?}: expected one of {supported:?}")]
-    UnsupportedFormat {
-        /// File path with the unsupported extension.
-        path: std::path::PathBuf,
-        /// Extensions this parser accepts (e.g. `&["json"]`).
-        supported: &'static [&'static str],
-    },
-
-    /// YAML parsing failed at the given location.
+    /// A YAML parsing error occurred.
     #[error(
-        "YAML parse error in {path}: {message} at line {line:?}, column \
-         {column:?}"
+        "YAML error in {path} at line {line:?}, column {column:?}: {message}"
     )]
     Yaml {
-        /// File path where the error occurred.
+        /// The path to the malformed YAML file.
         path: std::path::PathBuf,
-        /// Parser error message.
+        /// The error message from the YAML parser.
         message: Box<str>,
-        /// Line number of the error, if available.
+        /// The line number where the error occurred.
         line: Option<usize>,
-        /// Column number of the error, if available.
+        /// The column number where the error occurred.
         column: Option<usize>,
+    },
+
+    /// The file format is not supported.
+    #[error("Unsupported format for {path}. Supported: {supported:?}")]
+    UnsupportedFormat {
+        /// The path to the file with an unsupported format.
+        path: std::path::PathBuf,
+        /// A list of supported formats.
+        supported: &'static [&'static str],
     },
 }
 
-/// Errors produced by path validation.
-///
-/// Each variant is designed for human-readable reporting while retaining
-/// structured fields for programmatic error handling and testing.
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Context-specific error name is intentional; re-exported as \
-              PathValidationError from the fs module root."
-)]
+/// Errors related to path validation and vault safety.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Enum name reflects specific validation context within the error \
+              module"
+)]
 pub enum PathValidationError {
-    /// The path string was empty.
-    #[error("Path cannot be empty")]
+    /// An I/O error occurred during path validation.
+    #[error("I/O error during validation: {0}")]
+    IoError(#[from] std::io::Error),
+
+    /// The path is empty.
+    #[error("Path is empty")]
     EmptyPath,
 
-    /// The path is absolute when only relative paths are allowed.
-    #[error("Absolute path not allowed: {0}")]
+    /// The path is absolute, which is not allowed for vault paths.
+    #[error("Vault path must be relative, got: {0}")]
     AbsolutePathError(std::path::PathBuf),
 
-    /// The path contains invalid encoding (non-UTF-8).
-    #[error("Path contains invalid encoding: {0}")]
-    InvalidPathEncoding(std::path::PathBuf),
-
-    /// An I/O error occurred during symlink resolution.
-    ///
-    /// The inner [`std::io::Error`] describes the underlying OS error (e.g.
-    /// a permission denial or a symlink loop).
-    #[error("I/O error during symlink resolution: {0}")]
-    IoError(#[source] std::io::Error),
-
-    /// The path contains `..` components that attempt to escape the allowed
-    /// directory.
-    #[error("Path traversal detected: path contains '..' components")]
+    /// The path contains traversal components (e.g., `..`).
+    #[error("Path traversal detected in vault path")]
     PathTraversalError,
 
-    /// The path accesses a restricted or hidden file (a component starting
-    /// with `.`).
-    #[error("Restricted path access denied: {0}")]
+    /// A symlink escapes the vault root.
+    #[error("Symlink escapes the vault root")]
+    SymlinkEscapeError,
+
+    /// The path is restricted (e.g., hidden files like `.git`).
+    #[error("Path is restricted: {0}")]
     RestrictedPathError(std::path::PathBuf),
 
-    /// The path extension does not match the required extension.
-    #[error("Invalid path extension for {path}: expected .{required}")]
+    /// The path does not have the required extension.
+    #[error("Path {path} must have extension .{required}")]
     InvalidExtension {
-        /// File path with the wrong extension.
+        /// The path with the invalid extension.
         path: std::path::PathBuf,
-        /// Required extension without a leading dot (e.g. `"md"`).
-        required: Box<str>,
+        /// The required extension.
+        required: String,
     },
 
-    /// The symlink target escapes the configured root directory.
-    #[error("Symlink escape detected: target is outside root boundary")]
-    SymlinkEscapeError,
+    /// The path contains invalid UTF-8.
+    #[error("Path contains invalid UTF-8: {0:?}")]
+    InvalidPathEncoding(std::path::PathBuf),
 
     /// The root path supplied to [`Validator::try_new_strict`] is not
     /// absolute.
@@ -154,7 +135,6 @@ pub enum PathValidationError {
     #[error("Validator root must be absolute, got: {0}")]
     RelativeRoot(std::path::PathBuf),
 }
-
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -171,7 +151,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn io_error_includes_path() {
+        fn formats_io_error_with_path() {
             let error = ParseError::Io {
                 path: PathBuf::from("config/missing.json"),
                 source: std::io::Error::new(
@@ -205,7 +185,7 @@ mod tests {
         }
 
         #[test]
-        fn unsupported_format_lists_formats() {
+        fn formats_unsupported_format_error_with_list() {
             let error = ParseError::UnsupportedFormat {
                 path: PathBuf::from("data.xml"),
                 supported: &["json", "toml", "yaml"],
@@ -226,7 +206,7 @@ mod tests {
         #[case::empty(PathValidationError::EmptyPath, "empty")]
         #[case::traversal(PathValidationError::PathTraversalError, "traversal")]
         #[case::symlink(PathValidationError::SymlinkEscapeError, "symlink")]
-        fn message_contains_keyword(
+        fn formats_message_containing_expected_keyword(
             #[case] error: PathValidationError,
             #[case] keyword: &str,
         ) {
@@ -235,7 +215,7 @@ mod tests {
         }
 
         #[test]
-        fn restricted_path_includes_path() {
+        fn formats_restricted_path_error_with_path() {
             let error = PathValidationError::RestrictedPathError(
                 PathBuf::from(".git/config"),
             );
@@ -243,7 +223,7 @@ mod tests {
         }
 
         #[test]
-        fn invalid_extension_includes_required() {
+        fn formats_invalid_extension_error_with_required() {
             let error = PathValidationError::InvalidExtension {
                 path: PathBuf::from("note.txt"),
                 required: "md".into(),
@@ -253,7 +233,7 @@ mod tests {
         }
 
         #[test]
-        fn relative_root_includes_path() {
+        fn formats_relative_root_error_with_path() {
             let error = PathValidationError::RelativeRoot(PathBuf::from(
                 "relative/path",
             ));

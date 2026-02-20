@@ -1,206 +1,155 @@
-//! File system abstraction for testable file I/O.
-//!
-//! This module provides the [`Reader`] concrete type for scoped filesystem
-//! access. The reader keeps path resolution anchored to a root directory so
-//! adapters can perform deterministic file access without leaking filesystem
-//! details into domain logic.
-
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
-
-use serde::de::DeserializeOwned;
+use std::path::{Path, PathBuf};
 
 use super::{
-    PathValidationError,
-    error::ParseError,
-    types::{Json, Markdown, Toml, Yaml},
+    error::PathValidationError,
+    types::{Binary, Json, Markdown, Toml, Yaml},
     validator::Validator,
 };
+use crate::fs::error::ParseError;
 
-/// Internal file classification for read pipelines.
+/// Supported file formats for structured parsing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FormatKind {
-    /// JSON structured data.
+#[non_exhaustive]
+pub enum FormatKind {
+    /// JSON format.
     Json,
-    /// TOML structured data.
+    /// TOML format.
     Toml,
-    /// YAML structured data.
+    /// YAML format.
     Yaml,
-    /// Markdown text.
+    /// Markdown format.
     Markdown,
-    /// Likely binary data.
+    /// Binary format.
     Binary,
     /// Unknown or unsupported format.
     Unknown,
 }
 
-/// Production file reader using `std::fs` for real filesystem access.
+/// A read-only filesystem adapter for safe vault access.
 ///
-/// The reader enforces root-scoped access and is intended for adapter layers
-/// that ingest files into domain models.
-///
-/// # Examples
-///
-/// ```
-/// # use std::path::Path;
-/// # use lithos_core::fs::reader::Reader;
-/// # let unique = format!("lithos_fs_reader_example_{}", std::process::id());
-/// # let root = std::env::temp_dir().join(unique);
-/// # std::fs::create_dir_all(&root)?;
-/// # std::fs::write(root.join("config.json"), "{}")?;
-/// let reader = Reader::new(root.as_path());
-/// let content = reader.read_to_string(Path::new("config.json"))?;
-/// assert_eq!(content, "{}");
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-#[derive(Debug, Clone)]
+/// `Reader` provides methods for listing, reading, and parsing files within a
+/// specified root directory. It enforces path safety via [`Validator`] to
+/// prevent traversal attacks and unauthorized access to restricted files.
 pub struct Reader {
-    /// Root directory for scoped file access.
     root: PathBuf,
-    /// Path validator for security checks.
-    ///
-    /// Stored for future use when strict mode path validation is needed
-    /// (e.g., validating paths before file operations in vault mode).
-    #[expect(
-        dead_code,
-        reason = "Stored for strict mode path validation; will be used when \
-                  Reader exposes path validation to callers."
-    )]
     validator: Validator,
 }
 
 impl Reader {
-    /// Creates a new filesystem reader with flexible path validation.
+    /// Creates a new `Reader` with flexible validation.
     ///
-    /// Flexible mode allows external symlinks (e.g., dotfiles) while still
-    /// checking input traversal and hidden-file access.
+    /// Flexible mode allows symlinks to targets outside the root directory and
+    /// does not require an absolute root path.
     #[inline]
-    #[must_use]
-    pub fn new(root: &Path) -> Self {
+    pub fn new<P: Into<PathBuf>>(root: P) -> Self {
         Self {
-            root: root.to_path_buf(),
+            root: root.into(),
             validator: Validator::new_flexible(),
         }
     }
 
-    /// Creates a new filesystem reader with strict path validation.
+    /// Creates a new `Reader` with strict validation.
     ///
-    /// Strict mode enforces a root boundary and rejects symlinks that escape
-    /// it.
+    /// Strict mode requires an absolute, canonicalized root path and rejects
+    /// any symlinks that escape the root boundary.
     ///
     /// # Errors
     ///
-    /// Returns [`PathValidationError::RelativeRoot`] if `root` is not an
-    /// absolute path.
+    /// Returns [`PathValidationError::RelativeRoot`] if the provided path is
+    /// not absolute.
     #[inline]
-    pub fn new_strict(root: PathBuf) -> Result<Self, PathValidationError> {
-        let validator = Validator::try_new_strict(root.clone())?;
+    pub fn new_strict<P: Into<PathBuf>>(
+        root: P,
+    ) -> Result<Self, PathValidationError> {
+        let root = root.into();
         Ok(Self {
+            validator: Validator::try_new_strict(root.clone())?,
             root,
-            validator,
         })
     }
 
-    /// Returns the root directory for this reader.
+    /// Returns the root directory of this reader.
     #[inline]
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
     }
 
-    /// Resolves a relative path against the root directory.
-    #[inline]
-    fn resolve_path(&self, path: &Path) -> PathBuf {
-        self.root.join(path)
-    }
-
-    /// Classify a path based on extension with optional content-sniffing
-    /// fallback.
-    ///
-    /// When content is provided and the extension is unknown or absent, the
-    /// method uses format detection heuristics to identify JSON, YAML, or TOML.
-    #[inline]
-    #[must_use]
-    pub(crate) fn classify(path: &Path, content: Option<&str>) -> FormatKind {
-        classify_path(path, content)
-    }
-
-    /// Check whether a file exists at the given path.
+    /// Checks if a file exists within the vault.
     #[inline]
     #[must_use]
     pub fn exists(&self, path: &Path) -> bool {
-        self.resolve_path(path).exists()
+        self.root.join(path).exists()
     }
 
-    /// List files matching a glob pattern, relative to the root.
+    /// Lists files matching a glob pattern within the vault.
+    ///
+    /// The pattern is relative to the vault root. Only files and symlinks are
+    /// returned; directories are excluded. Results are sorted alphabetically.
     ///
     /// # Errors
     ///
-    /// Returns an error if the pattern is invalid or if any per-entry operation
-    /// fails (e.g., permission denied, broken symlink).
+    /// Returns an error if the pattern is invalid or if I/O operations fail.
     #[inline]
-    pub fn list_files(&self, pattern: &str) -> Result<Vec<PathBuf>, io::Error> {
+    pub fn list_files(
+        &self,
+        pattern: &str,
+    ) -> Result<Vec<PathBuf>, ParseError> {
         let full_pattern = self.root.join(pattern);
-        let pattern_str = full_pattern.to_str().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Pattern contains invalid UTF-8",
-            )
-        })?;
+        let pattern_str =
+            full_pattern.to_str().ok_or_else(|| ParseError::Io {
+                path: full_pattern.clone(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Invalid UTF-8 in pattern",
+                ),
+            })?;
 
-        let mut paths: Vec<PathBuf> = glob::glob(pattern_str)
-            .map_err(|error| {
-                io::Error::new(io::ErrorKind::InvalidInput, error)
-            })?
-            .map(|entry| -> io::Result<Option<PathBuf>> {
-                let path = entry.map_err(io::Error::other)?;
-                if !path.is_file() && !path.is_symlink() {
-                    return Ok(None);
+        let mut paths = Vec::new();
+        for entry in glob::glob(pattern_str).map_err(|e| ParseError::Io {
+            path: full_pattern.clone(),
+            source: std::io::Error::other(e),
+        })? {
+            let path = entry.map_err(|e| ParseError::Io {
+                path: e.path().to_path_buf(),
+                source: e.into_error(),
+            })?;
+
+            if !path.is_file() && !path.is_symlink() {
+                continue;
+            }
+
+            let relative = path.strip_prefix(&self.root).map_err(|_err| {
+                ParseError::Io {
+                    path: path.clone(),
+                    source: std::io::Error::other("Path outside root"),
                 }
-                Ok(path.strip_prefix(&self.root).ok().map(Path::to_path_buf))
-            })
-            .filter_map(io::Result::transpose)
-            .collect::<io::Result<_>>()?;
+            })?;
+
+            paths.push(relative.to_path_buf());
+        }
 
         paths.sort();
         Ok(paths)
     }
 
-    /// Read metadata for a path without following symlinks.
+    /// Reads and parses a structured file (JSON, TOML, or YAML).
     ///
-    /// Uses `symlink_metadata` to avoid following symlinks, ensuring the caller
-    /// sees the symlink itself rather than its target.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if metadata cannot be read.
-    #[inline]
-    pub fn metadata(
-        &self,
-        path: &Path,
-    ) -> Result<std::fs::Metadata, io::Error> {
-        std::fs::symlink_metadata(self.resolve_path(path))
-    }
-
-    /// Parse a structured file into type `T` based on its extension.
+    /// The format is detected based on the file extension.
     ///
     /// # Errors
     ///
-    /// Returns [`ParseError`] for I/O, parse, or unsupported format errors.
+    /// Returns [`ParseError`] if:
+    /// - The file format is unsupported.
+    /// - The file cannot be read.
+    /// - The content is malformed for the detected format.
     #[inline]
-    pub fn parse_structured<T: DeserializeOwned>(
-        &self,
-        path: &Path,
-    ) -> Result<T, ParseError> {
-        let content =
-            self.read_to_string(path).map_err(|error| ParseError::Io {
-                path: path.to_path_buf(),
-                source: error,
-            })?;
-
-        match Self::classify(path, Some(&content)) {
+    pub fn parse_structured<T>(&self, path: &Path) -> Result<T, ParseError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let content = self.read_to_string(path)?;
+        match classify_path(path, Some(&content)) {
             FormatKind::Json => Json::parse(path, &content),
             FormatKind::Toml => Toml::parse(path, &content),
             FormatKind::Yaml => Yaml::parse(path, &content),
@@ -213,64 +162,106 @@ impl Reader {
         }
     }
 
-    /// Read the entire file contents as bytes.
+    /// Reads a file's content as a UTF-8 string.
     ///
     /// # Errors
     ///
-    /// Returns an error if the file cannot be read.
+    /// Returns [`ParseError::Io`] if the file cannot be read or contains
+    /// invalid UTF-8.
     #[inline]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "pub(crate) API for future callers; tested but not yet \
-                      used outside the fs module."
-        )
-    )]
-    pub(crate) fn read_bytes(&self, path: &Path) -> Result<Vec<u8>, io::Error> {
-        std::fs::read(self.resolve_path(path))
+    pub fn read_to_string(&self, path: &Path) -> Result<String, ParseError> {
+        let full_path = self.root.join(path);
+        std::fs::read_to_string(&full_path).map_err(|e| ParseError::Io {
+            path: path.to_path_buf(),
+            source: e,
+        })
     }
 
-    /// Read the entire file contents as a UTF-8 string.
+    /// Executes a closure with the content of a file.
+    ///
+    /// This is a convenience method for reading a file and applying a
+    /// transformation.
     ///
     /// # Errors
     ///
-    /// Returns an error if the file cannot be read or is not valid UTF-8.
-    #[inline]
-    pub fn read_to_string(&self, path: &Path) -> Result<String, io::Error> {
-        std::fs::read_to_string(self.resolve_path(path))
-    }
-
-    /// Read a file and parse it with a caller-provided closure.
-    ///
-    /// The closure can return any error type that implements
-    /// `From<ParseError>`, allowing callers to produce domain-specific
-    /// errors directly.
-    ///
-    /// # Errors
-    ///
-    /// Returns the closure's error type for I/O or closure failures.
+    /// Returns an error if the file cannot be read or if the closure returns an
+    /// error.
     #[inline]
     pub fn read_with<T, E, F>(&self, path: &Path, f: F) -> Result<T, E>
     where
         F: FnOnce(&Path, &str) -> Result<T, E>,
         E: From<ParseError>,
     {
-        let content = self.read_to_string(path).map_err(|error| {
-            E::from(ParseError::Io {
-                path: path.to_path_buf(),
-                source: error,
-            })
-        })?;
-
+        let content = self.read_to_string(path)?;
         f(path, &content)
+    }
+
+    /// Returns the metadata for a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::Io`] if the file does not exist or metadata cannot
+    /// be read.
+    #[inline]
+    pub fn metadata(
+        &self,
+        path: &Path,
+    ) -> Result<std::fs::Metadata, ParseError> {
+        let full_path = self.root.join(path);
+        std::fs::symlink_metadata(&full_path).map_err(|e| ParseError::Io {
+            path: path.to_path_buf(),
+            source: e,
+        })
+    }
+
+    /// Reads a file's content as raw bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::Io`] if the file cannot be read.
+    #[inline]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Internal API for future byte-level processing"
+        )
+    )]
+    pub(crate) fn read_bytes(
+        &self,
+        path: &Path,
+    ) -> Result<Vec<u8>, ParseError> {
+        let full_path = self.root.join(path);
+        std::fs::read(&full_path).map_err(|e| ParseError::Io {
+            path: path.to_path_buf(),
+            source: e,
+        })
+    }
+
+    /// Validates a path using the internal validator.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PathValidationError`] if the path is invalid.
+    #[inline]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Internal API for explicit path validation"
+        )
+    )]
+    pub(crate) fn validate_path(
+        &self,
+        path: &Path,
+    ) -> Result<(), PathValidationError> {
+        self.validator.validate(path)
     }
 }
 
-#[inline]
+/// Detects the file format based on path extension and optional content hint.
 #[must_use]
 fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
-    // 1. Extension-first (fast, zero allocation)
     if Json::is_supported(path) {
         return FormatKind::Json;
     }
@@ -283,22 +274,19 @@ fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
     if Markdown::is_supported(path) {
         return FormatKind::Markdown;
     }
-    if is_likely_binary(path) {
+    if Binary::is_supported(path) {
         return FormatKind::Binary;
     }
 
-    // 2. Content-sniffing fallback (extension-less or unknown files)
-    // Detection order: JSON → YAML → TOML
-    // JSON is unambiguous ({/[, YAML before TOML because --- is unambiguous,
-    // TOML's heuristic (= without :) is most likely to produce false positives.
     if let Some(content) = content {
-        if Json::detect(content) {
+        let trimmed = content.trim_start();
+        if Json::detect(trimmed) {
             return FormatKind::Json;
         }
-        if Yaml::detect(content) {
+        if Yaml::detect(trimmed) {
             return FormatKind::Yaml;
         }
-        if Toml::detect(content) {
+        if Toml::detect(trimmed) {
             return FormatKind::Toml;
         }
     }
@@ -306,17 +294,14 @@ fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
     FormatKind::Unknown
 }
 
-#[inline]
+/// Helper to check if a file extension matches binary formats.
 #[must_use]
-fn is_likely_binary(path: &Path) -> bool {
+pub(crate) fn is_binary_extension(path: &Path) -> bool {
     path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
         ext.eq_ignore_ascii_case("png")
             || ext.eq_ignore_ascii_case("jpg")
             || ext.eq_ignore_ascii_case("jpeg")
-            || ext.eq_ignore_ascii_case("gif")
             || ext.eq_ignore_ascii_case("pdf")
-            || ext.eq_ignore_ascii_case("mp3")
-            || ext.eq_ignore_ascii_case("mp4")
             || ext.eq_ignore_ascii_case("zip")
             || ext.eq_ignore_ascii_case("wasm")
     })
@@ -371,7 +356,7 @@ mod tests {
         }
 
         #[test]
-        fn extension_takes_precedence_over_content() {
+        fn favors_extension_over_content_sniffing() {
             assert_eq!(
                 classify_path(
                     Path::new("config.json"),
@@ -394,7 +379,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn creates_flexible_reader() {
+        fn creates_flexible_reader_with_valid_root() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
             assert_eq!(reader.root(), dir.path());
@@ -468,7 +453,7 @@ mod tests {
         }
 
         #[test]
-        fn excludes_directories() {
+        fn excludes_directories_from_results() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "file.json", b"{}");
             std::fs::create_dir_all(dir.path().join("subdir.json"))
@@ -495,7 +480,7 @@ mod tests {
 
         #[cfg(unix)]
         #[test]
-        fn includes_symlinks() {
+        fn includes_symlinks_in_results() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "real.json", b"{}");
             std::os::unix::fs::symlink(
@@ -520,7 +505,7 @@ mod tests {
         #[case::bad_json("bad.json", b"{invalid}", false)]
         #[case::bad_toml("bad.toml", b"invalid = [", false)]
         #[case::bad_yaml("bad.yaml", b"key: [unclosed", false)]
-        fn parses_formats(
+        fn parses_supported_formats(
             #[case] path: &str,
             #[case] content: &[u8],
             #[case] should_succeed: bool,
@@ -547,7 +532,7 @@ mod tests {
         }
 
         #[test]
-        fn returns_io_error_for_nonexistent_file() {
+        fn returns_error_for_nonexistent_file() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
             let result: Result<serde_json::Value, _> =
@@ -556,11 +541,11 @@ mod tests {
         }
     }
 
-    mod read_operations {
+    mod read_to_string {
         use super::*;
 
         #[test]
-        fn read_to_string_returns_content() {
+        fn returns_file_content() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "file.txt", b"content");
             let reader = Reader::new(dir.path());
@@ -571,7 +556,7 @@ mod tests {
         }
 
         #[test]
-        fn read_to_string_rejects_invalid_utf8() {
+        fn rejects_invalid_utf8() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "binary.bin", b"\xff\xfe");
             let reader = Reader::new(dir.path());
@@ -579,7 +564,18 @@ mod tests {
         }
 
         #[test]
-        fn read_bytes_preserves_content() {
+        fn returns_error_for_nonexistent_file() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            reader.read_to_string(Path::new("nonexistent")).unwrap_err();
+        }
+    }
+
+    mod read_bytes {
+        use super::*;
+
+        #[test]
+        fn preserves_byte_content() {
             let dir = TempDir::new().expect("tempdir");
             let original: Vec<u8> = vec![0x00, 0xFF, 0xAB, 0xCD];
             write_file(dir.path(), "file.bin", &original);
@@ -591,7 +587,18 @@ mod tests {
         }
 
         #[test]
-        fn metadata_returns_file_size() {
+        fn returns_error_for_nonexistent_file() {
+            let dir = TempDir::new().expect("tempdir");
+            let reader = Reader::new(dir.path());
+            reader.read_bytes(Path::new("nonexistent")).unwrap_err();
+        }
+    }
+
+    mod metadata {
+        use super::*;
+
+        #[test]
+        fn returns_file_size() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "file.json", b"{}");
             let reader = Reader::new(dir.path());
@@ -600,18 +607,15 @@ mod tests {
         }
 
         #[test]
-        fn operations_return_error_for_nonexistent_file() {
+        fn returns_error_for_nonexistent_file() {
             let dir = TempDir::new().expect("tempdir");
             let reader = Reader::new(dir.path());
-            let path = Path::new("nonexistent");
-            reader.read_to_string(path).unwrap_err();
-            reader.read_bytes(path).unwrap_err();
-            reader.metadata(path).unwrap_err();
+            reader.metadata(Path::new("nonexistent")).unwrap_err();
         }
 
         #[cfg(unix)]
         #[test]
-        fn metadata_detects_symlink() {
+        fn detects_symlink() {
             let dir = TempDir::new().expect("tempdir");
             write_file(dir.path(), "real.json", b"{}");
             std::os::unix::fs::symlink(
@@ -658,5 +662,15 @@ mod tests {
         }
         std::fs::write(&path, contents).expect("write test file");
         path
+    }
+
+    #[test]
+    fn validates_path_using_internal_validator() {
+        let dir = TempDir::new().expect("tempdir");
+        let reader = Reader::new(dir.path());
+        reader.validate_path(Path::new("safe.txt")).expect("valid path");
+        reader
+            .validate_path(Path::new("../unsafe.txt"))
+            .expect_err("invalid path");
     }
 }

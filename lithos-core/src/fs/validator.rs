@@ -607,7 +607,7 @@ mod tests {
         }
 
         #[test]
-        fn try_new_strict_rejects_relative_root() {
+        fn rejects_relative_root_in_strict_mode() {
             let result =
                 Validator::try_new_strict(PathBuf::from("relative/path"));
             assert!(

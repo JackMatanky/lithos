@@ -161,7 +161,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn write_file_creates_and_overwrites() {
+        fn creates_and_overwrites_file() {
             let dir = TempDir::new().expect("tempdir");
             let writer = Writer::new(dir.path());
 
@@ -178,14 +178,14 @@ mod tests {
         #[rstest]
         #[case::traversal("../escape.txt")]
         #[case::hidden(".secret")]
-        fn write_file_rejects_invalid_paths(#[case] path: &str) {
+        fn rejects_invalid_paths_during_write(#[case] path: &str) {
             let dir = TempDir::new().expect("tempdir");
             let writer = Writer::new(dir.path());
             assert!(writer.write_file(Path::new(path), b"data").is_err());
         }
 
         #[test]
-        fn write_file_returns_error_when_parent_missing() {
+        fn returns_error_when_parent_directory_is_missing() {
             let dir = TempDir::new().expect("tempdir");
             let writer = Writer::new(dir.path());
             assert!(
@@ -200,7 +200,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn writes_content_correctly() {
+        fn writes_content_atomically() {
             let dir = TempDir::new().expect("tempdir");
             let writer = Writer::new(dir.path());
 
@@ -214,7 +214,7 @@ mod tests {
         }
 
         #[test]
-        fn no_orphaned_temp_file() {
+        fn leaves_no_orphaned_temp_files() {
             let dir = TempDir::new().expect("tempdir");
             let writer = Writer::new(dir.path());
             writer.atomic_write(Path::new("file.txt"), b"data").expect("write");

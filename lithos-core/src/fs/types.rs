@@ -31,6 +31,10 @@ pub(crate) struct Yaml;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Markdown;
 
+/// Binary file type marker.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct Binary;
+
 impl Json {
     /// Detect if content looks like JSON format.
     #[inline]
@@ -194,6 +198,15 @@ impl Markdown {
     }
 }
 
+impl Binary {
+    /// Check if this marker can handle the given file path by extension.
+    #[inline]
+    #[must_use]
+    pub(crate) fn is_supported(path: &Path) -> bool {
+        super::reader::is_binary_extension(path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,7 +235,7 @@ mod tests {
         #[case::table_header("[package]")]
         #[case::key_value("name = \"test\"")]
         #[case::both("[package]\nname = \"test\"")]
-        fn should_detect_valid_toml_content(#[case] content: &str) {
+        fn detects_valid_toml_content(#[case] content: &str) {
             let trimmed = content.trim_start();
             assert!(
                 Toml::detect(trimmed),
@@ -235,7 +248,7 @@ mod tests {
         #[case::yaml_key_value("name: test")]
         #[case::json_object("{\"name\": \"test\"}")]
         #[case::plain_text("plain text")]
-        fn should_reject_non_toml_content(#[case] content: &str) {
+        fn rejects_non_toml_content(#[case] content: &str) {
             let trimmed = content.trim_start();
             assert!(
                 !Toml::detect(trimmed),
@@ -247,7 +260,7 @@ mod tests {
         #[case::object_start("{")]
         #[case::array_start("[")]
         #[case::full_object("{\"name\": \"test\"}")]
-        fn should_detect_valid_json_content(#[case] content: &str) {
+        fn detects_valid_json_content(#[case] content: &str) {
             let trimmed = content.trim_start();
             assert!(
                 Json::detect(trimmed),
@@ -260,7 +273,7 @@ mod tests {
         #[case::yaml_key_value("name: test")]
         #[case::toml_key_value("name = \"test\"")]
         #[case::plain_text("plain text")]
-        fn should_reject_non_json_content(#[case] content: &str) {
+        fn rejects_non_json_content(#[case] content: &str) {
             let trimmed = content.trim_start();
             assert!(
                 !Json::detect(trimmed),
@@ -272,7 +285,7 @@ mod tests {
         #[case::document_separator("---")]
         #[case::key_value("name: test")]
         #[case::both("---\nname: test")]
-        fn should_detect_valid_yaml_content(#[case] content: &str) {
+        fn detects_valid_yaml_content(#[case] content: &str) {
             let trimmed = content.trim_start();
             assert!(
                 Yaml::detect(trimmed),
@@ -285,7 +298,7 @@ mod tests {
         #[case::toml_key_value("name = \"test\"")]
         #[case::json_object("{\"name\": \"test\"}")]
         #[case::plain_text("plain text")]
-        fn should_reject_non_yaml_content(#[case] content: &str) {
+        fn rejects_non_yaml_content(#[case] content: &str) {
             let trimmed = content.trim_start();
             assert!(
                 !Yaml::detect(trimmed),
@@ -298,28 +311,28 @@ mod tests {
         use super::*;
 
         #[test]
-        fn should_parse_json() {
+        fn parses_valid_json() {
             let result: Result<serde_json::Value, _> =
                 Json::parse(Path::new("test.json"), fixtures::VALID_JSON);
             assert!(result.is_ok(), "JSON parsing should succeed: {result:?}");
         }
 
         #[test]
-        fn should_parse_toml() {
+        fn parses_valid_toml() {
             let result: Result<toml::Value, _> =
                 Toml::parse(Path::new("test.toml"), fixtures::VALID_TOML);
             assert!(result.is_ok(), "TOML parsing should succeed: {result:?}");
         }
 
         #[test]
-        fn should_parse_yaml() {
+        fn parses_valid_yaml() {
             let result: Result<serde_yaml::Value, _> =
                 Yaml::parse(Path::new("test.yaml"), fixtures::VALID_YAML);
             assert!(result.is_ok(), "YAML parsing should succeed: {result:?}");
         }
 
         #[test]
-        fn should_reject_unsupported_json_extension() {
+        fn rejects_unsupported_json_extension() {
             let result: Result<serde_json::Value, _> =
                 Json::parse(Path::new("test.toml"), fixtures::VALID_JSON);
             assert!(matches!(
@@ -329,7 +342,7 @@ mod tests {
         }
 
         #[test]
-        fn should_reject_unsupported_toml_extension() {
+        fn rejects_unsupported_toml_extension() {
             let result: Result<toml::Value, _> =
                 Toml::parse(Path::new("test.yaml"), fixtures::VALID_TOML);
             assert!(matches!(
@@ -339,7 +352,7 @@ mod tests {
         }
 
         #[test]
-        fn should_reject_unsupported_yaml_extension() {
+        fn rejects_unsupported_yaml_extension() {
             let result: Result<serde_yaml::Value, _> =
                 Yaml::parse(Path::new("test.toml"), fixtures::VALID_YAML);
             assert!(matches!(
@@ -353,7 +366,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn should_provide_toml_error_context() {
+        fn provides_toml_error_context() {
             let result = Toml::parse::<toml::Value>(
                 Path::new("test.toml"),
                 fixtures::INVALID_TOML,
@@ -366,7 +379,7 @@ mod tests {
         }
 
         #[test]
-        fn should_provide_json_error_context() {
+        fn provides_json_error_context() {
             let result = Json::parse::<serde_json::Value>(
                 Path::new("test.json"),
                 fixtures::INVALID_JSON,
@@ -379,7 +392,7 @@ mod tests {
         }
 
         #[test]
-        fn should_provide_yaml_error_context() {
+        fn provides_yaml_error_context() {
             let result = Yaml::parse::<serde_yaml::Value>(
                 Path::new("test.yaml"),
                 "name: test\n  invalid: indent",
@@ -401,7 +414,7 @@ mod tests {
         #[case::standard("config.toml")]
         #[case::caps("config.TOML")]
         #[case::mixed("Config.Toml")]
-        fn should_recognize_valid_toml_extensions(#[case] path: &str) {
+        fn recognizes_valid_toml_extensions(#[case] path: &str) {
             assert!(
                 Toml::is_supported(Path::new(path)),
                 "TOML should support .toml extension (case-insensitive): \
@@ -410,7 +423,7 @@ mod tests {
         }
 
         #[test]
-        fn should_reject_invalid_toml_extensions() {
+        fn rejects_invalid_toml_extensions() {
             assert!(
                 !Toml::is_supported(Path::new("config.json")),
                 "TOML should reject non-.toml extensions"
@@ -421,7 +434,7 @@ mod tests {
         #[case::standard("config.json")]
         #[case::caps("config.JSON")]
         #[case::mixed("Config.Json")]
-        fn should_recognize_valid_json_extensions(#[case] path: &str) {
+        fn recognizes_valid_json_extensions(#[case] path: &str) {
             assert!(
                 Json::is_supported(Path::new(path)),
                 "JSON should support .json extension (case-insensitive): \
@@ -430,7 +443,7 @@ mod tests {
         }
 
         #[test]
-        fn should_reject_invalid_json_extensions() {
+        fn rejects_invalid_json_extensions() {
             assert!(
                 !Json::is_supported(Path::new("config.toml")),
                 "JSON should reject non-.json extensions"
@@ -442,7 +455,7 @@ mod tests {
         #[case::standard_yml("config.yml")]
         #[case::caps("config.YAML")]
         #[case::mixed("Config.Yml")]
-        fn should_recognize_valid_yaml_extensions(#[case] path: &str) {
+        fn recognizes_valid_yaml_extensions(#[case] path: &str) {
             assert!(
                 Yaml::is_supported(Path::new(path)),
                 "YAML should support .yaml/.yml extensions \
@@ -451,7 +464,7 @@ mod tests {
         }
 
         #[test]
-        fn should_reject_invalid_yaml_extensions() {
+        fn rejects_invalid_yaml_extensions() {
             assert!(
                 !Yaml::is_supported(Path::new("config.toml")),
                 "YAML should reject non-.yaml/.yml extensions"
@@ -463,7 +476,7 @@ mod tests {
         #[case::standard_markdown("readme.markdown")]
         #[case::caps("README.MD")]
         #[case::mixed("Readme.Markdown")]
-        fn should_recognize_valid_markdown_extensions(#[case] path: &str) {
+        fn recognizes_valid_markdown_extensions(#[case] path: &str) {
             assert!(
                 Markdown::is_supported(Path::new(path)),
                 "Markdown should support .md/.markdown extensions \
@@ -472,7 +485,7 @@ mod tests {
         }
 
         #[test]
-        fn should_reject_invalid_markdown_extensions() {
+        fn rejects_invalid_markdown_extensions() {
             assert!(
                 !Markdown::is_supported(Path::new("readme.txt")),
                 "Markdown should reject non-.md/.markdown extensions"
