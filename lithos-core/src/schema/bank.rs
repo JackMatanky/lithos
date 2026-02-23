@@ -242,8 +242,6 @@ impl PropertyBank {
     /// Returns `SchemaError` if validation fails.
     #[inline]
     pub fn register(&mut self, property: Property) -> Result<(), SchemaError> {
-        property.validate()?;
-
         let id = property.id();
         let name = property.name().clone();
 

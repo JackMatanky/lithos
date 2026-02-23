@@ -231,7 +231,6 @@ impl Property {
             multiplicity,
             spec,
         };
-        property.validate()?;
         Ok(property)
     }
 
@@ -290,37 +289,6 @@ impl Property {
     #[must_use]
     pub const fn spec(&self) -> &PropertySpec {
         &self.spec
-    }
-
-    /// Validate property structure and constraints.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::schema::property::{
-    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
-    /// # };
-    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("flag")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property = Property::new(
-    ///     PropertyId::new(),
-    ///     name,
-    ///     Cardinality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// )?;
-    /// property.validate()?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn validate(&self) -> Result<(), SchemaError> {
-        // Name validation is handled by PropertyName type.
-        Ok(())
     }
 
     /// Validate a value against this property's specification.
