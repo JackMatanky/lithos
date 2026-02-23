@@ -154,6 +154,7 @@ impl SchemaService<'_> {
             let is_stale = bank_stale
                 || self.query.is_schema_stale(
                     id,
+                    created,
                     modified,
                     current_bank_version,
                 )?;

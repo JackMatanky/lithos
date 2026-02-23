@@ -113,11 +113,12 @@ where
     pub fn is_schema_stale(
         &self,
         id: SchemaId,
-        file_mtime: Option<Timestamp>,
-        current_bank_version: BankVersion,
+        created_at: Option<Timestamp>,
+        modified_at: Option<Timestamp>,
+        bank_version: BankVersion,
     ) -> Result<bool, SchemaQueryError> {
         self.query_port
-            .is_schema_stale(id, file_mtime, current_bank_version)
+            .is_schema_stale(id, created_at, modified_at, bank_version)
             .map_err(|error| {
                 SchemaQueryError::Storage(Into::<crate::db::DbError>::into(
                     error,
@@ -133,9 +134,9 @@ where
     #[inline]
     pub fn is_bank_stale(
         &self,
-        current_version: BankVersion,
+        version: BankVersion,
     ) -> Result<bool, SchemaQueryError> {
-        self.query_port.is_bank_stale(current_version).map_err(|error| {
+        self.query_port.is_bank_stale(version).map_err(|error| {
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
@@ -202,7 +203,10 @@ mod tests {
     use super::*;
     use crate::schema::{
         RedbSchemaCommand, RedbSchemaQuery,
-        adapter::{command::CommandAdapter, query::QueryAdapter},
+        adapter::{
+            command::{CommandAdapter, SaveMetadata},
+            query::QueryAdapter,
+        },
         aggregate::{SchemaId, SchemaName},
     };
 
@@ -286,7 +290,7 @@ mod tests {
 
             let missing_id = fixtures::TEST_SCHEMA_ID_A;
             let stale = qry
-                .is_schema_stale(missing_id, None, BankVersion::initial())
+                .is_schema_stale(missing_id, None, None, BankVersion::initial())
                 .expect("Staleness check should succeed");
             assert!(stale, "Missing schema should be stale");
         }
@@ -308,11 +312,43 @@ mod tests {
             let stale = qry
                 .is_schema_stale(
                     fixtures::TEST_SCHEMA_ID_A,
+                    None,
                     Some(ts),
                     BankVersion::initial(),
                 )
                 .expect("Staleness check should succeed");
             assert!(!stale, "Freshly saved schema should not be stale");
+        }
+
+        #[test]
+        fn is_schema_stale_returns_true_for_created_at_mismatch() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
+            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+
+            let schema =
+                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
+                    .expect("Failed to create schema fixture");
+            let stored_created = Timestamp::from_secs(1_000_000);
+            let file_created = Timestamp::from_secs(2_000_000);
+
+            cmd.save_batch_with_metadata(&[schema], &[SaveMetadata {
+                bank_version: BankVersion::initial(),
+                created_at: Some(stored_created),
+                modified_at: None,
+            }])
+            .expect("Save should succeed");
+
+            let stale = qry
+                .is_schema_stale(
+                    fixtures::TEST_SCHEMA_ID_A,
+                    Some(file_created),
+                    None,
+                    BankVersion::initial(),
+                )
+                .expect("Staleness check should succeed");
+            assert!(stale, "Created-at mismatch should be stale");
         }
     }
 }

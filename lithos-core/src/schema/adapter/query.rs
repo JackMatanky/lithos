@@ -54,10 +54,7 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn is_bank_stale(
-        &self,
-        current_version: BankVersion,
-    ) -> Result<bool, Self::Error> {
+    fn is_bank_stale(&self, version: BankVersion) -> Result<bool, Self::Error> {
         let id = PropertyBankId::singleton();
         let Some(bank) = self
             .db
@@ -65,15 +62,16 @@ impl Query for QueryAdapter<'_> {
         else {
             return Ok(true);
         };
-        Ok(bank.version() != current_version)
+        Ok(bank.version() != version)
     }
 
     #[inline]
     fn is_schema_stale(
         &self,
         id: SchemaId,
-        file_mtime: Option<Timestamp>,
-        current_bank_version: BankVersion,
+        created_at: Option<Timestamp>,
+        modified_at: Option<Timestamp>,
+        bank_version: BankVersion,
     ) -> Result<bool, Self::Error> {
         let Some(stored) = self
             .db
@@ -83,14 +81,30 @@ impl Query for QueryAdapter<'_> {
             return Ok(true);
         };
 
-        if stored.bank_version != current_bank_version {
+        if stored.bank_version != bank_version {
             return Ok(true);
         }
 
-        // Compare file mtime with stored mtime (both are Option<Timestamp>)
-        // Schema is stale if file has been modified since last ingestion
+        // Verify file identity via created_at when possible.
+        match (created_at, stored.created_at) {
+            (Some(file_created), Some(stored_created)) => {
+                if file_created.as_secs() != stored_created.as_secs() {
+                    return Ok(true);
+                }
+            }
+            (None, Some(_)) | (Some(_), None) => {
+                tracing::warn!(
+                    schema_id = %id,
+                    "Cannot verify schema identity: created_at unavailable"
+                );
+            }
+            (None, None) => {}
+        }
+
+        // Compare file mtime with stored mtime (both are Option<Timestamp>).
+        // Schema is stale if file has been modified since last ingestion.
         if let (Some(file_mtime), Some(stored_mtime)) =
-            (file_mtime, stored.modified_at)
+            (modified_at, stored.modified_at)
             && stored_mtime.as_secs() < file_mtime.as_secs()
         {
             return Ok(true);

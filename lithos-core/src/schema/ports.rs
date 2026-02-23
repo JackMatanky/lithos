@@ -71,30 +71,29 @@ pub trait Query: Send + Sync {
     /// Returns a storage-specific error if query fails.
     fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error>;
 
-    /// Returns `true` if the stored bank version differs from
-    /// `current_version`.
+    /// Returns `true` if the stored bank version differs from `version`.
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
-    fn is_bank_stale(
-        &self,
-        current_version: BankVersion,
-    ) -> Result<bool, Self::Error>;
+    fn is_bank_stale(&self, version: BankVersion) -> Result<bool, Self::Error>;
 
     /// Returns `true` if the stored schema for `id` is stale.
     ///
     /// A schema is considered stale when:
     /// - No stored record exists for `id`, or
-    /// - `stored.bank_version != current_bank_version`, or
-    /// - `stored.modified_at < file_mtime` (file changed since last ingestion).
+    /// - `stored.bank_version != bank_version`, or
+    /// - `stored.created_at != created_at` when both are present, or
+    /// - `stored.modified_at < modified_at` (file changed since last
+    ///   ingestion).
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
     fn is_schema_stale(
         &self,
         id: SchemaId,
-        file_mtime: Option<Timestamp>,
-        current_bank_version: BankVersion,
+        created_at: Option<Timestamp>,
+        modified_at: Option<Timestamp>,
+        bank_version: BankVersion,
     ) -> Result<bool, Self::Error>;
 
     /// List all available schemas.
