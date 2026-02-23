@@ -13,12 +13,36 @@ use super::{
 /// Query implementation for schema read operations.
 ///
 /// This struct is generic over a storage port to support multiple backends.
+///
+/// # Examples
+///
+/// ```ignore
+/// use lithos_core::schema::{
+///     RedbSchemaQuery,
+///     adapter::query::QueryAdapter,
+/// };
+///
+/// let db = todo!("Provide a Database instance");
+/// let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
+/// ```
 pub struct Query<Q> {
     query_port: Q,
 }
 
 impl<Q> Query<Q> {
     /// Create a new `Query` with a storage port.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::schema::{
+    ///     RedbSchemaQuery,
+    ///     adapter::query::QueryAdapter,
+    /// };
+    ///
+    /// let db = todo!("Provide a Database instance");
+    /// let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
+    /// ```
     #[inline]
     #[must_use]
     pub const fn new(query_port: Q) -> Self {
@@ -37,6 +61,16 @@ where
     ///
     /// # Errors
     /// Returns `SchemaQueryError` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # let query = todo!("Provide a Query instance");
+    /// # let id = lithos_core::schema::aggregate::SchemaId::new();
+    /// let _ = query.find_by_id(id)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn find_by_id(
         &self,
@@ -51,6 +85,16 @@ where
     ///
     /// # Errors
     /// Returns `SchemaQueryError` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # let query = todo!("Provide a Query instance");
+    /// # let name = lithos_core::schema::aggregate::SchemaName::new("task")?;
+    /// let _ = query.find_by_name(&name)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn find_by_name(
         &self,
@@ -69,6 +113,15 @@ where
     ///
     /// # Errors
     /// Returns `SchemaQueryError` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # let query = todo!("Provide a Query instance");
+    /// let _ = query.list()?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn list(&self) -> Result<Vec<Schema>, SchemaQueryError> {
         self.query_port.list().map_err(|error| {
@@ -83,6 +136,15 @@ where
     ///
     /// # Errors
     /// Returns `SchemaQueryError` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # let query = todo!("Provide a Query instance");
+    /// let _ = query.list_name_id_pairs()?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn list_name_id_pairs(
         &self,
@@ -96,6 +158,15 @@ where
     ///
     /// # Errors
     /// Returns `SchemaQueryError` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # let query = todo!("Provide a Query instance");
+    /// let _ = query.find_property_bank()?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn find_property_bank(
         &self,
@@ -109,6 +180,17 @@ where
     ///
     /// # Errors
     /// Returns `SchemaQueryError` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # let query = todo!("Provide a Query instance");
+    /// # let id = lithos_core::schema::aggregate::SchemaId::new();
+    /// # let bank_version = lithos_core::schema::bank::BankVersion::initial();
+    /// let _ = query.is_schema_stale(id, None, None, bank_version)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn is_schema_stale(
         &self,
@@ -126,11 +208,20 @@ where
             })
     }
 
-    /// Returns `true` if the stored bank version differs from
-    /// `current_version`.
+    /// Returns `true` if the stored bank version differs from `version`.
     ///
     /// # Errors
     /// Returns `SchemaQueryError` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # let query = todo!("Provide a Query instance");
+    /// # let version = lithos_core::schema::bank::BankVersion::initial();
+    /// let _ = query.is_bank_stale(version)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn is_bank_stale(
         &self,
@@ -148,6 +239,15 @@ where
     ///
     /// # Errors
     /// Returns `SchemaQueryError` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # let query = todo!("Provide a Query instance");
+    /// query.batch_read(|_reader| Ok::<_, Box<dyn std::error::Error>>(()))?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn batch_read<R, F>(&self, f: F) -> Result<R, SchemaQueryError>
     where

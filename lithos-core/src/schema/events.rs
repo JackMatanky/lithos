@@ -58,6 +58,20 @@ pub struct SchemaCreated {
 
 impl SchemaCreated {
     /// Creates a new schema created event.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{
+    ///     aggregate::{SchemaId, SchemaName, Timestamp},
+    ///     events::SchemaCreated,
+    /// };
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let id = SchemaId::new();
+    /// let name = SchemaName::new("schema")?;
+    /// let _event = SchemaCreated::new(id, &name, Timestamp::from_secs(456));
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(id: SchemaId, name: &SchemaName, timestamp: Timestamp) -> Self {
@@ -72,6 +86,22 @@ impl SchemaCreated {
 /// Schema resolved domain event.
 ///
 /// Published every time a schema is resolved (both new and existing schemas).
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::{
+///     aggregate::{SchemaId, SchemaName, Timestamp},
+///     events::SchemaResolved,
+/// };
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let id = SchemaId::new();
+/// let name = SchemaName::new("schema")?;
+/// let event = SchemaResolved::new(id, &name, Timestamp::from_secs(123));
+/// assert_eq!(event.id, id);
+/// assert_eq!(event.name, name);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -96,6 +126,20 @@ pub struct SchemaResolved {
 
 impl SchemaResolved {
     /// Creates a new schema resolved event.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{
+    ///     aggregate::{SchemaId, SchemaName, Timestamp},
+    ///     events::SchemaResolved,
+    /// };
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let id = SchemaId::new();
+    /// let name = SchemaName::new("schema")?;
+    /// let _event = SchemaResolved::new(id, &name, Timestamp::from_secs(456));
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(id: SchemaId, name: &SchemaName, timestamp: Timestamp) -> Self {
@@ -110,6 +154,22 @@ impl SchemaResolved {
 /// Schema deleted domain event.
 ///
 /// Published when a schema is removed from the vault.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::{
+///     aggregate::{SchemaId, SchemaName, Timestamp},
+///     events::SchemaDeleted,
+/// };
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let id = SchemaId::new();
+/// let name = SchemaName::new("schema")?;
+/// let event = SchemaDeleted::new(id, &name, Timestamp::from_secs(789));
+/// assert_eq!(event.id, id);
+/// assert_eq!(event.name, name);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -134,6 +194,20 @@ pub struct SchemaDeleted {
 
 impl SchemaDeleted {
     /// Creates a new schema deleted event.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{
+    ///     aggregate::{SchemaId, SchemaName, Timestamp},
+    ///     events::SchemaDeleted,
+    /// };
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let id = SchemaId::new();
+    /// let name = SchemaName::new("schema")?;
+    /// let _event = SchemaDeleted::new(id, &name, Timestamp::from_secs(321));
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(id: SchemaId, name: &SchemaName, timestamp: Timestamp) -> Self {
@@ -148,6 +222,23 @@ impl SchemaDeleted {
 /// Property registered domain event.
 ///
 /// Published when a single new property is added to the property bank.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::{
+///     aggregate::Timestamp,
+///     events::PropertyRegistered,
+///     property::{PropertyId, PropertyName},
+/// };
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let id = PropertyId::new();
+/// let name = PropertyName::new("flag")?;
+/// let event = PropertyRegistered::new(id, &name, Timestamp::from_secs(42));
+/// assert_eq!(event.id, id);
+/// assert_eq!(event.name, name);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -172,6 +263,21 @@ pub struct PropertyRegistered {
 
 impl PropertyRegistered {
     /// Creates a new property registered event.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{
+    ///     aggregate::Timestamp,
+    ///     events::PropertyRegistered,
+    ///     property::{PropertyId, PropertyName},
+    /// };
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let id = PropertyId::new();
+    /// let name = PropertyName::new("flag")?;
+    /// let _event = PropertyRegistered::new(id, &name, Timestamp::from_secs(42));
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(
@@ -190,6 +296,22 @@ impl PropertyRegistered {
 /// Property bank loaded domain event.
 ///
 /// Published when the property bank is loaded or reloaded from vault data.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::{
+///     aggregate::Timestamp, bank::BankVersion, events::PropertyBankLoaded,
+/// };
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let event = PropertyBankLoaded::new(
+///     3,
+///     BankVersion::initial(),
+///     Timestamp::from_secs(900),
+/// );
+/// assert_eq!(event.property_count, 3);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -214,6 +336,21 @@ pub struct PropertyBankLoaded {
 
 impl PropertyBankLoaded {
     /// Creates a new property bank loaded event.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{
+    ///     aggregate::Timestamp, bank::BankVersion, events::PropertyBankLoaded,
+    /// };
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let _event = PropertyBankLoaded::new(
+    ///     1,
+    ///     BankVersion::initial(),
+    ///     Timestamp::from_secs(900),
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(
@@ -230,6 +367,25 @@ impl PropertyBankLoaded {
 }
 
 /// Domain events for the Schema context.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::{
+///     aggregate::{SchemaId, SchemaName, Timestamp},
+///     events::{Events, SchemaCreated},
+/// };
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let id = SchemaId::new();
+/// let name = SchemaName::new("schema")?;
+/// let created = SchemaCreated::new(id, &name, Timestamp::from_secs(1));
+/// let event = Events::SchemaCreated(created);
+/// match event {
+///     Events::SchemaCreated(_) => {}
+///     _ => {}
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]

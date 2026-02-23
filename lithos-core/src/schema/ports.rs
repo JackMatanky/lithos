@@ -13,6 +13,39 @@ use crate::db::BatchReader;
 pub type NameIdPair = (SchemaName, SchemaId);
 
 /// Command port for Schema write operations.
+///
+/// # Examples
+///
+/// ```ignore
+/// use lithos_core::schema::ports::Command;
+///
+/// struct MyCommand;
+///
+/// impl Command for MyCommand {
+///     type Error = std::convert::Infallible;
+///
+///     fn delete(
+///         &self,
+///         _id: lithos_core::schema::aggregate::SchemaId,
+///     ) -> Result<(), Self::Error> {
+///         Ok(())
+///     }
+///
+///     fn save_batch(
+///         &self,
+///         _schemas: &[lithos_core::schema::aggregate::Schema],
+///     ) -> Result<(), Self::Error> {
+///         Ok(())
+///     }
+///
+///     fn save_property_bank(
+///         &self,
+///         _bank: &lithos_core::schema::bank::PropertyBank,
+///     ) -> Result<(), Self::Error> {
+///         Ok(())
+///     }
+/// }
+/// ```
 pub trait Command: Send + Sync {
     /// Storage error type for command operations.
     type Error: std::error::Error;
@@ -21,6 +54,16 @@ pub trait Command: Send + Sync {
     ///
     /// # Errors
     /// Returns a storage-specific error if deletion fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Command;
+    /// # let command = todo!("Provide a Command implementation");
+    /// # let id = lithos_core::schema::aggregate::SchemaId::new();
+    /// command.delete(id)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn delete(&self, id: SchemaId) -> Result<(), Self::Error>;
 
     /// Save a batch of schemas to persistence.
@@ -31,12 +74,32 @@ pub trait Command: Send + Sync {
     ///
     /// # Errors
     /// Returns a storage-specific error if saving fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Command;
+    /// # let command = todo!("Provide a Command implementation");
+    /// # let schemas: Vec<lithos_core::schema::aggregate::Schema> = Vec::new();
+    /// command.save_batch(&schemas)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn save_batch(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
 
     /// Save the `PropertyBank` to persistence.
     ///
     /// # Errors
     /// Returns a storage-specific error if saving fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Command;
+    /// # let command = todo!("Provide a Command implementation");
+    /// # let bank = lithos_core::schema::bank::PropertyBank::new();
+    /// command.save_property_bank(&bank)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn save_property_bank(
         &self,
         bank: &PropertyBank,
@@ -44,6 +107,75 @@ pub trait Command: Send + Sync {
 }
 
 /// Query port for Schema read operations.
+///
+/// # Examples
+///
+/// ```ignore
+/// use lithos_core::schema::ports::Query;
+///
+/// struct MyQuery;
+///
+/// impl Query for MyQuery {
+///     type Error = std::convert::Infallible;
+///
+///     fn batch_read<R, F>(&self, f: F) -> Result<R, Self::Error>
+///     where
+///         F: FnOnce(&lithos_core::db::BatchReader) -> Result<R, Self::Error>,
+///     {
+///         let reader = todo!("Provide a BatchReader instance");
+///         f(&reader)
+///     }
+///
+///     fn find_by_id(
+///         &self,
+///         _id: lithos_core::schema::aggregate::SchemaId,
+///     ) -> Result<Option<lithos_core::schema::aggregate::Schema>, Self::Error> {
+///         Ok(None)
+///     }
+///
+///     fn find_property_bank(
+///         &self,
+///     ) -> Result<Option<lithos_core::schema::bank::PropertyBank>, Self::Error> {
+///         Ok(None)
+///     }
+///
+///     fn is_bank_stale(
+///         &self,
+///         _version: lithos_core::schema::bank::BankVersion,
+///     ) -> Result<bool, Self::Error> {
+///         Ok(false)
+///     }
+///
+///     fn is_schema_stale(
+///         &self,
+///         _id: lithos_core::schema::aggregate::SchemaId,
+///         _created_at: Option<lithos_core::schema::aggregate::Timestamp>,
+///         _modified_at: Option<lithos_core::schema::aggregate::Timestamp>,
+///         _bank_version: lithos_core::schema::bank::BankVersion,
+///     ) -> Result<bool, Self::Error> {
+///         Ok(false)
+///     }
+///
+///     fn list(
+///         &self,
+///     ) -> Result<Vec<lithos_core::schema::aggregate::Schema>, Self::Error> {
+///         Ok(Vec::new())
+///     }
+///
+///     fn list_name_id_pairs(
+///         &self,
+///     ) -> Result<Vec<lithos_core::schema::ports::NameIdPair>, Self::Error> {
+///         Ok(Vec::new())
+///     }
+///
+///     fn lookup_id_by_name(
+///         &self,
+///         _name: &lithos_core::schema::aggregate::SchemaName,
+///     ) -> Result<Option<lithos_core::schema::aggregate::SchemaId>, Self::Error> {
+///         Ok(None)
+///     }
+/// }
+/// ```
 pub trait Query: Send + Sync {
     /// Storage error type for query operations.
     type Error: std::error::Error;
@@ -55,6 +187,15 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns a storage-specific error if the transaction fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # query.batch_read(|_reader| Ok::<_, Box<dyn std::error::Error>>(()))?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn batch_read<R, F>(&self, f: F) -> Result<R, Self::Error>
     where
         F: FnOnce(&BatchReader) -> Result<R, Self::Error>;
@@ -63,18 +204,47 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let id = lithos_core::schema::aggregate::SchemaId::new();
+    /// let _ = query.find_by_id(id)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error>;
 
     /// Find the `PropertyBank` registry.
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # let query = todo!("Provide a Query implementation");
+    /// let _ = query.find_property_bank()?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error>;
 
     /// Returns `true` if the stored bank version differs from `version`.
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let version = lithos_core::schema::bank::BankVersion::initial();
+    /// let _ = query.is_bank_stale(version)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn is_bank_stale(&self, version: BankVersion) -> Result<bool, Self::Error>;
 
     /// Returns `true` if the stored schema for `id` is stale.
@@ -88,6 +258,17 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let id = lithos_core::schema::aggregate::SchemaId::new();
+    /// # let bank_version = lithos_core::schema::bank::BankVersion::initial();
+    /// let _ = query.is_schema_stale(id, None, None, bank_version)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn is_schema_stale(
         &self,
         id: SchemaId,
@@ -100,6 +281,15 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # let query = todo!("Provide a Query implementation");
+    /// let _ = query.list()?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn list(&self) -> Result<Vec<Schema>, Self::Error>;
 
     /// List all schema name-to-ID pairs.
@@ -109,12 +299,31 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # let query = todo!("Provide a Query implementation");
+    /// let _ = query.list_name_id_pairs()?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn list_name_id_pairs(&self) -> Result<Vec<NameIdPair>, Self::Error>;
 
     /// Lookup a schema ID by name.
     ///
     /// # Errors
     /// Returns a storage-specific error if lookup fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let name = lithos_core::schema::aggregate::SchemaName::new("task")?;
+    /// let _ = query.lookup_id_by_name(&name)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     fn lookup_id_by_name(
         &self,
         name: &SchemaName,

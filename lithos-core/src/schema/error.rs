@@ -6,6 +6,17 @@
 use crate::db::DbError;
 
 /// Schema-related errors.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::error::SchemaError;
+///
+/// let error = SchemaError::EmptySchemaName;
+/// match error {
+///     SchemaError::EmptySchemaName => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SchemaError {
@@ -152,6 +163,21 @@ pub enum SchemaError {
 }
 
 /// Schema command errors.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::error::SchemaCommandError;
+///
+/// let error = SchemaCommandError::Conflict {
+///     reason: "conflict".into(),
+/// };
+/// match error {
+///     SchemaCommandError::Conflict {
+///         ..
+///     } => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SchemaCommandError {
@@ -172,6 +198,21 @@ pub enum SchemaCommandError {
 }
 
 /// Schema query errors.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::error::SchemaQueryError;
+///
+/// let error = SchemaQueryError::NotFound {
+///     name: "schema".into(),
+/// };
+/// match error {
+///     SchemaQueryError::NotFound {
+///         ..
+///     } => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SchemaQueryError {
@@ -198,6 +239,22 @@ pub enum SchemaQueryError {
 ///
 /// Errors that occur during file-to-raw translation (loading schema files
 /// from the filesystem).
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::error::SchemaIngestionError;
+///
+/// let error = SchemaIngestionError::UnsupportedFormat {
+///     path: "schema.xml".into(),
+///     supported: "json, toml, yaml".into(),
+/// };
+/// match error {
+///     SchemaIngestionError::UnsupportedFormat {
+///         ..
+///     } => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaIngestionError {

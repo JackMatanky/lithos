@@ -63,6 +63,23 @@ pub struct RawSchema {
 /// Used in `RawSchema.properties` where the name is the map key.
 /// Discriminated by presence of `$ref` field. Ref is tried first because
 /// it has a required `$ref` field that Inline never has.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::raw::{
+///     RawBoolSpec, RawProperty, RawPropertyInline, RawPropertySpec,
+/// };
+///
+/// let property = RawProperty::Inline(RawPropertyInline {
+///     required: false,
+///     multi: false,
+///     spec: RawPropertySpec::Bool(RawBoolSpec),
+/// });
+/// match property {
+///     RawProperty::Inline(_) => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
@@ -74,6 +91,20 @@ pub enum RawProperty {
 }
 
 /// Inline variant of a raw property.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::raw::{
+///     RawBoolSpec, RawPropertyInline, RawPropertySpec,
+/// };
+///
+/// let inline = RawPropertyInline {
+///     required: false,
+///     multi: false,
+///     spec: RawPropertySpec::Bool(RawBoolSpec),
+/// };
+/// let _ = inline;
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyInline {
@@ -92,6 +123,24 @@ pub struct RawPropertyInline {
 ///
 /// Override fields are grouped by type via flattened `Raw*Spec` structs.
 /// All override fields are `Option<T>` — `None` means "don't override".
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::raw::{
+///     RawDateSpec, RawFileSpec, RawNumberSpec, RawPropertyRef, RawStringSpec,
+/// };
+///
+/// let reference = RawPropertyRef {
+///     ref_path: "property_bank#/flag".into(),
+///     required: None,
+///     multi: None,
+///     number: RawNumberSpec::default(),
+///     string: RawStringSpec::default(),
+///     date: RawDateSpec::default(),
+///     file: RawFileSpec::default(),
+/// };
+/// let _ = reference;
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyRef {
@@ -117,6 +166,17 @@ pub struct RawPropertyRef {
 }
 
 /// Raw property specification (serde-facing input type).
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::raw::{RawBoolSpec, RawPropertySpec};
+///
+/// let spec = RawPropertySpec::Bool(RawBoolSpec);
+/// match spec {
+///     RawPropertySpec::Bool(_) => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 #[non_exhaustive]
@@ -135,6 +195,17 @@ pub enum RawPropertySpec {
 
 impl RawPropertySpec {
     /// Get the spec type identifier.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{
+    ///     property_spec::PropertySpecType,
+    ///     raw::{RawBoolSpec, RawPropertySpec},
+    /// };
+    ///
+    /// let spec = RawPropertySpec::Bool(RawBoolSpec);
+    /// assert_eq!(spec.spec_type(), PropertySpecType::Bool);
+    /// ```
     #[inline]
     #[must_use]
     #[expect(
@@ -156,6 +227,15 @@ impl RawPropertySpec {
     ///
     /// # Errors
     /// Returns `SchemaError` if the definition is invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::raw::{RawBoolSpec, RawPropertySpec};
+    ///
+    /// let spec = RawPropertySpec::Bool(RawBoolSpec);
+    /// let _validated = spec.try_into_validated()?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn try_into_validated(self) -> Result<PropertySpec, SchemaError> {
         match self {
@@ -184,6 +264,13 @@ impl RawPropertySpec {
 }
 
 /// Boolean property definition (marker type).
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::raw::RawBoolSpec;
+///
+/// let _spec = RawBoolSpec;
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -205,6 +292,13 @@ pub struct RawBoolSpec;
 /// All fields are `Option<T>` to support both inline definitions
 /// (where `format` is required) and override contexts (where `None`
 /// means "don't override").
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::raw::RawDateSpec;
+///
+/// let _spec = RawDateSpec::default();
+/// ```
 #[derive(
     Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
@@ -218,6 +312,13 @@ pub struct RawDateSpec {
 ///
 /// All fields are `Option<T>` to support both inline definitions
 /// and override contexts.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::raw::RawFileSpec;
+///
+/// let _spec = RawFileSpec::default();
+/// ```
 #[derive(
     Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
@@ -233,6 +334,13 @@ pub struct RawFileSpec {
 ///
 /// All fields are `Option<T>` to support both inline definitions
 /// and override contexts.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::raw::RawNumberSpec;
+///
+/// let _spec = RawNumberSpec::default();
+/// ```
 #[derive(
     Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
@@ -251,6 +359,13 @@ pub struct RawNumberSpec {
 /// Only `options` and `pattern` are supported per the meta-schema.
 /// All fields are `Option<T>` to support both inline definitions
 /// and override contexts.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::raw::RawStringSpec;
+///
+/// let _spec = RawStringSpec::default();
+/// ```
 #[derive(
     Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
@@ -263,6 +378,16 @@ pub struct RawStringSpec {
 }
 
 /// Raw property bank loaded from vault files.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::raw::RawPropertyBank;
+///
+/// let bank = RawPropertyBank {
+///     properties: std::collections::HashMap::new(),
+/// };
+/// let _ = bank;
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyBank {
@@ -274,6 +399,17 @@ pub struct RawPropertyBank {
 ///
 /// The property name is the map key, not a field here.
 /// `required` is not present because the bank is schema-agnostic.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::raw::{RawBoolSpec, RawPropertyBankEntry, RawPropertySpec};
+///
+/// let entry = RawPropertyBankEntry {
+///     multi: false,
+///     spec: RawPropertySpec::Bool(RawBoolSpec),
+/// };
+/// let _ = entry;
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyBankEntry {
@@ -298,6 +434,17 @@ pub struct RawPropertyBankEntry {
 /// Serde deserializes untagged variants in declaration order. Arrays are tried
 /// as `List` first (strings), then `Rich` (objects). Objects are tried as
 /// `Map`.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::raw::RawOptions;
+///
+/// let options = RawOptions::List(vec!["open".into(), "closed".into()]);
+/// match options {
+///     RawOptions::List(_) => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]
@@ -311,6 +458,18 @@ pub enum RawOptions {
 }
 
 /// Rich option entry with optional label and display order.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::raw::RawOptionEntry;
+///
+/// let entry = RawOptionEntry {
+///     value: "open".into(),
+///     label: Some("Open".into()),
+///     order: Some(1),
+/// };
+/// let _ = entry;
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawOptionEntry {
@@ -333,6 +492,15 @@ impl RawOptions {
     ///   map_value`, `label = None`.
     /// - **Rich**: sorted by `order` field (then array position), entries have
     ///   `value` and `label`.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::raw::RawOptions;
+    ///
+    /// let entries = RawOptions::List(vec!["open".into()]).into_entries();
+    /// assert_eq!(entries.len(), 1);
+    /// assert_eq!(entries[0].value.as_ref(), "open");
+    /// ```
     #[inline]
     #[must_use]
     pub fn into_entries(self) -> Vec<OptionEntry> {

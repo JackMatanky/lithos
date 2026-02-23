@@ -52,6 +52,15 @@ use crate::patterns;
 /// # Ok(())
 /// # }
 /// ```
+/// Unix timestamp in seconds.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::aggregate::Timestamp;
+///
+/// let ts = Timestamp::from_secs(1_234);
+/// assert_eq!(ts.as_secs(), 1_234);
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -139,6 +148,17 @@ impl Schema {
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("existing")?;
+    /// let schema = Schema::resolve_existing(SchemaId::new(), name, None, vec![])?;
+    /// assert_eq!(schema.name().as_str(), "existing");
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     pub fn resolve_existing(
         id: SchemaId,
@@ -185,6 +205,17 @@ impl Schema {
     }
 
     /// Returns the schema's unique identifier.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("test")?;
+    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let _id = schema.id();
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub const fn id(&self) -> SchemaId {
@@ -192,6 +223,17 @@ impl Schema {
     }
 
     /// Returns the schema's unique name.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("test")?;
+    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let _name = schema.name();
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub const fn name(&self) -> &SchemaName {
@@ -199,6 +241,17 @@ impl Schema {
     }
 
     /// Returns the parent schema ID, if this schema extends another.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("test")?;
+    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// assert!(schema.parent_id().is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub const fn parent_id(&self) -> Option<SchemaId> {
@@ -206,6 +259,17 @@ impl Schema {
     }
 
     /// Returns the fully resolved properties.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("test")?;
+    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// assert!(schema.properties().is_empty());
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn properties(&self) -> &[Property] {
@@ -244,6 +308,21 @@ impl Schema {
     }
 
     /// Checks if a property exists by name.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{
+    ///     aggregate::{Schema, SchemaId, SchemaName},
+    ///     property::PropertyName,
+    /// };
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("test")?;
+    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let prop = PropertyName::new("missing")?;
+    /// assert!(!schema.has(&prop));
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn has(&self, name: &PropertyName) -> bool {
@@ -253,6 +332,17 @@ impl Schema {
     }
 
     /// Returns a reference to pending domain events.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("test")?;
+    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let _events = schema.pending_events();
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn pending_events(&self) -> &[Events] {
@@ -260,6 +350,17 @@ impl Schema {
     }
 
     /// Returns and clears pending domain events.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("test")?;
+    /// let mut schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let _events = schema.take_events();
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn take_events(&mut self) -> Vec<Events> {
@@ -278,6 +379,14 @@ impl Schema {
 // ----------------------------------------------------------- //
 
 /// Unique identity for a schema.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::aggregate::SchemaId;
+///
+/// let id = SchemaId::new();
+/// let _ = id.as_uuid();
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -307,6 +416,14 @@ impl std::fmt::Display for SchemaId {
 
 impl SchemaId {
     /// Creates a new UUID v7-based `SchemaId`.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::SchemaId;
+    ///
+    /// let id = SchemaId::new();
+    /// let _ = id.as_uuid();
+    /// ```
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -314,6 +431,16 @@ impl SchemaId {
     }
 
     /// Wraps a UUID into a `SchemaId`.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::SchemaId;
+    /// use uuid::Uuid;
+    ///
+    /// let uuid = Uuid::now_v7();
+    /// let id = SchemaId::from_uuid(uuid);
+    /// assert_eq!(*id.as_uuid(), uuid);
+    /// ```
     #[inline]
     #[must_use]
     pub const fn from_uuid(uuid: Uuid) -> Self {
@@ -321,6 +448,14 @@ impl SchemaId {
     }
 
     /// Returns the inner UUID reference.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::SchemaId;
+    ///
+    /// let id = SchemaId::new();
+    /// let _ = id.as_uuid();
+    /// ```
     #[inline]
     #[must_use]
     pub const fn as_uuid(&self) -> &Uuid {
@@ -328,6 +463,14 @@ impl SchemaId {
     }
 
     /// Returns the inner UUID by value.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::SchemaId;
+    ///
+    /// let id = SchemaId::new();
+    /// let _uuid = id.into_uuid();
+    /// ```
     #[inline]
     #[must_use]
     pub const fn into_uuid(self) -> Uuid {
@@ -392,6 +535,16 @@ impl SchemaName {
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::SchemaName;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("project")?;
+    /// assert_eq!(name.as_str(), "project");
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     pub fn new(name: &str) -> Result<Self, SchemaError> {
         Self::validate(name)?;
@@ -399,6 +552,16 @@ impl SchemaName {
     }
 
     /// Returns the inner string slice.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::SchemaName;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("project")?;
+    /// assert_eq!(name.as_str(), "project");
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -409,6 +572,14 @@ impl SchemaName {
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::SchemaName;
+    ///
+    /// SchemaName::validate("project")?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
@@ -506,6 +677,13 @@ pub struct Timestamp(i64);
 
 impl Timestamp {
     /// Returns the current UTC timestamp.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::Timestamp;
+    ///
+    /// let _now = Timestamp::now();
+    /// ```
     #[inline]
     #[must_use]
     pub fn now() -> Self {
@@ -513,6 +691,14 @@ impl Timestamp {
     }
 
     /// Wraps a timestamp in seconds.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::Timestamp;
+    ///
+    /// let ts = Timestamp::from_secs(10);
+    /// assert_eq!(ts.as_secs(), 10);
+    /// ```
     #[inline]
     #[must_use]
     pub const fn from_secs(secs: i64) -> Self {
@@ -520,6 +706,14 @@ impl Timestamp {
     }
 
     /// Returns the timestamp in seconds.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::Timestamp;
+    ///
+    /// let ts = Timestamp::from_secs(10);
+    /// assert_eq!(ts.as_secs(), 10);
+    /// ```
     #[inline]
     #[must_use]
     pub const fn as_secs(self) -> i64 {

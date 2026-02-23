@@ -16,6 +16,13 @@ use crate::{
 const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
 
 /// A raw schema with optional filesystem timestamps (modified, created).
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::adapter::ingestor::RawSchemaWithFileTimes;
+///
+/// let _tuple: RawSchemaWithFileTimes = todo!("Provide raw schema data");
+/// ```
 pub type RawSchemaWithFileTimes =
     (RawSchema, Option<Timestamp>, Option<Timestamp>);
 
@@ -33,6 +40,17 @@ pub type RawSchemaWithFileTimes =
 ///
 /// The ingestor takes a `&Config` reference to ensure it uses the final
 /// merged path values after config loading completes.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::adapter::ingestor::Ingestor;
+/// use lithos_core::fs::FsReader;
+///
+/// let root = std::path::PathBuf::from("/tmp");
+/// let config = todo!("Provide a Config instance");
+/// let ingestor = Ingestor::new(FsReader::new(root), &config);
+/// let _ = ingestor;
+/// ```
 pub struct Ingestor<'config> {
     source: FsReader,
     config: &'config Config,
@@ -42,6 +60,17 @@ impl<'config> Ingestor<'config> {
     /// Create a new ingestor with the given file source and config.
     ///
     /// The config reference ensures paths are the final merged values.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::adapter::ingestor::Ingestor;
+    /// use lithos_core::fs::FsReader;
+    ///
+    /// let root = std::path::PathBuf::from("/tmp");
+    /// let config = todo!("Provide a Config instance");
+    /// let ingestor = Ingestor::new(FsReader::new(root), &config);
+    /// let _ = ingestor;
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(source: FsReader, config: &'config Config) -> Self {
@@ -60,6 +89,14 @@ impl Ingestor<'_> {
     ///
     /// # Errors
     /// Returns `SchemaIngestionError` if the file cannot be read or parsed.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_core::schema::adapter::ingestor::Ingestor;
+    /// # let ingestor = todo!("Provide an Ingestor instance");
+    /// let _bank = ingestor.load_raw_property_bank()?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaIngestionError>(())
+    /// ```
     #[inline]
     pub fn load_raw_property_bank(
         &self,
@@ -77,6 +114,14 @@ impl Ingestor<'_> {
     /// # Errors
     /// Returns `SchemaIngestionError` if the directory cannot be scanned or
     /// files cannot be read or parsed.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_core::schema::adapter::ingestor::Ingestor;
+    /// # let ingestor = todo!("Provide an Ingestor instance");
+    /// let _schemas = ingestor.scan_raw_schemas()?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaIngestionError>(())
+    /// ```
     #[inline]
     pub fn scan_raw_schemas(
         &self,

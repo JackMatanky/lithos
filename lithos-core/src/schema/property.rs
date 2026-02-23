@@ -27,6 +27,29 @@ use crate::patterns;
 /// Reusable property definition with type-specific validation.
 ///
 /// This is the resolved entity used in the Domain layer.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::{
+///     property::{
+///         Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+///     },
+///     property_spec::{BoolSpec, PropertySpec},
+/// };
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let name = PropertyName::new("is_active")?;
+/// let spec = PropertySpec::Bool(BoolSpec::default());
+/// let property = Property::new(
+///     PropertyId::new(),
+///     name,
+///     Cardinality::Required,
+///     Multiplicity::Single,
+///     spec,
+/// )?;
+/// assert!(property.is_required_scalar());
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -53,6 +76,27 @@ pub struct Property {
 
 impl Property {
     /// Returns the property's unique identifier.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_core::schema::property::{
+    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+    /// # };
+    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("flag")?;
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// let property = Property::new(
+    ///     PropertyId::new(),
+    ///     name,
+    ///     Cardinality::Required,
+    ///     Multiplicity::Single,
+    ///     spec,
+    /// )?;
+    /// let _id = property.id();
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub const fn id(&self) -> PropertyId {
@@ -60,6 +104,27 @@ impl Property {
     }
 
     /// Returns the property's cardinality.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_core::schema::property::{
+    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+    /// # };
+    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("flag")?;
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// let property = Property::new(
+    ///     PropertyId::new(),
+    ///     name,
+    ///     Cardinality::Required,
+    ///     Multiplicity::Single,
+    ///     spec,
+    /// )?;
+    /// assert_eq!(property.cardinality(), Cardinality::Required);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub const fn cardinality(&self) -> Cardinality {
@@ -67,6 +132,27 @@ impl Property {
     }
 
     /// Returns the property's multiplicity.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_core::schema::property::{
+    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+    /// # };
+    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("flag")?;
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// let property = Property::new(
+    ///     PropertyId::new(),
+    ///     name,
+    ///     Cardinality::Required,
+    ///     Multiplicity::Single,
+    ///     spec,
+    /// )?;
+    /// assert_eq!(property.multiplicity(), Multiplicity::Single);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub const fn multiplicity(&self) -> Multiplicity {
@@ -74,6 +160,27 @@ impl Property {
     }
 
     /// Returns the property's name.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_core::schema::property::{
+    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+    /// # };
+    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("flag")?;
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// let property = Property::new(
+    ///     PropertyId::new(),
+    ///     name,
+    ///     Cardinality::Required,
+    ///     Multiplicity::Single,
+    ///     spec,
+    /// )?;
+    /// assert_eq!(property.name().as_str(), "flag");
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub const fn name(&self) -> &PropertyName {
@@ -129,6 +236,27 @@ impl Property {
     }
 
     /// Returns true if this property is required.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_core::schema::property::{
+    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+    /// # };
+    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("flag")?;
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// let property = Property::new(
+    ///     PropertyId::new(),
+    ///     name,
+    ///     Cardinality::Required,
+    ///     Multiplicity::Single,
+    ///     spec,
+    /// )?;
+    /// assert!(property.is_required_scalar());
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn is_required_scalar(&self) -> bool {
@@ -137,6 +265,27 @@ impl Property {
     }
 
     /// Returns the type-specific validation specification.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_core::schema::property::{
+    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+    /// # };
+    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("flag")?;
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// let property = Property::new(
+    ///     PropertyId::new(),
+    ///     name,
+    ///     Cardinality::Required,
+    ///     Multiplicity::Single,
+    ///     spec,
+    /// )?;
+    /// let _spec = property.spec();
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub const fn spec(&self) -> &PropertySpec {
@@ -147,6 +296,27 @@ impl Property {
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_core::schema::property::{
+    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+    /// # };
+    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("flag")?;
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// let property = Property::new(
+    ///     PropertyId::new(),
+    ///     name,
+    ///     Cardinality::Required,
+    ///     Multiplicity::Single,
+    ///     spec,
+    /// )?;
+    /// property.validate()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), SchemaError> {
         // Name validation is handled by PropertyName type.
@@ -205,6 +375,18 @@ impl Property {
 }
 
 /// Whether a property is required or optional.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property::Cardinality;
+///
+/// let required = Cardinality::Required;
+/// match required {
+///     Cardinality::Required => {}
+///     Cardinality::Optional => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -239,6 +421,18 @@ impl From<bool> for Cardinality {
 }
 
 /// Whether a property accepts a single value or multiple values.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property::Multiplicity;
+///
+/// let multi = Multiplicity::Many;
+/// match multi {
+///     Multiplicity::Many => {}
+///     Multiplicity::Single => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -273,6 +467,14 @@ impl From<bool> for Multiplicity {
 }
 
 /// Unique identity for a property.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property::PropertyId;
+///
+/// let id = PropertyId::new();
+/// let _ = id.as_uuid();
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -295,6 +497,16 @@ pub struct PropertyId(Uuid);
 
 impl PropertyId {
     /// Wraps a UUID into a `PropertyId`.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property::PropertyId;
+    /// use uuid::Uuid;
+    ///
+    /// let uuid = Uuid::now_v7();
+    /// let id = PropertyId::from_uuid(uuid);
+    /// assert_eq!(*id.as_uuid(), uuid);
+    /// ```
     #[inline]
     #[must_use]
     pub const fn from_uuid(uuid: Uuid) -> Self {
@@ -302,6 +514,14 @@ impl PropertyId {
     }
 
     /// Returns the inner UUID reference.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property::PropertyId;
+    ///
+    /// let id = PropertyId::new();
+    /// let _ = id.as_uuid();
+    /// ```
     #[inline]
     #[must_use]
     pub const fn as_uuid(&self) -> &Uuid {
@@ -309,6 +529,14 @@ impl PropertyId {
     }
 
     /// Returns the inner UUID by value.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property::PropertyId;
+    ///
+    /// let id = PropertyId::new();
+    /// let _uuid = id.into_uuid();
+    /// ```
     #[inline]
     #[must_use]
     pub const fn into_uuid(self) -> Uuid {
@@ -316,6 +544,14 @@ impl PropertyId {
     }
 
     /// Creates a new UUID v7-based `PropertyId`.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property::PropertyId;
+    ///
+    /// let id = PropertyId::new();
+    /// let _ = id.as_uuid();
+    /// ```
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -379,6 +615,16 @@ impl PropertyName {
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property::PropertyName;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("status")?;
+    /// assert_eq!(name.as_str(), "status");
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     pub fn new(name: &str) -> Result<Self, SchemaError> {
         Self::validate(name)?;
@@ -386,6 +632,16 @@ impl PropertyName {
     }
 
     /// Returns the inner string slice.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property::PropertyName;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("status")?;
+    /// assert_eq!(name.as_str(), "status");
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -396,6 +652,14 @@ impl PropertyName {
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property::PropertyName;
+    ///
+    /// PropertyName::validate("status")?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
@@ -471,6 +735,15 @@ impl TryFrom<String> for PropertyName {
 ///
 /// The only valid format is `property_bank#/<name>` where `<name>` is a
 /// valid property name. This format is defined by the vault schema format.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property::PropertyRef;
+///
+/// let reference = PropertyRef::parse("property_bank#/flag")?;
+/// assert_eq!(reference.name().as_str(), "flag");
+/// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct PropertyRef(PropertyName);
@@ -482,6 +755,15 @@ impl PropertyRef {
     ///
     /// # Errors
     /// Returns `SchemaError::InvalidPropertyRef` if the format is invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property::PropertyRef;
+    ///
+    /// let reference = PropertyRef::parse("property_bank#/flag")?;
+    /// assert_eq!(reference.name().as_str(), "flag");
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn parse(reference: &str) -> Result<Self, SchemaError> {
         let name = reference
@@ -491,6 +773,15 @@ impl PropertyRef {
     }
 
     /// Returns the property name being referenced.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property::PropertyRef;
+    ///
+    /// let reference = PropertyRef::parse("property_bank#/flag")?;
+    /// let _name = reference.name();
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     #[must_use]
     pub const fn name(&self) -> &PropertyName {

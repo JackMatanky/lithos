@@ -18,6 +18,19 @@ use crate::{
 /// This adapter-specific type carries the storage metadata needed to build
 /// `StoredSchema`. It lives in the adapter layer and is never exposed to
 /// the domain.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::adapter::command::SaveMetadata;
+/// use lithos_core::schema::bank::BankVersion;
+///
+/// let metadata = SaveMetadata {
+///     bank_version: BankVersion::initial(),
+///     created_at: None,
+///     modified_at: None,
+/// };
+/// let _ = metadata;
+/// ```
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct SaveMetadata {
@@ -30,6 +43,15 @@ pub struct SaveMetadata {
 }
 
 /// Redb-backed schema command adapter.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::adapter::command::CommandAdapter;
+///
+/// let db = todo!("Provide a Database instance");
+/// let adapter = CommandAdapter::new(&db);
+/// let _ = adapter;
+/// ```
 pub struct CommandAdapter<'db> {
     db: &'db Database,
 }
@@ -38,6 +60,15 @@ impl<'db> CommandAdapter<'db> {
     #[inline]
     #[must_use]
     /// Create a command adapter for a database.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::adapter::command::CommandAdapter;
+    ///
+    /// let db = todo!("Provide a Database instance");
+    /// let adapter = CommandAdapter::new(&db);
+    /// let _ = adapter;
+    /// ```
     pub const fn new(db: &'db Database) -> Self {
         Self {
             db,
@@ -57,6 +88,18 @@ impl<'db> CommandAdapter<'db> {
     ///
     /// # Panics
     /// Panics if `schemas.len() != metadata.len()`.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::adapter::command::{CommandAdapter, SaveMetadata};
+    ///
+    /// let db = todo!("Provide a Database instance");
+    /// let adapter = CommandAdapter::new(&db);
+    /// let schemas = Vec::new();
+    /// let metadata: Vec<SaveMetadata> = Vec::new();
+    /// adapter.save_batch_with_metadata(&schemas, &metadata)?;
+    /// # Ok::<_, lithos_core::db::DbError>(())
+    /// ```
     #[inline]
     #[instrument(
         skip(self, schemas, metadata),

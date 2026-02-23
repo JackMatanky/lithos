@@ -29,6 +29,17 @@ use crate::bounds::{Bounds, BoundsError};
 // Internal invariant helpers live near the bottom of the file.
 
 /// A validated option entry with optional display label.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::property_spec::OptionEntry;
+///
+/// let entry = OptionEntry {
+///     value: "open".into(),
+///     label: Some("Open".into()),
+/// };
+/// assert_eq!(entry.value.as_ref(), "open");
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -51,6 +62,17 @@ pub struct OptionEntry {
 }
 
 /// Supported property specification types.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property_spec::PropertySpecType;
+///
+/// let kind = PropertySpecType::Bool;
+/// match kind {
+///     PropertySpecType::Bool => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -79,6 +101,17 @@ pub enum PropertySpecType {
 // --- Validated runtime types: *Spec ---
 
 /// Validated sum type for all supported property specifications.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
+///
+/// let spec = PropertySpec::Bool(BoolSpec::default());
+/// match spec {
+///     PropertySpec::Bool(_) => {}
+///     _ => {}
+/// }
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -107,6 +140,16 @@ pub enum PropertySpec {
 
 impl PropertySpec {
     /// Get the spec type identifier.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property_spec::{
+    ///     BoolSpec, PropertySpec, PropertySpecType,
+    /// };
+    ///
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// assert_eq!(spec.spec_type(), PropertySpecType::Bool);
+    /// ```
     #[inline]
     #[must_use]
     #[expect(
@@ -125,6 +168,16 @@ impl PropertySpec {
     }
 
     /// Feed spec content into a blake3 hasher for stable hashing.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
+    ///
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// let mut hasher = blake3::Hasher::new();
+    /// spec.hash_into_blake3(&mut hasher);
+    /// let _digest = hasher.finalize();
+    /// ```
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
@@ -232,6 +285,13 @@ impl PropertySpec {
 }
 
 /// Boolean property constraints (marker type).
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property_spec::BoolSpec;
+///
+/// let _spec = BoolSpec::default();
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -250,6 +310,16 @@ pub struct BoolSpec;
 
 impl BoolSpec {
     /// Feed spec content into a blake3 hasher for stable hashing.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::property_spec::BoolSpec;
+    ///
+    /// let spec = BoolSpec::default();
+    /// let mut hasher = blake3::Hasher::new();
+    /// spec.hash_into_blake3(&mut hasher);
+    /// let _digest = hasher.finalize();
+    /// ```
     #[inline]
     pub fn hash_into_blake3(&self, _hasher: &mut blake3::Hasher) {
         // BoolSpec is a marker type with no fields
@@ -257,6 +327,14 @@ impl BoolSpec {
 }
 
 /// Date property validation constraints.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property_spec::DateSpec;
+///
+/// let _spec = DateSpec::try_new("%Y-%m-%d")?;
+/// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -283,6 +361,14 @@ impl DateSpec {
     /// # Errors
     /// Returns `SchemaError::InvalidDateFormat` if the format is empty or not
     /// a valid strftime pattern.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property_spec::DateSpec;
+    ///
+    /// let _spec = DateSpec::try_new("%Y-%m-%d")?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     ///
     /// # Panics
     ///
@@ -339,6 +425,17 @@ impl DateSpec {
     }
 
     /// Feed spec content into a blake3 hasher for stable hashing.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::property_spec::DateSpec;
+    ///
+    /// let spec = DateSpec::try_new("%Y-%m-%d")?;
+    /// let mut hasher = blake3::Hasher::new();
+    /// spec.hash_into_blake3(&mut hasher);
+    /// let _digest = hasher.finalize();
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
         hasher.update(self.format.as_bytes());
@@ -351,6 +448,16 @@ impl DateSpec {
     /// # Errors
     /// Returns `SchemaError::InvalidDateFormat` if the override format is
     /// invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{property_spec::DateSpec, raw::RawDateSpec};
+    ///
+    /// let base = DateSpec::try_new("%Y-%m-%d")?;
+    /// let overrides = RawDateSpec::default();
+    /// let _updated = base.apply_overrides(&overrides)?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn apply_overrides(
         self,
@@ -365,6 +472,15 @@ impl DateSpec {
 }
 
 /// File property validation constraints.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property_spec::FileSpec;
+///
+/// let spec = FileSpec::try_new(None, None)?;
+/// let _ = spec;
+/// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -389,6 +505,15 @@ impl FileSpec {
     /// # Errors
     /// Returns `SchemaError` if the directory path is not vault-relative or if
     /// `file_class` is present but empty.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property_spec::FileSpec;
+    ///
+    /// let spec = FileSpec::try_new(Some("attachments".to_string()), None)?;
+    /// let _ = spec;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn try_new(
         directory: Option<String>,
@@ -433,6 +558,17 @@ impl FileSpec {
     }
 
     /// Feed spec content into a blake3 hasher for stable hashing.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::property_spec::FileSpec;
+    ///
+    /// let spec = FileSpec::try_new(None, None)?;
+    /// let mut hasher = blake3::Hasher::new();
+    /// spec.hash_into_blake3(&mut hasher);
+    /// let _digest = hasher.finalize();
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
         if let Some(dir) = self.directory.as_ref() {
@@ -450,6 +586,16 @@ impl FileSpec {
     }
 
     /// Apply overrides from a raw file spec.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{property_spec::FileSpec, raw::RawFileSpec};
+    ///
+    /// let base = FileSpec::try_new(None, None)?;
+    /// let overrides = RawFileSpec::default();
+    /// let _updated = base.apply_overrides(&overrides)?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     ///
     /// Fields that are `None` in the overrides preserve the base values.
     ///
@@ -479,6 +625,15 @@ impl FileSpec {
 }
 
 /// Number property validation constraints.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property_spec::NumberSpec;
+///
+/// let spec = NumberSpec::try_new(Some(0.0), Some(10.0), None)?;
+/// spec.validate_value(5.0)?;
+/// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -512,6 +667,14 @@ impl NumberSpec {
     /// # Errors
     /// Returns `SchemaError` if `min`, `max`, or `step` are non-finite, if
     /// `min > max`, or if `step` is non-positive.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property_spec::NumberSpec;
+    ///
+    /// let _spec = NumberSpec::try_new(Some(0.0), Some(10.0), Some(1.0))?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn try_new(
         min: Option<f64>,
@@ -552,6 +715,15 @@ impl NumberSpec {
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property_spec::NumberSpec;
+    ///
+    /// let spec = NumberSpec::try_new(Some(0.0), Some(10.0), None)?;
+    /// spec.validate_value(5.0)?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn validate_value(&self, value: f64) -> Result<(), SchemaError> {
         let finite = FiniteF64::try_new(value, "value").map_err(|_err| {
@@ -607,6 +779,17 @@ impl NumberSpec {
     }
 
     /// Feed spec content into a blake3 hasher for stable hashing.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::property_spec::NumberSpec;
+    ///
+    /// let spec = NumberSpec::try_new(None, None, None)?;
+    /// let mut hasher = blake3::Hasher::new();
+    /// spec.hash_into_blake3(&mut hasher);
+    /// let _digest = hasher.finalize();
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     #[expect(
         clippy::little_endian_bytes,
@@ -649,6 +832,16 @@ impl NumberSpec {
     ///
     /// # Errors
     /// Returns `SchemaError` if override values are invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{property_spec::NumberSpec, raw::RawNumberSpec};
+    ///
+    /// let base = NumberSpec::try_new(None, None, None)?;
+    /// let overrides = RawNumberSpec::default();
+    /// let _updated = base.apply_overrides(&overrides)?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn apply_overrides(
         self,
@@ -662,6 +855,15 @@ impl NumberSpec {
 }
 
 /// String property validation constraints.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::property_spec::StringSpec;
+///
+/// let spec = StringSpec::try_new(None, None)?;
+/// let _ = spec;
+/// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -695,6 +897,14 @@ impl StringSpec {
     ///
     /// # Errors
     /// Returns `SchemaError` if `pattern` is present but not a valid regex.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property_spec::StringSpec;
+    ///
+    /// let _spec = StringSpec::try_new(None, None)?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn try_new(
         pattern: Option<Box<str>>,
@@ -749,6 +959,17 @@ impl StringSpec {
     }
 
     /// Feed spec content into a blake3 hasher for stable hashing.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::property_spec::StringSpec;
+    ///
+    /// let spec = StringSpec::try_new(None, None)?;
+    /// let mut hasher = blake3::Hasher::new();
+    /// spec.hash_into_blake3(&mut hasher);
+    /// let _digest = hasher.finalize();
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     #[expect(
         clippy::as_conversions,
@@ -788,6 +1009,16 @@ impl StringSpec {
     ///
     /// # Errors
     /// Returns `SchemaError` if override values are invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{property_spec::StringSpec, raw::RawStringSpec};
+    ///
+    /// let base = StringSpec::try_new(None, None)?;
+    /// let overrides = RawStringSpec::default();
+    /// let _updated = base.apply_overrides(&overrides)?;
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
     #[inline]
     pub fn apply_overrides(
         self,

@@ -57,6 +57,15 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
+/// Registry of reusable properties for schema validation.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::bank::PropertyBank;
+///
+/// let bank = PropertyBank::new();
+/// assert_eq!(bank.all().count(), 0);
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -86,6 +95,14 @@ pub struct PropertyBank {
 
 impl PropertyBank {
     /// Create a new empty `PropertyBank`.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBank;
+    ///
+    /// let bank = PropertyBank::new();
+    /// assert_eq!(bank.all().count(), 0);
+    /// ```
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -106,6 +123,18 @@ impl PropertyBank {
     ///
     /// # Errors
     /// Returns `SchemaError` if any property fails validation.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::{
+    ///     bank::PropertyBank,
+    ///     raw::RawPropertyBank,
+    /// };
+    ///
+    /// let raw = RawPropertyBank { properties: std::collections::HashMap::new() };
+    /// let bank = PropertyBank::from_raw(raw, None)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     #[expect(
         clippy::iter_over_hash_type,
@@ -147,6 +176,14 @@ impl PropertyBank {
     }
 
     /// Returns the `PropertyBank`'s unique identifier.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBank;
+    ///
+    /// let bank = PropertyBank::new();
+    /// let _id = bank.id();
+    /// ```
     #[inline]
     #[must_use]
     pub const fn id(&self) -> PropertyBankId {
@@ -154,6 +191,14 @@ impl PropertyBank {
     }
 
     /// Returns the current `PropertyBank` version.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBank;
+    ///
+    /// let bank = PropertyBank::new();
+    /// let _version = bank.version();
+    /// ```
     #[inline]
     #[must_use]
     pub const fn version(&self) -> BankVersion {
@@ -234,6 +279,16 @@ impl PropertyBank {
     }
 
     /// Lookup property by ID (O(1)).
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBank;
+    ///
+    /// let bank = PropertyBank::new();
+    /// let missing =
+    ///     bank.get_by_id(lithos_core::schema::property::PropertyId::new());
+    /// assert!(missing.is_none());
+    /// ```
     #[inline]
     #[must_use]
     pub fn get_by_id(&self, id: PropertyId) -> Option<&Property> {
@@ -242,6 +297,18 @@ impl PropertyBank {
     }
 
     /// Lookup property by Name (O(1)).
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{bank::PropertyBank, property::PropertyName};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let bank = PropertyBank::new();
+    /// let name = PropertyName::new("flag")?;
+    /// let missing = bank.get_by_name(&name);
+    /// assert!(missing.is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn get_by_name(&self, name: &PropertyName) -> Option<&Property> {
@@ -310,6 +377,15 @@ impl PropertyBank {
     }
 
     /// Checks if a property exists by ID.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{bank::PropertyBank, property::PropertyId};
+    ///
+    /// let bank = PropertyBank::new();
+    /// let id = PropertyId::new();
+    /// assert!(!bank.has_id(id));
+    /// ```
     #[inline]
     #[must_use]
     pub fn has_id(&self, id: PropertyId) -> bool {
@@ -317,6 +393,17 @@ impl PropertyBank {
     }
 
     /// Checks if a property exists by name.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::{bank::PropertyBank, property::PropertyName};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let bank = PropertyBank::new();
+    /// let name = PropertyName::new("flag")?;
+    /// assert!(!bank.has_name(&name));
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn has_name(&self, name: &PropertyName) -> bool {
@@ -324,12 +411,29 @@ impl PropertyBank {
     }
 
     /// Get all properties in the bank.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBank;
+    ///
+    /// let bank = PropertyBank::new();
+    /// let count = bank.all().count();
+    /// assert_eq!(count, 0);
+    /// ```
     #[inline]
     pub fn all(&self) -> impl Iterator<Item = &Property> {
         self.properties.iter()
     }
 
     /// Returns a reference to pending domain events.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBank;
+    ///
+    /// let bank = PropertyBank::new();
+    /// let _events = bank.pending_events();
+    /// ```
     #[inline]
     #[must_use]
     pub fn pending_events(&self) -> &[Events] {
@@ -337,6 +441,14 @@ impl PropertyBank {
     }
 
     /// Returns and clears pending domain events.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBank;
+    ///
+    /// let mut bank = PropertyBank::new();
+    /// let _events = bank.take_events();
+    /// ```
     #[inline]
     #[must_use]
     pub fn take_events(&mut self) -> Vec<Events> {
@@ -358,6 +470,14 @@ impl Default for PropertyBank {
 }
 
 /// Unique identity for a property bank.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::bank::PropertyBankId;
+///
+/// let id = PropertyBankId::new();
+/// let _ = id.as_uuid();
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -378,6 +498,14 @@ pub struct PropertyBankId(Uuid);
 
 impl PropertyBankId {
     /// Creates a new UUID v7-based `PropertyBankId`.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBankId;
+    ///
+    /// let id = PropertyBankId::new();
+    /// let _ = id.as_uuid();
+    /// ```
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -388,6 +516,14 @@ impl PropertyBankId {
     ///
     /// The `PropertyBank` uses a fixed UUID to act as a singleton registry.
     /// This ensures consistent identity across all program runs.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBankId;
+    ///
+    /// let id = PropertyBankId::singleton();
+    /// let _ = id.as_uuid();
+    /// ```
     #[inline]
     #[must_use]
     pub const fn singleton() -> Self {
@@ -396,6 +532,16 @@ impl PropertyBankId {
     }
 
     /// Wraps a UUID into a `PropertyBankId`.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBankId;
+    /// use uuid::Uuid;
+    ///
+    /// let uuid = Uuid::now_v7();
+    /// let id = PropertyBankId::from_uuid(uuid);
+    /// assert_eq!(*id.as_uuid(), uuid);
+    /// ```
     #[inline]
     #[must_use]
     pub const fn from_uuid(uuid: Uuid) -> Self {
@@ -403,6 +549,14 @@ impl PropertyBankId {
     }
 
     /// Returns the inner UUID reference.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBankId;
+    ///
+    /// let id = PropertyBankId::new();
+    /// let _ = id.as_uuid();
+    /// ```
     #[inline]
     #[must_use]
     pub const fn as_uuid(&self) -> &Uuid {
@@ -410,6 +564,14 @@ impl PropertyBankId {
     }
 
     /// Returns the inner UUID by value.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::PropertyBankId;
+    ///
+    /// let id = PropertyBankId::new();
+    /// let _uuid = id.into_uuid();
+    /// ```
     #[inline]
     #[must_use]
     pub const fn into_uuid(self) -> Uuid {
@@ -425,6 +587,15 @@ impl Default for PropertyBankId {
 }
 
 /// `PropertyBank` version counter for staleness detection.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::bank::BankVersion;
+///
+/// let version = BankVersion::initial();
+/// let next = version.increment();
+/// assert!(version.is_older_than(next));
+/// ```
 #[derive(
     Debug,
     Clone,
@@ -447,6 +618,14 @@ pub struct BankVersion(u64);
 
 impl BankVersion {
     /// Returns the initial version.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::BankVersion;
+    ///
+    /// let version = BankVersion::initial();
+    /// assert_eq!(version.as_u64(), 0);
+    /// ```
     #[inline]
     #[must_use]
     pub const fn initial() -> Self {
@@ -454,6 +633,15 @@ impl BankVersion {
     }
 
     /// Returns the next version value.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::BankVersion;
+    ///
+    /// let version = BankVersion::initial();
+    /// let next = version.increment();
+    /// assert!(version.is_older_than(next));
+    /// ```
     #[inline]
     #[must_use]
     pub const fn increment(self) -> Self {
@@ -461,6 +649,14 @@ impl BankVersion {
     }
 
     /// Returns the version as a raw integer.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::BankVersion;
+    ///
+    /// let version = BankVersion::initial();
+    /// assert_eq!(version.as_u64(), 0);
+    /// ```
     #[inline]
     #[must_use]
     pub const fn as_u64(self) -> u64 {
@@ -468,6 +664,15 @@ impl BankVersion {
     }
 
     /// Returns true when this version is older than the other.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::BankVersion;
+    ///
+    /// let old = BankVersion::initial();
+    /// let new = old.increment();
+    /// assert!(old.is_older_than(new));
+    /// ```
     #[inline]
     #[must_use]
     pub const fn is_older_than(self, other: Self) -> bool {

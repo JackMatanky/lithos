@@ -13,12 +13,36 @@ use super::{
 /// Command implementation for schema write operations.
 ///
 /// This struct is generic over a storage port to support multiple backends.
+///
+/// # Examples
+///
+/// ```ignore
+/// use lithos_core::schema::{
+///     RedbSchemaCommand,
+///     adapter::command::CommandAdapter,
+/// };
+///
+/// let db = todo!("Provide a Database instance");
+/// let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
+/// ```
 pub struct Command<C> {
     command_port: C,
 }
 
 impl<C> Command<C> {
     /// Create a new `Command` with a storage port.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::schema::{
+    ///     RedbSchemaCommand,
+    ///     adapter::command::CommandAdapter,
+    /// };
+    ///
+    /// let db = todo!("Provide a Database instance");
+    /// let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
+    /// ```
     #[inline]
     #[must_use]
     pub const fn new(command_port: C) -> Self {
@@ -31,6 +55,14 @@ impl<C> Command<C> {
     ///
     /// This allows access to adapter-specific methods not exposed via the
     /// port trait.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::command::Command;
+    /// # let command = todo!("Provide a Command instance");
+    /// let _port = command.port();
+    /// ```
     #[inline]
     #[must_use]
     pub const fn port(&self) -> &C {
@@ -47,6 +79,16 @@ where
     ///
     /// # Errors
     /// Returns `SchemaCommandError` if deletion fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::command::Command;
+    /// # let command = todo!("Provide a Command instance");
+    /// # let id = lithos_core::schema::aggregate::SchemaId::new();
+    /// command.delete(id)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn delete(&self, id: SchemaId) -> Result<(), SchemaCommandError> {
         self.command_port.delete(id).map_err(|error| {
@@ -60,6 +102,16 @@ where
     ///
     /// # Errors
     /// Returns `SchemaCommandError` if saving fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::command::Command;
+    /// # let command = todo!("Provide a Command instance");
+    /// # let schema = todo!("Provide a Schema instance");
+    /// command.save_one(&schema)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn save_one(&self, schema: &Schema) -> Result<(), SchemaCommandError> {
         self.save_batch(std::slice::from_ref(schema))
@@ -71,6 +123,16 @@ where
     ///
     /// # Errors
     /// Returns `SchemaCommandError` if saving fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::command::Command;
+    /// # let command = todo!("Provide a Command instance");
+    /// # let schemas: Vec<lithos_core::schema::aggregate::Schema> = Vec::new();
+    /// command.save_batch(&schemas)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn save_batch(
         &self,
@@ -85,6 +147,16 @@ where
     ///
     /// # Errors
     /// Returns `SchemaCommandError` if saving fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::command::Command;
+    /// # let command = todo!("Provide a Command instance");
+    /// # let bank = lithos_core::schema::bank::PropertyBank::new();
+    /// command.save_property_bank(&bank)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn save_property_bank(
         &self,
@@ -107,6 +179,17 @@ impl Command<crate::schema::adapter::command::CommandAdapter<'_>> {
     ///
     /// # Panics
     /// Panics if `schemas.len() != metadata.len()`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::command::Command;
+    /// # let command = todo!("Provide a CommandAdapter-backed Command");
+    /// # let schemas: Vec<lithos_core::schema::aggregate::Schema> = Vec::new();
+    /// # let metadata: Vec<lithos_core::schema::adapter::command::SaveMetadata> = Vec::new();
+    /// command.save_batch_with_metadata(&schemas, &metadata)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
     #[inline]
     pub fn save_batch_with_metadata(
         &self,

@@ -12,6 +12,15 @@ use crate::{
 };
 
 /// Redb-backed schema query adapter.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::adapter::query::QueryAdapter;
+///
+/// let db = todo!("Provide a Database instance");
+/// let adapter = QueryAdapter::new(&db);
+/// let _ = adapter;
+/// ```
 pub struct QueryAdapter<'db> {
     db: &'db Database,
 }
@@ -20,6 +29,15 @@ impl<'db> QueryAdapter<'db> {
     #[inline]
     #[must_use]
     /// Create a query adapter for a database.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use lithos_core::schema::adapter::query::QueryAdapter;
+    ///
+    /// let db = todo!("Provide a Database instance");
+    /// let adapter = QueryAdapter::new(&db);
+    /// let _ = adapter;
+    /// ```
     pub const fn new(db: &'db Database) -> Self {
         Self {
             db,
