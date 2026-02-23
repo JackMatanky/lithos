@@ -1229,70 +1229,195 @@ Full pipeline:
       [run verify]
 ```
 
+Each step ends with `mise run verify` before proceeding to the next.
+
 ---
 
-## Part 9: Final Refinements — parent_id Domain Migration & Timestamps
+## Part 8: Post-Part-7 Correctness Fixes & Domain Migration
 
 **Date**: 2026-02-23
-**Status**: ACTIVE IMPLEMENTATION PLAN
+**Scope**: Timestamp bugs, `parent_id` domain migration, adapter correctness fixes
+**Status**: IMPLEMENTED (commit `9e1d5307`)
 
-### Core Changes
+### Background
 
-1.  **`parent_id` Domain Migration**: Move `parent_id` from the adapter-only `StoredSchema` into the domain `Schema` aggregate. This recognizes inheritance as a domain fact and eliminates awkward tree lookups in the service layer.
-2.  **Filesystem Timestamps**: Capture `created` (birthtime) and `modified` (mtime) directly from `std::fs::Metadata`.
-3.  **Audit Trail**: Add `recorded_at` (wall-clock at persist time) to track database writes.
+Part 7 successfully implemented the `Dereferencer → Extender → Resolver` pipeline and `SchemaService` orchestration. Post-implementation review identified five correctness issues and one architectural improvement:
 
-### Implementation Steps
+1. **Timestamp bug**: `created_at`/`modified_at` used wall-clock (`Timestamp::now()`) instead of filesystem times
+2. **`parent_id` architectural issue**: Stored only in adapter layer, causing awkward tree lookup in `SchemaService`
+3. **Delete atomicity**: `CommandAdapter::delete` used 3 separate transactions (non-atomic)
+4. **Silent corruption**: `list_name_id_pairs` silently dropped invalid names via `filter_map(...ok())`
+5. **Wrong error variants**: `find_by_id`/`list` mapped errors to `DbError::Transaction` instead of `Deserialization`
+6. **Dead binding**: `if let Some(_existing)` never used the bound value
 
-#### 9.1 Domain Layer: `Schema` aggregate
-- Add `parent_id: Option<SchemaId>` to `Schema` struct.
-- Update `Schema::new()`, `Schema::reconstruct()`, and `Schema::resolve()` to accept `parent_id`.
-- Add `parent_id()` accessor.
+### Key Architectural Decision: `parent_id` in Domain
 
-#### 9.2 Pipeline: `Resolver`
-- Update `Resolver::resolve()` to pass `parent_id` from `SchemaNode` when constructing `Schema`.
+**Rationale**: `parent_id` is a domain fact about schema structure (inheritance relationship), not infrastructure metadata. It belongs in the `Schema` aggregate alongside `id`, `name`, and `properties`.
 
-#### 9.3 Adapters: `Ingestor`
-- Capture `meta.created()` and `meta.modified()` from `std::fs::Metadata`.
-- Update `RawSchemaWithFileTimes` type alias.
+**Benefits**:
+- Eliminates awkward `tree.get(schema.id()).and_then(|node| node.parent_id)` lookup
+- Makes `Schema` self-describing (inheritance hierarchy is queryable)
+- Enables future use cases (LSP queries, graph visualization, cycle detection at load)
+- Clearer separation: domain owns structure, adapter owns operational metadata
 
-#### 9.4 Adapters: `StoredSchema`
-- Replace wall-clock `created_at`/`modified_at` with:
-    - `created_at: Option<Timestamp>` (fs birthtime)
-    - `modified_at: Option<Timestamp>` (fs mtime)
-    - `recorded_at: Timestamp` (wall-clock)
-- Update `to_stored()` and round-trip tests.
-
-#### 9.5 Ports: `SchemaRecord`
-- Remove `parent_id` (now in `Schema`).
-- Align timestamp fields with `StoredSchema`.
-
-#### 9.6 Application: `SchemaService`
-- Remove tree lookup for `parent_id`.
-- Thread file times from `Ingestor` through to `SchemaRecord`.
-- Capture `recorded_at = Timestamp::now()` at persist time.
-
-#### 9.7 Bug Fixes & Quality
-- **Atomicity**: Fix `CommandAdapter::delete` to use `read_write_unit_of_work` for atomic multi-table deletes.
-- **Staleness**: Update `is_schema_stale` to handle `Option<Timestamp>`.
-- **Error Mapping**: Change `DbError::Transaction` to `DbError::Deserialization` in query paths.
-- **Corruption**: Fix `list_name_id_pairs` to return error on corrupt names instead of silently dropping.
-- **Dead Code**: Remove unused `_existing` binding in `save_batch`.
-
-### Execution Order
-
-1.  **aggregate.rs**: Add `parent_id` to `Schema`.
-2.  **resolver.rs**: Thread `parent_id` through resolution.
-3.  **ingestor.rs**: Capture birthtime + mtime.
-4.  **stored.rs**: Update storage fields + conversions.
-5.  **ports.rs**: Align `SchemaRecord`.
-6.  **application/schema.rs**: Wire everything together.
-7.  **adapter/query.rs**: Staleness logic + error mapping + corruption fix.
-8.  **adapter/command.rs**: Delete atomicity + dead binding fix.
+**Storage remains monolithic**: `StoredSchema` keeps all fields (domain + metadata) in one table for single-query staleness checks. Normalization deferred pending real usage patterns.
 
 ---
 
-## Part 8: ADRs Required
+### Changes Implemented
+
+#### 8.1 — Domain: Add `parent_id` to `Schema`
+
+**File**: `lithos-core/src/schema/aggregate.rs`
+
+```rust
+pub struct Schema {
+    id: SchemaId,
+    name: SchemaName,
+    parent_id: Option<SchemaId>,  // ← NEW
+    properties: Vec<Property>,
+    pending_events: Vec<Events>,
+}
+```
+
+Updated constructors:
+- `Schema::new(id, name, parent_id, properties)` — emits `SchemaCreated`
+- `Schema::reconstruct(id, name, parent_id, properties)` — for DB loads, no events
+
+Added accessor: `pub const fn parent_id(&self) -> Option<SchemaId>`
+
+#### 8.2 — Resolver: Pass `parent_id` to `Schema` Constructors
+
+**File**: `lithos-core/src/schema/resolver.rs`
+
+Threaded `node.parent_id` from `SchemaNode` (already available) to both `Schema::new()` and `Schema::resolve()` constructors.
+
+#### 8.3 — Ingestor: Capture Filesystem Times
+
+**File**: `lithos-core/src/schema/adapter/ingestor.rs`
+
+**Before**: Returned `(RawSchema, Option<Timestamp>)` — only `modified` time
+
+**After**: Returns `(RawSchema, Option<Timestamp>, Option<Timestamp>)` — `(raw, modified, created)`
+
+Type alias renamed: `RawSchemaWithMtime` → `RawSchemaWithFileTimes`
+
+Extracts both `std::fs::Metadata::modified()` and `Metadata::created()` (birthtime). `created()` can fail on unsupported platforms/filesystems; `.ok()` fallback handles gracefully.
+
+#### 8.4 — StoredSchema: Filesystem + DB Timestamps
+
+**File**: `lithos-core/src/schema/adapter/stored.rs`
+
+**Before** (BUGGY):
+```rust
+pub created_at: Timestamp,   // wall-clock (wrong)
+pub modified_at: Timestamp,  // wall-clock (wrong)
+```
+
+**After**:
+```rust
+pub created_at: Option<Timestamp>,   // fs birthtime (Metadata::created)
+pub modified_at: Option<Timestamp>,  // fs mtime (Metadata::modified)
+pub recorded_at: Timestamp,          // wall-clock at DB write
+```
+
+**Breaking change**: rkyv on-disk format changed. Pre-existing DB data becomes unreadable. Acceptable for pre-release project.
+
+Updated `to_stored(...)` signature to accept new timestamp fields. `parent_id` now comes from `schema.parent_id()` (domain) instead of being passed separately.
+
+#### 8.5 — SchemaRecord: Match StoredSchema Fields
+
+**File**: `lithos-core/src/schema/ports.rs`
+
+**Before**:
+```rust
+pub parent_id: Option<SchemaId>,  // ← removed (now in Schema)
+pub created_at: Timestamp,
+pub modified_at: Timestamp,
+```
+
+**After**:
+```rust
+pub created_at: Option<Timestamp>,
+pub modified_at: Option<Timestamp>,
+pub recorded_at: Timestamp,
+```
+
+#### 8.6 — SchemaService: Wire Correct Timestamps
+
+**File**: `lithos-core/src/application/schema.rs`
+
+**Changes**:
+1. Thread `(modified, created)` from ingestor through staleness loop via `StaleSchema` helper struct
+2. Remove tree lookup: `parent_id` now comes from `schema.parent_id()` directly
+3. Capture `recorded_at = Timestamp::now()` once before `save_batch`
+4. Look up file times for each resolved schema from `stale` vec and pass to `SchemaRecord::new`
+
+#### 8.7 — QueryAdapter: Fix Staleness + Error Variants
+
+**File**: `lithos-core/src/schema/adapter/query.rs`
+
+**4 fixes**:
+
+1. **`is_schema_stale`**: Handle `Option<Timestamp>` for `stored.modified_at`:
+   ```rust
+   if let (Some(stored_mtime), Some(file_mtime)) = (stored.modified_at, file_mtime)
+       && stored_mtime.as_secs() < file_mtime.as_secs()
+   ```
+
+2. **`list_name_id_pairs`**: Return `DbError::Deserialization` on corrupt names instead of silently dropping
+
+3. **`find_by_id`**: Use `DbError::Deserialization` (not `Transaction`) for conversion errors
+
+4. **`list`**: Use `DbError::Deserialization` (not `Transaction`) for conversion errors
+
+#### 8.8 — CommandAdapter: Atomicity + Dead Binding
+
+**File**: `lithos-core/src/schema/adapter/command.rs`
+
+**2 fixes**:
+
+1. **Dead binding**: `if let Some(_existing)` → `.is_some()`
+
+2. **Delete atomicity**: Wrap read + 2 deletes in `read_write_unit_of_work` for single atomic transaction:
+   ```rust
+   self.db.read_write_unit_of_work(|tx| {
+       if let Some(stored) = tx.get_owned::<StoredSchema>(...)? {
+           tx.delete(SCHEMA_ID_BY_NAME, stored.name.as_ref())?;
+       }
+       tx.delete(SCHEMA_BY_ID, id_key.as_str())?;
+       Ok(())
+   })
+   ```
+
+---
+
+### Verification
+
+All changes passed `mise run verify` at commit `9e1d5307`:
+- ✅ All unit tests passing
+- ✅ All doc tests passing
+- ✅ No clippy warnings
+- ✅ Code formatted correctly
+- ✅ No `#[allow]` directives added
+- ✅ Minimal `#[expect]` usage with detailed reasons
+
+---
+
+### Summary of Bugs Fixed
+
+| Bug | Severity | Fix |
+|---|---|---|
+| Timestamps from wall-clock (not filesystem) | High | Use `Metadata::created()` / `modified()` |
+| `parent_id` not in domain (awkward lookup) | Medium | Add to `Schema` aggregate |
+| `delete` non-atomic (3 separate txs) | High | Use `read_write_unit_of_work` |
+| `list_name_id_pairs` silent corruption | Medium | Return `Deserialization` error |
+| Wrong error variants (2 places) | Low | Use `Deserialization` not `Transaction` |
+| Dead `_existing` binding | Low | Use `.is_some()` |
+
+---
+
+## Part 9: ADRs Required
 
 | Decision | File |
 |---|---|
@@ -1301,3 +1426,5 @@ Full pipeline:
 | `save_batch` is the sole write path; `save_with_metadata` removed | `docs/adr/XXXX-schema-command-save-batch-only.md` |
 | `StoredSchema` in adapter layer replaces `ResolutionMetadata` and second table | `docs/adr/XXXX-stored-schema-adapter-layer.md` |
 | Pipeline decomposed into `Dereferencer`, `Extender`, `Resolver` | `docs/adr/XXXX-pipeline-decomposition.md` |
+| `parent_id` belongs in domain `Schema`, not adapter-only | `docs/adr/XXXX-parent-id-domain-migration.md` |
+| Filesystem times (`created`/`modified`) + DB time (`recorded_at`) for timestamps | `docs/adr/XXXX-schema-timestamps-filesystem-vs-db.md` |
