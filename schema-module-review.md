@@ -1229,7 +1229,66 @@ Full pipeline:
       [run verify]
 ```
 
-Each step ends with `mise run verify` before proceeding to the next.
+---
+
+## Part 9: Final Refinements — parent_id Domain Migration & Timestamps
+
+**Date**: 2026-02-23
+**Status**: ACTIVE IMPLEMENTATION PLAN
+
+### Core Changes
+
+1.  **`parent_id` Domain Migration**: Move `parent_id` from the adapter-only `StoredSchema` into the domain `Schema` aggregate. This recognizes inheritance as a domain fact and eliminates awkward tree lookups in the service layer.
+2.  **Filesystem Timestamps**: Capture `created` (birthtime) and `modified` (mtime) directly from `std::fs::Metadata`.
+3.  **Audit Trail**: Add `recorded_at` (wall-clock at persist time) to track database writes.
+
+### Implementation Steps
+
+#### 9.1 Domain Layer: `Schema` aggregate
+- Add `parent_id: Option<SchemaId>` to `Schema` struct.
+- Update `Schema::new()`, `Schema::reconstruct()`, and `Schema::resolve()` to accept `parent_id`.
+- Add `parent_id()` accessor.
+
+#### 9.2 Pipeline: `Resolver`
+- Update `Resolver::resolve()` to pass `parent_id` from `SchemaNode` when constructing `Schema`.
+
+#### 9.3 Adapters: `Ingestor`
+- Capture `meta.created()` and `meta.modified()` from `std::fs::Metadata`.
+- Update `RawSchemaWithFileTimes` type alias.
+
+#### 9.4 Adapters: `StoredSchema`
+- Replace wall-clock `created_at`/`modified_at` with:
+    - `created_at: Option<Timestamp>` (fs birthtime)
+    - `modified_at: Option<Timestamp>` (fs mtime)
+    - `recorded_at: Timestamp` (wall-clock)
+- Update `to_stored()` and round-trip tests.
+
+#### 9.5 Ports: `SchemaRecord`
+- Remove `parent_id` (now in `Schema`).
+- Align timestamp fields with `StoredSchema`.
+
+#### 9.6 Application: `SchemaService`
+- Remove tree lookup for `parent_id`.
+- Thread file times from `Ingestor` through to `SchemaRecord`.
+- Capture `recorded_at = Timestamp::now()` at persist time.
+
+#### 9.7 Bug Fixes & Quality
+- **Atomicity**: Fix `CommandAdapter::delete` to use `read_write_unit_of_work` for atomic multi-table deletes.
+- **Staleness**: Update `is_schema_stale` to handle `Option<Timestamp>`.
+- **Error Mapping**: Change `DbError::Transaction` to `DbError::Deserialization` in query paths.
+- **Corruption**: Fix `list_name_id_pairs` to return error on corrupt names instead of silently dropping.
+- **Dead Code**: Remove unused `_existing` binding in `save_batch`.
+
+### Execution Order
+
+1.  **aggregate.rs**: Add `parent_id` to `Schema`.
+2.  **resolver.rs**: Thread `parent_id` through resolution.
+3.  **ingestor.rs**: Capture birthtime + mtime.
+4.  **stored.rs**: Update storage fields + conversions.
+5.  **ports.rs**: Align `SchemaRecord`.
+6.  **application/schema.rs**: Wire everything together.
+7.  **adapter/query.rs**: Staleness logic + error mapping + corruption fix.
+8.  **adapter/command.rs**: Delete atomicity + dead binding fix.
 
 ---
 
