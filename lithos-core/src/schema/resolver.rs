@@ -91,7 +91,7 @@ impl Resolver {
             );
 
             let name = SchemaName::new(&node.name)?;
-            let schema = Schema::new(id, name, merged)?;
+            let schema = Schema::new(id, name, node.parent_id, merged)?;
 
             resolved_cache.insert(id, schema.clone());
             results.push(schema);
@@ -419,6 +419,7 @@ mod tests {
             let parent_schema = Schema::reconstruct(
                 parent_id,
                 SchemaName::new("parent")?,
+                None,
                 vec![parent_prop],
             );
             let mut known_parents = HashMap::new();

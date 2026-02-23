@@ -513,6 +513,7 @@ mod tests {
             let parent_schema = Schema::reconstruct(
                 parent_id,
                 SchemaName::new("parent")?,
+                None,
                 Vec::new(),
             );
             let mut known_parents = HashMap::new();

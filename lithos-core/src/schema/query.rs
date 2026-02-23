@@ -191,7 +191,7 @@ mod tests {
             name: &str,
         ) -> Result<Schema, String> {
             let name = SchemaName::new(name).map_err(|e| e.to_string())?;
-            Schema::new(id, name, vec![]).map_err(|e| e.to_string())
+            Schema::new(id, name, None, vec![]).map_err(|e| e.to_string())
         }
     }
 

@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use super::{
     error::SchemaError,
-    events::{Events, SchemaCreated},
+    events::{Events, SchemaCreated, SchemaResolved},
     property::{Property, PropertyName},
 };
 use crate::patterns;
@@ -44,7 +44,7 @@ use crate::patterns;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// let name = SchemaName::new("project-note")?;
-/// let schema = Schema::new(SchemaId::new(), name, vec![])?;
+/// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
 /// assert!(
 ///     schema.properties().is_empty(),
 ///     "New schema should have empty properties"
@@ -68,6 +68,8 @@ pub struct Schema {
     id: SchemaId,
     /// Unique schema name.
     name: SchemaName,
+    /// Parent schema ID, for inheritance tree reconstruction.
+    parent_id: Option<SchemaId>,
     /// Fully resolved properties after inheritance.
     properties: Vec<Property>,
     /// Domain events pending emission.
@@ -78,6 +80,9 @@ pub struct Schema {
 impl Schema {
     /// Create a new resolved Schema.
     ///
+    /// This constructor is intended for genuinely new schemas. It emits both
+    /// [`Events::SchemaCreated`] and [`Events::SchemaResolved`].
+    ///
     /// # Examples
     ///
     /// ```
@@ -85,7 +90,7 @@ impl Schema {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let name = SchemaName::new("project-note")?;
-    /// let schema = Schema::new(SchemaId::new(), name, vec![])?;
+    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
     /// assert_eq!(
     ///     schema.name().as_str(),
     ///     "project-note",
@@ -101,16 +106,55 @@ impl Schema {
     pub fn new(
         id: SchemaId,
         name: SchemaName,
+        parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
         let mut schema = Self {
             id,
             name,
+            parent_id,
             properties,
             pending_events: vec![],
         };
 
+        let now = Timestamp::now();
         schema.add_event(Events::SchemaCreated(SchemaCreated::new(
+            id,
+            &schema.name,
+            now,
+        )));
+        schema.add_event(Events::SchemaResolved(SchemaResolved::new(
+            id,
+            &schema.name,
+            now,
+        )));
+
+        Ok(schema)
+    }
+
+    /// Resolve an existing Schema.
+    ///
+    /// This constructor is intended for re-resolution of schemas that already
+    /// exist in the database. It emits [`Events::SchemaResolved`] only.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn resolve_existing(
+        id: SchemaId,
+        name: SchemaName,
+        parent_id: Option<SchemaId>,
+        properties: Vec<Property>,
+    ) -> Result<Self, SchemaError> {
+        let mut schema = Self {
+            id,
+            name,
+            parent_id,
+            properties,
+            pending_events: vec![],
+        };
+
+        schema.add_event(Events::SchemaResolved(SchemaResolved::new(
             id,
             &schema.name,
             Timestamp::now(),
@@ -122,17 +166,19 @@ impl Schema {
     /// Reconstruct a schema loaded from storage without emitting domain events.
     ///
     /// Use this when loading a previously-persisted schema from the database.
-    /// Unlike [`Schema::new`], no `SchemaCreated` event is emitted.
+    /// Unlike [`Schema::new`], no events are emitted.
     #[inline]
     #[must_use]
     pub(crate) fn reconstruct(
         id: SchemaId,
         name: SchemaName,
+        parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Self {
         Self {
             id,
             name,
+            parent_id,
             properties,
             pending_events: vec![],
         }
@@ -150,6 +196,13 @@ impl Schema {
     #[must_use]
     pub const fn name(&self) -> &SchemaName {
         &self.name
+    }
+
+    /// Returns the parent schema ID, if this schema extends another.
+    #[inline]
+    #[must_use]
+    pub const fn parent_id(&self) -> Option<SchemaId> {
+        self.parent_id
     }
 
     /// Returns the fully resolved properties.
@@ -171,7 +224,7 @@ impl Schema {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
     /// let name = SchemaName::new("test")?;
-    /// let schema = Schema::new(SchemaId::new(), name, vec![])?;
+    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
     /// let missing = PropertyName::new("missing")?;
     /// assert!(
     ///     schema.get(&missing).is_none(),
@@ -508,9 +561,12 @@ mod tests {
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             )?;
-            Schema::new(SchemaId::from_uuid(TEST_SCHEMA_ID_A), name, vec![
-                property,
-            ])
+            Schema::new(
+                SchemaId::from_uuid(TEST_SCHEMA_ID_A),
+                name,
+                None,
+                vec![property],
+            )
         }
     }
 
@@ -617,8 +673,8 @@ mod tests {
 
             assert_eq!(
                 schema.pending_events().len(),
-                1,
-                "Expected exactly 1 pending event"
+                2,
+                "Expected 2 pending events: SchemaCreated and SchemaResolved"
             );
         }
     }

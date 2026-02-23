@@ -114,7 +114,7 @@ impl TryFrom<StoredSchema> for Schema {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(Schema::reconstruct(stored.id, name, properties))
+        Ok(Schema::reconstruct(stored.id, name, stored.parent_id, properties))
     }
 }
 
@@ -138,7 +138,7 @@ mod tests {
 
     fn make_schema() -> Schema {
         let name = SchemaName::new("test-stored").expect("valid name");
-        Schema::reconstruct(TEST_SCHEMA_ID, name, vec![])
+        Schema::reconstruct(TEST_SCHEMA_ID, name, None, vec![])
     }
 
     #[test]
@@ -180,7 +180,7 @@ mod tests {
 
         let schema_name = SchemaName::new("with-props").expect("valid name");
         let schema =
-            Schema::reconstruct(TEST_SCHEMA_ID, schema_name, vec![prop]);
+            Schema::reconstruct(TEST_SCHEMA_ID, schema_name, None, vec![prop]);
 
         let stored = to_stored(
             &schema,
