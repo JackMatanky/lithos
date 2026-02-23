@@ -99,7 +99,7 @@ impl Database {
 
     /// Execute multiple writes in a batch with a single commit.
     ///
-    /// The closure receives a [`WriteBatch`] for performing operations.
+    /// The closure receives a [`BatchWriter`] for performing operations.
     /// All operations in the batch share the same write transaction.
     ///
     /// # Errors
@@ -127,7 +127,7 @@ impl Database {
     #[inline]
     pub fn batch_write<F>(&self, f: F) -> Result<(), DbError>
     where
-        F: FnOnce(&mut WriteBatch) -> Result<(), DbError>,
+        F: FnOnce(&mut BatchWriter) -> Result<(), DbError>,
     {
         batch_write_impl(&self.inner, f)
     }
@@ -211,11 +211,11 @@ impl Database {
 ///
 /// This is intentionally scoped to a closure (see `Database::batch_write`) so
 /// callers cannot accidentally hold a transaction across unrelated work.
-pub struct WriteBatch {
+pub struct BatchWriter {
     tx: redb::WriteTransaction,
 }
 
-impl WriteBatch {
+impl BatchWriter {
     #[inline]
     pub(super) fn new(tx: redb::WriteTransaction) -> Self {
         Self {
@@ -310,7 +310,7 @@ impl WriteBatch {
 /// `Database::read_write_unit_of_work`) so callers cannot accidentally hold a
 /// transaction across unrelated work.
 ///
-/// Unlike [`WriteBatch`], this type supports read operations for atomic
+/// Unlike [`BatchWriter`], this type supports read operations for atomic
 /// read-compute-write patterns.
 pub struct ReadWriteUnitOfWork {
     tx: redb::WriteTransaction,
@@ -530,10 +530,10 @@ fn multimap_remove_tx(
 /// Execute a batch of write operations with a single commit.
 fn batch_write_impl<F>(db: &redb::Database, f: F) -> Result<(), DbError>
 where
-    F: FnOnce(&mut WriteBatch) -> Result<(), DbError>,
+    F: FnOnce(&mut BatchWriter) -> Result<(), DbError>,
 {
     let tx = db.begin_write()?;
-    let mut batch = WriteBatch::new(tx);
+    let mut batch = BatchWriter::new(tx);
 
     f(&mut batch)?;
     batch.commit()?;

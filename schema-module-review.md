@@ -833,7 +833,7 @@ Implemented in `QueryAdapter` by scanning `SCHEMA_ID_BY_NAME` — no full `Schem
 
 #### I3. Add `batch_read` to `ports::Query` via a new `BatchReader` abstraction
 
-Add a `BatchReader` struct to `db/reader.rs` (parallel to `WriteBatch` in `writer.rs`) that wraps `redb::ReadTransaction` privately and exposes typed read methods (`get_owned`, `get`, `list_owned`). Update `Database::batch_read` to pass `&BatchReader` to the closure rather than `&redb::ReadTransaction`:
+Add a `BatchReader` struct to `db/reader.rs` (parallel to `BatchWriter` in `writer.rs`) that wraps `redb::ReadTransaction` privately and exposes typed read methods (`get_owned`, `get`, `list_owned`). Update `Database::batch_read` to pass `&BatchReader` to the closure rather than `&redb::ReadTransaction`:
 
 ```rust
 // db/reader.rs

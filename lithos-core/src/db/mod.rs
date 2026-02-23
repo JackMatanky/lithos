@@ -26,7 +26,7 @@
 #![allow(
     clippy::pub_use,
     reason = "This module intentionally re-exports a small public surface \
-              (db::DbError, db::WriteBatch) for ergonomic crate consumers"
+              (db::DbError, db::BatchWriter) for ergonomic crate consumers"
 )]
 #![allow(
     clippy::module_name_repetitions,
@@ -42,7 +42,7 @@ use std::path::Path;
 pub use error::DbError;
 pub use reader::BatchReader;
 use redb::ReadableDatabase as _;
-pub use writer::WriteBatch;
+pub use writer::BatchWriter;
 
 /// Concrete database type wrapping redb.
 ///
