@@ -77,9 +77,7 @@ impl<'db> CommandAdapter<'db> {
         let mut name_index = std::collections::HashMap::new();
 
         for schema in schemas {
-            if let Some(_existing) =
-                name_index.insert(schema.name().clone(), schema.id())
-            {
+            if name_index.insert(schema.name().clone(), schema.id()).is_some() {
                 return Err(DbError::Transaction(format!(
                     "schema name already exists in batch: {}",
                     schema.name().as_str()
@@ -152,16 +150,18 @@ impl Command for CommandAdapter<'_> {
         use crate::schema::adapter::stored::StoredSchema;
 
         let id_uuid = id.into_uuid();
-        if let Some(stored) =
-            self.db.get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id_uuid)?
-        {
-            self.db.delete(SCHEMA_ID_BY_NAME, stored.name.as_ref())?;
-        }
-
-        // Use the string key for deletion (same format as put).
         let id_key = id_uuid.to_string();
-        self.db.delete(SCHEMA_BY_ID, id_key.as_str())?;
-        Ok(())
+
+        // Atomic delete: read + delete name index + delete schema in single tx
+        self.db.read_write_unit_of_work(|tx| {
+            if let Some(stored) =
+                tx.get_owned::<StoredSchema>(SCHEMA_BY_ID, id_key.as_str())?
+            {
+                tx.delete(SCHEMA_ID_BY_NAME, stored.name.as_ref())?;
+            }
+            tx.delete(SCHEMA_BY_ID, id_key.as_str())?;
+            Ok(())
+        })
     }
 
     #[inline]

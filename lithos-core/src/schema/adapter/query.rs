@@ -44,7 +44,7 @@ impl Query for QueryAdapter<'_> {
             .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
             .map(Schema::try_from)
             .transpose()
-            .map_err(|e| DbError::Transaction(e.to_string()))
+            .map_err(|e| DbError::Deserialization(e.to_string()))
     }
 
     #[inline]
@@ -106,23 +106,23 @@ impl Query for QueryAdapter<'_> {
             .into_iter()
             .map(|s| {
                 Schema::try_from(s)
-                    .map_err(|e| DbError::Transaction(e.to_string()))
+                    .map_err(|e| DbError::Deserialization(e.to_string()))
             })
             .collect()
     }
 
     #[inline]
     fn list_name_id_pairs(&self) -> Result<Vec<NameIdPair>, Self::Error> {
-        self.db.list_key_value_pairs::<SchemaId>(SCHEMA_ID_BY_NAME).map(
-            |pairs| {
-                pairs
-                    .into_iter()
-                    .filter_map(|(name, id)| {
-                        SchemaName::new(&name).ok().map(|name| (name, id))
-                    })
-                    .collect()
-            },
-        )
+        let pairs =
+            self.db.list_key_value_pairs::<SchemaId>(SCHEMA_ID_BY_NAME)?;
+        pairs
+            .into_iter()
+            .map(|(name, id)| {
+                SchemaName::new(&name)
+                    .map(|schema_name| (schema_name, id))
+                    .map_err(|e| DbError::Deserialization(e.to_string()))
+            })
+            .collect()
     }
 
     #[inline]

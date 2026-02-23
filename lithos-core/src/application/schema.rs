@@ -29,24 +29,19 @@
 
 use std::collections::HashMap;
 
-use crate::{
-    db::DbError,
-    schema::{
-        adapter::ingestor::Ingestor,
-        aggregate::{Schema, SchemaId, SchemaName, Timestamp},
-        bank::PropertyBank,
-        command::Command,
-        dereferencer::Dereferencer,
-        error::{
-            SchemaCommandError, SchemaError, SchemaIngestionError,
-            SchemaQueryError,
-        },
-        extender::Extender,
-        ports::{self as schema_ports},
-        query::Query,
-        raw::RawSchema,
-        resolver::Resolver,
+use crate::schema::{
+    adapter::{command::SaveMetadata, ingestor::Ingestor},
+    aggregate::{Schema, SchemaId, SchemaName, Timestamp},
+    bank::PropertyBank,
+    command::Command,
+    dereferencer::Dereferencer,
+    error::{
+        SchemaCommandError, SchemaError, SchemaIngestionError, SchemaQueryError,
     },
+    extender::Extender,
+    query::Query,
+    raw::RawSchema,
+    resolver::Resolver,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,32 +75,27 @@ pub enum SchemaServiceError {
 
 /// Thin orchestration service for schema ingestion.
 ///
-/// Generic over storage ports so it can be tested with in-memory fakes and
-/// used in production with the redb adapters.
-pub struct SchemaService<Q, C> {
-    query: Query<Q>,
-    command: Command<C>,
+/// Uses concrete redb adapters for production use. If testing with mocks
+/// is needed in the future, this can be made generic again.
+pub struct SchemaService<'db> {
+    query: Query<crate::schema::adapter::query::QueryAdapter<'db>>,
+    command: Command<crate::schema::adapter::command::CommandAdapter<'db>>,
 }
 
-impl<Q, C> SchemaService<Q, C> {
-    /// Create a new `SchemaService` with the given query and command ports.
+impl SchemaService<'_> {
+    /// Create a new `SchemaService` with query and command adapters.
     #[inline]
     #[must_use]
-    pub fn new(query: Query<Q>, command: Command<C>) -> Self {
-        Self {
+    pub fn new<'db>(
+        query: Query<crate::schema::adapter::query::QueryAdapter<'db>>,
+        command: Command<crate::schema::adapter::command::CommandAdapter<'db>>,
+    ) -> SchemaService<'db> {
+        SchemaService {
             query,
             command,
         }
     }
-}
 
-impl<Q, C> SchemaService<Q, C>
-where
-    Q: schema_ports::Query,
-    Q::Error: Into<DbError>,
-    C: schema_ports::Command,
-    C::Error: Into<DbError>,
-{
     /// Run the full ingestion pipeline.
     ///
     /// Reads raw files via `ingestor`, resolves schemas through the
@@ -127,6 +117,7 @@ where
     ) -> Result<Vec<Schema>, SchemaServiceError> {
         type SchemaWithTimes =
             (SchemaId, RawSchema, Option<Timestamp>, Option<Timestamp>);
+        type TimestampPair = (Option<Timestamp>, Option<Timestamp>);
 
         // ── Step 1: file ingestion ──────────────────────────────────────────
         let raw_bank = ingestor.load_raw_property_bank()?;
@@ -203,10 +194,33 @@ where
 
         // ── Step 7: persist ─────────────────────────────────────────────────
         if !resolved.is_empty() {
-            // TODO: Preserve filesystem timestamps from stale_with_times
-            // For now, adapter will use defaults (None for fs times, now() for
-            // recorded_at) See https://github.com/your-org/lithos/issues/XXX
-            self.command.save_batch(&resolved)?;
+            // Build metadata map: schema_id → (modified, created)
+            let mut time_map: HashMap<SchemaId, TimestampPair> =
+                HashMap::with_capacity(stale_with_times.len());
+            for (id, _, modified, created) in stale_with_times {
+                time_map.insert(id, (modified, created));
+            }
+
+            // Build metadata vector in same order as schemas
+            let metadata: Vec<SaveMetadata> = resolved
+                .iter()
+                .map(|schema| {
+                    let (modified, created) = time_map
+                        .get(&schema.id())
+                        .copied()
+                        .unwrap_or((None, None));
+                    SaveMetadata {
+                        bank_version: current_bank_version,
+                        created_at: created,
+                        modified_at: modified,
+                    }
+                })
+                .collect();
+
+            // Save with metadata (method only available when C is
+            // CommandAdapter) For generic ports, call save_batch
+            // directly without metadata
+            self.command.save_batch_with_metadata(&resolved, &metadata)?;
         }
 
         self.command.save_property_bank(&bank)?;

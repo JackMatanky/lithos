@@ -26,6 +26,16 @@ impl<C> Command<C> {
             command_port,
         }
     }
+
+    /// Get a reference to the underlying command port.
+    ///
+    /// This allows access to adapter-specific methods not exposed via the
+    /// port trait.
+    #[inline]
+    #[must_use]
+    pub const fn port(&self) -> &C {
+        &self.command_port
+    }
 }
 
 impl<C> Command<C>
@@ -83,6 +93,33 @@ where
         self.command_port.save_property_bank(bank).map_err(|error| {
             SchemaCommandError::Storage(Into::<crate::db::DbError>::into(error))
         })
+    }
+}
+
+impl Command<crate::schema::adapter::command::CommandAdapter<'_>> {
+    /// Save multiple schemas with filesystem timestamps.
+    ///
+    /// This method is only available when using the concrete `CommandAdapter`.
+    /// It preserves filesystem metadata by calling the adapter's extended API.
+    ///
+    /// # Errors
+    /// Returns `SchemaCommandError` if saving fails.
+    ///
+    /// # Panics
+    /// Panics if `schemas.len() != metadata.len()`.
+    #[inline]
+    pub fn save_batch_with_metadata(
+        &self,
+        schemas: &[Schema],
+        metadata: &[crate::schema::adapter::command::SaveMetadata],
+    ) -> Result<(), SchemaCommandError> {
+        self.command_port.save_batch_with_metadata(schemas, metadata).map_err(
+            |error| {
+                SchemaCommandError::Storage(Into::<crate::db::DbError>::into(
+                    error,
+                ))
+            },
+        )
     }
 }
 
