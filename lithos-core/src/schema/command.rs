@@ -4,10 +4,10 @@
 //! through the schema command port.
 
 use super::{
-    aggregate::SchemaId,
+    aggregate::{Schema, SchemaId},
     bank::PropertyBank,
     error::SchemaCommandError,
-    ports::{self as schema_ports, SchemaRecord},
+    ports::{self as schema_ports},
 };
 
 /// Command implementation for schema write operations.
@@ -44,21 +44,18 @@ where
         })
     }
 
-    /// Save a single schema record to persistence.
+    /// Save a single schema to persistence.
     ///
     /// Convenience method that delegates to `save_batch`.
     ///
     /// # Errors
     /// Returns `SchemaCommandError` if saving fails.
     #[inline]
-    pub fn save_one(
-        &self,
-        record: SchemaRecord,
-    ) -> Result<(), SchemaCommandError> {
-        self.save_batch(&[record])
+    pub fn save_one(&self, schema: &Schema) -> Result<(), SchemaCommandError> {
+        self.save_batch(std::slice::from_ref(schema))
     }
 
-    /// Save multiple schema records as a batch.
+    /// Save multiple schemas as a batch.
     ///
     /// All saves are atomic within a single write transaction.
     ///
@@ -67,9 +64,9 @@ where
     #[inline]
     pub fn save_batch(
         &self,
-        records: &[SchemaRecord],
+        schemas: &[Schema],
     ) -> Result<(), SchemaCommandError> {
-        self.command_port.save_batch(records).map_err(|error| {
+        self.command_port.save_batch(schemas).map_err(|error| {
             SchemaCommandError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
@@ -131,12 +128,10 @@ mod tests {
 
     use tempfile::{TempDir, tempdir};
 
-    use super::*;
     use crate::schema::{
         RedbSchemaCommand,
         adapter::{command::CommandAdapter, stored::StoredSchema},
-        aggregate::{SchemaId, SchemaName, Timestamp},
-        bank::BankVersion,
+        aggregate::{SchemaId, SchemaName},
         db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
     };
 
@@ -153,14 +148,7 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")
                     .expect("Failed to create schema fixture");
 
-            cmd.save_one(SchemaRecord::new(
-                schema.clone(),
-                None,
-                BankVersion::initial(),
-                Timestamp::now(),
-                Timestamp::now(),
-            ))
-            .expect("Save should succeed");
+            cmd.save_one(&schema).expect("Save should succeed");
 
             let stored = db
                 .get_owned_by_uuid::<StoredSchema>(
@@ -201,14 +189,7 @@ mod tests {
             .expect("Failed to create schema fixture");
             let schema_id = schema.id();
 
-            cmd.save_one(SchemaRecord::new(
-                schema,
-                None,
-                BankVersion::initial(),
-                Timestamp::now(),
-                Timestamp::now(),
-            ))
-            .expect("Save should succeed");
+            cmd.save_one(&schema).expect("Save should succeed");
 
             cmd.delete(schema_id).expect("Delete should succeed");
 
@@ -243,23 +224,8 @@ mod tests {
             )
             .expect("Failed to create schema fixture");
 
-            cmd.save_batch(&[
-                SchemaRecord::new(
-                    schema_a.clone(),
-                    None,
-                    BankVersion::initial(),
-                    Timestamp::now(),
-                    Timestamp::now(),
-                ),
-                SchemaRecord::new(
-                    schema_b.clone(),
-                    None,
-                    BankVersion::initial(),
-                    Timestamp::now(),
-                    Timestamp::now(),
-                ),
-            ])
-            .expect("Batch save should succeed");
+            cmd.save_batch(&[schema_a.clone(), schema_b.clone()])
+                .expect("Batch save should succeed");
 
             let stored_a = db
                 .get_owned_by_uuid::<StoredSchema>(

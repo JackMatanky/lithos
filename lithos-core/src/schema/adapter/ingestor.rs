@@ -15,8 +15,9 @@ use crate::{
 /// Supported schema file extensions.
 const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
 
-/// A raw schema with optional file modification time.
-pub type RawSchemaWithMtime = (RawSchema, Option<Timestamp>);
+/// A raw schema with optional filesystem timestamps (modified, created).
+pub type RawSchemaWithFileTimes =
+    (RawSchema, Option<Timestamp>, Option<Timestamp>);
 
 /// Ingestor for loading raw schema files from a file source.
 ///
@@ -69,7 +70,7 @@ impl Ingestor<'_> {
 
     /// Scan the schemas directory for all schema files.
     ///
-    /// Returns a vector of (`RawSchema`, file modification time) pairs.
+    /// Returns a vector of (`RawSchema`, modified time, created time) tuples.
     /// Supports JSON, TOML, and YAML formats. The property bank file is
     /// excluded.
     ///
@@ -79,7 +80,7 @@ impl Ingestor<'_> {
     #[inline]
     pub fn scan_raw_schemas(
         &self,
-    ) -> Result<Vec<RawSchemaWithMtime>, SchemaIngestionError> {
+    ) -> Result<Vec<RawSchemaWithFileTimes>, SchemaIngestionError> {
         let paths = self.config.paths();
         let schemas_dir = paths.schema.schemas_dir().as_path();
         let property_bank_filename = paths.property_bank.as_str();
@@ -106,10 +107,10 @@ impl Ingestor<'_> {
                     .parse_structured(&path)
                     .map_err(SchemaIngestionError::from)?;
 
-                let modified = self
-                    .source
-                    .metadata(&path)
-                    .ok()
+                let metadata = self.source.metadata(&path).ok();
+
+                let modified = metadata
+                    .as_ref()
                     .and_then(|meta| meta.modified().ok())
                     .and_then(|time| {
                         time.duration_since(std::time::SystemTime::UNIX_EPOCH)
@@ -121,7 +122,20 @@ impl Ingestor<'_> {
                             .map(Timestamp::from_secs)
                     });
 
-                results.push((raw, modified));
+                let created = metadata
+                    .as_ref()
+                    .and_then(|meta| meta.created().ok())
+                    .and_then(|time| {
+                        time.duration_since(std::time::SystemTime::UNIX_EPOCH)
+                            .ok()
+                    })
+                    .and_then(|duration| {
+                        i64::try_from(duration.as_secs())
+                            .ok()
+                            .map(Timestamp::from_secs)
+                    });
+
+                results.push((raw, modified, created));
             }
         }
 

@@ -12,46 +12,6 @@ use crate::db::BatchReader;
 /// A schema name-to-ID pair returned by [`Query::list_name_id_pairs`].
 pub type NameIdPair = (SchemaName, SchemaId);
 
-/// All fields required to persist a resolved schema.
-///
-/// Passed to [`Command::save_batch`]. The command adapter converts each
-/// record into a `StoredSchema` before writing to the database.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct SchemaRecord {
-    /// The resolved domain schema.
-    pub schema: Schema,
-    /// Parent schema ID for tree reconstruction, or `None` for roots.
-    pub parent_id: Option<SchemaId>,
-    /// Property bank version at time of resolution.
-    pub bank_version: BankVersion,
-    /// File modification time at first ingestion.
-    pub created_at: Timestamp,
-    /// File modification time at last re-ingestion.
-    pub modified_at: Timestamp,
-}
-
-impl SchemaRecord {
-    /// Construct a new schema record.
-    #[inline]
-    #[must_use]
-    pub const fn new(
-        schema: Schema,
-        parent_id: Option<SchemaId>,
-        bank_version: BankVersion,
-        created_at: Timestamp,
-        modified_at: Timestamp,
-    ) -> Self {
-        Self {
-            schema,
-            parent_id,
-            bank_version,
-            created_at,
-            modified_at,
-        }
-    }
-}
-
 /// Command port for Schema write operations.
 pub trait Command: Send + Sync {
     /// Storage error type for command operations.
@@ -63,15 +23,15 @@ pub trait Command: Send + Sync {
     /// Returns a storage-specific error if deletion fails.
     fn delete(&self, id: SchemaId) -> Result<(), Self::Error>;
 
-    /// Save a batch of schema records to persistence.
+    /// Save a batch of schemas to persistence.
     ///
-    /// Each [`SchemaRecord`] bundles the resolved schema with the metadata
-    /// needed for staleness checking and tree reconstruction. All saves are
-    /// atomic within a single write transaction.
+    /// All schemas are saved atomically within a single write transaction.
+    /// This is the simple port trait method that adapters implement with
+    /// default metadata.
     ///
     /// # Errors
     /// Returns a storage-specific error if saving fails.
-    fn save_batch(&self, records: &[SchemaRecord]) -> Result<(), Self::Error>;
+    fn save_batch(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
 
     /// Save the `PropertyBank` to persistence.
     ///

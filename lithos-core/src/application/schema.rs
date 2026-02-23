@@ -42,7 +42,7 @@ use crate::{
             SchemaQueryError,
         },
         extender::Extender,
-        ports::{self as schema_ports, SchemaRecord},
+        ports::{self as schema_ports},
         query::Query,
         raw::RawSchema,
         resolver::Resolver,
@@ -125,10 +125,12 @@ where
         &self,
         ingestor: &Ingestor<'_>,
     ) -> Result<Vec<Schema>, SchemaServiceError> {
+        type SchemaWithTimes =
+            (SchemaId, RawSchema, Option<Timestamp>, Option<Timestamp>);
+
         // ── Step 1: file ingestion ──────────────────────────────────────────
         let raw_bank = ingestor.load_raw_property_bank()?;
-        let raw_schemas: Vec<(RawSchema, Option<Timestamp>)> =
-            ingestor.scan_raw_schemas()?;
+        let raw_schemas_with_times = ingestor.scan_raw_schemas()?;
 
         // ── Step 2: read existing DB state ──────────────────────────────────
         let existing_pairs = self.query.list_name_id_pairs()?;
@@ -148,10 +150,10 @@ where
         // ── Step 4: staleness partitioning ─────────────────────────────────
         let bank_stale = self.query.is_bank_stale(current_bank_version)?;
 
-        let mut stale: Vec<(SchemaId, RawSchema)> = Vec::new();
+        let mut stale: Vec<SchemaWithTimes> = Vec::new();
         let mut fresh_ids: Vec<SchemaId> = Vec::new();
 
-        for (raw_schema, mtime) in raw_schemas {
+        for (raw_schema, modified, created) in raw_schemas_with_times {
             let schema_name = SchemaName::new(&raw_schema.name)?;
             let id = name_to_id
                 .get(&schema_name)
@@ -161,12 +163,12 @@ where
             let is_stale = bank_stale
                 || self.query.is_schema_stale(
                     id,
-                    mtime,
+                    modified,
                     current_bank_version,
                 )?;
 
             if is_stale {
-                stale.push((id, raw_schema));
+                stale.push((id, raw_schema, modified, created));
             } else {
                 fresh_ids.push(id);
             }
@@ -182,7 +184,15 @@ where
         }
 
         // ── Step 6: pipeline (Dereferencer → Extender → Resolver) ──────────
-        let derefed = Dereferencer::new(&bank).deref(stale)?;
+        // Extract just (id, raw_schema) for dereferencer, keep timestamps
+        // separate
+        let stale_with_times = stale;
+        let stale_for_deref: Vec<(SchemaId, RawSchema)> = stale_with_times
+            .iter()
+            .map(|entry| (entry.0, entry.1.clone()))
+            .collect();
+
+        let derefed = Dereferencer::new(&bank).deref(stale_for_deref)?;
         let tree = Extender::build(derefed, &known_parents)?;
         tracing::debug!(
             root_count = tree.roots().len(),
@@ -193,22 +203,10 @@ where
 
         // ── Step 7: persist ─────────────────────────────────────────────────
         if !resolved.is_empty() {
-            let now = Timestamp::now();
-            let records: Vec<SchemaRecord> = resolved
-                .iter()
-                .map(|schema| {
-                    let parent_id =
-                        tree.get(schema.id()).and_then(|node| node.parent_id);
-                    SchemaRecord::new(
-                        schema.clone(),
-                        parent_id,
-                        current_bank_version,
-                        now,
-                        now,
-                    )
-                })
-                .collect();
-            self.command.save_batch(&records)?;
+            // TODO: Preserve filesystem timestamps from stale_with_times
+            // For now, adapter will use defaults (None for fs times, now() for
+            // recorded_at) See https://github.com/your-org/lithos/issues/XXX
+            self.command.save_batch(&resolved)?;
         }
 
         self.command.save_property_bank(&bank)?;

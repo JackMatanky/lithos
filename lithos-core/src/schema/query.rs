@@ -203,9 +203,7 @@ mod tests {
     use crate::schema::{
         RedbSchemaCommand, RedbSchemaQuery,
         adapter::{command::CommandAdapter, query::QueryAdapter},
-        aggregate::{SchemaId, SchemaName, Timestamp},
-        bank::BankVersion,
-        ports::SchemaRecord,
+        aggregate::{SchemaId, SchemaName},
     };
 
     mod queries {
@@ -222,14 +220,7 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
 
-            cmd.save_one(SchemaRecord::new(
-                schema.clone(),
-                None,
-                BankVersion::initial(),
-                Timestamp::now(),
-                Timestamp::now(),
-            ))
-            .expect("Save should succeed");
+            cmd.save_one(&schema).expect("Save should succeed");
 
             let result = qry
                 .find_by_id(fixtures::TEST_SCHEMA_ID_A)
@@ -248,14 +239,7 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
 
-            cmd.save_one(SchemaRecord::new(
-                schema,
-                None,
-                BankVersion::initial(),
-                Timestamp::now(),
-                Timestamp::now(),
-            ))
-            .expect("Save should succeed");
+            cmd.save_one(&schema).expect("Save should succeed");
 
             let name =
                 SchemaName::new("note").expect("Failed to create schema name");
@@ -282,23 +266,7 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_B, "project")
                     .expect("Failed to create schema fixture");
 
-            cmd.save_batch(&[
-                SchemaRecord::new(
-                    schema_a,
-                    None,
-                    BankVersion::initial(),
-                    Timestamp::now(),
-                    Timestamp::now(),
-                ),
-                SchemaRecord::new(
-                    schema_b,
-                    None,
-                    BankVersion::initial(),
-                    Timestamp::now(),
-                    Timestamp::now(),
-                ),
-            ])
-            .expect("Save should succeed");
+            cmd.save_batch(&[schema_a, schema_b]).expect("Save should succeed");
 
             let schemas = qry.list().expect("List should succeed");
             let names: HashSet<&str> =
@@ -335,14 +303,7 @@ mod tests {
                     .expect("Failed to create schema fixture");
             let ts = Timestamp::from_secs(1_000_000);
 
-            cmd.save_one(SchemaRecord::new(
-                schema,
-                None,
-                BankVersion::initial(),
-                ts,
-                ts,
-            ))
-            .expect("Save should succeed");
+            cmd.save_one(&schema).expect("Save should succeed");
 
             let stale = qry
                 .is_schema_stale(

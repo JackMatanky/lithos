@@ -35,10 +35,12 @@ pub(crate) struct StoredSchema {
     pub properties: Vec<StoredProperty>,
     /// Bank version at time of resolution; used for staleness detection.
     pub bank_version: BankVersion,
-    /// File modification time at first ingestion.
-    pub created_at: Timestamp,
-    /// File modification time at last re-ingestion.
-    pub modified_at: Timestamp,
+    /// Filesystem birthtime (from `Metadata::created()`), if available.
+    pub created_at: Option<Timestamp>,
+    /// Filesystem mtime (from `Metadata::modified()`), if available.
+    pub modified_at: Option<Timestamp>,
+    /// Wall-clock timestamp when this record was written to the database.
+    pub recorded_at: Timestamp,
 }
 
 /// Flat storage representation of a single property.
@@ -62,12 +64,14 @@ pub(crate) struct StoredProperty {
 /// Build a [`StoredSchema`] from a domain [`Schema`] and storage metadata.
 ///
 /// Called by the command adapter before persisting.
+///
+/// The `parent_id` parameter is now sourced from `schema.parent_id()` instead
+/// of being passed separately (as of the `parent_id` domain migration).
 pub(crate) fn to_stored(
     schema: &Schema,
-    parent_id: Option<SchemaId>,
     bank_version: BankVersion,
-    created_at: Timestamp,
-    modified_at: Timestamp,
+    created_at: Option<Timestamp>,
+    modified_at: Option<Timestamp>,
 ) -> StoredSchema {
     let properties = schema
         .properties()
@@ -84,11 +88,12 @@ pub(crate) fn to_stored(
     StoredSchema {
         id: schema.id(),
         name: schema.name().as_str().into(),
-        parent_id,
+        parent_id: schema.parent_id(),
         properties,
         bank_version,
         created_at,
         modified_at,
+        recorded_at: Timestamp::now(),
     }
 }
 
@@ -146,16 +151,25 @@ mod tests {
         let schema = make_schema();
         let stored = to_stored(
             &schema,
-            None,
             BankVersion::initial(),
-            Timestamp::from_secs(1_000_000),
-            Timestamp::from_secs(2_000_000),
+            Some(Timestamp::from_secs(1_000_000)),
+            Some(Timestamp::from_secs(2_000_000)),
         );
 
         assert_eq!(stored.id, TEST_SCHEMA_ID, "ID should match");
         assert_eq!(stored.name.as_ref(), "test-stored", "Name should match");
         assert!(stored.parent_id.is_none(), "No parent");
         assert!(stored.properties.is_empty(), "No properties");
+        assert_eq!(
+            stored.created_at,
+            Some(Timestamp::from_secs(1_000_000)),
+            "Created time should match"
+        );
+        assert_eq!(
+            stored.modified_at,
+            Some(Timestamp::from_secs(2_000_000)),
+            "Modified time should match"
+        );
 
         let recovered =
             Schema::try_from(stored).expect("Round-trip should succeed");
@@ -184,10 +198,9 @@ mod tests {
 
         let stored = to_stored(
             &schema,
-            None,
             BankVersion::initial(),
-            Timestamp::from_secs(0),
-            Timestamp::from_secs(0),
+            Some(Timestamp::from_secs(0)),
+            Some(Timestamp::from_secs(0)),
         );
 
         assert_eq!(stored.properties.len(), 1, "One property stored");

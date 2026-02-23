@@ -87,8 +87,11 @@ impl Query for QueryAdapter<'_> {
             return Ok(true);
         }
 
-        if let Some(mtime) = file_mtime
-            && stored.modified_at.as_secs() < mtime.as_secs()
+        // Compare file mtime with stored mtime (both are Option<Timestamp>)
+        // Schema is stale if file has been modified since last ingestion
+        if let (Some(file_mtime), Some(stored_mtime)) =
+            (file_mtime, stored.modified_at)
+            && stored_mtime.as_secs() < file_mtime.as_secs()
         {
             return Ok(true);
         }
