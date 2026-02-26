@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 
 use super::{
     error::{SchemaError, SchemaIngestionError},
+    formats::StringFormat,
     property_spec::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, OptionEntry, PropertySpec,
         PropertySpecType, StringSpec,
@@ -290,6 +291,7 @@ impl RawPropertySpec {
             )?)),
             Self::String(def) => Ok(PropertySpec::String(StringSpec::try_new(
                 def.pattern,
+                def.format,
                 def.options.map(RawOptions::into_entries),
             )?)),
         }
@@ -389,9 +391,13 @@ pub struct RawNumberSpec {
 
 /// String property definition.
 ///
-/// Only `options` and `pattern` are supported per the meta-schema.
+/// Supports `options`, `pattern`, and `format` per the meta-schema.
 /// All fields are `Option<T>` to support both inline definitions
 /// and override contexts.
+///
+/// # Invariants
+/// - `format` and `pattern` are mutually exclusive (validated during
+///   conversion).
 ///
 /// # Examples
 /// ```
@@ -406,8 +412,10 @@ pub struct RawNumberSpec {
 pub struct RawStringSpec {
     /// Optional allowed values in one of three formats.
     pub options: Option<RawOptions>,
-    /// Optional regex pattern.
+    /// Optional regex pattern (mutually exclusive with `format`).
     pub pattern: Option<Box<str>>,
+    /// Optional named format (mutually exclusive with `pattern`).
+    pub format: Option<StringFormat>,
 }
 
 /// Raw property bank loaded from vault files.

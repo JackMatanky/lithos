@@ -21,6 +21,8 @@ pub mod error;
 pub mod events;
 /// Schema inheritance-tree builder pipeline stage.
 pub(crate) mod extender;
+/// User-facing string format specifications.
+pub mod formats;
 /// Schema ports for CQRS.
 pub mod ports;
 /// Property domain entities.
