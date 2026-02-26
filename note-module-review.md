@@ -370,6 +370,19 @@ does not match the Unicode allowance in `Tag::new`.
 
 ---
 
+### N-MJ-13 — Module Docs Overstate Supported Features
+
+The note module docs claim “full support” for hierarchical tags and TOML
+frontmatter, but the reader does not populate `Note.tags` and only parses YAML
+metadata blocks. The docs should reflect current capabilities.
+
+**Files**:
+
+- `lithos-core/src/note/mod.rs`
+- `lithos-core/src/note/frontmatter.rs`
+
+---
+
 ## 6. pulldown-cmark Usage Review
 
 ### 6.1 Enabled Options
@@ -579,6 +592,29 @@ consume programmatically.
 
 ---
 
+### N-PR-13 — SourceByteRange Fields Are Public
+
+`SourceByteRange` exposes `start`/`end` publicly, allowing construction of
+invalid ranges without validation. This bypasses type-driven invariants.
+
+**Files**:
+
+- `lithos-core/src/note/types.rs`
+
+---
+
+### N-PR-14 — Frontmatter Aliases Always Allocate
+
+`Frontmatter::aliases` returns a `Vec<Box<str>>` on every call, even when
+callers only need borrowed data. Consider providing a borrowed accessor or
+iterator to avoid repeated allocations.
+
+**Files**:
+
+- `lithos-core/src/note/frontmatter.rs`
+
+---
+
 ## 8. Test Suite Audit
 
 ### 8.1 Flaky/Time-Dependent Tests
@@ -690,6 +726,18 @@ service.
 
 ---
 
+### N-SU-07 — Frontmatter::new Is Infallible
+
+`Frontmatter::new` returns `Result` but currently cannot fail. Consider
+returning `Self` directly or adding real validation to justify the fallible
+API.
+
+**Files**:
+
+- `lithos-core/src/note/frontmatter.rs`
+
+---
+
 ### N-SU-06 — NoteReader ParseState Is a God Object
 
 `ParseState` owns list, task, heading, link, and frontmatter parsing and all
@@ -790,6 +838,7 @@ This section is guidance only. No refactor performed.
 - Consider splitting `NoteReader::ParseState` into sub-parsers to reduce
   god‑object complexity.
 - Replace stringly‑typed error payloads with `NoteId`/`NotePath` where possible.
+- Align module docs with current parsing/ingestion capabilities.
 
 ### P2 (Cleanup)
 
@@ -834,6 +883,7 @@ This section is guidance only. No refactor performed.
 | N-MJ-10 | Major    | Note path uniqueness not enforced            |
 | N-MJ-11 | Major    | SourceByteRange ordering not validated       |
 | N-MJ-12 | Major    | Task tag regex overmatches/ASCII‑only        |
+| N-MJ-13 | Major    | Module docs overstate capabilities           |
 | N-PR-01 | Minor    | String allocation anti-patterns              |
 | N-PR-02 | Minor    | UUID stringification in hot paths            |
 | N-PR-03 | Minor    | FieldValue JSON semantics questionable       |
@@ -846,6 +896,8 @@ This section is guidance only. No refactor performed.
 | N-PR-10 | Minor    | Task text stored as String                   |
 | N-PR-11 | Minor    | Task parsing inside domain entity            |
 | N-PR-12 | Minor    | Errors use untyped strings for IDs/paths     |
+| N-PR-13 | Minor    | SourceByteRange fields are public            |
+| N-PR-14 | Minor    | Frontmatter aliases always allocate          |
 | N-TF-01 | Major    | Time-dependent task timestamp test           |
 | N-SU-01 | Minor    | Sections never constructed                   |
 | N-SU-02 | Minor    | NoteEvents not used outside tests            |
@@ -853,3 +905,4 @@ This section is guidance only. No refactor performed.
 | N-SU-04 | Minor    | FieldValue::to_json_string unused            |
 | N-SU-05 | Minor    | TaskMetadata convenience accessors           |
 | N-SU-06 | Minor    | NoteReader ParseState god object             |
+| N-SU-07 | Minor    | Frontmatter::new infallible                  |
