@@ -6,9 +6,9 @@
 //! deterministic and test-friendly while keeping storage concerns centralized
 //! in the adapter layer.
 
-use std::{ops::Range, path::Path};
+use std::{collections::HashSet, ops::Range, path::Path};
 
-use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, Options, Parser, Tag as CmarkTag, TagEnd};
 
 use crate::{
     config::{aggregate::Config, task::StatusSymbol},
@@ -20,6 +20,7 @@ use crate::{
         link::{Anchor, EmbedType, Link, Target},
         list::{List, ListItem, ListType},
         structure::{Heading, HeadingLevel},
+        tag::Tag as NoteTag,
         task::Task,
         types::SourceByteOffset,
         value::FieldValue,
@@ -62,11 +63,10 @@ use crate::{
 /// let reader = FsReader::new(root.as_path());
 /// let note_reader = NoteReader::new(&config);
 ///
-/// let (lists, tasks, headings, links, _frontmatter) =
-///     note_reader.parse(&reader, Path::new("note.md"))?;
+/// let parsed = note_reader.parse(&reader, Path::new("note.md"))?;
 ///
-/// assert_eq!(tasks.len(), 1);
-/// assert_eq!(headings.len(), 1);
+/// assert_eq!(parsed.tasks().len(), 1);
+/// assert_eq!(parsed.headings().len(), 1);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Debug, Clone, Copy)]
@@ -221,20 +221,22 @@ impl<'config> NoteReader<'config> {
 
     #[inline]
     fn apply_parts(note: &mut Note, parsed: ParseOutcome) {
-        let (lists, tasks, headings, links, frontmatter) = parsed;
-        for list in lists {
+        for list in parsed.lists {
             note.add_list(list);
         }
-        for task in tasks {
+        for task in parsed.tasks {
             note.add_task(task);
         }
-        for heading in headings {
+        for heading in parsed.headings {
             note.add_heading(heading);
         }
-        for link in links {
+        for link in parsed.links {
             note.add_link(link);
         }
-        if let Some(fm) = frontmatter {
+        for tag in parsed.tags {
+            note.add_tag(tag);
+        }
+        if let Some(fm) = parsed.frontmatter {
             note.set_frontmatter(Some(fm));
         }
     }
@@ -258,6 +260,7 @@ const fn obsidian_options() -> Options {
     Options::ENABLE_TASKLISTS
         .union(Options::ENABLE_WIKILINKS)
         .union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
+        .union(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS)
         .union(Options::ENABLE_HEADING_ATTRIBUTES)
         .union(Options::ENABLE_TABLES)
         .union(Options::ENABLE_FOOTNOTES)
@@ -265,8 +268,67 @@ const fn obsidian_options() -> Options {
         .union(Options::ENABLE_MATH)
 }
 
-type ParseOutcome =
-    (Vec<List>, Vec<Task>, Vec<Heading>, Vec<Link>, Option<Frontmatter>);
+/// Results of parsing a markdown note into structured elements.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct ParseOutcome {
+    lists: Vec<List>,
+    tasks: Vec<Task>,
+    headings: Vec<Heading>,
+    links: Vec<Link>,
+    tags: Vec<NoteTag>,
+    frontmatter: Option<Frontmatter>,
+}
+
+impl ParseOutcome {
+    /// Lists parsed from the markdown body.
+    #[inline]
+    #[must_use]
+    pub fn lists(&self) -> &[List] {
+        &self.lists
+    }
+
+    /// Tasks parsed from task list items.
+    #[inline]
+    #[must_use]
+    pub fn tasks(&self) -> &[Task] {
+        &self.tasks
+    }
+
+    /// Headings parsed from the markdown body.
+    #[inline]
+    #[must_use]
+    pub fn headings(&self) -> &[Heading] {
+        &self.headings
+    }
+
+    /// Links parsed from the markdown body.
+    #[inline]
+    #[must_use]
+    pub fn links(&self) -> &[Link] {
+        &self.links
+    }
+
+    /// Tags parsed from the markdown body.
+    #[inline]
+    #[must_use]
+    pub fn tags(&self) -> &[NoteTag] {
+        &self.tags
+    }
+
+    /// Frontmatter parsed from the metadata block, if present.
+    #[inline]
+    #[must_use]
+    pub fn frontmatter(&self) -> Option<&Frontmatter> {
+        self.frontmatter.as_ref()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MetadataKind {
+    Yaml,
+    Toml,
+}
 
 #[derive(Debug)]
 struct ParseState<'config> {
@@ -275,9 +337,11 @@ struct ParseState<'config> {
     tasks: Vec<Task>,
     headings: Vec<Heading>,
     links: Vec<Link>,
+    tags: Vec<NoteTag>,
+    tag_set: HashSet<Box<str>>,
     frontmatter: Option<Frontmatter>,
     metadata_text: String,
-    in_metadata_block: bool,
+    metadata_kind: Option<MetadataKind>,
     list_stack: Vec<List>,
     current_item: Option<ItemState>,
     current_heading: Option<HeadingState>,
@@ -292,9 +356,11 @@ impl<'config> ParseState<'config> {
             tasks: Vec::new(),
             headings: Vec::new(),
             links: Vec::new(),
+            tags: Vec::new(),
+            tag_set: HashSet::new(),
             frontmatter: None,
             metadata_text: String::new(),
-            in_metadata_block: false,
+            metadata_kind: None,
             list_stack: Vec::with_capacity(4),
             current_item: None,
             current_heading: None,
@@ -309,72 +375,17 @@ impl<'config> ParseState<'config> {
         range: Range<usize>,
     ) -> Result<(), NoteError> {
         match event {
-            Event::Start(Tag::List(start)) => self.start_list(start)?,
-            Event::End(TagEnd::List(_)) => self.end_list(),
-            Event::Start(Tag::Item) => self.start_item(range.start)?,
-            Event::End(TagEnd::Item) => self.end_item()?,
-            Event::Start(Tag::Heading {
-                level,
-                ..
-            }) => self.start_heading(level, range.start)?,
-            Event::End(TagEnd::Heading(_)) => self.end_heading()?,
-            Event::Start(Tag::MetadataBlock(
-                pulldown_cmark::MetadataBlockKind::YamlStyle,
-            )) => {
-                self.start_metadata_block();
-            }
-            Event::End(TagEnd::MetadataBlock(
-                pulldown_cmark::MetadataBlockKind::YamlStyle,
-            )) => {
-                self.end_metadata_block()?;
-            }
-            Event::Start(Tag::Link {
-                link_type,
-                dest_url,
-                ..
-            }) => self.start_link(link_type, &dest_url, range.start, false)?,
-            Event::End(TagEnd::Link | TagEnd::Image) => {
-                self.end_link()?;
-            }
-            Event::Start(Tag::Image {
-                link_type,
-                dest_url,
-                ..
-            }) => self.start_link(link_type, &dest_url, range.start, true)?,
+            Event::Start(tag) => self.handle_start_tag(tag, range.start)?,
+            Event::End(tag_end) => self.handle_end_tag(tag_end)?,
             Event::TaskListMarker(checked) => {
                 if let Some(item) = self.current_item.as_mut() {
                     item.status = Some(status_symbol_from_marker(checked)?);
                 }
             }
-            Event::Text(text) | Event::Code(text) => {
-                if self.in_metadata_block {
-                    self.metadata_text.push_str(&text);
-                } else if let Some(link) = self.current_link.as_mut() {
-                    // For wikilinks with alias, this is the alias text
-                    if link.is_wikilink_with_alias {
-                        link.alias = Some(text.to_string());
-                    }
-                } else if let Some(heading) = self.current_heading.as_mut() {
-                    heading.text.push_str(&text);
-                } else if let Some(item) = self.current_item.as_mut() {
-                    item.text.push_str(&text);
-                } else {
-                    // Text not in a heading, link, or list item - ignore for
-                    // now
-                }
-            }
-            Event::SoftBreak | Event::HardBreak => {
-                if let Some(heading) = self.current_heading.as_mut() {
-                    heading.text.push(' ');
-                } else if let Some(item) = self.current_item.as_mut() {
-                    item.text.push(' ');
-                } else {
-                    // Break not in a heading or list item - ignore for now
-                }
-            }
-            Event::Start(_)
-            | Event::End(_)
-            | Event::InlineMath(_)
+            Event::Text(text) => self.handle_text(&text, false),
+            Event::Code(text) => self.handle_text(&text, true),
+            Event::SoftBreak | Event::HardBreak => self.handle_break(),
+            Event::InlineMath(_)
             | Event::DisplayMath(_)
             | Event::Html(_)
             | Event::InlineHtml(_)
@@ -383,6 +394,125 @@ impl<'config> ParseState<'config> {
         }
 
         Ok(())
+    }
+
+    fn handle_start_tag(
+        &mut self,
+        tag: CmarkTag<'_>,
+        position: usize,
+    ) -> Result<(), NoteError> {
+        match tag {
+            CmarkTag::List(start) => self.start_list(start)?,
+            CmarkTag::Item => self.start_item(position)?,
+            CmarkTag::Heading {
+                level,
+                ..
+            } => self.start_heading(level, position)?,
+            CmarkTag::MetadataBlock(
+                pulldown_cmark::MetadataBlockKind::YamlStyle,
+            ) => self.start_metadata_block(MetadataKind::Yaml),
+            CmarkTag::MetadataBlock(
+                pulldown_cmark::MetadataBlockKind::PlusesStyle,
+            ) => self.start_metadata_block(MetadataKind::Toml),
+            CmarkTag::Link {
+                link_type,
+                dest_url,
+                ..
+            } => self.start_link(link_type, &dest_url, position, false)?,
+            CmarkTag::Image {
+                link_type,
+                dest_url,
+                ..
+            } => self.start_link(link_type, &dest_url, position, true)?,
+            CmarkTag::Paragraph
+            | CmarkTag::BlockQuote(_)
+            | CmarkTag::CodeBlock(_)
+            | CmarkTag::HtmlBlock
+            | CmarkTag::FootnoteDefinition(_)
+            | CmarkTag::DefinitionList
+            | CmarkTag::DefinitionListTitle
+            | CmarkTag::DefinitionListDefinition
+            | CmarkTag::Table(_)
+            | CmarkTag::TableHead
+            | CmarkTag::TableRow
+            | CmarkTag::TableCell
+            | CmarkTag::Emphasis
+            | CmarkTag::Strong
+            | CmarkTag::Strikethrough
+            | CmarkTag::Superscript
+            | CmarkTag::Subscript => {}
+        }
+        Ok(())
+    }
+
+    fn handle_end_tag(&mut self, tag_end: TagEnd) -> Result<(), NoteError> {
+        match tag_end {
+            TagEnd::List(_) => self.end_list(),
+            TagEnd::Item => self.end_item()?,
+            TagEnd::Heading(_) => self.end_heading()?,
+            TagEnd::Link | TagEnd::Image => self.end_link()?,
+            TagEnd::MetadataBlock(
+                pulldown_cmark::MetadataBlockKind::YamlStyle,
+            ) => self.end_metadata_block(MetadataKind::Yaml)?,
+            TagEnd::MetadataBlock(
+                pulldown_cmark::MetadataBlockKind::PlusesStyle,
+            ) => self.end_metadata_block(MetadataKind::Toml)?,
+            TagEnd::Paragraph
+            | TagEnd::BlockQuote(_)
+            | TagEnd::CodeBlock
+            | TagEnd::HtmlBlock
+            | TagEnd::FootnoteDefinition
+            | TagEnd::DefinitionList
+            | TagEnd::DefinitionListTitle
+            | TagEnd::DefinitionListDefinition
+            | TagEnd::Table
+            | TagEnd::TableHead
+            | TagEnd::TableRow
+            | TagEnd::TableCell
+            | TagEnd::Emphasis
+            | TagEnd::Strong
+            | TagEnd::Strikethrough
+            | TagEnd::Superscript
+            | TagEnd::Subscript => {}
+        }
+        Ok(())
+    }
+
+    fn handle_text(&mut self, text: &str, is_code: bool) {
+        if self.metadata_kind.is_some() {
+            self.metadata_text.push_str(text);
+        }
+        if self.metadata_kind.is_none() && !is_code {
+            self.collect_tags_from_text(text);
+        }
+
+        if let Some(link) = self.current_link.as_mut()
+            && link.collect_alias
+        {
+            let alias = link.alias.get_or_insert_with(String::new);
+            alias.push_str(text);
+        }
+
+        if let Some(heading) = self.current_heading.as_mut() {
+            heading.text.push_str(text);
+        }
+        if let Some(item) = self.current_item.as_mut() {
+            item.text.push_str(text);
+        }
+    }
+
+    fn handle_break(&mut self) {
+        if self.metadata_kind.is_some() {
+            self.metadata_text.push('\n');
+            return;
+        }
+        if let Some(heading) = self.current_heading.as_mut() {
+            heading.text.push(' ');
+            return;
+        }
+        if let Some(item) = self.current_item.as_mut() {
+            item.text.push(' ');
+        }
     }
 
     fn start_list(&mut self, start: Option<u64>) -> Result<(), NoteError> {
@@ -448,18 +578,56 @@ impl<'config> ParseState<'config> {
         Ok(())
     }
 
-    #[expect(
-        clippy::type_complexity,
-        reason = "Parse result is naturally a 5-tuple"
-    )]
-    fn finish(
-        mut self,
-    ) -> (Vec<List>, Vec<Task>, Vec<Heading>, Vec<Link>, Option<Frontmatter>)
-    {
+    fn collect_tags_from_text(&mut self, text: &str) {
+        let mut chars = text.chars().peekable();
+        let mut prev_is_alnum = false;
+
+        while let Some(ch) = chars.next() {
+            if ch != '#' || prev_is_alnum {
+                prev_is_alnum = ch.is_alphanumeric();
+                continue;
+            }
+
+            let mut raw = String::from("#");
+            while let Some(&next) = chars.peek() {
+                if !(next.is_alphanumeric() || matches!(next, '_' | '-' | '/'))
+                {
+                    break;
+                }
+                raw.push(next);
+                chars.next();
+            }
+
+            if raw.len() > 1
+                && let Ok(tag) = NoteTag::new(&raw)
+            {
+                self.add_tag(tag);
+            }
+
+            prev_is_alnum =
+                raw.chars().last().is_some_and(char::is_alphanumeric);
+        }
+    }
+
+    fn add_tag(&mut self, tag: NoteTag) {
+        let key: Box<str> = tag.full_path().into();
+        if self.tag_set.insert(key) {
+            self.tags.push(tag);
+        }
+    }
+
+    fn finish(mut self) -> ParseOutcome {
         if !self.list_stack.is_empty() {
             self.lists.append(&mut self.list_stack);
         }
-        (self.lists, self.tasks, self.headings, self.links, self.frontmatter)
+        ParseOutcome {
+            lists: self.lists,
+            tasks: self.tasks,
+            headings: self.headings,
+            links: self.links,
+            tags: self.tags,
+            frontmatter: self.frontmatter,
+        }
     }
 
     #[tracing::instrument(skip(self, level, position), level = "debug")]
@@ -533,7 +701,9 @@ impl<'config> ParseState<'config> {
                     position,
                     is_embed,
                     is_wikilink: true,
-                    is_wikilink_with_alias: has_pothole,
+                    is_markdown_image: false,
+                    is_external: false,
+                    collect_alias: has_pothole,
                 });
             }
             PLinkType::Inline
@@ -546,13 +716,17 @@ impl<'config> ParseState<'config> {
             | PLinkType::Autolink
             | PLinkType::Email => {
                 // Standard markdown link: [text](url)
+                let target = dest_url.as_ref();
+                let is_external = is_external_link(link_type, target);
                 self.current_link = Some(LinkState {
-                    target: dest_url.as_ref().into(),
+                    target: target.into(),
                     alias: None,
                     position,
                     is_embed,
                     is_wikilink: false,
-                    is_wikilink_with_alias: false,
+                    is_markdown_image: is_embed,
+                    is_external,
+                    collect_alias: true,
                 });
             }
         }
@@ -573,7 +747,9 @@ impl<'config> ParseState<'config> {
 
     fn build_link(state: &LinkState) -> Result<Link, NoteError> {
         let raw_target = state.target.as_ref();
-        let anchor_info = if let Some(pothole_idx) = raw_target.find('#') {
+        let (target_str, anchor) = if state.is_external {
+            (raw_target, None)
+        } else if let Some(pothole_idx) = raw_target.find('#') {
             let (target, anchor_part) = raw_target.split_at(pothole_idx);
             let anchor = if let Some(block_ref) = anchor_part.strip_prefix("#^")
             {
@@ -587,40 +763,41 @@ impl<'config> ParseState<'config> {
             (raw_target, None)
         };
 
-        let (target_str, anchor) = anchor_info;
+        let target = if state.is_external {
+            Target::External {
+                url: raw_target.into(),
+            }
+        } else {
+            Target::Unresolved {
+                raw: target_str.into(),
+            }
+        };
 
-        if state.is_embed {
-            // ![[embed]] syntax
+        if state.is_markdown_image {
             let embed_type = determine_embed_type(target_str);
-            Link::new_embed(
-                Target::Unresolved {
-                    raw: target_str.into(),
-                },
+            Link::new_markdown_embed(
+                target,
                 embed_type,
                 state.alias.as_deref(),
                 state.position,
             )
+        } else if state.is_embed {
+            let embed_type = determine_embed_type(target_str);
+            Link::new_embed(
+                target,
+                embed_type,
+                state.alias.as_deref(),
+                anchor,
+                state.position,
+            )
         } else if state.is_wikilink {
-            // [[link]] syntax
             Link::new_wikilink(
-                Target::Unresolved {
-                    raw: target_str.into(),
-                },
+                target,
                 state.alias.as_deref(),
                 anchor,
                 state.position,
             )
         } else {
-            // Standard markdown link
-            let target = if is_external_url(target_str) {
-                Target::External {
-                    url: target_str.into(),
-                }
-            } else {
-                Target::Unresolved {
-                    raw: target_str.into(),
-                }
-            };
             Link::new_markdown_link(
                 target,
                 state.alias.as_deref(),
@@ -631,27 +808,43 @@ impl<'config> ParseState<'config> {
     }
 
     #[tracing::instrument(skip(self), level = "debug")]
-    fn start_metadata_block(&mut self) {
-        self.in_metadata_block = true;
+    fn start_metadata_block(&mut self, kind: MetadataKind) {
+        self.metadata_kind = Some(kind);
         self.metadata_text.clear();
     }
 
     #[tracing::instrument(skip(self), level = "debug")]
-    fn end_metadata_block(&mut self) -> Result<(), NoteError> {
-        self.in_metadata_block = false;
+    fn end_metadata_block(
+        &mut self,
+        kind: MetadataKind,
+    ) -> Result<(), NoteError> {
+        if self.metadata_kind != Some(kind) {
+            self.metadata_kind = None;
+            self.metadata_text.clear();
+            return Ok(());
+        }
+        self.metadata_kind = None;
 
         if self.metadata_text.is_empty() {
             return Ok(());
         }
 
-        // Parse YAML using serde_yaml
-        let yaml_value: serde_yaml::Value =
-            serde_yaml::from_str(&self.metadata_text).map_err(|e| {
-                NoteError::Frontmatter(format!("invalid YAML: {e}"))
-            })?;
-
-        // Convert to our FieldValue type
-        let fields = yaml_to_field_map(&yaml_value)?;
+        let fields = match kind {
+            MetadataKind::Yaml => {
+                let yaml_value: serde_yaml::Value =
+                    serde_yaml::from_str(&self.metadata_text).map_err(|e| {
+                        NoteError::Frontmatter(format!("invalid YAML: {e}"))
+                    })?;
+                yaml_to_field_map(&yaml_value)?
+            }
+            MetadataKind::Toml => {
+                let toml_value: toml::Value =
+                    toml::from_str(&self.metadata_text).map_err(|e| {
+                        NoteError::Frontmatter(format!("invalid TOML: {e}"))
+                    })?;
+                toml_to_field_map(&toml_value)?
+            }
+        };
 
         self.frontmatter = Some(Frontmatter::new(fields)?);
         self.metadata_text.clear();
@@ -692,6 +885,60 @@ fn yaml_to_field_map(
     Ok(fields)
 }
 
+fn toml_to_field_map(
+    toml: &toml::Value,
+) -> Result<std::collections::HashMap<Box<str>, FieldValue>, NoteError> {
+    let table = toml.as_table().ok_or_else(|| {
+        NoteError::Frontmatter("frontmatter must be a TOML table".into())
+    })?;
+
+    let mut fields = std::collections::HashMap::with_capacity(table.len());
+
+    for (key, value) in table {
+        let field_value = field_value_from_toml(value.clone())?;
+        fields.insert(key.as_str().into(), field_value);
+    }
+
+    Ok(fields)
+}
+
+fn field_value_from_toml(value: toml::Value) -> Result<FieldValue, NoteError> {
+    match value {
+        toml::Value::String(text) => Ok(FieldValue::String(text.into())),
+        toml::Value::Integer(number) => {
+            let raw = number.to_string();
+            let parsed = raw.parse::<f64>().map_err(|error| {
+                NoteError::Frontmatter(format!(
+                    "invalid integer value '{raw}': {error}"
+                ))
+            })?;
+            Ok(FieldValue::Number(parsed))
+        }
+        toml::Value::Float(number) => Ok(FieldValue::Number(number)),
+        toml::Value::Boolean(flag) => Ok(FieldValue::Boolean(flag)),
+        toml::Value::Datetime(datetime) => {
+            Ok(FieldValue::String(datetime.to_string().into()))
+        }
+        toml::Value::Array(values) => {
+            let mut items = Vec::with_capacity(values.len());
+            for item in values {
+                items.push(field_value_from_toml(item)?);
+            }
+            Ok(FieldValue::Array(items))
+        }
+        toml::Value::Table(table) => {
+            let mut obj = std::collections::HashMap::with_capacity(table.len());
+            for (key, value_item) in table {
+                obj.insert(
+                    key.as_str().into(),
+                    field_value_from_toml(value_item)?,
+                );
+            }
+            Ok(FieldValue::Object(obj))
+        }
+    }
+}
+
 #[derive(Debug)]
 struct ItemState {
     position: SourceByteOffset,
@@ -727,7 +974,9 @@ struct LinkState {
     position: SourceByteOffset,
     is_embed: bool,
     is_wikilink: bool,
-    is_wikilink_with_alias: bool,
+    is_markdown_image: bool,
+    is_external: bool,
+    collect_alias: bool,
 }
 
 /// Determine embed type from file extension.
@@ -770,9 +1019,31 @@ fn determine_embed_type(path: &str) -> EmbedType {
     EmbedType::Note
 }
 
-/// Check if URL is external (http/https).
-fn is_external_url(url: &str) -> bool {
-    url.starts_with("http://") || url.starts_with("https://")
+/// Check if link target should be treated as external.
+fn is_external_link(link_type: pulldown_cmark::LinkType, target: &str) -> bool {
+    matches!(
+        link_type,
+        pulldown_cmark::LinkType::Autolink | pulldown_cmark::LinkType::Email
+    ) || has_scheme(target)
+}
+
+fn has_scheme(target: &str) -> bool {
+    let mut chars = target.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() {
+        return false;
+    }
+    for ch in chars {
+        if ch == ':' {
+            return true;
+        }
+        if !(ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.')) {
+            return false;
+        }
+    }
+    false
 }
 
 fn parse_offset(offset: usize) -> Result<SourceByteOffset, NoteError> {
@@ -839,8 +1110,11 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "- [ ] #task Review PR [priority:: 1]\n- [x] Buy milk\n";
 
-        let (lists, tasks, _headings, _links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            lists,
+            tasks,
+            ..
+        } = reader.parse_str(markdown)?;
         assert_eq!(lists.len(), 1, "expected one list");
         assert_eq!(tasks.len(), 1, "expected one promoted task");
 
@@ -877,8 +1151,10 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "1. First\n   - [ ] #task Nested\n";
 
-        let (lists, _tasks, _headings, _links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            lists,
+            ..
+        } = reader.parse_str(markdown)?;
         assert_eq!(lists.len(), 2, "expected two lists");
 
         let ordered = lists
@@ -941,8 +1217,10 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "[[target note]]";
 
-        let (_lists, _tasks, _headings, links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].style(), Style::WikiLink));
         assert_eq!(links[0].target().vault_path(), Some("target note"));
@@ -961,8 +1239,10 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "[[target|display text]]";
 
-        let (_lists, _tasks, _headings, links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].style(), Style::WikiLink));
         assert_eq!(links[0].target().vault_path(), Some("target"));
@@ -981,8 +1261,10 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "[[note#Section Title]]";
 
-        let (_lists, _tasks, _headings, links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert_eq!(links[0].target().vault_path(), Some("note"));
         assert!(matches!(
@@ -1003,8 +1285,10 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "[[note#^block123]]";
 
-        let (_lists, _tasks, _headings, links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert_eq!(links[0].target().vault_path(), Some("note"));
         assert!(matches!(
@@ -1025,8 +1309,10 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "![[image.png]]";
 
-        let (_lists, _tasks, _headings, links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(links[0].is_embed());
         assert!(matches!(links[0].embed_type(), Some(EmbedType::Image)));
@@ -1045,8 +1331,10 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "![[video.mp4]]";
 
-        let (_lists, _tasks, _headings, links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(links[0].is_embed());
         assert!(matches!(links[0].embed_type(), Some(EmbedType::Video)));
@@ -1064,8 +1352,10 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "[link text](target.md)";
 
-        let (_lists, _tasks, _headings, links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].style(), Style::MdLink));
         assert_eq!(links[0].target().vault_path(), Some("target.md"));
@@ -1083,8 +1373,10 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "[example](https://example.com)";
 
-        let (_lists, _tasks, _headings, links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
         assert_eq!(links.len(), 1, "expected one link");
         assert!(matches!(links[0].target(), Target::External { .. }));
 
@@ -1119,8 +1411,10 @@ priority: 1
 
 # Content";
 
-        let (_lists, _tasks, _headings, _links, frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            frontmatter,
+            ..
+        } = reader.parse_str(markdown)?;
         let fm = frontmatter.expect("should have frontmatter");
 
         assert_eq!(
@@ -1147,8 +1441,10 @@ metadata:
 
 Content";
 
-        let (_lists, _tasks, _headings, _links, frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            frontmatter,
+            ..
+        } = reader.parse_str(markdown)?;
         let fm = frontmatter.expect("should have frontmatter");
 
         // Check nested object access
@@ -1164,8 +1460,10 @@ Content";
         let reader = NoteReader::new(&config);
         let markdown = "# Just a heading\n\nSome content";
 
-        let (_lists, _tasks, _headings, _links, frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            frontmatter,
+            ..
+        } = reader.parse_str(markdown)?;
         assert!(frontmatter.is_none(), "should not have frontmatter");
 
         Ok(())
@@ -1204,8 +1502,10 @@ title: My Note
 
 - [ ] #task This is outside code block";
 
-        let (_lists, tasks, _headings, _links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            tasks,
+            ..
+        } = reader.parse_str(markdown)?;
 
         // Should only find the task outside the code block
         assert_eq!(tasks.len(), 1, "should only find task outside code block");
@@ -1228,8 +1528,10 @@ title: My Note
 
 # Real heading";
 
-        let (_lists, _tasks, headings, _links, _frontmatter) =
-            reader.parse_str(markdown)?;
+        let ParseOutcome {
+            headings,
+            ..
+        } = reader.parse_str(markdown)?;
 
         // Should only find the heading outside the code block
         assert_eq!(

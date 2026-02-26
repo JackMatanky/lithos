@@ -89,6 +89,12 @@ impl Frontmatter {
         self.fields.contains_key(key)
     }
 
+    #[inline]
+    #[must_use]
+    pub(crate) fn fields(&self) -> &HashMap<Box<str>, FieldValue> {
+        &self.fields
+    }
+
     /// Strictly extracts a typed value from frontmatter.
     ///
     /// Returns:

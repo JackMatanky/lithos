@@ -507,6 +507,7 @@ mod tests {
                 },
                 EmbedType::Image,
                 None,
+                None,
                 SourceByteOffset::new(pos),
             )
         }

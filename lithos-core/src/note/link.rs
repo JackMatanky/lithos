@@ -260,7 +260,7 @@ impl Link {
         self.embed_type.is_some()
     }
 
-    /// Creates a new embedded content reference.
+    /// Creates a new embedded content reference (wiki embed).
     ///
     /// # Errors
     /// Returns `NoteError::Link` if the target is empty.
@@ -269,15 +269,40 @@ impl Link {
         target: Target,
         embed_type: EmbedType,
         alias: Option<&str>,
+        anchor: Option<Anchor>,
         position: SourceByteOffset,
     ) -> Result<Self, NoteError> {
         Self::validate_target(&target)?;
+        Self::validate_external_anchor(&target, anchor.as_ref())?;
+        Ok(Self {
+            alias: alias.map(Into::into),
+            anchor,
+            embed_type: Some(embed_type),
+            position,
+            style: Style::WikiLink,
+            target,
+        })
+    }
+
+    /// Creates a new embedded content reference from markdown image syntax.
+    ///
+    /// # Errors
+    /// Returns `NoteError::Link` if validation fails.
+    #[inline]
+    pub fn new_markdown_embed(
+        target: Target,
+        embed_type: EmbedType,
+        alias: Option<&str>,
+        position: SourceByteOffset,
+    ) -> Result<Self, NoteError> {
+        Self::validate_target(&target)?;
+        Self::validate_external_anchor(&target, None)?;
         Ok(Self {
             alias: alias.map(Into::into),
             anchor: None,
             embed_type: Some(embed_type),
             position,
-            style: Style::WikiLink,
+            style: Style::MdLink,
             target,
         })
     }
@@ -355,9 +380,6 @@ impl Link {
     /// Returns `NoteError::Link` if validation fails.
     #[inline]
     pub fn validate(&self) -> Result<(), NoteError> {
-        if self.is_embed() && self.anchor.is_some() {
-            return Err(NoteError::Link("Embeds cannot have anchors".into()));
-        }
         Self::validate_external_anchor(&self.target, self.anchor.as_ref())?;
         Ok(())
     }
@@ -486,6 +508,7 @@ mod tests {
             Link::new_embed(
                 unresolved_target("diagram.png"),
                 EmbedType::Image,
+                None,
                 None,
                 SourceByteOffset::new(200u32),
             )

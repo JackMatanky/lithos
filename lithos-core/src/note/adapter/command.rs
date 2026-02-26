@@ -3,58 +3,306 @@
 //! This module implements the Command port trait for Note write operations,
 //! using the Database layer for persistence.
 
+use std::path::Path;
+
 use uuid::Uuid;
 
 use crate::{
-    db::Database,
+    config::aggregate::Config,
+    db::{BatchWriter, Database, DbError},
     note::{
         aggregate::{Note, NoteId},
-        db_table::{NOTES, PATH_TO_ID, TAGS_TO_NOTES},
+        db_table::{
+            ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
+            PATH_TO_ID, TAGS_TO_NOTES, TASKS_BY_COMPLETED_DATE,
+            TASKS_BY_CREATED_DATE, TASKS_BY_DUE_DATE, TASKS_BY_PRIORITY,
+            TASKS_BY_PROJECT, TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
+        },
+        frontmatter::Frontmatter,
         ports::Command,
+        value::FieldValue,
     },
 };
 
 /// Index data extracted from a note for cleanup operations.
-/// Contains (path, tags) tuple needed to remove old index entries.
-type IndexData = (String, Vec<String>);
-
-/// Command implementation for Note write operations.
-pub struct CommandAdapter<'db> {
-    db: &'db Database,
+struct IndexData {
+    path: Box<str>,
+    folder: Option<Box<str>>,
+    tags: Vec<Box<str>>,
+    aliases: Vec<Box<str>>,
+    file_class: Option<Box<str>>,
+    task_indexes: TaskIndexData,
+    frontmatter_entries: Vec<Box<str>>,
 }
 
-impl<'db> CommandAdapter<'db> {
+#[derive(Debug, Default)]
+struct TaskIndexData {
+    completed_dates: Vec<Box<str>>,
+    created_dates: Vec<Box<str>>,
+    due_dates: Vec<Box<str>>,
+    reminder_dates: Vec<Box<str>>,
+    statuses: Vec<Box<str>>,
+    priorities: Vec<Box<str>>,
+    projects: Vec<Box<str>>,
+}
+
+/// Command implementation for Note write operations.
+pub struct CommandAdapter<'db, 'config> {
+    db: &'db Database,
+    config: &'config Config,
+}
+
+impl<'db, 'config> CommandAdapter<'db, 'config> {
     /// Create a new `CommandAdapter` with a database reference.
     #[inline]
     #[must_use]
-    pub const fn new(db: &'db Database) -> Self {
+    pub const fn new(db: &'db Database, config: &'config Config) -> Self {
         Self {
             db,
+            config,
         }
     }
 
-    /// Helper: Extract path and tags from archived note for index cleanup.
+    /// Helper: Extract index data from stored note for cleanup.
     fn get_note_index_data(
         &self,
-        id: Uuid,
-    ) -> Result<Option<IndexData>, crate::db::DbError> {
-        self.db.get::<Note, _, (String, Vec<String>)>(
-            NOTES,
-            &id.to_string(),
-            |archived| {
-                let path = archived.path().as_str().to_owned();
-                let tags: Vec<String> = archived
-                    .tags()
-                    .iter()
-                    .map(|t| t.full_path().as_str().to_owned())
-                    .collect();
-                (path, tags)
-            },
-        )
+        id_str: &str,
+    ) -> Result<Option<IndexData>, DbError> {
+        let note = self.db.get_owned::<Note>(NOTES, id_str)?;
+        Ok(note.as_ref().map(|note| self.collect_index_data(note)))
+    }
+
+    fn collect_index_data(&self, note: &Note) -> IndexData {
+        let frontmatter = note.frontmatter();
+        let aliases =
+            frontmatter.map(|fm| fm.aliases(self.config)).unwrap_or_default();
+        let file_class = frontmatter
+            .and_then(|fm| fm.file_class(self.config))
+            .map(Into::into);
+        let frontmatter_entries =
+            frontmatter.map(Self::frontmatter_entries).unwrap_or_default();
+
+        IndexData {
+            path: note.path().as_str().into(),
+            folder: note_folder(note.path().as_str()),
+            tags: note.tags().map(|tag| tag.full_path().into()).collect(),
+            aliases,
+            file_class,
+            task_indexes: Self::task_indexes(note),
+            frontmatter_entries,
+        }
+    }
+
+    fn insert_indexes(
+        batch: &mut BatchWriter,
+        index_data: &IndexData,
+        id_str: &str,
+    ) -> Result<(), DbError> {
+        batch.multimap_insert(PATH_TO_ID, index_data.path.as_ref(), id_str)?;
+
+        if let Some(folder) = index_data.folder.as_deref() {
+            batch.multimap_insert(FOLDER_TO_ID, folder, id_str)?;
+        }
+
+        for tag in &index_data.tags {
+            batch.multimap_insert(TAGS_TO_NOTES, tag.as_ref(), id_str)?;
+        }
+
+        for alias in &index_data.aliases {
+            batch.multimap_insert(ALIAS_TO_ID, alias.as_ref(), id_str)?;
+        }
+
+        if let Some(file_class) = index_data.file_class.as_deref() {
+            batch.multimap_insert(FILE_CLASS_TO_ID, file_class, id_str)?;
+        }
+
+        for entry in &index_data.frontmatter_entries {
+            batch.multimap_insert(FRONTMATTER_KV, entry.as_ref(), id_str)?;
+        }
+
+        Self::insert_task_indexes(batch, &index_data.task_indexes, id_str)
+    }
+
+    fn remove_indexes(
+        batch: &mut BatchWriter,
+        index_data: &IndexData,
+        id_str: &str,
+    ) -> Result<(), DbError> {
+        batch.multimap_remove(PATH_TO_ID, index_data.path.as_ref(), id_str)?;
+
+        if let Some(folder) = index_data.folder.as_deref() {
+            batch.multimap_remove(FOLDER_TO_ID, folder, id_str)?;
+        }
+
+        for tag in &index_data.tags {
+            batch.multimap_remove(TAGS_TO_NOTES, tag.as_ref(), id_str)?;
+        }
+
+        for alias in &index_data.aliases {
+            batch.multimap_remove(ALIAS_TO_ID, alias.as_ref(), id_str)?;
+        }
+
+        if let Some(file_class) = index_data.file_class.as_deref() {
+            batch.multimap_remove(FILE_CLASS_TO_ID, file_class, id_str)?;
+        }
+
+        for entry in &index_data.frontmatter_entries {
+            batch.multimap_remove(FRONTMATTER_KV, entry.as_ref(), id_str)?;
+        }
+
+        Self::remove_task_indexes(batch, &index_data.task_indexes, id_str)
+    }
+
+    fn task_indexes(note: &Note) -> TaskIndexData {
+        let mut data = TaskIndexData::default();
+
+        for task in note.tasks() {
+            data.statuses.push(task.status().as_str().into());
+
+            if let Some(timestamp) = task.created_at() {
+                data.created_dates.push(format_i64(timestamp.as_i64()));
+            }
+            if let Some(timestamp) = task.due_at() {
+                data.due_dates.push(format_i64(timestamp.as_i64()));
+            }
+            if let Some(timestamp) = task.reminder_at() {
+                data.reminder_dates.push(format_i64(timestamp.as_i64()));
+            }
+            if let Some(timestamp) = task.completed_at() {
+                data.completed_dates.push(format_i64(timestamp.as_i64()));
+            }
+
+            if let Some(priority) = task.metadata().priority() {
+                data.priorities.push(format_f64(priority));
+            }
+            if let Some(project) = task.metadata().project() {
+                data.projects.push(project.into());
+            }
+        }
+
+        data
+    }
+
+    fn insert_task_indexes(
+        batch: &mut BatchWriter,
+        index_data: &TaskIndexData,
+        id_str: &str,
+    ) -> Result<(), DbError> {
+        for status in &index_data.statuses {
+            batch.multimap_insert(TASKS_BY_STATUS, status.as_ref(), id_str)?;
+        }
+        for date in &index_data.created_dates {
+            batch.multimap_insert(
+                TASKS_BY_CREATED_DATE,
+                date.as_ref(),
+                id_str,
+            )?;
+        }
+        for date in &index_data.due_dates {
+            batch.multimap_insert(TASKS_BY_DUE_DATE, date.as_ref(), id_str)?;
+        }
+        for date in &index_data.reminder_dates {
+            batch.multimap_insert(
+                TASKS_BY_REMINDER_DATE,
+                date.as_ref(),
+                id_str,
+            )?;
+        }
+        for date in &index_data.completed_dates {
+            batch.multimap_insert(
+                TASKS_BY_COMPLETED_DATE,
+                date.as_ref(),
+                id_str,
+            )?;
+        }
+        for priority in &index_data.priorities {
+            batch.multimap_insert(
+                TASKS_BY_PRIORITY,
+                priority.as_ref(),
+                id_str,
+            )?;
+        }
+        for project in &index_data.projects {
+            batch.multimap_insert(
+                TASKS_BY_PROJECT,
+                project.as_ref(),
+                id_str,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn remove_task_indexes(
+        batch: &mut BatchWriter,
+        index_data: &TaskIndexData,
+        id_str: &str,
+    ) -> Result<(), DbError> {
+        for status in &index_data.statuses {
+            batch.multimap_remove(TASKS_BY_STATUS, status.as_ref(), id_str)?;
+        }
+        for date in &index_data.created_dates {
+            batch.multimap_remove(
+                TASKS_BY_CREATED_DATE,
+                date.as_ref(),
+                id_str,
+            )?;
+        }
+        for date in &index_data.due_dates {
+            batch.multimap_remove(TASKS_BY_DUE_DATE, date.as_ref(), id_str)?;
+        }
+        for date in &index_data.reminder_dates {
+            batch.multimap_remove(
+                TASKS_BY_REMINDER_DATE,
+                date.as_ref(),
+                id_str,
+            )?;
+        }
+        for date in &index_data.completed_dates {
+            batch.multimap_remove(
+                TASKS_BY_COMPLETED_DATE,
+                date.as_ref(),
+                id_str,
+            )?;
+        }
+        for priority in &index_data.priorities {
+            batch.multimap_remove(
+                TASKS_BY_PRIORITY,
+                priority.as_ref(),
+                id_str,
+            )?;
+        }
+        for project in &index_data.projects {
+            batch.multimap_remove(
+                TASKS_BY_PROJECT,
+                project.as_ref(),
+                id_str,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn frontmatter_entries(frontmatter: &Frontmatter) -> Vec<Box<str>> {
+        let mut entries = Vec::new();
+        let mut fields: Vec<_> = frontmatter.fields().iter().collect();
+        fields.sort_by(|left, right| left.0.as_ref().cmp(right.0.as_ref()));
+
+        for (key, value) in fields {
+            let values = field_value_index_values(value);
+            for value_str in values {
+                let capacity =
+                    key.len().saturating_add(value_str.len()).saturating_add(1);
+                let mut combined = String::with_capacity(capacity);
+                combined.push_str(key.as_ref());
+                combined.push(':');
+                combined.push_str(value_str.as_ref());
+                entries.push(combined.into_boxed_str());
+            }
+        }
+        entries
     }
 }
 
-impl Command for CommandAdapter<'_> {
+impl Command for CommandAdapter<'_, '_> {
     type Error = crate::db::DbError;
 
     /// Creates a new note with the given vault-relative path.
@@ -63,14 +311,12 @@ impl Command for CommandAdapter<'_> {
         let note = Note::new(NoteId::new(), path)
             .map_err(|e| crate::db::DbError::Table(e.to_string()))?;
         let id = Uuid::from(note.id());
+        let id_str = id.to_string();
+        let index_data = self.collect_index_data(&note);
 
         self.db.batch_write(|batch| {
-            batch.put(NOTES, &id.to_string(), &note)?;
-            batch.multimap_insert(
-                PATH_TO_ID,
-                note.path().as_str(),
-                &id.to_string(),
-            )?;
+            batch.put(NOTES, &id_str, &note)?;
+            Self::insert_indexes(batch, &index_data, &id_str)?;
             Ok(())
         })?;
 
@@ -80,19 +326,13 @@ impl Command for CommandAdapter<'_> {
     /// Deletes a note by ID.
     #[inline]
     fn delete(&self, id: Uuid) -> Result<(), Self::Error> {
-        let old_data = self.get_note_index_data(id)?;
+        let id_str = id.to_string();
+        let old_data = self.get_note_index_data(&id_str)?;
 
-        if let Some((path, tags)) = old_data {
+        if let Some(index_data) = old_data {
             self.db.batch_write(|batch| {
-                batch.multimap_remove(PATH_TO_ID, &path, &id.to_string())?;
-                for tag in tags {
-                    batch.multimap_remove(
-                        TAGS_TO_NOTES,
-                        &tag,
-                        &id.to_string(),
-                    )?;
-                }
-                batch.delete(NOTES, &id.to_string())?;
+                Self::remove_indexes(batch, &index_data, &id_str)?;
+                batch.delete(NOTES, &id_str)?;
                 Ok(())
             })?;
         }
@@ -104,51 +344,68 @@ impl Command for CommandAdapter<'_> {
     #[inline]
     fn update(&self, note: Note) -> Result<Note, Self::Error> {
         let id = Uuid::from(note.id());
-        let old_data = self.get_note_index_data(id)?;
+        let id_str = id.to_string();
+        let old_data = self.get_note_index_data(&id_str)?;
+        let index_data = self.collect_index_data(&note);
 
         self.db.batch_write(|batch| {
-            if let Some((old_path, old_tags)) = old_data {
-                if old_path != note.path().as_str() {
-                    batch.multimap_remove(
-                        PATH_TO_ID,
-                        &old_path,
-                        &id.to_string(),
-                    )?;
-                    batch.multimap_insert(
-                        PATH_TO_ID,
-                        note.path().as_str(),
-                        &id.to_string(),
-                    )?;
-                }
-                for tag in old_tags {
-                    batch.multimap_remove(
-                        TAGS_TO_NOTES,
-                        &tag,
-                        &id.to_string(),
-                    )?;
-                }
-            } else {
-                batch.multimap_insert(
-                    PATH_TO_ID,
-                    note.path().as_str(),
-                    &id.to_string(),
-                )?;
+            if let Some(old_index_data) = old_data {
+                Self::remove_indexes(batch, &old_index_data, &id_str)?;
             }
 
-            for tag in note.tags() {
-                batch.multimap_insert(
-                    TAGS_TO_NOTES,
-                    tag.full_path(),
-                    &id.to_string(),
-                )?;
-            }
-
-            batch.put(NOTES, &id.to_string(), &note)?;
+            Self::insert_indexes(batch, &index_data, &id_str)?;
+            batch.put(NOTES, &id_str, &note)?;
             Ok(())
         })?;
 
         Ok(note)
     }
+}
+
+fn note_folder(path: &str) -> Option<Box<str>> {
+    Path::new(path)
+        .parent()
+        .and_then(|parent| parent.to_str())
+        .filter(|folder| !folder.is_empty())
+        .map(Into::into)
+}
+
+fn field_value_index_values(value: &FieldValue) -> Vec<Box<str>> {
+    if let Some(text) = value.as_str() {
+        return vec![text.into()];
+    }
+    if let Some(flag) = value.as_bool() {
+        return if flag {
+            vec!["true".into()]
+        } else {
+            vec!["false".into()]
+        };
+    }
+    if let Some(timestamp) = value.as_date() {
+        return vec![format_i64(timestamp)];
+    }
+    if let Some(number) = value.as_number() {
+        return vec![format_f64(number)];
+    }
+    if let Some(values) = value.as_array() {
+        let mut out = Vec::new();
+        for item in values {
+            out.extend(field_value_index_values(item));
+        }
+        return out;
+    }
+
+    vec![value.to_json_string().into()]
+}
+
+fn format_i64(value: i64) -> Box<str> {
+    let mut buffer = itoa::Buffer::new();
+    buffer.format(value).into()
+}
+
+fn format_f64(value: f64) -> Box<str> {
+    let mut buffer = ryu::Buffer::new();
+    buffer.format(value).into()
 }
 
 #[cfg(test)]
@@ -165,7 +422,14 @@ mod tests {
 
     mod fixtures {
         use super::*;
-        use crate::note::{aggregate::NotePath, tag::Tag};
+        use crate::{
+            config::{
+                aggregate::Config,
+                raw::RawConfig,
+                vault::{VaultId, VaultRoot},
+            },
+            note::{aggregate::NotePath, tag::Tag},
+        };
 
         // pub const TEST_MISSING_ID: Uuid =
         //     Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0301);
@@ -177,22 +441,32 @@ mod tests {
             Ok((dir, db))
         }
 
+        pub fn test_config() -> Result<Config, String> {
+            Config::build(
+                &RawConfig::default(),
+                VaultId::new(),
+                VaultRoot::try_new(std::path::PathBuf::from("/vault"))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())
+        }
+
         pub fn create_note(
-            cmd: &CommandAdapter,
+            cmd: &CommandAdapter<'_, '_>,
             path: &str,
         ) -> Result<Note, NoteCommandError> {
             Ok(Command::create(cmd, path)?)
         }
 
         pub fn update_note(
-            cmd: &CommandAdapter,
+            cmd: &CommandAdapter<'_, '_>,
             note: Note,
         ) -> Result<Note, NoteCommandError> {
             Ok(Command::update(cmd, note)?)
         }
 
         pub fn delete_note(
-            cmd: &CommandAdapter,
+            cmd: &CommandAdapter<'_, '_>,
             id: Uuid,
         ) -> Result<(), NoteCommandError> {
             Ok(Command::delete(cmd, id)?)
@@ -236,7 +510,9 @@ mod tests {
         fn create_persists_note_path() -> Result<(), NoteCommandError> {
             let (_dir, db) = fixtures::test_db()
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let cmd = CommandAdapter::new(&db);
+            let config = fixtures::test_config()
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let cmd = CommandAdapter::new(&db, &config);
 
             let note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
@@ -256,7 +532,9 @@ mod tests {
         fn create_persists_path_index() -> Result<(), NoteCommandError> {
             let (_dir, db) = fixtures::test_db()
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let cmd = CommandAdapter::new(&db);
+            let config = fixtures::test_config()
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let cmd = CommandAdapter::new(&db, &config);
 
             let note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
@@ -274,7 +552,9 @@ mod tests {
         fn update_removes_old_path_index() -> Result<(), NoteCommandError> {
             let (_dir, db) = fixtures::test_db()
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let cmd = CommandAdapter::new(&db);
+            let config = fixtures::test_config()
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let cmd = CommandAdapter::new(&db, &config);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
@@ -299,7 +579,9 @@ mod tests {
         fn update_adds_new_path_index() -> Result<(), NoteCommandError> {
             let (_dir, db) = fixtures::test_db()
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let cmd = CommandAdapter::new(&db);
+            let config = fixtures::test_config()
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let cmd = CommandAdapter::new(&db, &config);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
@@ -323,7 +605,9 @@ mod tests {
         fn update_adds_tag_index() -> Result<(), NoteCommandError> {
             let (_dir, db) = fixtures::test_db()
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let cmd = CommandAdapter::new(&db);
+            let config = fixtures::test_config()
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let cmd = CommandAdapter::new(&db, &config);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
@@ -348,7 +632,9 @@ mod tests {
         fn delete_removes_note() -> Result<(), NoteCommandError> {
             let (_dir, db) = fixtures::test_db()
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let cmd = CommandAdapter::new(&db);
+            let config = fixtures::test_config()
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let cmd = CommandAdapter::new(&db, &config);
 
             let note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());

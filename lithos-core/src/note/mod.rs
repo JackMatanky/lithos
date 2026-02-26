@@ -127,7 +127,7 @@ use self::{
 };
 
 /// Redb-backed note command alias.
-pub type RedbNoteCommand<'db> = Command<CommandAdapter<'db>>;
+pub type RedbNoteCommand<'db, 'config> = Command<CommandAdapter<'db, 'config>>;
 
 /// Redb-backed note query alias.
 pub type RedbNoteQuery<'db> = Query<QueryAdapter<'db>>;
