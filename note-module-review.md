@@ -77,6 +77,13 @@ out-of-scope for refactoring in this review.
 - This means task parsing in `note/task.rs` depends directly on config types,
   rather than being driven purely by a higher-level service.
 
+### 3.6 Type-Driven Design Review
+
+- Most domain entities use strong newtypes (`NoteId`, `NotePath`, `TaskId`) and
+  `Box<str>` for owned strings, which aligns with the type-driven guidelines.
+- Errors still carry untyped `String` payloads where `NoteId`/`NotePath` would
+  be more expressive and safer.
+
 ---
 
 ## 4. Critical Findings (Correctness)
@@ -547,6 +554,31 @@ makes the domain entity config-aware.
 
 ---
 
+### N-PR-11 — Task Parsing Logic Lives Inside the Domain Entity
+
+`Task` owns parsing logic (regexes, metadata parsing, temporal field parsing).
+This makes `Task` a god‑object within the note domain. Consider moving parsing
+into a dedicated adapter/service (e.g., `TaskParser`) and keeping `Task` as a
+pure value type.
+
+**Files**:
+
+- `lithos-core/src/note/task.rs`
+
+---
+
+### N-PR-12 — Errors Use Untyped Strings for IDs/Paths
+
+Several `NoteError` variants store IDs/paths as `String` instead of using
+`NoteId`/`NotePath`, which reduces type safety and makes errors harder to
+consume programmatically.
+
+**Files**:
+
+- `lithos-core/src/note/error.rs`
+
+---
+
 ## 8. Test Suite Audit
 
 ### 8.1 Flaky/Time-Dependent Tests
@@ -658,6 +690,19 @@ service.
 
 ---
 
+### N-SU-06 — NoteReader ParseState Is a God Object
+
+`ParseState` owns list, task, heading, link, and frontmatter parsing and all
+associated state. This concentrates multiple concerns into one type, making it
+hard to reason about and test. Consider splitting into dedicated sub-parsers
+(`ListParser`, `LinkParser`, `FrontmatterParser`) with shared event input.
+
+**Files**:
+
+- `lithos-core/src/note/adapter/reader.rs`
+
+---
+
 ## 10. Context-Only Findings (No Refactor)
 
 These are **explicitly out of scope** for refactoring in this review.
@@ -740,6 +785,11 @@ This section is guidance only. No refactor performed.
   instead of accepting `TaskConfig` directly, to ensure active vault config is
   always used.
 - Tighten task tag parsing to be token‑aware and consistent with `Tag` rules.
+- Consider extracting `Task` parsing into a dedicated parser to keep the domain
+  entity lean.
+- Consider splitting `NoteReader::ParseState` into sub-parsers to reduce
+  god‑object complexity.
+- Replace stringly‑typed error payloads with `NoteId`/`NotePath` where possible.
 
 ### P2 (Cleanup)
 
@@ -794,9 +844,12 @@ This section is guidance only. No refactor performed.
 | N-PR-08 | Minor    | FieldValue JSON conversion semantics leaky   |
 | N-PR-09 | Minor    | Task parsing depends on TaskConfig           |
 | N-PR-10 | Minor    | Task text stored as String                   |
+| N-PR-11 | Minor    | Task parsing inside domain entity            |
+| N-PR-12 | Minor    | Errors use untyped strings for IDs/paths     |
 | N-TF-01 | Major    | Time-dependent task timestamp test           |
 | N-SU-01 | Minor    | Sections never constructed                   |
 | N-SU-02 | Minor    | NoteEvents not used outside tests            |
 | N-SU-03 | Minor    | No additional removal candidates             |
 | N-SU-04 | Minor    | FieldValue::to_json_string unused            |
 | N-SU-05 | Minor    | TaskMetadata convenience accessors           |
+| N-SU-06 | Minor    | NoteReader ParseState god object             |
