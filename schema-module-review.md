@@ -1457,7 +1457,7 @@ Conducted thorough adversarial review of the schema module focusing on:
 
 #### P-01 — Property Cloning in Inheritance Merge (CRITICAL)
 
-**Severity**: 🔴 HIGH — O(N×M) allocations during schema resolution  
+**Severity**: 🔴 HIGH — O(N×M) allocations during schema resolution
 **Location**: `resolver.rs:138-145`, property merge loop
 
 **Problem**: Every schema resolution clones ALL parent and child properties during inheritance:
@@ -1501,16 +1501,16 @@ result.push(Rc::clone(&c));  // Just increments refcount
 
 #### P-02 — HashMap Allocations for Name Indexes (HIGH)
 
-**Severity**: 🟠 MEDIUM-HIGH — N+M heap allocations per resolution  
+**Severity**: 🟠 MEDIUM-HIGH — N+M heap allocations per resolution
 **Location**: `extender.rs:169-172`, `dereferencer.rs:111-113`
 
 **Problem**: Resolution pipeline creates temporary `HashMap<Box<str>, SchemaId>` indexes:
 
 ```rust
 // extender.rs:169-172
-let mut name_to_id: HashMap<Box<str>, SchemaId> = 
+let mut name_to_id: HashMap<Box<str>, SchemaId> =
     HashMap::with_capacity(cap.saturating_add(known_parents.len()));
-let mut id_to_name: HashMap<SchemaId, Box<str>> = 
+let mut id_to_name: HashMap<SchemaId, Box<str>> =
     HashMap::with_capacity(cap);
 ```
 
@@ -1529,14 +1529,14 @@ let mut id_to_name: HashMap<SchemaId, Box<str>> =
 
 #### P-03 — PropertyBank Triple-Allocation Design (MEDIUM)
 
-**Severity**: 🟡 MEDIUM — 3N data structures for N properties  
+**Severity**: 🟡 MEDIUM — 3N data structures for N properties
 **Location**: `bank.rs:81-88`
 
 **Design**:
 ```rust
 pub struct PropertyBank {
     id_index: HashMap<PropertyId, usize>,    // Index 1
-    name_index: HashMap<PropertyName, usize>, // Index 2  
+    name_index: HashMap<PropertyName, usize>, // Index 2
     properties: Vec<Property>,                // Storage
 }
 ```
@@ -1554,7 +1554,7 @@ self.properties.push(property);            // Vec push
 - PropertyName is cloned on EVERY registration (line 246, 263)
 - For 1000 properties: ~24KB index overhead + clone costs
 
-**Recommendation**: 
+**Recommendation**:
 - **Option A**: Single `HashMap<PropertyName, Property>` + `HashMap<PropertyId, PropertyName>` (Copy-able IDs)
 - **Option B**: Accept the overhead but document it (already optimal for dual-index lookup)
 
@@ -1564,7 +1564,7 @@ self.properties.push(property);            // Vec push
 
 #### P-04 — UUID-to-String Allocation in Query Paths (MEDIUM)
 
-**Severity**: 🟡 MEDIUM — per-query heap allocation  
+**Severity**: 🟡 MEDIUM — per-query heap allocation
 **Location**: Multiple query methods (already partially fixed in codebase)
 
 **Status**: ✅ **ALREADY FIXED** — Database has `get_owned_by_uuid` with stack buffer
@@ -1577,7 +1577,7 @@ self.properties.push(property);            // Vec push
 
 #### S-01 — PropertyRef Wrapper Adds Zero Value (MEDIUM)
 
-**Severity**: 🟡 MEDIUM — Cognitive load without runtime benefit  
+**Severity**: 🟡 MEDIUM — Cognitive load without runtime benefit
 **Location**: `property.rs:715-758`
 
 **Problem**: `PropertyRef` is a newtype over `PropertyName`:
@@ -1602,7 +1602,7 @@ pub struct PropertyRef(PropertyName);
 
 #### S-02 — SchemaError Has 18 Variants, Many Unused (LOW)
 
-**Severity**: 🟢 LOW — Binary bloat  
+**Severity**: 🟢 LOW — Binary bloat
 **Location**: `error.rs:22-163`
 
 **Analysis**: Many error variants are **never constructed** in production code:
@@ -1610,12 +1610,12 @@ pub struct PropertyRef(PropertyName);
 - `AlreadyExists` — only in extender (rare duplicate name scenario)
 - `InvalidFileClass` — only in FileSpec validation
 
-**Why this matters**: 
+**Why this matters**:
 - Error enum bloat increases binary size
 - Match exhaustiveness gets complex
 - Hard to know which errors are "real" vs defensive
 
-**Recommendation**: 
+**Recommendation**:
 1. Audit which errors actually occur in practice
 2. Split into focused types: `ValidationError`, `StorageError`, `ResolutionError`
 3. Use `#[non_exhaustive]` on error types expected to grow
@@ -1624,7 +1624,7 @@ pub struct PropertyRef(PropertyName);
 
 #### S-03 — PropertyBank.all() Only Used in Tests (LOW)
 
-**Severity**: 🟢 LOW — API bloat  
+**Severity**: 🟢 LOW — API bloat
 **Location**: `bank.rs:421-424`
 
 ```rust
@@ -1643,7 +1643,7 @@ pub fn all(&self) -> impl Iterator<Item = &Property> {
 
 #### E-01 — No Concurrency Tests for PropertyBank (HIGH)
 
-**Severity**: 🔴 HIGH — Potential race conditions  
+**Severity**: 🔴 HIGH — Potential race conditions
 **Location**: `bank.rs` (no concurrency tests)
 
 **Critical scenario NOT tested**:
@@ -1655,12 +1655,12 @@ bank.register(prop1)?;
 bank.get_by_name(&name);  // What if HashMap resizes mid-read?
 ```
 
-**Why this matters**: 
+**Why this matters**:
 - `PropertyBank` is `Send + Sync` (required by port traits)
 - No documented thread-safety guarantees
 - Concurrent schema resolution could race
 
-**Recommendation**: 
+**Recommendation**:
 1. Add `RwLock` around internal state
 2. **OR** document PropertyBank is single-threaded during construction
 3. Add concurrency stress tests with `std::thread::spawn`
@@ -1669,7 +1669,7 @@ bank.get_by_name(&name);  // What if HashMap resizes mid-read?
 
 #### E-02 — NumberSpec Epsilon Uses Magic Constant (MEDIUM)
 
-**Severity**: 🟡 MEDIUM — Fragile floating-point comparison  
+**Severity**: 🟡 MEDIUM — Fragile floating-point comparison
 **Location**: `property_spec.rs:763`
 
 ```rust
@@ -1683,7 +1683,7 @@ if remainder > EPSILON && (step.get() - remainder) > EPSILON {
 - Subnormal numbers near `f64::MIN_POSITIVE`
 - Floating-point accumulation over large ranges
 
-**Why this is fragile**: 
+**Why this is fragile**:
 - IEEE 754 has well-known precision issues
 - Epsilon should be **relative** to magnitude, not global constant
 
@@ -1698,7 +1698,7 @@ let epsilon = step.get() * 1e-10;
 
 #### E-03 — No Inheritance Depth Limit (MEDIUM)
 
-**Severity**: 🟡 MEDIUM — Stack overflow risk  
+**Severity**: 🟡 MEDIUM — Stack overflow risk
 **Location**: `extender.rs`, `resolver.rs`
 
 **Attack scenario**:
@@ -1729,14 +1729,14 @@ if depth > MAX_INHERITANCE_DEPTH {
 
 #### E-04 — RawOptions Deserialization Is Order-Dependent (HIGH)
 
-**Severity**: 🔴 HIGH — Silent mismatches  
+**Severity**: 🔴 HIGH — Silent mismatches
 **Location**: `raw.rs:448-458`
 
 ```rust
 #[serde(untagged)]
 pub enum RawOptions {
     List(Vec<Box<str>>),     // Tried first
-    Map(BTreeMap<...>),      // Tried second  
+    Map(BTreeMap<...>),      // Tried second
     Rich(Vec<RawOptionEntry>), // Tried third
 }
 ```
@@ -1763,7 +1763,7 @@ pub enum RawOptions {
 
 #### E-05 — Regex Cache Has Unbounded Growth (MEDIUM)
 
-**Severity**: 🟡 MEDIUM — Memory leak in long-running process  
+**Severity**: 🟡 MEDIUM — Memory leak in long-running process
 **Location**: `property_spec.rs:1189-1224`
 
 ```rust
@@ -1771,7 +1771,7 @@ static REGEX_CACHE: OnceLock<RegexCacheLock> = OnceLock::new();
 type RegexCache = HashMap<Box<str>, Arc<regex::Regex>>;
 ```
 
-**Problem**: 
+**Problem**:
 - If users define 10,000 unique regex patterns, all stay in memory FOREVER
 - No LRU eviction
 - No size limit
@@ -1781,7 +1781,7 @@ type RegexCache = HashMap<Box<str>, Arc<regex::Regex>>;
 ```rust
 use moka::sync::Cache;
 
-static REGEX_CACHE: LazyLock<Cache<Box<str>, Arc<Regex>>> = 
+static REGEX_CACHE: LazyLock<Cache<Box<str>, Arc<Regex>>> =
     LazyLock::new(|| Cache::builder().max_capacity(1000).build());
 ```
 
@@ -1791,7 +1791,7 @@ static REGEX_CACHE: LazyLock<Cache<Box<str>, Arc<Regex>>> =
 
 #### PN-01 — JSON Schema vs Rust Pattern Divergence (CRITICAL)
 
-**Severity**: 🔴 CRITICAL — User confusion  
+**Severity**: 🔴 CRITICAL — User confusion
 **User correction**: Property names should support uppercase, lowercase, digits, underscores AND hyphens, can start with letter OR underscore
 
 **Current state**:
@@ -1848,7 +1848,7 @@ Based on research into JSON Schema, GraphQL, Apache Avro, and Protobuf:
 
 #### MS-01 — Missing Schema Versioning (CRITICAL)
 
-**Severity**: 🔴 CRITICAL — No evolution path  
+**Severity**: 🔴 CRITICAL — No evolution path
 **Location**: Both schemas missing `$version` field
 
 **Problem**: No way to evolve format without breaking old files.
@@ -1881,7 +1881,7 @@ match raw_schema.version.as_ref() {
 
 #### MS-02 — No min/max Constraint Validation (HIGH)
 
-**Severity**: 🟠 MEDIUM-HIGH — Runtime errors instead of schema errors  
+**Severity**: 🟠 MEDIUM-HIGH — Runtime errors instead of schema errors
 **Location**: `NumberProperty` in both schemas
 
 **Problem**: JSON Schema can't express "min < max". Invalid schemas pass validation but fail at runtime.
@@ -1919,7 +1919,7 @@ match raw_schema.version.as_ref() {
 
 #### MS-03 — Missing Examples in Schema (MEDIUM)
 
-**Severity**: 🟡 MEDIUM — Poor developer experience  
+**Severity**: 🟡 MEDIUM — Poor developer experience
 **Location**: Both schemas
 
 **Industry standard**:
@@ -1948,7 +1948,7 @@ match raw_schema.version.as_ref() {
 
 #### MS-04 — No Deprecation Support (MEDIUM)
 
-**Severity**: 🟡 MEDIUM — No migration path  
+**Severity**: 🟡 MEDIUM — No migration path
 **Location**: Both schemas
 
 **Industry standard** (OpenAPI, GraphQL):
@@ -1976,7 +1976,7 @@ match raw_schema.version.as_ref() {
 
 #### MS-05 — Missing UI Metadata Fields (LOW)
 
-**Severity**: 🟢 LOW — Nice-to-have  
+**Severity**: 🟢 LOW — Nice-to-have
 **Recommendation**: Add optional UI hint fields:
 
 ```json
@@ -2029,7 +2029,7 @@ match raw_schema.version.as_ref() {
 
 #### IR-01 — Box<str> for Static Error Messages (LOW)
 
-**Severity**: 🟢 LOW — Unnecessary allocations  
+**Severity**: 🟢 LOW — Unnecessary allocations
 **Location**: `error.rs` — multiple variants
 
 **Example**:
@@ -2057,7 +2057,7 @@ SchemaError::ValidationFailed(format!("dynamic {}", x).into())  // Allocates
 
 #### IR-02 — Missing #[must_use] on Builder Methods (LOW)
 
-**Severity**: 🟢 LOW — API misuse prevention  
+**Severity**: 🟢 LOW — API misuse prevention
 **Location**: `property.rs:781-863` (PropertyBuilder)
 
 **Problem**:
@@ -2207,4 +2207,3 @@ Each item requires:
 ---
 
 **END OF PART 10**
-
