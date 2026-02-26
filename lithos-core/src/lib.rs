@@ -9,6 +9,8 @@
 #![feature(trivial_bounds)]
 #![recursion_limit = "1024"]
 
+extern crate serde;
+
 // Module declarations
 pub mod application;
 pub mod bounds;
