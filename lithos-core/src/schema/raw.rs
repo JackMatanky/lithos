@@ -50,8 +50,8 @@ pub const SCHEMA_VERSION: &str = "1.0";
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawSchema {
-    /// Schema format version (must be "1.0").
-    #[serde(rename = "$version")]
+    /// Schema format version (defaults to "1.0" if not specified).
+    #[serde(rename = "$version", default = "default_schema_version")]
     pub version: Box<str>,
     /// Unique schema name.
     pub name: Box<str>,
@@ -62,6 +62,11 @@ pub struct RawSchema {
     pub excludes: Vec<Box<str>>,
     /// Map of property name to property definition.
     pub properties: std::collections::HashMap<Box<str>, RawProperty>,
+}
+
+/// Default function for schema version field.
+fn default_schema_version() -> Box<str> {
+    SCHEMA_VERSION.into()
 }
 
 impl RawSchema {
@@ -419,8 +424,8 @@ pub struct RawStringSpec {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyBank {
-    /// Property bank format version (must be "1.0").
-    #[serde(rename = "$version")]
+    /// Property bank format version (defaults to "1.0" if not specified).
+    #[serde(rename = "$version", default = "default_schema_version")]
     pub version: Box<str>,
     /// Map of property name to property definition.
     pub properties: std::collections::HashMap<Box<str>, RawPropertyBankEntry>,

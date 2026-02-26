@@ -393,4 +393,42 @@ name = "project"
         let schemas = result.expect("Should scan schemas");
         assert!(schemas.is_empty());
     }
+
+    #[test]
+    fn load_raw_property_bank_defaults_version_when_omitted() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(
+            dir.path(),
+            "schemas/property_bank.json",
+            r#"{"properties": {}}"#,
+        );
+
+        let config = test_config(dir.path(), None);
+        let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
+        let result = ingestor.load_raw_property_bank();
+
+        assert!(result.is_ok());
+        let bank = result.expect("Should parse property bank");
+        assert_eq!(bank.version.as_ref(), "1.0");
+    }
+
+    #[test]
+    fn scan_raw_schemas_defaults_version_when_omitted() {
+        let dir = TempDir::new().expect("tempdir");
+        write_file(
+            dir.path(),
+            "schemas/note.json",
+            r#"{"name": "note", "properties": {}}"#,
+        );
+
+        let config = test_config(dir.path(), None);
+        let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
+        let result = ingestor.scan_raw_schemas();
+
+        assert!(result.is_ok());
+        let schemas = result.expect("Should scan schemas");
+        assert_eq!(schemas.len(), 1);
+        let schema = schemas.first().expect("should have one schema");
+        assert_eq!(schema.0.version.as_ref(), "1.0");
+    }
 }

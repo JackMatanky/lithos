@@ -4,14 +4,15 @@
   "title": "Lithos Property Bank",
   "description": "Defines the format of a Lithos property bank file. A property bank is a dictionary of reusable, named property definitions that individual note schemas can reference via '$ref: property_bank#/<name>'. The property bank itself is not a note schema — it has no 'name', 'extends', or 'excludes'. Property definitions here provide defaults; schemas can override 'multi', 'options', etc. when referencing them. The 'required' field is NOT allowed here — that is a schema-level concern.",
   "type": "object",
-  "required": ["$version", "properties"],
+  "required": ["properties"],
   "additionalProperties": false,
   "properties": {
     "$version": {
       "title": "Property Bank Version",
-      "description": "The version of the Lithos property bank format this file uses. Used for migration and compatibility checking. Current version is '1.0'.",
+      "description": "The version of the Lithos property bank format this file uses. Optional - defaults to '1.0' if not specified. Used for migration and compatibility checking when upgrading to future versions.",
       "type": "string",
       "const": "1.0",
+      "default": "1.0",
       "examples": ["1.0"]
     },
     "properties": {
