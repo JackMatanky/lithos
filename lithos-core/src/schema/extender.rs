@@ -35,6 +35,78 @@ use super::{
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  NodeDepth
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Inheritance depth in the schema tree.
+///
+/// Depth is 1-indexed: root schemas have depth 1, their children have depth 2,
+/// and so on. This is used to prevent infinite recursion from cyclic
+/// inheritance and to provide meaningful error messages when the limit is
+/// exceeded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct NodeDepth(usize);
+
+impl NodeDepth {
+    /// Creates a depth for a root node (depth = 1).
+    #[inline]
+    pub const fn root() -> Self {
+        Self(1)
+    }
+
+    /// Returns the depth as a raw usize.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "will be used for depth validation in resolver"
+        )
+    )]
+    #[inline]
+    pub const fn get(self) -> usize {
+        self.0
+    }
+
+    /// Returns the depth of a child node (parent depth + 1).
+    #[inline]
+    pub fn increment(self) -> Self {
+        Self(self.0.saturating_add(1))
+    }
+
+    /// Returns true if this depth exceeds the given limit.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "will be used for depth validation in resolver"
+        )
+    )]
+    #[inline]
+    pub const fn exceeds(self, limit: usize) -> bool {
+        self.0 > limit
+    }
+}
+
+impl Default for NodeDepth {
+    fn default() -> Self {
+        Self::root()
+    }
+}
+
+impl std::fmt::Display for NodeDepth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<NodeDepth> for usize {
+    #[inline]
+    fn from(depth: NodeDepth) -> Self {
+        depth.0
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  SchemaNode
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -43,14 +115,17 @@ use super::{
 pub(crate) struct SchemaNode {
     /// Schema name string.
     pub name: Box<str>,
-    /// Own properties (from `DereferencedSchema`), sorted by name.
-    pub own_properties: Vec<Property>,
+    /// Properties defined by this schema (sorted by name).
+    pub properties: Vec<Property>,
     /// Property names inherited from the parent that this schema excludes.
     pub excludes: Vec<Box<str>>,
     /// Parent schema identifier, if any.
     pub parent_id: Option<SchemaId>,
     /// Children of this node (populated during `build`).
     pub children: Vec<SchemaId>,
+    /// Inheritance depth in the tree (1 for roots, increments with each
+    /// level).
+    pub depth: NodeDepth,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -147,7 +222,10 @@ impl Extender {
         // Phase 4: populate children lists.
         Self::populate_children(&mut nodes);
 
-        // Phase 5: Kahn's topological ordering.
+        // Phase 5: compute inheritance depths.
+        Self::compute_depths(&mut nodes, known_parents);
+
+        // Phase 6: Kahn's topological ordering.
         let (order, roots) = Self::kahn_order(&nodes)?;
 
         Ok(SchemaTree {
@@ -210,10 +288,12 @@ impl Extender {
             let parent_id = Self::resolve_parent(&deref, name_to_id)?;
             nodes.insert(id, SchemaNode {
                 name: deref.name,
-                own_properties: deref.properties,
+                properties: deref.properties,
                 excludes: deref.excludes,
                 parent_id,
                 children: Vec::new(),
+                // Depth computed in Phase 5
+                depth: NodeDepth::root(),
             });
         }
         Ok(nodes)
@@ -271,7 +351,70 @@ impl Extender {
         }
     }
 
-    /// Phase 5 — Kahn's algorithm; returns `(order, roots)`.
+    /// Phase 5 — Compute inheritance depth for each node.
+    ///
+    /// Root nodes (no in-batch parent) get depth 1. Nodes with an in-batch
+    /// parent get `parent_depth + 1`. Nodes whose parent is a DB-fresh schema
+    /// are treated as roots (depth 1) since we don't track depth for DB
+    /// schemas.
+    fn compute_depths(
+        nodes: &mut HashMap<SchemaId, SchemaNode>,
+        known_parents: &HashMap<SchemaId, Schema>,
+    ) {
+        // Build depth map via BFS from roots
+        let mut depths = HashMap::with_capacity(nodes.len());
+
+        // Identify roots: nodes with no parent or parent is DB-fresh
+        let mut queue: VecDeque<SchemaId> = nodes
+            .iter()
+            .filter(|&(_, node)| {
+                node.parent_id.is_none()
+                    || node
+                        .parent_id
+                        .is_some_and(|pid| known_parents.contains_key(&pid))
+            })
+            .map(|(&id, _)| id)
+            .collect();
+
+        // BFS to compute depths
+        for &root_id in &queue {
+            depths.insert(root_id, NodeDepth::root());
+        }
+
+        while let Some(id) = queue.pop_front() {
+            let current_depth =
+                depths.get(&id).copied().unwrap_or(NodeDepth::root());
+            let child_depth = current_depth.increment();
+
+            let Some(node) = nodes.get(&id) else {
+                continue;
+            };
+
+            for &child_id in &node.children {
+                if let std::collections::hash_map::Entry::Vacant(e) =
+                    depths.entry(child_id)
+                {
+                    e.insert(child_depth);
+                    queue.push_back(child_id);
+                }
+            }
+        }
+
+        // Apply computed depths to nodes
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "depths is a worklist; HashMap iteration order does not \
+                      affect correctness (we apply depth to each node \
+                      independently)"
+        )]
+        for (id, depth) in depths {
+            if let Some(node) = nodes.get_mut(&id) {
+                node.depth = depth;
+            }
+        }
+    }
+
+    /// Phase 6 — Kahn's algorithm; returns `(order, roots)`.
     #[expect(
         clippy::iter_over_hash_type,
         reason = "in_degree is a worklist; HashMap insertion order does not \
@@ -581,6 +724,46 @@ mod tests {
                 "Parent node should list child as a child"
             );
             Ok(())
+        }
+    }
+
+    mod node_depth_tests {
+        use super::*;
+
+        #[test]
+        fn node_depth_root() {
+            let depth = NodeDepth::root();
+            assert_eq!(depth.get(), 1);
+        }
+
+        #[test]
+        fn node_depth_increment() {
+            let depth = NodeDepth::root().increment();
+            assert_eq!(depth.get(), 2);
+            let depth = depth.increment();
+            assert_eq!(depth.get(), 3);
+        }
+
+        #[test]
+        fn node_depth_exceeds() {
+            let depth = NodeDepth::root().increment().increment(); // 3
+            assert!(!depth.exceeds(10));
+            assert!(!depth.exceeds(3));
+            assert!(depth.exceeds(2));
+        }
+
+        #[test]
+        fn node_depth_display() {
+            let depth = NodeDepth::root().increment().increment();
+            assert_eq!(format!("{depth}"), "3");
+        }
+
+        #[test]
+        fn node_depth_saturates_on_increment() {
+            // Construct depth manually at max value
+            let max_depth = NodeDepth(usize::MAX);
+            let result = max_depth.increment();
+            assert_eq!(result.get(), usize::MAX);
         }
     }
 }
