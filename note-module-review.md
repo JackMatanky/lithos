@@ -19,7 +19,8 @@ signal. Performance issues exist but are secondary to correctness.
 
 This document lists **all** identified issues and provides prioritized
 remediation guidance. It also includes an explicit separation of
-out-of-scope modules reviewed for context only.
+out-of-scope modules reviewed for context only, and a pulldown-cmark 0.13.1
+capability review.
 
 ---
 
@@ -59,6 +60,14 @@ out-of-scope for refactoring in this review.
 ### 3.3 Context Isolation
 
 - Note context does not import schema/template contexts. No violations found.
+
+### 3.4 Source Location Semantics (Offsets vs Lines)
+
+- The module stores source byte offsets/ranges in domain types.
+- Line numbers are not more stable for persistence; any line insertion or
+  deletion above a span invalidates all downstream line numbers.
+- Byte offsets are precise and align with pulldown-cmark output. If line/column
+  display is needed, derive it from the source text at render time.
 
 ---
 
@@ -294,12 +303,31 @@ first ID. This makes duplicate paths possible and produces ambiguous reads.
 ### 6.2 Missing Options (Potential Obsidian Gaps)
 
 - `ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS` (TOML frontmatter)
+- `ENABLE_GFM` (callouts via `Tag::BlockQuote(BlockQuoteKind)`)
+- `ENABLE_HEADING_ATTRIBUTES` (explicit heading IDs/classes/attrs)
 
 ### 6.3 Event Handling Gaps
 
 - Missing link text in headings/list items (N-CR-02).
 - Markdown link display text / image alt text not captured (N-CR-02/N-CR-04).
 - Metadata newline handling (N-CR-05).
+- Autolink/email link types are available but not used for classification.
+- Offsets are available via `Parser::into_offset_iter` but not used to stabilize
+  merged text handling.
+
+### 6.4 pulldown-cmark 0.13.1 Features Not Leveraged
+
+- `Parser::into_offset_iter()` yields `(Event, Range<usize>)` to capture
+  positions for all events, not just a few domains.
+- `utils::TextMergeWithOffset` merges adjacent `Event::Text` while keeping
+  offsets aligned.
+- `LinkType::{Autolink, Email}` provide scheme-aware handling without custom
+  URL prefix checks.
+- `Tag::Heading` exposes optional `id`, `classes`, `attrs` when heading
+  attributes are enabled.
+- `Tag::BlockQuote` optionally includes `BlockQuoteKind` when `ENABLE_GFM` is
+  enabled (callout detection).
+- `MetadataBlockKind` distinguishes YAML vs plus-delimited metadata blocks.
 
 ---
 
@@ -337,6 +365,18 @@ allocation. Not critical, but measurable at scale.
 **Files**:
 
 - `lithos-core/src/note/value.rs`
+
+---
+
+### N-PR-04 — Offset Types Not Paired With Line/Column Utilities
+
+Offsets are stored as bytes (correct), but there is no standard utility to
+derive line/column for diagnostics or UI. This leads to ad-hoc calculations
+and risks inconsistencies.
+
+**Files**:
+
+- `lithos-core/src/note/types.rs`
 
 ---
 
@@ -471,6 +511,7 @@ This section is guidance only. No refactor performed.
 - Fix external URL fragment handling.
 - Fix markdown image modeling (style + target + alt text handling).
 - Preserve frontmatter newlines in metadata blocks (or assert pulldown emits).
+- Use `LinkType::Autolink`/`Email` to classify external targets correctly.
 
 ### P1 (Short Term)
 
@@ -481,6 +522,9 @@ This section is guidance only. No refactor performed.
 - Decide how to represent wiki-embed anchors and non-HTTP schemes.
 - Reconcile custom task status symbols with parser limitations.
 - Enforce path uniqueness or make query behavior deterministic for duplicates.
+- Consider enabling heading attributes + GFM callouts and mapping to domain
+  fields where relevant.
+- Add a line/column derivation utility built on byte offsets.
 
 ### P2 (Cleanup)
 
@@ -523,6 +567,7 @@ This section is guidance only. No refactor performed.
 | N-PR-01 | Minor    | String allocation anti-patterns              |
 | N-PR-02 | Minor    | UUID stringification in hot paths            |
 | N-PR-03 | Minor    | FieldValue JSON semantics questionable       |
+| N-PR-04 | Minor    | No line/column utility for byte offsets      |
 | N-TF-01 | Major    | Time-dependent task timestamp test           |
 | N-SU-01 | Minor    | Sections never constructed                   |
 | N-SU-02 | Minor    | NoteEvents not used outside tests            |
