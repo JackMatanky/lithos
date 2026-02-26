@@ -369,6 +369,12 @@ impl NotePath {
             return Err(NoteError::InvalidPath("path cannot be empty".into()));
         }
 
+        if has_curdir_segment(normalized.as_ref()) {
+            return Err(NoteError::InvalidPath(
+                "path must not include '.' components".into(),
+            ));
+        }
+
         let normalized_path = std::path::Path::new(normalized.as_ref());
         if normalized_path.is_absolute() {
             return Err(NoteError::InvalidPath("path must be relative".into()));
@@ -381,6 +387,7 @@ impl NotePath {
                         "path traversal not allowed".into(),
                     ));
                 }
+                std::path::Component::CurDir => {}
                 std::path::Component::Normal(segment) => {
                     if segment
                         .to_str()
@@ -392,8 +399,11 @@ impl NotePath {
                     }
                 }
                 std::path::Component::Prefix(_)
-                | std::path::Component::RootDir
-                | std::path::Component::CurDir => {}
+                | std::path::Component::RootDir => {
+                    return Err(NoteError::InvalidPath(
+                        "path must be relative".into(),
+                    ));
+                }
             }
         }
 
@@ -434,6 +444,10 @@ impl TryFrom<String> for NotePath {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::new(&value)
     }
+}
+
+fn has_curdir_segment(path: &str) -> bool {
+    path.split('/').any(|segment| segment == ".")
 }
 
 impl ArchivedNote {
@@ -612,6 +626,12 @@ mod tests {
         #[test]
         fn rejects_absolute_path() {
             let result = Note::new(NoteId::new(), "/absolute.md");
+            result.unwrap_err();
+        }
+
+        #[test]
+        fn rejects_curdir_components() {
+            let result = NotePath::new("folder/./note.md");
             result.unwrap_err();
         }
 
