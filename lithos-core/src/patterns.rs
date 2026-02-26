@@ -23,7 +23,6 @@ pub const ALPHANUMERIC_NAME: &str = "^[a-zA-Z0-9_-]+$";
 ///
 /// Used by:
 /// - Schema names (`SchemaName::validate_format`)
-/// - Property names (`PropertyName::validate_format`)
 ///
 /// Pattern: `^[a-z0-9_-]+$`.
 ///
@@ -46,6 +45,21 @@ pub const EMAIL: &str = r"^[^@]+@[^@]+\.[^@]+$";
 /// - Valid: `title`, `my_var`, `_private`, `camelCase`
 /// - Invalid: `123var`, `my-var`, `var!`
 pub const IDENTIFIER_NAME: &str = "^[a-zA-Z_][a-zA-Z0-9_]*$";
+
+/// Property name pattern: mixed-case letters, underscores, and hyphens.
+///
+/// Used by:
+/// - Property names (`PropertyName::validate`)
+///
+/// Pattern: `^[A-Za-z_][A-Za-z0-9_-]*$`.
+///
+/// Must start with a letter (uppercase or lowercase) or underscore.
+/// May contain letters, digits, underscores, and hyphens.
+///
+/// # Examples
+/// - Valid: `status`, `MyProperty`, `_internal`, `tag-name`, `Priority1`
+/// - Invalid: `123prop`, `-prop`, `prop!`, `my prop`
+pub const PROPERTY_NAME: &str = "^[A-Za-z_][A-Za-z0-9_-]*$";
 
 /// US Phone number validation pattern.
 pub const PHONE_US: &str =

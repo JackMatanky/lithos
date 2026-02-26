@@ -546,8 +546,8 @@ impl Display for PropertyId {
 /// Enforces invariants:
 /// - Non-empty
 /// - Max 64 characters
-/// - Matches regex `^[a-z0-9_-]+$` (lowercase alphanumeric, underscores,
-///   dashes)
+/// - Matches regex `^[A-Za-z_][A-Za-z0-9_-]*$` (must start with letter or
+///   underscore, may contain letters, digits, underscores, hyphens)
 ///
 /// # Examples
 /// ```
@@ -631,7 +631,7 @@ impl PropertyName {
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME_LOWER));
+            LazyLock::new(|| Regex::new(patterns::PROPERTY_NAME));
 
         if name.is_empty() {
             return Err(SchemaError::EmptyPropertyName);
@@ -980,6 +980,10 @@ mod tests {
         #[case("Invalid Name")]
         #[case("invalid.name")]
         #[case("")]
+        #[case("123prop")]
+        #[case("-prop")]
+        #[case("my prop")]
+        #[case("prop!")]
         fn returns_error_when_property_name_format_is_invalid(
             #[case] name: &str,
         ) {
@@ -1000,6 +1004,11 @@ mod tests {
         #[rstest]
         #[case("valid_name")]
         #[case("valid-name-123")]
+        #[case("MyProperty")]
+        #[case("_internal")]
+        #[case("Status")]
+        #[case("tag-name")]
+        #[case("Priority1")]
         fn property_name_validates_regex_and_length(#[case] name: &str) {
             let result = PropertyName::new(name);
 
@@ -1059,7 +1068,7 @@ mod tests {
         // Priority: P2.
         proptest! {
             #[test]
-            fn validates_property_name_format_proptest(name in "[a-z0-9_-]{1,64}") {
+            fn validates_property_name_format_proptest(name in "[A-Za-z_][A-Za-z0-9_-]{0,63}") {
                 // GIVEN an arbitrary valid property name
                 // WHEN creating a PropertyName
                 // THEN it must succeed
@@ -1074,7 +1083,7 @@ mod tests {
         // Priority: P2.
         proptest! {
             #[test]
-            fn rejects_invalid_property_name_characters_proptest(name in ".*[^a-z0-9_-].*") {
+            fn rejects_invalid_property_name_characters_proptest(name in ".*[^A-Za-z0-9_-].*") {
                 prop_assume!(!name.is_empty() && name.len() <= 64);
 
                 // GIVEN an arbitrary string containing invalid characters
