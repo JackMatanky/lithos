@@ -31,7 +31,7 @@ use super::{
 /// Maximum allowed inheritance depth to prevent infinite loops.
 /// If a schema chain exceeds this depth, resolution fails with
 /// [`SchemaError::InheritanceDepthExceeded`].
-const INHERITANCE_MAX_DEPTH: usize = 100;
+const INHERITANCE_MAX_DEPTH: usize = 10;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Resolver
@@ -516,7 +516,7 @@ mod tests {
         #[test]
         fn inheritance_max_depth_constant_value() {
             const DEPTH: usize = super::INHERITANCE_MAX_DEPTH;
-            assert_eq!(DEPTH, 100, "INHERITANCE_MAX_DEPTH should be 100");
+            assert_eq!(DEPTH, 10, "INHERITANCE_MAX_DEPTH should be 10");
         }
 
         /// Test that `InheritanceDepthExceeded` error can be constructed.
