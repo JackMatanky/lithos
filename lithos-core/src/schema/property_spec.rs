@@ -10,10 +10,8 @@
 )]
 
 use std::{
-    collections::{HashMap, hash_map::Entry},
     hash::Hash,
     path::{Component, Path},
-    sync::{Arc, OnceLock, RwLock},
 };
 
 use super::{error::SchemaError, formats::StringFormat};
@@ -932,14 +930,12 @@ impl StringSpec {
             ));
         }
 
-        // Validate pattern if present
-        let pattern = match pattern {
-            Some(p) => {
-                get_cached_regex(&p)?;
-                Some(p)
-            }
-            None => None,
-        };
+        // Validate pattern if present (compile to check validity, then discard)
+        if let Some(p) = pattern.as_ref() {
+            regex::Regex::new(p).map_err(|e| {
+                SchemaError::InvalidRegex(format!("Invalid pattern {p}: {e}"))
+            })?;
+        }
 
         Ok(Self {
             options,
@@ -971,22 +967,26 @@ impl StringSpec {
     }
 
     fn validate_pattern(&self, value: &str) -> Result<(), SchemaError> {
-        // Use format pattern if specified
+        // Use format regex if specified (pre-compiled static)
         if let Some(format) = self.format {
-            let pattern = format.pattern();
-            let re = get_cached_regex(pattern)?;
+            let re = format.regex();
             if !re.is_match(value) {
                 return Err(SchemaError::ValidationFailed(format!(
                     "Value {value} does not match format '{format}' (pattern: \
-                     {pattern})"
+                     {})",
+                    format.pattern()
                 )));
             }
             return Ok(());
         }
 
-        // Otherwise use custom pattern if specified
+        // Otherwise use custom pattern if specified (compile on-demand)
         if let Some(pattern) = self.pattern.as_ref() {
-            let re = get_cached_regex(pattern)?;
+            let re = regex::Regex::new(pattern).map_err(|e| {
+                SchemaError::InvalidRegex(format!(
+                    "Invalid pattern {pattern}: {e}"
+                ))
+            })?;
             if !re.is_match(value) {
                 return Err(SchemaError::ValidationFailed(format!(
                     "Value {value} does not match pattern {pattern}"
@@ -1226,46 +1226,6 @@ fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
     }
 
     Ok(())
-}
-
-type RegexCache = HashMap<Box<str>, Arc<regex::Regex>>;
-type RegexCacheLock = RwLock<RegexCache>;
-
-static REGEX_CACHE: OnceLock<RegexCacheLock> = OnceLock::new();
-
-fn get_cached_regex(pattern: &str) -> Result<Arc<regex::Regex>, SchemaError> {
-    let cache = REGEX_CACHE.get_or_init(|| RwLock::new(RegexCache::new()));
-
-    // Fast path: read lock.
-    {
-        let guard = match cache.read() {
-            Ok(guard) => guard,
-            Err(e) => e.into_inner(),
-        };
-
-        if let Some(re) = guard.get(pattern) {
-            return Ok(Arc::clone(re));
-        }
-    }
-
-    // Slow path: compile without holding any locks.
-    let compiled = Arc::new(regex::Regex::new(pattern).map_err(|e| {
-        SchemaError::InvalidRegex(format!("Invalid pattern {pattern}: {e}"))
-    })?);
-
-    // Insert (or reuse) under a write lock.
-    let mut guard = match cache.write() {
-        Ok(guard) => guard,
-        Err(e) => e.into_inner(),
-    };
-
-    match guard.entry(pattern.into()) {
-        Entry::Occupied(entry) => Ok(Arc::clone(entry.get())),
-        Entry::Vacant(entry) => {
-            entry.insert(Arc::clone(&compiled));
-            Ok(compiled)
-        }
-    }
 }
 
 #[cfg(test)]
