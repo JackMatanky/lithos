@@ -22,7 +22,15 @@ use super::{
     events::{Events, SchemaCreated, SchemaResolved},
     property::{Property, PropertyName},
 };
-use crate::patterns;
+
+/// Schema name pattern: lowercase letters, numbers, underscores, and hyphens.
+///
+/// Pattern: `^[a-z0-9_-]+$`.
+///
+/// # Examples
+/// - Valid: `daily-note`, `project_schema`, `schema123`
+/// - Invalid: `MySchema`, `invalid name`, `name!`
+const SCHEMA_NAME_PATTERN: &str = "^[a-z0-9_-]+$";
 
 // ----------------------------------------------------------- //
 //                    Schema Aggregate Root                    //
@@ -583,7 +591,7 @@ impl SchemaName {
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME_LOWER));
+            LazyLock::new(|| Regex::new(SCHEMA_NAME_PATTERN));
 
         if name.is_empty() {
             return Err(SchemaError::EmptySchemaName);

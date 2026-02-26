@@ -16,7 +16,6 @@ pub mod config;
 pub mod db;
 pub mod fs;
 pub mod note;
-pub mod patterns;
 pub mod schema;
 pub mod template;
 
