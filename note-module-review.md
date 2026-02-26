@@ -10,8 +10,9 @@
 
 The note module is structurally solid (CQRS ports, clean domain types, rkyv
 usage, well-formed adapters), but has critical correctness gaps in indexing
-and markdown parsing. Several paths drop user-visible text or mis-handle
-external URLs. Indexes beyond path/tag are declared and queried but never
+and markdown parsing. Link text inside headings/list items is lost, markdown
+link display text/alt text is never captured, and external URL fragments are
+split incorrectly. Indexes beyond path/tag are declared and queried but never
 written, effectively breaking multiple query APIs. The test suite contains
 time-based flakiness and a large set of low-value getter tests that dilute
 signal. Performance issues exist but are secondary to correctness.
@@ -100,6 +101,8 @@ indexes return empty results even when data is present in notes.
 When a link is active, `Event::Text` is consumed by link alias handling and not
 appended to heading or list-item text buffers. This removes visible link text
 from headings and list items, affecting task content and heading extraction.
+It also means markdown link display text and image alt text are never captured
+as `Link::alias` (only wikilink aliases are stored).
 
 **Files**:
 
@@ -127,7 +130,9 @@ is currently split into a separate anchor, which is invalid for external links.
 
 Markdown image links (`![alt](url)`) are stored via `Link::new_embed`, which
 sets style `WikiLink` and implies Obsidian-style embedding. Markdown images
-should retain `MdLink` style.
+should retain `MdLink` style. Additionally, `Tag::Image` is always routed
+through `Target::Unresolved`, so external image URLs become unresolved targets
+and image alt text is discarded.
 
 **Files**:
 
@@ -141,8 +146,10 @@ should retain `MdLink` style.
 **Severity**: High
 
 While inside metadata blocks, only `Event::Text`/`Event::Code` are appended to
-the YAML buffer. `SoftBreak`/`HardBreak` are ignored, so multi-line YAML can be
-collapsed and mis-parsed.
+the YAML buffer. `SoftBreak`/`HardBreak` are ignored, so if pulldown-cmark emits
+line breaks for metadata blocks, multi-line YAML can be collapsed and
+mis-parsed. (If metadata arrives as a single `Text` event with newlines, this
+is harmless; verify with a targeted test.)
 
 **Files**:
 
@@ -218,6 +225,58 @@ positives. Token-aware matching is safer and aligns with intent.
 `Link::validate_external_anchor` only rejects block refs. For external URLs,
 anchors should remain part of the URL, not a separate anchor field.
 
+---
+
+### N-MJ-07 — Wiki Embeds Drop Anchors Entirely
+
+`![[note#heading]]` and `![[note#^block]]` are valid Obsidian embed forms, but
+`Link::new_embed` has no anchor parameter and `build_link` discards computed
+anchors when `is_embed == true`. Anchors are silently lost.
+
+**Files**:
+
+- `lithos-core/src/note/adapter/reader.rs`
+- `lithos-core/src/note/link.rs`
+
+---
+
+### N-MJ-08 — Non-HTTP Schemes Treated as Internal Links
+
+`is_external_url` only recognizes `http://` and `https://`. Autolinks or
+markdown links for `mailto:`, `tel:`, `obsidian://`, etc. are stored as
+`Target::Unresolved` instead of `Target::External`.
+
+**Files**:
+
+- `lithos-core/src/note/adapter/reader.rs`
+
+---
+
+### N-MJ-09 — Custom Status Symbols Are Unrepresentable
+
+The task config supports arbitrary printable ASCII status symbols, but parsing
+only uses `Event::TaskListMarker(checked)` and maps it to `' '` or `'x'`. Any
+custom status symbol in the source is lost because pulldown-cmark does not
+expose the original bracket character.
+
+**Files**:
+
+- `lithos-core/src/note/adapter/reader.rs`
+- `lithos-core/src/config/task.rs` (context-only)
+
+---
+
+### N-MJ-10 — Note Path Uniqueness Is Not Enforced
+
+`CommandAdapter::create` does not check for an existing note with the same
+path. `PATH_TO_ID` is a multimap, and `Query::find_by_path` returns only the
+first ID. This makes duplicate paths possible and produces ambiguous reads.
+
+**Files**:
+
+- `lithos-core/src/note/adapter/command.rs`
+- `lithos-core/src/note/adapter/query.rs`
+
 **Files**:
 
 - `lithos-core/src/note/link.rs`
@@ -235,13 +294,12 @@ anchors should remain part of the URL, not a separate anchor field.
 ### 6.2 Missing Options (Potential Obsidian Gaps)
 
 - `ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS` (TOML frontmatter)
-- `ENABLE_GFM` (callouts like `[!NOTE]`)
 
 ### 6.3 Event Handling Gaps
 
 - Missing link text in headings/list items (N-CR-02).
+- Markdown link display text / image alt text not captured (N-CR-02/N-CR-04).
 - Metadata newline handling (N-CR-05).
-- Markdown link alias not captured for `[]()` links.
 
 ---
 
@@ -313,12 +371,16 @@ These inflate the suite without increasing confidence.
 Recommended tests not currently present:
 
 - Link text inside headings/list items.
-- Markdown images vs wiki embeds.
-- External URL fragments.
+- Markdown link display text / image alt text captured.
+- Markdown images vs wiki embeds (style + target type).
+- Wiki embeds with anchors (`![[note#heading]]`).
+- External URL fragments and non-HTTP schemes.
 - Metadata blocks with line breaks.
 - `NotePath` with `.` components and Windows prefixes.
 - Task tag parsing with invalid tags and mixed Unicode.
 - Task promotion boundary matching.
+- Custom status symbols (beyond `x`/space).
+- Duplicate path prevention and query behavior.
 
 ---
 
@@ -405,10 +467,10 @@ This section is guidance only. No refactor performed.
 ### P0 (Immediate)
 
 - Fix index writes for all declared indexes.
-- Fix link text handling in headings/items.
+- Fix link text handling in headings/items and capture markdown link text/alt.
 - Fix external URL fragment handling.
-- Fix markdown image style classification.
-- Preserve frontmatter newlines in metadata blocks.
+- Fix markdown image modeling (style + target + alt text handling).
+- Preserve frontmatter newlines in metadata blocks (or assert pulldown emits).
 
 ### P1 (Short Term)
 
@@ -416,6 +478,9 @@ This section is guidance only. No refactor performed.
 - Make task promotion tag matching token-aware.
 - Adjust task tag extraction to avoid full-task failure.
 - Normalize/validate NotePath curdir and Windows prefix cases.
+- Decide how to represent wiki-embed anchors and non-HTTP schemes.
+- Reconcile custom task status symbols with parser limitations.
+- Enforce path uniqueness or make query behavior deterministic for duplicates.
 
 ### P2 (Cleanup)
 
@@ -451,6 +516,10 @@ This section is guidance only. No refactor performed.
 | N-MJ-04 | Major    | Task::extract_tags fails task on invalid tag |
 | N-MJ-05 | Major    | Task::should_promote uses substring match    |
 | N-MJ-06 | Major    | External anchor validation inconsistent      |
+| N-MJ-07 | Major    | Wiki embeds drop anchors                     |
+| N-MJ-08 | Major    | Non-HTTP schemes treated as internal         |
+| N-MJ-09 | Major    | Custom status symbols unrepresentable        |
+| N-MJ-10 | Major    | Note path uniqueness not enforced            |
 | N-PR-01 | Minor    | String allocation anti-patterns              |
 | N-PR-02 | Minor    | UUID stringification in hot paths            |
 | N-PR-03 | Minor    | FieldValue JSON semantics questionable       |
