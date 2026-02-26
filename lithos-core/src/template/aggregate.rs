@@ -30,27 +30,6 @@ use super::{
     value::InputSpec,
 };
 
-/// Template name validation pattern: alphanumeric, underscores, and dashes.
-///
-/// Pattern: `^[a-zA-Z0-9_-]+$`.
-///
-/// # Examples
-/// - Valid: `daily-note`, `MyTemplate`, `template_123`
-/// - Invalid: `template name`, `template!`, `template.txt`
-const TEMPLATE_NAME_PATTERN: &str = "^[a-zA-Z0-9_-]+$";
-
-/// Input name validation pattern: programming-style identifiers.
-///
-/// Pattern: `^[a-zA-Z_][a-zA-Z0-9_]*$`.
-///
-/// Must start with a letter or underscore. May contain letters, digits, and
-/// underscores.
-///
-/// # Examples
-/// - Valid: `title`, `my_var`, `_private`, `camelCase`
-/// - Invalid: `123var`, `my-var`, `var!`
-const IDENTIFIER_PATTERN: &str = "^[a-zA-Z_][a-zA-Z0-9_]*$";
-
 const RESERVED_WORDS: &[&str] = &[
     "block",
     "call",
@@ -97,6 +76,15 @@ const RESERVED_WORDS: &[&str] = &[
 pub struct TemplateName(pub Box<str>);
 
 impl TemplateName {
+    /// Template name validation pattern: alphanumeric, underscores, and dashes.
+    ///
+    /// Pattern: `^[a-zA-Z0-9_-]+$`.
+    ///
+    /// # Examples
+    /// - Valid: `daily-note`, `MyTemplate`, `template_123`
+    /// - Invalid: `template name`, `template!`, `template.txt`
+    const PATTERN: &'static str = "^[a-zA-Z0-9_-]+$";
+
     /// Returns the template name as a string slice.
     #[inline]
     #[must_use]
@@ -118,7 +106,7 @@ impl TryFrom<&str> for TemplateName {
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(TEMPLATE_NAME_PATTERN));
+            LazyLock::new(|| Regex::new(TemplateName::PATTERN));
 
         if value.is_empty() {
             return Err(TemplateError::EmptyTemplateName);
@@ -159,6 +147,18 @@ impl TryFrom<&str> for TemplateName {
 pub struct InputName(pub Box<str>);
 
 impl InputName {
+    /// Input name validation pattern: programming-style identifiers.
+    ///
+    /// Pattern: `^[a-zA-Z_][a-zA-Z0-9_]*$`.
+    ///
+    /// Must start with a letter or underscore. May contain letters, digits, and
+    /// underscores.
+    ///
+    /// # Examples
+    /// - Valid: `title`, `my_var`, `_private`, `camelCase`
+    /// - Invalid: `123var`, `my-var`, `var!`
+    const PATTERN: &'static str = "^[a-zA-Z_][a-zA-Z0-9_]*$";
+
     /// Returns the input name as a string slice.
     #[inline]
     #[must_use]
@@ -180,7 +180,7 @@ impl TryFrom<&str> for InputName {
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(IDENTIFIER_PATTERN));
+            LazyLock::new(|| Regex::new(InputName::PATTERN));
 
         if value.is_empty() {
             return Err(TemplateError::EmptyInputName);

@@ -23,18 +23,6 @@ use uuid::Uuid;
 
 use super::{error::SchemaError, property_spec::PropertySpec};
 
-/// Property name pattern: mixed-case letters, underscores, and hyphens.
-///
-/// Pattern: `^[A-Za-z_][A-Za-z0-9_-]*$`.
-///
-/// Must start with a letter (uppercase or lowercase) or underscore.
-/// May contain letters, digits, underscores, and hyphens.
-///
-/// # Examples
-/// - Valid: `status`, `MyProperty`, `_internal`, `tag-name`, `Priority1`
-/// - Invalid: `123prop`, `-prop`, `prop!`, `my prop`
-const PROPERTY_NAME_PATTERN: &str = "^[A-Za-z_][A-Za-z0-9_-]*$";
-
 /// Reusable property definition with type-specific validation.
 ///
 /// This is the resolved entity used in the Domain layer.
@@ -590,6 +578,19 @@ impl Display for PropertyId {
 pub struct PropertyName(Box<str>);
 
 impl PropertyName {
+    /// Property name validation pattern: mixed-case letters, underscores, and
+    /// hyphens.
+    ///
+    /// Pattern: `^[A-Za-z_][A-Za-z0-9_-]*$`.
+    ///
+    /// Must start with a letter (uppercase or lowercase) or underscore.
+    /// May contain letters, digits, underscores, and hyphens.
+    ///
+    /// # Examples
+    /// - Valid: `status`, `MyProperty`, `_internal`, `tag-name`, `Priority1`
+    /// - Invalid: `123prop`, `-prop`, `prop!`, `my prop`
+    const PATTERN: &'static str = "^[A-Za-z_][A-Za-z0-9_-]*$";
+
     /// Create a new `PropertyName` with validation.
     ///
     /// # Errors
@@ -642,7 +643,7 @@ impl PropertyName {
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(PROPERTY_NAME_PATTERN));
+            LazyLock::new(|| Regex::new(PropertyName::PATTERN));
 
         if name.is_empty() {
             return Err(SchemaError::EmptyPropertyName);
