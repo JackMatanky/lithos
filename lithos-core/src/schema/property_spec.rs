@@ -753,6 +753,9 @@ impl NumberSpec {
     }
 
     /// Validates that a numeric value aligns with a step increment.
+    ///
+    /// Uses relative epsilon (scaled to step size) for robust floating-point
+    /// comparison across magnitudes.
     #[inline]
     #[expect(
         clippy::float_arithmetic,
@@ -760,7 +763,6 @@ impl NumberSpec {
         reason = "Core numeric validation logic with epsilon comparison"
     )]
     fn validate_step(&self, finite: FiniteF64) -> Result<(), SchemaError> {
-        const EPSILON: f64 = 1e-10;
         let value = finite.get();
 
         if let Some(step) = self.step {
@@ -768,7 +770,11 @@ impl NumberSpec {
             let offset = (value - base).abs();
             let remainder = offset % step.get();
 
-            if remainder > EPSILON && (step.get() - remainder) > EPSILON {
+            // Use relative epsilon scaled to step size for robust comparison
+            // across different magnitudes (handles both large and tiny steps)
+            let epsilon = step.get().abs() * 1e-10f64;
+
+            if remainder > epsilon && (step.get() - remainder) > epsilon {
                 return Err(SchemaError::InvalidStepValue {
                     value,
                     step: step.get(),
