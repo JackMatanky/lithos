@@ -15,8 +15,8 @@
         "$ref": "#/$defs/PropertyDefinition"
       },
       "propertyNames": {
-        "pattern": "^[a-z][a-z0-9_]*$",
-        "description": "Property names must be lowercase and may only contain letters, digits, and underscores."
+        "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+        "description": "Property names must start with a letter (uppercase or lowercase) or underscore, and may contain letters, digits, underscores, and hyphens."
       },
       "minProperties": 1
     }

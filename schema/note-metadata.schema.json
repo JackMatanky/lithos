@@ -21,8 +21,8 @@
         "$ref": "#/$defs/Property"
       },
       "propertyNames": {
-        "pattern": "^[a-z][a-z0-9_]*$",
-        "description": "Property names must be lowercase and may only contain letters, digits, and underscores."
+        "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$",
+        "description": "Property names must start with a letter (uppercase or lowercase) or underscore, and may contain letters, digits, underscores, and hyphens."
       }
     },
     "extends": {
@@ -71,7 +71,7 @@
           "title": "Property Bank Reference Path",
           "description": "Must follow the format 'property_bank#/<name>' where <name> is the exact key of a property defined in the vault's property_bank.json file.",
           "type": "string",
-          "pattern": "^property_bank#/[a-z][a-z0-9_]*$"
+          "pattern": "^property_bank#/[A-Za-z_][A-Za-z0-9_-]*$"
         },
         "required": {
           "title": "Required",
