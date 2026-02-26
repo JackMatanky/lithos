@@ -12,7 +12,8 @@ The note module is structurally solid (CQRS ports, clean domain types, rkyv
 usage, well-formed adapters), but has critical correctness gaps in indexing
 and markdown parsing. Link text inside headings/list items is lost, markdown
 link display text/alt text is never captured, and external URL fragments are
-split incorrectly. Indexes beyond path/tag are declared and queried but never
+split incorrectly. Note tags are never extracted by the reader, so tag indexes
+are silently empty. Indexes beyond path/tag are declared and queried but never
 written, effectively breaking multiple query APIs. The test suite contains
 time-based flakiness and a large set of low-value getter tests that dilute
 signal. Performance issues exist but are secondary to correctness.
@@ -68,6 +69,13 @@ out-of-scope for refactoring in this review.
   deletion above a span invalidates all downstream line numbers.
 - Byte offsets are precise and align with pulldown-cmark output. If line/column
   display is needed, derive it from the source text at render time.
+
+### 3.5 Task Parsing Config Flow (Current)
+
+- `NoteReader` owns `Config` and passes `config.task()` into task parsing.
+- `Task::should_promote` and `Task::from_checkbox` currently take `&TaskConfig`.
+- This means task parsing in `note/task.rs` depends directly on config types,
+  rather than being driven purely by a higher-level service.
 
 ---
 
@@ -167,6 +175,44 @@ is harmless; verify with a targeted test.)
 **Files**:
 
 - `lithos-core/src/note/adapter/reader.rs`
+
+---
+
+### N-CR-06 — Wikilink Alias Text Overwrites Instead of Merging
+
+`LinkState.alias` is overwritten on each `Event::Text` while a wikilink alias
+is active. pulldown-cmark can emit multiple consecutive `Event::Text` segments,
+so aliases can be truncated unless the text is appended or merged.
+
+**Files**:
+
+- `lithos-core/src/note/adapter/reader.rs`
+
+---
+
+### N-CR-07 — Plus-Delimited Metadata Blocks Ignored
+
+Only `MetadataBlockKind::YamlStyle` is handled, so TOML frontmatter delimited
+by `+++` is ignored even if the option is enabled.
+
+**Files**:
+
+- `lithos-core/src/note/adapter/reader.rs`
+
+---
+
+### N-CR-08 — Note Tags Are Never Extracted
+
+`NoteReader` does not extract tags from the note body or frontmatter into
+`Note.tags`, yet the storage layer indexes `note.tags()` into `TAGS_TO_NOTES`.
+This makes tag indexes and tag-based queries empty unless tags are injected by
+some other pipeline (none found in this module).
+
+**Files**:
+
+- `lithos-core/src/note/adapter/reader.rs`
+- `lithos-core/src/note/aggregate.rs`
+- `lithos-core/src/note/adapter/command.rs`
 
 ---
 
@@ -290,9 +336,18 @@ first ID. This makes duplicate paths possible and produces ambiguous reads.
 - `lithos-core/src/note/adapter/command.rs`
 - `lithos-core/src/note/adapter/query.rs`
 
+---
+
+### N-MJ-11 — SourceByteRange Has No Ordering Validation
+
+`SourceByteRange::new` and `Section::new` accept any start/end combination.
+This allows inverted or zero-length ranges to be stored without validation.
+If range semantics matter (e.g., section highlighting), enforce `start <= end`.
+
 **Files**:
 
-- `lithos-core/src/note/link.rs`
+- `lithos-core/src/note/types.rs`
+- `lithos-core/src/note/structure.rs`
 
 ---
 
@@ -308,7 +363,6 @@ first ID. This makes duplicate paths possible and produces ambiguous reads.
 
 - `ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS` (TOML frontmatter)
 - `ENABLE_GFM` (callouts via `Tag::BlockQuote(BlockQuoteKind)`)
-- `ENABLE_HEADING_ATTRIBUTES` (explicit heading IDs/classes/attrs)
 
 ### 6.3 Event Handling Gaps
 
@@ -419,6 +473,57 @@ or using `TextMergeWithOffset`.
 
 ---
 
+### N-PR-06 — Task Status Getter Clones
+
+`Task::status()` returns a cloned `StatusName` on each call. This is minor but
+avoidable if the API returns `&StatusName` instead.
+
+**Files**:
+
+- `lithos-core/src/note/task.rs`
+
+---
+
+### N-PR-07 — Error Variants Store `String` Instead of `Box<str>`
+
+`NoteError` and related error variants store owned `String`. The project
+guidelines prefer `Box<str>` for immutable owned strings to reduce allocation
+overhead. This is low priority but pervasive.
+
+**Files**:
+
+- `lithos-core/src/note/error.rs`
+
+---
+
+### N-PR-08 — `FieldValue` JSON Conversion Semantics Are Leaky
+
+`FieldValue::from_json` accepts `serde_json::Value` but is used as a generic
+conversion for YAML/TOML as well. It silently maps non‑representable numbers to
+`0.0` and `Null` to empty string, which can corrupt metadata. If JSON interop is
+required, prefer explicit `serde_json` serialization/deserialization or a
+strict conversion that errors on lossy cases.
+
+**Files**:
+
+- `lithos-core/src/note/value.rs`
+
+---
+
+### N-PR-09 — Task Parsing Depends Directly on `TaskConfig`
+
+`Task::from_checkbox` and related helpers take `&TaskConfig`, binding task
+parsing to a lower-level config type and bypassing `Config` (aggregate) at the
+call site. This complicates enforcing “active vault config” semantics and
+makes the domain entity config-aware.
+
+**Files**:
+
+- `lithos-core/src/note/task.rs`
+- `lithos-core/src/note/adapter/reader.rs`
+
+---
+
 ## 8. Test Suite Audit
 
 ### 8.1 Flaky/Time-Dependent Tests
@@ -442,6 +547,9 @@ These inflate the suite without increasing confidence.
 - `lithos-core/src/note/structure.rs` (Heading/Section accessors)
 - `lithos-core/src/note/frontmatter.rs` (accessor-only cases)
 - `lithos-core/src/note/value.rs` (getter-only cases)
+- `lithos-core/src/note/tag.rs` (getter-only + trivial parsing)
+- `lithos-core/src/note/link.rs` (accessor-only tests)
+- `lithos-core/src/note/list.rs` (setter/getter only)
 
 ---
 
@@ -494,6 +602,18 @@ remove**: this is intended for event-driven design adoption.
 Beyond the items above (and the explicitly unused `FieldValue::to_json_string`
 utility), no other components in `note/` appear removable or superseded by
 existing components without a product decision.
+
+---
+
+### N-SU-04 — `FieldValue::to_json_string` Is Unused and Fragile
+
+`to_json_string` is unused and produces nondeterministic key ordering with
+partial escaping. Either remove it or replace it with `serde_json` for stable
+indexing output.
+
+**Files**:
+
+- `lithos-core/src/note/value.rs`
 
 **Files**:
 
@@ -564,6 +684,8 @@ This section is guidance only. No refactor performed.
 - Use `LinkType::Autolink`/`Email` to classify external targets correctly.
 - Merge link alias text across consecutive `Event::Text` events.
 - Handle plus-delimited metadata blocks if TOML frontmatter is desired.
+- Extract note tags into `Note.tags` (body and/or frontmatter) or remove tag
+  indexes until population exists.
 
 ### P1 (Short Term)
 
@@ -577,6 +699,10 @@ This section is guidance only. No refactor performed.
 - Consider enabling heading attributes + GFM callouts and mapping to domain
   fields where relevant.
 - Add a line/column derivation utility built on byte offsets.
+- Validate `SourceByteRange` ordering if range semantics are used downstream.
+- Consider routing task parsing exclusively through `Config` (aggregate)
+  instead of accepting `TaskConfig` directly, to ensure active vault config is
+  always used.
 
 ### P2 (Cleanup)
 
@@ -608,6 +734,7 @@ This section is guidance only. No refactor performed.
 | N-CR-05 | High     | Frontmatter parsing loses newlines           |
 | N-CR-06 | Critical | Wikilink alias text overwritten              |
 | N-CR-07 | Critical | Plus-delimited metadata blocks ignored       |
+| N-CR-08 | Critical | Note tags never extracted                    |
 | N-MJ-01 | Major    | NotePath allows `.` components               |
 | N-MJ-02 | Major    | NotePath ignores Windows prefixes            |
 | N-MJ-03 | Major    | Tag validation rules inconsistent            |
@@ -618,12 +745,15 @@ This section is guidance only. No refactor performed.
 | N-MJ-08 | Major    | Non-HTTP schemes treated as internal         |
 | N-MJ-09 | Major    | Custom status symbols unrepresentable        |
 | N-MJ-10 | Major    | Note path uniqueness not enforced            |
+| N-MJ-11 | Major    | SourceByteRange ordering not validated       |
 | N-PR-01 | Minor    | String allocation anti-patterns              |
 | N-PR-02 | Minor    | UUID stringification in hot paths            |
 | N-PR-03 | Minor    | FieldValue JSON semantics questionable       |
 | N-PR-04 | Minor    | No line/column utility for byte offsets      |
 | N-PR-05 | Minor    | Link alias per-event allocation              |
+| N-PR-06 | Minor    | Task status getter clones                    |
 | N-TF-01 | Major    | Time-dependent task timestamp test           |
 | N-SU-01 | Minor    | Sections never constructed                   |
 | N-SU-02 | Minor    | NoteEvents not used outside tests            |
 | N-SU-03 | Minor    | No additional removal candidates             |
+| N-SU-04 | Minor    | FieldValue::to_json_string unused            |
