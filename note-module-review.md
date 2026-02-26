@@ -351,6 +351,18 @@ If range semantics matter (e.g., section highlighting), enforce `start <= end`.
 
 ---
 
+### N-MJ-12 — Task Tag Regex Overmatches and Is ASCII-Only
+
+`Task::extract_tags` uses a regex that matches `#[a-zA-Z0-9_\-/]+` anywhere in
+the raw task text. This can capture tags inside URLs/code or other contexts and
+does not match the Unicode allowance in `Tag::new`.
+
+**Files**:
+
+- `lithos-core/src/note/task.rs`
+
+---
+
 ## 6. pulldown-cmark Usage Review
 
 ### 6.1 Enabled Options
@@ -524,6 +536,17 @@ makes the domain entity config-aware.
 
 ---
 
+### N-PR-10 — Task Text Stored as `String`
+
+`Task.text` is stored as `String` but is immutable after construction. Use
+`Box<str>` to reduce overallocation and align with project string guidelines.
+
+**Files**:
+
+- `lithos-core/src/note/task.rs`
+
+---
+
 ## 8. Test Suite Audit
 
 ### 8.1 Flaky/Time-Dependent Tests
@@ -595,6 +618,11 @@ represent Obsidian `CachedMetadata` blocks and will be populated later.
 `Note` accumulates events, but no production pipeline consumes them. **Do not
 remove**: this is intended for event-driven design adoption.
 
+**Files**:
+
+- `lithos-core/src/note/aggregate.rs`
+- `lithos-core/src/note/events.rs`
+
 ---
 
 ### N-SU-03 — No Additional Removal Candidates Found
@@ -615,10 +643,18 @@ indexing output.
 
 - `lithos-core/src/note/value.rs`
 
+---
+
+### N-SU-05 — TaskMetadata Convenience Accessors May Be Premature
+
+`TaskMetadata::priority`, `project`, and `area` hardcode field names despite
+the task metadata system being schema‑driven. If metadata keys are entirely
+configurable, these methods may be redundant or belong in a higher‑level
+service.
+
 **Files**:
 
-- `lithos-core/src/note/aggregate.rs`
-- `lithos-core/src/note/events.rs`
+- `lithos-core/src/note/task.rs`
 
 ---
 
@@ -703,6 +739,7 @@ This section is guidance only. No refactor performed.
 - Consider routing task parsing exclusively through `Config` (aggregate)
   instead of accepting `TaskConfig` directly, to ensure active vault config is
   always used.
+- Tighten task tag parsing to be token‑aware and consistent with `Tag` rules.
 
 ### P2 (Cleanup)
 
@@ -746,14 +783,20 @@ This section is guidance only. No refactor performed.
 | N-MJ-09 | Major    | Custom status symbols unrepresentable        |
 | N-MJ-10 | Major    | Note path uniqueness not enforced            |
 | N-MJ-11 | Major    | SourceByteRange ordering not validated       |
+| N-MJ-12 | Major    | Task tag regex overmatches/ASCII‑only        |
 | N-PR-01 | Minor    | String allocation anti-patterns              |
 | N-PR-02 | Minor    | UUID stringification in hot paths            |
 | N-PR-03 | Minor    | FieldValue JSON semantics questionable       |
 | N-PR-04 | Minor    | No line/column utility for byte offsets      |
 | N-PR-05 | Minor    | Link alias per-event allocation              |
 | N-PR-06 | Minor    | Task status getter clones                    |
+| N-PR-07 | Minor    | Error variants store String                  |
+| N-PR-08 | Minor    | FieldValue JSON conversion semantics leaky   |
+| N-PR-09 | Minor    | Task parsing depends on TaskConfig           |
+| N-PR-10 | Minor    | Task text stored as String                   |
 | N-TF-01 | Major    | Time-dependent task timestamp test           |
 | N-SU-01 | Minor    | Sections never constructed                   |
 | N-SU-02 | Minor    | NoteEvents not used outside tests            |
 | N-SU-03 | Minor    | No additional removal candidates             |
 | N-SU-04 | Minor    | FieldValue::to_json_string unused            |
+| N-SU-05 | Minor    | TaskMetadata convenience accessors           |
