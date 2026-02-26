@@ -16,7 +16,7 @@ use std::{
     sync::{Arc, OnceLock, RwLock},
 };
 
-use super::error::SchemaError;
+use super::{error::SchemaError, formats::StringFormat};
 use crate::bounds::{Bounds, BoundsError};
 
 // === Public API ===
@@ -856,11 +856,15 @@ impl NumberSpec {
 
 /// String property validation constraints.
 ///
+/// # Invariants
+/// - `format` and `pattern` are mutually exclusive (only one can be set).
+/// - If `pattern` is set, it must be a valid regex.
+///
 /// # Examples
 /// ```
 /// use lithos_core::schema::property_spec::StringSpec;
 ///
-/// let spec = StringSpec::try_new(None, None)?;
+/// let spec = StringSpec::try_new(None, None, None)?;
 /// let _ = spec;
 /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
 /// ```
@@ -880,6 +884,7 @@ impl NumberSpec {
 pub struct StringSpec {
     options: Option<Vec<OptionEntry>>,
     pattern: Option<Box<str>>,
+    format: Option<StringFormat>,
 }
 
 impl Default for StringSpec {
@@ -888,6 +893,7 @@ impl Default for StringSpec {
         Self {
             options: None,
             pattern: None,
+            format: None,
         }
     }
 }
@@ -896,20 +902,31 @@ impl StringSpec {
     /// Create a validated `StringSpec`.
     ///
     /// # Errors
-    /// Returns `SchemaError` if `pattern` is present but not a valid regex.
+    /// Returns `SchemaError` if:
+    /// - `pattern` is present but not a valid regex.
+    /// - Both `pattern` and `format` are specified (mutually exclusive).
     ///
     /// # Examples
     /// ```
     /// use lithos_core::schema::property_spec::StringSpec;
     ///
-    /// let _spec = StringSpec::try_new(None, None)?;
+    /// let _spec = StringSpec::try_new(None, None, None)?;
     /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
     /// ```
     #[inline]
     pub fn try_new(
         pattern: Option<Box<str>>,
+        format: Option<StringFormat>,
         options: Option<Vec<OptionEntry>>,
     ) -> Result<Self, SchemaError> {
+        // Validate mutual exclusivity
+        if pattern.is_some() && format.is_some() {
+            return Err(SchemaError::ValidationFailed(
+                "pattern and format are mutually exclusive".into(),
+            ));
+        }
+
+        // Validate pattern if present
         let pattern = match pattern {
             Some(p) => {
                 get_cached_regex(&p)?;
@@ -921,6 +938,7 @@ impl StringSpec {
         Ok(Self {
             options,
             pattern,
+            format,
         })
     }
 
@@ -947,6 +965,20 @@ impl StringSpec {
     }
 
     fn validate_pattern(&self, value: &str) -> Result<(), SchemaError> {
+        // Use format pattern if specified
+        if let Some(format) = self.format {
+            let pattern = format.pattern();
+            let re = get_cached_regex(pattern)?;
+            if !re.is_match(value) {
+                return Err(SchemaError::ValidationFailed(format!(
+                    "Value {value} does not match format '{format}' (pattern: \
+                     {pattern})"
+                )));
+            }
+            return Ok(());
+        }
+
+        // Otherwise use custom pattern if specified
         if let Some(pattern) = self.pattern.as_ref() {
             let re = get_cached_regex(pattern)?;
             if !re.is_match(value) {
@@ -964,7 +996,7 @@ impl StringSpec {
     /// ```ignore
     /// use lithos_core::schema::property_spec::StringSpec;
     ///
-    /// let spec = StringSpec::try_new(None, None)?;
+    /// let spec = StringSpec::try_new(None, None, None)?;
     /// let mut hasher = blake3::Hasher::new();
     /// spec.hash_into_blake3(&mut hasher);
     /// let _digest = hasher.finalize();
@@ -1001,6 +1033,12 @@ impl StringSpec {
         } else {
             hasher.update(&[0u8]);
         }
+        if let Some(format) = self.format {
+            hasher.update(&[1u8]);
+            hasher.update(format.name().as_bytes());
+        } else {
+            hasher.update(&[0u8]);
+        }
     }
 
     /// Apply overrides from a raw string spec.
@@ -1014,7 +1052,7 @@ impl StringSpec {
     /// ```
     /// use lithos_core::schema::{property_spec::StringSpec, raw::RawStringSpec};
     ///
-    /// let base = StringSpec::try_new(None, None)?;
+    /// let base = StringSpec::try_new(None, None, None)?;
     /// let overrides = RawStringSpec::default();
     /// let _updated = base.apply_overrides(&overrides)?;
     /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
@@ -1025,12 +1063,13 @@ impl StringSpec {
         overrides: &crate::schema::raw::RawStringSpec,
     ) -> Result<Self, SchemaError> {
         let pattern = overrides.pattern.clone().or(self.pattern);
+        let format = overrides.format.or(self.format);
         let options = overrides
             .options
             .as_ref()
             .map(|o| o.clone().into_entries())
             .or(self.options);
-        Self::try_new(pattern, options)
+        Self::try_new(pattern, format, options)
     }
 }
 
@@ -1274,6 +1313,7 @@ mod tests {
             fn validated_spec(def: RawStringSpec) -> StringSpec {
                 StringSpec::try_new(
                     def.pattern,
+                    def.format,
                     def.options.map(RawOptions::into_entries),
                 )
                 .expect("Expected valid RawStringSpec")

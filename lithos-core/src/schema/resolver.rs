@@ -19,7 +19,7 @@
 //! `merge_properties` is a **private** method to prevent callers from
 //! bypassing the correct pipeline.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
@@ -74,7 +74,7 @@ impl Resolver {
             })?;
 
             // Obtain parent's resolved properties.
-            let parent_props: &[Property] =
+            let parent_props: &[Arc<Property>] =
                 if let Some(parent_id) = node.parent_id {
                     resolved_cache
                         .get(&parent_id)
@@ -84,9 +84,16 @@ impl Resolver {
                     &[]
                 };
 
+            // Convert own properties to Arc<Property> for the merge
+            let own_props_arc: Vec<Arc<Property>> = node
+                .own_properties
+                .iter()
+                .map(|p| Arc::new(p.clone()))
+                .collect();
+
             let merged = Self::merge_properties(
                 parent_props,
-                &node.own_properties,
+                &own_props_arc,
                 &node.excludes,
             );
 
@@ -112,8 +119,8 @@ impl Resolver {
     ///
     /// [`Dereferencer`]: super::dereferencer::Dereferencer
     fn merge_properties(
-        parent: &[Property],
-        own: &[Property],
+        parent: &[Arc<Property>],
+        own: &[Arc<Property>],
         excludes: &[Box<str>],
     ) -> Vec<Property> {
         let capacity = parent.len().saturating_add(own.len());
@@ -135,11 +142,13 @@ impl Resolver {
                             p_iter.next();
                         }
                         Ordering::Greater => {
-                            result.push(c.clone());
+                            // Clone the Arc's inner Property
+                            result.push((**c).clone());
                             c_iter.next();
                         }
                         Ordering::Equal => {
-                            result.push(c.clone());
+                            // Child overrides parent
+                            result.push((**c).clone());
                             p_iter.next();
                             c_iter.next();
                         }
@@ -150,7 +159,7 @@ impl Resolver {
                     p_iter.next();
                 }
                 (None, Some(&c)) => {
-                    result.push(c.clone());
+                    result.push((**c).clone());
                     c_iter.next();
                 }
                 (None, None) => break,
@@ -163,11 +172,12 @@ impl Resolver {
     #[inline]
     fn push_unless_excluded(
         result: &mut Vec<Property>,
-        prop: &Property,
+        prop: &Arc<Property>,
         excludes: &[Box<str>],
     ) {
         if !Self::is_excluded(prop.name(), excludes) {
-            result.push(prop.clone());
+            // Clone the Arc's inner Property
+            result.push((**prop).clone());
         }
     }
 

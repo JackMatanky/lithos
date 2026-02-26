@@ -4,14 +4,15 @@
   "title": "Lithos Note Schema",
   "description": "Defines the format of a Lithos note schema file. A note schema describes the frontmatter properties expected on a type of markdown note in the vault. Properties may be defined inline or referenced from the property bank using '$ref: property_bank#/<name>'. Schemas may extend a parent schema and exclude inherited properties they don't need.",
   "type": "object",
-  "required": ["$version", "name", "properties"],
+  "required": ["name", "properties"],
   "additionalProperties": false,
   "properties": {
     "$version": {
       "title": "Schema Version",
-      "description": "The version of the Lithos schema format this file uses. Used for migration and compatibility checking. Current version is '1.0'.",
+      "description": "The version of the Lithos schema format this file uses. Optional - defaults to '1.0' if not specified. Used for migration and compatibility checking when upgrading to future versions.",
       "type": "string",
       "const": "1.0",
+      "default": "1.0",
       "examples": ["1.0"]
     },
     "name": {

@@ -11,7 +11,7 @@
 use std::{
     borrow::Borrow,
     fmt::{Debug, Display},
-    sync::LazyLock,
+    sync::{Arc, LazyLock},
 };
 
 use regex::Regex;
@@ -22,7 +22,6 @@ use super::{
     events::{Events, SchemaCreated, SchemaResolved},
     property::{Property, PropertyName},
 };
-use crate::patterns;
 
 // ----------------------------------------------------------- //
 //                    Schema Aggregate Root                    //
@@ -62,14 +61,7 @@ use crate::patterns;
 /// assert_eq!(ts.as_secs(), 1_234);
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[non_exhaustive]
 pub struct Schema {
@@ -80,10 +72,70 @@ pub struct Schema {
     /// Parent schema ID, for inheritance tree reconstruction.
     parent_id: Option<SchemaId>,
     /// Fully resolved properties after inheritance.
-    properties: Vec<Property>,
-    /// Domain events pending emission.
-    #[serde(skip)]
+    /// Uses Arc<Property> for sharing across inheritance chains.
+    /// Serialized as Vec<Property> for compatibility.
+    properties: Vec<Arc<Property>>,
+    /// Domain events pending emission (not serialized).
     pending_events: Vec<Events>,
+}
+
+// Custom serialization: convert Arc<Property> to Property for storage
+#[expect(
+    clippy::missing_inline_in_public_items,
+    reason = "Inline not needed for this trait method"
+)]
+impl serde::Serialize for Schema {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct as _;
+        let mut state = serializer.serialize_struct("Schema", 4)?;
+        state.serialize_field("id", &self.id)?;
+        state.serialize_field("name", &self.name)?;
+        state.serialize_field("parent_id", &self.parent_id)?;
+        // Convert Arc<Property> to Property for serialization
+        let properties: Vec<_> =
+            self.properties.iter().map(|p| p.as_ref().clone()).collect();
+        state.serialize_field("properties", &properties)?;
+        state.end()
+    }
+}
+
+#[expect(
+    clippy::missing_inline_in_public_items,
+    clippy::missing_trait_methods,
+    reason = "Inline not needed for this trait method; deserialize_in_place \
+              not required for our use case"
+)]
+// Custom deserialization: convert Property to Arc<Property>
+impl<'de> serde::Deserialize<'de> for Schema {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SchemaDe {
+            id: SchemaId,
+            name: SchemaName,
+            parent_id: Option<SchemaId>,
+            properties: Vec<Property>,
+        }
+
+        let de = SchemaDe::deserialize(deserializer)?;
+        // Convert Property to Arc<Property>
+        let properties: Vec<Arc<Property>> =
+            de.properties.into_iter().map(Arc::new).collect();
+
+        Ok(Self {
+            id: de.id,
+            name: de.name,
+            parent_id: de.parent_id,
+            properties,
+            pending_events: vec![],
+        })
+    }
 }
 
 impl Schema {
@@ -118,6 +170,10 @@ impl Schema {
         parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
+        // Convert to Arc<Property> for sharing
+        let properties: Vec<Arc<Property>> =
+            properties.into_iter().map(Arc::new).collect();
+
         let mut schema = Self {
             id,
             name,
@@ -166,6 +222,10 @@ impl Schema {
         parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
+        // Convert to Arc<Property> for sharing
+        let properties: Vec<Arc<Property>> =
+            properties.into_iter().map(Arc::new).collect();
+
         let mut schema = Self {
             id,
             name,
@@ -195,6 +255,10 @@ impl Schema {
         parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Self {
+        // Convert to Arc<Property> for sharing
+        let properties: Vec<Arc<Property>> =
+            properties.into_iter().map(Arc::new).collect();
+
         Self {
             id,
             name,
@@ -272,7 +336,7 @@ impl Schema {
     /// ```
     #[inline]
     #[must_use]
-    pub fn properties(&self) -> &[Property] {
+    pub fn properties(&self) -> &[Arc<Property>] {
         &self.properties
     }
 
@@ -299,7 +363,7 @@ impl Schema {
     /// ```
     #[inline]
     #[must_use]
-    pub fn get(&self, name: &PropertyName) -> Option<&Property> {
+    pub fn get(&self, name: &PropertyName) -> Option<&Arc<Property>> {
         let i = self
             .properties
             .binary_search_by(|p| p.name().as_str().cmp(name.as_str()))
@@ -531,6 +595,16 @@ impl Default for SchemaId {
 pub struct SchemaName(Box<str>);
 
 impl SchemaName {
+    /// Schema name validation pattern: lowercase letters, numbers, underscores,
+    /// and hyphens.
+    ///
+    /// Pattern: `^[a-z0-9_-]+$`.
+    ///
+    /// # Examples
+    /// - Valid: `daily-note`, `project_schema`, `schema123`
+    /// - Invalid: `MySchema`, `invalid name`, `name!`
+    const PATTERN: &'static str = "^[a-z0-9_-]+$";
+
     /// Create a new `SchemaName` with validation.
     ///
     /// # Errors
@@ -583,7 +657,7 @@ impl SchemaName {
     #[inline]
     pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
-            LazyLock::new(|| Regex::new(patterns::ALPHANUMERIC_NAME_LOWER));
+            LazyLock::new(|| Regex::new(SchemaName::PATTERN));
 
         if name.is_empty() {
             return Err(SchemaError::EmptySchemaName);

@@ -2207,3 +2207,343 @@ Each item requires:
 ---
 
 **END OF PART 10**
+
+---
+
+## Part 11: Pattern Architecture & User-Facing Format System
+
+**Date**: 2026-02-26
+**Reviewer**: BMad Master Agent (Claude)
+**Scope**: Pattern localization + user-facing format abstraction
+**Status**: Critical design issues identified
+
+---
+
+### Executive Summary
+
+Two fundamental architectural issues discovered with the pattern system:
+
+1. **Pattern localization is broken**: Patterns in `patterns.rs` are NOT shared across contexts. Each pattern is used by exactly one module, violating encapsulation and creating false "shared infrastructure" that's actually domain-specific.
+
+2. **No user-facing format system**: Users must write raw regex patterns instead of using named formats like "email" or "url". This is a **major UX problem** that makes schemas harder to write and maintain.
+
+---
+
+### Issue 1: Pattern Localization (CRITICAL)
+
+**Severity**: 🔴 CRITICAL — Broken encapsulation
+**Location**: `lithos-core/src/patterns.rs`
+
+#### Current State (WRONG)
+
+```rust
+// patterns.rs — Falsely labeled as "shared"
+pub const ALPHANUMERIC_NAME: &str = "^[a-zA-Z0-9_-]+$";        // UNUSED
+pub const ALPHANUMERIC_NAME_LOWER: &str = "^[a-z0-9_-]+$";    // schema ONLY
+pub const PROPERTY_NAME: &str = "^[A-Za-z_][A-Za-z0-9_-]*$";  // schema ONLY
+pub const IDENTIFIER_NAME: &str = "^[a-zA-Z_][a-zA-Z0-9_]*$"; // template ONLY
+
+// User-facing patterns (EMAIL, URL, PHONE_US, etc.) — NEVER USED!
+pub const EMAIL: &str = r"^[^@]+@[^@]+\.[^@]+$";
+pub const URL: &str = r"^https?://[^\s/$.?#].[^\s]*$";
+pub const PHONE_US: &str = r"^\+?1?[-.\s]?\(?...";
+pub const SLUG: &str = "^[a-z0-9]+(-[a-z0-9]+)*$";
+pub const UUID_V4: &str = "^[0-9a-f]{8}-...";
+pub const WIKILINK: &str = r"^\[\[([^\]|]+)(\|[^\]]+)?\]\]$";
+pub const ZIP_CODE: &str = r"^\d{5}(-\d{4})?$";
+```
+
+#### Evidence of Non-Sharing
+
+- `ALPHANUMERIC_NAME_LOWER` used ONLY in `schema/aggregate.rs` (SchemaName validation)
+- `PROPERTY_NAME` used ONLY in `schema/property.rs` (PropertyName validation)
+- `IDENTIFIER_NAME` used ONLY in `template/` module (variable names)
+- `ALPHANUMERIC_NAME` is **completely unused** (dead code)
+
+#### The Real Problem
+
+**User-facing patterns** (EMAIL, URL, PHONE_US, SLUG, UUID_V4, WIKILINK, ZIP_CODE) exist in `patterns.rs` but are **NEVER REFERENCED** anywhere in the codebase. They were intended for users to reference by name, but there's **no mechanism to use them**.
+
+---
+
+### Issue 2: No User-Facing Format System (CRITICAL)
+
+**Severity**: 🔴 CRITICAL — Poor UX
+**Location**: `schema/property_spec.rs` — StringSpec has no format field
+
+#### Current User Experience (BAD)
+
+```json
+{
+  "email": {
+    "type": "string",
+    "pattern": "^[^@]+@[^@]+\\.[^@]+$"  // 🔴 User must write regex manually
+  },
+  "website": {
+    "type": "string",
+    "pattern": "^https?://[^\\s/$.?#].[^\\s]*$"  // 🔴 Copy-paste, error-prone
+  }
+}
+```
+
+#### Industry Standard (JSON Schema)
+
+```json
+{
+  "email": {
+    "type": "string",
+    "format": "email"  // ✅ Built-in named format
+  },
+  "website": {
+    "type": "string",
+    "format": "uri"    // ✅ Named format
+  }
+}
+```
+
+#### Why This Matters
+
+1. **Usability**: Writing regex is error-prone (escaping, anchors, etc.)
+2. **Consistency**: Every user implements "email" differently
+3. **Maintenance**: Changing regex requires vault-wide search-replace
+4. **Industry standard**: JSON Schema, OpenAPI, GraphQL all support named formats
+
+---
+
+### Proposed Solution
+
+#### Part A: Localize Domain-Specific Patterns
+
+**Move patterns into their modules**:
+
+```rust
+// schema/aggregate.rs
+const SCHEMA_NAME_PATTERN: &str = "^[a-z0-9_-]+$";
+
+// schema/property.rs
+const PROPERTY_NAME_PATTERN: &str = "^[A-Za-z_][A-Za-z0-9_-]*$";
+
+// template/mod.rs
+const IDENTIFIER_PATTERN: &str = "^[a-zA-Z_][a-zA-Z0-9_]*$";
+```
+
+**Remove** `patterns.rs` entirely (or make it module-private if template uses it internally).
+
+---
+
+#### Part B: Create User-Facing Format System
+
+**1. Define StringFormat enum**:
+
+```rust
+// schema/formats.rs (NEW FILE)
+
+/// Built-in string validation formats that users can reference by name.
+///
+/// These provide common validation patterns without requiring users to write regex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum StringFormat {
+    /// Email address validation (RFC 5322 simplified)
+    Email,
+    /// HTTP/HTTPS URL validation
+    Url,
+    /// US phone number (various formats)
+    PhoneUs,
+    /// Kebab-case slug (lowercase, hyphens)
+    Slug,
+    /// UUID version 4
+    UuidV4,
+    /// Obsidian-style wikilink [[page|alias]]
+    WikiLink,
+    /// US ZIP code (5 or 9 digits)
+    ZipCode,
+}
+
+impl StringFormat {
+    /// Get the regex pattern for this format.
+    pub const fn pattern(self) -> &'static str {
+        match self {
+            Self::Email => r"^[^@]+@[^@]+\.[^@]+$",
+            Self::Url => r"^https?://[^\s/$.?#].[^\s]*$",
+            Self::PhoneUs => r"^\+?1?[-.\s]?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})$",
+            Self::Slug => "^[a-z0-9]+(-[a-z0-9]+)*$",
+            Self::UuidV4 => "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            Self::WikiLink => r"^\[\[([^\]|]+)(\|[^\]]+)?\]\]$",
+            Self::ZipCode => r"^\d{5}(-\d{4})?$",
+        }
+    }
+}
+```
+
+**2. Update StringSpec**:
+
+```rust
+// property_spec.rs
+
+pub struct StringSpec {
+    format: Option<StringFormat>,      // NEW: Named format
+    pattern: Option<Box<str>>,         // Custom regex (mutually exclusive with format)
+    options: Option<Vec<OptionEntry>>,
+}
+
+impl StringSpec {
+    pub fn try_new(
+        format: Option<StringFormat>,
+        pattern: Option<Box<str>>,
+        options: Option<Vec<OptionEntry>>,
+    ) -> Result<Self, SchemaError> {
+        // Validate: format and pattern are mutually exclusive
+        if format.is_some() && pattern.is_some() {
+            return Err(SchemaError::ValidationFailed(
+                "Cannot specify both 'format' and 'pattern'".into()
+            ));
+        }
+
+        // Validate custom pattern if provided
+        if let Some(ref p) = pattern {
+            get_cached_regex(p)?;
+        }
+
+        Ok(Self { format, pattern, options })
+    }
+
+    fn validate_pattern(&self, value: &str) -> Result<(), SchemaError> {
+        // Use format's pattern if specified
+        let pattern_str = if let Some(fmt) = self.format {
+            fmt.pattern()
+        } else if let Some(ref p) = self.pattern {
+            p.as_ref()
+        } else {
+            return Ok(()); // No pattern validation
+        };
+
+        let re = get_cached_regex(pattern_str)?;
+        if !re.is_match(value) {
+            return Err(SchemaError::ValidationFailed(
+                format!("Value does not match expected format")
+            ));
+        }
+        Ok(())
+    }
+}
+```
+
+**3. Update RawStringSpec**:
+
+```rust
+// raw.rs
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RawStringSpec {
+    pub format: Option<StringFormat>,  // NEW
+    pub pattern: Option<Box<str>>,
+    pub options: Option<RawOptions>,
+}
+```
+
+**4. Update JSON Schemas**:
+
+```json
+{
+  "StringProperty": {
+    "properties": {
+      "type": { "const": "string" },
+      "format": {
+        "type": "string",
+        "enum": ["email", "url", "phone_us", "slug", "uuid_v4", "wikilink", "zip_code"],
+        "description": "Built-in validation format. Mutually exclusive with 'pattern'."
+      },
+      "pattern": {
+        "type": "string",
+        "format": "regex",
+        "description": "Custom regex pattern. Mutually exclusive with 'format'."
+      },
+      "options": { ... }
+    },
+    "oneOf": [
+      { "required": ["type", "format"] },
+      { "required": ["type", "pattern"] },
+      { "required": ["type", "options"] },
+      { "required": ["type"] }
+    ]
+  }
+}
+```
+
+---
+
+### Benefits of This Design
+
+#### Pattern Localization
+✅ Each module owns its validation rules
+✅ No false "shared" infrastructure
+✅ Clear encapsulation boundaries
+✅ Easier to refactor individual contexts
+
+#### User-Facing Formats
+✅ **Ease of use**: `"format": "email"` vs hand-writing regex
+✅ **Consistency**: Everyone uses the same email validation
+✅ **Maintainability**: Fix bugs in one place
+✅ **Discoverability**: IDE autocomplete shows available formats
+✅ **Industry alignment**: Matches JSON Schema, OpenAPI standards
+✅ **Extensibility**: Add new formats without breaking existing schemas
+
+---
+
+### Implementation Plan
+
+#### Step 1: Pattern Localization (BREAKING CHANGE)
+
+1. Move `ALPHANUMERIC_NAME_LOWER` → `schema/aggregate.rs` as `SCHEMA_NAME_PATTERN`
+2. Rename `PROPERTY_NAME` → `PROPERTY_NAME_PATTERN` and keep in `schema/property.rs`
+3. Move `IDENTIFIER_NAME` → `template/mod.rs` as `IDENTIFIER_PATTERN`
+4. Remove `ALPHANUMERIC_NAME` (dead code)
+5. Delete `patterns.rs` (or keep as `pub(crate)` if template needs internal sharing)
+
+#### Step 2: User-Facing Format System (FEATURE)
+
+1. Create `schema/formats.rs` with `StringFormat` enum
+2. Update `StringSpec` to add `format: Option<StringFormat>` field
+3. Update `RawStringSpec` to deserialize format field
+4. Add validation: format XOR pattern (mutually exclusive)
+5. Update `validate_pattern` to check format or pattern
+6. Update both JSON schemas to include format field with enum values
+7. Add tests for all 7 built-in formats
+8. Update documentation with format examples
+
+#### Step 3: Migration Guide
+
+**For users upgrading**:
+```json
+// OLD (still works)
+{
+  "email": { "type": "string", "pattern": "^[^@]+@..." }
+}
+
+// NEW (preferred)
+{
+  "email": { "type": "string", "format": "email" }
+}
+```
+
+**Breaking change**: Rust code using `patterns::PROPERTY_NAME` must update imports.
+
+---
+
+### Acceptance Criteria
+
+- [ ] All patterns localized to their modules
+- [ ] `patterns.rs` removed (or made module-private)
+- [ ] `StringFormat` enum with 7 formats implemented
+- [ ] `format` field added to StringSpec + RawStringSpec
+- [ ] JSON schemas updated with format enum
+- [ ] Tests for all 7 formats (valid + invalid cases)
+- [ ] Documentation updated with format examples
+- [ ] Migration guide written
+- [ ] `mise run verify` passes
+
+---
+
+**END OF PART 11**
