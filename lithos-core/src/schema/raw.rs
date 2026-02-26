@@ -1031,5 +1031,151 @@ mod tests {
             assert_eq!(entries[0].value.as_ref(), "first");
             assert_eq!(entries[1].value.as_ref(), "second");
         }
+
+        // --- Edge Case Tests for E-04 (Deserialization Disambiguation) ---
+
+        #[test]
+        fn raw_options_disambiguates_empty_object_array_as_rich() {
+            // Array of objects with only `value` field should deserialize as
+            // Rich
+            let json = r#"[{"value": "a"}, {"value": "b"}]"#;
+            let options: RawOptions = serde_json::from_str(json).unwrap();
+            match options {
+                RawOptions::Rich(entries) => {
+                    assert_eq!(entries.len(), 2);
+                    assert_eq!(entries[0].value.as_ref(), "a");
+                    assert_eq!(entries[0].label, None);
+                }
+                _ => panic!("Expected Rich variant for array of objects"),
+            }
+        }
+
+        #[test]
+        fn raw_options_disambiguates_strings_as_list() {
+            // Array of strings should always deserialize as List
+            let json = r#"["value", "label", "order"]"#;
+            let options: RawOptions = serde_json::from_str(json).unwrap();
+            match options {
+                RawOptions::List(items) => {
+                    assert_eq!(items.len(), 3);
+                    // These are literal strings, not field names
+                    assert_eq!(items[0].as_ref(), "value");
+                    assert_eq!(items[1].as_ref(), "label");
+                    assert_eq!(items[2].as_ref(), "order");
+                }
+                _ => panic!("Expected List variant for string array"),
+            }
+        }
+
+        #[test]
+        fn raw_options_rejects_array_of_numbers() {
+            // Numbers are not valid option values
+            let json = "[1, 2, 3]";
+            let result: Result<RawOptions, _> = serde_json::from_str(json);
+            assert!(
+                result.is_err(),
+                "Should reject array of numbers (not strings or objects)"
+            );
+        }
+
+        #[test]
+        fn raw_options_rejects_array_of_bools() {
+            // Booleans are not valid option values
+            let json = "[true, false]";
+            let result: Result<RawOptions, _> = serde_json::from_str(json);
+            assert!(
+                result.is_err(),
+                "Should reject array of booleans (not strings or objects)"
+            );
+        }
+
+        #[test]
+        fn raw_options_rejects_array_of_nulls() {
+            // Nulls are not valid option values
+            let json = "[null, null]";
+            let result: Result<RawOptions, _> = serde_json::from_str(json);
+            assert!(
+                result.is_err(),
+                "Should reject array of nulls (not strings or objects)"
+            );
+        }
+
+        #[test]
+        fn raw_options_rejects_nested_arrays() {
+            // Nested arrays are not a valid mode
+            let json = r#"[["a", "b"], ["c", "d"]]"#;
+            let result: Result<RawOptions, _> = serde_json::from_str(json);
+            assert!(
+                result.is_err(),
+                "Should reject nested arrays (not a valid mode)"
+            );
+        }
+
+        #[test]
+        fn raw_options_rejects_string_primitive() {
+            // Single string is not an array or map
+            let json = r#""single_value""#;
+            let result: Result<RawOptions, _> = serde_json::from_str(json);
+            assert!(
+                result.is_err(),
+                "Should reject string primitive (must be array or map)"
+            );
+        }
+
+        #[test]
+        fn raw_options_rejects_number_primitive() {
+            // Single number is not an array or map
+            let json = "42";
+            let result: Result<RawOptions, _> = serde_json::from_str(json);
+            assert!(
+                result.is_err(),
+                "Should reject number primitive (must be array or map)"
+            );
+        }
+
+        #[test]
+        fn raw_options_map_with_non_numeric_keys() {
+            // Map keys can be any string, not just numeric
+            let json = r#"{"open": "Open", "closed": "Closed"}"#;
+            let options: RawOptions = serde_json::from_str(json).unwrap();
+            match options {
+                RawOptions::Map(map) => {
+                    assert_eq!(map.len(), 2);
+                    assert_eq!(
+                        map.get("open").map(std::convert::AsRef::as_ref),
+                        Some("Open")
+                    );
+                }
+                _ => panic!("Expected Map variant"),
+            }
+        }
+
+        #[test]
+        fn raw_options_rich_with_extra_fields_ignored() {
+            // Extra fields in Rich entries should be ignored (forward compat)
+            let json = r#"[{"value": "a", "label": "A", "extra": "ignored"}]"#;
+            let options: RawOptions = serde_json::from_str(json).unwrap();
+            match options {
+                RawOptions::Rich(entries) => {
+                    assert_eq!(entries.len(), 1);
+                    assert_eq!(entries[0].value.as_ref(), "a");
+                    assert_eq!(entries[0].label.as_deref(), Some("A"));
+                }
+                _ => panic!("Expected Rich variant"),
+            }
+        }
+
+        #[test]
+        fn raw_options_empty_map() {
+            // Empty map should deserialize successfully
+            let json = "{}";
+            let options: RawOptions = serde_json::from_str(json).unwrap();
+            match options {
+                RawOptions::Map(map) => {
+                    assert!(map.is_empty());
+                }
+                _ => panic!("Expected Map variant for empty object"),
+            }
+        }
     }
 }
