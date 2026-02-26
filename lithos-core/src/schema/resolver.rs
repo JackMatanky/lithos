@@ -104,12 +104,9 @@ impl Resolver {
                     &[]
                 };
 
-            // Convert own properties to Arc<Property> for the merge
-            let own_props_arc: Vec<Arc<Property>> = node
-                .own_properties
-                .iter()
-                .map(|p| Arc::new(p.clone()))
-                .collect();
+            // Convert properties to Arc<Property> for the merge
+            let own_props_arc: Vec<Arc<Property>> =
+                node.properties.iter().map(|p| Arc::new(p.clone())).collect();
 
             let merged = Self::merge_properties(
                 parent_props,
