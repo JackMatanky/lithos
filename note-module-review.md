@@ -50,7 +50,7 @@ out-of-scope for refactoring in this review.
 
 - Domain types in `note/` do not import fs/infrastructure, which is good.
 - Ingestion is performed via `NoteReader` (adapter) with `FsReader`, consistent
-  with architecture constraints.
+  with current architecture (only `FsReader`/`FsWriter` exist).
 
 ### 3.2 Port-Based CQRS
 
@@ -68,6 +68,10 @@ out-of-scope for refactoring in this review.
   deletion above a span invalidates all downstream line numbers.
 - Byte offsets are precise and align with pulldown-cmark output. If line/column
   display is needed, derive it from the source text at render time.
+
+---
+
+## 4. Critical Findings (Correctness)
 
 ---
 
@@ -331,6 +335,29 @@ first ID. This makes duplicate paths possible and produces ambiguous reads.
 
 ---
 
+### N-CR-06 — Wikilink Alias Text Overwrites Instead of Merging
+
+`LinkState.alias` is overwritten on each `Event::Text` while a wikilink alias
+is active. pulldown-cmark can emit multiple consecutive `Event::Text` segments,
+so aliases can be truncated unless the text is appended or merged.
+
+**Files**:
+
+- `lithos-core/src/note/adapter/reader.rs`
+
+---
+
+### N-CR-07 — Plus-Delimited Metadata Blocks Ignored
+
+Only `MetadataBlockKind::YamlStyle` is handled, so TOML frontmatter delimited
+by `+++` is ignored even if the option is enabled.
+
+**Files**:
+
+- `lithos-core/src/note/adapter/reader.rs`
+
+---
+
 ## 7. Performance & Idiomatic Rust Issues
 
 ### N-PR-01 — String Allocation Anti-Patterns
@@ -377,6 +404,18 @@ and risks inconsistencies.
 **Files**:
 
 - `lithos-core/src/note/types.rs`
+
+---
+
+### N-PR-05 — Link Alias Uses Per-Event Allocation
+
+Alias text is stored as `String` and overwritten/allocated per `Event::Text`.
+This is both incorrect (see N-CR-06) and allocation-heavy compared to merging
+or using `TextMergeWithOffset`.
+
+**Files**:
+
+- `lithos-core/src/note/adapter/reader.rs`
 
 ---
 
@@ -427,12 +466,14 @@ Recommended tests not currently present:
 ## 9. Superfluous or Underused Components
 
 These items appear unused or used only in tests/benches. Removal is not
-recommended without product direction, but they should be flagged.
+recommended without product direction, and some are explicitly *not* removal
+candidates due to planned usage (see notes).
 
 ### N-SU-01 — Section is Never Built by the Parser
 
 `Note` supports sections, but `NoteReader` never constructs them. `Section`
-appears only in tests/bench data.
+appears only in tests/bench data. **Do not remove**: this is intended to
+represent Obsidian `CachedMetadata` blocks and will be populated later.
 
 **Files**:
 
@@ -443,7 +484,16 @@ appears only in tests/bench data.
 
 ### N-SU-02 — NoteEvents Are Not Emitted Outside Tests
 
-`Note` accumulates events, but no production pipeline consumes them.
+`Note` accumulates events, but no production pipeline consumes them. **Do not
+remove**: this is intended for event-driven design adoption.
+
+---
+
+### N-SU-03 — No Additional Removal Candidates Found
+
+Beyond the items above (and the explicitly unused `FieldValue::to_json_string`
+utility), no other components in `note/` appear removable or superseded by
+existing components without a product decision.
 
 **Files**:
 
@@ -512,6 +562,8 @@ This section is guidance only. No refactor performed.
 - Fix markdown image modeling (style + target + alt text handling).
 - Preserve frontmatter newlines in metadata blocks (or assert pulldown emits).
 - Use `LinkType::Autolink`/`Email` to classify external targets correctly.
+- Merge link alias text across consecutive `Event::Text` events.
+- Handle plus-delimited metadata blocks if TOML frontmatter is desired.
 
 ### P1 (Short Term)
 
@@ -554,6 +606,8 @@ This section is guidance only. No refactor performed.
 | N-CR-03 | Critical | External URL fragments mis-handled           |
 | N-CR-04 | High     | Markdown images treated as wiki embeds       |
 | N-CR-05 | High     | Frontmatter parsing loses newlines           |
+| N-CR-06 | Critical | Wikilink alias text overwritten              |
+| N-CR-07 | Critical | Plus-delimited metadata blocks ignored       |
 | N-MJ-01 | Major    | NotePath allows `.` components               |
 | N-MJ-02 | Major    | NotePath ignores Windows prefixes            |
 | N-MJ-03 | Major    | Tag validation rules inconsistent            |
@@ -568,6 +622,8 @@ This section is guidance only. No refactor performed.
 | N-PR-02 | Minor    | UUID stringification in hot paths            |
 | N-PR-03 | Minor    | FieldValue JSON semantics questionable       |
 | N-PR-04 | Minor    | No line/column utility for byte offsets      |
+| N-PR-05 | Minor    | Link alias per-event allocation              |
 | N-TF-01 | Major    | Time-dependent task timestamp test           |
 | N-SU-01 | Minor    | Sections never constructed                   |
 | N-SU-02 | Minor    | NoteEvents not used outside tests            |
+| N-SU-03 | Minor    | No additional removal candidates             |
