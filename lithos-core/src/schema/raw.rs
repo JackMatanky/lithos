@@ -491,15 +491,18 @@ pub struct RawPropertyBankEntry {
 ///
 /// # Modes
 ///
-/// - **Mode 1 (List)**: `["a", "b"]` — plain array of values
+/// - **Mode 1 (List)**: `["a", "b"]` — plain array of string values
 /// - **Mode 2 (Map)**: `{"1": "to_do", "2": "done"}` — ordered integer-keyed
 ///   object
 /// - **Mode 3 (Rich)**: `[{"value": "a", "label": "A", "order": 1}]` — rich
-///   entries
+///   entries with labels
 ///
-/// Serde deserializes untagged variants in declaration order. Arrays are tried
-/// as `List` first (strings), then `Rich` (objects). Objects are tried as
-/// `Map`.
+/// # Deserialization Strategy
+///
+/// Uses custom deserializer with explicit type checking:
+/// 1. If sequence: try as List (strings), then Rich (objects)
+/// 2. If map: deserialize as Map
+/// 3. Fail with clear error for other types
 ///
 /// # Examples
 /// ```
@@ -511,8 +514,7 @@ pub struct RawPropertyBankEntry {
 ///     _ => {}
 /// }
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub enum RawOptions {
     /// Mode 1: Plain array of string values.
@@ -545,6 +547,110 @@ pub struct RawOptionEntry {
     pub label: Option<Box<str>>,
     /// Optional display order (lower = earlier).
     pub order: Option<u32>,
+}
+
+// Custom deserializer for RawOptions to avoid relying on untagged variant order
+#[expect(
+    clippy::missing_trait_methods,
+    clippy::missing_inline_in_public_items,
+    clippy::excessive_nesting,
+    reason = "Custom serde Visitor requires specific method impls; excessive \
+              nesting is inherent to discriminating union variants by peeking"
+)]
+impl<'de> serde::Deserialize<'de> for RawOptions {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use std::fmt;
+
+        use serde::de::{Error, MapAccess, SeqAccess, Visitor};
+
+        struct RawOptionsVisitor;
+
+        impl<'de> Visitor<'de> for RawOptionsVisitor {
+            type Value = RawOptions;
+
+            fn expecting(
+                &self,
+                formatter: &mut fmt::Formatter<'_>,
+            ) -> fmt::Result {
+                formatter.write_str(
+                    "a sequence of strings, a sequence of objects with \
+                     'value' field, or a map with string keys and string \
+                     values",
+                )
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                // Peek at first element to determine if List or Rich
+                let first = seq.next_element::<serde_json::Value>()?;
+                if let Some(value) = first {
+                    if value.is_string() {
+                        // List mode: array of strings
+                        let mut items = vec![
+                            value
+                                .as_str()
+                                .ok_or_else(|| {
+                                    Error::custom("expected string")
+                                })?
+                                .into(),
+                        ];
+                        while let Some(elem) =
+                            seq.next_element::<serde_json::Value>()?
+                        {
+                            if let Some(s) = elem.as_str() {
+                                items.push(s.into());
+                            } else {
+                                return Err(Error::custom(
+                                    "expected all array elements to be strings",
+                                ));
+                            }
+                        }
+                        Ok(RawOptions::List(items))
+                    } else if value.is_object() {
+                        // Rich mode: array of objects
+                        let first_entry: RawOptionEntry =
+                            serde_json::from_value(value)
+                                .map_err(Error::custom)?;
+                        let mut entries = vec![first_entry];
+                        while let Some(entry) =
+                            seq.next_element::<RawOptionEntry>()?
+                        {
+                            entries.push(entry);
+                        }
+                        Ok(RawOptions::Rich(entries))
+                    } else {
+                        Err(Error::custom(
+                            "expected array elements to be strings or objects",
+                        ))
+                    }
+                } else {
+                    // Empty array defaults to List
+                    Ok(RawOptions::List(vec![]))
+                }
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                // Map mode: object with string keys and string values
+                let mut result = BTreeMap::new();
+                while let Some((key, value)) =
+                    map.next_entry::<Box<str>, Box<str>>()?
+                {
+                    result.insert(key, value);
+                }
+                Ok(RawOptions::Map(result))
+            }
+        }
+
+        deserializer.deserialize_any(RawOptionsVisitor)
+    }
 }
 
 impl RawOptions {
@@ -619,6 +725,11 @@ impl RawOptions {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module: raw_options_tests intentionally grouped for \
+              logical organization"
+)]
 mod tests {
     use std::collections::HashMap;
 
@@ -692,5 +803,233 @@ mod tests {
             matches!(reference_variant, RawProperty::Ref(_)),
             "RawProperty should be Ref variant"
         );
+    }
+
+    // --- RawOptions Deserialization Tests (E-04) ---
+
+    #[expect(
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::wildcard_enum_match_arm,
+        clippy::items_after_statements,
+        reason = "Test code: indexing is safe after len check, panic shows \
+                  test failure clearly, wildcard for unknown future variants \
+                  is fine"
+    )]
+    mod raw_options_tests {
+        use super::*;
+
+        #[test]
+        fn raw_options_deserializes_list_from_json() {
+            let json = r#"["open", "closed", "archived"]"#;
+            let options: RawOptions = serde_json::from_str(json).unwrap();
+            match options {
+                RawOptions::List(items) => {
+                    assert_eq!(items.len(), 3);
+                    assert_eq!(items[0].as_ref(), "open");
+                    assert_eq!(items[1].as_ref(), "closed");
+                    assert_eq!(items[2].as_ref(), "archived");
+                }
+                _ => panic!("Expected List variant"),
+            }
+        }
+
+        #[test]
+        fn raw_options_deserializes_empty_list() {
+            let json = "[]";
+            let options: RawOptions = serde_json::from_str(json).unwrap();
+            match options {
+                RawOptions::List(items) => {
+                    assert!(items.is_empty());
+                }
+                _ => panic!("Expected List variant"),
+            }
+        }
+
+        #[test]
+        fn raw_options_deserializes_map_from_json() {
+            let json = r#"{"1": "todo", "2": "done", "3": "archived"}"#;
+            let options: RawOptions = serde_json::from_str(json).unwrap();
+            match options {
+                RawOptions::Map(map) => {
+                    assert_eq!(map.len(), 3);
+                    assert_eq!(
+                        map.get("1").map(std::convert::AsRef::as_ref),
+                        Some("todo")
+                    );
+                    assert_eq!(
+                        map.get("2").map(std::convert::AsRef::as_ref),
+                        Some("done")
+                    );
+                    assert_eq!(
+                        map.get("3").map(std::convert::AsRef::as_ref),
+                        Some("archived")
+                    );
+                }
+                _ => panic!("Expected Map variant"),
+            }
+        }
+
+        #[test]
+        fn raw_options_deserializes_rich_from_json() {
+            let json = r#"[
+            {"value": "open", "label": "Open", "order": 1},
+            {"value": "closed", "label": "Closed", "order": 2}
+        ]"#;
+            let options: RawOptions = serde_json::from_str(json).unwrap();
+            match options {
+                RawOptions::Rich(entries) => {
+                    assert_eq!(entries.len(), 2);
+                    assert_eq!(entries[0].value.as_ref(), "open");
+                    assert_eq!(entries[0].label.as_deref(), Some("Open"));
+                    assert_eq!(entries[0].order, Some(1));
+                    assert_eq!(entries[1].value.as_ref(), "closed");
+                    assert_eq!(entries[1].label.as_deref(), Some("Closed"));
+                    assert_eq!(entries[1].order, Some(2));
+                }
+                _ => panic!("Expected Rich variant"),
+            }
+        }
+
+        #[test]
+        fn raw_options_deserializes_rich_with_minimal_fields() {
+            let json = r#"[{"value": "open"}]"#;
+            let options: RawOptions = serde_json::from_str(json).unwrap();
+            match options {
+                RawOptions::Rich(entries) => {
+                    assert_eq!(entries.len(), 1);
+                    assert_eq!(entries[0].value.as_ref(), "open");
+                    assert_eq!(entries[0].label, None);
+                    assert_eq!(entries[0].order, None);
+                }
+                _ => panic!("Expected Rich variant"),
+            }
+        }
+
+        #[test]
+        fn raw_options_deserializes_from_yaml_list() {
+            let yaml = "
+- open
+- closed
+- archived
+";
+            let options: RawOptions = serde_yaml::from_str(yaml).unwrap();
+            match options {
+                RawOptions::List(items) => {
+                    assert_eq!(items.len(), 3);
+                    assert_eq!(items[0].as_ref(), "open");
+                }
+                _ => panic!("Expected List variant"),
+            }
+        }
+
+        #[test]
+        fn raw_options_deserializes_from_toml_inline_array() {
+            // TOML requires inline arrays to be in a table context
+            let toml_str = r#"options = ["open", "closed"]"#;
+            #[derive(serde::Deserialize)]
+            struct Wrapper {
+                options: RawOptions,
+            }
+            let wrapper: Wrapper = toml::from_str(toml_str).unwrap();
+            match wrapper.options {
+                RawOptions::List(items) => {
+                    assert_eq!(items.len(), 2);
+                    assert_eq!(items[0].as_ref(), "open");
+                    assert_eq!(items[1].as_ref(), "closed");
+                }
+                _ => panic!("Expected List variant"),
+            }
+        }
+
+        #[test]
+        fn raw_options_rejects_mixed_array_types() {
+            let json = r#"["string", 123]"#;
+            let result: Result<RawOptions, _> = serde_json::from_str(json);
+            assert!(result.is_err(), "Should reject mixed types in array");
+        }
+
+        #[test]
+        fn raw_options_rejects_invalid_rich_structure() {
+            let json = r#"[{"label": "Missing value field"}]"#;
+            let result: Result<RawOptions, _> = serde_json::from_str(json);
+            assert!(
+                result.is_err(),
+                "Should reject rich entries missing 'value' field"
+            );
+        }
+
+        #[test]
+        fn raw_options_into_entries_list_preserves_order() {
+            let options =
+                RawOptions::List(vec!["a".into(), "b".into(), "c".into()]);
+            let entries = options.into_entries();
+            assert_eq!(entries.len(), 3);
+            assert_eq!(entries[0].value.as_ref(), "a");
+            assert_eq!(entries[1].value.as_ref(), "b");
+            assert_eq!(entries[2].value.as_ref(), "c");
+            assert!(entries.iter().all(|e| e.label.is_none()));
+        }
+
+        #[test]
+        fn raw_options_into_entries_map_sorts_by_key() {
+            let mut map = BTreeMap::new();
+            map.insert("3".into(), "third".into());
+            map.insert("1".into(), "first".into());
+            map.insert("2".into(), "second".into());
+            let options = RawOptions::Map(map);
+            let entries = options.into_entries();
+            assert_eq!(entries.len(), 3);
+            assert_eq!(entries[0].value.as_ref(), "first");
+            assert_eq!(entries[1].value.as_ref(), "second");
+            assert_eq!(entries[2].value.as_ref(), "third");
+        }
+
+        #[test]
+        fn raw_options_into_entries_rich_sorts_by_order() {
+            let options = RawOptions::Rich(vec![
+                RawOptionEntry {
+                    value: "c".into(),
+                    label: Some("Third".into()),
+                    order: Some(3),
+                },
+                RawOptionEntry {
+                    value: "a".into(),
+                    label: Some("First".into()),
+                    order: Some(1),
+                },
+                RawOptionEntry {
+                    value: "b".into(),
+                    label: Some("Second".into()),
+                    order: Some(2),
+                },
+            ]);
+            let entries = options.into_entries();
+            assert_eq!(entries.len(), 3);
+            assert_eq!(entries[0].value.as_ref(), "a");
+            assert_eq!(entries[0].label.as_deref(), Some("First"));
+            assert_eq!(entries[1].value.as_ref(), "b");
+            assert_eq!(entries[2].value.as_ref(), "c");
+        }
+
+        #[test]
+        fn raw_options_into_entries_rich_uses_array_position_when_no_order() {
+            let options = RawOptions::Rich(vec![
+                RawOptionEntry {
+                    value: "first".into(),
+                    label: None,
+                    order: None,
+                },
+                RawOptionEntry {
+                    value: "second".into(),
+                    label: None,
+                    order: None,
+                },
+            ]);
+            let entries = options.into_entries();
+            assert_eq!(entries.len(), 2);
+            assert_eq!(entries[0].value.as_ref(), "first");
+            assert_eq!(entries[1].value.as_ref(), "second");
+        }
     }
 }
