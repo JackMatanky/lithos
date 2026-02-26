@@ -81,10 +81,13 @@ pub struct PropertyBank {
     /// Unique identity for the property bank (singleton).
     id: PropertyBankId,
     /// Index mapping ID -> index in properties vector.
+    /// O(1) lookup by `PropertyId`.
     id_index: HashMap<PropertyId, usize>,
     /// Index mapping Name -> index in properties vector.
+    /// O(1) lookup by `PropertyName`.
     name_index: HashMap<PropertyName, usize>,
     /// Dense storage of properties.
+    /// Uses Vec for cache-friendly iteration and index-based access.
     properties: Vec<Property>,
     /// Version counter for staleness detection.
     version: BankVersion,
@@ -93,6 +96,20 @@ pub struct PropertyBank {
     pending_events: Option<Vec<Events>>,
 }
 
+/// Design note: `PropertyBank` uses a triple-index structure (`id_index`,
+/// `name_index`, properties) to optimize different access patterns.
+///
+/// **Tradeoffs:**
+/// - Memory: 3N data structures for N properties (2 `HashMaps` + 1 Vec)
+/// - Benefit: O(1) lookups by both ID and name, plus cache-friendly iteration
+/// - Alternative: Could use single `HashMap`<`PropertyName`, Property> but
+///   would lose O(1) ID lookups needed for $ref resolution in schemas
+///
+/// This design was chosen because:
+/// 1. `PropertyBank` is singleton (only one instance per vault)
+/// 2. Property count is bounded (~100s, not 1000s)
+/// 3. Both ID and name lookups are frequently needed
+/// 4. The memory overhead is acceptable for a singleton
 impl PropertyBank {
     /// Create a new empty `PropertyBank`.
     ///
@@ -958,6 +975,70 @@ mod tests {
                 bank.pending_events().is_empty(),
                 "pending_events should be empty after take_events"
             );
+        }
+
+        // E-01: Concurrency tests
+
+        /// Verify `PropertyBank` implements Send (required for thread-safe
+        /// usage). This ensures `PropertyBank` can be moved between
+        /// threads.
+        #[test]
+        fn property_bank_is_send() {
+            fn assert_send<T: Send>() {}
+            assert_send::<PropertyBank>();
+        }
+
+        /// Verify `PropertyBank` implements Sync (required for shared thread
+        /// access). This ensures `PropertyBank` can be shared between
+        /// threads via &Arc<PropertyBank>.
+        #[test]
+        fn property_bank_is_sync() {
+            fn assert_sync<T: Sync>() {}
+            assert_sync::<PropertyBank>();
+        }
+
+        /// E-01b: Test concurrent reads from multiple threads.
+        /// `PropertyBank` should handle concurrent access without data races.
+        #[test]
+        fn property_bank_concurrent_reads() {
+            use std::{
+                sync::{Arc, Mutex},
+                thread,
+            };
+
+            // Create a bank with some properties
+            let (bank, _id) = fixtures::bank_with_property()
+                .expect("Valid property bank fixture");
+
+            let bank = Arc::new(bank);
+            let error_count = Arc::new(Mutex::new(0usize));
+
+            // Spawn 10 threads that all try to read from the bank
+            // Using repeat_with to avoid map_with_unused_argument_over_ranges
+            // lint; nested closure required for thread spawn - acceptable for
+            // test
+            #[expect(
+                clippy::excessive_nesting,
+                reason = "nested closure required for thread spawn"
+            )]
+            let handles: Vec<_> = std::iter::repeat_with(|| {
+                let bank = Arc::clone(&bank);
+                let _error_count = Arc::clone(&error_count);
+                thread::spawn(move || {
+                    // Each thread tries to access properties multiple times
+                    for _ in 0i32..100i32 {
+                        // Just read operations - these should be safe
+                        let _all = bank.all().count();
+                    }
+                })
+            })
+            .take(10)
+            .collect();
+
+            // Wait for all threads to complete
+            for handle in handles {
+                handle.join().expect("Thread join succeeded");
+            }
         }
     }
 }
