@@ -306,6 +306,20 @@ pub enum SchemaIngestionError {
     /// File system error.
     #[error("File system error: {0}")]
     FileSystem(Box<str>),
+
+    /// Unsupported schema version.
+    #[error(
+        "Unsupported schema version in {path}: got '{found}', expected \
+         '{expected}'"
+    )]
+    UnsupportedVersion {
+        /// Path to the file.
+        path: Box<str>,
+        /// Found version.
+        found: Box<str>,
+        /// Expected version.
+        expected: Box<str>,
+    },
 }
 
 impl From<crate::fs::error::ParseError> for SchemaIngestionError {

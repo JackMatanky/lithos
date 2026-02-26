@@ -484,6 +484,7 @@ mod tests {
             props.insert("z".into(), fixtures::inline_bool_entry());
             props.insert("a".into(), fixtures::inline_bool_entry());
             let raw = RawSchema {
+                version: crate::schema::raw::SCHEMA_VERSION.into(),
                 name: "test".into(),
                 extends: None,
                 excludes: Vec::new(),
@@ -502,6 +503,7 @@ mod tests {
             let bank = PropertyBank::new();
             let deref = Dereferencer::new(&bank);
             let raw = RawSchema {
+                version: crate::schema::raw::SCHEMA_VERSION.into(),
                 name: "child".into(),
                 extends: Some("parent".into()),
                 excludes: vec!["old-prop".into()],

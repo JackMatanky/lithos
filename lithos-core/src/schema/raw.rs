@@ -9,12 +9,15 @@
 use std::collections::BTreeMap;
 
 use super::{
-    error::SchemaError,
+    error::{SchemaError, SchemaIngestionError},
     property_spec::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, OptionEntry, PropertySpec,
         PropertySpecType, StringSpec,
     },
 };
+
+/// Current supported schema version.
+pub const SCHEMA_VERSION: &str = "1.0";
 
 /// Raw schema definition loaded from vault files.
 ///
@@ -47,6 +50,9 @@ use super::{
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawSchema {
+    /// Schema format version (must be "1.0").
+    #[serde(rename = "$version")]
+    pub version: Box<str>,
     /// Unique schema name.
     pub name: Box<str>,
     /// Optional parent schema name for inheritance.
@@ -56,6 +62,28 @@ pub struct RawSchema {
     pub excludes: Vec<Box<str>>,
     /// Map of property name to property definition.
     pub properties: std::collections::HashMap<Box<str>, RawProperty>,
+}
+
+impl RawSchema {
+    /// Validate the schema version matches the expected version.
+    ///
+    /// # Errors
+    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
+    /// does not match.
+    #[inline]
+    pub fn validate_version(
+        &self,
+        path: &str,
+    ) -> Result<(), SchemaIngestionError> {
+        if self.version.as_ref() != SCHEMA_VERSION {
+            return Err(SchemaIngestionError::UnsupportedVersion {
+                path: path.into(),
+                found: self.version.clone(),
+                expected: SCHEMA_VERSION.into(),
+            });
+        }
+        Ok(())
+    }
 }
 
 /// Raw property for schema properties map.
@@ -391,8 +419,33 @@ pub struct RawStringSpec {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyBank {
+    /// Property bank format version (must be "1.0").
+    #[serde(rename = "$version")]
+    pub version: Box<str>,
     /// Map of property name to property definition.
     pub properties: std::collections::HashMap<Box<str>, RawPropertyBankEntry>,
+}
+
+impl RawPropertyBank {
+    /// Validate the property bank version matches the expected version.
+    ///
+    /// # Errors
+    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
+    /// does not match.
+    #[inline]
+    pub fn validate_version(
+        &self,
+        path: &str,
+    ) -> Result<(), SchemaIngestionError> {
+        if self.version.as_ref() != SCHEMA_VERSION {
+            return Err(SchemaIngestionError::UnsupportedVersion {
+                path: path.into(),
+                found: self.version.clone(),
+                expected: SCHEMA_VERSION.into(),
+            });
+        }
+        Ok(())
+    }
 }
 
 /// Entry in the raw property bank.
@@ -565,6 +618,7 @@ mod tests {
     #[test]
     fn raw_schema_defaults_to_empty_excludes() {
         let schema = RawSchema {
+            version: SCHEMA_VERSION.into(),
             name: schema_name(),
             extends: None,
             excludes: Vec::new(),
@@ -580,6 +634,7 @@ mod tests {
     #[test]
     fn raw_schema_defaults_to_no_extends() {
         let schema = RawSchema {
+            version: SCHEMA_VERSION.into(),
             name: schema_name(),
             extends: None,
             excludes: Vec::new(),

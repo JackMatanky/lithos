@@ -4,19 +4,33 @@
   "title": "Lithos Note Schema",
   "description": "Defines the format of a Lithos note schema file. A note schema describes the frontmatter properties expected on a type of markdown note in the vault. Properties may be defined inline or referenced from the property bank using '$ref: property_bank#/<name>'. Schemas may extend a parent schema and exclude inherited properties they don't need.",
   "type": "object",
-  "required": ["name", "properties"],
+  "required": ["$version", "name", "properties"],
   "additionalProperties": false,
   "properties": {
+    "$version": {
+      "title": "Schema Version",
+      "description": "The version of the Lithos schema format this file uses. Used for migration and compatibility checking. Current version is '1.0'.",
+      "type": "string",
+      "const": "1.0",
+      "examples": ["1.0"]
+    },
     "name": {
       "title": "Schema Name",
       "description": "The unique identifier for this schema. Must be lowercase, using only letters, digits, and underscores. This name is used in 'extends' fields of child schemas and in 'file_class' fields of file-type properties.",
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$"
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "examples": ["task", "daily_note", "project"]
     },
     "properties": {
       "title": "Property Definitions",
       "description": "The properties defined or overridden by this schema. Each key is the frontmatter field name as it appears in the note. Each value is either an inline property definition or a property bank reference (with optional overrides). Properties inherited from a parent schema via 'extends' do not need to be listed here unless they are being overridden.",
       "type": "object",
+      "examples": [
+        {
+          "status": { "$ref": "property_bank#/status", "required": true },
+          "priority": { "type": "number", "min": 1, "max": 5 }
+        }
+      ],
       "additionalProperties": {
         "$ref": "#/$defs/Property"
       },
@@ -29,12 +43,14 @@
       "title": "Parent Schema",
       "description": "The name of a parent schema whose properties this schema inherits. The child schema receives all properties from the parent, minus any listed in 'excludes', plus the properties defined in this schema's own 'properties' map. Overriding an inherited property is done by re-defining it in 'properties'.",
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$"
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "examples": ["task", "note", "base_schema"]
     },
     "excludes": {
       "title": "Excluded Inherited Properties",
       "description": "A list of property names inherited from the parent schema (via 'extends') that this schema does not use. These properties will not appear in notes using this schema. Only valid when 'extends' is also set.",
       "type": "array",
+      "examples": [["completed_at", "archived"]],
       "items": {
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*$"
@@ -77,7 +93,8 @@
           "title": "Required",
           "description": "Whether this property must be present in every note using this schema. Defaults to false. This field is only valid in schemas, not in the property bank.",
           "type": "boolean",
-          "default": false
+          "default": false,
+          "examples": [true, false]
         },
         "multi": {
           "title": "Multiple Values",
@@ -288,13 +305,15 @@
         },
         "min": {
           "title": "Minimum Value",
-          "description": "The minimum allowed value (inclusive).",
-          "type": "number"
+          "description": "The minimum allowed value (inclusive). Note: JSON Schema cannot enforce that min < max; this constraint is validated at runtime by Lithos.",
+          "type": "number",
+          "examples": [0, 1, -100]
         },
         "max": {
           "title": "Maximum Value",
-          "description": "The maximum allowed value (inclusive).",
-          "type": "number"
+          "description": "The maximum allowed value (inclusive). Note: JSON Schema cannot enforce that min < max; this constraint is validated at runtime by Lithos.",
+          "type": "number",
+          "examples": [100, 10, 5]
         }
       }
     },

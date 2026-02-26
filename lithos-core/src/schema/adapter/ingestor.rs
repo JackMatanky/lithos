@@ -102,7 +102,12 @@ impl Ingestor<'_> {
         &self,
     ) -> Result<RawPropertyBank, SchemaIngestionError> {
         let path = self.config.paths().property_bank_path();
-        self.source.parse_structured(&path).map_err(SchemaIngestionError::from)
+        let bank: RawPropertyBank = self
+            .source
+            .parse_structured(&path)
+            .map_err(SchemaIngestionError::from)?;
+        bank.validate_version(&path.to_string_lossy())?;
+        Ok(bank)
     }
 
     /// Scan the schemas directory for all schema files.
@@ -151,6 +156,7 @@ impl Ingestor<'_> {
                     .source
                     .parse_structured(&path)
                     .map_err(SchemaIngestionError::from)?;
+                raw.validate_version(&path.to_string_lossy())?;
 
                 let metadata = self.source.metadata(&path).ok();
 
@@ -235,7 +241,7 @@ mod tests {
         write_file(
             dir.path(),
             "schemas/property_bank.json",
-            r#"{"properties": {}}"#,
+            r#"{"$version": "1.0", "properties": {}}"#,
         );
 
         let config = test_config(dir.path(), None);
@@ -250,7 +256,11 @@ mod tests {
     #[test]
     fn load_raw_property_bank_parses_valid_yaml() {
         let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "schemas/property_bank.yaml", "properties: {}");
+        write_file(
+            dir.path(),
+            "schemas/property_bank.yaml",
+            "$version: \"1.0\"\nproperties: {}",
+        );
 
         let config = test_config(dir.path(), Some("property_bank.yaml"));
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
@@ -264,7 +274,11 @@ mod tests {
     #[test]
     fn load_raw_property_bank_parses_valid_toml() {
         let dir = TempDir::new().expect("tempdir");
-        write_file(dir.path(), "schemas/property_bank.toml", "[properties]");
+        write_file(
+            dir.path(),
+            "schemas/property_bank.toml",
+            "\"$version\" = \"1.0\"\n[properties]",
+        );
 
         let config = test_config(dir.path(), Some("property_bank.toml"));
         let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
@@ -313,17 +327,17 @@ mod tests {
         write_file(
             dir.path(),
             "schemas/note.json",
-            r#"{"name": "note", "properties": {}}"#,
+            r#"{"$version": "1.0", "name": "note", "properties": {}}"#,
         );
         write_file(
             dir.path(),
             "schemas/task.yaml",
-            "name: task\nproperties: {}",
+            "$version: \"1.0\"\nname: task\nproperties: {}",
         );
         write_file(
             dir.path(),
             "schemas/property_bank.json",
-            r#"{"properties": {}}"#,
+            r#"{"$version": "1.0", "properties": {}}"#,
         );
 
         let config = test_config(dir.path(), None);
@@ -346,7 +360,8 @@ mod tests {
         write_file(
             dir.path(),
             "schemas/project.toml",
-            r#"name = "project"
+            r#""$version" = "1.0"
+name = "project"
  [properties]"#,
         );
 
@@ -367,7 +382,7 @@ mod tests {
         write_file(
             dir.path(),
             "schemas/property_bank.json",
-            r#"{"properties": {}}"#,
+            r#"{"$version": "1.0", "properties": {}}"#,
         );
 
         let config = test_config(dir.path(), None);

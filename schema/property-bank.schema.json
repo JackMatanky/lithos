@@ -4,13 +4,26 @@
   "title": "Lithos Property Bank",
   "description": "Defines the format of a Lithos property bank file. A property bank is a dictionary of reusable, named property definitions that individual note schemas can reference via '$ref: property_bank#/<name>'. The property bank itself is not a note schema — it has no 'name', 'extends', or 'excludes'. Property definitions here provide defaults; schemas can override 'multi', 'options', etc. when referencing them. The 'required' field is NOT allowed here — that is a schema-level concern.",
   "type": "object",
-  "required": ["properties"],
+  "required": ["$version", "properties"],
   "additionalProperties": false,
   "properties": {
+    "$version": {
+      "title": "Property Bank Version",
+      "description": "The version of the Lithos property bank format this file uses. Used for migration and compatibility checking. Current version is '1.0'.",
+      "type": "string",
+      "const": "1.0",
+      "examples": ["1.0"]
+    },
     "properties": {
       "title": "Property Definitions",
       "description": "A map of named property definitions. Each key is the property name (lowercase, using only letters, digits, and underscores). Each value is a property definition that provides defaults for schemas to use or override.",
       "type": "object",
+      "examples": [
+        {
+          "status": { "type": "string", "options": ["todo", "in_progress", "done"] },
+          "priority": { "type": "number", "min": 1, "max": 5 }
+        }
+      ],
       "additionalProperties": {
         "$ref": "#/$defs/PropertyDefinition"
       },
@@ -137,13 +150,15 @@
         },
         "min": {
           "title": "Minimum Value",
-          "description": "The minimum allowed value (inclusive).",
-          "type": "number"
+          "description": "The minimum allowed value (inclusive). Note: JSON Schema cannot enforce that min < max; this constraint is validated at runtime by Lithos.",
+          "type": "number",
+          "examples": [0, 1, -100]
         },
         "max": {
           "title": "Maximum Value",
-          "description": "The maximum allowed value (inclusive).",
-          "type": "number"
+          "description": "The maximum allowed value (inclusive). Note: JSON Schema cannot enforce that min < max; this constraint is validated at runtime by Lithos.",
+          "type": "number",
+          "examples": [100, 10, 5]
         }
       }
     },
