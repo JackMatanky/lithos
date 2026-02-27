@@ -10,6 +10,7 @@ use crate::{
         value::{DateSpec, FieldSpec},
     },
     note::{
+        adapter::tag_scanner::TagScanner,
         error::NoteError,
         tag::Tag,
         task::{Task, TaskAttributes, TaskMetadata, TaskTimestamp},
@@ -39,7 +40,7 @@ impl<'config> TaskParser<'config> {
         status_symbol: StatusSymbol,
         position: SourceByteOffset,
     ) -> Result<Option<Task>, NoteError> {
-        let tags = Self::extract_tags(raw_text);
+        let tags = TagScanner::new(raw_text).collect_tags();
         if !self.should_promote_from_tags(&tags) {
             return Ok(None);
         }
@@ -111,40 +112,6 @@ impl<'config> TaskParser<'config> {
         }
 
         Ok(text.into())
-    }
-
-    fn extract_tags(raw_text: &str) -> Vec<Tag> {
-        let mut tags = Vec::new();
-        let mut chars = raw_text.chars().peekable();
-        let mut prev_is_alnum = false;
-
-        while let Some(ch) = chars.next() {
-            if ch != '#' || prev_is_alnum {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            }
-
-            let mut raw = String::from("#");
-            while let Some(&next) = chars.peek() {
-                if !(next.is_alphanumeric() || matches!(next, '_' | '-' | '/'))
-                {
-                    break;
-                }
-                raw.push(next);
-                chars.next();
-            }
-
-            if raw.len() > 1
-                && let Ok(tag) = Tag::new(&raw)
-            {
-                tags.push(tag);
-            }
-
-            prev_is_alnum =
-                raw.chars().last().is_some_and(char::is_alphanumeric);
-        }
-
-        tags
     }
 
     fn parse_temporal_fields(

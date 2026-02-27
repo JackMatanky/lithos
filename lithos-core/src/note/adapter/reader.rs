@@ -14,7 +14,7 @@ use crate::{
     config::{aggregate::Config, task::StatusSymbol},
     fs::FsReader,
     note::{
-        adapter::task_parser::TaskParser,
+        adapter::{tag_scanner::TagScanner, task_parser::TaskParser},
         aggregate::Note,
         error::NoteError,
         frontmatter::Frontmatter,
@@ -596,33 +596,8 @@ impl<'config> ParseState<'config> {
     }
 
     fn collect_tags_from_text(&mut self, text: &str) {
-        let mut chars = text.chars().peekable();
-        let mut prev_is_alnum = false;
-
-        while let Some(ch) = chars.next() {
-            if ch != '#' || prev_is_alnum {
-                prev_is_alnum = ch.is_alphanumeric();
-                continue;
-            }
-
-            let mut raw = String::from("#");
-            while let Some(&next) = chars.peek() {
-                if !(next.is_alphanumeric() || matches!(next, '_' | '-' | '/'))
-                {
-                    break;
-                }
-                raw.push(next);
-                chars.next();
-            }
-
-            if raw.len() > 1
-                && let Ok(tag) = NoteTag::new(&raw)
-            {
-                self.add_tag(tag);
-            }
-
-            prev_is_alnum =
-                raw.chars().last().is_some_and(char::is_alphanumeric);
+        for tag in TagScanner::new(text).collect_tags() {
+            self.add_tag(tag);
         }
     }
 
