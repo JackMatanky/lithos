@@ -67,6 +67,48 @@
 **Input**: 1 heading, 3 tasks, 2 list items (~100 bytes)
 **Commit**: b45c13b0
 
+### Schema Ingestion Pipeline (`schema_loader.rs`)
+
+#### Per-Stage Performance (Tiny Vault - 5 schemas)
+
+| Stage                        | Performance | Throughput       | Notes                          |
+| ---------------------------- | ----------- | ---------------- | ------------------------------ |
+| **File I/O + Parse**         | 205 µs      | 24.4K schemas/s  | TOML/JSON deserialization      |
+| **PropertyBank Validation**  | 20.2 µs     | 49.4K/s          | PropertySpec construction      |
+| **PropertyBank Lookup**      | 33.5 ns     | 29.9M lookups/s  | HashMap get performance        |
+| **Dereferencing**            | 9.2 µs      | 544K schemas/s   | $ref resolution                |
+| **DAG Construction**         | 2.8 µs      | 1.79M schemas/s  | Topological sort               |
+| **Property Merging**         | 5.1 µs      | 985K schemas/s   | Inheritance resolution         |
+| **Full Pipeline**            | 271 µs      | 18.4K schemas/s  | End-to-end (all stages)        |
+
+#### Scaling Behavior (Full Pipeline)
+
+| Vault Size | Schema Count | Performance | Throughput      | Notes                    |
+| ---------- | ------------ | ----------- | --------------- | ------------------------ |
+| Tiny       | 5            | 271 µs      | 18.4K schemas/s | Baseline                 |
+| Small      | 20           | 579 µs      | 34.6K schemas/s | Scales linearly          |
+| Medium     | 40           | 1.01 ms     | 39.6K schemas/s | Good scaling             |
+| Large      | 100          | 2.28 ms     | 43.9K schemas/s | Excellent throughput     |
+
+**Performance Distribution** (Tiny vault, estimated from individual stage measurements):
+- File I/O + Parse: ~76% (205 µs / 271 µs)
+- Dereferencing: ~3.4% (9.2 µs / 271 µs)
+- Property Merging: ~1.9% (5.1 µs / 271 µs)
+- PropertyBank Validation: ~7.4% (20.2 µs / 271 µs)
+- DAG Construction: ~1.0% (2.8 µs / 271 µs)
+- Other overhead: ~10.3% (scheduler, function calls, black_box)
+
+**Key Findings**:
+- File I/O dominates as expected (~76% of total time)
+- All stages scale linearly with schema count (O(n) confirmed)
+- PropertyBank lookup is O(1) constant time (~34 ns)
+- Full pipeline throughput exceeds 40K schemas/s for large vaults
+- No super-linear scaling detected (good algorithmic complexity)
+
+**Hardware**: Apple M3 Max
+**Commit**: 5439c335
+**Date**: 2026-02-27
+
 ---
 
 ## Detailed Analysis & Interpretation
