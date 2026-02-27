@@ -290,9 +290,7 @@ fn create_test_note(index: usize) -> Note {
         .expect("valid source range"),
     ));
 
-    note.set_frontmatter(Some(
-        Frontmatter::new(HashMap::new()).expect("valid frontmatter"),
-    ));
+    note.set_frontmatter(Some(Frontmatter::new(HashMap::new())));
 
     note
 }

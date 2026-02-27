@@ -13,10 +13,7 @@
 
 use std::collections::HashMap;
 
-use super::{
-    error::{FrontmatterError, NoteError},
-    value::FieldValue,
-};
+use super::{error::FrontmatterError, value::FieldValue};
 
 /// Represents YAML/TOML metadata extracted from a note header.
 ///
@@ -37,7 +34,7 @@ use super::{
 /// let mut fields = HashMap::new();
 /// fields.insert("status".into(), FieldValue::String("draft".into()));
 ///
-/// let fm = Frontmatter::new(fields)?;
+/// let fm = Frontmatter::new(fields);
 /// assert!(fm.has("status"));
 /// # Ok(())
 /// # }
@@ -61,18 +58,12 @@ pub struct Frontmatter {
 
 impl Frontmatter {
     /// Creates a new [`Frontmatter`] instance from a field map.
-    ///
-    /// # Errors
-    ///
-    /// Currently infallible, but returns [`Result`] for future structural
-    /// validation.
     #[inline]
-    pub fn new(
-        fields: HashMap<Box<str>, FieldValue>,
-    ) -> Result<Self, NoteError> {
-        Ok(Self {
+    #[must_use]
+    pub fn new(fields: HashMap<Box<str>, FieldValue>) -> Self {
+        Self {
             fields,
-        })
+        }
     }
 
     /// Returns a reference to the value for the given key, if it exists.
@@ -487,7 +478,6 @@ mod tests {
             fields.insert("b".into(), FieldValue::Boolean(true));
             fields.insert("n".into(), FieldValue::Number(1.5f64));
             Frontmatter::new(fields)
-                .expect("Frontmatter construction should succeed")
         }
 
         pub fn frontmatter_with_aliases_mixed() -> Frontmatter {
@@ -500,21 +490,18 @@ mod tests {
                 ]),
             );
             Frontmatter::new(fields)
-                .expect("Frontmatter construction should succeed")
         }
 
         pub fn frontmatter_with_number() -> Frontmatter {
             let mut fields = HashMap::new();
             fields.insert("n".into(), FieldValue::Number(1.0f64));
             Frontmatter::new(fields)
-                .expect("Frontmatter construction should succeed")
         }
 
         pub fn frontmatter_with_invalid_date() -> Frontmatter {
             let mut fields = HashMap::new();
             fields.insert("d".into(), FieldValue::Date(i64::MAX));
             Frontmatter::new(fields)
-                .expect("Frontmatter construction should succeed")
         }
 
         pub fn sample_datetime() -> DateTime<Utc> {

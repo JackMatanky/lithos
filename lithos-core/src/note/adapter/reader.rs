@@ -885,7 +885,7 @@ impl<'config> ParseState<'config> {
             }
         };
 
-        let frontmatter = Frontmatter::new(fields)?;
+        let frontmatter = Frontmatter::new(fields);
         self.collect_tags_from_frontmatter(&frontmatter);
         self.frontmatter = Some(frontmatter);
         self.metadata_text.clear();

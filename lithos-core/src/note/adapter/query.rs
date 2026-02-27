@@ -283,7 +283,7 @@ mod tests {
             .map_err(|e| e.to_string())
         }
 
-        pub fn complex_frontmatter() -> Result<Frontmatter, String> {
+        pub fn complex_frontmatter() -> Frontmatter {
             Frontmatter::new(HashMap::from([(
                 "root".into(),
                 FieldValue::Object(HashMap::from([(
@@ -294,12 +294,11 @@ mod tests {
                     ]),
                 )])),
             )]))
-            .map_err(|e| e.to_string())
         }
 
         pub fn note_with_frontmatter() -> QuerySetupResult {
             let (dir, db) = test_db()?;
-            let fm = complex_frontmatter()?;
+            let fm = complex_frontmatter();
             let mut note = Note::new(NoteId::new(), "notes/a.md")
                 .map_err(|e| e.to_string())?;
             note.set_frontmatter(Some(fm.clone()));
@@ -325,8 +324,7 @@ mod tests {
                 ),
                 ("file_class".into(), FieldValue::String("Class".into())),
                 ("category".into(), FieldValue::String("docs".into())),
-            ]))
-            .map_err(|e| e.to_string())?;
+            ]));
             note.set_frontmatter(Some(frontmatter));
 
             let status = config
