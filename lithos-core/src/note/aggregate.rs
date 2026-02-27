@@ -28,7 +28,7 @@ use super::{
     link::Link,
     list::List,
     structure::{Heading, Section},
-    tag::{ArchivedTag, Tag},
+    tag::Tag,
     task::Task,
 };
 
@@ -488,31 +488,6 @@ fn has_windows_prefix(path: &str) -> bool {
         }
     }
     false
-}
-
-impl ArchivedNote {
-    /// Returns the note's vault-relative path.
-    #[inline]
-    #[must_use]
-    pub fn path(&self) -> &ArchivedNotePath {
-        &self.path
-    }
-
-    /// Returns the note's tags.
-    #[inline]
-    #[must_use]
-    pub fn tags(&self) -> &rkyv::vec::ArchivedVec<ArchivedTag> {
-        &self.tags
-    }
-}
-
-impl ArchivedNotePath {
-    /// Returns the path as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        self.0.as_ref()
-    }
 }
 
 #[cfg(test)]
