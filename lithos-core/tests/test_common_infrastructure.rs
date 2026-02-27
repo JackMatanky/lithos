@@ -11,6 +11,7 @@
     clippy::tests_outside_test_module,
     reason = "Integration tests are top-level by default."
 )]
+#![allow(dead_code, reason = "Infrastructure tests don't use all helpers")]
 
 mod common;
 

@@ -3,6 +3,11 @@
 //! Provides RAII test database setup, builders for test data, and assertion
 //! helpers following Rust integration test best practices.
 
+#![allow(
+    dead_code,
+    reason = "Test utilities - not all helpers used in every test file"
+)]
+
 use std::{error::Error, path::PathBuf};
 
 use lithos_core::{
@@ -163,10 +168,6 @@ impl PropertyBuilder {
     }
 
     /// Set the property's ID (for deterministic testing).
-    #[expect(
-        dead_code,
-        reason = "Will be used in CQRS tests for deterministic IDs"
-    )]
     #[must_use]
     pub const fn id(mut self, id: PropertyId) -> Self {
         self.id = Some(id);
@@ -296,10 +297,6 @@ impl SchemaBuilder {
     }
 
     /// Set the schema's ID (for deterministic testing).
-    #[expect(
-        dead_code,
-        reason = "Will be used in CQRS tests for deterministic IDs"
-    )]
     #[must_use]
     pub const fn id(mut self, id: SchemaId) -> Self {
         self.id = Some(id);
@@ -307,7 +304,6 @@ impl SchemaBuilder {
     }
 
     /// Set the parent schema ID for inheritance.
-    #[expect(dead_code, reason = "Will be used in inheritance tests")]
     #[must_use]
     pub const fn parent(mut self, parent_id: SchemaId) -> Self {
         self.parent_id = Some(parent_id);
