@@ -557,9 +557,32 @@ mod tests {
     fn should_promote_requires_task_tag() {
         let config = TaskConfig::default();
         let parser = TaskParser::new(&config);
-        assert!(parser.should_promote("#task Do work"));
-        assert!(!parser.should_promote("Do work"));
-        assert!(!parser.should_promote("#tasker Do work"));
+        let promoted = parser
+            .parse_promoted_checkbox(
+                "#task Do work",
+                StatusSymbol::try_new(' ').expect("valid status"),
+                SourceByteOffset::new(0),
+            )
+            .expect("parse should succeed");
+        assert!(promoted.is_some());
+
+        let skipped = parser
+            .parse_promoted_checkbox(
+                "Do work",
+                StatusSymbol::try_new(' ').expect("valid status"),
+                SourceByteOffset::new(0),
+            )
+            .expect("parse should succeed");
+        assert!(skipped.is_none());
+
+        let skipped_partial = parser
+            .parse_promoted_checkbox(
+                "#tasker Do work",
+                StatusSymbol::try_new(' ').expect("valid status"),
+                SourceByteOffset::new(0),
+            )
+            .expect("parse should succeed");
+        assert!(skipped_partial.is_none());
     }
 
     #[test]
@@ -567,12 +590,13 @@ mod tests {
         let config = config_with_fields();
         let parser = TaskParser::new(&config);
         let task = parser
-            .parse_checkbox(
+            .parse_promoted_checkbox(
                 "#task Review PR [priority:: 2] [project:: lithos]",
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(12),
             )
-            .expect("task should parse");
+            .expect("task should parse")
+            .expect("task should be promoted");
 
         assert_eq!(task.text(), "Review PR");
         assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
@@ -590,12 +614,13 @@ mod tests {
         let config = TaskConfig::default();
         let parser = TaskParser::new(&config);
         let task = parser
-            .parse_checkbox(
+            .parse_promoted_checkbox(
                 "#task Fix #work/project/urgent issue",
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(0),
             )
-            .expect("task should parse");
+            .expect("task should parse")
+            .expect("task should be promoted");
 
         // Verify hierarchical tags are properly extracted
         assert!(task.tags().iter().any(|tag| tag.full_path() == "task"));
@@ -612,12 +637,13 @@ mod tests {
         let config = TaskConfig::default();
         let parser = TaskParser::new(&config);
         let task = parser
-            .parse_checkbox(
+            .parse_promoted_checkbox(
                 "#task Review #bad/ tags",
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(0),
             )
-            .expect("task should parse");
+            .expect("task should parse")
+            .expect("task should be promoted");
 
         assert!(task.tags().iter().any(|tag| tag.full_path() == "task"));
         assert_eq!(task.tags().len(), 1);
@@ -628,13 +654,14 @@ mod tests {
         let config = TaskConfig::default();
         let parser = TaskParser::new(&config);
         let task = parser
-            .parse_checkbox(
+            .parse_promoted_checkbox(
                 "#task Test task with dates [created:: 2024-01-01] [due:: \
                  2024-12-31]",
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(0),
             )
-            .expect("task should parse");
+            .expect("task should parse")
+            .expect("task should be promoted");
 
         if let Some(created_at) = task.created_at() {
             assert_eq!(created_at.as_i64(), 1_704_067_200);

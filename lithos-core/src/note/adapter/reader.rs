@@ -552,12 +552,11 @@ impl<'config> ParseState<'config> {
         let raw_text = item.text.trim();
         if let Some(status) = item.status {
             let mut task_id = None;
-            if self.task_parser.should_promote(raw_text) {
-                let task = self.task_parser.parse_checkbox(
-                    raw_text,
-                    status,
-                    item.position,
-                )?;
+            if let Some(task) = self.task_parser.parse_promoted_checkbox(
+                raw_text,
+                status,
+                item.position,
+            )? {
                 task_id = Some(task.id());
                 self.tasks.push(task);
             }

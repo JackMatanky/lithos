@@ -33,25 +33,17 @@ impl<'config> TaskParser<'config> {
     }
 
     #[inline]
-    pub(crate) fn should_promote(self, text: &str) -> bool {
-        let tags = Self::extract_tags(text);
-        self.config.tags().iter().any(|config_tag| {
-            tags.iter().any(|tag| {
-                config_tag
-                    .as_str()
-                    .strip_prefix('#')
-                    .is_some_and(|raw| raw == tag.full_path())
-            })
-        })
-    }
-
-    #[inline]
-    pub(crate) fn parse_checkbox(
+    pub(crate) fn parse_promoted_checkbox(
         self,
         raw_text: &str,
         status_symbol: StatusSymbol,
         position: SourceByteOffset,
-    ) -> Result<Task, NoteError> {
+    ) -> Result<Option<Task>, NoteError> {
+        let tags = Self::extract_tags(raw_text);
+        if !self.should_promote_from_tags(&tags) {
+            return Ok(None);
+        }
+
         let status = self
             .config
             .status()
@@ -66,9 +58,7 @@ impl<'config> TaskParser<'config> {
                 )
             })?
             .clone();
-
         let text = self.extract_clean_text(raw_text)?;
-        let tags = Self::extract_tags(raw_text);
         let (created_at, due_at, reminder_at, completed_at) =
             self.parse_temporal_fields(raw_text)?;
         let metadata = self.parse_metadata(raw_text)?;
@@ -81,7 +71,19 @@ impl<'config> TaskParser<'config> {
             completed_at,
         };
 
-        Task::new(status, text, position, attributes)
+        Task::new(status, text, position, attributes).map(Some)
+    }
+
+    #[inline]
+    fn should_promote_from_tags(self, tags: &[Tag]) -> bool {
+        self.config.tags().iter().any(|config_tag| {
+            tags.iter().any(|tag| {
+                config_tag
+                    .as_str()
+                    .strip_prefix('#')
+                    .is_some_and(|raw| raw == tag.full_path())
+            })
+        })
     }
 
     fn extract_clean_text(self, raw_text: &str) -> Result<Box<str>, NoteError> {
