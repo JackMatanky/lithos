@@ -74,6 +74,33 @@ This directory contains focused performance benchmarks organized by concern.
 
 ---
 
+### `schema_loader.rs` - Schema Loading Pipeline
+**What it measures**: Schema file ingestion and PropertyBank validation
+- File I/O + Parsing (TOML/JSON → RawSchema)
+- PropertyBank validation (RawPropertyBank → PropertyBank)
+- Combined pipeline (file → raw → domain → validated)
+- Scaling behavior across vault sizes (5, 20, 40, 100 schemas)
+
+**When to run**: After changes to:
+- Schema ingestion (`src/schema/adapter/ingestor.rs`)
+- PropertyBank validation (`src/schema/bank.rs`)
+- PropertySpec validation logic (`src/schema/property_spec.rs`)
+- Config path resolution (`src/config/paths.rs`)
+
+**Key metrics**:
+- PropertyBank validation: ~22 µs
+- File I/O throughput scales linearly with schema count
+- Combined pipeline shows total startup cost
+- Watch for validation overhead growth
+
+**Scope limitations**:
+- Only measures public API operations (file loading and validation)
+- Internal resolution pipeline (Dereferencer, Extender, Resolver) is private and not benchmarked
+- No database operations (Command/Query adapters)
+- No staleness checking (hybrid vs cold start comparison)
+
+---
+
 ## Running Benchmarks
 
 ```bash
@@ -85,6 +112,7 @@ cargo bench --bench db_storage
 cargo bench --bench db_key_handling
 cargo bench --bench string_construction
 cargo bench --bench note_parsing
+cargo bench --bench schema_loader
 
 # Run specific benchmark group
 cargo bench --bench db_storage read_zero_copy
