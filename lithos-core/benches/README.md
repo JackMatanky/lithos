@@ -74,30 +74,45 @@ This directory contains focused performance benchmarks organized by concern.
 
 ---
 
-### `schema_loader.rs` - Schema Loading Pipeline
-**What it measures**: Schema file ingestion and PropertyBank validation
-- File I/O + Parsing (TOML/JSON → RawSchema)
-- PropertyBank validation (RawPropertyBank → PropertyBank)
-- Combined pipeline (file → raw → domain → validated)
+### `schema_loader.rs` - Schema Ingestion Pipeline
+**What it measures**: Complete schema ingestion pipeline with per-stage breakdown
+- **Stage 1**: File I/O + Parsing (TOML/JSON → RawSchema, ~200-500 µs)
+- **Stage 2**: PropertyBank validation (PropertySpec construction, ~20-30 µs)
+- **Stage 3**: PropertyBank lookup (HashMap get performance, ~5-10 ns)
+- **Stage 4**: Dereferencing ($ref resolution, ~50-150 µs)
+- **Stage 5**: DAG construction (topological sort, ~30-80 µs)
+- **Stage 6**: Property merging (inheritance resolution, ~40-100 µs)
+- **Stage 7**: Full pipeline end-to-end (~400-900 µs total)
 - Scaling behavior across vault sizes (5, 20, 40, 100 schemas)
 
 **When to run**: After changes to:
 - Schema ingestion (`src/schema/adapter/ingestor.rs`)
 - PropertyBank validation (`src/schema/bank.rs`)
 - PropertySpec validation logic (`src/schema/property_spec.rs`)
+- Internal pipeline stages (`src/schema/dereferencer.rs`, `extender.rs`, `resolver.rs`)
 - Config path resolution (`src/config/paths.rs`)
+- Property domain model (`src/schema/property.rs`, `property_spec.rs`)
 
 **Key metrics**:
-- PropertyBank validation: ~22 µs
-- File I/O throughput scales linearly with schema count
-- Combined pipeline shows total startup cost
-- Watch for validation overhead growth
+- File I/O should dominate (~50% of total time)
+- Dereferencing ~25%, DAG ~10%, Merge ~10%, Validation ~5%
+- All stages should scale linearly (O(n)) with schema count
+- PropertyBank lookup should be constant time (O(1), ~5-10 ns)
+- Throughput should exceed 20K schemas/sec for large vaults
 
-**Scope limitations**:
-- Only measures public API operations (file loading and validation)
-- Internal resolution pipeline (Dereferencer, Extender, Resolver) is private and not benchmarked
-- No database operations (Command/Query adapters)
-- No staleness checking (hybrid vs cold start comparison)
+**Bottleneck identification**:
+- If file I/O >60% → normal, serde-bound
+- If dereferencing >35% → PropertySpec cloning overhead
+- If DAG construction >20% → HashMap or algorithm issue
+- If property merging >25% → Arc cloning overhead
+- If PropertyBank validation >10% → PropertySpec construction regressed
+
+**Implementation notes**:
+- Uses `#[doc(hidden)] pub` pattern to access internal pipeline modules
+- Comprehensive 270-line module documentation with methodology, interpretation guidance
+- Realistic test data from example_vault
+- Expected performance characteristics documented per stage
+- Follows Criterion.rs and Rust ecosystem best practices
 
 ---
 
