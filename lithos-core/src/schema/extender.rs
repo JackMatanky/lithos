@@ -709,6 +709,51 @@ mod tests {
             );
         }
 
+        /// GAP-001: Test multi-node circular inheritance (A→B→C→A).
+        #[test]
+        fn cycle_detection_multi_node_cycle() {
+            use crate::schema::dereferencer::DereferencedSchema;
+
+            const ID_A: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_1001);
+            const ID_B: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_1002);
+            const ID_C: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_1003);
+
+            let id_a = SchemaId::from_uuid(ID_A);
+            let id_b = SchemaId::from_uuid(ID_B);
+            let id_c = SchemaId::from_uuid(ID_C);
+
+            // A extends C, B extends A, C extends B → cycle!
+            let derefed = vec![
+                (id_a, DereferencedSchema {
+                    name: "a".into(),
+                    extends: Some("c".into()),
+                    excludes: Vec::new(),
+                    properties: Vec::new(),
+                }),
+                (id_b, DereferencedSchema {
+                    name: "b".into(),
+                    extends: Some("a".into()),
+                    excludes: Vec::new(),
+                    properties: Vec::new(),
+                }),
+                (id_c, DereferencedSchema {
+                    name: "c".into(),
+                    extends: Some("b".into()),
+                    excludes: Vec::new(),
+                    properties: Vec::new(),
+                }),
+            ];
+
+            let result = Extender::build(derefed, &HashMap::new());
+            assert!(
+                matches!(result, Err(SchemaError::CircularInheritance(_))),
+                "Should detect multi-node cycle, got: {result:?}"
+            );
+        }
+
         #[test]
         fn children_wired_on_in_batch_parent() -> Result<(), SchemaError> {
             let parent_id = SchemaId::from_uuid(PARENT_ID);

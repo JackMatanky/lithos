@@ -492,5 +492,60 @@ mod tests {
                 "Error message should include the depth value"
             );
         }
+
+        /// GAP-002: Test that inheritance depth > 10 fails.
+        #[test]
+        fn inheritance_depth_limit_exceeded() {
+            use uuid::Uuid;
+
+            use crate::schema::{
+                dereferencer::DereferencedSchema, extender::Extender,
+            };
+
+            // Create a chain of 11 schemas: root → s1 → s2 → ... → s10
+            // Depth 11 should exceed MAX_DEPTH=10
+            const BASE: u128 = 0x018C_0000_0000_7000_8000_0000_0000_2000;
+
+            let mut derefed = Vec::new();
+            let ids: Vec<_> = (0..11)
+                .map(|i| SchemaId::from_uuid(Uuid::from_u128(BASE + i)))
+                .collect();
+
+            // Root (depth 1)
+            derefed.push((ids[0], DereferencedSchema {
+                name: "root".into(),
+                extends: None,
+                excludes: Vec::new(),
+                properties: Vec::new(),
+            }));
+
+            // Chain: s1 extends root, s2 extends s1, ..., s10 extends s9
+            for (i, &id) in ids.iter().enumerate().skip(1) {
+                derefed.push((id, DereferencedSchema {
+                    name: format!("s{i}").into(),
+                    extends: Some(if i == 1 {
+                        "root".into()
+                    } else {
+                        format!("s{}", i - 1).into()
+                    }),
+                    excludes: Vec::new(),
+                    properties: Vec::new(),
+                }));
+            }
+
+            // Build tree and resolve
+            let tree = Extender::build(derefed, &HashMap::new())
+                .expect("Tree building should succeed");
+            let result = Resolver::resolve(&tree, &HashMap::new());
+
+            assert!(
+                matches!(result, Err(SchemaError::InheritanceDepthExceeded(_))),
+                "Should reject depth > 10, got: {result:?}"
+            );
+
+            if let Err(SchemaError::InheritanceDepthExceeded(depth)) = result {
+                assert_eq!(depth, 11, "Error should report depth 11");
+            }
+        }
     }
 }
