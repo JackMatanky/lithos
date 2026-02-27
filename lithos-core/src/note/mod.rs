@@ -7,14 +7,21 @@
 //!
 //! # Features
 //!
-//! - **Obsidian Compatibility**: Full support for wiki-links, frontmatter, and
-//!   hierarchical tags.
+//! - **Obsidian Compatibility**: Wiki-links, markdown links, YAML/TOML
+//!   frontmatter, and hierarchical inline tags.
 //! - **Port-Based CQRS**: Explicit separation of read ([`query::Query`]) and
 //!   write ([`command::Command`]) operations.
 //! - **Zero-Copy Serialization**: Optimized performance using `rkyv` for
 //!   database storage and retrieval.
 //! - **Rich Task Modeling**: Integrated task management with 7 specialized
 //!   indexes for efficient querying.
+//!
+//! ## Notes
+//!
+//! - Tag extraction scans inline `#tags` in the markdown body; frontmatter tags
+//!   remain available through the frontmatter API.
+//! - Markdown task list markers only expose checked/unchecked states, so custom
+//!   status symbols are not currently representable by the parser.
 //!
 //! # Usage
 //!
