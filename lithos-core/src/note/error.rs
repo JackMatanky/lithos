@@ -186,6 +186,24 @@ pub enum LinkError {
     EmptyBlockRefAnchor,
 }
 
+/// Errors surfaced when validating note metadata values.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NoteMetadataError {
+    /// Alias name is empty.
+    #[error("alias name cannot be empty")]
+    AliasEmpty,
+    /// File class name is empty.
+    #[error("file class cannot be empty")]
+    FileClassEmpty,
+    /// Folder path is empty.
+    #[error("folder path cannot be empty")]
+    FolderEmpty,
+    /// Heading text is empty.
+    #[error("heading text cannot be empty")]
+    HeadingTextEmpty,
+}
+
 /// Errors surfaced by Note command operations.
 ///
 /// Combines domain errors with low-level storage errors.
@@ -327,6 +345,9 @@ mod tests {
         NotePath::new("test.md").expect("valid path")
     ))]
     #[case(NoteError::ValidationFailed("invalid".into()))]
+    #[case(NoteError::ValidationFailed(
+        "heading text cannot be empty".into()
+    ))]
     #[case(NoteError::Frontmatter(FrontmatterParseError::NotYamlMapping))]
     #[case(NoteError::FrontmatterAccess(FrontmatterError::Missing {
         key: "title".into(),

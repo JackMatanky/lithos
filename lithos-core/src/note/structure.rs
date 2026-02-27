@@ -10,7 +10,7 @@
 //! notes. Headings (H1-H6) mark structural points in the document, while
 //! sections group content between headings.
 
-use super::error::NoteError;
+use super::error::{NoteError, NoteMetadataError};
 use crate::note::types::{SourceByteOffset, SourceByteRange};
 
 /// Represents a heading within a note.
@@ -64,7 +64,7 @@ impl Heading {
         let text = text.into();
         if text.trim().is_empty() {
             return Err(NoteError::ValidationFailed(
-                "Heading text cannot be empty".into(),
+                NoteMetadataError::HeadingTextEmpty.to_string().into(),
             ));
         }
 

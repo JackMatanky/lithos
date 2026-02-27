@@ -22,7 +22,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{
-    error::NoteError,
+    error::{NoteError, NoteMetadataError},
     events::NoteEvents,
     frontmatter::Frontmatter,
     link::Link,
@@ -476,7 +476,7 @@ impl AliasName {
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
             return Err(NoteError::ValidationFailed(
-                "alias name cannot be empty".into(),
+                NoteMetadataError::AliasEmpty.to_string().into(),
             ));
         }
         Ok(Self(value.trim().into()))
@@ -522,7 +522,7 @@ impl FileClassName {
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
             return Err(NoteError::ValidationFailed(
-                "file class cannot be empty".into(),
+                NoteMetadataError::FileClassEmpty.to_string().into(),
             ));
         }
         Ok(Self(value.trim().into()))
@@ -568,7 +568,7 @@ impl FolderPath {
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
             return Err(NoteError::ValidationFailed(
-                "folder path cannot be empty".into(),
+                NoteMetadataError::FolderEmpty.to_string().into(),
             ));
         }
         Ok(Self(value.trim().into()))
