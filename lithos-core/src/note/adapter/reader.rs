@@ -1545,4 +1545,169 @@ title: My Note
 
         Ok(())
     }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn heading_includes_markdown_link_text() -> Result<(), NoteError> {
+        let config = test_config();
+        let reader = NoteReader::new(&config);
+        let markdown = "# Heading with [link](target.md)";
+
+        let ParseOutcome {
+            headings,
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
+        assert_eq!(headings.len(), 1);
+        let heading = headings.first().expect("heading should exist");
+        assert_eq!(heading.text(), "Heading with link");
+        assert_eq!(links.len(), 1);
+        let link = links.first().expect("link should exist");
+        assert_eq!(link.alias(), Some("link"));
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn list_item_includes_markdown_link_text() -> Result<(), NoteError> {
+        let config = test_config();
+        let reader = NoteReader::new(&config);
+        let markdown = "- Item with [link](target.md)";
+
+        let ParseOutcome {
+            lists,
+            ..
+        } = reader.parse_str(markdown)?;
+        let list = lists.first().expect("list should exist");
+        let item = list.items().first().expect("item should exist");
+        assert_eq!(item.text(), "Item with link");
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn markdown_image_captures_alt_text() -> Result<(), NoteError> {
+        let config = test_config();
+        let reader = NoteReader::new(&config);
+        let markdown = "![Alt text](image.png)";
+
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
+        assert_eq!(links.len(), 1);
+        let link = links.first().expect("link should exist");
+        assert_eq!(link.alias(), Some("Alt text"));
+        assert!(link.is_embed());
+        assert!(matches!(link.embed_type(), Some(EmbedType::Image)));
+        assert!(matches!(link.style(), Style::MdLink));
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn wiki_embed_preserves_anchor() -> Result<(), NoteError> {
+        let config = test_config();
+        let reader = NoteReader::new(&config);
+        let markdown = "![[note#Section]]";
+
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
+        assert_eq!(links.len(), 1);
+        let link = links.first().expect("link should exist");
+        assert!(link.is_embed());
+        assert!(matches!(link.style(), Style::WikiLink));
+        assert!(matches!(link.embed_type(), Some(EmbedType::Note)));
+        assert!(matches!(
+            link.anchor(),
+            Some(Anchor::Heading(text)) if text.as_ref() == "Section"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn external_links_retain_fragments() -> Result<(), NoteError> {
+        let config = test_config();
+        let reader = NoteReader::new(&config);
+        let markdown = "[ext](https://example.com#frag)";
+
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
+        let link = links.first().expect("link should exist");
+        assert!(link.anchor().is_none());
+        assert!(matches!(
+            link.target(),
+            Target::External { url } if url.as_ref() == "https://example.com#frag"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn non_http_schemes_are_external() -> Result<(), NoteError> {
+        let config = test_config();
+        let reader = NoteReader::new(&config);
+        let markdown = "[mail](mailto:team@example.com)";
+
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
+        let link = links.first().expect("link should exist");
+        assert!(matches!(
+            link.target(),
+            Target::External { url } if url.as_ref() == "mailto:team@example.com"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn frontmatter_preserves_block_newlines() -> Result<(), NoteError> {
+        let config = test_config();
+        let reader = NoteReader::new(&config);
+        let markdown = "---
+desc: |
+  line1
+  line2
+---
+";
+
+        let ParseOutcome {
+            frontmatter,
+            ..
+        } = reader.parse_str(markdown)?;
+        let fm = frontmatter.expect("frontmatter should exist");
+        assert_eq!(
+            fm.get("desc").and_then(FieldValue::as_str),
+            Some("line1\nline2\n")
+        );
+        Ok(())
+    }
 }

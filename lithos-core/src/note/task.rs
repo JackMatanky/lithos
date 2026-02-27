@@ -638,12 +638,16 @@ mod tests {
 
         if let Some(created_at) = task.created_at() {
             assert_eq!(created_at.as_i64(), 1_704_067_200);
-            assert!(created_at.is_past(None));
+            if let Some(due_at) = task.due_at() {
+                assert!(created_at.is_past(Some(due_at)));
+            }
         }
 
         if let Some(due_at) = task.due_at() {
             assert_eq!(due_at.as_i64(), 1_735_689_600);
-            assert!(due_at.is_future(None));
+            if let Some(created_at) = task.created_at() {
+                assert!(due_at.is_future(Some(created_at)));
+            }
         }
     }
 }
