@@ -75,7 +75,6 @@ pub(crate) fn to_stored(
 ) -> StoredSchema {
     let properties = schema
         .properties()
-        .iter()
         .map(|p| StoredProperty {
             id: p.id(),
             name: p.name().as_str().into(),

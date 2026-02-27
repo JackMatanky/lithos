@@ -97,14 +97,15 @@ impl Resolver {
             }
 
             // Obtain parent's resolved properties.
-            let parent_props: &[Arc<Property>] =
+            let parent_props: Vec<Arc<Property>> =
                 if let Some(parent_id) = node.parent_id {
                     resolved_cache
                         .get(&parent_id)
                         .or_else(|| known_parents.get(&parent_id))
-                        .map_or(&[], Schema::properties)
+                        .map(|schema| schema.properties().cloned().collect())
+                        .unwrap_or_default()
                 } else {
-                    &[]
+                    vec![]
                 };
 
             // Convert properties to Arc<Property> for the merge
@@ -112,7 +113,7 @@ impl Resolver {
                 node.properties.iter().map(|p| Arc::new(p.clone())).collect();
 
             let merged = Self::merge_properties(
-                parent_props,
+                &parent_props,
                 &own_props_arc,
                 &node.excludes,
             );
@@ -314,7 +315,7 @@ mod tests {
             assert_eq!(result.len(), 1);
             let schema = &result[0];
             assert_eq!(schema.name().as_str(), "root");
-            assert_eq!(schema.properties().len(), 1);
+            assert_eq!(schema.properties().count(), 1);
             Ok(())
         }
 
@@ -346,7 +347,7 @@ mod tests {
                 .expect("child schema in result");
 
             let prop_names: Vec<&str> =
-                child.properties().iter().map(|p| p.name().as_str()).collect();
+                child.properties().map(|p| p.name().as_str()).collect();
             assert!(
                 prop_names.contains(&"from-parent"),
                 "Child should inherit parent's property; got: {prop_names:?}"

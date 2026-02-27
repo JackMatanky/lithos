@@ -10,6 +10,7 @@
 
 use std::{
     borrow::Borrow,
+    collections::BTreeMap,
     fmt::{Debug, Display},
     sync::{Arc, LazyLock},
 };
@@ -44,8 +45,9 @@ use super::{
 ///
 /// let name = SchemaName::new("project-note")?;
 /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
-/// assert!(
-///     schema.properties().is_empty(),
+/// assert_eq!(
+///     schema.properties().count(),
+///     0,
 ///     "New schema should have empty properties"
 /// );
 /// # Ok(())
@@ -73,8 +75,9 @@ pub struct Schema {
     parent_id: Option<SchemaId>,
     /// Fully resolved properties after inheritance.
     /// Uses Arc<Property> for sharing across inheritance chains.
+    /// Stored as `BTreeMap` for O(log n) lookups and guaranteed sort order.
     /// Serialized as Vec<Property> for compatibility.
-    properties: Vec<Arc<Property>>,
+    properties: BTreeMap<PropertyName, Arc<Property>>,
     /// Domain events pending emission (not serialized).
     pending_events: Vec<Events>,
 }
@@ -94,9 +97,10 @@ impl serde::Serialize for Schema {
         state.serialize_field("id", &self.id)?;
         state.serialize_field("name", &self.name)?;
         state.serialize_field("parent_id", &self.parent_id)?;
-        // Convert Arc<Property> to Property for serialization
+        // Convert BTreeMap<PropertyName, Arc<Property>> to Vec<Property> for
+        // serialization
         let properties: Vec<_> =
-            self.properties.iter().map(|p| p.as_ref().clone()).collect();
+            self.properties.values().map(|p| p.as_ref().clone()).collect();
         state.serialize_field("properties", &properties)?;
         state.end()
     }
@@ -124,9 +128,15 @@ impl<'de> serde::Deserialize<'de> for Schema {
         }
 
         let de = SchemaDe::deserialize(deserializer)?;
-        // Convert Property to Arc<Property>
-        let properties: Vec<Arc<Property>> =
-            de.properties.into_iter().map(Arc::new).collect();
+        // Convert Vec<Property> to BTreeMap<PropertyName, Arc<Property>>
+        let properties: BTreeMap<PropertyName, Arc<Property>> = de
+            .properties
+            .into_iter()
+            .map(|p| {
+                let prop_name = p.name().clone();
+                (prop_name, Arc::new(p))
+            })
+            .collect();
 
         Ok(Self {
             id: de.id,
@@ -170,9 +180,14 @@ impl Schema {
         parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
-        // Convert to Arc<Property> for sharing
-        let properties: Vec<Arc<Property>> =
-            properties.into_iter().map(Arc::new).collect();
+        // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
+        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
+            .into_iter()
+            .map(|p| {
+                let prop_name = p.name().clone();
+                (prop_name, Arc::new(p))
+            })
+            .collect();
 
         let mut schema = Self {
             id,
@@ -222,9 +237,14 @@ impl Schema {
         parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
-        // Convert to Arc<Property> for sharing
-        let properties: Vec<Arc<Property>> =
-            properties.into_iter().map(Arc::new).collect();
+        // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
+        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
+            .into_iter()
+            .map(|p| {
+                let prop_name = p.name().clone();
+                (prop_name, Arc::new(p))
+            })
+            .collect();
 
         let mut schema = Self {
             id,
@@ -255,9 +275,14 @@ impl Schema {
         parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Self {
-        // Convert to Arc<Property> for sharing
-        let properties: Vec<Arc<Property>> =
-            properties.into_iter().map(Arc::new).collect();
+        // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
+        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
+            .into_iter()
+            .map(|p| {
+                let prop_name = p.name().clone();
+                (prop_name, Arc::new(p))
+            })
+            .collect();
 
         Self {
             id,
@@ -330,14 +355,13 @@ impl Schema {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let name = SchemaName::new("test")?;
     /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
-    /// assert!(schema.properties().is_empty());
+    /// assert_eq!(schema.properties().count(), 0);
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    #[must_use]
-    pub fn properties(&self) -> &[Arc<Property>] {
-        &self.properties
+    pub fn properties(&self) -> impl Iterator<Item = &Arc<Property>> {
+        self.properties.values()
     }
 
     /// Gets a property by name.
@@ -364,11 +388,7 @@ impl Schema {
     #[inline]
     #[must_use]
     pub fn get(&self, name: &PropertyName) -> Option<&Arc<Property>> {
-        let i = self
-            .properties
-            .binary_search_by(|p| p.name().as_str().cmp(name.as_str()))
-            .ok()?;
-        self.properties.get(i)
+        self.properties.get(name)
     }
 
     /// Checks if a property exists by name.
@@ -390,9 +410,7 @@ impl Schema {
     #[inline]
     #[must_use]
     pub fn has(&self, name: &PropertyName) -> bool {
-        self.properties
-            .binary_search_by(|p| p.name().as_str().cmp(name.as_str()))
-            .is_ok()
+        self.properties.contains_key(name)
     }
 
     /// Returns a reference to pending domain events.
@@ -935,7 +953,7 @@ mod tests {
                 fixtures::sample_schema().expect("Valid schema fixture");
 
             assert_eq!(
-                schema.properties().len(),
+                schema.properties().count(),
                 1,
                 "Expected exactly 1 property"
             );
