@@ -217,9 +217,12 @@ impl HeadingLevel {
         if (1..=6).contains(&level) {
             Ok(Self(level))
         } else {
-            Err(NoteError::Structure(format!(
-                "Invalid heading level: {level}. Must be between 1 and 6."
-            )))
+            Err(NoteError::Structure(
+                format!(
+                    "Invalid heading level: {level}. Must be between 1 and 6."
+                )
+                .into(),
+            ))
         }
     }
 

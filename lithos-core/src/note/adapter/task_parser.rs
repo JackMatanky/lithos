@@ -57,10 +57,13 @@ impl<'config> TaskParser<'config> {
             .status()
             .name_for_symbol(status_symbol)
             .ok_or_else(|| {
-                NoteError::Task(format!(
-                    "unrecognized status symbol: '{}'",
-                    status_symbol.value()
-                ))
+                NoteError::Task(
+                    format!(
+                        "unrecognized status symbol: '{}'",
+                        status_symbol.value()
+                    )
+                    .into(),
+                )
             })?
             .clone();
 
@@ -187,17 +190,23 @@ impl<'config> TaskParser<'config> {
 
             let date = chrono::NaiveDate::parse_from_str(value, spec.format())
                 .map_err(|error| {
-                    NoteError::Task(format!(
-                        "invalid date for field '{}': {error}",
-                        spec.keyword().as_str()
-                    ))
+                    NoteError::Task(
+                        format!(
+                            "invalid date for field '{}': {error}",
+                            spec.keyword().as_str()
+                        )
+                        .into(),
+                    )
                 })?;
 
             let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-                NoteError::Task(format!(
-                    "invalid time for date in field '{}'",
-                    spec.keyword().as_str()
-                ))
+                NoteError::Task(
+                    format!(
+                        "invalid time for date in field '{}'",
+                        spec.keyword().as_str()
+                    )
+                    .into(),
+                )
             })?;
 
             Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
@@ -234,15 +243,19 @@ impl<'config> TaskParser<'config> {
             if let Some(spec) = self.config.field_spec(keyword) {
                 let json_value = parse_metadata_value(raw_value, spec)?;
                 spec.validate_raw_value(&json_value).map_err(|error| {
-                    NoteError::Task(format!(
-                        "invalid metadata field '{keyword}': {error}"
-                    ))
+                    NoteError::Task(
+                        format!("invalid metadata field '{keyword}': {error}")
+                            .into(),
+                    )
                 })?;
                 let field_value =
                     FieldValue::from_json(&json_value).map_err(|error| {
-                        NoteError::Task(format!(
-                            "invalid metadata field '{keyword}': {error}"
-                        ))
+                        NoteError::Task(
+                            format!(
+                                "invalid metadata field '{keyword}': {error}"
+                            )
+                            .into(),
+                        )
                     })?;
                 metadata.insert(keyword.into(), field_value);
             } else {
@@ -301,9 +314,10 @@ fn parse_metadata_value(
             ..
         } => {
             let value = raw_value.parse::<i64>().map_err(|error| {
-                NoteError::Task(format!(
-                    "invalid integer value '{raw_value}': {error}"
-                ))
+                NoteError::Task(
+                    format!("invalid integer value '{raw_value}': {error}")
+                        .into(),
+                )
             })?;
             Ok(serde_json::Value::Number(value.into()))
         }
@@ -311,15 +325,16 @@ fn parse_metadata_value(
             ..
         } => {
             let value = raw_value.parse::<f64>().map_err(|error| {
-                NoteError::Task(format!(
-                    "invalid float value '{raw_value}': {error}"
-                ))
+                NoteError::Task(
+                    format!("invalid float value '{raw_value}': {error}")
+                        .into(),
+                )
             })?;
             let number =
                 serde_json::Number::from_f64(value).ok_or_else(|| {
-                    NoteError::Task(format!(
-                        "invalid float value '{raw_value}'"
-                    ))
+                    NoteError::Task(
+                        format!("invalid float value '{raw_value}'").into(),
+                    )
                 })?;
             Ok(serde_json::Value::Number(number))
         }

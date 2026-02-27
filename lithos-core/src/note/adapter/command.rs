@@ -537,17 +537,21 @@ mod tests {
 
         #[test]
         fn create_persists_note_path() -> Result<(), NoteCommandError> {
-            let (_dir, db) = fixtures::test_db()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let config = fixtures::test_config()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             let cmd = CommandAdapter::new(&db, &config);
 
             let note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
 
             let stored_note = fixtures::stored_note(&db, id)
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?
+                .map_err(|e| {
+                    NoteCommandError::Domain(NoteError::Storage(e.into()))
+                })?
                 .expect("Stored note should exist");
             assert_eq!(
                 stored_note.path().as_str(),
@@ -559,17 +563,21 @@ mod tests {
 
         #[test]
         fn create_persists_path_index() -> Result<(), NoteCommandError> {
-            let (_dir, db) = fixtures::test_db()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let config = fixtures::test_config()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             let cmd = CommandAdapter::new(&db, &config);
 
             let note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
 
             let ids = fixtures::path_index_ids(&db, note.path().as_str())
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+                .map_err(|e| {
+                    NoteCommandError::Domain(NoteError::Storage(e.into()))
+                })?;
             assert!(
                 ids.contains(&id.to_string()),
                 "Path index should contain created note id"
@@ -579,24 +587,29 @@ mod tests {
 
         #[test]
         fn update_removes_old_path_index() -> Result<(), NoteCommandError> {
-            let (_dir, db) = fixtures::test_db()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let config = fixtures::test_config()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             let cmd = CommandAdapter::new(&db, &config);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
             let old_path = note.path().as_str().to_owned();
-            let path = fixtures::parse_path("notes/b.md")
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let path = fixtures::parse_path("notes/b.md").map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             note.set_path(path);
 
             let result = fixtures::update_note(&cmd, note);
             assert!(result.is_ok(), "Update should succeed: {result:?}");
 
-            let old_ids = fixtures::path_index_ids(&db, &old_path)
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let old_ids =
+                fixtures::path_index_ids(&db, &old_path).map_err(|e| {
+                    NoteCommandError::Domain(NoteError::Storage(e.into()))
+                })?;
             assert!(
                 !old_ids.contains(&id.to_string()),
                 "Old path index should not contain updated note id"
@@ -606,23 +619,28 @@ mod tests {
 
         #[test]
         fn update_adds_new_path_index() -> Result<(), NoteCommandError> {
-            let (_dir, db) = fixtures::test_db()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let config = fixtures::test_config()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             let cmd = CommandAdapter::new(&db, &config);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
-            let path = fixtures::parse_path("notes/b.md")
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let path = fixtures::parse_path("notes/b.md").map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             note.set_path(path);
 
             let result = fixtures::update_note(&cmd, note);
             assert!(result.is_ok(), "Update should succeed: {result:?}");
 
-            let new_ids = fixtures::path_index_ids(&db, "notes/b.md")
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let new_ids =
+                fixtures::path_index_ids(&db, "notes/b.md").map_err(|e| {
+                    NoteCommandError::Domain(NoteError::Storage(e.into()))
+                })?;
             assert!(
                 new_ids.contains(&id.to_string()),
                 "New path index should contain updated note id"
@@ -632,24 +650,29 @@ mod tests {
 
         #[test]
         fn update_adds_tag_index() -> Result<(), NoteCommandError> {
-            let (_dir, db) = fixtures::test_db()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let config = fixtures::test_config()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             let cmd = CommandAdapter::new(&db, &config);
 
             let mut note = fixtures::create_note(&cmd, "notes/a.md")?;
             let id = Uuid::from(note.id());
-            let tag = fixtures::parse_tag("#project")
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let tag = fixtures::parse_tag("#project").map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             let tag_key = tag.full_path().to_owned();
             note.add_tag(tag);
 
             let result = fixtures::update_note(&cmd, note);
             assert!(result.is_ok(), "Update should succeed: {result:?}");
 
-            let tag_ids = fixtures::tag_index_ids(&db, &tag_key)
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let tag_ids =
+                fixtures::tag_index_ids(&db, &tag_key).map_err(|e| {
+                    NoteCommandError::Domain(NoteError::Storage(e.into()))
+                })?;
             assert!(
                 tag_ids.contains(&id.to_string()),
                 "Tag index should contain updated note id"
@@ -659,10 +682,12 @@ mod tests {
 
         #[test]
         fn delete_removes_note() -> Result<(), NoteCommandError> {
-            let (_dir, db) = fixtures::test_db()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let config = fixtures::test_config()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             let cmd = CommandAdapter::new(&db, &config);
 
             let note = fixtures::create_note(&cmd, "notes/a.md")?;
@@ -671,18 +696,21 @@ mod tests {
             let result = fixtures::delete_note(&cmd, id);
             assert!(result.is_ok(), "Delete should succeed: {result:?}");
 
-            let stored = fixtures::stored_note(&db, id)
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let stored = fixtures::stored_note(&db, id).map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             assert!(stored.is_none(), "Deleted note should not exist");
             Ok(())
         }
 
         #[test]
         fn create_rejects_duplicate_paths() -> Result<(), NoteCommandError> {
-            let (_dir, db) = fixtures::test_db()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let config = fixtures::test_config()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             let cmd = CommandAdapter::new(&db, &config);
 
             let _note = fixtures::create_note(&cmd, "notes/a.md")?;
@@ -694,17 +722,20 @@ mod tests {
 
         #[test]
         fn update_rejects_duplicate_paths() -> Result<(), NoteCommandError> {
-            let (_dir, db) = fixtures::test_db()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
-            let config = fixtures::test_config()
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             let cmd = CommandAdapter::new(&db, &config);
 
             let note_a = fixtures::create_note(&cmd, "notes/a.md")?;
             let mut note_b = fixtures::create_note(&cmd, "notes/b.md")?;
 
-            let path = fixtures::parse_path("notes/a.md")
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let path = fixtures::parse_path("notes/a.md").map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
             note_b.set_path(path);
             let updated = fixtures::update_note(&cmd, note_b);
 
@@ -714,7 +745,9 @@ mod tests {
             );
 
             let stored = fixtures::stored_note(&db, Uuid::from(note_a.id()))
-                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?
+                .map_err(|e| {
+                    NoteCommandError::Domain(NoteError::Storage(e.into()))
+                })?
                 .expect("stored note should exist");
             assert_eq!(stored.path().as_str(), "notes/a.md");
             Ok(())

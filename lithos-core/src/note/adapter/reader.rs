@@ -112,7 +112,7 @@ impl<'config> NoteReader<'config> {
                 path,
                 |_, content| Ok(content.to_owned()),
             )
-            .map_err(|error| NoteError::Storage(format!("{error}")))?;
+            .map_err(|error| NoteError::Storage(format!("{error}").into()))?;
         self.parse_str(&markdown)
     }
 
@@ -833,14 +833,18 @@ impl<'config> ParseState<'config> {
             MetadataKind::Yaml => {
                 let yaml_value: serde_yaml::Value =
                     serde_yaml::from_str(&self.metadata_text).map_err(|e| {
-                        NoteError::Frontmatter(format!("invalid YAML: {e}"))
+                        NoteError::Frontmatter(
+                            format!("invalid YAML: {e}").into(),
+                        )
                     })?;
                 yaml_to_field_map(&yaml_value)?
             }
             MetadataKind::Toml => {
                 let toml_value: toml::Value =
                     toml::from_str(&self.metadata_text).map_err(|e| {
-                        NoteError::Frontmatter(format!("invalid TOML: {e}"))
+                        NoteError::Frontmatter(
+                            format!("invalid TOML: {e}").into(),
+                        )
                     })?;
                 toml_to_field_map(&toml_value)?
             }
@@ -877,8 +881,8 @@ fn yaml_to_field_map(
             .as_str()
             .ok_or_else(|| NoteError::Frontmatter("non-string key".into()))?;
 
-        let field_value =
-            FieldValue::from_yaml(value).map_err(NoteError::Frontmatter)?;
+        let field_value = FieldValue::from_yaml(value)
+            .map_err(|error| NoteError::Frontmatter(error.into()))?;
         fields.insert(key_str.into(), field_value);
     }
 
@@ -908,9 +912,9 @@ fn field_value_from_toml(value: toml::Value) -> Result<FieldValue, NoteError> {
         toml::Value::Integer(number) => {
             let raw = number.to_string();
             let parsed = raw.parse::<f64>().map_err(|error| {
-                NoteError::Frontmatter(format!(
-                    "invalid integer value '{raw}': {error}"
-                ))
+                NoteError::Frontmatter(
+                    format!("invalid integer value '{raw}': {error}").into(),
+                )
             })?;
             Ok(FieldValue::Number(parsed))
         }
@@ -1048,13 +1052,15 @@ fn has_scheme(target: &str) -> bool {
 
 fn parse_offset(offset: usize) -> Result<SourceByteOffset, NoteError> {
     SourceByteOffset::try_from(offset).map_err(|error| {
-        NoteError::Structure(format!("source offset out of range: {error}"))
+        NoteError::Structure(
+            format!("source offset out of range: {error}").into(),
+        )
     })
 }
 
 fn parse_depth(depth: usize) -> Result<u8, NoteError> {
     u8::try_from(depth).map_err(|error| {
-        NoteError::Structure(format!("list depth out of range: {error}"))
+        NoteError::Structure(format!("list depth out of range: {error}").into())
     })
 }
 
@@ -1065,7 +1071,9 @@ fn status_symbol_from_marker(checked: bool) -> Result<StatusSymbol, NoteError> {
         ' '
     };
     StatusSymbol::try_new(symbol).map_err(|error| {
-        NoteError::Task(format!("invalid status symbol '{symbol}': {error}"))
+        NoteError::Task(
+            format!("invalid status symbol '{symbol}': {error}").into(),
+        )
     })
 }
 

@@ -294,7 +294,9 @@ mod tests {
         fn find_by_id_returns_note_with_matching_id()
         -> Result<(), NoteQueryError> {
             let (_dir, db, id, _fm) = fixtures::note_with_frontmatter()
-                .map_err(|e| NoteQueryError::Domain(NoteError::Storage(e)))?;
+                .map_err(|e| {
+                    NoteQueryError::Domain(NoteError::Storage(e.into()))
+                })?;
             let qry = QueryAdapter::new(&db);
 
             let observed = qry
@@ -311,8 +313,9 @@ mod tests {
         #[test]
         fn find_by_id_returns_none_for_missing_id() -> Result<(), NoteQueryError>
         {
-            let (_dir, db) = fixtures::test_db()
-                .map_err(|e| NoteQueryError::Domain(NoteError::Storage(e)))?;
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteQueryError::Domain(NoteError::Storage(e.into()))
+            })?;
             let qry = QueryAdapter::new(&db);
             let miss = qry.find_by_id(fixtures::TEST_MISSING_ID)?;
             assert!(miss.is_none(), "Non-existent ID should return None");
@@ -322,7 +325,9 @@ mod tests {
         #[test]
         fn list_returns_all_notes() -> Result<(), NoteQueryError> {
             let (_dir, db, _id, _fm) = fixtures::note_with_frontmatter()
-                .map_err(|e| NoteQueryError::Domain(NoteError::Storage(e)))?;
+                .map_err(|e| {
+                    NoteQueryError::Domain(NoteError::Storage(e.into()))
+                })?;
             let qry = QueryAdapter::new(&db);
             let notes = qry.list()?;
             assert_eq!(notes.len(), 1);

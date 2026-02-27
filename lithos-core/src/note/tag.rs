@@ -88,10 +88,13 @@ impl Tag {
                 .chars()
                 .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
             {
-                return Err(NoteError::Tag(format!(
-                    "Invalid tag segment '{segment}': only alphanumeric, \
-                     underscore, and hyphen allowed"
-                )));
+                return Err(NoteError::Tag(
+                    format!(
+                        "Invalid tag segment '{segment}': only alphanumeric, \
+                         underscore, and hyphen allowed"
+                    )
+                    .into(),
+                ));
             }
             segments.push(segment.into());
         }

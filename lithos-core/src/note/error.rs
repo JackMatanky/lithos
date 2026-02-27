@@ -16,11 +16,11 @@ use super::value::FieldValueType;
 pub enum NoteError {
     /// Note already exists.
     #[error("note already exists: {0}")]
-    AlreadyExists(String),
+    AlreadyExists(Box<str>),
 
     /// Frontmatter parsing error.
     #[error("frontmatter error: {0}")]
-    Frontmatter(String),
+    Frontmatter(Box<str>),
 
     /// Frontmatter access/extraction error.
     #[error(transparent)]
@@ -28,35 +28,35 @@ pub enum NoteError {
 
     /// Note path is invalid.
     #[error("invalid note path: {0}")]
-    InvalidPath(String),
+    InvalidPath(Box<str>),
 
     /// Link parsing error.
     #[error("link error: {0}")]
-    Link(String),
+    Link(Box<str>),
 
     /// Note not found.
     #[error("note not found: {0}")]
-    NotFound(String),
+    NotFound(Box<str>),
 
     /// Storage error.
     #[error("storage error: {0}")]
-    Storage(String),
+    Storage(Box<str>),
 
     /// Tag error.
     #[error("tag error: {0}")]
-    Tag(String),
+    Tag(Box<str>),
 
     /// Task error.
     #[error("task error: {0}")]
-    Task(String),
+    Task(Box<str>),
 
     /// Structural error within a note.
     #[error("note structure error: {0}")]
-    Structure(String),
+    Structure(Box<str>),
 
     /// Note validation failed.
     #[error("note validation failed: {0}")]
-    ValidationFailed(String),
+    ValidationFailed(Box<str>),
 }
 
 /// Errors surfaced by Note command operations.

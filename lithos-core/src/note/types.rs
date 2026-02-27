@@ -286,13 +286,13 @@ mod tests {
     fn line_column_tracks_unicode_and_newlines() -> Result<(), NoteError> {
         let source = "a\u{00E9}\nb";
         let offset = SourceByteOffset::try_from("a".len())
-            .map_err(|error| NoteError::Structure(error.to_string()))?;
+            .map_err(|error| NoteError::Structure(error.to_string().into()))?;
         let line_column = offset.line_column(source)?;
         assert_eq!(line_column.line(), 1);
         assert_eq!(line_column.column(), 2);
 
         let newline_offset = SourceByteOffset::try_from("a\u{00E9}\n".len())
-            .map_err(|error| NoteError::Structure(error.to_string()))?;
+            .map_err(|error| NoteError::Structure(error.to_string().into()))?;
         let line_column_after_newline = newline_offset.line_column(source)?;
         assert_eq!(line_column_after_newline.line(), 2);
         assert_eq!(line_column_after_newline.column(), 1);
