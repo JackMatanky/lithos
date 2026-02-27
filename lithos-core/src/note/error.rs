@@ -73,10 +73,6 @@ pub enum NoteError {
     /// Structural error within a note.
     #[error("note structure error: {0}")]
     Structure(Box<str>),
-
-    /// Note validation failed.
-    #[error("note validation failed: {0}")]
-    ValidationFailed(Box<str>),
 }
 
 /// Errors surfaced when validating or parsing tags.
@@ -352,7 +348,6 @@ mod tests {
     #[case(NoteError::AlreadyExists(
         NotePath::new("test.md").expect("valid path")
     ))]
-    #[case(NoteError::ValidationFailed("invalid".into()))]
     #[case(NoteError::Metadata(NoteMetadataError::HeadingTextEmpty))]
     #[case(NoteError::Config(
         crate::config::error::ConfigError::ValidationFailed {
