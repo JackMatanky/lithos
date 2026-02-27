@@ -11,7 +11,7 @@ use crate::{
     config::aggregate::Config,
     db::{BatchWriter, Database, DbError},
     note::{
-        aggregate::{Note, NoteId},
+        aggregate::{Note, NoteId, NotePath},
         db_table::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
             PATH_TO_ID, TAGS_TO_NOTES, TASKS_BY_COMPLETED_DATE,
@@ -75,13 +75,13 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
 
     fn ensure_unique_path(
         &self,
-        path: &str,
+        path: &NotePath,
         current_id: Option<&str>,
     ) -> Result<(), DbError> {
-        let ids = self.db.multimap_get(PATH_TO_ID, path)?;
+        let ids = self.db.multimap_get(PATH_TO_ID, path.as_str())?;
         if ids.iter().any(|id| Some(id.as_str()) != current_id) {
             return Err(DbError::Table(
-                NoteError::AlreadyExists(path.into()).to_string(),
+                NoteError::AlreadyExists(path.clone()).to_string(),
             ));
         }
         Ok(())
@@ -324,9 +324,9 @@ impl Command for CommandAdapter<'_, '_> {
     /// Creates a new note with the given vault-relative path.
     #[inline]
     fn create(&self, path: &str) -> Result<Note, Self::Error> {
-        self.ensure_unique_path(path, None)?;
         let note = Note::new(NoteId::new(), path)
             .map_err(|e| crate::db::DbError::Table(e.to_string()))?;
+        self.ensure_unique_path(note.path(), None)?;
         let id = Uuid::from(note.id());
         let mut id_buffer = Uuid::encode_buffer();
         let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
@@ -373,7 +373,7 @@ impl Command for CommandAdapter<'_, '_> {
         if old_data.as_ref().is_none_or(|index_data| {
             index_data.path.as_ref() != note.path().as_str()
         }) {
-            self.ensure_unique_path(note.path().as_str(), current_id)?;
+            self.ensure_unique_path(note.path(), current_id)?;
         }
         let index_data = self.collect_index_data(&note);
 

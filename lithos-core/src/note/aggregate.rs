@@ -16,6 +16,8 @@
               docs"
 )]
 
+use std::fmt;
+
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -292,6 +294,13 @@ impl NoteId {
     }
 }
 
+impl fmt::Display for NoteId {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl Default for NoteId {
     #[inline]
     fn default() -> Self {
@@ -431,6 +440,13 @@ impl NotePath {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl fmt::Display for NotePath {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

@@ -5,7 +5,10 @@
 //! This module defines note-specific errors using thiserror for
 //! structured error handling.
 
-use super::value::FieldValueType;
+use super::{
+    aggregate::{NoteId, NotePath},
+    value::FieldValueType,
+};
 
 /// Note-related errors.
 ///
@@ -16,7 +19,7 @@ use super::value::FieldValueType;
 pub enum NoteError {
     /// Note already exists.
     #[error("note already exists: {0}")]
-    AlreadyExists(Box<str>),
+    AlreadyExists(NotePath),
 
     /// Frontmatter parsing error.
     #[error("frontmatter error: {0}")]
@@ -36,7 +39,7 @@ pub enum NoteError {
 
     /// Note not found.
     #[error("note not found: {0}")]
-    NotFound(Box<str>),
+    NotFound(NoteId),
 
     /// Storage error.
     #[error("storage error: {0}")]
@@ -156,8 +159,10 @@ mod tests {
 
     #[rstest]
     #[case(NoteError::InvalidPath("test.md".into()))]
-    #[case(NoteError::NotFound("uuid".into()))]
-    #[case(NoteError::AlreadyExists("test.md".into()))]
+    #[case(NoteError::NotFound(NoteId::new()))]
+    #[case(NoteError::AlreadyExists(
+        NotePath::new("test.md").expect("valid path")
+    ))]
     #[case(NoteError::ValidationFailed("invalid".into()))]
     #[case(NoteError::Frontmatter("parse error".into()))]
     #[case(NoteError::FrontmatterAccess(FrontmatterError::Missing {
