@@ -188,7 +188,10 @@ const VAULT_SIZES: &[VaultSize] = &[
 
 /// Create a minimal config for benchmarking.
 fn bench_config(vault_root: &std::path::Path) -> Config {
-    let raw = RawConfig::default();
+    let mut raw = RawConfig::default();
+    // Configure schemas_dir to match generate_vault structure (.lithos/schemas)
+    raw.paths.schemas_dir = Some(".lithos/schemas".to_owned());
+
     let vault_id = VaultId::new();
     let vault_root_str = vault_root.to_string_lossy().to_string();
     let vault_root = VaultRoot::try_from(vault_root_str)
@@ -196,7 +199,12 @@ fn bench_config(vault_root: &std::path::Path) -> Config {
     Config::build(&raw, vault_id, vault_root).expect("Failed to build config")
 }
 
-/// PropertyBank content (realistic from example_vault).
+/// PropertyBank content (realistic from example_vault, with minor fixes for
+/// validation).
+///
+/// Note: Removed `%Y` date formats (date_year, year_published) that fail
+/// validation due to chrono's inability to round-trip year-only formats. These
+/// properties exist in example_vault but are not actively used.
 const PROPERTY_BANK_JSON: &str = r#"{
   "properties": {
     "about": { "type": "string" },
@@ -205,7 +213,6 @@ const PROPERTY_BANK_JSON: &str = r#"{
     "contact": { "multi": true, "type": "file", "directory": "51_contacts/" },
     "context": { "type": "string", "options": ["education", "habit_ritual", "personal", "professional", "work"] },
     "date_iso_8601": { "type": "date", "format": "%Y-%m-%d" },
-    "date_year": { "type": "date", "format": "%Y" },
     "datetime_local": { "type": "date", "format": "%Y-%m-%dT%H:%M" },
     "doi": { "type": "string" },
     "goal": { "multi": true, "type": "file", "directory": "(30_goals)/" },
@@ -218,8 +225,7 @@ const PROPERTY_BANK_JSON: &str = r#"{
     "task_status": { "type": "string", "options": { "1": "to_do", "2": "in_progress", "3": "done", "4": "on_hold", "5": "schedule", "6": "discarded" } },
     "title": { "type": "string" },
     "url": { "type": "string" },
-    "volume": { "type": "number", "step": 1.0 },
-    "year_published": { "type": "date", "format": "%Y" }
+    "volume": { "type": "number", "step": 1.0 }
   }
 }"#;
 
@@ -373,9 +379,7 @@ fn bench_combined_pipeline(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_file_io_and_parse,
-    // TODO: Fix property_bank_validation - Config path resolution issue
-    // bench_property_bank_validation,
-    // TODO: Fix combined_pipeline - Config path resolution issue
-    // bench_combined_pipeline,
+    bench_property_bank_validation,
+    bench_combined_pipeline,
 );
 criterion_main!(benches);
