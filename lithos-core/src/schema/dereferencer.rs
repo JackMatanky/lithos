@@ -43,9 +43,12 @@ use crate::schema::aggregate::SchemaId;
 /// Properties are sorted by name for efficient merging by `Extender` and
 /// `Resolver`.
 ///
-/// Visibility is `pub(crate)` because `DereferencedSchema` is an internal
-/// pipeline type — it is never exposed to callers of the public API.
-pub(crate) struct DereferencedSchema {
+/// **Internal API**: This type is public solely for benchmarking purposes.
+/// Do not depend on it in production code - use `SchemaService` instead.
+#[doc(hidden)]
+#[derive(Clone)]
+#[non_exhaustive]
+pub struct DereferencedSchema {
     /// Schema name string (carried forward from `RawSchema`).
     pub name: Box<str>,
     /// Optional parent schema name (carried forward from `RawSchema.extends`).
@@ -65,15 +68,22 @@ pub(crate) struct DereferencedSchema {
 ///
 /// Holds a shared reference to the bank so callers can pre-build the bank
 /// once and reuse the dereferencer across multiple schemas.
-pub(crate) struct Dereferencer<'bank> {
+///
+/// **Internal API**: This type is public solely for benchmarking purposes.
+/// Do not depend on it in production code - use `SchemaService` instead.
+#[doc(hidden)]
+pub struct Dereferencer<'bank> {
     bank: &'bank PropertyBank,
 }
 
 impl<'bank> Dereferencer<'bank> {
     /// Create a new `Dereferencer` bound to the given [`PropertyBank`].
+    ///
+    /// **Internal API**: Public for benchmarking only.
+    #[doc(hidden)]
     #[inline]
     #[must_use]
-    pub(crate) const fn new(bank: &'bank PropertyBank) -> Self {
+    pub const fn new(bank: &'bank PropertyBank) -> Self {
         Self {
             bank,
         }
@@ -88,8 +98,11 @@ impl<'bank> Dereferencer<'bank> {
     ///
     /// Returns [`SchemaError`] if any property fails validation or a `$ref`
     /// path cannot be resolved.
+    ///
+    /// **Internal API**: Public for benchmarking only.
+    #[doc(hidden)]
     #[inline]
-    pub(crate) fn deref(
+    pub fn deref(
         &self,
         schemas: Vec<(SchemaId, RawSchema)>,
     ) -> Result<Vec<(SchemaId, DereferencedSchema)>, SchemaError> {

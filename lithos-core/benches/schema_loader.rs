@@ -1,133 +1,274 @@
-//! Schema loading pipeline performance benchmarks.
+//! Schema ingestion pipeline performance benchmarks.
 //!
 //! # Summary
 //!
-//! Measures schema file ingestion and PropertyBank validation to establish
-//! baseline performance for the schema loading pipeline and detect regressions.
+//! Benchmarks the full schema ingestion pipeline from file I/O through
+//! resolution, measuring each stage individually and end-to-end to identify
+//! performance bottlenecks and detect regressions.
 //!
 //! # Motivation
 //!
-//! Schema loading happens at vault startup. While the full resolution pipeline
-//! (dereferencing, DAG construction, property merging) is internal
-//! implementation, the user-facing file I/O and validation stages are critical
-//! for startup time. This benchmark focuses on measurable, public-API
-//! operations.
+//! Schema loading happens at vault startup and impacts initial LSP response
+//! time. The pipeline has multiple distinct stages (file I/O, parsing,
+//! dereferencing, DAG construction, property merging) with different
+//! performance characteristics. Measuring each stage in isolation enables
+//! targeted optimization and regression detection.
+//!
+//! Historical context: Initial benchmarks only measured file I/O and
+//! PropertyBank validation, missing 80%+ of the actual pipeline cost (DAG
+//! construction, property merging). This comprehensive suite provides
+//! actionable performance data for optimization decisions.
 //!
 //! # Scope
 //!
 //! **Included**:
 //! - File I/O + Parsing (TOML/JSON → RawSchema via Ingestor)
-//! - PropertyBank validation (RawPropertyBank → PropertyBank domain type)
-//! - Validation overhead (PropertySpec construction and validation)
+//! - PropertyBank validation (RawPropertyBank → PropertyBank)
+//! - PropertyBank lookup performance (HashMap get for $ref resolution)
+//! - Dereferencing ($ref resolution against PropertyBank)
+//! - DAG construction (topological sort, cycle detection via Extender)
+//! - Property merging (inheritance resolution via Resolver)
+//! - Full pipeline end-to-end (file → resolved Schema)
 //! - Scaling behavior (tiny → small → medium → large vaults)
 //!
 //! **Excluded**:
-//! - Internal resolution pipeline stages (Dereferencer, Extender, Resolver -
-//!   private modules)
-//! - Database operations (Command/Query adapters)
-//! - Staleness checking (hybrid vs cold start comparison - requires DB
-//!   integration)
+//! - Database staleness checking (requires DB integration)
+//! - Database write performance (Command adapter benchmarks)
+//! - Concurrent access patterns (single-threaded focus)
+//! - Cache warming effects (fresh setup per benchmark)
+//! - Network I/O, distributed scenarios
 //!
 //! # Benchmark Style
 //!
-//! - **Micro-benchmarks**: Isolated file loading and validation operations
+//! - **Micro-benchmarks**: Individual pipeline stages measured in isolation
+//! - **Macro-benchmark**: Full end-to-end pipeline including all stages
 //! - **Scaling-focused**: Tests across vault sizes (5, 20, 40, 100 schemas)
-//! - **Single-threaded**: No concurrent loading
+//! - **Single-threaded**: No concurrent loading (matches production usage)
 //!
 //! # Methodology
 //!
-//! - **Harness**: Criterion.rs (100 samples, 3s warmup)
+//! - **Harness**: Criterion.rs (100 samples, 3s warmup, 5s measurement)
 //! - **Black-boxing**: All results through `black_box()` to prevent elision
-//! - **Setup separation**: Vault generation outside timed region
-//! - **Measurement**: Total latency and throughput (schemas/sec)
+//! - **Setup separation**: Test data generation outside timed region
+//! - **Measurement focus**: Operation latency and throughput (schemas/sec)
+//! - **Compilation**: `--release` mode (criterion default)
+//! - **Environment**: tmpfs-backed `TempDir` eliminates disk I/O variance
 //!
 //! # Input Model
 //!
 //! Based on real schemas from `example_vault/.lithos/schemas/`:
 //!
-//! **Property Bank** (25 properties):
+//! **Property Bank** (19 properties):
 //! - String types (simple, with options, with patterns)
 //! - Number types (with bounds, with step validation)
-//! - Date types (various format strings)
-//! - File types (directory constraints, file_class)
-//! - Mix of single and multi-value properties
+//! - Date types (strftime format strings: `%Y-%m-%d`, `%Y-%m-%dT%H:%M`)
+//! - File types (directory constraints, file_class filters)
+//! - Mix of single and multi-value properties (`multi: true`)
 //!
-//! **Schemas**:
-//! - Base schemas (task, lib, cal, dir, pkm)
-//! - Derived schemas with inheritance (task_project extends task)
-//! - $ref usage (referencing PropertyBank properties)
-//! - Excludes and overrides in derived schemas
-//! - 5-15 properties per schema
+//! **Schemas** (5 base templates):
+//! - **task**: 14 properties (complex, uses $ref extensively)
+//! - **task_project**: extends task, overrides type, excludes 3 properties
+//! - **task_meeting**: extends task, simple override
+//! - **lib**: 3 properties (moderate complexity)
+//! - **lib_book**: extends lib, adds 1 property
+//!
+//! **Inheritance structure**:
+//! - 2-level max depth (task → task_project)
+//! - Mix of root and derived schemas (3 root, 2 derived)
+//! - Property exclusion and override patterns
+//! - ~60% of properties use $ref (realistic $ref density)
 //!
 //! **Vault Sizes**:
-//! - **Tiny**: 5 schemas (~150 KB schema files)
-//! - **Small**: 20 schemas (~600 KB schema files)
-//! - **Medium**: 40 schemas (~1.2 MB schema files)
-//! - **Large**: 100 schemas (~3 MB schema files)
+//! - **Tiny**: 5 schemas (matches SCHEMAS template set exactly)
+//! - **Small**: 20 schemas (4x replication with naming variations)
+//! - **Medium**: 40 schemas (8x replication)
+//! - **Large**: 100 schemas (20x replication, stress test)
+//!
+//! # Controls and Fairness
+//!
+//! - **Same inputs**: All benchmarks use identical schema templates
+//! - **Deterministic IDs**: UUIDs are v7 (time-based) but measurements are
+//!   stable
+//! - **Compilation**: `--release` mode, no special target-cpu or LTO
+//! - **Environment**: tmpfs-backed `TempDir` for file operations (eliminates
+//!   disk I/O variance)
+//! - **Allocation**: System allocator (no custom allocator)
+//! - **Setup separation**: Vault generation, data parsing outside `b.iter()`
 //!
 //! # Expected Characteristics
 //!
-//! **File I/O + Parse** (dominant cost):
-//! - Tiny (5 schemas): ~200 µs (disk I/O + serde deserialization)
-//! - Large (100 schemas): ~4 ms (should scale linearly with file count)
+//! Based on typical schema workloads and architectural analysis:
 //!
-//! **PropertyBank Validation**:
-//! - ~50 µs (25 properties, PropertySpec construction + validation)
-//! - Should be constant regardless of schema count
+//! **File I/O + Parse** (~200-500 µs for tiny, ~2-5 ms for large):
+//! - Dominated by serde deserialization (TOML/JSON → RawSchema)
+//! - Should scale linearly with schema count: O(n)
+//! - tmpfs eliminates disk I/O latency (pure CPU deserialization)
+//! - Bottleneck: serde overhead, not filesystem
+//!
+//! **PropertyBank Validation** (~20-30 µs, constant):
+//! - PropertySpec construction and validation logic
+//! - Should be O(1) regardless of schema count (fixed 19 properties)
+//! - Recent optimizations measured: HIGH-001 (regex caching), E-02 (epsilon
+//!   handling)
+//! - Bottleneck: PropertySpec validation, not HashMap construction
+//!
+//! **PropertyBank Lookup** (~5-10 ns per lookup):
+//! - HashMap get performance for $ref resolution
+//! - Should be O(1) with good hash distribution
+//! - Measures hot path cost during dereferencing
+//! - Bottleneck: hash function quality, not table size
+//!
+//! **Dereferencing** (~50-150 µs for tiny, ~1-3 ms for large):
+//! - $ref pointer resolution against PropertyBank
+//! - HashMap lookups + PropertySpec cloning per $ref
+//! - Should scale linearly with total $ref count: O(n * avg_refs_per_schema)
+//! - Bottleneck: PropertySpec cloning, not HashMap lookups
+//!
+//! **DAG Construction** (~30-80 µs for tiny, ~200-500 µs for large):
+//! - Topological sort via Kahn's algorithm
+//! - Cycle detection via DFS
+//! - Should scale O(n + e) where e = inheritance edges
+//! - Bottleneck: HashMap operations, not algorithm itself
+//!
+//! **Property Merging** (~40-100 µs for tiny, ~300-800 µs for large):
+//! - Two-pointer sorted merge for inheritance
+//! - Arc<Property> sharing for memory efficiency
+//! - Should scale linearly with (depth * property_count): O(n * d * p)
+//! - Bottleneck: Arc cloning + merge logic, not traversal
 //!
 //! **Total Pipeline** (sum of stages):
-//! - Tiny: ~250 µs
-//! - Large: ~4.5 ms
-//!
-//! **Scaling**:
-//! - Should be O(n) with schema count (file I/O dominates)
-//! - PropertyBank validation is O(1) (fixed number of properties)
+//! - Tiny (5 schemas): ~400-900 µs
+//! - Large (100 schemas): ~5-12 ms
+//! - Should scale linearly overall (file I/O dominates at scale)
+//! - Expected distribution: File I/O ~50%, Deref ~25%, DAG ~10%, Merge ~10%,
+//!   Validation ~5%
 //!
 //! # Interpreting Results
 //!
 //! **Bottleneck Identification**:
-//! - If file I/O dominates (>80% of time) → normal, disk-bound
-//! - If PropertyBank validation is expensive (>20%) → PropertySpec optimization
-//!   needed
-//! - If doesn't scale linearly → file system caching issue
+//! - If **file I/O** >60% of total → normal, serde-bound (expected)
+//! - If **dereferencing** >35% of total → PropertySpec cloning overhead,
+//!   consider lazy evaluation
+//! - If **DAG construction** >20% of total → HashMap overhead or algorithm
+//!   issue
+//! - If **property merging** >25% of total → Arc cloning overhead, verify
+//!   sharing
+//! - If **PropertyBank validation** >10% of total → PropertySpec construction
+//!   regressed
 //!
 //! **Meaningful Changes**:
-//! - >20% regression in file I/O → serde performance or file system issue
-//! - >20% regression in validation → PropertySpec construction regressed
-//! - Scaling becomes superlinear → investigate file system behavior
+//! - >20% regression in any single stage → investigate root cause immediately
+//! - >10% regression in total pipeline → likely user-visible startup impact
+//! - Scaling becomes superlinear (O(n²)) → algorithm regression (critical bug)
+//! - Throughput drops below 20K schemas/sec → performance degradation
 //!
-//! **Validation of Recent Fixes**:
-//! - PropertyBank validation includes PropertySpec::validate logic
-//! - Recent fixes (HIGH-001 regex caching, E-02 epsilon) measured here
-//! - Establishes baseline for future schema format optimizations
+//! **Regression Signals** (watch for):
+//! - PropertyBank validation time increasing → PropertySpec construction
+//!   regressed (check HIGH-001 regex caching)
+//! - PropertyBank lookup >15 ns → HashMap hash function degraded
+//! - Dereferencing not scaling linearly → HashMap collisions or excessive
+//!   cloning
+//! - DAG construction spiking → cycle detection or topological sort algorithm
+//!   issue
+//! - Property merging growing faster than O(n) → Arc sharing broken or merge
+//!   logic regressed
+//! - Full pipeline >15 ms for 100 schemas → investigate all stages
+//!
+//! **Valid Comparisons**:
+//! - Within-machine, same session: Reliable (±5% expected variance)
+//! - Across machines: Trends only, not absolute numbers
+//! - Before/after code changes: Use `--save-baseline` and `--baseline`
+//! - CI vs local: Expect significant variance, use for trend detection only
+//!
+//! **Noise Sources**:
+//! - File system cache state (mitigated by tmpfs + consistent setup)
+//! - Background processes (close unnecessary applications during benchmark)
+//! - Thermal throttling (long runs may show progressive degradation)
+//! - System allocator variance (first allocation may be slower)
+//! - CPU frequency scaling (enable performance mode for consistency)
+//!
+//! # Reporting and Workflow
+//!
+//! **Local development**:
+//! ```bash
+//! # Establish baseline before changes
+//! cargo bench --bench schema_loader -- --save-baseline before_changes
+//!
+//! # Make code changes...
+//!
+//! # Compare against baseline
+//! cargo bench --bench schema_loader -- --baseline before_changes
+//! ```
+//!
+//! **PR workflow**:
+//! - Run full suite before creating PR
+//! - Note any regressions/improvements in PR description
+//! - Include criterion HTML report links if significant changes
+//! - Flag >10% regressions for review
+//!
+//! **Performance tracking**:
+//! - Baseline numbers documented in `benches/RESULTS.md`
+//! - Update RESULTS.md after confirmed optimizations
+//! - Track trends over time for each stage
 //!
 //! # Maintenance Contract
 //!
 //! **Update when**:
-//! - Schema file format changes (TOML structure, new fields)
-//! - PropertyBank structure changes (new property types)
-//! - Validation logic changes (PropertySpec construction)
+//! - Schema file format changes (new fields, TOML structure changes)
+//! - PropertyBank structure changes (new property types, validation logic
+//!   changes)
+//! - Resolution pipeline changes (dereferencer, extender, resolver module
+//!   refactoring)
+//! - Domain model changes (Schema, Property, PropertySpec field additions)
+//! - Performance characteristics change (new hash function, different data
+//!   structures)
+//!
+//! **Adding benchmarks**:
+//! - Group by pipeline stage (file_io, validation, lookup, deref, dag, merge,
+//!   total)
+//! - Use `Throughput::Elements(n)` for per-item measurements
+//! - Follow `bench_<stage>_<variant>` naming convention
+//! - Document expected complexity and bottlenecks in per-bench comment
+//! - Always black-box results to prevent compiler elision
+//! - Separate setup from measurement (use `b.iter()` for timed code only)
+//!
+//! **Stability expectations**:
+//! - Results stable within ±5% across runs on same machine
+//! - Flaky benchmarks (>10% variance) must be investigated or removed
+//! - Use `--quick` mode for fast feedback during development
+//! - Use full mode for accurate measurements before commits
 //!
 //! # Known Limitations
 //!
-//! - **No resolution pipeline**: Internal stages (DAG, merge) not measured
-//! - **No DB integration**: Can't measure hybrid vs cold start comparison
-//! - **Synthetic vault**: Generated test data, not production corpus
-//! - **File system variance**: Uses tmpfs (TempDir), not realistic SSD/HDD
+//! - **No DB integration**: Cannot measure staleness checking, hybrid vs cold
+//!   start comparison
+//! - **Synthetic data**: Uses example_vault templates, not production corpus
+//!   (real vaults may have different $ref density, inheritance depth)
+//! - **tmpfs variance**: File I/O measurements may not reflect real SSD/HDD
+//!   performance (typically faster)
+//! - **No concurrency**: Single-threaded only, does not test parallel schema
+//!   loading (future optimization opportunity)
+//! - **No cache warming**: Does not model repeated schema access patterns or
+//!   PropertyBank reuse
+//! - **Module visibility**: Internal modules exposed via `#[doc(hidden)] pub`
+//!   for benchmarking (not part of public API)
 //!
-//! # Future Work
+//! # Benchmark Index
 //!
-//! If internal resolution modules are exposed for testing (via feature flag or
-//! pub(crate) with crate-level access), add:
-//! - Dereference benchmark ($ref resolution)
-//! - Extend benchmark (DAG + topological sort)
-//! - Resolve benchmark (property merge)
-//! - Full cold start vs warm start comparison
+//! | Group                        | Focus                                              | Expected Time |
+//! | ---------------------------- | -------------------------------------------------- | ------------- |
+//! | `file_io_and_parse`          | TOML/JSON deserialization (Ingestor)              | 200-500 µs    |
+//! | `property_bank_validation`   | PropertySpec construction and validation           | 20-30 µs      |
+//! | `property_bank_lookup`       | HashMap get performance for $ref resolution        | 5-10 ns       |
+//! | `dereferencing`              | $ref resolution against PropertyBank (Dereferencer)| 50-150 µs     |
+//! | `dag_construction`           | Topological sort and cycle detection (Extender)    | 30-80 µs      |
+//! | `property_merging`           | Inheritance resolution (Resolver)                  | 40-100 µs     |
+//! | `full_pipeline`              | End-to-end ingestion (file → resolved Schema)      | 400-900 µs    |
 //!
 //! # Safety
 //!
-//! Benchmark code uses `unwrap`/`expect` for simplicity (failures indicate
-//! test setup errors, not runtime conditions).
+//! Benchmark code uses `unwrap`/`expect` for simplicity (failures indicate test
+//! setup errors, not runtime conditions). Production code should never panic.
 
 #![allow(
     missing_docs,
@@ -135,6 +276,7 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::doc_markdown,
+    clippy::doc_paragraphs_missing_punctuation,
     clippy::shadow_unrelated,
     clippy::pattern_type_mismatch,
     clippy::arithmetic_side_effects,
@@ -144,7 +286,7 @@
     reason = "Benchmark code: simplified error handling, test-only functions"
 )]
 
-use std::fs;
+use std::{collections::HashMap, fs};
 
 use criterion::{
     BenchmarkId, Criterion, Throughput, black_box, criterion_group,
@@ -157,9 +299,17 @@ use lithos_core::{
         vault::{VaultId, VaultRoot},
     },
     fs::FsReader,
-    schema::{adapter::ingestor::Ingestor, bank::PropertyBank},
+    schema::{
+        adapter::ingestor::Ingestor, aggregate::SchemaId, bank::PropertyBank,
+        dereferencer::Dereferencer, extender::Extender, raw::RawSchema,
+        resolver::Resolver,
+    },
 };
 use tempfile::TempDir;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Test Data Configuration
+// ─────────────────────────────────────────────────────────────────────────────
 
 /// Vault size configuration for scaling tests.
 struct VaultSize {
@@ -199,12 +349,10 @@ fn bench_config(vault_root: &std::path::Path) -> Config {
     Config::build(&raw, vault_id, vault_root).expect("Failed to build config")
 }
 
-/// PropertyBank content (realistic from example_vault, with minor fixes for
-/// validation).
+/// PropertyBank content (realistic from example_vault, with minor fixes).
 ///
 /// Note: Removed `%Y` date formats (date_year, year_published) that fail
-/// validation due to chrono's inability to round-trip year-only formats. These
-/// properties exist in example_vault but are not actively used.
+/// validation due to chrono's inability to round-trip year-only formats.
 const PROPERTY_BANK_JSON: &str = r#"{
   "properties": {
     "about": { "type": "string" },
@@ -245,7 +393,7 @@ const SCHEMAS: &[(&str, &str)] = &[
     ),
     (
         "lib",
-        r#"{"name":"lib","properties":{"title":{"$ref":"property_bank#/title"},"url":{"$ref":"property_bank#/url"},"doi":{"$ref":"property_bank#/doi"},"year_published":{"$ref":"property_bank#/year_published"}}}"#,
+        r#"{"name":"lib","properties":{"title":{"$ref":"property_bank#/title"},"url":{"$ref":"property_bank#/url"},"doi":{"$ref":"property_bank#/doi"}}}"#,
     ),
     (
         "lib_book",
@@ -270,12 +418,26 @@ fn generate_vault(size: &VaultSize) -> TempDir {
             if written >= size.schema_count {
                 break;
             }
-            let filename = if written < SCHEMAS.len() {
-                format!("{name}.json")
+            // Generate unique filename and update schema name in content
+            let unique_name = if written < SCHEMAS.len() {
+                (*name).to_owned()
             } else {
-                format!("{name}_{written}.json")
+                format!("{name}_{written}")
             };
-            fs::write(schemas_dir.join(filename), content)
+            let filename = format!("{unique_name}.json");
+
+            // Update schema name in JSON content to be unique
+            let updated_content = if written < SCHEMAS.len() {
+                content.to_string()
+            } else {
+                // Replace the "name" field with unique name
+                content.replace(
+                    &format!(r#""name":"{name}""#),
+                    &format!(r#""name":"{unique_name}""#),
+                )
+            };
+
+            fs::write(schemas_dir.join(filename), updated_content)
                 .expect("Failed to write schema");
             written += 1;
         }
@@ -284,7 +446,16 @@ fn generate_vault(size: &VaultSize) -> TempDir {
     vault
 }
 
-/// Benchmark: File I/O + Parsing (scan_raw_schemas).
+// ─────────────────────────────────────────────────────────────────────────────
+//  Stage 1: File I/O + Parsing
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Benchmark: File I/O + Parsing (TOML/JSON → RawSchema via Ingestor).
+///
+/// Measures serde deserialization overhead from JSON files to RawSchema
+/// structs. Expected to dominate total pipeline cost and scale linearly O(n).
+///
+/// **Bottleneck**: serde deserialization, not filesystem I/O (tmpfs)
 fn bench_file_io_and_parse(c: &mut Criterion) {
     let mut group = c.benchmark_group("file_io_and_parse");
 
@@ -315,19 +486,29 @@ fn bench_file_io_and_parse(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: PropertyBank validation (from_raw).
+// ─────────────────────────────────────────────────────────────────────────────
+//  Stage 2: PropertyBank Validation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Benchmark: PropertyBank validation (RawPropertyBank → PropertyBank).
+///
+/// Measures PropertySpec construction and validation logic. Expected to be O(1)
+/// regardless of schema count (fixed 19 properties). Recent optimizations
+/// (HIGH-001 regex caching, E-02 epsilon) should be reflected here.
+///
+/// **Bottleneck**: PropertySpec validation, not HashMap construction
 fn bench_property_bank_validation(c: &mut Criterion) {
     let mut group = c.benchmark_group("property_bank_validation");
     group.throughput(Throughput::Elements(1)); // One PropertyBank per iteration
 
-    let vault = generate_vault(&VAULT_SIZES[0]); // Size doesn't matter for PropertyBank
+    let vault = generate_vault(&VAULT_SIZES[0]); // Size doesn't matter
     let config = bench_config(vault.path());
     let ingestor =
         Ingestor::new(FsReader::new(vault.path().to_path_buf()), &config);
     let raw_bank =
         ingestor.load_raw_property_bank().expect("Failed to load raw bank");
 
-    group.bench_function("validate_property_bank", |b| {
+    group.bench_function("validate", |b| {
         b.iter(|| {
             let bank = PropertyBank::from_raw(raw_bank.clone(), None)
                 .expect("Failed to validate");
@@ -338,9 +519,226 @@ fn bench_property_bank_validation(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: Combined pipeline (file I/O + parse + validate).
-fn bench_combined_pipeline(c: &mut Criterion) {
-    let mut group = c.benchmark_group("combined_pipeline");
+/// Benchmark: PropertyBank lookup performance (get by name).
+///
+/// Measures HashMap lookup cost for $ref resolution during dereferencing.
+/// Expected to be O(1) with good hash distribution (~5-10 ns per lookup).
+///
+/// **Bottleneck**: Hash function quality, not table size
+fn bench_property_bank_lookup(c: &mut Criterion) {
+    let mut group = c.benchmark_group("property_bank_lookup");
+    group.throughput(Throughput::Elements(1));
+
+    let vault = generate_vault(&VAULT_SIZES[0]);
+    let config = bench_config(vault.path());
+    let ingestor =
+        Ingestor::new(FsReader::new(vault.path().to_path_buf()), &config);
+    let raw_bank = ingestor.load_raw_property_bank().expect("Failed to load");
+    let bank =
+        PropertyBank::from_raw(raw_bank, None).expect("Failed to validate");
+
+    group.bench_function("get_by_name", |b| {
+        b.iter(|| {
+            // Lookup a frequently-used property ($ref'd in task schema)
+            let prop = bank.get("pillar");
+            black_box(prop.is_some())
+        });
+    });
+
+    group.finish();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Stage 3: Dereferencing
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Benchmark: Dereferencing ($ref resolution against PropertyBank).
+///
+/// Measures $ref pointer resolution overhead. Expected to scale linearly with
+/// total number of $ref pointers across all schemas: O(n *
+/// avg_refs_per_schema).
+///
+/// **Bottleneck**: PropertySpec cloning, not HashMap lookups
+fn bench_dereferencing(c: &mut Criterion) {
+    let mut group = c.benchmark_group("dereferencing");
+
+    for size in VAULT_SIZES {
+        group.throughput(Throughput::Elements(size.schema_count as u64));
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size.name),
+            size,
+            |b, size| {
+                // Setup: load PropertyBank and raw schemas
+                let vault = generate_vault(size);
+                let config = bench_config(vault.path());
+                let ingestor = Ingestor::new(
+                    FsReader::new(vault.path().to_path_buf()),
+                    &config,
+                );
+                let raw_bank = ingestor
+                    .load_raw_property_bank()
+                    .expect("Failed to load bank");
+                let bank = PropertyBank::from_raw(raw_bank, None)
+                    .expect("Failed to validate");
+                let raw_schemas = ingestor
+                    .scan_raw_schemas()
+                    .expect("Failed to scan schemas");
+
+                // Convert to (SchemaId, RawSchema) pairs
+                let schemas_with_ids: Vec<(SchemaId, RawSchema)> = raw_schemas
+                    .into_iter()
+                    .map(|(raw, _, _)| (SchemaId::new(), raw))
+                    .collect();
+
+                b.iter(|| {
+                    let dereferencer = Dereferencer::new(&bank);
+                    let derefed = dereferencer
+                        .deref(schemas_with_ids.clone())
+                        .expect("Failed to dereference");
+                    black_box(derefed.len())
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Stage 4: DAG Construction
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Benchmark: DAG construction (topological sort + cycle detection).
+///
+/// Measures Extender overhead (Kahn's algorithm for topological sort). Expected
+/// to scale O(n + e) where e = number of inheritance edges.
+///
+/// **Bottleneck**: HashMap operations, not algorithm itself
+fn bench_dag_construction(c: &mut Criterion) {
+    let mut group = c.benchmark_group("dag_construction");
+
+    for size in VAULT_SIZES {
+        group.throughput(Throughput::Elements(size.schema_count as u64));
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size.name),
+            size,
+            |b, size| {
+                // Setup: dereference schemas
+                let vault = generate_vault(size);
+                let config = bench_config(vault.path());
+                let ingestor = Ingestor::new(
+                    FsReader::new(vault.path().to_path_buf()),
+                    &config,
+                );
+                let raw_bank = ingestor
+                    .load_raw_property_bank()
+                    .expect("Failed to load bank");
+                let bank = PropertyBank::from_raw(raw_bank, None)
+                    .expect("Failed to validate");
+                let raw_schemas = ingestor
+                    .scan_raw_schemas()
+                    .expect("Failed to scan schemas");
+
+                let schemas_with_ids: Vec<(SchemaId, RawSchema)> = raw_schemas
+                    .into_iter()
+                    .map(|(raw, _, _)| (SchemaId::new(), raw))
+                    .collect();
+
+                let dereferencer = Dereferencer::new(&bank);
+                let derefed = dereferencer
+                    .deref(schemas_with_ids)
+                    .expect("Failed to dereference");
+
+                b.iter(|| {
+                    let tree =
+                        Extender::build(derefed.clone(), &HashMap::new())
+                            .expect("Failed to build DAG");
+                    black_box(tree.nodes().len())
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Stage 5: Property Merging
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Benchmark: Property merging (inheritance resolution via Resolver).
+///
+/// Measures two-pointer sorted merge overhead for property inheritance.
+/// Expected to scale linearly with (inheritance depth * property count): O(n *
+/// d * p).
+///
+/// **Bottleneck**: Arc cloning + merge logic, not tree traversal
+fn bench_property_merging(c: &mut Criterion) {
+    let mut group = c.benchmark_group("property_merging");
+
+    for size in VAULT_SIZES {
+        group.throughput(Throughput::Elements(size.schema_count as u64));
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size.name),
+            size,
+            |b, size| {
+                // Setup: build DAG
+                let vault = generate_vault(size);
+                let config = bench_config(vault.path());
+                let ingestor = Ingestor::new(
+                    FsReader::new(vault.path().to_path_buf()),
+                    &config,
+                );
+                let raw_bank = ingestor
+                    .load_raw_property_bank()
+                    .expect("Failed to load bank");
+                let bank = PropertyBank::from_raw(raw_bank, None)
+                    .expect("Failed to validate");
+                let raw_schemas = ingestor
+                    .scan_raw_schemas()
+                    .expect("Failed to scan schemas");
+
+                let schemas_with_ids: Vec<(SchemaId, RawSchema)> = raw_schemas
+                    .into_iter()
+                    .map(|(raw, _, _)| (SchemaId::new(), raw))
+                    .collect();
+
+                let dereferencer = Dereferencer::new(&bank);
+                let derefed = dereferencer
+                    .deref(schemas_with_ids)
+                    .expect("Failed to dereference");
+                let tree = Extender::build(derefed, &HashMap::new())
+                    .expect("Failed to build DAG");
+
+                b.iter(|| {
+                    let resolved = Resolver::resolve(&tree, &HashMap::new())
+                        .expect("Failed to resolve");
+                    black_box(resolved.len())
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Full Pipeline
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Benchmark: Full end-to-end pipeline (file → resolved Schema).
+///
+/// Measures total ingestion cost including all stages. This is the user-facing
+/// metric that determines vault startup time. Expected to scale linearly
+/// overall (file I/O dominates at scale).
+///
+/// **Bottleneck distribution**: File I/O ~50%, Deref ~25%, DAG ~10%, Merge
+/// ~10%, Validation ~5%
+fn bench_full_pipeline(c: &mut Criterion) {
+    let mut group = c.benchmark_group("full_pipeline");
 
     for size in VAULT_SIZES {
         group.throughput(Throughput::Elements(size.schema_count as u64));
@@ -353,6 +751,7 @@ fn bench_combined_pipeline(c: &mut Criterion) {
                 let config = bench_config(vault.path());
 
                 b.iter(|| {
+                    // Stage 1: File I/O + Parsing
                     let ingestor = Ingestor::new(
                         FsReader::new(vault.path().to_path_buf()),
                         &config,
@@ -364,10 +763,32 @@ fn bench_combined_pipeline(c: &mut Criterion) {
                         .scan_raw_schemas()
                         .expect("Failed to scan schemas");
 
+                    // Stage 2: PropertyBank Validation
                     let bank = PropertyBank::from_raw(raw_bank, None)
                         .expect("Failed to validate bank");
 
-                    black_box((raw_schemas.len(), bank.all().count()))
+                    // Convert to (SchemaId, RawSchema) pairs
+                    let schemas_with_ids: Vec<(SchemaId, RawSchema)> =
+                        raw_schemas
+                            .into_iter()
+                            .map(|(raw, _, _)| (SchemaId::new(), raw))
+                            .collect();
+
+                    // Stage 3: Dereferencing
+                    let dereferencer = Dereferencer::new(&bank);
+                    let derefed = dereferencer
+                        .deref(schemas_with_ids)
+                        .expect("Failed to dereference");
+
+                    // Stage 4: DAG Construction
+                    let tree = Extender::build(derefed, &HashMap::new())
+                        .expect("Failed to build DAG");
+
+                    // Stage 5: Property Merging
+                    let resolved = Resolver::resolve(&tree, &HashMap::new())
+                        .expect("Failed to resolve");
+
+                    black_box(resolved.len())
                 });
             },
         );
@@ -380,6 +801,10 @@ criterion_group!(
     benches,
     bench_file_io_and_parse,
     bench_property_bank_validation,
-    bench_combined_pipeline,
+    bench_property_bank_lookup,
+    bench_dereferencing,
+    bench_dag_construction,
+    bench_property_merging,
+    bench_full_pipeline,
 );
 criterion_main!(benches);

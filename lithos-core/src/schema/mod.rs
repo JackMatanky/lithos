@@ -14,13 +14,26 @@ pub mod bank;
 /// Schema command implementations (CQRS write operations).
 pub mod command;
 /// Property-bank dereferencer pipeline stage.
-pub(crate) mod dereferencer;
+///
+/// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
+/// benchmarks to measure individual pipeline stages while hiding from public
+/// documentation.
+#[doc(hidden)]
+pub mod dereferencer;
+
 /// Schema errors.
 pub mod error;
 /// Schema domain events.
 pub mod events;
+
 /// Schema inheritance-tree builder pipeline stage.
-pub(crate) mod extender;
+///
+/// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
+/// benchmarks to measure individual pipeline stages while hiding from public
+/// documentation.
+#[doc(hidden)]
+pub mod extender;
+
 /// User-facing string format specifications.
 pub mod formats;
 /// Schema ports for CQRS.
@@ -33,8 +46,14 @@ pub mod property_spec;
 pub mod query;
 /// Raw schema input definitions.
 pub mod raw;
+
 /// Schema resolution service.
-pub(crate) mod resolver;
+///
+/// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
+/// benchmarks to measure individual pipeline stages while hiding from public
+/// documentation.
+#[doc(hidden)]
+pub mod resolver;
 
 pub(crate) mod db_table {
     use redb::TableDefinition;

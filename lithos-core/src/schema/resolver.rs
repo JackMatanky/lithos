@@ -40,7 +40,12 @@ const INHERITANCE_MAX_DEPTH: usize = 10;
 /// Assembles fully-resolved [`Schema`] entities from a [`SchemaTree`].
 ///
 /// Stateless: all resolution state is threaded through the arguments.
-pub(crate) struct Resolver;
+///
+/// **Internal API**: This type is public solely for benchmarking purposes.
+/// Do not depend on it in production code - use `SchemaService` instead.
+#[doc(hidden)]
+#[non_exhaustive]
+pub struct Resolver;
 
 impl Resolver {
     /// Resolve all schemas in `tree`, returning them as [`Schema`] values.
@@ -62,7 +67,9 @@ impl Resolver {
     /// validation error in a node name that somehow passed earlier
     /// validation — should be unreachable in practice).
     #[inline]
-    pub(crate) fn resolve(
+    /// **Internal API**: Public for benchmarking only.
+    #[doc(hidden)]
+    pub fn resolve(
         tree: &SchemaTree,
         known_parents: &HashMap<SchemaId, Schema>,
     ) -> Result<Vec<Schema>, SchemaError> {

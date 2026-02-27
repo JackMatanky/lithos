@@ -140,7 +140,10 @@ pub(crate) struct SchemaNode {
 /// - `roots` contains schemas whose `parent_id` is `None` (or whose parent is a
 ///   DB-fresh known parent rather than an in-batch node).
 #[derive(Debug)]
-pub(crate) struct SchemaTree {
+/// **Internal API**: This type is public solely for benchmarking purposes.
+/// Do not depend on it in production code - use `SchemaService` instead.
+#[doc(hidden)]
+pub struct SchemaTree {
     /// IDs of root schemas (no in-batch parent).
     roots: Vec<SchemaId>,
     /// All nodes indexed by `SchemaId`.
@@ -157,7 +160,9 @@ impl SchemaTree {
     /// [`Resolver`]: super::resolver::Resolver
     #[inline]
     #[must_use]
-    pub(crate) fn nodes(&self) -> &[SchemaId] {
+    /// **Internal API**: Public for benchmarking only.
+    #[doc(hidden)]
+    pub fn nodes(&self) -> &[SchemaId] {
         &self.order
     }
 
@@ -187,7 +192,12 @@ type NameIndexes = (HashMap<Box<str>, SchemaId>, HashMap<SchemaId, Box<str>>);
 type KahnResult = (Vec<SchemaId>, Vec<SchemaId>);
 
 /// Builds a [`SchemaTree`] from dereferenced schemas.
-pub(crate) struct Extender;
+///
+/// **Internal API**: This type is public solely for benchmarking purposes.
+/// Do not depend on it in production code - use `SchemaService` instead.
+#[doc(hidden)]
+#[non_exhaustive]
+pub struct Extender;
 
 impl Extender {
     /// Build a [`SchemaTree`] from stale, dereferenced schemas.
@@ -205,7 +215,9 @@ impl Extender {
     ///
     /// [`Dereferencer`]: super::dereferencer::Dereferencer
     #[inline]
-    pub(crate) fn build(
+    /// **Internal API**: Public for benchmarking only.
+    #[doc(hidden)]
+    pub fn build(
         derefed: Vec<(SchemaId, DereferencedSchema)>,
         known_parents: &HashMap<SchemaId, Schema>,
     ) -> Result<SchemaTree, SchemaError> {
