@@ -8,7 +8,9 @@
 
 use std::{collections::HashSet, ops::Range, path::Path};
 
-use pulldown_cmark::{Event, Options, Parser, Tag as CmarkTag, TagEnd};
+use pulldown_cmark::{
+    Event, Options, Parser, Tag as CmarkTag, TagEnd, utils::TextMergeWithOffset,
+};
 
 use crate::{
     config::{aggregate::Config, task::StatusSymbol},
@@ -131,9 +133,9 @@ impl<'config> NoteReader<'config> {
     ) -> Result<ParseOutcome, NoteError> {
         let mut state = ParseState::new(self.config);
 
-        for (event, range) in
-            Parser::new_ext(markdown, self.options).into_offset_iter()
-        {
+        let events = Parser::new_ext(markdown, self.options).into_offset_iter();
+        let merged = TextMergeWithOffset::new(events);
+        for (event, range) in merged {
             state.handle_event(event, range)?;
         }
 
