@@ -85,6 +85,19 @@ pub struct Schema {
     /// Serialized as `Vec<Property>` for compatibility.
     properties: BTreeMap<PropertyName, Arc<Property>>,
     /// Domain events pending emission (not serialized).
+    ///
+    /// Follows the Event Sourcing pattern: state mutations emit events that
+    /// can be consumed by external observers (e.g., for audit logs, event
+    /// streams, or triggering side effects).
+    ///
+    /// Events are:
+    /// - Accumulated via `add_event()` during aggregate mutations
+    /// - Retrieved via `pending_events()` for inspection
+    /// - Cleared via `take_events()` after consumption
+    /// - **Not persisted** (omitted from custom serialize/deserialize)
+    ///
+    /// This ensures events are ephemeral and must be explicitly handled by
+    /// the application layer after each operation.
     pending_events: Vec<Events>,
 }
 
@@ -421,6 +434,10 @@ impl Schema {
 
     /// Returns a reference to pending domain events.
     ///
+    /// Events accumulate during aggregate operations and must be explicitly
+    /// consumed via [`take_events()`](Self::take_events) by the application
+    /// layer. This method allows inspection without clearing the queue.
+    ///
     /// # Examples
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
@@ -439,13 +456,22 @@ impl Schema {
 
     /// Returns and clears pending domain events.
     ///
+    /// This method transfers ownership of all pending events to the caller and
+    /// resets the internal queue. Typically called by the application layer
+    /// after persisting the aggregate, to publish events to external systems
+    /// (audit logs, event streams, etc.).
+    ///
+    /// Uses `std::mem::take` for efficient transfer without allocation.
+    ///
     /// # Examples
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let name = SchemaName::new("test")?;
     /// let mut schema = Schema::new(SchemaId::new(), name, None, vec![])?;
-    /// let _events = schema.take_events();
+    /// let events = schema.take_events();
+    /// // Process events (e.g., publish to event stream)
+    /// assert!(!events.is_empty());
     /// # Ok(())
     /// # }
     /// ```
@@ -456,6 +482,10 @@ impl Schema {
     }
 
     /// Adds a domain event to the pending events collection.
+    ///
+    /// Called internally by aggregate methods to record state changes as
+    /// domain events. Private to ensure events are only created by legitimate
+    /// aggregate operations, not arbitrary external code.
     #[inline]
     fn add_event(&mut self, event: Events) {
         self.pending_events.push(event);
