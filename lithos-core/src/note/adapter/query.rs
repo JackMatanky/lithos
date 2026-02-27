@@ -100,7 +100,10 @@ impl Query for QueryAdapter<'_> {
 
     #[inline]
     fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, Self::Error> {
-        self.db.get_owned::<Note>(NOTES, &id.to_string())
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
+        self.db.get_owned::<Note>(NOTES, id_str)
     }
 
     #[inline]
@@ -215,7 +218,10 @@ impl Query for QueryAdapter<'_> {
     where
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
     {
-        self.db.get::<Note, _, R>(NOTES, &id.to_string(), f)
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
+        self.db.get::<Note, _, R>(NOTES, id_str, f)
     }
 }
 

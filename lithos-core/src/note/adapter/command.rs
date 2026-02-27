@@ -328,12 +328,14 @@ impl Command for CommandAdapter<'_, '_> {
         let note = Note::new(NoteId::new(), path)
             .map_err(|e| crate::db::DbError::Table(e.to_string()))?;
         let id = Uuid::from(note.id());
-        let id_str = id.to_string();
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
         let index_data = self.collect_index_data(&note);
 
         self.db.batch_write(|batch| {
-            batch.put(NOTES, &id_str, &note)?;
-            Self::insert_indexes(batch, &index_data, &id_str)?;
+            batch.put(NOTES, id_str, &note)?;
+            Self::insert_indexes(batch, &index_data, id_str)?;
             Ok(())
         })?;
 
@@ -343,13 +345,15 @@ impl Command for CommandAdapter<'_, '_> {
     /// Deletes a note by ID.
     #[inline]
     fn delete(&self, id: Uuid) -> Result<(), Self::Error> {
-        let id_str = id.to_string();
-        let old_data = self.get_note_index_data(&id_str)?;
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
+        let old_data = self.get_note_index_data(id_str)?;
 
         if let Some(index_data) = old_data {
             self.db.batch_write(|batch| {
-                Self::remove_indexes(batch, &index_data, &id_str)?;
-                batch.delete(NOTES, &id_str)?;
+                Self::remove_indexes(batch, &index_data, id_str)?;
+                batch.delete(NOTES, id_str)?;
                 Ok(())
             })?;
         }
@@ -361,9 +365,11 @@ impl Command for CommandAdapter<'_, '_> {
     #[inline]
     fn update(&self, note: Note) -> Result<Note, Self::Error> {
         let id = Uuid::from(note.id());
-        let id_str = id.to_string();
-        let old_data = self.get_note_index_data(&id_str)?;
-        let current_id = Some(id_str.as_str());
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
+        let old_data = self.get_note_index_data(id_str)?;
+        let current_id = Some(id_str);
         if old_data.as_ref().is_none_or(|index_data| {
             index_data.path.as_ref() != note.path().as_str()
         }) {
@@ -373,11 +379,11 @@ impl Command for CommandAdapter<'_, '_> {
 
         self.db.batch_write(|batch| {
             if let Some(old_index_data) = old_data {
-                Self::remove_indexes(batch, &old_index_data, &id_str)?;
+                Self::remove_indexes(batch, &old_index_data, id_str)?;
             }
 
-            Self::insert_indexes(batch, &index_data, &id_str)?;
-            batch.put(NOTES, &id_str, &note)?;
+            Self::insert_indexes(batch, &index_data, id_str)?;
+            batch.put(NOTES, id_str, &note)?;
             Ok(())
         })?;
 
