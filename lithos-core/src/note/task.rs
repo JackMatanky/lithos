@@ -428,7 +428,7 @@ impl From<TaskTimestamp> for std::time::SystemTime {
 /// # use lithos_core::note::{task::TaskMetadata, value::FieldValue};
 /// let mut meta = TaskMetadata::new();
 /// meta.insert("priority".into(), FieldValue::Number(1.0));
-/// assert_eq!(meta.priority(), Some(1.0));
+/// assert_eq!(meta.get_number("priority"), Some(1.0));
 /// ```
 #[derive(
     Debug,
@@ -482,27 +482,6 @@ impl TaskMetadata {
     #[must_use]
     pub fn get_number(&self, field: &str) -> Option<f64> {
         self.get(field)?.as_number()
-    }
-
-    /// Returns the task's priority if defined in metadata.
-    #[inline]
-    #[must_use]
-    pub fn priority(&self) -> Option<f64> {
-        self.get_number("priority")
-    }
-
-    /// Returns the task's project name if defined in metadata.
-    #[inline]
-    #[must_use]
-    pub fn project(&self) -> Option<&str> {
-        self.get_string("project")
-    }
-
-    /// Returns the task's area name if defined in metadata.
-    #[inline]
-    #[must_use]
-    pub fn area(&self) -> Option<&str> {
-        self.get_string("area")
     }
 
     /// Returns a reference to the internal metadata field map.

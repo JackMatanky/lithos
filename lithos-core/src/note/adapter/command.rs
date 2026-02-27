@@ -188,10 +188,10 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
                 data.completed_dates.push(format_i64(timestamp.as_i64()));
             }
 
-            if let Some(priority) = task.metadata().priority() {
+            if let Some(priority) = task.metadata().get_number("priority") {
                 data.priorities.push(format_f64(priority));
             }
-            if let Some(project) = task.metadata().project() {
+            if let Some(project) = task.metadata().get_string("project") {
                 data.projects.push(project.into());
             }
         }
