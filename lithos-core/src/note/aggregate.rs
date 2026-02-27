@@ -475,9 +475,7 @@ impl AliasName {
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
-            return Err(NoteError::ValidationFailed(
-                NoteMetadataError::AliasEmpty.to_string().into(),
-            ));
+            return Err(NoteError::Metadata(NoteMetadataError::AliasEmpty));
         }
         Ok(Self(value.trim().into()))
     }
@@ -521,9 +519,7 @@ impl FileClassName {
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
-            return Err(NoteError::ValidationFailed(
-                NoteMetadataError::FileClassEmpty.to_string().into(),
-            ));
+            return Err(NoteError::Metadata(NoteMetadataError::FileClassEmpty));
         }
         Ok(Self(value.trim().into()))
     }
@@ -567,9 +563,7 @@ impl FolderPath {
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
-            return Err(NoteError::ValidationFailed(
-                NoteMetadataError::FolderEmpty.to_string().into(),
-            ));
+            return Err(NoteError::Metadata(NoteMetadataError::FolderEmpty));
         }
         Ok(Self(value.trim().into()))
     }

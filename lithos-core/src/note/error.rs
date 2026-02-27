@@ -37,6 +37,10 @@ pub enum NoteError {
     #[error("link error: {0}")]
     Link(#[from] LinkError),
 
+    /// Note metadata validation error.
+    #[error("note metadata error: {0}")]
+    Metadata(#[from] NoteMetadataError),
+
     /// Note not found.
     #[error("note not found: {0}")]
     NotFound(NoteId),
@@ -345,9 +349,7 @@ mod tests {
         NotePath::new("test.md").expect("valid path")
     ))]
     #[case(NoteError::ValidationFailed("invalid".into()))]
-    #[case(NoteError::ValidationFailed(
-        "heading text cannot be empty".into()
-    ))]
+    #[case(NoteError::Metadata(NoteMetadataError::HeadingTextEmpty))]
     #[case(NoteError::Frontmatter(FrontmatterParseError::NotYamlMapping))]
     #[case(NoteError::FrontmatterAccess(FrontmatterError::Missing {
         key: "title".into(),

@@ -54,7 +54,7 @@ impl Heading {
     /// Creates a new heading with validation.
     ///
     /// # Errors
-    /// Returns `NoteError::ValidationFailed` if heading text is empty.
+    /// Returns `NoteError::Metadata` if heading text is empty.
     #[inline]
     pub fn new<T: Into<Box<str>>>(
         level: HeadingLevel,
@@ -63,8 +63,8 @@ impl Heading {
     ) -> Result<Self, NoteError> {
         let text = text.into();
         if text.trim().is_empty() {
-            return Err(NoteError::ValidationFailed(
-                NoteMetadataError::HeadingTextEmpty.to_string().into(),
+            return Err(NoteError::Metadata(
+                NoteMetadataError::HeadingTextEmpty,
             ));
         }
 
@@ -381,7 +381,12 @@ mod tests {
             let pos = SourceByteOffset::from(0u32);
             let result = Heading::new(level, text, pos);
             assert!(
-                matches!(result, Err(NoteError::ValidationFailed(_))),
+                matches!(
+                    result,
+                    Err(NoteError::Metadata(
+                        NoteMetadataError::HeadingTextEmpty
+                    ))
+                ),
                 "Empty heading text should be rejected, got: {result:?}"
             );
             Ok(())
