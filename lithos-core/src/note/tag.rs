@@ -134,7 +134,7 @@ impl Tag {
     Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct TagPath(Box<str>);
+struct TagPath(Box<str>);
 
 impl Deref for TagPath {
     type Target = str;
@@ -158,7 +158,7 @@ impl Deref for TagPath {
     Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct Segments(Vec<Box<str>>);
+struct Segments(Vec<Box<str>>);
 
 impl Deref for Segments {
     type Target = [Box<str>];
@@ -173,8 +173,8 @@ impl ArchivedTag {
     /// Returns the full tag path.
     #[inline]
     #[must_use]
-    pub fn full_path(&self) -> &ArchivedTagPath {
-        &self.full_path
+    pub fn full_path(&self) -> &str {
+        self.full_path.as_str()
     }
 }
 
@@ -182,7 +182,7 @@ impl ArchivedTagPath {
     /// Returns the tag path as a string slice.
     #[inline]
     #[must_use]
-    pub fn as_str(&self) -> &str {
+    fn as_str(&self) -> &str {
         self.0.as_ref()
     }
 }
