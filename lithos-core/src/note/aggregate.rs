@@ -375,6 +375,12 @@ impl NotePath {
             ));
         }
 
+        if has_windows_prefix(normalized.as_ref()) {
+            return Err(NoteError::InvalidPath(
+                "windows-style prefixes are not allowed".into(),
+            ));
+        }
+
         let normalized_path = std::path::Path::new(normalized.as_ref());
         if normalized_path.is_absolute() {
             return Err(NoteError::InvalidPath("path must be relative".into()));
@@ -448,6 +454,24 @@ impl TryFrom<String> for NotePath {
 
 fn has_curdir_segment(path: &str) -> bool {
     path.split('/').any(|segment| segment == ".")
+}
+
+fn has_windows_prefix(path: &str) -> bool {
+    let mut chars = path.chars();
+    let first = chars.next();
+    let second = chars.next();
+    let Some(first) = first else {
+        return false;
+    };
+    if let Some(second) = second {
+        if first.is_ascii_alphabetic() && second == ':' {
+            return true;
+        }
+        if first == '/' && second == '/' {
+            return true;
+        }
+    }
+    false
 }
 
 impl ArchivedNote {
@@ -638,6 +662,18 @@ mod tests {
         #[test]
         fn rejects_wrong_extension() {
             let result = Note::new(NoteId::new(), "note.txt");
+            result.unwrap_err();
+        }
+
+        #[test]
+        fn rejects_windows_drive_prefix() {
+            let result = NotePath::new("C:notes/note.md");
+            result.unwrap_err();
+        }
+
+        #[test]
+        fn rejects_unc_prefix() {
+            let result = NotePath::new("//server/share/note.md");
             result.unwrap_err();
         }
 
