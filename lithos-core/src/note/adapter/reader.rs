@@ -14,6 +14,7 @@ use crate::{
     config::{aggregate::Config, task::StatusSymbol},
     fs::FsReader,
     note::{
+        adapter::task_parser::TaskParser,
         aggregate::Note,
         error::NoteError,
         frontmatter::Frontmatter,
@@ -332,7 +333,7 @@ enum MetadataKind {
 
 #[derive(Debug)]
 struct ParseState<'config> {
-    config: &'config Config,
+    task_parser: TaskParser<'config>,
     lists: Vec<List>,
     tasks: Vec<Task>,
     headings: Vec<Heading>,
@@ -351,7 +352,7 @@ struct ParseState<'config> {
 impl<'config> ParseState<'config> {
     fn new(config: &'config Config) -> Self {
         Self {
-            config,
+            task_parser: TaskParser::new(config.task()),
             lists: Vec::new(),
             tasks: Vec::new(),
             headings: Vec::new(),
@@ -551,12 +552,11 @@ impl<'config> ParseState<'config> {
         let raw_text = item.text.trim();
         if let Some(status) = item.status {
             let mut task_id = None;
-            if Task::should_promote(raw_text, self.config.task()) {
-                let task = Task::from_checkbox(
+            if self.task_parser.should_promote(raw_text) {
+                let task = self.task_parser.parse_checkbox(
                     raw_text,
                     status,
                     item.position,
-                    self.config.task(),
                 )?;
                 task_id = Some(task.id());
                 self.tasks.push(task);

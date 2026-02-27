@@ -7,3 +7,4 @@
 pub mod command;
 pub mod query;
 pub mod reader;
+pub(crate) mod task_parser;

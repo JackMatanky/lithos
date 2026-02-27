@@ -248,21 +248,34 @@ fn create_test_note(index: usize) -> Note {
     )
     .expect("config");
     let status = StatusSymbol::try_new(' ').expect("valid status");
+    let status_name = config
+        .task()
+        .status()
+        .name_for_symbol(status)
+        .expect("valid status")
+        .clone();
     note.add_task(
-        Task::from_checkbox(
+        Task::new(
+            status_name.clone(),
             "Do something",
-            status,
             SourceByteOffset::new(15),
-            config.task(),
+            lithos_core::note::task::TaskAttributes::default(),
         )
         .expect("valid task"),
     );
     note.add_task(
-        Task::from_checkbox(
+        Task::new(
+            config
+                .task()
+                .status()
+                .name_for_symbol(
+                    StatusSymbol::try_new('x').expect("valid status"),
+                )
+                .expect("valid status")
+                .clone(),
             "Already done",
-            StatusSymbol::try_new('x').expect("valid status"),
             SourceByteOffset::new(16),
-            config.task(),
+            lithos_core::note::task::TaskAttributes::default(),
         )
         .expect("valid task"),
     );
@@ -273,7 +286,8 @@ fn create_test_note(index: usize) -> Note {
         SourceByteRange::new(
             SourceByteOffset::new(0),
             SourceByteOffset::new(100),
-        ),
+        )
+        .expect("valid source range"),
     ));
 
     note.set_frontmatter(Some(

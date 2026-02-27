@@ -193,28 +193,47 @@ impl FieldValue {
     ///
     /// This is useful for adapters parsing JSON-like structures (including
     /// YAML/TOML converted via serde).
+    ///
+    /// # Errors
+    ///
+    /// Returns error when:
+    /// - Numbers cannot be represented as `f64`
+    /// - Null values are encountered
     #[inline]
-    #[must_use]
-    pub fn from_json(value: &serde_json::Value) -> Self {
+    pub fn from_json(
+        value: &serde_json::Value,
+    ) -> Result<Self, FieldValueParseError> {
         match value {
             serde_json::Value::String(s) => {
-                Self::String(s.clone().into_boxed_str())
+                Ok(Self::String(s.clone().into_boxed_str()))
             }
             serde_json::Value::Number(n) => {
-                Self::Number(n.as_f64().unwrap_or(0.0))
+                let number = n.as_f64().ok_or_else(|| {
+                    FieldValueParseError::NumberOutOfRange {
+                        raw: n.to_string().into(),
+                    }
+                })?;
+                Ok(Self::Number(number))
             }
-            serde_json::Value::Bool(b) => Self::Boolean(*b),
+            serde_json::Value::Bool(b) => Ok(Self::Boolean(*b)),
             serde_json::Value::Array(arr) => {
-                Self::Array(arr.iter().map(Self::from_json).collect())
+                let mut values = Vec::with_capacity(arr.len());
+                for item in arr {
+                    values.push(Self::from_json(item)?);
+                }
+                Ok(Self::Array(values))
             }
-            serde_json::Value::Object(obj) => Self::Object(
-                obj.iter()
-                    .map(|(k, v)| {
-                        (k.clone().into_boxed_str(), Self::from_json(v))
-                    })
-                    .collect(),
-            ),
-            serde_json::Value::Null => Self::String("".into()),
+            serde_json::Value::Object(obj) => {
+                let mut map = HashMap::with_capacity(obj.len());
+                for (key, json_value) in obj {
+                    map.insert(
+                        key.as_str().into(),
+                        Self::from_json(json_value)?,
+                    );
+                }
+                Ok(Self::Object(map))
+            }
+            serde_json::Value::Null => Err(FieldValueParseError::NullValue),
         }
     }
 
@@ -275,18 +294,7 @@ impl FieldValue {
     fn write_json(&self, out: &mut String) {
         match self {
             Self::String(s) => {
-                out.push('"');
-                // Manual escaping to avoid allocation when no quotes present
-                for ch in s.chars() {
-                    if ch == '"' {
-                        out.push_str("\\\"");
-                    } else if ch == '\\' {
-                        out.push_str("\\\\");
-                    } else {
-                        out.push(ch);
-                    }
-                }
-                out.push('"');
+                write_json_string(out, s);
             }
             Self::Number(n) => {
                 use std::fmt::Write as _;
@@ -323,19 +331,49 @@ impl FieldValue {
             }
             Self::Object(obj) => {
                 out.push('{');
-                for (i, (k, v)) in obj.iter().enumerate() {
+                let mut keys: Vec<_> = obj.keys().collect();
+                keys.sort_by(|left, right| left.as_ref().cmp(right.as_ref()));
+                for (i, key) in keys.iter().enumerate() {
                     if i > 0 {
                         out.push_str(", ");
                     }
-                    out.push('"');
-                    out.push_str(k);
-                    out.push_str("\": ");
-                    v.write_json(out);
+                    write_json_string(out, key);
+                    out.push_str(": ");
+                    if let Some(value) = obj.get(*key) {
+                        value.write_json(out);
+                    } else {
+                        out.push_str("null");
+                    }
                 }
                 out.push('}');
             }
         }
     }
+}
+
+fn write_json_string(out: &mut String, value: &str) {
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{08}' => out.push_str("\\b"),
+            '\u{0C}' => out.push_str("\\f"),
+            _ if ch.is_control() => {
+                use std::fmt::Write as _;
+                #[expect(
+                    clippy::let_underscore_must_use,
+                    reason = "Writing to String is infallible"
+                )]
+                let _ = write!(out, "\\u{:04X}", u32::from(ch));
+            }
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
 }
 
 // ----------------------------------------------------------- //
@@ -367,6 +405,40 @@ pub enum FieldValueError {
         actual: FieldValueType,
     },
 }
+
+/// Error type for parsing JSON into [`FieldValue`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldValueParseError {
+    /// Numeric value is outside the representable `f64` range.
+    NumberOutOfRange {
+        /// The numeric value as provided by JSON.
+        raw: Box<str>,
+    },
+    /// Null values are not supported for field values.
+    NullValue,
+}
+
+impl core::fmt::Display for FieldValueParseError {
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on &self keeps error formatting concise"
+    )]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::NumberOutOfRange {
+                raw,
+            } => write!(f, "number out of range for f64: {raw}"),
+            Self::NullValue => f.write_str("null values are not supported"),
+        }
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Default trait methods are sufficient for this simple error type"
+)]
+impl std::error::Error for FieldValueParseError {}
 
 impl core::fmt::Display for FieldValueError {
     #[inline]
@@ -580,11 +652,10 @@ mod tests {
             "arr": [1i32, "two"],
             "obj": {
                 "nested": "val"
-            },
-            "null": null
+            }
         });
 
-        let val = FieldValue::from_json(&json);
+        let val = FieldValue::from_json(&json)?;
 
         let obj = val
             .as_object()
@@ -617,10 +688,17 @@ mod tests {
             Some("val")
         );
 
-        // Null becomes empty string as per implementation
-        assert_eq!(obj.get("null").and_then(FieldValue::as_str), Some(""));
-
         Ok(())
+    }
+
+    #[test]
+    fn from_json_rejects_null() {
+        let json = json!({
+            "null": null
+        });
+
+        let result = FieldValue::from_json(&json);
+        assert!(matches!(result, Err(FieldValueParseError::NullValue)));
     }
 
     #[test]

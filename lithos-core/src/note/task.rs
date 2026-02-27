@@ -12,19 +12,15 @@
               docs"
 )]
 
-use std::{collections::HashMap, sync::LazyLock};
+use std::collections::HashMap;
 
-use regex::Regex;
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{
     error::NoteError, tag::Tag, types::SourceByteOffset, value::FieldValue,
 };
-use crate::config::{
-    task::{StatusName, StatusSymbol, Task as TaskConfig},
-    value::{DateSpec, FieldSpec},
-};
+use crate::config::task::StatusName;
 
 /// Task entity within a Note.
 ///
@@ -36,15 +32,15 @@ use crate::config::{
 ///
 /// ```
 /// # use lithos_core::note::{task::Task, types::SourceByteOffset};
-/// # use lithos_core::config::task::{Task as TaskConfig, StatusSymbol};
+/// # use lithos_core::config::task::StatusName;
+/// # use lithos_core::note::task::TaskAttributes;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let config = TaskConfig::default();
-/// let status = StatusSymbol::try_new(' ')?;
-/// let task = Task::from_checkbox(
-///     "#task Urgent work",
+/// let status = StatusName::try_new("todo")?;
+/// let task = Task::new(
 ///     status,
+///     "Urgent work",
 ///     SourceByteOffset::new(0),
-///     &config,
+///     TaskAttributes::default(),
 /// )?;
 ///
 /// assert_eq!(task.text(), "Urgent work");
@@ -65,7 +61,7 @@ use crate::config::{
 pub struct Task {
     id: TaskId,
     status: StatusName,
-    text: String,
+    text: Box<str>,
     position: SourceByteOffset,
     tags: Vec<Tag>,
     metadata: TaskMetadata,
@@ -75,59 +71,47 @@ pub struct Task {
     completed_at: Option<TaskTimestamp>,
 }
 
+/// Parsed task attributes captured from checkbox text.
+#[derive(Debug, Clone, Default)]
+pub struct TaskAttributes {
+    pub tags: Vec<Tag>,
+    pub metadata: TaskMetadata,
+    pub created_at: Option<TaskTimestamp>,
+    pub due_at: Option<TaskTimestamp>,
+    pub reminder_at: Option<TaskTimestamp>,
+    pub completed_at: Option<TaskTimestamp>,
+}
+
 impl Task {
-    /// Creates a new [`Task`] from checkbox text and metadata.
+    /// Creates a new [`Task`] from parsed attributes.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Task`] if:
-    /// - The status symbol is unrecognized.
-    /// - The task text is empty after cleaning.
-    /// - Temporal field parsing fails.
-    /// - Metadata validation fails against configuration.
+    /// Returns [`NoteError::Task`] if the task text is empty.
     #[inline]
-    pub fn from_checkbox(
-        raw_text: &str,
-        status_symbol: StatusSymbol,
+    pub fn new<T: Into<Box<str>>>(
+        status: StatusName,
+        text: T,
         position: SourceByteOffset,
-        config: &TaskConfig,
+        attributes: TaskAttributes,
     ) -> Result<Self, NoteError> {
-        let status = config
-            .status()
-            .name_for_symbol(status_symbol)
-            .ok_or_else(|| {
-                NoteError::Task(format!(
-                    "unrecognized status symbol: '{}'",
-                    status_symbol.value()
-                ))
-            })?
-            .clone();
-
-        let text = Self::extract_clean_text(raw_text, config)?;
-        let tags = Self::extract_tags(raw_text)?;
-        let (created_at, due_at, reminder_at, completed_at) =
-            Self::parse_temporal_fields(raw_text, config)?;
-        let metadata = Self::parse_metadata(raw_text, config)?;
+        let text = text.into();
+        if text.trim().is_empty() {
+            return Err(NoteError::Task("task text cannot be empty".into()));
+        }
 
         Ok(Self {
             id: TaskId::new(),
             status,
             text,
             position,
-            tags,
-            metadata,
-            created_at,
-            due_at,
-            reminder_at,
-            completed_at,
+            tags: attributes.tags,
+            metadata: attributes.metadata,
+            created_at: attributes.created_at,
+            due_at: attributes.due_at,
+            reminder_at: attributes.reminder_at,
+            completed_at: attributes.completed_at,
         })
-    }
-
-    /// Returns `true` if the checkbox text should be promoted to a [`Task`].
-    #[inline]
-    #[must_use]
-    pub fn should_promote(text: &str, config: &TaskConfig) -> bool {
-        config.tags().iter().any(|tag| text.contains(tag.as_str()))
     }
 
     /// Returns the unique task identifier.
@@ -138,13 +122,10 @@ impl Task {
     }
 
     /// Returns the current task status.
-    ///
-    /// Note: This clones the `StatusName`. Consider changing to return
-    /// `&StatusName` if `StatusName` is not Copy.
     #[inline]
     #[must_use]
-    pub fn status(&self) -> StatusName {
-        self.status.clone()
+    pub fn status(&self) -> &StatusName {
+        &self.status
     }
 
     /// Returns the task's descriptive text.
@@ -201,214 +182,6 @@ impl Task {
     #[must_use]
     pub const fn metadata(&self) -> &TaskMetadata {
         &self.metadata
-    }
-
-    fn extract_clean_text(
-        raw_text: &str,
-        config: &TaskConfig,
-    ) -> Result<String, NoteError> {
-        let mut text = raw_text.trim();
-
-        let mut stripped = true;
-        while stripped {
-            stripped = false;
-            for tag in config.tags() {
-                if let Some(rest) = text.strip_prefix(tag.as_str()) {
-                    text = rest.trim_start();
-                    stripped = true;
-                }
-            }
-        }
-
-        if let Some(mat) = METADATA_REGEX.find(text)
-            && let Some(prefix) = text.get(..mat.start())
-        {
-            text = prefix.trim_end();
-        }
-
-        if text.trim().is_empty() {
-            return Err(NoteError::Task(
-                "task text cannot be empty".to_owned(),
-            ));
-        }
-
-        Ok(text.to_owned())
-    }
-
-    fn extract_tags(raw_text: &str) -> Result<Vec<Tag>, NoteError> {
-        TAG_REGEX
-            .find_iter(raw_text)
-            .map(|mat| Tag::new(mat.as_str()))
-            .collect()
-    }
-
-    fn parse_temporal_fields(
-        text: &str,
-        config: &TaskConfig,
-    ) -> Result<TemporalFields, NoteError> {
-        let created_at = config
-            .created()
-            .map(|spec| Self::parse_date_field(text, spec, config))
-            .transpose()?
-            .flatten();
-        let due_at = config
-            .due()
-            .map(|spec| Self::parse_date_field(text, spec, config))
-            .transpose()?
-            .flatten();
-        let reminder_at = config
-            .reminder()
-            .map(|spec| Self::parse_date_field(text, spec, config))
-            .transpose()?
-            .flatten();
-        let completed_at = config
-            .completed()
-            .map(|spec| Self::parse_date_field(text, spec, config))
-            .transpose()?
-            .flatten();
-
-        Ok((created_at, due_at, reminder_at, completed_at))
-    }
-
-    fn parse_date_field(
-        text: &str,
-        spec: &DateSpec,
-        _config: &TaskConfig,
-    ) -> Result<Option<TaskTimestamp>, NoteError> {
-        let parse_date_str = |value: &str| -> Result<TaskTimestamp, NoteError> {
-            if let Ok(naive) =
-                chrono::NaiveDateTime::parse_from_str(value, spec.format())
-            {
-                return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
-            }
-
-            let date = chrono::NaiveDate::parse_from_str(value, spec.format())
-                .map_err(|error| {
-                    NoteError::Task(format!(
-                        "invalid date for field '{}': {error}",
-                        spec.keyword().as_str()
-                    ))
-                })?;
-
-            let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-                NoteError::Task(format!(
-                    "invalid time for date in field '{}'",
-                    spec.keyword().as_str()
-                ))
-            })?;
-
-            Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
-        };
-
-        if let Some(value) = find_inline_field(text, spec.keyword().as_str()) {
-            return parse_date_str(value).map(Some);
-        }
-
-        if let Some(emoji) = spec.emoji()
-            && let Some(value) = find_emoji_field(text, emoji)
-        {
-            return parse_date_str(value).map(Some);
-        }
-
-        Ok(None)
-    }
-
-    fn parse_metadata(
-        text: &str,
-        config: &TaskConfig,
-    ) -> Result<TaskMetadata, NoteError> {
-        let mut metadata = TaskMetadata::new();
-
-        for caps in METADATA_REGEX.captures_iter(text) {
-            let keyword = caps.get(1).map_or("", |m| m.as_str().trim());
-            let raw_value = caps.get(2).map_or("", |m| m.as_str().trim());
-
-            if keyword.is_empty() {
-                continue;
-            }
-
-            if Self::is_temporal_keyword(keyword, config) {
-                continue;
-            }
-
-            if let Some(spec) = config.field_spec(keyword) {
-                let json_value = Self::parse_metadata_value(raw_value, spec)?;
-                spec.validate_raw_value(&json_value).map_err(|error| {
-                    NoteError::Task(format!(
-                        "invalid metadata field '{keyword}': {error}"
-                    ))
-                })?;
-                let field_value = FieldValue::from_json(&json_value);
-                metadata.insert(keyword.into(), field_value);
-            } else {
-                metadata.insert(
-                    keyword.into(),
-                    FieldValue::String(raw_value.into()),
-                );
-            }
-        }
-
-        Ok(metadata)
-    }
-
-    fn is_temporal_keyword(keyword: &str, config: &TaskConfig) -> bool {
-        config.created().is_some_and(|spec| spec.keyword().as_str() == keyword)
-            || config
-                .due()
-                .is_some_and(|spec| spec.keyword().as_str() == keyword)
-            || config
-                .reminder()
-                .is_some_and(|spec| spec.keyword().as_str() == keyword)
-            || config
-                .completed()
-                .is_some_and(|spec| spec.keyword().as_str() == keyword)
-    }
-
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Matching on &TaskFieldSpec keeps call sites concise."
-    )]
-    fn parse_metadata_value(
-        raw_value: &str,
-        spec: &FieldSpec,
-    ) -> Result<serde_json::Value, NoteError> {
-        match spec {
-            FieldSpec::Integer {
-                ..
-            } => {
-                let value = raw_value.parse::<i64>().map_err(|error| {
-                    NoteError::Task(format!(
-                        "invalid integer value '{raw_value}': {error}"
-                    ))
-                })?;
-                Ok(serde_json::Value::Number(value.into()))
-            }
-            FieldSpec::Float {
-                ..
-            } => {
-                let value = raw_value.parse::<f64>().map_err(|error| {
-                    NoteError::Task(format!(
-                        "invalid float value '{raw_value}': {error}"
-                    ))
-                })?;
-                let number =
-                    serde_json::Number::from_f64(value).ok_or_else(|| {
-                        NoteError::Task(format!(
-                            "invalid float value '{raw_value}'"
-                        ))
-                    })?;
-                Ok(serde_json::Value::Number(number))
-            }
-            FieldSpec::Enum {
-                ..
-            }
-            | FieldSpec::String {
-                ..
-            }
-            | FieldSpec::DateTime {
-                ..
-            } => Ok(serde_json::Value::String(raw_value.to_owned())),
-        }
     }
 }
 
@@ -747,73 +520,15 @@ impl Default for TaskMetadata {
     }
 }
 
-type TemporalFields = (
-    Option<TaskTimestamp>,
-    Option<TaskTimestamp>,
-    Option<TaskTimestamp>,
-    Option<TaskTimestamp>,
-);
-
-// Pre-compiled regexes for performance
-static METADATA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    #[expect(clippy::expect_used, reason = "Internal regex compilation")]
-    Regex::new(r"\[([^:\]]+)::\s*([^\]]+)\]").expect("Invalid metadata regex")
-});
-
-static TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    #[expect(clippy::expect_used, reason = "Internal regex compilation")]
-    Regex::new(r"#[a-zA-Z0-9_\-/]+").expect("Invalid tag regex")
-});
-
-#[expect(
-    clippy::string_slice,
-    reason = "Indices are validated by match_indices."
-)]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "Offset addition is safe after successful match."
-)]
-fn find_inline_field<'text>(
-    text: &'text str,
-    keyword: &str,
-) -> Option<&'text str> {
-    for (start, _) in text.match_indices('[') {
-        let after_bracket = &text[start + 1..];
-        if let Some(after_keyword) = after_bracket.strip_prefix(keyword)
-            && let Some(rest) = after_keyword.strip_prefix("::")
-            && let Some(value_end) = rest.find(']')
-        {
-            let value = rest[..value_end].trim();
-            if !value.is_empty() {
-                return Some(value);
-            }
-        }
-    }
-    None
-}
-
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "Offset addition is safe after successful find."
-)]
-fn find_emoji_field(text: &str, emoji: char) -> Option<&str> {
-    let start = text.find(emoji)?;
-    let value_start = start + emoji.len_utf8();
-    let tail = text.get(value_start..)?;
-    let value = tail.split_whitespace().next()?;
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{
-        raw::{RawFieldSpec, RawTaskConfig},
-        task::Task as TaskConfig,
+    use crate::{
+        config::{
+            raw::{RawFieldSpec, RawTaskConfig},
+            task::{StatusSymbol, Task as TaskConfig},
+        },
+        note::adapter::task_parser::TaskParser,
     };
 
     fn config_with_fields() -> TaskConfig {
@@ -841,20 +556,23 @@ mod tests {
     #[test]
     fn should_promote_requires_task_tag() {
         let config = TaskConfig::default();
-        assert!(Task::should_promote("#task Do work", &config));
-        assert!(!Task::should_promote("Do work", &config));
+        let parser = TaskParser::new(&config);
+        assert!(parser.should_promote("#task Do work"));
+        assert!(!parser.should_promote("Do work"));
+        assert!(!parser.should_promote("#tasker Do work"));
     }
 
     #[test]
     fn from_checkbox_extracts_text_and_metadata() {
         let config = config_with_fields();
-        let task = Task::from_checkbox(
-            "#task Review PR [priority:: 2] [project:: lithos]",
-            StatusSymbol::try_new(' ').expect("valid status"),
-            SourceByteOffset::new(12),
-            &config,
-        )
-        .expect("task should parse");
+        let parser = TaskParser::new(&config);
+        let task = parser
+            .parse_checkbox(
+                "#task Review PR [priority:: 2] [project:: lithos]",
+                StatusSymbol::try_new(' ').expect("valid status"),
+                SourceByteOffset::new(12),
+            )
+            .expect("task should parse");
 
         assert_eq!(task.text(), "Review PR");
         assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
@@ -870,13 +588,14 @@ mod tests {
     #[test]
     fn from_checkbox_collects_hierarchical_tags() {
         let config = TaskConfig::default();
-        let task = Task::from_checkbox(
-            "#task Fix #work/project/urgent issue",
-            StatusSymbol::try_new(' ').expect("valid status"),
-            SourceByteOffset::new(0),
-            &config,
-        )
-        .expect("task should parse");
+        let parser = TaskParser::new(&config);
+        let task = parser
+            .parse_checkbox(
+                "#task Fix #work/project/urgent issue",
+                StatusSymbol::try_new(' ').expect("valid status"),
+                SourceByteOffset::new(0),
+            )
+            .expect("task should parse");
 
         // Verify hierarchical tags are properly extracted
         assert!(task.tags().iter().any(|tag| tag.full_path() == "task"));
@@ -889,16 +608,33 @@ mod tests {
     }
 
     #[test]
+    fn from_checkbox_ignores_invalid_tags() {
+        let config = TaskConfig::default();
+        let parser = TaskParser::new(&config);
+        let task = parser
+            .parse_checkbox(
+                "#task Review #bad/ tags",
+                StatusSymbol::try_new(' ').expect("valid status"),
+                SourceByteOffset::new(0),
+            )
+            .expect("task should parse");
+
+        assert!(task.tags().iter().any(|tag| tag.full_path() == "task"));
+        assert_eq!(task.tags().len(), 1);
+    }
+
+    #[test]
     fn task_timestamp_provides_semantic_methods() {
         let config = TaskConfig::default();
-        let task = Task::from_checkbox(
-            "#task Test task with dates [created:: 2024-01-01] [due:: \
-             2024-12-31]",
-            StatusSymbol::try_new(' ').expect("valid status"),
-            SourceByteOffset::new(0),
-            &config,
-        )
-        .expect("task should parse");
+        let parser = TaskParser::new(&config);
+        let task = parser
+            .parse_checkbox(
+                "#task Test task with dates [created:: 2024-01-01] [due:: \
+                 2024-12-31]",
+                StatusSymbol::try_new(' ').expect("valid status"),
+                SourceByteOffset::new(0),
+            )
+            .expect("task should parse");
 
         if let Some(created_at) = task.created_at() {
             assert_eq!(created_at.as_i64(), 1_704_067_200);

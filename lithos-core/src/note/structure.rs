@@ -106,10 +106,14 @@ impl Heading {
 ///
 /// ```
 /// # use lithos_core::note::{structure::Section, types::SourceByteRange, types::SourceByteOffset};
-/// let range = SourceByteRange::new(SourceByteOffset::new(0), SourceByteOffset::new(50));
+/// let range = SourceByteRange::new(
+///     SourceByteOffset::new(0),
+///     SourceByteOffset::new(50),
+/// )?;
 /// let section = Section::new(None, "Initial preamble content.", range);
 ///
 /// assert!(section.heading().is_none());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(
     Debug,
@@ -268,7 +272,7 @@ mod tests {
             Ok(Section::new(
                 Some(intro_heading()?),
                 "Body".to_owned(),
-                SourceByteRange::new(start, end),
+                SourceByteRange::new(start, end)?,
             ))
         }
 
@@ -288,7 +292,7 @@ mod tests {
             let range = SourceByteRange::new(
                 SourceByteOffset::from(0u32),
                 SourceByteOffset::from(15u32),
-            );
+            )?;
             let section =
                 Section::new(heading.clone(), "Section content", range);
             Ok((section, heading, range))
@@ -411,7 +415,7 @@ mod tests {
             let expected_range = SourceByteRange::new(
                 SourceByteOffset::from(0u32),
                 SourceByteOffset::from(4u32),
-            );
+            )?;
             assert_eq!(
                 section.range(),
                 expected_range,

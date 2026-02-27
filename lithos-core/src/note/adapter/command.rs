@@ -18,6 +18,7 @@ use crate::{
             TASKS_BY_CREATED_DATE, TASKS_BY_DUE_DATE, TASKS_BY_PRIORITY,
             TASKS_BY_PROJECT, TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
         },
+        error::NoteError,
         frontmatter::Frontmatter,
         ports::Command,
         value::FieldValue,
@@ -72,10 +73,25 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         Ok(note.as_ref().map(|note| self.collect_index_data(note)))
     }
 
+    fn ensure_unique_path(
+        &self,
+        path: &str,
+        current_id: Option<&str>,
+    ) -> Result<(), DbError> {
+        let ids = self.db.multimap_get(PATH_TO_ID, path)?;
+        if ids.iter().any(|id| Some(id.as_str()) != current_id) {
+            return Err(DbError::Table(
+                NoteError::AlreadyExists(path.into()).to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     fn collect_index_data(&self, note: &Note) -> IndexData {
         let frontmatter = note.frontmatter();
-        let aliases =
-            frontmatter.map(|fm| fm.aliases(self.config)).unwrap_or_default();
+        let aliases = frontmatter
+            .map(|fm| fm.aliases_ref(self.config).map(Into::into).collect())
+            .unwrap_or_default();
         let file_class = frontmatter
             .and_then(|fm| fm.file_class(self.config))
             .map(Into::into);
@@ -308,6 +324,7 @@ impl Command for CommandAdapter<'_, '_> {
     /// Creates a new note with the given vault-relative path.
     #[inline]
     fn create(&self, path: &str) -> Result<Note, Self::Error> {
+        self.ensure_unique_path(path, None)?;
         let note = Note::new(NoteId::new(), path)
             .map_err(|e| crate::db::DbError::Table(e.to_string()))?;
         let id = Uuid::from(note.id());
@@ -346,6 +363,12 @@ impl Command for CommandAdapter<'_, '_> {
         let id = Uuid::from(note.id());
         let id_str = id.to_string();
         let old_data = self.get_note_index_data(&id_str)?;
+        let current_id = Some(id_str.as_str());
+        if old_data.as_ref().is_none_or(|index_data| {
+            index_data.path.as_ref() != note.path().as_str()
+        }) {
+            self.ensure_unique_path(note.path().as_str(), current_id)?;
+        }
         let index_data = self.collect_index_data(&note);
 
         self.db.batch_write(|batch| {
@@ -645,6 +668,49 @@ mod tests {
             let stored = fixtures::stored_note(&db, id)
                 .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
             assert!(stored.is_none(), "Deleted note should not exist");
+            Ok(())
+        }
+
+        #[test]
+        fn create_rejects_duplicate_paths() -> Result<(), NoteCommandError> {
+            let (_dir, db) = fixtures::test_db()
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let config = fixtures::test_config()
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let cmd = CommandAdapter::new(&db, &config);
+
+            let _note = fixtures::create_note(&cmd, "notes/a.md")?;
+            let duplicate = fixtures::create_note(&cmd, "notes/a.md");
+
+            assert!(duplicate.is_err(), "duplicate path should be rejected");
+            Ok(())
+        }
+
+        #[test]
+        fn update_rejects_duplicate_paths() -> Result<(), NoteCommandError> {
+            let (_dir, db) = fixtures::test_db()
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let config = fixtures::test_config()
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            let cmd = CommandAdapter::new(&db, &config);
+
+            let note_a = fixtures::create_note(&cmd, "notes/a.md")?;
+            let mut note_b = fixtures::create_note(&cmd, "notes/b.md")?;
+
+            let path = fixtures::parse_path("notes/a.md")
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?;
+            note_b.set_path(path);
+            let updated = fixtures::update_note(&cmd, note_b);
+
+            assert!(
+                updated.is_err(),
+                "duplicate path updates should be rejected"
+            );
+
+            let stored = fixtures::stored_note(&db, Uuid::from(note_a.id()))
+                .map_err(|e| NoteCommandError::Domain(NoteError::Storage(e)))?
+                .expect("stored note should exist");
+            assert_eq!(stored.path().as_str(), "notes/a.md");
             Ok(())
         }
     }

@@ -242,9 +242,17 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Vec<Box<str>> {
-        self.get(config.frontmatter().alias().as_str())
-            .and_then(as_string_array_lossy)
-            .unwrap_or_default()
+        self.aliases_ref(config).map(Into::into).collect()
+    }
+
+    /// Returns a borrowed iterator over aliases.
+    #[inline]
+    #[must_use]
+    pub fn aliases_ref<'frontmatter>(
+        &'frontmatter self,
+        config: &crate::config::aggregate::Config,
+    ) -> AliasValues<'frontmatter> {
+        AliasValues::new(self.get(config.frontmatter().alias().as_str()))
     }
 
     #[inline]
@@ -409,6 +417,60 @@ pub fn as_string_array_lossy(value: &FieldValue) -> Option<Vec<Box<str>>> {
     }
 
     value.as_str().map(|s| vec![s.into()])
+}
+
+/// Borrowed alias iterator returned by [`Frontmatter::aliases_ref`].
+pub struct AliasValues<'frontmatter> {
+    source: AliasSource<'frontmatter>,
+}
+
+enum AliasSource<'frontmatter> {
+    Empty,
+    Single(Option<&'frontmatter str>),
+    Array(std::slice::Iter<'frontmatter, FieldValue>),
+}
+
+impl<'frontmatter> AliasValues<'frontmatter> {
+    fn new(value: Option<&'frontmatter FieldValue>) -> Self {
+        let source = if let Some(value) = value {
+            if let Some(text) = value.as_str() {
+                AliasSource::Single(Some(text))
+            } else if let Some(values) = value.as_array() {
+                AliasSource::Array(values.iter())
+            } else {
+                AliasSource::Empty
+            }
+        } else {
+            AliasSource::Empty
+        };
+        Self {
+            source,
+        }
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "AliasValues relies on default Iterator methods"
+)]
+impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
+    type Item = &'frontmatter str;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.source {
+            AliasSource::Empty => None,
+            AliasSource::Single(ref mut value) => value.take(),
+            AliasSource::Array(ref mut iter) => {
+                for item in iter.by_ref() {
+                    if let Some(text) = item.as_str() {
+                        return Some(text);
+                    }
+                }
+                None
+            }
+        }
+    }
 }
 
 #[cfg(test)]

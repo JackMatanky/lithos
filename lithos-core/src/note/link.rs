@@ -168,7 +168,7 @@ pub enum Style {
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum Target {
-    /// External URL (http/https).
+    /// External URL (scheme-based).
     External {
         /// The external URL.
         url: Box<str>,
@@ -388,9 +388,9 @@ impl Link {
         target: &Target,
         anchor: Option<&Anchor>,
     ) -> Result<(), NoteError> {
-        if target.is_external() && matches!(anchor, Some(Anchor::BlockRef(_))) {
+        if target.is_external() && anchor.is_some() {
             return Err(NoteError::Link(
-                "External links cannot have block references".into(),
+                "External links cannot have anchors".into(),
             ));
         }
         Ok(())
@@ -632,6 +632,20 @@ mod tests {
                 target,
                 None,
                 None,
+                crate::note::types::SourceByteOffset::new(0u32),
+            );
+            result.unwrap_err();
+        }
+
+        #[test]
+        fn markdown_link_rejects_external_anchor() {
+            let target = super::super::Target::External {
+                url: "https://example.com#frag".into(),
+            };
+            let result = Link::new_markdown_link(
+                target,
+                None,
+                Some(super::super::Anchor::Heading("frag".into())),
                 crate::note::types::SourceByteOffset::new(0u32),
             );
             result.unwrap_err();

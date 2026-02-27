@@ -8,6 +8,8 @@
 
 use rkyv::{Archive, Deserialize, Serialize};
 
+use super::error::NoteError;
+
 /// A byte offset into the original UTF-8 source of a note.
 ///
 /// Offset values are zero-indexed and represent the number of bytes from
@@ -95,9 +97,10 @@ impl From<SourceByteOffset> for usize {
 /// # use lithos_core::note::types::{SourceByteOffset, SourceByteRange};
 /// let start = SourceByteOffset::new(0);
 /// let end = SourceByteOffset::new(10);
-/// let range = SourceByteRange::new(start, end);
+/// let range = SourceByteRange::new(start, end)?;
 ///
 /// assert_eq!(range.len(), 10);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(
     Debug,
@@ -115,20 +118,45 @@ impl From<SourceByteOffset> for usize {
 #[non_exhaustive]
 pub struct SourceByteRange {
     /// Start of the range (inclusive).
-    pub start: SourceByteOffset,
+    start: SourceByteOffset,
     /// End of the range (exclusive).
-    pub end: SourceByteOffset,
+    end: SourceByteOffset,
 }
 
 impl SourceByteRange {
     /// Creates a new range from start and end offsets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if `start` is greater than `end`.
     #[inline]
-    #[must_use]
-    pub const fn new(start: SourceByteOffset, end: SourceByteOffset) -> Self {
-        Self {
+    pub fn new(
+        start: SourceByteOffset,
+        end: SourceByteOffset,
+    ) -> Result<Self, NoteError> {
+        if start > end {
+            return Err(NoteError::Structure(
+                "source range start must be <= end".into(),
+            ));
+        }
+        Ok(Self {
             start,
             end,
-        }
+        })
+    }
+
+    /// Returns the start offset (inclusive).
+    #[inline]
+    #[must_use]
+    pub const fn start(&self) -> SourceByteOffset {
+        self.start
+    }
+
+    /// Returns the end offset (exclusive).
+    #[inline]
+    #[must_use]
+    pub const fn end(&self) -> SourceByteOffset {
+        self.end
     }
 
     /// Returns the length of the range in bytes.
@@ -142,6 +170,6 @@ impl SourceByteRange {
     #[inline]
     #[must_use]
     pub const fn is_empty(&self) -> bool {
-        self.start.0 >= self.end.0
+        self.start.0 == self.end.0
     }
 }
