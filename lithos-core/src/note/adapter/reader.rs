@@ -962,12 +962,24 @@ fn field_value_from_toml(value: toml::Value) -> Result<FieldValue, NoteError> {
     match value {
         toml::Value::String(text) => Ok(FieldValue::String(text.into())),
         toml::Value::Integer(number) => {
-            let raw = number.to_string();
-            let parsed = raw.parse::<f64>().map_err(|error| {
-                NoteError::Frontmatter(
-                    format!("invalid integer value '{raw}': {error}").into(),
-                )
-            })?;
+            const MAX_SAFE_INTEGER: u64 = 0x0020_0000_0000_0000;
+            let magnitude = number.unsigned_abs();
+            if magnitude > MAX_SAFE_INTEGER {
+                return Err(NoteError::Frontmatter(
+                    format!("integer value '{number}' exceeds safe f64 range")
+                        .into(),
+                ));
+            }
+
+            #[expect(
+                clippy::as_conversions,
+                reason = "checked MAX_SAFE_INTEGER ensures exact f64"
+            )]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "checked MAX_SAFE_INTEGER ensures exact f64"
+            )]
+            let parsed = number as f64;
             Ok(FieldValue::Number(parsed))
         }
         toml::Value::Float(number) => Ok(FieldValue::Number(number)),
