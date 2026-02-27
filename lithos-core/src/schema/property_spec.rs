@@ -10,8 +10,10 @@
 )]
 
 use std::{
+    collections::HashMap,
     hash::Hash,
     path::{Component, Path},
+    sync::{Arc, OnceLock, RwLock},
 };
 
 use super::{error::SchemaError, formats::StringFormat};
@@ -981,13 +983,9 @@ impl StringSpec {
             return Ok(());
         }
 
-        // Otherwise use custom pattern if specified (compile on-demand)
+        // Otherwise use custom pattern if specified (cached compilation)
         if let Some(pattern) = self.pattern.as_ref() {
-            let re = regex::Regex::new(pattern).map_err(|e| {
-                SchemaError::InvalidRegex(format!(
-                    "Invalid pattern {pattern}: {e}"
-                ))
-            })?;
+            let re = get_or_compile_pattern(pattern);
             if !re.is_match(value) {
                 return Err(SchemaError::ValidationFailed(format!(
                     "Value {value} does not match pattern {pattern}"
@@ -1227,6 +1225,59 @@ fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
     }
 
     Ok(())
+}
+
+/// Cache for user-defined custom regex patterns.
+///
+/// Built-in formats use static `OnceLock` per format. Custom patterns use this
+/// shared cache to avoid recompiling on every validation.
+///
+/// Design: Simple unbounded cache since:
+/// 1. Patterns are validated at schema load time (guaranteed valid)
+/// 2. Number of unique patterns is bounded by number of properties (~100s)
+/// 3. Cache is per-process, shared across all validations
+type CustomPatternCache = HashMap<Box<str>, Arc<regex::Regex>>;
+
+static CUSTOM_PATTERN_CACHE: OnceLock<RwLock<CustomPatternCache>> =
+    OnceLock::new();
+
+/// Get or compile a custom regex pattern.
+///
+/// Uses a simple cache to avoid recompiling patterns on every validation.
+/// Patterns are guaranteed valid (validated at construction time).
+#[expect(
+    clippy::expect_used,
+    reason = "Pattern validated at StringSpec construction, expect documents \
+              invariant"
+)]
+fn get_or_compile_pattern(pattern: &str) -> Arc<regex::Regex> {
+    let cache =
+        CUSTOM_PATTERN_CACHE.get_or_init(|| RwLock::new(HashMap::new()));
+
+    // Fast path: read lock
+    {
+        let guard =
+            cache.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(re) = guard.get(pattern) {
+            return Arc::clone(re);
+        }
+    }
+
+    // Slow path: compile and cache
+    // Pattern is guaranteed valid (validated in try_new), so expect is safe
+    let compiled =
+        Arc::new(regex::Regex::new(pattern).expect(
+            "Custom pattern should be valid (validated at construction)",
+        ));
+
+    let mut guard =
+        cache.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Check again in case another thread inserted while we compiled
+    if let Some(re) = guard.get(pattern) {
+        return Arc::clone(re);
+    }
+    guard.insert(pattern.into(), Arc::clone(&compiled));
+    compiled
 }
 
 #[cfg(test)]
