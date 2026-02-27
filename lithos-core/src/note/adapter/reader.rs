@@ -21,7 +21,7 @@ use crate::{
         error::NoteError,
         frontmatter::Frontmatter,
         link::{Anchor, EmbedType, Link, Target},
-        list::{List, ListItem, ListType},
+        list::{List, ListDepth, ListItem, ListType},
         structure::{Heading, HeadingLevel},
         tag::Tag as NoteTag,
         task::Task,
@@ -527,7 +527,7 @@ impl<'config> ParseState<'config> {
     }
 
     fn start_list(&mut self, start: Option<u64>) -> Result<(), NoteError> {
-        let depth = parse_depth(self.list_stack.len())?;
+        let depth = ListDepth::try_new(self.list_stack.len())?;
         let list_type = match start {
             Some(start) => ListType::Ordered {
                 start,
@@ -1126,12 +1126,6 @@ fn parse_offset(offset: usize) -> Result<SourceByteOffset, NoteError> {
     })
 }
 
-fn parse_depth(depth: usize) -> Result<u8, NoteError> {
-    u8::try_from(depth).map_err(|error| {
-        NoteError::Structure(format!("list depth out of range: {error}").into())
-    })
-}
-
 fn status_symbol_from_marker(checked: bool) -> Result<StatusSymbol, NoteError> {
     // pulldown-cmark only exposes a checked boolean, so custom symbols in the
     // source cannot be recovered here.
@@ -1239,13 +1233,21 @@ mod tests {
             .iter()
             .find(|list| matches!(list.list_type(), ListType::Ordered { .. }))
             .expect("ordered list should exist");
-        assert_eq!(ordered.depth(), 0, "ordered list should be top-level");
+        assert_eq!(
+            ordered.depth(),
+            ListDepth::root(),
+            "ordered list should be top-level"
+        );
 
         let unordered = lists
             .iter()
             .find(|list| matches!(list.list_type(), ListType::Unordered))
             .expect("unordered list should exist");
-        assert_eq!(unordered.depth(), 1, "nested list should have depth 1");
+        assert_eq!(
+            unordered.depth(),
+            ListDepth::try_new(1)?,
+            "nested list should have depth 1"
+        );
         Ok(())
     }
 

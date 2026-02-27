@@ -7,7 +7,9 @@
               docs"
 )]
 
-use super::{task::TaskId, types::SourceByteOffset};
+use std::fmt;
+
+use super::{error::NoteError, task::TaskId, types::SourceByteOffset};
 use crate::config::task::StatusSymbol;
 
 /// Markdown list structure.
@@ -18,9 +20,9 @@ use crate::config::task::StatusSymbol;
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::list::{List, ListType};
+/// # use lithos_core::note::list::{List, ListDepth, ListType};
 /// let list = List::new(ListType::Unordered);
-/// assert_eq!(list.depth(), 0);
+/// assert_eq!(list.depth(), ListDepth::root());
 /// ```
 #[derive(
     Debug,
@@ -41,7 +43,7 @@ use crate::config::task::StatusSymbol;
 pub struct List {
     list_type: ListType,
     items: Vec<ListItem>,
-    depth: u8,
+    depth: ListDepth,
 }
 
 impl List {
@@ -52,14 +54,14 @@ impl List {
         Self {
             list_type,
             items: Vec::new(),
-            depth: 0,
+            depth: ListDepth::root(),
         }
     }
 
     /// Creates a new empty list with an explicit depth.
     #[inline]
     #[must_use]
-    pub fn with_depth(list_type: ListType, depth: u8) -> Self {
+    pub fn with_depth(list_type: ListType, depth: ListDepth) -> Self {
         Self {
             list_type,
             items: Vec::new(),
@@ -72,7 +74,7 @@ impl List {
     #[must_use]
     pub fn with_capacity(
         list_type: ListType,
-        depth: u8,
+        depth: ListDepth,
         capacity: usize,
     ) -> Self {
         Self {
@@ -105,14 +107,69 @@ impl List {
     /// Returns the list nesting depth (0 = top level).
     #[inline]
     #[must_use]
-    pub const fn depth(&self) -> u8 {
+    pub const fn depth(&self) -> ListDepth {
         self.depth
     }
 
     /// Sets the list nesting depth.
     #[inline]
-    pub fn set_depth(&mut self, depth: u8) {
+    pub fn set_depth(&mut self, depth: ListDepth) {
         self.depth = depth;
+    }
+}
+
+/// Validated list nesting depth.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct ListDepth(u8);
+
+impl ListDepth {
+    /// Returns the root list depth (0).
+    #[inline]
+    #[must_use]
+    pub const fn root() -> Self {
+        Self(0)
+    }
+
+    /// Creates a validated list depth from a numeric value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if the depth is out of range.
+    #[inline]
+    pub fn try_new(depth: usize) -> Result<Self, NoteError> {
+        u8::try_from(depth).map(Self).map_err(|error| {
+            NoteError::Structure(
+                format!("list depth out of range: {error}").into(),
+            )
+        })
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn as_u8(self) -> u8 {
+        self.0
+    }
+}
+
+impl fmt::Display for ListDepth {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 
