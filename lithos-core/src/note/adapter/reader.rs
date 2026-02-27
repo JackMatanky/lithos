@@ -327,12 +327,6 @@ impl ParseOutcome {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MetadataKind {
-    Yaml,
-    Toml,
-}
-
 #[derive(Debug)]
 struct ParseState<'config> {
     config: &'config Config,
@@ -345,7 +339,7 @@ struct ParseState<'config> {
     tag_set: HashSet<Box<str>>,
     frontmatter: Option<Frontmatter>,
     metadata_text: String,
-    metadata_kind: Option<MetadataKind>,
+    metadata_kind: Option<pulldown_cmark::MetadataBlockKind>,
     list_stack: Vec<List>,
     current_item: Option<ItemState>,
     current_heading: Option<HeadingState>,
@@ -415,12 +409,7 @@ impl<'config> ParseState<'config> {
                 level,
                 ..
             } => self.start_heading(level, position)?,
-            CmarkTag::MetadataBlock(
-                pulldown_cmark::MetadataBlockKind::YamlStyle,
-            ) => self.start_metadata_block(MetadataKind::Yaml),
-            CmarkTag::MetadataBlock(
-                pulldown_cmark::MetadataBlockKind::PlusesStyle,
-            ) => self.start_metadata_block(MetadataKind::Toml),
+            CmarkTag::MetadataBlock(kind) => self.start_metadata_block(kind),
             CmarkTag::Link {
                 link_type,
                 dest_url,
@@ -460,12 +449,7 @@ impl<'config> ParseState<'config> {
             TagEnd::Item => self.end_item()?,
             TagEnd::Heading(_) => self.end_heading()?,
             TagEnd::Link | TagEnd::Image => self.end_link()?,
-            TagEnd::MetadataBlock(
-                pulldown_cmark::MetadataBlockKind::YamlStyle,
-            ) => self.end_metadata_block(MetadataKind::Yaml)?,
-            TagEnd::MetadataBlock(
-                pulldown_cmark::MetadataBlockKind::PlusesStyle,
-            ) => self.end_metadata_block(MetadataKind::Toml)?,
+            TagEnd::MetadataBlock(kind) => self.end_metadata_block(kind)?,
             TagEnd::CodeBlock => {
                 self.code_block_depth = self.code_block_depth.saturating_sub(1);
             }
@@ -754,15 +738,26 @@ impl<'config> ParseState<'config> {
                     collect_alias: has_pothole,
                 });
             }
+            PLinkType::Autolink | PLinkType::Email => {
+                let target = dest_url.as_ref();
+                self.current_link = Some(LinkState {
+                    target: target.into(),
+                    alias: None,
+                    position,
+                    is_embed,
+                    is_wikilink: false,
+                    is_markdown_image: is_embed,
+                    is_external: true,
+                    collect_alias: false,
+                });
+            }
             PLinkType::Inline
             | PLinkType::Reference
             | PLinkType::ReferenceUnknown
             | PLinkType::Collapsed
             | PLinkType::CollapsedUnknown
             | PLinkType::Shortcut
-            | PLinkType::ShortcutUnknown
-            | PLinkType::Autolink
-            | PLinkType::Email => {
+            | PLinkType::ShortcutUnknown => {
                 // Standard markdown link: [text](url)
                 let target = dest_url.as_ref();
                 let is_external = is_external_link(link_type, target);
@@ -856,7 +851,10 @@ impl<'config> ParseState<'config> {
     }
 
     #[tracing::instrument(skip(self), level = "debug")]
-    fn start_metadata_block(&mut self, kind: MetadataKind) {
+    fn start_metadata_block(
+        &mut self,
+        kind: pulldown_cmark::MetadataBlockKind,
+    ) {
         self.metadata_kind = Some(kind);
         self.metadata_text.clear();
     }
@@ -864,7 +862,7 @@ impl<'config> ParseState<'config> {
     #[tracing::instrument(skip(self), level = "debug")]
     fn end_metadata_block(
         &mut self,
-        kind: MetadataKind,
+        kind: pulldown_cmark::MetadataBlockKind,
     ) -> Result<(), NoteError> {
         if self.metadata_kind != Some(kind) {
             self.metadata_kind = None;
@@ -878,7 +876,7 @@ impl<'config> ParseState<'config> {
         }
 
         let fields = match kind {
-            MetadataKind::Yaml => {
+            pulldown_cmark::MetadataBlockKind::YamlStyle => {
                 let yaml_value: serde_yaml::Value =
                     serde_yaml::from_str(&self.metadata_text).map_err(|e| {
                         NoteError::Frontmatter(
@@ -887,7 +885,7 @@ impl<'config> ParseState<'config> {
                     })?;
                 yaml_to_field_map(&yaml_value)?
             }
-            MetadataKind::Toml => {
+            pulldown_cmark::MetadataBlockKind::PlusesStyle => {
                 let toml_value: toml::Value =
                     toml::from_str(&self.metadata_text).map_err(|e| {
                         NoteError::Frontmatter(
