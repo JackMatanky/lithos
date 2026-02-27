@@ -730,6 +730,9 @@ impl TryFrom<String> for SchemaName {
 // ----------------------------------------------------------- //
 
 /// Unix timestamp (seconds since epoch).
+///
+/// Uses `u64` to prevent negative timestamps, which are invalid for
+/// timestamps since the Unix epoch (1970-01-01).
 #[derive(
     Debug,
     Clone,
@@ -747,7 +750,7 @@ impl TryFrom<String> for SchemaName {
 #[rkyv(derive(Debug))]
 #[serde(transparent)]
 #[non_exhaustive]
-pub struct Timestamp(i64);
+pub struct Timestamp(u64);
 
 impl Timestamp {
     /// Returns the current UTC timestamp.
@@ -761,7 +764,13 @@ impl Timestamp {
     #[inline]
     #[must_use]
     pub fn now() -> Self {
-        Self(chrono::Utc::now().timestamp())
+        #[expect(
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "Timestamp is clamped to 0, so cast to u64 is safe"
+        )]
+        let secs = chrono::Utc::now().timestamp().max(0) as u64;
+        Self(secs)
     }
 
     /// Wraps a timestamp in seconds.
@@ -775,7 +784,7 @@ impl Timestamp {
     /// ```
     #[inline]
     #[must_use]
-    pub const fn from_secs(secs: i64) -> Self {
+    pub const fn from_secs(secs: u64) -> Self {
         Self(secs)
     }
 
@@ -790,7 +799,7 @@ impl Timestamp {
     /// ```
     #[inline]
     #[must_use]
-    pub const fn as_secs(self) -> i64 {
+    pub const fn as_secs(self) -> u64 {
         self.0
     }
 }
@@ -828,7 +837,7 @@ mod tests {
                 Cardinality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )?;
+            );
             Schema::new(
                 SchemaId::from_uuid(TEST_SCHEMA_ID_A),
                 name,

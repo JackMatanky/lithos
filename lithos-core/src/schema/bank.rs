@@ -50,7 +50,7 @@ use super::{
 ///     Cardinality::Required,
 ///     Multiplicity::Single,
 ///     spec,
-/// )?;
+/// );
 ///
 /// bank.register(property)?;
 /// assert!(bank.has_name(&name), "Bank should contain property name");
@@ -184,7 +184,7 @@ impl PropertyBank {
                 super::property::Cardinality::Optional,
                 multiplicity,
                 spec,
-            )?;
+            );
 
             bank.register(property)?;
         }
@@ -247,7 +247,7 @@ impl PropertyBank {
     ///     Cardinality::Required,
     ///     Multiplicity::Single,
     ///     spec,
-    /// )?;
+    /// );
     ///
     /// bank.register(property)?;
     /// assert_eq!(bank.all().count(), 1, "Bank should contain one property");
@@ -765,7 +765,7 @@ mod tests {
                 Cardinality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )?;
+            );
             let id = property.id();
             bank.register(property)?;
             Ok((bank, id))
@@ -794,8 +794,7 @@ mod tests {
                 Cardinality::Optional,
                 Multiplicity::Single,
                 spec,
-            )
-            .expect("Valid property");
+            );
 
             // WHEN: registering the same property twice
             bank.register(prop.clone())
@@ -827,8 +826,7 @@ mod tests {
                 Cardinality::Optional,
                 Multiplicity::Single,
                 spec1,
-            )
-            .expect("Valid property");
+            );
 
             bank.register(prop1).expect("First registration should succeed");
 
@@ -841,8 +839,7 @@ mod tests {
                 Cardinality::Required,
                 Multiplicity::Many,
                 spec2,
-            )
-            .expect("Valid property");
+            );
 
             let result = bank.register(prop2);
 
@@ -920,8 +917,7 @@ mod tests {
                 Cardinality::Optional,
                 Multiplicity::Single,
                 spec1,
-            )
-            .expect("Valid property");
+            );
             bank.register(prop1).expect("Initial registration should succeed");
 
             // WHEN: registering a different definition with the same name
@@ -932,8 +928,7 @@ mod tests {
                 Cardinality::Optional,
                 Multiplicity::Single,
                 spec2,
-            )
-            .expect("Valid property definition");
+            );
             let res = bank.register(prop2);
 
             // THEN: it must return a DuplicatePropertyName error

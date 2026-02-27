@@ -44,7 +44,7 @@ use super::{error::SchemaError, property_spec::PropertySpec};
 ///     Cardinality::Required,
 ///     Multiplicity::Single,
 ///     spec,
-/// )?;
+/// );
 /// assert!(property.is_required_scalar());
 /// # Ok(())
 /// # }
@@ -91,7 +91,7 @@ impl Property {
     ///     Cardinality::Required,
     ///     Multiplicity::Single,
     ///     spec,
-    /// )?;
+    /// );
     /// let _id = property.id();
     /// # Ok(())
     /// # }
@@ -119,7 +119,7 @@ impl Property {
     ///     Cardinality::Required,
     ///     Multiplicity::Single,
     ///     spec,
-    /// )?;
+    /// );
     /// assert_eq!(property.cardinality(), Cardinality::Required);
     /// # Ok(())
     /// # }
@@ -147,7 +147,7 @@ impl Property {
     ///     Cardinality::Required,
     ///     Multiplicity::Single,
     ///     spec,
-    /// )?;
+    /// );
     /// assert_eq!(property.multiplicity(), Multiplicity::Single);
     /// # Ok(())
     /// # }
@@ -175,7 +175,7 @@ impl Property {
     ///     Cardinality::Required,
     ///     Multiplicity::Single,
     ///     spec,
-    /// )?;
+    /// );
     /// assert_eq!(property.name().as_str(), "flag");
     /// # Ok(())
     /// # }
@@ -186,7 +186,10 @@ impl Property {
         &self.name
     }
 
-    /// Create a new property with validation.
+    /// Create a new property.
+    ///
+    /// All validation is done at the component level (`PropertyName`,
+    /// `PropertySpec`), so this constructor is infallible.
     ///
     /// # Examples
     ///
@@ -207,30 +210,27 @@ impl Property {
     ///     Cardinality::Required,
     ///     Multiplicity::Single,
     ///     spec,
-    /// )?;
+    /// );
     /// assert!(property.is_required_scalar(), "Property should be required");
     /// # Ok(())
     /// # }
     /// ```
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub fn new(
+    #[must_use]
+    pub const fn new(
         id: PropertyId,
         name: PropertyName,
         cardinality: Cardinality,
         multiplicity: Multiplicity,
         spec: PropertySpec,
-    ) -> Result<Self, SchemaError> {
-        let property = Self {
+    ) -> Self {
+        Self {
             id,
             name,
             cardinality,
             multiplicity,
             spec,
-        };
-        Ok(property)
+        }
     }
 
     /// Returns true if this property is required.
@@ -250,7 +250,7 @@ impl Property {
     ///     Cardinality::Required,
     ///     Multiplicity::Single,
     ///     spec,
-    /// )?;
+    /// );
     /// assert!(property.is_required_scalar());
     /// # Ok(())
     /// # }
@@ -279,7 +279,7 @@ impl Property {
     ///     Cardinality::Required,
     ///     Multiplicity::Single,
     ///     spec,
-    /// )?;
+    /// );
     /// let _spec = property.spec();
     /// # Ok(())
     /// # }
@@ -315,7 +315,7 @@ impl Property {
     ///     Cardinality::Required,
     ///     Multiplicity::Single,
     ///     spec,
-    /// )?;
+    /// );
     /// property.validate_value(&serde_json::json!(true))?;
     /// # Ok(())
     /// # }
@@ -825,17 +825,17 @@ mod tests {
             /// Builds the `Property` entity.
             ///
             /// # Errors
-            /// Returns `SchemaError` if the property configuration is invalid.
+            /// Returns `SchemaError` if the property name is invalid.
             #[inline]
             pub fn build(self) -> Result<Property, SchemaError> {
                 let name = PropertyName::new(&self.name)?;
-                Property::new(
+                Ok(Property::new(
                     PropertyId::from_uuid(TEST_PROPERTY_ID),
                     name,
                     self.cardinality,
                     self.multiplicity,
                     self.spec,
-                )
+                ))
             }
 
             /// Sets the name of the property.
@@ -942,7 +942,6 @@ mod tests {
                 Multiplicity::Single,
                 spec,
             )
-            .expect("Expected valid property")
         }
 
         #[test]

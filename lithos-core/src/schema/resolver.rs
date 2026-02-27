@@ -237,13 +237,13 @@ mod tests {
         use super::*;
 
         pub fn bool_property(name: &str) -> Result<Property, SchemaError> {
-            Property::new(
+            Ok(Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
                 PropertyName::new(name)?,
                 Cardinality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )
+            ))
         }
 
         pub fn simple_derefed(
@@ -370,14 +370,14 @@ mod tests {
                 Cardinality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )?;
+            );
             let child_prop = Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
                 PropertyName::new("shared")?,
                 Cardinality::Optional,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )?;
+            );
 
             let derefed = vec![
                 fixtures::simple_derefed(parent_id, "parent", None, vec![

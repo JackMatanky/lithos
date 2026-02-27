@@ -150,13 +150,13 @@ impl<'bank> Dereferencer<'bank> {
                 let spec = inline.spec.try_into_validated()?;
                 let cardinality = Cardinality::from(inline.required);
                 let multiplicity = Multiplicity::from(inline.multi);
-                Property::new(
+                Ok(Property::new(
                     PropertyId::new(),
                     prop_name,
                     cardinality,
                     multiplicity,
                     spec,
-                )
+                ))
             }
 
             RawProperty::Ref(ref_entry) => {
@@ -191,7 +191,7 @@ impl<'bank> Dereferencer<'bank> {
         let spec = Self::apply_spec_overrides(base.spec(), ref_entry)?;
 
         let prop_name = PropertyName::new(name)?;
-        Property::new(base.id(), prop_name, cardinality, multiplicity, spec)
+        Ok(Property::new(base.id(), prop_name, cardinality, multiplicity, spec))
     }
 
     /// Apply type-specific spec overrides, rejecting type changes (R-10).
@@ -336,13 +336,13 @@ mod tests {
         use super::*;
 
         pub fn bool_property(name: &str) -> Result<Property, SchemaError> {
-            Property::new(
+            Ok(Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID),
                 PropertyName::new(name)?,
                 Cardinality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )
+            ))
         }
 
         pub fn bank_with(prop: Property) -> Result<PropertyBank, SchemaError> {
