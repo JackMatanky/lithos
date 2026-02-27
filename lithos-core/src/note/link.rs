@@ -14,7 +14,7 @@
 
 use super::{
     aggregate::{NoteId, NotePath},
-    error::NoteError,
+    error::{LinkError, NoteError},
     types::SourceByteOffset,
 };
 
@@ -393,9 +393,7 @@ impl Link {
         anchor: Option<&Anchor>,
     ) -> Result<(), NoteError> {
         if target.is_external() && anchor.is_some() {
-            return Err(NoteError::Link(
-                "External links cannot have anchors".into(),
-            ));
+            return Err(NoteError::Link(LinkError::ExternalAnchor));
         }
         Ok(())
     }
@@ -419,7 +417,7 @@ impl Link {
             } => raw.is_empty(),
         };
         if is_empty {
-            return Err(NoteError::Link("Link target cannot be empty".into()));
+            return Err(NoteError::Link(LinkError::EmptyTarget));
         }
         Ok(())
     }

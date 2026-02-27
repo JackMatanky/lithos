@@ -35,7 +35,7 @@ pub enum NoteError {
 
     /// Link parsing error.
     #[error("link error: {0}")]
-    Link(Box<str>),
+    Link(#[from] LinkError),
 
     /// Note not found.
     #[error("note not found: {0}")]
@@ -162,6 +162,18 @@ pub enum TaskError {
     },
 }
 
+/// Errors surfaced when validating or parsing links.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum LinkError {
+    /// Link target is empty.
+    #[error("link target cannot be empty")]
+    EmptyTarget,
+    /// External links cannot contain anchors.
+    #[error("external links cannot have anchors")]
+    ExternalAnchor,
+}
+
 /// Errors surfaced by Note command operations.
 ///
 /// Combines domain errors with low-level storage errors.
@@ -268,7 +280,7 @@ mod tests {
     #[case(NoteError::FrontmatterAccess(FrontmatterError::Missing {
         key: "title".into(),
     }))]
-    #[case(NoteError::Link("broken link".into()))]
+    #[case(NoteError::Link(LinkError::EmptyTarget))]
     #[case(NoteError::Tag(TagError::MissingHash))]
     #[case(NoteError::Task(TaskError::EmptyText))]
     #[case(NoteError::ListDepthOutOfRange {
