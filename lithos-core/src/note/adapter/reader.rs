@@ -509,9 +509,16 @@ impl<'config> ParseState<'config> {
             self.metadata_text.push('\n');
             return;
         }
+
+        if let Some(link) = self.current_link.as_mut()
+            && link.collect_alias
+        {
+            let alias = link.alias.get_or_insert_with(String::new);
+            alias.push(' ');
+        }
+
         if let Some(heading) = self.current_heading.as_mut() {
             heading.text.push(' ');
-            return;
         }
         if let Some(item) = self.current_item.as_mut() {
             item.text.push(' ');
@@ -1661,6 +1668,25 @@ title: My Note
         let list = lists.first().expect("list should exist");
         let item = list.items().first().expect("item should exist");
         assert_eq!(item.text(), "Item with link");
+        Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn link_alias_preserves_break_whitespace() -> Result<(), NoteError> {
+        let config = test_config();
+        let reader = NoteReader::new(&config);
+        let markdown = "[line1\nline2](target.md)";
+
+        let ParseOutcome {
+            links,
+            ..
+        } = reader.parse_str(markdown)?;
+        let link = links.first().expect("link should exist");
+        assert_eq!(link.alias(), Some("line1 line2"));
         Ok(())
     }
 
