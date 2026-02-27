@@ -149,13 +149,14 @@ impl ListDepth {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the depth is out of range.
+    /// Returns [`NoteError::ListDepthOutOfRange`] if the depth is out of range.
     #[inline]
     pub fn try_new(depth: usize) -> Result<Self, NoteError> {
         u8::try_from(depth).map(Self).map_err(|error| {
-            NoteError::Structure(
-                format!("list depth out of range: {error}").into(),
-            )
+            NoteError::ListDepthOutOfRange {
+                depth,
+                reason: error.to_string().into(),
+            }
         })
     }
 

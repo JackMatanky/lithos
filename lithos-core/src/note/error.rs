@@ -53,6 +53,15 @@ pub enum NoteError {
     #[error("task error: {0}")]
     Task(Box<str>),
 
+    /// List nesting depth is out of range.
+    #[error("list depth out of range: {depth}")]
+    ListDepthOutOfRange {
+        /// The observed list depth.
+        depth: usize,
+        /// Conversion error details.
+        reason: Box<str>,
+    },
+
     /// Structural error within a note.
     #[error("note structure error: {0}")]
     Structure(Box<str>),
@@ -171,6 +180,10 @@ mod tests {
     #[case(NoteError::Link("broken link".into()))]
     #[case(NoteError::Tag("invalid tag".into()))]
     #[case(NoteError::Task("invalid task".into()))]
+    #[case(NoteError::ListDepthOutOfRange {
+        depth: 300,
+        reason: "out of range".into(),
+    })]
     #[case(NoteError::Storage("io error".into()))]
     fn note_error_display_is_comprehensive(#[case] error: NoteError) {
         assert!(
