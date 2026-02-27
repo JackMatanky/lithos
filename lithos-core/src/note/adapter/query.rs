@@ -6,9 +6,12 @@
 use uuid::Uuid;
 
 use crate::{
+    config::{frontmatter::FrontmatterKey, task::StatusName},
     db::Database,
     note::{
-        aggregate::Note,
+        aggregate::{
+            AliasName, FileClassName, FolderPath, Note, NoteId, NotePath,
+        },
         db_table::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
             PATH_TO_ID, TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
@@ -16,6 +19,7 @@ use crate::{
             TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
         },
         ports::Query,
+        task::{TaskPriority, TaskTimestamp},
     },
 };
 
@@ -59,8 +63,11 @@ impl Query for QueryAdapter<'_> {
     type NoteArchived<'archived> = &'archived rkyv::Archived<Note>;
 
     #[inline]
-    fn find_by_alias(&self, alias: &str) -> Result<Option<Note>, Self::Error> {
-        let ids = self.db.multimap_get(ALIAS_TO_ID, alias)?;
+    fn find_by_alias(
+        &self,
+        alias: &AliasName,
+    ) -> Result<Option<Note>, Self::Error> {
+        let ids = self.db.multimap_get(ALIAS_TO_ID, alias.as_str())?;
 
         if let Some(id_str) = ids.first() {
             self.db.get_owned::<Note>(NOTES, id_str)
@@ -72,9 +79,9 @@ impl Query for QueryAdapter<'_> {
     #[inline]
     fn find_by_file_class(
         &self,
-        class: &str,
+        class: &FileClassName,
     ) -> Result<Vec<Note>, Self::Error> {
-        let ids = self.db.multimap_get(FILE_CLASS_TO_ID, class)?;
+        let ids = self.db.multimap_get(FILE_CLASS_TO_ID, class.as_str())?;
 
         let mut notes = Vec::with_capacity(ids.len());
         for id_str in ids {
@@ -86,8 +93,11 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn find_by_folder(&self, folder: &str) -> Result<Vec<Note>, Self::Error> {
-        let ids = self.db.multimap_get(FOLDER_TO_ID, folder)?;
+    fn find_by_folder(
+        &self,
+        folder: &FolderPath,
+    ) -> Result<Vec<Note>, Self::Error> {
+        let ids = self.db.multimap_get(FOLDER_TO_ID, folder.as_str())?;
 
         let mut notes = Vec::with_capacity(ids.len());
         for id_str in ids {
@@ -99,16 +109,20 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, Self::Error> {
+    fn find_by_id(&self, id: NoteId) -> Result<Option<Note>, Self::Error> {
         let mut id_buffer = Uuid::encode_buffer();
-        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str =
+            Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
         self.db.get_owned::<Note>(NOTES, id_str)
     }
 
     #[inline]
-    fn find_by_path(&self, path: &str) -> Result<Option<Note>, Self::Error> {
-        let ids = self.db.multimap_get(PATH_TO_ID, path)?;
+    fn find_by_path(
+        &self,
+        path: &NotePath,
+    ) -> Result<Option<Note>, Self::Error> {
+        let ids = self.db.multimap_get(PATH_TO_ID, path.as_str())?;
 
         if let Some(id_str) = ids.first() {
             self.db.get_owned::<Note>(NOTES, id_str)
@@ -120,40 +134,40 @@ impl Query for QueryAdapter<'_> {
     #[inline]
     fn find_by_task_completed_date(
         &self,
-        completed_date: i64,
+        completed_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
-        let date_str = buffer.format(completed_date);
+        let date_str = buffer.format(completed_date.as_i64());
         self.find_notes_by_task_index(TASKS_BY_COMPLETED_DATE, date_str)
     }
 
     #[inline]
     fn find_by_task_created_date(
         &self,
-        created_date: i64,
+        created_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
-        let date_str = buffer.format(created_date);
+        let date_str = buffer.format(created_date.as_i64());
         self.find_notes_by_task_index(TASKS_BY_CREATED_DATE, date_str)
     }
 
     #[inline]
     fn find_by_task_due_date(
         &self,
-        due_date: i64,
+        due_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
-        let date_str = buffer.format(due_date);
+        let date_str = buffer.format(due_date.as_i64());
         self.find_notes_by_task_index(TASKS_BY_DUE_DATE, date_str)
     }
 
     #[inline]
     fn find_by_task_priority(
         &self,
-        priority: f64,
+        priority: TaskPriority,
     ) -> Result<Vec<Note>, Self::Error> {
         let mut buffer = ryu::Buffer::new();
-        let priority_str = buffer.format(priority);
+        let priority_str = buffer.format(priority.as_f64());
         self.find_notes_by_task_index(TASKS_BY_PRIORITY, priority_str)
     }
 
@@ -168,19 +182,19 @@ impl Query for QueryAdapter<'_> {
     #[inline]
     fn find_by_task_reminder_date(
         &self,
-        reminder_date: i64,
+        reminder_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
-        let date_str = buffer.format(reminder_date);
+        let date_str = buffer.format(reminder_date.as_i64());
         self.find_notes_by_task_index(TASKS_BY_REMINDER_DATE, date_str)
     }
 
     #[inline]
     fn find_by_task_status(
         &self,
-        status: &str,
+        status: &StatusName,
     ) -> Result<Vec<Note>, Self::Error> {
-        self.find_notes_by_task_index(TASKS_BY_STATUS, status)
+        self.find_notes_by_task_index(TASKS_BY_STATUS, status.as_str())
     }
 
     #[inline]
@@ -195,31 +209,32 @@ impl Query for QueryAdapter<'_> {
     )]
     fn query_frontmatter_kv(
         &self,
-        key: &str,
+        key: &FrontmatterKey,
         value: &str,
     ) -> Result<Vec<Note>, Self::Error> {
         use std::fmt::Write as _;
         let mut combined_key =
-            String::with_capacity(key.len() + value.len() + 1);
+            String::with_capacity(key.as_str().len() + value.len() + 1);
         #[expect(
             clippy::let_underscore_must_use,
             reason = "Writing to String is infallible"
         )]
-        let _ = write!(&mut combined_key, "{key}:{value}");
+        let _ = write!(&mut combined_key, "{}:{value}", key.as_str());
         self.find_notes_by_task_index(FRONTMATTER_KV, &combined_key)
     }
 
     #[inline]
     fn with_archived_by_id<F, R>(
         &self,
-        id: Uuid,
+        id: NoteId,
         f: F,
     ) -> Result<Option<R>, Self::Error>
     where
         F: for<'archived> FnOnce(Self::NoteArchived<'archived>) -> R,
     {
         let mut id_buffer = Uuid::encode_buffer();
-        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str =
+            Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
         self.db.get::<Note, _, R>(NOTES, id_str, f)
     }
@@ -245,12 +260,12 @@ mod tests {
             config::{
                 aggregate::Config,
                 raw::RawConfig,
-                task::StatusSymbol,
+                task::{StatusName, StatusSymbol},
                 vault::{VaultId, VaultRoot},
             },
             note::{
                 adapter::command::CommandAdapter,
-                aggregate::{Note, NoteId},
+                aggregate::{Note, NoteId, NotePath},
                 frontmatter::Frontmatter,
                 ports::Command,
                 task::{Task, TaskAttributes, TaskMetadata, TaskTimestamp},
@@ -259,9 +274,9 @@ mod tests {
             },
         };
         type QuerySetupResult =
-            Result<(TempDir, Database, Uuid, Frontmatter), String>;
+            Result<(TempDir, Database, NoteId, Frontmatter), String>;
         type IndexedNoteSetup =
-            Result<(TempDir, Database, Uuid, Box<str>), String>;
+            Result<(TempDir, Database, NoteId, StatusName), String>;
 
         pub const TEST_MISSING_ID: Uuid =
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0901);
@@ -302,9 +317,10 @@ mod tests {
             let mut note = Note::new(NoteId::new(), "notes/a.md")
                 .map_err(|e| e.to_string())?;
             note.set_frontmatter(Some(fm.clone()));
-            let id = Uuid::from(note.id());
-            db.put_by_uuid(NOTES, id, &note).map_err(|e| e.to_string())?;
-            db.multimap_insert(PATH_TO_ID, "notes/a.md", &id.to_string())
+            let id = note.id();
+            let uuid = Uuid::from(id);
+            db.put_by_uuid(NOTES, uuid, &note).map_err(|e| e.to_string())?;
+            db.multimap_insert(PATH_TO_ID, "notes/a.md", &uuid.to_string())
                 .map_err(|e| e.to_string())?;
             Ok((dir, db, id, fm))
         }
@@ -314,8 +330,10 @@ mod tests {
             let config = test_config()?;
             let cmd = CommandAdapter::new(&db, &config);
 
-            let mut note = Command::create(&cmd, "notes/a.md")
-                .map_err(|e| e.to_string())?;
+            let path =
+                NotePath::new("notes/a.md").map_err(|e| e.to_string())?;
+            let mut note =
+                Command::create(&cmd, &path).map_err(|e| e.to_string())?;
 
             let frontmatter = Frontmatter::new(HashMap::from([
                 (
@@ -335,7 +353,7 @@ mod tests {
                 )
                 .ok_or_else(|| String::from("missing default status"))?
                 .clone();
-            let status_name: Box<str> = status.as_str().into();
+            let status_name = status.clone();
             let mut metadata = TaskMetadata::new();
             metadata.insert("priority".into(), FieldValue::Number(2.0));
             metadata
@@ -357,7 +375,7 @@ mod tests {
             .map_err(|e| e.to_string())?;
             note.add_task(task);
 
-            let id = Uuid::from(note.id());
+            let id = note.id();
             Command::update(&cmd, note).map_err(|e| e.to_string())?;
             Ok((dir, db, id, status_name))
         }
@@ -378,11 +396,7 @@ mod tests {
             let observed = qry
                 .find_by_id(id)?
                 .expect("Query by id should return Some(note)");
-            assert_eq!(
-                Uuid::from(observed.id()),
-                id,
-                "Observed id should match"
-            );
+            assert_eq!(observed.id(), id, "Observed id should match");
             Ok(())
         }
 
@@ -393,7 +407,8 @@ mod tests {
                 NoteQueryError::Domain(NoteError::Storage(e.into()))
             })?;
             let qry = QueryAdapter::new(&db);
-            let miss = qry.find_by_id(fixtures::TEST_MISSING_ID)?;
+            let miss =
+                qry.find_by_id(NoteId::from(fixtures::TEST_MISSING_ID))?;
             assert!(miss.is_none(), "Non-existent ID should return None");
             Ok(())
         }
@@ -419,45 +434,60 @@ mod tests {
                 })?;
             let qry = QueryAdapter::new(&db);
 
+            let alias =
+                AliasName::try_new("Alias").map_err(NoteQueryError::Domain)?;
             let by_alias =
-                qry.find_by_alias("Alias")?.expect("alias should match");
-            assert_eq!(Uuid::from(by_alias.id()), id);
+                qry.find_by_alias(&alias)?.expect("alias should match");
+            assert_eq!(by_alias.id(), id);
 
-            let by_class = qry.find_by_file_class("Class")?;
-            assert!(by_class.iter().any(|note| Uuid::from(note.id()) == id));
+            let class = FileClassName::try_new("Class")
+                .map_err(NoteQueryError::Domain)?;
+            let by_class = qry.find_by_file_class(&class)?;
+            assert!(by_class.iter().any(|note| note.id() == id));
 
-            let by_folder = qry.find_by_folder("notes")?;
-            assert!(by_folder.iter().any(|note| Uuid::from(note.id()) == id));
+            let folder =
+                FolderPath::try_new("notes").map_err(NoteQueryError::Domain)?;
+            let by_folder = qry.find_by_folder(&folder)?;
+            assert!(by_folder.iter().any(|note| note.id() == id));
 
-            let by_frontmatter =
-                qry.query_frontmatter_kv("category", "docs")?;
-            assert!(
-                by_frontmatter.iter().any(|note| Uuid::from(note.id()) == id)
-            );
+            let key =
+                crate::config::frontmatter::FrontmatterKey::try_new("category")
+                    .map_err(|error| {
+                        NoteQueryError::Domain(NoteError::ValidationFailed(
+                            error.to_string().into(),
+                        ))
+                    })?;
+            let by_frontmatter = qry.query_frontmatter_kv(&key, "docs")?;
+            assert!(by_frontmatter.iter().any(|note| note.id() == id));
 
-            let by_status = qry.find_by_task_status(status_name.as_ref())?;
-            assert!(by_status.iter().any(|note| Uuid::from(note.id()) == id));
+            let by_status = qry.find_by_task_status(&status_name)?;
+            assert!(by_status.iter().any(|note| note.id() == id));
 
-            let by_priority = qry.find_by_task_priority(2.0)?;
-            assert!(by_priority.iter().any(|note| Uuid::from(note.id()) == id));
+            let priority =
+                TaskPriority::try_new(2.0).map_err(NoteQueryError::Domain)?;
+            let by_priority = qry.find_by_task_priority(priority)?;
+            assert!(by_priority.iter().any(|note| note.id() == id));
 
             let by_project = qry.find_by_task_project("lithos")?;
-            assert!(by_project.iter().any(|note| Uuid::from(note.id()) == id));
+            assert!(by_project.iter().any(|note| note.id() == id));
 
-            let by_created = qry.find_by_task_created_date(1_700_000_000)?;
-            assert!(by_created.iter().any(|note| Uuid::from(note.id()) == id));
+            let by_created = qry
+                .find_by_task_created_date(TaskTimestamp::new(1_700_000_000))?;
+            assert!(by_created.iter().any(|note| note.id() == id));
 
-            let by_due = qry.find_by_task_due_date(1_700_000_100)?;
-            assert!(by_due.iter().any(|note| Uuid::from(note.id()) == id));
+            let by_due =
+                qry.find_by_task_due_date(TaskTimestamp::new(1_700_000_100))?;
+            assert!(by_due.iter().any(|note| note.id() == id));
 
-            let by_reminder = qry.find_by_task_reminder_date(1_700_000_200)?;
-            assert!(by_reminder.iter().any(|note| Uuid::from(note.id()) == id));
+            let by_reminder = qry.find_by_task_reminder_date(
+                TaskTimestamp::new(1_700_000_200),
+            )?;
+            assert!(by_reminder.iter().any(|note| note.id() == id));
 
-            let by_completed =
-                qry.find_by_task_completed_date(1_700_000_300)?;
-            assert!(
-                by_completed.iter().any(|note| Uuid::from(note.id()) == id)
-            );
+            let by_completed = qry.find_by_task_completed_date(
+                TaskTimestamp::new(1_700_000_300),
+            )?;
+            assert!(by_completed.iter().any(|note| note.id() == id));
 
             Ok(())
         }

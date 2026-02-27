@@ -13,9 +13,11 @@
 //! This trait is synchronous per the architecture proposal (Phase 3).
 //! Async wrappers should be added at the CLI/LSP boundary if needed.
 
-use uuid::Uuid;
-
-use super::aggregate::Note;
+use super::{
+    aggregate::{AliasName, FileClassName, FolderPath, Note, NoteId, NotePath},
+    task::{TaskPriority, TaskTimestamp},
+};
+use crate::config::{frontmatter::FrontmatterKey, task::StatusName};
 
 /// Command port for Note write operations.
 ///
@@ -31,14 +33,14 @@ pub trait Command: Send + Sync {
     /// # Errors
     ///
     /// Returns a storage-specific error if creation fails.
-    fn create(&self, path: &str) -> Result<Note, Self::Error>;
+    fn create(&self, path: &NotePath) -> Result<Note, Self::Error>;
 
     /// Deletes a note by its unique identifier.
     ///
     /// # Errors
     ///
     /// Returns a storage-specific error if deletion fails.
-    fn delete(&self, id: Uuid) -> Result<(), Self::Error>;
+    fn delete(&self, id: NoteId) -> Result<(), Self::Error>;
 
     /// Updates an existing note aggregate.
     ///
@@ -65,36 +67,47 @@ pub trait Query: Send + Sync {
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_alias(&self, alias: &str) -> Result<Option<Note>, Self::Error>;
+    fn find_by_alias(
+        &self,
+        alias: &AliasName,
+    ) -> Result<Option<Note>, Self::Error>;
 
     /// Finds all notes belonging to a specific file class.
     ///
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_file_class(&self, class: &str)
-    -> Result<Vec<Note>, Self::Error>;
+    fn find_by_file_class(
+        &self,
+        class: &FileClassName,
+    ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes located within a specific vault folder.
     ///
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_folder(&self, folder: &str) -> Result<Vec<Note>, Self::Error>;
+    fn find_by_folder(
+        &self,
+        folder: &FolderPath,
+    ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds a note by its unique UUID v7 identifier (owned).
     ///
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, Self::Error>;
+    fn find_by_id(&self, id: NoteId) -> Result<Option<Note>, Self::Error>;
 
     /// Finds a note by its vault-relative path (owned).
     ///
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_path(&self, path: &str) -> Result<Option<Note>, Self::Error>;
+    fn find_by_path(
+        &self,
+        path: &NotePath,
+    ) -> Result<Option<Note>, Self::Error>;
 
     /// Finds all notes containing tasks completed on a specific date.
     ///
@@ -103,7 +116,7 @@ pub trait Query: Send + Sync {
     /// Returns a storage-specific error if query fails.
     fn find_by_task_completed_date(
         &self,
-        completed_date: i64,
+        completed_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks created on a specific date.
@@ -113,7 +126,7 @@ pub trait Query: Send + Sync {
     /// Returns a storage-specific error if query fails.
     fn find_by_task_created_date(
         &self,
-        created_date: i64,
+        created_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks due on a specific date.
@@ -123,7 +136,7 @@ pub trait Query: Send + Sync {
     /// Returns a storage-specific error if query fails.
     fn find_by_task_due_date(
         &self,
-        due_date: i64,
+        due_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks with a specific priority level.
@@ -133,7 +146,7 @@ pub trait Query: Send + Sync {
     /// Returns a storage-specific error if query fails.
     fn find_by_task_priority(
         &self,
-        priority: f64,
+        priority: TaskPriority,
     ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks assigned to a specific project.
@@ -153,7 +166,7 @@ pub trait Query: Send + Sync {
     /// Returns a storage-specific error if query fails.
     fn find_by_task_reminder_date(
         &self,
-        reminder_date: i64,
+        reminder_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error>;
 
     /// Finds all notes containing tasks with a specific status name.
@@ -163,7 +176,7 @@ pub trait Query: Send + Sync {
     /// Returns a storage-specific error if query fails.
     fn find_by_task_status(
         &self,
-        status: &str,
+        status: &StatusName,
     ) -> Result<Vec<Note>, Self::Error>;
 
     /// Lists all notes currently managed in the vault (owned).
@@ -180,7 +193,7 @@ pub trait Query: Send + Sync {
     /// Returns a storage-specific error if query fails.
     fn query_frontmatter_kv(
         &self,
-        key: &str,
+        key: &FrontmatterKey,
         value: &str,
     ) -> Result<Vec<Note>, Self::Error>;
 
@@ -194,7 +207,7 @@ pub trait Query: Send + Sync {
     /// Returns a storage-specific error if query fails.
     fn with_archived_by_id<F, R>(
         &self,
-        id: Uuid,
+        id: NoteId,
         f: F,
     ) -> Result<Option<R>, Self::Error>
     where

@@ -450,6 +450,144 @@ impl fmt::Display for NotePath {
     }
 }
 
+/// Validated alias name for a note.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct AliasName(Box<str>);
+
+impl AliasName {
+    /// Creates a validated alias name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::ValidationFailed`] if the alias is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        if value.trim().is_empty() {
+            return Err(NoteError::ValidationFailed(
+                "alias name cannot be empty".into(),
+            ));
+        }
+        Ok(Self(value.trim().into()))
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for AliasName {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Validated file class name for a note.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct FileClassName(Box<str>);
+
+impl FileClassName {
+    /// Creates a validated file class name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::ValidationFailed`] if the class is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        if value.trim().is_empty() {
+            return Err(NoteError::ValidationFailed(
+                "file class cannot be empty".into(),
+            ));
+        }
+        Ok(Self(value.trim().into()))
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for FileClassName {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Validated folder path within the vault.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct FolderPath(Box<str>);
+
+impl FolderPath {
+    /// Creates a validated folder path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::ValidationFailed`] if the folder is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        if value.trim().is_empty() {
+            return Err(NoteError::ValidationFailed(
+                "folder path cannot be empty".into(),
+            ));
+        }
+        Ok(Self(value.trim().into()))
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for FolderPath {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl TryFrom<&str> for NotePath {
     type Error = NoteError;
 

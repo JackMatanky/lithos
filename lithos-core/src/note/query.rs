@@ -3,9 +3,13 @@
 //! This module provides the [`Query`] type, which handles read operations
 //! through the note query port.
 
-use uuid::Uuid;
-
-use super::{aggregate::Note, error::NoteQueryError, ports as note_ports};
+use super::{
+    aggregate::{AliasName, FileClassName, FolderPath, Note, NoteId, NotePath},
+    error::NoteQueryError,
+    ports as note_ports,
+    task::{TaskPriority, TaskTimestamp},
+};
+use crate::config::{frontmatter::FrontmatterKey, task::StatusName};
 
 /// Query implementation for note read operations.
 ///
@@ -37,7 +41,7 @@ where
     #[inline]
     pub fn find_by_alias(
         &self,
-        alias: &str,
+        alias: &AliasName,
     ) -> Result<Option<Note>, NoteQueryError> {
         self.query_port
             .find_by_alias(alias)
@@ -51,7 +55,7 @@ where
     #[inline]
     pub fn find_by_file_class(
         &self,
-        class: &str,
+        class: &FileClassName,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
             .find_by_file_class(class)
@@ -65,7 +69,7 @@ where
     #[inline]
     pub fn find_by_folder(
         &self,
-        folder: &str,
+        folder: &FolderPath,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
             .find_by_folder(folder)
@@ -77,7 +81,10 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteQueryError> {
+    pub fn find_by_id(
+        &self,
+        id: NoteId,
+    ) -> Result<Option<Note>, NoteQueryError> {
         self.query_port
             .find_by_id(id)
             .map_err(|error| NoteQueryError::Storage(error.into()))
@@ -90,7 +97,7 @@ where
     #[inline]
     pub fn find_by_path(
         &self,
-        path: &str,
+        path: &NotePath,
     ) -> Result<Option<Note>, NoteQueryError> {
         self.query_port
             .find_by_path(path)
@@ -104,7 +111,7 @@ where
     #[inline]
     pub fn find_by_task_completed_date(
         &self,
-        completed_date: i64,
+        completed_date: TaskTimestamp,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
             .find_by_task_completed_date(completed_date)
@@ -118,7 +125,7 @@ where
     #[inline]
     pub fn find_by_task_created_date(
         &self,
-        created_date: i64,
+        created_date: TaskTimestamp,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
             .find_by_task_created_date(created_date)
@@ -132,7 +139,7 @@ where
     #[inline]
     pub fn find_by_task_due_date(
         &self,
-        due_date: i64,
+        due_date: TaskTimestamp,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
             .find_by_task_due_date(due_date)
@@ -146,7 +153,7 @@ where
     #[inline]
     pub fn find_by_task_priority(
         &self,
-        priority: f64,
+        priority: TaskPriority,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
             .find_by_task_priority(priority)
@@ -174,7 +181,7 @@ where
     #[inline]
     pub fn find_by_task_reminder_date(
         &self,
-        reminder_date: i64,
+        reminder_date: TaskTimestamp,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
             .find_by_task_reminder_date(reminder_date)
@@ -188,7 +195,7 @@ where
     #[inline]
     pub fn find_by_task_status(
         &self,
-        status: &str,
+        status: &StatusName,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
             .find_by_task_status(status)
@@ -213,7 +220,7 @@ where
     #[inline]
     pub fn query_frontmatter_kv(
         &self,
-        key: &str,
+        key: &FrontmatterKey,
         value: &str,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
@@ -228,7 +235,7 @@ where
     #[inline]
     pub fn with_archived_by_id<F, R>(
         &self,
-        id: Uuid,
+        id: NoteId,
         f: F,
     ) -> Result<Option<R>, NoteQueryError>
     where

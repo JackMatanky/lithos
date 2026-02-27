@@ -71,6 +71,35 @@ pub struct Task {
     completed_at: Option<TaskTimestamp>,
 }
 
+/// Validated task priority.
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize,
+)]
+pub struct TaskPriority(f64);
+
+impl TaskPriority {
+    /// Creates a validated task priority.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::ValidationFailed`] if the value is not finite.
+    #[inline]
+    pub fn try_new(value: f64) -> Result<Self, NoteError> {
+        if !value.is_finite() {
+            return Err(NoteError::ValidationFailed(
+                "task priority must be finite".into(),
+            ));
+        }
+        Ok(Self(value))
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn as_f64(self) -> f64 {
+        self.0
+    }
+}
+
 /// Parsed task attributes captured from checkbox text.
 #[derive(Debug, Clone, Default)]
 pub struct TaskAttributes {

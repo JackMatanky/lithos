@@ -3,9 +3,11 @@
 //! This module provides the [`Command`] type, which handles write operations
 //! through the note command port.
 
-use uuid::Uuid;
-
-use super::{aggregate::Note, error::NoteCommandError, ports as note_ports};
+use super::{
+    aggregate::{Note, NoteId, NotePath},
+    error::NoteCommandError,
+    ports as note_ports,
+};
 
 /// Command implementation for note write operations.
 ///
@@ -35,7 +37,7 @@ where
     /// # Errors
     /// Returns `NoteCommandError` if creation fails.
     #[inline]
-    pub fn create(&self, path: &str) -> Result<Note, NoteCommandError> {
+    pub fn create(&self, path: &NotePath) -> Result<Note, NoteCommandError> {
         self.command_port
             .create(path)
             .map_err(|error| NoteCommandError::Storage(error.into()))
@@ -46,7 +48,7 @@ where
     /// # Errors
     /// Returns `NoteCommandError` if deletion fails.
     #[inline]
-    pub fn delete(&self, id: Uuid) -> Result<(), NoteCommandError> {
+    pub fn delete(&self, id: NoteId) -> Result<(), NoteCommandError> {
         self.command_port
             .delete(id)
             .map_err(|error| NoteCommandError::Storage(error.into()))
