@@ -599,7 +599,7 @@ impl<'config> ParseState<'config> {
     }
 
     fn collect_tags_from_frontmatter(&mut self, frontmatter: &Frontmatter) {
-        let key = self.config.frontmatter().tags().as_str();
+        let key = self.config.frontmatter().tags();
         let Some(value) = frontmatter.get(key) else {
             return;
         };
@@ -1496,11 +1496,11 @@ priority: 1
         let fm = frontmatter.expect("should have frontmatter");
 
         assert_eq!(
-            fm.get("title").and_then(FieldValue::as_str),
+            fm.get_raw("title").and_then(FieldValue::as_str),
             Some("Test Note")
         );
         assert_eq!(
-            fm.get("priority").and_then(FieldValue::as_number),
+            fm.get_raw("priority").and_then(FieldValue::as_number),
             Some(1.0f64)
         );
 
@@ -1547,7 +1547,7 @@ Content";
         let fm = frontmatter.expect("should have frontmatter");
 
         // Check nested object access
-        let metadata = fm.get("metadata").expect("should have metadata");
+        let metadata = fm.get_raw("metadata").expect("should have metadata");
         assert!(metadata.as_object().is_some());
 
         Ok(())
@@ -1585,7 +1585,7 @@ title: My Note
         let frontmatter =
             note.frontmatter().expect("note should have frontmatter");
         assert_eq!(
-            frontmatter.get("title").and_then(FieldValue::as_str),
+            frontmatter.get_raw("title").and_then(FieldValue::as_str),
             Some("My Note")
         );
         Ok(())
@@ -1823,7 +1823,7 @@ desc: |
         } = reader.parse_str(markdown)?;
         let fm = frontmatter.expect("frontmatter should exist");
         assert_eq!(
-            fm.get("desc").and_then(FieldValue::as_str),
+            fm.get_raw("desc").and_then(FieldValue::as_str),
             Some("line1\nline2\n")
         );
         Ok(())

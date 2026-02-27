@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 
 use super::{error::FrontmatterError, value::FieldValue};
+use crate::config::frontmatter::FrontmatterKey;
 
 /// Represents YAML/TOML metadata extracted from a note header.
 ///
@@ -35,7 +36,9 @@ use super::{error::FrontmatterError, value::FieldValue};
 /// fields.insert("status".into(), FieldValue::String("draft".into()));
 ///
 /// let fm = Frontmatter::new(fields);
-/// assert!(fm.has("status"));
+/// let key =
+///     lithos_core::config::frontmatter::FrontmatterKey::try_new("status")?;
+/// assert!(fm.has(&key));
 /// # Ok(())
 /// # }
 /// ```
@@ -69,14 +72,29 @@ impl Frontmatter {
     /// Returns a reference to the value for the given key, if it exists.
     #[inline]
     #[must_use]
-    pub fn get(&self, key: &str) -> Option<&FieldValue> {
-        self.fields.get(key)
+    pub fn get(&self, key: &FrontmatterKey) -> Option<&FieldValue> {
+        self.fields.get(key.as_str())
     }
 
     /// Returns `true` if the frontmatter contains a field with the given key.
     #[inline]
     #[must_use]
-    pub fn has(&self, key: &str) -> bool {
+    pub fn has(&self, key: &FrontmatterKey) -> bool {
+        self.fields.contains_key(key.as_str())
+    }
+
+    /// Returns a reference to the value for the given raw key, if it exists.
+    #[inline]
+    #[must_use]
+    pub fn get_raw(&self, key: &str) -> Option<&FieldValue> {
+        self.fields.get(key)
+    }
+
+    /// Returns `true` if the frontmatter contains a field with the given raw
+    /// key.
+    #[inline]
+    #[must_use]
+    pub fn has_raw(&self, key: &str) -> bool {
         self.fields.contains_key(key)
     }
 
@@ -105,14 +123,14 @@ impl Frontmatter {
     )]
     pub fn try_get<T: FromFieldValue>(
         &self,
-        key: &str,
+        key: &FrontmatterKey,
     ) -> Result<Option<T>, FrontmatterError> {
         let Some(value) = self.get(key) else {
             return Ok(None);
         };
         T::from_value(value)
             .map(Some)
-            .map_err(|err| Self::with_key_context(key, err))
+            .map_err(|err| Self::with_key_context(key.as_str(), err))
     }
 
     /// Strictly extracts a required typed value from frontmatter.
@@ -128,10 +146,10 @@ impl Frontmatter {
     )]
     pub fn try_get_required<T: FromFieldValue>(
         &self,
-        key: &str,
+        key: &FrontmatterKey,
     ) -> Result<T, FrontmatterError> {
         self.try_get(key)?.ok_or_else(|| FrontmatterError::Missing {
-            key: key.into(),
+            key: key.as_str().into(),
         })
     }
 
@@ -146,7 +164,7 @@ impl Frontmatter {
     #[inline]
     pub fn try_get_string_vec_strict(
         &self,
-        key: &str,
+        key: &FrontmatterKey,
     ) -> Result<Vec<Box<str>>, FrontmatterError> {
         self.try_get_required::<Vec<Box<str>>>(key)
     }
@@ -168,7 +186,7 @@ impl Frontmatter {
     )]
     pub fn try_get_ref<'frontmatter, T>(
         &'frontmatter self,
-        key: &str,
+        key: &FrontmatterKey,
     ) -> Result<Option<T>, FrontmatterError>
     where
         T: FromFieldValueRef<'frontmatter>,
@@ -178,7 +196,7 @@ impl Frontmatter {
         };
         T::from_value_ref(value)
             .map(Some)
-            .map_err(|err| Self::with_key_context(key, err))
+            .map_err(|err| Self::with_key_context(key.as_str(), err))
     }
 
     /// Strictly extracts a required *borrowed* typed value from frontmatter.
@@ -194,13 +212,13 @@ impl Frontmatter {
     )]
     pub fn try_get_required_ref<'frontmatter, T>(
         &'frontmatter self,
-        key: &str,
+        key: &FrontmatterKey,
     ) -> Result<T, FrontmatterError>
     where
         T: FromFieldValueRef<'frontmatter>,
     {
         self.try_get_ref(key)?.ok_or_else(|| FrontmatterError::Missing {
-            key: key.into(),
+            key: key.as_str().into(),
         })
     }
 
@@ -211,8 +229,7 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Option<&str> {
-        self.get(config.frontmatter().title().as_str())
-            .and_then(FieldValue::as_str)
+        self.get(config.frontmatter().title()).and_then(FieldValue::as_str)
     }
 
     /// Returns the file class of the note, using the configured key.
@@ -222,8 +239,7 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Option<&str> {
-        self.get(config.frontmatter().file_class().as_str())
-            .and_then(FieldValue::as_str)
+        self.get(config.frontmatter().file_class()).and_then(FieldValue::as_str)
     }
 
     /// Returns the aliases of the note as a vector of boxed strings.
@@ -243,7 +259,7 @@ impl Frontmatter {
         &'frontmatter self,
         config: &crate::config::aggregate::Config,
     ) -> AliasValues<'frontmatter> {
-        AliasValues::new(self.get(config.frontmatter().alias().as_str()))
+        AliasValues::new(self.get(config.frontmatter().alias()))
     }
 
     #[inline]
@@ -682,7 +698,8 @@ mod tests {
         #[test]
         fn try_get_returns_string_value() {
             let fm = fixtures::frontmatter_for_try_get();
-            let result = fm.try_get::<Box<str>>("s");
+            let key = FrontmatterKey::try_new("s").expect("valid key");
+            let result = fm.try_get::<Box<str>>(&key);
             assert_eq!(
                 result,
                 Ok(Some("text".into())),
@@ -693,7 +710,8 @@ mod tests {
         #[test]
         fn try_get_returns_boolean_value() {
             let fm = fixtures::frontmatter_for_try_get();
-            let result = fm.try_get::<bool>("b");
+            let key = FrontmatterKey::try_new("b").expect("valid key");
+            let result = fm.try_get::<bool>(&key);
             assert_eq!(
                 result,
                 Ok(Some(true)),
@@ -704,7 +722,8 @@ mod tests {
         #[test]
         fn try_get_returns_number_value() {
             let fm = fixtures::frontmatter_for_try_get();
-            let result = fm.try_get::<f64>("n");
+            let key = FrontmatterKey::try_new("n").expect("valid key");
+            let result = fm.try_get::<f64>(&key);
             assert_eq!(
                 result,
                 Ok(Some(1.5f64)),
@@ -715,16 +734,17 @@ mod tests {
         #[test]
         fn try_get_returns_type_mismatch_error() {
             let fm = fixtures::frontmatter_for_try_get();
-            let result = fm.try_get::<bool>("s");
+            let lookup_key = FrontmatterKey::try_new("s").expect("valid key");
+            let result = fm.try_get::<bool>(&lookup_key);
             assert!(
                 matches!(
                     &result,
                     Err(FrontmatterError::TypeMismatch {
-                        key,
+                        key: error_key,
                         expected,
                         actual,
                     })
-                        if key.as_ref() == "s"
+                        if error_key.as_ref() == "s"
                             && expected.as_ref() == "boolean"
                             && *actual == FieldValueType::String
                 ),
@@ -735,16 +755,18 @@ mod tests {
         #[test]
         fn strict_string_vec_errors_on_non_string_array_elements() {
             let fm = fixtures::frontmatter_with_aliases_mixed();
-            let result = fm.try_get_string_vec_strict("aliases");
+            let lookup_key =
+                FrontmatterKey::try_new("aliases").expect("valid key");
+            let result = fm.try_get_string_vec_strict(&lookup_key);
             assert!(
                 matches!(
                     &result,
                     Err(FrontmatterError::ArrayElementTypeMismatch {
-                        key,
+                        key: error_key,
                         index: 1,
                         expected: FieldValueType::String,
                         actual: FieldValueType::Number,
-                    }) if key.as_ref() == "aliases"
+                    }) if error_key.as_ref() == "aliases"
                 ),
                 "strict extraction should fail: {result:?}"
             );
@@ -754,7 +776,7 @@ mod tests {
         fn lenient_string_vec_drops_non_string_elements() {
             let fm = fixtures::frontmatter_with_aliases_mixed();
             assert_eq!(
-                fm.get("aliases").and_then(as_string_array_lossy),
+                fm.get_raw("aliases").and_then(as_string_array_lossy),
                 Some(vec!["ok".into()])
             );
         }
@@ -762,12 +784,14 @@ mod tests {
         #[test]
         fn strict_get_required_reports_missing_key() {
             let fm = fixtures::frontmatter_with_number();
-            let result = fm.try_get_required::<Box<str>>("missing");
+            let lookup_key =
+                FrontmatterKey::try_new("missing").expect("valid key");
+            let result = fm.try_get_required::<Box<str>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
-                    Err(FrontmatterError::Missing { key })
-                        if key.as_ref() == "missing"
+                    Err(FrontmatterError::Missing { key: error_key })
+                        if error_key.as_ref() == "missing"
                 ),
                 "missing key should error: {result:?}"
             );
@@ -776,16 +800,17 @@ mod tests {
         #[test]
         fn strict_get_required_reports_type_mismatch() {
             let fm = fixtures::frontmatter_with_number();
-            let result = fm.try_get_required::<Box<str>>("n");
+            let lookup_key = FrontmatterKey::try_new("n").expect("valid key");
+            let result = fm.try_get_required::<Box<str>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
                     Err(FrontmatterError::TypeMismatch {
-                        key,
+                        key: error_key,
                         expected,
                         actual,
                     })
-                        if key.as_ref() == "n"
+                        if error_key.as_ref() == "n"
                             && expected.as_ref() == "string"
                             && *actual == FieldValueType::Number
                 ),
@@ -796,15 +821,16 @@ mod tests {
         #[test]
         fn strict_date_reports_invalid_timestamp() {
             let fm = fixtures::frontmatter_with_invalid_date();
-            let result = fm.try_get_required::<DateTime<Utc>>("d");
+            let lookup_key = FrontmatterKey::try_new("d").expect("valid key");
+            let result = fm.try_get_required::<DateTime<Utc>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
                     Err(FrontmatterError::InvalidDateTimestamp {
-                        key,
+                        key: error_key,
                         timestamp,
                     })
-                        if key.as_ref() == "d" && *timestamp == i64::MAX
+                        if error_key.as_ref() == "d" && *timestamp == i64::MAX
                 ),
                 "invalid timestamp should error: {result:?}"
             );
