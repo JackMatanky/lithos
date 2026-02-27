@@ -12,7 +12,7 @@
               docs"
 )]
 
-use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashMap, fmt};
 
 use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
@@ -100,15 +100,161 @@ impl TaskPriority {
     }
 }
 
+/// Validated key for task metadata fields.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
+pub struct TaskFieldKey(Box<str>);
+
+impl TaskFieldKey {
+    /// Creates a validated task field key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Task`] if the key is empty or contains
+    /// non-ASCII alphanumeric characters outside `_` and `-`.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Task(
+                "task field key cannot be empty".into(),
+            ));
+        }
+        if !text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(NoteError::Task(
+                "task field key must be ASCII alphanumeric, '_' or '-'".into(),
+            ));
+        }
+        Ok(Self(text.into()))
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for TaskFieldKey {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Borrow<str> for TaskFieldKey {
+    #[inline]
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for TaskFieldKey {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Parsed task attributes captured from checkbox text.
 #[derive(Debug, Clone, Default)]
 pub struct TaskAttributes {
-    pub tags: Vec<Tag>,
-    pub metadata: TaskMetadata,
-    pub created_at: Option<TaskTimestamp>,
-    pub due_at: Option<TaskTimestamp>,
-    pub reminder_at: Option<TaskTimestamp>,
-    pub completed_at: Option<TaskTimestamp>,
+    tags: Vec<Tag>,
+    metadata: TaskMetadata,
+    created_at: Option<TaskTimestamp>,
+    due_at: Option<TaskTimestamp>,
+    reminder_at: Option<TaskTimestamp>,
+    completed_at: Option<TaskTimestamp>,
+}
+
+impl TaskAttributes {
+    #[inline]
+    #[must_use]
+    pub fn builder() -> TaskAttributesBuilder {
+        TaskAttributesBuilder::default()
+    }
+}
+
+/// Builder for [`TaskAttributes`].
+#[derive(Debug, Default)]
+pub struct TaskAttributesBuilder {
+    tags: Vec<Tag>,
+    metadata: TaskMetadata,
+    created_at: Option<TaskTimestamp>,
+    due_at: Option<TaskTimestamp>,
+    reminder_at: Option<TaskTimestamp>,
+    completed_at: Option<TaskTimestamp>,
+}
+
+impl TaskAttributesBuilder {
+    #[inline]
+    #[must_use]
+    pub fn tags(mut self, tags: Vec<Tag>) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn metadata(mut self, metadata: TaskMetadata) -> Self {
+        self.metadata = metadata;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn created_at(mut self, created_at: Option<TaskTimestamp>) -> Self {
+        self.created_at = created_at;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn due_at(mut self, due_at: Option<TaskTimestamp>) -> Self {
+        self.due_at = due_at;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn reminder_at(mut self, reminder_at: Option<TaskTimestamp>) -> Self {
+        self.reminder_at = reminder_at;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn completed_at(mut self, completed_at: Option<TaskTimestamp>) -> Self {
+        self.completed_at = completed_at;
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn build(self) -> TaskAttributes {
+        TaskAttributes {
+            tags: self.tags,
+            metadata: self.metadata,
+            created_at: self.created_at,
+            due_at: self.due_at,
+            reminder_at: self.reminder_at,
+            completed_at: self.completed_at,
+        }
+    }
 }
 
 impl Task {
@@ -455,9 +601,12 @@ impl From<TaskTimestamp> for std::time::SystemTime {
 ///
 /// ```
 /// # use lithos_core::note::{task::TaskMetadata, value::FieldValue};
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut meta = TaskMetadata::new();
-/// meta.insert("priority".into(), FieldValue::Number(1.0));
+/// meta.insert_raw("priority", FieldValue::Number(1.0))?;
 /// assert_eq!(meta.get_number("priority"), Some(1.0));
+/// # Ok(())
+/// # }
 /// ```
 #[derive(
     Debug,
@@ -471,7 +620,7 @@ impl From<TaskTimestamp> for std::time::SystemTime {
 )]
 #[rkyv(derive(Debug))]
 pub struct TaskMetadata {
-    fields: HashMap<Box<str>, FieldValue>,
+    fields: HashMap<TaskFieldKey, FieldValue>,
 }
 
 impl TaskMetadata {
@@ -486,8 +635,24 @@ impl TaskMetadata {
 
     /// Inserts a new metadata field into the collection.
     #[inline]
-    pub fn insert(&mut self, field: Box<str>, value: FieldValue) {
+    pub fn insert(&mut self, field: TaskFieldKey, value: FieldValue) {
         self.fields.insert(field, value);
+    }
+
+    /// Inserts a new metadata field by raw key string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Task`] if the key is invalid.
+    #[inline]
+    pub fn insert_raw(
+        &mut self,
+        field: &str,
+        value: FieldValue,
+    ) -> Result<(), NoteError> {
+        let key = TaskFieldKey::try_new(field)?;
+        self.fields.insert(key, value);
+        Ok(())
     }
 
     /// Returns a reference to the value for the given metadata field.
@@ -516,7 +681,7 @@ impl TaskMetadata {
     /// Returns a reference to the internal metadata field map.
     #[inline]
     #[must_use]
-    pub const fn fields(&self) -> &HashMap<Box<str>, FieldValue> {
+    pub const fn fields(&self) -> &HashMap<TaskFieldKey, FieldValue> {
         &self.fields
     }
 }

@@ -12,7 +12,9 @@ use crate::{
     note::{
         error::NoteError,
         tag::Tag,
-        task::{Task, TaskAttributes, TaskMetadata, TaskTimestamp},
+        task::{
+            Task, TaskAttributes, TaskFieldKey, TaskMetadata, TaskTimestamp,
+        },
         types::SourceByteOffset,
         value::FieldValue,
     },
@@ -62,14 +64,14 @@ impl<'config> TaskParser<'config> {
         let (created_at, due_at, reminder_at, completed_at) =
             self.parse_temporal_fields(raw_text)?;
         let metadata = self.parse_metadata(raw_text)?;
-        let attributes = TaskAttributes {
-            tags,
-            metadata,
-            created_at,
-            due_at,
-            reminder_at,
-            completed_at,
-        };
+        let attributes = TaskAttributes::builder()
+            .tags(tags)
+            .metadata(metadata)
+            .created_at(created_at)
+            .due_at(due_at)
+            .reminder_at(reminder_at)
+            .completed_at(completed_at)
+            .build();
 
         Task::new(status, text, position, attributes).map(Some)
     }
@@ -225,12 +227,11 @@ impl<'config> TaskParser<'config> {
                             .into(),
                         )
                     })?;
-                metadata.insert(keyword.into(), field_value);
+                let key = TaskFieldKey::try_new(keyword)?;
+                metadata.insert(key, field_value);
             } else {
-                metadata.insert(
-                    keyword.into(),
-                    FieldValue::String(raw_value.into()),
-                );
+                let key = TaskFieldKey::try_new(keyword)?;
+                metadata.insert(key, FieldValue::String(raw_value.into()));
             }
         }
 

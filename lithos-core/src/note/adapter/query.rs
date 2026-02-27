@@ -355,17 +355,19 @@ mod tests {
                 .clone();
             let status_name = status.clone();
             let mut metadata = TaskMetadata::new();
-            metadata.insert("priority".into(), FieldValue::Number(2.0));
             metadata
-                .insert("project".into(), FieldValue::String("lithos".into()));
-            let attributes = TaskAttributes {
-                metadata,
-                created_at: Some(TaskTimestamp::new(1_700_000_000)),
-                due_at: Some(TaskTimestamp::new(1_700_000_100)),
-                reminder_at: Some(TaskTimestamp::new(1_700_000_200)),
-                completed_at: Some(TaskTimestamp::new(1_700_000_300)),
-                ..TaskAttributes::default()
-            };
+                .insert_raw("priority", FieldValue::Number(2.0))
+                .map_err(|e| e.to_string())?;
+            metadata
+                .insert_raw("project", FieldValue::String("lithos".into()))
+                .map_err(|e| e.to_string())?;
+            let attributes = TaskAttributes::builder()
+                .metadata(metadata)
+                .created_at(Some(TaskTimestamp::new(1_700_000_000)))
+                .due_at(Some(TaskTimestamp::new(1_700_000_100)))
+                .reminder_at(Some(TaskTimestamp::new(1_700_000_200)))
+                .completed_at(Some(TaskTimestamp::new(1_700_000_300)))
+                .build();
             let task = Task::new(
                 status,
                 "Do work",
