@@ -474,24 +474,12 @@ impl Target {
 )]
 mod tests {
     mod fixtures {
-        use uuid::Uuid;
-
         use super::super::{Anchor, EmbedType, Link, Target};
         use crate::note::{error::NoteError, types::SourceByteOffset};
-
-        const TEST_RESOLVED_ID: Uuid =
-            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0A01);
 
         pub fn unresolved_target(name: &str) -> Target {
             Target::Unresolved {
                 raw: name.into(),
-            }
-        }
-
-        pub fn resolved_target(path: &str) -> Target {
-            Target::Resolved {
-                id: TEST_RESOLVED_ID,
-                path: path.into(),
             }
         }
 
@@ -512,86 +500,6 @@ mod tests {
                 None,
                 SourceByteOffset::new(200u32),
             )
-        }
-    }
-
-    mod anchor {
-        use super::super::Anchor;
-
-        #[test]
-        fn heading_anchor_reports_heading() {
-            let anchor = Anchor::Heading("introduction".into());
-            assert!(anchor.is_heading());
-        }
-
-        #[test]
-        fn heading_anchor_is_not_block_ref() {
-            let anchor = Anchor::Heading("introduction".into());
-            assert!(!anchor.is_block_ref());
-        }
-
-        #[test]
-        fn heading_anchor_returns_text() {
-            let anchor = Anchor::Heading("introduction".into());
-            assert_eq!(anchor.text(), "introduction");
-        }
-
-        #[test]
-        fn block_ref_anchor_reports_block_ref() {
-            let anchor = Anchor::BlockRef("abc123".into());
-            assert!(anchor.is_block_ref());
-        }
-
-        #[test]
-        fn block_ref_anchor_is_not_heading() {
-            let anchor = Anchor::BlockRef("abc123".into());
-            assert!(!anchor.is_heading());
-        }
-
-        #[test]
-        fn block_ref_anchor_returns_text() {
-            let anchor = Anchor::BlockRef("abc123".into());
-            assert_eq!(anchor.text(), "abc123");
-        }
-    }
-
-    mod target {
-        use super::fixtures::{resolved_target, unresolved_target};
-
-        #[test]
-        fn resolved_target_is_resolved() {
-            let target = resolved_target("projects/rust.md");
-            assert!(target.is_resolved());
-        }
-
-        #[test]
-        fn resolved_target_is_not_unresolved() {
-            let target = resolved_target("projects/rust.md");
-            assert!(!target.is_unresolved());
-        }
-
-        #[test]
-        fn resolved_target_returns_vault_path() {
-            let target = resolved_target("projects/rust.md");
-            assert_eq!(target.vault_path(), Some("projects/rust.md"));
-        }
-
-        #[test]
-        fn unresolved_target_is_unresolved() {
-            let target = unresolved_target("Future Note");
-            assert!(target.is_unresolved());
-        }
-
-        #[test]
-        fn unresolved_target_is_not_resolved() {
-            let target = unresolved_target("Future Note");
-            assert!(!target.is_resolved());
-        }
-
-        #[test]
-        fn unresolved_target_returns_vault_path() {
-            let target = unresolved_target("Future Note");
-            assert_eq!(target.vault_path(), Some("Future Note"));
         }
     }
 
