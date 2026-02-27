@@ -1,22 +1,21 @@
 # Note Module Review: Findings & Implementation Guidance
 
-**Date**: 2026-02-26
+**Date**: 2026-02-27
 **Scope**: `lithos-core/src/note/` (full), plus ingestion dependencies (context-only)
-**Status**: Exhaustive read-only audit (no refactor performed)
+**Status**: Updated after remediation + adversarial review (tests included)
 
 ---
 
 ## 1. Executive Summary
 
 The note module is structurally solid (CQRS ports, clean domain types, rkyv
-usage, well-formed adapters), but has critical correctness gaps in indexing
-and markdown parsing. Link text inside headings/list items is lost, markdown
-link display text/alt text is never captured, and external URL fragments are
-split incorrectly. Note tags are never extracted by the reader, so tag indexes
-are silently empty. Indexes beyond path/tag are declared and queried but never
-written, effectively breaking multiple query APIs. The test suite contains
-time-based flakiness and a large set of low-value getter tests that dilute
-signal. Performance issues exist but are secondary to correctness.
+usage, well-formed adapters). The critical correctness gaps originally found
+have been addressed (index writes, link text/alias handling, external fragments,
+TOML frontmatter, wiki embed anchors, tag extraction, task parsing refactor).
+Remaining risk is concentrated in performance/ergonomics (line/column lookup
+cost, duplicate parsing), edge-case semantics (alias text across breaks,
+non-HTTP schemes, frontmatter tag indexing decisions), and test quality (low
+value accessors and missing index query coverage).
 
 This document lists **all** identified issues and provides prioritized
 remediation guidance. It also includes an explicit separation of
@@ -72,17 +71,40 @@ out-of-scope for refactoring in this review.
 
 ### 3.5 Task Parsing Config Flow (Current)
 
-- `NoteReader` owns `Config` and passes `config.task()` into task parsing.
-- `Task::should_promote` and `Task::from_checkbox` currently take `&TaskConfig`.
-- This means task parsing in `note/task.rs` depends directly on config types,
-  rather than being driven purely by a higher-level service.
+- `NoteReader` owns `Config` and passes `config.task()` into a `TaskParser`.
+- Task parsing now lives in the adapter; `Task` is a pure value type.
 
 ### 3.6 Type-Driven Design Review
 
 - Most domain entities use strong newtypes (`NoteId`, `NotePath`, `TaskId`) and
   `Box<str>` for owned strings, which aligns with the type-driven guidelines.
-- Errors still carry untyped `String` payloads where `NoteId`/`NotePath` would
-  be more expressive and safer.
+- Errors now box string payloads (`Box<str>`), but still use untyped IDs/paths.
+  Consider typed error variants if programmatic consumption is needed.
+
+---
+
+## 3.7 Remediation Status (2026-02-27)
+
+### Resolved
+
+- N-CR-01, N-CR-02, N-CR-03, N-CR-04, N-CR-05, N-CR-06, N-CR-07, N-CR-08
+- N-MJ-01, N-MJ-04, N-MJ-05, N-MJ-07, N-MJ-10, N-MJ-11, N-MJ-12, N-MJ-13
+- N-PR-01, N-PR-02, N-PR-03, N-PR-04, N-PR-06, N-PR-07, N-PR-08
+- N-PR-09, N-PR-10, N-PR-11, N-PR-13, N-PR-14
+- N-TF-01
+
+### Partially Resolved
+
+- N-MJ-03 (tag rules aligned in note/task parsing; config remains ASCII-only)
+
+### Still Open (Adversarial Review)
+
+- N-AR-01 Duplicate parsing in `TaskParser::should_promote` vs `parse_checkbox`
+- N-AR-02 Link alias text does not insert whitespace on soft/hard breaks
+- N-AR-03 TOML integer parsing uses string round-trip (precision/alloc)
+- N-AR-04 `SourceByteOffset::line_column` is O(n) per call (consider caching)
+- N-AR-05 Frontmatter tags indexing decision still undefined
+- N-AR-06 Query adapters lack direct tests for alias/file class/folder/task/frontmatter indexes
 
 ---
 
@@ -619,8 +641,8 @@ iterator to avoid repeated allocations.
 
 ### 8.1 Flaky/Time-Dependent Tests
 
-**N-TF-01**: `task_timestamp_provides_semantic_methods` uses fixed dates and
-calls `is_future(None)`. This fails as time advances.
+**N-TF-01**: `task_timestamp_provides_semantic_methods` used fixed dates and
+`is_future(None)`; resolved by anchoring comparisons to paired timestamps.
 
 **File**:
 
@@ -648,17 +670,13 @@ These inflate the suite without increasing confidence.
 
 Recommended tests not currently present:
 
-- Link text inside headings/list items.
-- Markdown link display text / image alt text captured.
-- Markdown images vs wiki embeds (style + target type).
-- Wiki embeds with anchors (`![[note#heading]]`).
-- External URL fragments and non-HTTP schemes.
-- Metadata blocks with line breaks.
-- `NotePath` with `.` components and Windows prefixes.
-- Task tag parsing with invalid tags and mixed Unicode.
-- Task promotion boundary matching.
-- Custom status symbols (beyond `x`/space).
-- Duplicate path prevention and query behavior.
+- Link alias whitespace across soft/hard breaks.
+- Frontmatter tags vs inline tags in indexing (decide expected behavior).
+- External images with `![alt](https://...)` (style + target type).
+- Query adapter coverage for alias/file class/folder/task/frontmatter indexes.
+- Autolink/email classification using `LinkType`.
+- TOML integer conversion precision (if strictness required).
+- Custom task status symbols (beyond `x`/space).
 
 ---
 
@@ -805,47 +823,21 @@ This section is guidance only. No refactor performed.
 
 ### P0 (Immediate)
 
-- Fix index writes for all declared indexes.
-- Fix link text handling in headings/items and capture markdown link text/alt.
-- Fix external URL fragment handling.
-- Fix markdown image modeling (style + target + alt text handling).
-- Preserve frontmatter newlines in metadata blocks (or assert pulldown emits).
-- Use `LinkType::Autolink`/`Email` to classify external targets correctly.
-- Merge link alias text across consecutive `Event::Text` events.
-- Handle plus-delimited metadata blocks if TOML frontmatter is desired.
-- Extract note tags into `Note.tags` (body and/or frontmatter) or remove tag
-  indexes until population exists.
+- Confirm alias whitespace handling across soft/hard breaks.
+- Decide and implement frontmatter tag indexing behavior.
+- Add query adapter tests for alias/file class/folder/task/frontmatter indexes.
 
 ### P1 (Short Term)
 
 - Align tag validation rules (Unicode vs ASCII) across Tag/Task/config.
-- Make task promotion tag matching token-aware.
-- Adjust task tag extraction to avoid full-task failure.
-- Normalize/validate NotePath curdir and Windows prefix cases.
-- Decide how to represent wiki-embed anchors and non-HTTP schemes.
+- Decide how to represent non-HTTP schemes and autolinks (use `LinkType`).
 - Reconcile custom task status symbols with parser limitations.
-- Enforce path uniqueness or make query behavior deterministic for duplicates.
-- Consider enabling heading attributes + GFM callouts and mapping to domain
-  fields where relevant.
-- Add a line/column derivation utility built on byte offsets.
-- Validate `SourceByteRange` ordering if range semantics are used downstream.
-- Consider routing task parsing exclusively through `Config` (aggregate)
-  instead of accepting `TaskConfig` directly, to ensure active vault config is
-  always used.
-- Tighten task tag parsing to be token‑aware and consistent with `Tag` rules.
-- Consider extracting `Task` parsing into a dedicated parser to keep the domain
-  entity lean.
-- Consider splitting `NoteReader::ParseState` into sub-parsers to reduce
-  god‑object complexity.
-- Replace stringly‑typed error payloads with `NoteId`/`NotePath` where possible.
-- Align module docs with current parsing/ingestion capabilities.
+- Consider ParseState decomposition if complexity continues to grow.
 
 ### P2 (Cleanup)
 
-- Remove string allocation anti-patterns.
-- Replace time-dependent tests with deterministic timestamps.
-- Replace low-value tests with edge-case coverage.
-- Review FieldValue JSON semantics and unused `to_json_string`.
+- Replace low-value tests with higher-signal edge cases.
+- Add perf-aware line/column caching if UI needs repeated conversions.
 
 ---
 
@@ -906,3 +898,9 @@ This section is guidance only. No refactor performed.
 | N-SU-05 | Minor    | TaskMetadata convenience accessors           |
 | N-SU-06 | Minor    | NoteReader ParseState god object             |
 | N-SU-07 | Minor    | Frontmatter::new infallible                  |
+| N-AR-01 | Major    | Task parsing does duplicate tag scans        |
+| N-AR-02 | Major    | Link alias misses whitespace on breaks       |
+| N-AR-03 | Minor    | TOML integer parsing round-trips strings     |
+| N-AR-04 | Minor    | line/column conversion is O(n) per call      |
+| N-AR-05 | Major    | Frontmatter tag indexing undefined           |
+| N-AR-06 | Major    | Index query tests missing                    |
