@@ -665,6 +665,11 @@ impl RawOptions {
     /// - **Rich**: sorted by `order` field (then array position), entries have
     ///   `value` and `label`.
     ///
+    /// # Panics
+    /// Panics if Rich mode option list has more than `u32::MAX` entries (>4
+    /// billion). This is unrealistic in practice and indicates a malformed
+    /// input.
+    ///
     /// # Examples
     /// ```
     /// use lithos_core::schema::raw::RawOptions;
@@ -675,6 +680,11 @@ impl RawOptions {
     /// ```
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "Fail-fast on unrealistic >4 billion options prevents silent \
+                  data corruption"
+    )]
     pub fn into_entries(self) -> Vec<OptionEntry> {
         match self {
             Self::List(items) => items
@@ -706,7 +716,10 @@ impl RawOptions {
                     .enumerate()
                     .map(|(idx, entry)| {
                         let order = entry.order.unwrap_or_else(|| {
-                            u32::try_from(idx).unwrap_or(u32::MAX)
+                            u32::try_from(idx).expect(
+                                "Option list index exceeds u32::MAX (>4 \
+                                 billion entries)",
+                            )
                         });
                         (order, entry)
                     })
