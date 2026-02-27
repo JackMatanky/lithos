@@ -109,6 +109,8 @@ impl core::fmt::Display for FieldValueType {
               patterns and keep the code concise"
 )]
 impl FieldValue {
+    const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_992.0;
+
     /// Returns the value type descriptor.
     #[inline]
     #[must_use]
@@ -256,6 +258,14 @@ impl FieldValue {
                 let f = n
                     .as_f64()
                     .ok_or_else(|| String::from("invalid number in YAML"))?;
+                if !f.is_finite() {
+                    return Err(String::from("invalid number in YAML"));
+                }
+                if f.abs() > Self::MAX_SAFE_INTEGER {
+                    return Err(String::from(
+                        "integer value exceeds safe f64 range",
+                    ));
+                }
                 Ok(Self::Number(f))
             }
             serde_yaml::Value::String(s) => Ok(Self::String(s.clone().into())),

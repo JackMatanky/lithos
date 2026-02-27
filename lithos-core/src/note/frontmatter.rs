@@ -539,6 +539,7 @@ mod tests {
             let raw = RawConfig {
                 frontmatter: Some(RawFrontmatter {
                     alias_key: Some("names".into()),
+                    tags_key: None,
                     date_created_key: Some("date_created".into()),
                     date_modified_key: Some("date_modified".into()),
                     file_class_key: Some("kind".into()),

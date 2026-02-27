@@ -39,6 +39,8 @@ pub struct Frontmatter {
     file_class: FrontmatterKey,
     /// Key used for aliases in frontmatter.
     alias: FrontmatterKey,
+    /// Key used for tags in frontmatter.
+    tags: FrontmatterKey,
     /// Key used for title in frontmatter.
     title: FrontmatterKey,
     /// Key used for creation date in frontmatter.
@@ -59,6 +61,8 @@ impl Default for Frontmatter {
                 .expect("default file class key must be valid"),
             alias: FrontmatterKey::try_new("aliases")
                 .expect("default alias key must be valid"),
+            tags: FrontmatterKey::try_new("tags")
+                .expect("default tags key must be valid"),
             title: FrontmatterKey::try_new("title")
                 .expect("default title key must be valid"),
             date_created: FrontmatterKey::try_new("date_created")
@@ -73,9 +77,14 @@ impl Frontmatter {
     /// Create frontmatter configuration.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Frontmatter configuration keeps validated keys explicit"
+    )]
     pub fn new(
         file_class: FrontmatterKey,
         alias: FrontmatterKey,
+        tags: FrontmatterKey,
         title: FrontmatterKey,
         date_created: FrontmatterKey,
         date_modified: FrontmatterKey,
@@ -83,6 +92,7 @@ impl Frontmatter {
         Self {
             file_class,
             alias,
+            tags,
             title,
             date_created,
             date_modified,
@@ -101,6 +111,13 @@ impl Frontmatter {
     #[must_use]
     pub const fn alias(&self) -> &FrontmatterKey {
         &self.alias
+    }
+
+    /// Return the tags key.
+    #[inline]
+    #[must_use]
+    pub const fn tags(&self) -> &FrontmatterKey {
+        &self.tags
     }
 
     /// Return the title key.
@@ -194,6 +211,8 @@ pub struct RawFrontmatter {
     pub file_class_key: Option<String>,
     /// Frontmatter key for aliases.
     pub alias_key: Option<String>,
+    /// Frontmatter key for tags.
+    pub tags_key: Option<String>,
     /// Frontmatter key for title.
     pub title_key: Option<String>,
     /// Frontmatter key for created date.
@@ -231,6 +250,12 @@ impl TryFrom<RawFrontmatter> for Frontmatter {
             }
             None => defaults.date_modified,
         };
+        let tags = match raw.tags_key {
+            Some(value) => {
+                FrontmatterKey::try_new_with_field("tags_key", value)?
+            }
+            None => defaults.tags,
+        };
         let file_class = match raw.file_class_key {
             Some(value) => {
                 FrontmatterKey::try_new_with_field("file_class_key", value)?
@@ -247,6 +272,7 @@ impl TryFrom<RawFrontmatter> for Frontmatter {
         Ok(Self {
             file_class,
             alias,
+            tags,
             title,
             date_created,
             date_modified,

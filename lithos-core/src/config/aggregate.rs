@@ -297,6 +297,7 @@ mod tests {
                 },
                 frontmatter: Some(RawFrontmatter {
                     alias_key: Some("aliases".to_owned()),
+                    tags_key: None,
                     date_created_key: Some("created".to_owned()),
                     date_modified_key: Some("modified".to_owned()),
                     file_class_key: Some("type".to_owned()),

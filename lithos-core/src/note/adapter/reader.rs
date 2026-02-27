@@ -28,8 +28,6 @@ use crate::{
     },
 };
 
-const FRONTMATTER_TAGS_KEY: &str = "tags";
-
 /// Markdown reader for extracting note structural elements.
 ///
 /// `NoteReader` uses `pulldown-cmark` to traverse a markdown document and
@@ -335,6 +333,7 @@ enum MetadataKind {
 
 #[derive(Debug)]
 struct ParseState<'config> {
+    config: &'config Config,
     task_parser: TaskParser<'config>,
     lists: Vec<List>,
     tasks: Vec<Task>,
@@ -349,11 +348,13 @@ struct ParseState<'config> {
     current_item: Option<ItemState>,
     current_heading: Option<HeadingState>,
     current_link: Option<LinkState>,
+    code_block_depth: u32,
 }
 
 impl<'config> ParseState<'config> {
     fn new(config: &'config Config) -> Self {
         Self {
+            config,
             task_parser: TaskParser::new(config.task()),
             lists: Vec::new(),
             tasks: Vec::new(),
@@ -368,6 +369,7 @@ impl<'config> ParseState<'config> {
             current_item: None,
             current_heading: None,
             current_link: None,
+            code_block_depth: 0,
         }
     }
 
@@ -427,9 +429,11 @@ impl<'config> ParseState<'config> {
                 dest_url,
                 ..
             } => self.start_link(link_type, &dest_url, position, true)?,
+            CmarkTag::CodeBlock(_) => {
+                self.code_block_depth = self.code_block_depth.saturating_add(1);
+            }
             CmarkTag::Paragraph
             | CmarkTag::BlockQuote(_)
-            | CmarkTag::CodeBlock(_)
             | CmarkTag::HtmlBlock
             | CmarkTag::FootnoteDefinition(_)
             | CmarkTag::DefinitionList
@@ -460,9 +464,11 @@ impl<'config> ParseState<'config> {
             TagEnd::MetadataBlock(
                 pulldown_cmark::MetadataBlockKind::PlusesStyle,
             ) => self.end_metadata_block(MetadataKind::Toml)?,
+            TagEnd::CodeBlock => {
+                self.code_block_depth = self.code_block_depth.saturating_sub(1);
+            }
             TagEnd::Paragraph
             | TagEnd::BlockQuote(_)
-            | TagEnd::CodeBlock
             | TagEnd::HtmlBlock
             | TagEnd::FootnoteDefinition
             | TagEnd::DefinitionList
@@ -485,7 +491,10 @@ impl<'config> ParseState<'config> {
         if self.metadata_kind.is_some() {
             self.metadata_text.push_str(text);
         }
-        if self.metadata_kind.is_none() && !is_code {
+        if self.metadata_kind.is_none()
+            && !is_code
+            && self.code_block_depth == 0
+        {
             self.collect_tags_from_text(text);
         }
 
@@ -618,7 +627,8 @@ impl<'config> ParseState<'config> {
     }
 
     fn collect_tags_from_frontmatter(&mut self, frontmatter: &Frontmatter) {
-        let Some(value) = frontmatter.get(FRONTMATTER_TAGS_KEY) else {
+        let key = self.config.frontmatter().tags().as_str();
+        let Some(value) = frontmatter.get(key) else {
             return;
         };
 
