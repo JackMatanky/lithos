@@ -10,7 +10,7 @@
 )]
 
 use std::{
-    collections::{HashMap, hash_map::Entry},
+    collections::HashMap,
     hash::Hash,
     path::{Component, Path},
     sync::{Arc, OnceLock, RwLock},
@@ -546,9 +546,10 @@ impl FileSpec {
             let value_path = Path::new(value);
             let dir_path = Path::new(dir.as_str());
 
-            if value_path == dir_path || !value_path.starts_with(dir_path) {
+            // File must be INSIDE directory, not AT directory level
+            if !value_path.starts_with(dir_path) || value_path == dir_path {
                 return Err(SchemaError::InvalidDirectoryPath(format!(
-                    "File {value} must be in directory {}",
+                    "File {value} must be inside (not at) directory {}",
                     dir.as_str()
                 )));
             }
@@ -753,6 +754,9 @@ impl NumberSpec {
     }
 
     /// Validates that a numeric value aligns with a step increment.
+    ///
+    /// Uses relative epsilon (scaled to step size) for robust floating-point
+    /// comparison across magnitudes.
     #[inline]
     #[expect(
         clippy::float_arithmetic,
@@ -760,7 +764,6 @@ impl NumberSpec {
         reason = "Core numeric validation logic with epsilon comparison"
     )]
     fn validate_step(&self, finite: FiniteF64) -> Result<(), SchemaError> {
-        const EPSILON: f64 = 1e-10;
         let value = finite.get();
 
         if let Some(step) = self.step {
@@ -768,7 +771,11 @@ impl NumberSpec {
             let offset = (value - base).abs();
             let remainder = offset % step.get();
 
-            if remainder > EPSILON && (step.get() - remainder) > EPSILON {
+            // Use relative epsilon scaled to step size for robust comparison
+            // across different magnitudes (handles both large and tiny steps)
+            let epsilon = step.get().abs() * 1e-10f64;
+
+            if remainder > epsilon && (step.get() - remainder) > epsilon {
                 return Err(SchemaError::InvalidStepValue {
                     value,
                     step: step.get(),
@@ -926,14 +933,12 @@ impl StringSpec {
             ));
         }
 
-        // Validate pattern if present
-        let pattern = match pattern {
-            Some(p) => {
-                get_cached_regex(&p)?;
-                Some(p)
-            }
-            None => None,
-        };
+        // Validate pattern if present (compile to check validity, then discard)
+        if let Some(p) = pattern.as_ref() {
+            regex::Regex::new(p).map_err(|e| {
+                SchemaError::InvalidRegex(format!("Invalid pattern {p}: {e}"))
+            })?;
+        }
 
         Ok(Self {
             options,
@@ -965,22 +970,22 @@ impl StringSpec {
     }
 
     fn validate_pattern(&self, value: &str) -> Result<(), SchemaError> {
-        // Use format pattern if specified
+        // Use format regex if specified (pre-compiled static)
         if let Some(format) = self.format {
-            let pattern = format.pattern();
-            let re = get_cached_regex(pattern)?;
+            let re = format.regex();
             if !re.is_match(value) {
                 return Err(SchemaError::ValidationFailed(format!(
                     "Value {value} does not match format '{format}' (pattern: \
-                     {pattern})"
+                     {})",
+                    format.pattern()
                 )));
             }
             return Ok(());
         }
 
-        // Otherwise use custom pattern if specified
+        // Otherwise use custom pattern if specified (cached compilation)
         if let Some(pattern) = self.pattern.as_ref() {
-            let re = get_cached_regex(pattern)?;
+            let re = get_or_compile_pattern(pattern);
             if !re.is_match(value) {
                 return Err(SchemaError::ValidationFailed(format!(
                     "Value {value} does not match pattern {pattern}"
@@ -1222,44 +1227,57 @@ fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
     Ok(())
 }
 
-type RegexCache = HashMap<Box<str>, Arc<regex::Regex>>;
-type RegexCacheLock = RwLock<RegexCache>;
+/// Cache for user-defined custom regex patterns.
+///
+/// Built-in formats use static `OnceLock` per format. Custom patterns use this
+/// shared cache to avoid recompiling on every validation.
+///
+/// Design: Simple unbounded cache since:
+/// 1. Patterns are validated at schema load time (guaranteed valid)
+/// 2. Number of unique patterns is bounded by number of properties (~100s)
+/// 3. Cache is per-process, shared across all validations
+type CustomPatternCache = HashMap<Box<str>, Arc<regex::Regex>>;
 
-static REGEX_CACHE: OnceLock<RegexCacheLock> = OnceLock::new();
+static CUSTOM_PATTERN_CACHE: OnceLock<RwLock<CustomPatternCache>> =
+    OnceLock::new();
 
-fn get_cached_regex(pattern: &str) -> Result<Arc<regex::Regex>, SchemaError> {
-    let cache = REGEX_CACHE.get_or_init(|| RwLock::new(RegexCache::new()));
+/// Get or compile a custom regex pattern.
+///
+/// Uses a simple cache to avoid recompiling patterns on every validation.
+/// Patterns are guaranteed valid (validated at construction time).
+#[expect(
+    clippy::expect_used,
+    reason = "Pattern validated at StringSpec construction, expect documents \
+              invariant"
+)]
+fn get_or_compile_pattern(pattern: &str) -> Arc<regex::Regex> {
+    let cache =
+        CUSTOM_PATTERN_CACHE.get_or_init(|| RwLock::new(HashMap::new()));
 
-    // Fast path: read lock.
+    // Fast path: read lock
     {
-        let guard = match cache.read() {
-            Ok(guard) => guard,
-            Err(e) => e.into_inner(),
-        };
-
+        let guard =
+            cache.read().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(re) = guard.get(pattern) {
-            return Ok(Arc::clone(re));
+            return Arc::clone(re);
         }
     }
 
-    // Slow path: compile without holding any locks.
-    let compiled = Arc::new(regex::Regex::new(pattern).map_err(|e| {
-        SchemaError::InvalidRegex(format!("Invalid pattern {pattern}: {e}"))
-    })?);
+    // Slow path: compile and cache
+    // Pattern is guaranteed valid (validated in try_new), so expect is safe
+    let compiled =
+        Arc::new(regex::Regex::new(pattern).expect(
+            "Custom pattern should be valid (validated at construction)",
+        ));
 
-    // Insert (or reuse) under a write lock.
-    let mut guard = match cache.write() {
-        Ok(guard) => guard,
-        Err(e) => e.into_inner(),
-    };
-
-    match guard.entry(pattern.into()) {
-        Entry::Occupied(entry) => Ok(Arc::clone(entry.get())),
-        Entry::Vacant(entry) => {
-            entry.insert(Arc::clone(&compiled));
-            Ok(compiled)
-        }
+    let mut guard =
+        cache.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Check again in case another thread inserted while we compiled
+    if let Some(re) = guard.get(pattern) {
+        return Arc::clone(re);
     }
+    guard.insert(pattern.into(), Arc::clone(&compiled));
+    compiled
 }
 
 #[cfg(test)]
@@ -1496,7 +1514,7 @@ mod tests {
             "other/note.md",
             "notes/",
             Err(SchemaError::InvalidDirectoryPath(
-                "File other/note.md must be in directory notes/".to_owned(),
+                "File other/note.md must be inside (not at) directory notes/".to_owned(),
             ))
         )]
         fn file_spec_validation_matrix(
@@ -1559,6 +1577,22 @@ mod tests {
                 result,
                 Err(SchemaError::InvalidDirectoryPath(_))
             ));
+        }
+
+        #[test]
+        fn file_spec_rejects_directory_path_without_trailing_slash() {
+            // GIVEN: FileSpec with directory "assets"
+            let spec = validated_spec_with_dir("assets");
+
+            // WHEN: validating path exactly equal to directory (without slash)
+            let result = spec.validate_str("assets");
+
+            // THEN: it should reject (file must be INSIDE directory, not AT
+            // directory level)
+            assert!(
+                matches!(result, Err(SchemaError::InvalidDirectoryPath(_))),
+                "Expected InvalidDirectoryPath error for exact directory match"
+            );
         }
 
         #[test]

@@ -60,17 +60,70 @@ This directory contains focused performance benchmarks organized by concern.
 ---
 
 ### `note_parsing.rs` - Markdown Parsing
-**What it measures**: Markdown to Note transformation
-- Note ingestion from markdown to structured domain objects
+**What it measures**: Markdown to Note transformation across complexity levels
+- **Simple**: Minimal note (91B, 1 heading, 3 tasks) → ~13.5 µs, 6.8 MiB/s
+- **Medium**: Typical note (500B, multiple sections, links) → ~18.3 µs, 27 MiB/s
+- **Complex**: Dense note (2.4KB, deep hierarchy, many links) → ~47.9 µs, 50 MiB/s
 
 **When to run**: After changes to:
-- Note parser (`src/note/parser.rs`)
-- Markdown processing logic
+- Note parser (`src/note/adapter/reader.rs`)
+- Markdown processing logic (pulldown-cmark configuration)
+- Task/field extraction regex patterns
 - Note domain model structure
+- Section construction logic
 
 **Key metrics**:
-- Typical: ~3-5 µs for simple notes
-- Scales with markdown complexity
+- **Sub-linear scaling**: 5x size → 1.35x time, 27x size → 3.5x time
+- **Fixed overhead**: ~10-13 µs (file I/O, Config, Note construction)
+- **Throughput improves with size**: 7 MiB/s (simple) → 50 MiB/s (complex)
+- **Regression threshold**: >20% latency increase for any size class
+
+**Performance characteristics**:
+- Fixed costs dominate for small notes (simple benchmark)
+- O(n) parsing cost validates linear scaling assumption
+- Throughput reaches 50+ MiB/s for realistic complex notes
+
+---
+
+### `schema_loader.rs` - Schema Ingestion Pipeline
+**What it measures**: Complete schema ingestion pipeline with per-stage breakdown
+- **Stage 1**: File I/O + Parsing (TOML/JSON → RawSchema, ~200-500 µs)
+- **Stage 2**: PropertyBank validation (PropertySpec construction, ~20-30 µs)
+- **Stage 3**: PropertyBank lookup (HashMap get performance, ~5-10 ns)
+- **Stage 4**: Dereferencing ($ref resolution, ~50-150 µs)
+- **Stage 5**: DAG construction (topological sort, ~30-80 µs)
+- **Stage 6**: Property merging (inheritance resolution, ~40-100 µs)
+- **Stage 7**: Full pipeline end-to-end (~400-900 µs total)
+- Scaling behavior across vault sizes (5, 20, 40, 100 schemas)
+
+**When to run**: After changes to:
+- Schema ingestion (`src/schema/adapter/ingestor.rs`)
+- PropertyBank validation (`src/schema/bank.rs`)
+- PropertySpec validation logic (`src/schema/property_spec.rs`)
+- Internal pipeline stages (`src/schema/dereferencer.rs`, `extender.rs`, `resolver.rs`)
+- Config path resolution (`src/config/paths.rs`)
+- Property domain model (`src/schema/property.rs`, `property_spec.rs`)
+
+**Key metrics**:
+- File I/O should dominate (~50% of total time)
+- Dereferencing ~25%, DAG ~10%, Merge ~10%, Validation ~5%
+- All stages should scale linearly (O(n)) with schema count
+- PropertyBank lookup should be constant time (O(1), ~5-10 ns)
+- Throughput should exceed 20K schemas/sec for large vaults
+
+**Bottleneck identification**:
+- If file I/O >60% → normal, serde-bound
+- If dereferencing >35% → PropertySpec cloning overhead
+- If DAG construction >20% → HashMap or algorithm issue
+- If property merging >25% → Arc cloning overhead
+- If PropertyBank validation >10% → PropertySpec construction regressed
+
+**Implementation notes**:
+- Uses `#[doc(hidden)] pub` pattern to access internal pipeline modules
+- Comprehensive 270-line module documentation with methodology, interpretation guidance
+- Realistic test data from example_vault
+- Expected performance characteristics documented per stage
+- Follows Criterion.rs and Rust ecosystem best practices
 
 ---
 
@@ -85,6 +138,7 @@ cargo bench --bench db_storage
 cargo bench --bench db_key_handling
 cargo bench --bench string_construction
 cargo bench --bench note_parsing
+cargo bench --bench schema_loader
 
 # Run specific benchmark group
 cargo bench --bench db_storage read_zero_copy

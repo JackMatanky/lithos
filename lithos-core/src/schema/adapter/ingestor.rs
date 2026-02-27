@@ -167,11 +167,7 @@ impl Ingestor<'_> {
                         time.duration_since(std::time::SystemTime::UNIX_EPOCH)
                             .ok()
                     })
-                    .and_then(|duration| {
-                        i64::try_from(duration.as_secs())
-                            .ok()
-                            .map(Timestamp::from_secs)
-                    });
+                    .map(|duration| Timestamp::from_secs(duration.as_secs()));
 
                 let created = metadata
                     .as_ref()
@@ -180,11 +176,7 @@ impl Ingestor<'_> {
                         time.duration_since(std::time::SystemTime::UNIX_EPOCH)
                             .ok()
                     })
-                    .and_then(|duration| {
-                        i64::try_from(duration.as_secs())
-                            .ok()
-                            .map(Timestamp::from_secs)
-                    });
+                    .map(|duration| Timestamp::from_secs(duration.as_secs()));
 
                 results.push((raw, modified, created));
             }

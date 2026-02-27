@@ -75,7 +75,6 @@ pub(crate) fn to_stored(
 ) -> StoredSchema {
     let properties = schema
         .properties()
-        .iter()
         .map(|p| StoredProperty {
             id: p.id(),
             name: p.name().as_str().into(),
@@ -103,22 +102,23 @@ impl TryFrom<StoredSchema> for Schema {
     #[inline]
     fn try_from(stored: StoredSchema) -> Result<Self, Self::Error> {
         let name = SchemaName::new(&stored.name)?;
-        let properties = stored
+        let properties: Result<Vec<_>, _> = stored
             .properties
             .into_iter()
             .map(|sp| {
                 let prop_name = PropertyName::new(&sp.name)?;
                 let cardinality = Cardinality::from(sp.required);
                 let multiplicity = Multiplicity::from(sp.multi);
-                Property::new(
+                Ok(Property::new(
                     sp.id,
                     prop_name,
                     cardinality,
                     multiplicity,
                     sp.spec,
-                )
+                ))
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect();
+        let properties = properties?;
         Ok(Schema::reconstruct(stored.id, name, stored.parent_id, properties))
     }
 }
@@ -189,8 +189,7 @@ mod tests {
             Cardinality::Required,
             Multiplicity::Single,
             PropertySpec::Bool(BoolSpec::default()),
-        )
-        .expect("valid property");
+        );
 
         let schema_name = SchemaName::new("with-props").expect("valid name");
         let schema =

@@ -82,15 +82,15 @@ pub struct SchemaService<'db> {
     command: Command<crate::schema::adapter::command::CommandAdapter<'db>>,
 }
 
-impl SchemaService<'_> {
+impl<'db> SchemaService<'db> {
     /// Create a new `SchemaService` with query and command adapters.
     #[inline]
     #[must_use]
-    pub fn new<'db>(
+    pub fn new(
         query: Query<crate::schema::adapter::query::QueryAdapter<'db>>,
         command: Command<crate::schema::adapter::command::CommandAdapter<'db>>,
-    ) -> SchemaService<'db> {
-        SchemaService {
+    ) -> Self {
+        Self {
             query,
             command,
         }

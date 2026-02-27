@@ -70,6 +70,11 @@ name = "note_parsing"
 harness = false
 path = "benches/note_parsing.rs"
 
+[[bench]]
+name = "schema_loader"
+harness = false
+path = "benches/schema_loader.rs"
+
 [features]
 default = []
 # Serde support for domain types (Proposal 10)

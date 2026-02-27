@@ -10,6 +10,8 @@
               fn pattern/name are trivial getters"
 )]
 
+use std::sync::OnceLock;
+
 use rkyv::{
     Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
 };
@@ -130,6 +132,61 @@ impl StringFormat {
             Self::UuidV4 => "uuid_v4",
             Self::WikiLink => "wikilink",
             Self::ZipCode => "zipcode",
+        }
+    }
+
+    /// Returns a pre-compiled `Regex` for this format.
+    ///
+    /// Regexes are compiled once and cached in static `OnceLock` cells for
+    /// zero runtime overhead on subsequent calls.
+    ///
+    /// # Panics
+    /// Panics if the format's built-in pattern is invalid.
+    /// This should never happen and indicates a bug in the pattern definitions.
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "Built-in patterns are hardcoded and tested; panic indicates \
+                  programmer error"
+    )]
+    pub fn regex(self) -> &'static regex::Regex {
+        static EMAIL_REGEX: OnceLock<regex::Regex> = OnceLock::new();
+        static URL_REGEX: OnceLock<regex::Regex> = OnceLock::new();
+        static PHONE_US_REGEX: OnceLock<regex::Regex> = OnceLock::new();
+        static SLUG_REGEX: OnceLock<regex::Regex> = OnceLock::new();
+        static UUID_V4_REGEX: OnceLock<regex::Regex> = OnceLock::new();
+        static WIKILINK_REGEX: OnceLock<regex::Regex> = OnceLock::new();
+        static ZIPCODE_REGEX: OnceLock<regex::Regex> = OnceLock::new();
+
+        match self {
+            Self::Email => EMAIL_REGEX.get_or_init(|| {
+                regex::Regex::new(self.pattern())
+                    .expect("built-in Email regex pattern is valid")
+            }),
+            Self::Url => URL_REGEX.get_or_init(|| {
+                regex::Regex::new(self.pattern())
+                    .expect("built-in Url regex pattern is valid")
+            }),
+            Self::PhoneUs => PHONE_US_REGEX.get_or_init(|| {
+                regex::Regex::new(self.pattern())
+                    .expect("built-in PhoneUs regex pattern is valid")
+            }),
+            Self::Slug => SLUG_REGEX.get_or_init(|| {
+                regex::Regex::new(self.pattern())
+                    .expect("built-in Slug regex pattern is valid")
+            }),
+            Self::UuidV4 => UUID_V4_REGEX.get_or_init(|| {
+                regex::Regex::new(self.pattern())
+                    .expect("built-in UuidV4 regex pattern is valid")
+            }),
+            Self::WikiLink => WIKILINK_REGEX.get_or_init(|| {
+                regex::Regex::new(self.pattern())
+                    .expect("built-in WikiLink regex pattern is valid")
+            }),
+            Self::ZipCode => ZIPCODE_REGEX.get_or_init(|| {
+                regex::Regex::new(self.pattern())
+                    .expect("built-in ZipCode regex pattern is valid")
+            }),
         }
     }
 }

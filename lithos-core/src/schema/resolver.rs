@@ -40,7 +40,12 @@ const INHERITANCE_MAX_DEPTH: usize = 10;
 /// Assembles fully-resolved [`Schema`] entities from a [`SchemaTree`].
 ///
 /// Stateless: all resolution state is threaded through the arguments.
-pub(crate) struct Resolver;
+///
+/// **Internal API**: This type is public solely for benchmarking purposes.
+/// Do not depend on it in production code - use `SchemaService` instead.
+#[doc(hidden)]
+#[non_exhaustive]
+pub struct Resolver;
 
 impl Resolver {
     /// Resolve all schemas in `tree`, returning them as [`Schema`] values.
@@ -62,14 +67,14 @@ impl Resolver {
     /// validation error in a node name that somehow passed earlier
     /// validation — should be unreachable in practice).
     #[inline]
-    pub(crate) fn resolve(
+    /// **Internal API**: Public for benchmarking only.
+    #[doc(hidden)]
+    pub fn resolve(
         tree: &SchemaTree,
         known_parents: &HashMap<SchemaId, Schema>,
     ) -> Result<Vec<Schema>, SchemaError> {
         let order = tree.nodes();
         let mut resolved_cache: HashMap<SchemaId, Schema> =
-            HashMap::with_capacity(order.len());
-        let mut depth_cache: HashMap<SchemaId, usize> =
             HashMap::with_capacity(order.len());
         let mut results: Vec<Schema> = Vec::with_capacity(order.len());
 
@@ -80,13 +85,11 @@ impl Resolver {
                 ))
             })?;
 
-            // E-03: Compute inheritance depth
-            let depth = Self::compute_depth(
-                node.parent_id,
-                &resolved_cache,
-                known_parents,
-                &depth_cache,
-            );
+            // E-03: Use depth computed by Extender
+            // The Extender already computed depth correctly via BFS, accounting
+            // for DB-fresh parents. We convert NodeDepth -> usize
+            // for the limit check.
+            let depth: usize = node.depth.into();
 
             // Check against maximum allowed depth
             if depth > INHERITANCE_MAX_DEPTH {
@@ -94,22 +97,27 @@ impl Resolver {
             }
 
             // Obtain parent's resolved properties.
-            let parent_props: &[Arc<Property>] =
+            let parent_props: Vec<Arc<Property>> =
                 if let Some(parent_id) = node.parent_id {
                     resolved_cache
                         .get(&parent_id)
                         .or_else(|| known_parents.get(&parent_id))
-                        .map_or(&[], Schema::properties)
+                        .map(|schema| schema.properties().cloned().collect())
+                        .unwrap_or_default()
                 } else {
-                    &[]
+                    vec![]
                 };
 
-            // Convert properties to Arc<Property> for the merge
+            // Convert properties to Arc<Property> for zero-allocation sharing.
+            // Parent properties are already Arc-wrapped from the resolved
+            // cache, so when a child inherits them, we only clone
+            // the Arc (cheap pointer copy), not the underlying
+            // Property data.
             let own_props_arc: Vec<Arc<Property>> =
                 node.properties.iter().map(|p| Arc::new(p.clone())).collect();
 
             let merged = Self::merge_properties(
-                parent_props,
+                &parent_props,
                 &own_props_arc,
                 &node.excludes,
             );
@@ -117,45 +125,11 @@ impl Resolver {
             let name = SchemaName::new(&node.name)?;
             let schema = Schema::new(id, name, node.parent_id, merged)?;
 
-            // Track depth for this schema
-            depth_cache.insert(id, depth);
             resolved_cache.insert(id, schema.clone());
             results.push(schema);
         }
 
         Ok(results)
-    }
-
-    /// Compute the inheritance depth for a schema.
-    /// Depth = 1 for root schemas, increases with each level of inheritance.
-    /// Note: `_resolved_cache` reserved for future depth tracking
-    /// optimizations.
-    fn compute_depth(
-        parent_id: Option<SchemaId>,
-        _resolved_cache: &HashMap<SchemaId, Schema>,
-        known_parents: &HashMap<SchemaId, Schema>,
-        depth_cache: &HashMap<SchemaId, usize>,
-    ) -> usize {
-        match parent_id {
-            None => 1, // Root schema has depth 1
-            Some(pid) => {
-                // First check if it's in the current resolution batch
-                if let Some(depth) = depth_cache.get(&pid) {
-                    return depth.saturating_add(1);
-                }
-                // Then check if it's a known parent from the DB
-                if let Some(_parent) = known_parents.get(&pid) {
-                    // For DB-fresh parents, we can't easily know their depth
-                    // so we assume they're valid roots (depth 1) or use a
-                    // default. In practice, this only
-                    // happens for the root of a resolution batch.
-                    return 1;
-                }
-                // This shouldn't happen in normal operation since topological
-                // order guarantees parents are resolved first
-                1
-            }
-        }
     }
 
     /// Merge parent and own properties into a single sorted vector, applying
@@ -268,13 +242,13 @@ mod tests {
         use super::*;
 
         pub fn bool_property(name: &str) -> Result<Property, SchemaError> {
-            Property::new(
+            Ok(Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
                 PropertyName::new(name)?,
                 Cardinality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )
+            ))
         }
 
         pub fn simple_derefed(
@@ -345,7 +319,7 @@ mod tests {
             assert_eq!(result.len(), 1);
             let schema = &result[0];
             assert_eq!(schema.name().as_str(), "root");
-            assert_eq!(schema.properties().len(), 1);
+            assert_eq!(schema.properties().count(), 1);
             Ok(())
         }
 
@@ -377,7 +351,7 @@ mod tests {
                 .expect("child schema in result");
 
             let prop_names: Vec<&str> =
-                child.properties().iter().map(|p| p.name().as_str()).collect();
+                child.properties().map(|p| p.name().as_str()).collect();
             assert!(
                 prop_names.contains(&"from-parent"),
                 "Child should inherit parent's property; got: {prop_names:?}"
@@ -401,14 +375,14 @@ mod tests {
                 Cardinality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )?;
+            );
             let child_prop = Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
                 PropertyName::new("shared")?,
                 Cardinality::Optional,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )?;
+            );
 
             let derefed = vec![
                 fixtures::simple_derefed(parent_id, "parent", None, vec![
@@ -531,16 +505,59 @@ mod tests {
             );
         }
 
-        /// Test depth computation for root schema (no parent).
+        /// GAP-002: Test that inheritance depth > 10 fails.
         #[test]
-        fn depth_computation_for_root_schema() {
-            let depth = Resolver::compute_depth(
-                None,
-                &HashMap::new(),
-                &HashMap::new(),
-                &HashMap::new(),
+        fn inheritance_depth_limit_exceeded() {
+            use uuid::Uuid;
+
+            use crate::schema::{
+                dereferencer::DereferencedSchema, extender::Extender,
+            };
+
+            // Create a chain of 11 schemas: root → s1 → s2 → ... → s10
+            // Depth 11 should exceed MAX_DEPTH=10
+            const BASE: u128 = 0x018C_0000_0000_7000_8000_0000_0000_2000;
+
+            let mut derefed = Vec::new();
+            let ids: Vec<_> = (0..11)
+                .map(|i| SchemaId::from_uuid(Uuid::from_u128(BASE + i)))
+                .collect();
+
+            // Root (depth 1)
+            derefed.push((ids[0], DereferencedSchema {
+                name: "root".into(),
+                extends: None,
+                excludes: Vec::new(),
+                properties: Vec::new(),
+            }));
+
+            // Chain: s1 extends root, s2 extends s1, ..., s10 extends s9
+            for (i, &id) in ids.iter().enumerate().skip(1) {
+                derefed.push((id, DereferencedSchema {
+                    name: format!("s{i}").into(),
+                    extends: Some(if i == 1 {
+                        "root".into()
+                    } else {
+                        format!("s{}", i - 1).into()
+                    }),
+                    excludes: Vec::new(),
+                    properties: Vec::new(),
+                }));
+            }
+
+            // Build tree and resolve
+            let tree = Extender::build(derefed, &HashMap::new())
+                .expect("Tree building should succeed");
+            let result = Resolver::resolve(&tree, &HashMap::new());
+
+            assert!(
+                matches!(result, Err(SchemaError::InheritanceDepthExceeded(_))),
+                "Should reject depth > 10, got: {result:?}"
             );
-            assert_eq!(depth, 1, "Root schema should have depth 1");
+
+            if let Err(SchemaError::InheritanceDepthExceeded(depth)) = result {
+                assert_eq!(depth, 11, "Error should report depth 11");
+            }
         }
     }
 }

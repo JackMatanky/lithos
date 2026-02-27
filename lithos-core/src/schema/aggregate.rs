@@ -10,6 +10,7 @@
 
 use std::{
     borrow::Borrow,
+    collections::BTreeMap,
     fmt::{Debug, Display},
     sync::{Arc, LazyLock},
 };
@@ -44,8 +45,9 @@ use super::{
 ///
 /// let name = SchemaName::new("project-note")?;
 /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
-/// assert!(
-///     schema.properties().is_empty(),
+/// assert_eq!(
+///     schema.properties().count(),
+///     0,
 ///     "New schema should have empty properties"
 /// );
 /// # Ok(())
@@ -72,10 +74,30 @@ pub struct Schema {
     /// Parent schema ID, for inheritance tree reconstruction.
     parent_id: Option<SchemaId>,
     /// Fully resolved properties after inheritance.
-    /// Uses Arc<Property> for sharing across inheritance chains.
-    /// Serialized as Vec<Property> for compatibility.
-    properties: Vec<Arc<Property>>,
+    ///
+    /// Uses `Arc<Property>` for zero-allocation sharing during inheritance
+    /// resolution. When a child schema inherits a parent's property, the
+    /// `Arc` is cloned (cheap pointer copy) rather than cloning the entire
+    /// `Property` structure. This is critical for performance in deep
+    /// inheritance hierarchies.
+    ///
+    /// Stored as `BTreeMap` for O(log n) lookups and guaranteed sort order.
+    /// Serialized as `Vec<Property>` for compatibility.
+    properties: BTreeMap<PropertyName, Arc<Property>>,
     /// Domain events pending emission (not serialized).
+    ///
+    /// Follows the Event Sourcing pattern: state mutations emit events that
+    /// can be consumed by external observers (e.g., for audit logs, event
+    /// streams, or triggering side effects).
+    ///
+    /// Events are:
+    /// - Accumulated via `add_event()` during aggregate mutations
+    /// - Retrieved via `pending_events()` for inspection
+    /// - Cleared via `take_events()` after consumption
+    /// - **Not persisted** (omitted from custom serialize/deserialize)
+    ///
+    /// This ensures events are ephemeral and must be explicitly handled by
+    /// the application layer after each operation.
     pending_events: Vec<Events>,
 }
 
@@ -94,9 +116,10 @@ impl serde::Serialize for Schema {
         state.serialize_field("id", &self.id)?;
         state.serialize_field("name", &self.name)?;
         state.serialize_field("parent_id", &self.parent_id)?;
-        // Convert Arc<Property> to Property for serialization
+        // Convert BTreeMap<PropertyName, Arc<Property>> to Vec<Property> for
+        // serialization
         let properties: Vec<_> =
-            self.properties.iter().map(|p| p.as_ref().clone()).collect();
+            self.properties.values().map(|p| p.as_ref().clone()).collect();
         state.serialize_field("properties", &properties)?;
         state.end()
     }
@@ -124,9 +147,15 @@ impl<'de> serde::Deserialize<'de> for Schema {
         }
 
         let de = SchemaDe::deserialize(deserializer)?;
-        // Convert Property to Arc<Property>
-        let properties: Vec<Arc<Property>> =
-            de.properties.into_iter().map(Arc::new).collect();
+        // Convert Vec<Property> to BTreeMap<PropertyName, Arc<Property>>
+        let properties: BTreeMap<PropertyName, Arc<Property>> = de
+            .properties
+            .into_iter()
+            .map(|p| {
+                let prop_name = p.name().clone();
+                (prop_name, Arc::new(p))
+            })
+            .collect();
 
         Ok(Self {
             id: de.id,
@@ -170,9 +199,14 @@ impl Schema {
         parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
-        // Convert to Arc<Property> for sharing
-        let properties: Vec<Arc<Property>> =
-            properties.into_iter().map(Arc::new).collect();
+        // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
+        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
+            .into_iter()
+            .map(|p| {
+                let prop_name = p.name().clone();
+                (prop_name, Arc::new(p))
+            })
+            .collect();
 
         let mut schema = Self {
             id,
@@ -222,9 +256,14 @@ impl Schema {
         parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
-        // Convert to Arc<Property> for sharing
-        let properties: Vec<Arc<Property>> =
-            properties.into_iter().map(Arc::new).collect();
+        // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
+        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
+            .into_iter()
+            .map(|p| {
+                let prop_name = p.name().clone();
+                (prop_name, Arc::new(p))
+            })
+            .collect();
 
         let mut schema = Self {
             id,
@@ -255,9 +294,14 @@ impl Schema {
         parent_id: Option<SchemaId>,
         properties: Vec<Property>,
     ) -> Self {
-        // Convert to Arc<Property> for sharing
-        let properties: Vec<Arc<Property>> =
-            properties.into_iter().map(Arc::new).collect();
+        // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
+        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
+            .into_iter()
+            .map(|p| {
+                let prop_name = p.name().clone();
+                (prop_name, Arc::new(p))
+            })
+            .collect();
 
         Self {
             id,
@@ -330,14 +374,13 @@ impl Schema {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let name = SchemaName::new("test")?;
     /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
-    /// assert!(schema.properties().is_empty());
+    /// assert_eq!(schema.properties().count(), 0);
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    #[must_use]
-    pub fn properties(&self) -> &[Arc<Property>] {
-        &self.properties
+    pub fn properties(&self) -> impl Iterator<Item = &Arc<Property>> {
+        self.properties.values()
     }
 
     /// Gets a property by name.
@@ -364,11 +407,7 @@ impl Schema {
     #[inline]
     #[must_use]
     pub fn get(&self, name: &PropertyName) -> Option<&Arc<Property>> {
-        let i = self
-            .properties
-            .binary_search_by(|p| p.name().as_str().cmp(name.as_str()))
-            .ok()?;
-        self.properties.get(i)
+        self.properties.get(name)
     }
 
     /// Checks if a property exists by name.
@@ -390,12 +429,14 @@ impl Schema {
     #[inline]
     #[must_use]
     pub fn has(&self, name: &PropertyName) -> bool {
-        self.properties
-            .binary_search_by(|p| p.name().as_str().cmp(name.as_str()))
-            .is_ok()
+        self.properties.contains_key(name)
     }
 
     /// Returns a reference to pending domain events.
+    ///
+    /// Events accumulate during aggregate operations and must be explicitly
+    /// consumed via [`take_events()`](Self::take_events) by the application
+    /// layer. This method allows inspection without clearing the queue.
     ///
     /// # Examples
     /// ```
@@ -415,13 +456,22 @@ impl Schema {
 
     /// Returns and clears pending domain events.
     ///
+    /// This method transfers ownership of all pending events to the caller and
+    /// resets the internal queue. Typically called by the application layer
+    /// after persisting the aggregate, to publish events to external systems
+    /// (audit logs, event streams, etc.).
+    ///
+    /// Uses `std::mem::take` for efficient transfer without allocation.
+    ///
     /// # Examples
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let name = SchemaName::new("test")?;
     /// let mut schema = Schema::new(SchemaId::new(), name, None, vec![])?;
-    /// let _events = schema.take_events();
+    /// let events = schema.take_events();
+    /// // Process events (e.g., publish to event stream)
+    /// assert!(!events.is_empty());
     /// # Ok(())
     /// # }
     /// ```
@@ -432,6 +482,10 @@ impl Schema {
     }
 
     /// Adds a domain event to the pending events collection.
+    ///
+    /// Called internally by aggregate methods to record state changes as
+    /// domain events. Private to ensure events are only created by legitimate
+    /// aggregate operations, not arbitrary external code.
     #[inline]
     fn add_event(&mut self, event: Events) {
         self.pending_events.push(event);
@@ -730,6 +784,9 @@ impl TryFrom<String> for SchemaName {
 // ----------------------------------------------------------- //
 
 /// Unix timestamp (seconds since epoch).
+///
+/// Uses `u64` to prevent negative timestamps, which are invalid for
+/// timestamps since the Unix epoch (1970-01-01).
 #[derive(
     Debug,
     Clone,
@@ -747,7 +804,7 @@ impl TryFrom<String> for SchemaName {
 #[rkyv(derive(Debug))]
 #[serde(transparent)]
 #[non_exhaustive]
-pub struct Timestamp(i64);
+pub struct Timestamp(u64);
 
 impl Timestamp {
     /// Returns the current UTC timestamp.
@@ -761,7 +818,13 @@ impl Timestamp {
     #[inline]
     #[must_use]
     pub fn now() -> Self {
-        Self(chrono::Utc::now().timestamp())
+        #[expect(
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "Timestamp is clamped to 0, so cast to u64 is safe"
+        )]
+        let secs = chrono::Utc::now().timestamp().max(0) as u64;
+        Self(secs)
     }
 
     /// Wraps a timestamp in seconds.
@@ -775,7 +838,7 @@ impl Timestamp {
     /// ```
     #[inline]
     #[must_use]
-    pub const fn from_secs(secs: i64) -> Self {
+    pub const fn from_secs(secs: u64) -> Self {
         Self(secs)
     }
 
@@ -790,7 +853,7 @@ impl Timestamp {
     /// ```
     #[inline]
     #[must_use]
-    pub const fn as_secs(self) -> i64 {
+    pub const fn as_secs(self) -> u64 {
         self.0
     }
 }
@@ -828,7 +891,7 @@ mod tests {
                 Cardinality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )?;
+            );
             Schema::new(
                 SchemaId::from_uuid(TEST_SCHEMA_ID_A),
                 name,
@@ -926,7 +989,7 @@ mod tests {
                 fixtures::sample_schema().expect("Valid schema fixture");
 
             assert_eq!(
-                schema.properties().len(),
+                schema.properties().count(),
                 1,
                 "Expected exactly 1 property"
             );

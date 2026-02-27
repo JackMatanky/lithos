@@ -140,7 +140,10 @@ pub(crate) struct SchemaNode {
 /// - `roots` contains schemas whose `parent_id` is `None` (or whose parent is a
 ///   DB-fresh known parent rather than an in-batch node).
 #[derive(Debug)]
-pub(crate) struct SchemaTree {
+/// **Internal API**: This type is public solely for benchmarking purposes.
+/// Do not depend on it in production code - use `SchemaService` instead.
+#[doc(hidden)]
+pub struct SchemaTree {
     /// IDs of root schemas (no in-batch parent).
     roots: Vec<SchemaId>,
     /// All nodes indexed by `SchemaId`.
@@ -157,7 +160,9 @@ impl SchemaTree {
     /// [`Resolver`]: super::resolver::Resolver
     #[inline]
     #[must_use]
-    pub(crate) fn nodes(&self) -> &[SchemaId] {
+    /// **Internal API**: Public for benchmarking only.
+    #[doc(hidden)]
+    pub fn nodes(&self) -> &[SchemaId] {
         &self.order
     }
 
@@ -187,7 +192,12 @@ type NameIndexes = (HashMap<Box<str>, SchemaId>, HashMap<SchemaId, Box<str>>);
 type KahnResult = (Vec<SchemaId>, Vec<SchemaId>);
 
 /// Builds a [`SchemaTree`] from dereferenced schemas.
-pub(crate) struct Extender;
+///
+/// **Internal API**: This type is public solely for benchmarking purposes.
+/// Do not depend on it in production code - use `SchemaService` instead.
+#[doc(hidden)]
+#[non_exhaustive]
+pub struct Extender;
 
 impl Extender {
     /// Build a [`SchemaTree`] from stale, dereferenced schemas.
@@ -205,7 +215,9 @@ impl Extender {
     ///
     /// [`Dereferencer`]: super::dereferencer::Dereferencer
     #[inline]
-    pub(crate) fn build(
+    /// **Internal API**: Public for benchmarking only.
+    #[doc(hidden)]
+    pub fn build(
         derefed: Vec<(SchemaId, DereferencedSchema)>,
         known_parents: &HashMap<SchemaId, Schema>,
     ) -> Result<SchemaTree, SchemaError> {
@@ -706,6 +718,51 @@ mod tests {
                         | SchemaError::ParentNotFound(_))
                 ),
                 "Expected cycle or missing parent error, got: {result:?}"
+            );
+        }
+
+        /// GAP-001: Test multi-node circular inheritance (A→B→C→A).
+        #[test]
+        fn cycle_detection_multi_node_cycle() {
+            use crate::schema::dereferencer::DereferencedSchema;
+
+            const ID_A: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_1001);
+            const ID_B: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_1002);
+            const ID_C: Uuid =
+                Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_1003);
+
+            let id_a = SchemaId::from_uuid(ID_A);
+            let id_b = SchemaId::from_uuid(ID_B);
+            let id_c = SchemaId::from_uuid(ID_C);
+
+            // A extends C, B extends A, C extends B → cycle!
+            let derefed = vec![
+                (id_a, DereferencedSchema {
+                    name: "a".into(),
+                    extends: Some("c".into()),
+                    excludes: Vec::new(),
+                    properties: Vec::new(),
+                }),
+                (id_b, DereferencedSchema {
+                    name: "b".into(),
+                    extends: Some("a".into()),
+                    excludes: Vec::new(),
+                    properties: Vec::new(),
+                }),
+                (id_c, DereferencedSchema {
+                    name: "c".into(),
+                    extends: Some("b".into()),
+                    excludes: Vec::new(),
+                    properties: Vec::new(),
+                }),
+            ];
+
+            let result = Extender::build(derefed, &HashMap::new());
+            assert!(
+                matches!(result, Err(SchemaError::CircularInheritance(_))),
+                "Should detect multi-node cycle, got: {result:?}"
             );
         }
 

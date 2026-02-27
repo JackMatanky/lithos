@@ -52,7 +52,7 @@ fn create_sample_property(
         Cardinality::Required,
         Multiplicity::Single,
         spec,
-    )?;
+    );
     Ok(property)
 }
 

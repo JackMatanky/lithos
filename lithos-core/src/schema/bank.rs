@@ -50,7 +50,7 @@ use super::{
 ///     Cardinality::Required,
 ///     Multiplicity::Single,
 ///     spec,
-/// )?;
+/// );
 ///
 /// bank.register(property)?;
 /// assert!(bank.has_name(&name), "Bank should contain property name");
@@ -184,7 +184,7 @@ impl PropertyBank {
                 super::property::Cardinality::Optional,
                 multiplicity,
                 spec,
-            )?;
+            );
 
             bank.register(property)?;
         }
@@ -247,7 +247,7 @@ impl PropertyBank {
     ///     Cardinality::Required,
     ///     Multiplicity::Single,
     ///     spec,
-    /// )?;
+    /// );
     ///
     /// bank.register(property)?;
     /// assert_eq!(bank.all().count(), 1, "Bank should contain one property");
@@ -263,9 +263,31 @@ impl PropertyBank {
         let name = property.name().clone();
 
         match self.id_index.entry(id) {
-            Entry::Occupied(_) => {
-                // Idempotent success: no event, no version increment
-                Ok(())
+            Entry::Occupied(id_entry) => {
+                // Verify that the existing property matches the new one
+                let idx = *id_entry.get();
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "Index guaranteed valid: idx came from id_index \
+                              which points to properties Vec. Invariant \
+                              maintained by register() logic."
+                )]
+                let existing = &self.properties[idx];
+
+                // Check if content matches (idempotent case)
+                if existing == &property {
+                    // Idempotent success: no event, no version increment
+                    Ok(())
+                } else {
+                    // Same ID, different content - this is an error
+                    Err(SchemaError::AlreadyExists(format!(
+                        "Property ID {} already registered with different \
+                         content: existing name={}, new name={}",
+                        id,
+                        existing.name().as_str(),
+                        property.name().as_str()
+                    )))
+                }
             }
             Entry::Vacant(id_entry) => {
                 // Prevent duplicate names
@@ -743,7 +765,7 @@ mod tests {
                 Cardinality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
-            )?;
+            );
             let id = property.id();
             bank.register(property)?;
             Ok((bank, id))
@@ -772,8 +794,7 @@ mod tests {
                 Cardinality::Optional,
                 Multiplicity::Single,
                 spec,
-            )
-            .expect("Valid property");
+            );
 
             // WHEN: registering the same property twice
             bank.register(prop.clone())
@@ -786,6 +807,72 @@ mod tests {
                 count, 1,
                 "Expected 1 property after identical registrations"
             );
+        }
+
+        /// Test: `rejects_same_id_different_content`.
+        /// Verifies that registering a property with the same ID but different
+        /// content fails with an error (HIGH-005 fix).
+        #[test]
+        fn rejects_same_id_different_content() {
+            // GIVEN: a PropertyBank with a registered property
+            let mut bank = PropertyBank::new();
+            let id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
+
+            let spec1 = PropertySpec::String(StringSpec::default());
+            let name1 = PropertyName::new("status").expect("Valid name");
+            let prop1 = Property::new(
+                id,
+                name1,
+                Cardinality::Optional,
+                Multiplicity::Single,
+                spec1,
+            );
+
+            bank.register(prop1).expect("First registration should succeed");
+
+            // WHEN: attempting to register different content with same ID
+            let spec2 = PropertySpec::Bool(BoolSpec::default());
+            let name2 = PropertyName::new("priority").expect("Valid name");
+            let prop2 = Property::new(
+                id,
+                name2,
+                Cardinality::Required,
+                Multiplicity::Many,
+                spec2,
+            );
+
+            let result = bank.register(prop2);
+
+            // THEN: registration should fail
+            assert!(
+                result.is_err(),
+                "Should reject same ID with different content"
+            );
+
+            if let Err(SchemaError::AlreadyExists(msg)) = result {
+                assert!(
+                    msg.contains("already registered with different content"),
+                    "Error message should explain the conflict: {msg}"
+                );
+                assert!(
+                    msg.contains("status"),
+                    "Error should mention existing name: {msg}"
+                );
+                assert!(
+                    msg.contains("priority"),
+                    "Error should mention new name: {msg}"
+                );
+            } else {
+                #[expect(
+                    clippy::panic,
+                    reason = "Test assertion: Expected specific error variant"
+                )]
+                {
+                    panic!(
+                        "Expected SchemaError::AlreadyExists, got: {result:?}"
+                    );
+                }
+            }
         }
 
         /// 3.3-UNIT-020: `maintains_dual_indices_for_fast_lookup`.
@@ -830,8 +917,7 @@ mod tests {
                 Cardinality::Optional,
                 Multiplicity::Single,
                 spec1,
-            )
-            .expect("Valid property");
+            );
             bank.register(prop1).expect("Initial registration should succeed");
 
             // WHEN: registering a different definition with the same name
@@ -842,8 +928,7 @@ mod tests {
                 Cardinality::Optional,
                 Multiplicity::Single,
                 spec2,
-            )
-            .expect("Valid property definition");
+            );
             let res = bank.register(prop2);
 
             // THEN: it must return a DuplicatePropertyName error

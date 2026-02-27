@@ -57,6 +57,37 @@
 //! - **No pre-allocation**: Baseline uses `.to_string()` fresh each time
 //! - **Realistic usage**: Buffer reuse pattern matches production code
 //!
+//! # Expected Characteristics
+//!
+//! Based on measured baseline performance (2026-02-11, Apple M3 Max):
+//!
+//! **Integer Formatting (100 items)**:
+//! - **`itoa::Buffer`**: ~135 ns (742 Melem/s) - stack-based, zero-allocation
+//! - **`.to_string()`**: ~1.31 µs (76 Melem/s) - heap allocation per call
+//! - **Speedup**: ~9.7x faster with itoa
+//! - **Bottleneck**: Heap allocation overhead in baseline, not formatting logic
+//!
+//! **Float Formatting (100 items)**:
+//! - **`ryu::Buffer`**: ~2.76 µs (36 Melem/s) - stack-based, zero-allocation
+//! - **`.to_string()`**: ~3.23 µs (31 Melem/s) - heap allocation per call
+//! - **Speedup**: ~17% faster with ryu (smaller gain than integers)
+//! - **Bottleneck**: Float formatting complexity reduces allocation impact
+//!
+//! **Constructor APIs** (per call):
+//! - **`SchemaName::new(&str)`**: ~22 ns vs ~33 ns (String) → 32% faster
+//! - **`PropertyName::new(&str)`**: ~25 ns vs ~36 ns (String) → 31% faster
+//! - **`DateSpec::try_new(&str)`**: ~11 ns vs ~11 ns (String) → ~3% faster
+//!   (validation dominates)
+//! - **`Template::new(&str)`**: ~1.06 µs vs ~1.07 µs (String) → ~1% faster
+//!   (database-dominated)
+//! - **Trend**: Smaller constructors show larger relative benefit from `&str`
+//!
+//! **Aggregate Workflow** (~3.52 ms):
+//! - Combines all optimizations in realistic usage
+//! - Database operations dominate total time (writes ~3.5ms each)
+//! - String optimizations contribute <5% of total time improvement
+//! - Validates that micro-optimizations compound in production workflows
+//!
 //! # Interpreting Results
 //!
 //! **Expected improvements (from RESULTS.md)**:
@@ -107,11 +138,11 @@
 //!
 //! # Benchmark Index
 //!
-//! | Group                  | Focus                                           |
-//! | ---------------------- | ----------------------------------------------- |
-//! | `numeric_formatting`   | itoa/ryu vs .`to_string()` (integers and floats) |
-//! | `constructor_apis`     | &str vs String parameters (domain constructors)|
-//! | `aggregate_workflow`   | Combined optimization impact                    |
+//! | Group                  | Expected Time (Optimized) | Focus                                            |
+//! | ---------------------- | ------------------------- | ------------------------------------------------ |
+//! | `numeric_formatting`   | ~135ns (int), ~2.76µs (float) | itoa/ryu vs .`to_string()` (integers and floats) |
+//! | `constructor_apis`     | ~22-25ns (simple), ~1µs (db) | &str vs String parameters (domain constructors)  |
+//! | `aggregate_workflow`   | ~3.52ms                   | Combined optimization impact (database-dominated)|
 //!
 //! # Safety
 //!
