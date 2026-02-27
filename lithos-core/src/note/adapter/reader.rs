@@ -929,8 +929,9 @@ fn yaml_to_field_map(
             .as_str()
             .ok_or_else(|| NoteError::Frontmatter("non-string key".into()))?;
 
-        let field_value = FieldValue::from_yaml(value)
-            .map_err(|error| NoteError::Frontmatter(error.into()))?;
+        let field_value = FieldValue::from_yaml(value).map_err(|error| {
+            NoteError::Frontmatter(error.to_string().into())
+        })?;
         fields.insert(key_str.into(), field_value);
     }
 

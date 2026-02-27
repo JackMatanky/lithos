@@ -250,21 +250,27 @@ impl FieldValue {
     /// - YAML map contains non-string keys
     /// - YAML contains tagged values
     #[inline]
-    pub fn from_yaml(value: &serde_yaml::Value) -> Result<Self, String> {
+    pub fn from_yaml(
+        value: &serde_yaml::Value,
+    ) -> Result<Self, FieldValueYamlError> {
         match value {
             serde_yaml::Value::Null => Ok(Self::String("".into())),
             serde_yaml::Value::Bool(b) => Ok(Self::Boolean(*b)),
             serde_yaml::Value::Number(n) => {
-                let f = n
-                    .as_f64()
-                    .ok_or_else(|| String::from("invalid number in YAML"))?;
+                let f = n.as_f64().ok_or_else(|| {
+                    FieldValueYamlError::InvalidNumber {
+                        raw: n.to_string().into(),
+                    }
+                })?;
                 if !f.is_finite() {
-                    return Err(String::from("invalid number in YAML"));
+                    return Err(FieldValueYamlError::InvalidNumber {
+                        raw: n.to_string().into(),
+                    });
                 }
                 if f.abs() > Self::MAX_SAFE_INTEGER {
-                    return Err(String::from(
-                        "integer value exceeds safe f64 range",
-                    ));
+                    return Err(FieldValueYamlError::NumberOutOfRange {
+                        raw: n.to_string().into(),
+                    });
                 }
                 Ok(Self::Number(f))
             }
@@ -277,16 +283,13 @@ impl FieldValue {
             serde_yaml::Value::Mapping(map) => {
                 let mut obj = HashMap::new();
                 for (k, v) in map {
-                    let key = k.as_str().ok_or_else(|| {
-                        String::from("non-string key in YAML map")
-                    })?;
+                    let key =
+                        k.as_str().ok_or(FieldValueYamlError::NonStringKey)?;
                     obj.insert(key.into(), Self::from_yaml(v)?);
                 }
                 Ok(Self::Object(obj))
             }
-            serde_yaml::Value::Tagged(_) => {
-                Err(String::from("tagged YAML values not supported"))
-            }
+            serde_yaml::Value::Tagged(_) => Err(FieldValueYamlError::Tagged),
         }
     }
 
@@ -428,6 +431,25 @@ pub enum FieldValueParseError {
     NullValue,
 }
 
+/// Error type for parsing YAML into [`FieldValue`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldValueYamlError {
+    /// Numeric value is not representable as a finite `f64`.
+    InvalidNumber {
+        /// The numeric value as provided by YAML.
+        raw: Box<str>,
+    },
+    /// Numeric value exceeds the safe integer range for `f64`.
+    NumberOutOfRange {
+        /// The numeric value as provided by YAML.
+        raw: Box<str>,
+    },
+    /// YAML map contains a non-string key.
+    NonStringKey,
+    /// YAML tagged values are not supported.
+    Tagged,
+}
+
 impl core::fmt::Display for FieldValueParseError {
     #[inline]
     #[expect(
@@ -443,6 +465,32 @@ impl core::fmt::Display for FieldValueParseError {
         }
     }
 }
+
+impl core::fmt::Display for FieldValueYamlError {
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on &self keeps error formatting concise"
+    )]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidNumber {
+                raw,
+            } => write!(f, "invalid number in YAML: {raw}"),
+            Self::NumberOutOfRange {
+                raw,
+            } => write!(f, "integer value exceeds safe f64 range: {raw}"),
+            Self::NonStringKey => f.write_str("non-string key in YAML map"),
+            Self::Tagged => f.write_str("tagged YAML values not supported"),
+        }
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Default trait methods are sufficient for this simple error type"
+)]
+impl std::error::Error for FieldValueYamlError {}
 
 #[expect(
     clippy::missing_trait_methods,
