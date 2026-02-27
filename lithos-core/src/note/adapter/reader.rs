@@ -18,7 +18,7 @@ use crate::{
     note::{
         adapter::{tag_scanner::TagScanner, task_parser::TaskParser},
         aggregate::Note,
-        error::{NoteError, TaskError},
+        error::{FrontmatterParseError, NoteError, TaskError},
         frontmatter::Frontmatter,
         link::{Anchor, EmbedType, Link, Target},
         list::{List, ListDepth, ListItem, ListType},
@@ -890,7 +890,9 @@ impl<'config> ParseState<'config> {
                 let yaml_value: serde_yaml::Value =
                     serde_yaml::from_str(&self.metadata_text).map_err(|e| {
                         NoteError::Frontmatter(
-                            format!("invalid YAML: {e}").into(),
+                            FrontmatterParseError::InvalidYaml {
+                                reason: e.to_string().into(),
+                            },
                         )
                     })?;
                 yaml_to_field_map(&yaml_value)?
@@ -899,7 +901,9 @@ impl<'config> ParseState<'config> {
                 let toml_value: toml::Value =
                     toml::from_str(&self.metadata_text).map_err(|e| {
                         NoteError::Frontmatter(
-                            format!("invalid TOML: {e}").into(),
+                            FrontmatterParseError::InvalidToml {
+                                reason: e.to_string().into(),
+                            },
                         )
                     })?;
                 toml_to_field_map(&toml_value)?
@@ -928,19 +932,21 @@ fn yaml_to_field_map(
 ) -> Result<std::collections::HashMap<Box<str>, FieldValue>, NoteError> {
     let serde_yaml::Value::Mapping(map) = yaml else {
         return Err(NoteError::Frontmatter(
-            "frontmatter must be a YAML mapping".into(),
+            FrontmatterParseError::NotYamlMapping,
         ));
     };
 
     let mut fields = std::collections::HashMap::with_capacity(map.len());
 
     for (key, value) in map {
-        let key_str = key
-            .as_str()
-            .ok_or_else(|| NoteError::Frontmatter("non-string key".into()))?;
+        let key_str = key.as_str().ok_or(NoteError::Frontmatter(
+            FrontmatterParseError::NonStringKey,
+        ))?;
 
         let field_value = FieldValue::from_yaml(value).map_err(|error| {
-            NoteError::Frontmatter(error.to_string().into())
+            NoteError::Frontmatter(FrontmatterParseError::InvalidYamlValue {
+                reason: error.to_string().into(),
+            })
         })?;
         fields.insert(key_str.into(), field_value);
     }
@@ -951,9 +957,9 @@ fn yaml_to_field_map(
 fn toml_to_field_map(
     toml: &toml::Value,
 ) -> Result<std::collections::HashMap<Box<str>, FieldValue>, NoteError> {
-    let table = toml.as_table().ok_or_else(|| {
-        NoteError::Frontmatter("frontmatter must be a TOML table".into())
-    })?;
+    let table = toml
+        .as_table()
+        .ok_or(NoteError::Frontmatter(FrontmatterParseError::NotTomlTable))?;
 
     let mut fields = std::collections::HashMap::with_capacity(table.len());
 
@@ -979,8 +985,12 @@ fn field_value_from_toml(value: &toml::Value) -> Result<FieldValue, NoteError> {
             let magnitude = number.unsigned_abs();
             if magnitude > MAX_SAFE_INTEGER {
                 return Err(NoteError::Frontmatter(
-                    format!("integer value '{number}' exceeds safe f64 range")
+                    FrontmatterParseError::InvalidTomlValue {
+                        reason: format!(
+                            "integer value '{number}' exceeds safe f64 range"
+                        )
                         .into(),
+                    },
                 ));
             }
 

@@ -23,7 +23,7 @@ pub enum NoteError {
 
     /// Frontmatter parsing error.
     #[error("frontmatter error: {0}")]
-    Frontmatter(Box<str>),
+    Frontmatter(#[from] FrontmatterParseError),
 
     /// Frontmatter access/extraction error.
     #[error(transparent)]
@@ -263,6 +263,45 @@ pub enum FrontmatterError {
     },
 }
 
+/// Errors surfaced when parsing frontmatter blocks.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FrontmatterParseError {
+    /// YAML frontmatter could not be parsed.
+    #[error("invalid YAML: {reason}")]
+    InvalidYaml {
+        /// Parse error details.
+        reason: Box<str>,
+    },
+    /// TOML frontmatter could not be parsed.
+    #[error("invalid TOML: {reason}")]
+    InvalidToml {
+        /// Parse error details.
+        reason: Box<str>,
+    },
+    /// Frontmatter must be a YAML mapping.
+    #[error("frontmatter must be a YAML mapping")]
+    NotYamlMapping,
+    /// Frontmatter must be a TOML table.
+    #[error("frontmatter must be a TOML table")]
+    NotTomlTable,
+    /// YAML map contained a non-string key.
+    #[error("non-string key")]
+    NonStringKey,
+    /// YAML value could not be converted.
+    #[error("{reason}")]
+    InvalidYamlValue {
+        /// Conversion error details.
+        reason: Box<str>,
+    },
+    /// TOML value could not be converted.
+    #[error("{reason}")]
+    InvalidTomlValue {
+        /// Conversion error details.
+        reason: Box<str>,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
@@ -282,7 +321,7 @@ mod tests {
         NotePath::new("test.md").expect("valid path")
     ))]
     #[case(NoteError::ValidationFailed("invalid".into()))]
-    #[case(NoteError::Frontmatter("parse error".into()))]
+    #[case(NoteError::Frontmatter(FrontmatterParseError::NotYamlMapping))]
     #[case(NoteError::FrontmatterAccess(FrontmatterError::Missing {
         key: "title".into(),
     }))]
