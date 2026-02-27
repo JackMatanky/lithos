@@ -172,6 +172,12 @@ pub enum LinkError {
     /// External links cannot contain anchors.
     #[error("external links cannot have anchors")]
     ExternalAnchor,
+    /// Heading anchor text is empty.
+    #[error("heading anchor cannot be empty")]
+    EmptyHeadingAnchor,
+    /// Block reference anchor text is empty.
+    #[error("block reference anchor cannot be empty")]
+    EmptyBlockRefAnchor,
 }
 
 /// Errors surfaced by Note command operations.

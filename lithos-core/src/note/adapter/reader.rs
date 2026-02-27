@@ -796,10 +796,20 @@ impl<'config> ParseState<'config> {
             let (target, anchor_part) = raw_target.split_at(pothole_idx);
             let anchor = if let Some(block_ref) = anchor_part.strip_prefix("#^")
             {
-                Some(Anchor::BlockRef(block_ref.into()))
+                let block_ref = block_ref.trim();
+                if block_ref.is_empty() {
+                    None
+                } else {
+                    Some(Anchor::block_ref(block_ref)?)
+                }
             } else {
                 let anchor_part = anchor_part.strip_prefix('#').unwrap_or("");
-                Some(Anchor::Heading(anchor_part.into()))
+                let anchor_part = anchor_part.trim();
+                if anchor_part.is_empty() {
+                    None
+                } else {
+                    Some(Anchor::heading(anchor_part)?)
+                }
             };
             (target, anchor)
         } else {
@@ -1351,7 +1361,7 @@ mod tests {
         assert_eq!(links[0].target().vault_path(), Some("note"));
         assert!(matches!(
             links[0].anchor(),
-            Some(Anchor::Heading(text)) if text.as_ref() == "Section Title"
+            Some(Anchor::Heading(text)) if text.as_str() == "Section Title"
         ));
 
         Ok(())
@@ -1375,7 +1385,7 @@ mod tests {
         assert_eq!(links[0].target().vault_path(), Some("note"));
         assert!(matches!(
             links[0].anchor(),
-            Some(Anchor::BlockRef(text)) if text.as_ref() == "block123"
+            Some(Anchor::BlockRef(text)) if text.as_str() == "block123"
         ));
 
         Ok(())
@@ -1756,7 +1766,7 @@ title: My Note
         assert!(matches!(link.embed_type(), Some(EmbedType::Note)));
         assert!(matches!(
             link.anchor(),
-            Some(Anchor::Heading(text)) if text.as_ref() == "Section"
+            Some(Anchor::Heading(text)) if text.as_str() == "Section"
         ));
         Ok(())
     }

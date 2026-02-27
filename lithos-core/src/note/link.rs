@@ -27,11 +27,14 @@ use super::{
 ///
 /// ```
 /// # use lithos_core::note::link::Anchor;
-/// let heading = Anchor::Heading("Introduction".into());
-/// let block = Anchor::BlockRef("abc123".into());
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let heading = Anchor::heading("Introduction")?;
+/// let block = Anchor::block_ref("abc123")?;
 ///
 /// assert!(heading.is_heading());
 /// assert_eq!(block.text(), "abc123");
+/// # Ok(())
+/// # }
 /// ```
 #[derive(
     Debug,
@@ -47,9 +50,83 @@ use super::{
 #[non_exhaustive]
 pub enum Anchor {
     /// Block reference: `^block-id`.
-    BlockRef(Box<str>),
+    BlockRef(BlockRefId),
     /// Heading anchor: `#heading-text`.
-    Heading(Box<str>),
+    Heading(HeadingText),
+}
+
+/// Validated block reference identifier.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct BlockRefId(Box<str>);
+
+impl BlockRefId {
+    /// Creates a validated block reference identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Link`] if the identifier is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Link(LinkError::EmptyBlockRefAnchor));
+        }
+        Ok(Self(text.into()))
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Validated heading anchor text.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct HeadingText(Box<str>);
+
+impl HeadingText {
+    /// Creates a validated heading anchor text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Link`] if the text is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Link(LinkError::EmptyHeadingAnchor));
+        }
+        Ok(Self(text.into()))
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 /// Represents different types of embedded content.
@@ -192,6 +269,26 @@ pub enum Target {
 }
 
 impl Anchor {
+    /// Creates a validated block reference anchor.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Link`] if the block reference is empty.
+    #[inline]
+    pub fn block_ref(value: &str) -> Result<Self, NoteError> {
+        Ok(Self::BlockRef(BlockRefId::try_new(value)?))
+    }
+
+    /// Creates a validated heading anchor.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Link`] if the heading text is empty.
+    #[inline]
+    pub fn heading(value: &str) -> Result<Self, NoteError> {
+        Ok(Self::Heading(HeadingText::try_new(value)?))
+    }
+
     /// Returns `true` if this is a block reference.
     #[inline]
     #[must_use]
@@ -216,7 +313,8 @@ impl Anchor {
     #[must_use]
     pub fn text(&self) -> &str {
         match self {
-            Self::BlockRef(s) | Self::Heading(s) => s,
+            Self::BlockRef(s) => s.as_str(),
+            Self::Heading(s) => s.as_str(),
         }
     }
 }
@@ -489,7 +587,7 @@ mod tests {
             Link::new_wikilink(
                 unresolved_target("Target Note"),
                 Some("Display Text"),
-                Some(Anchor::Heading("section".into())),
+                Some(Anchor::heading("section")?),
                 SourceByteOffset::new(100u32),
             )
         }
@@ -548,17 +646,18 @@ mod tests {
         }
 
         #[test]
-        fn markdown_link_rejects_external_anchor() {
+        fn markdown_link_rejects_external_anchor() -> Result<(), NoteError> {
             let target = super::super::Target::External {
                 url: "https://example.com#frag".into(),
             };
             let result = Link::new_markdown_link(
                 target,
                 None,
-                Some(super::super::Anchor::Heading("frag".into())),
+                Some(super::super::Anchor::heading("frag")?),
                 crate::note::types::SourceByteOffset::new(0u32),
             );
             result.unwrap_err();
+            Ok(())
         }
     }
 }
