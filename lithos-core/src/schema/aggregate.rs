@@ -74,9 +74,15 @@ pub struct Schema {
     /// Parent schema ID, for inheritance tree reconstruction.
     parent_id: Option<SchemaId>,
     /// Fully resolved properties after inheritance.
-    /// Uses Arc<Property> for sharing across inheritance chains.
+    ///
+    /// Uses `Arc<Property>` for zero-allocation sharing during inheritance
+    /// resolution. When a child schema inherits a parent's property, the
+    /// `Arc` is cloned (cheap pointer copy) rather than cloning the entire
+    /// `Property` structure. This is critical for performance in deep
+    /// inheritance hierarchies.
+    ///
     /// Stored as `BTreeMap` for O(log n) lookups and guaranteed sort order.
-    /// Serialized as Vec<Property> for compatibility.
+    /// Serialized as `Vec<Property>` for compatibility.
     properties: BTreeMap<PropertyName, Arc<Property>>,
     /// Domain events pending emission (not serialized).
     pending_events: Vec<Events>,

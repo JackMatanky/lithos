@@ -108,7 +108,11 @@ impl Resolver {
                     vec![]
                 };
 
-            // Convert properties to Arc<Property> for the merge
+            // Convert properties to Arc<Property> for zero-allocation sharing.
+            // Parent properties are already Arc-wrapped from the resolved
+            // cache, so when a child inherits them, we only clone
+            // the Arc (cheap pointer copy), not the underlying
+            // Property data.
             let own_props_arc: Vec<Arc<Property>> =
                 node.properties.iter().map(|p| Arc::new(p.clone())).collect();
 
