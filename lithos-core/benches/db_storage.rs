@@ -71,6 +71,52 @@
 //!   within same machine/session
 //! - **Allocation**: Uses system allocator (no custom allocator configured)
 //!
+//! # Expected Characteristics
+//!
+//! Based on redb architecture and rkyv zero-copy design:
+//!
+//! **Zero-Copy Reads** (~450-500 ns):
+//! - Direct memory access via rkyv archived types
+//! - No deserialization, no heap allocation
+//! - Should be significantly faster than full deserialization (1.5-2x)
+//! - Sub-microsecond is critical for LSP responsiveness
+//! - Bottleneck: redb B-tree traversal, not serialization
+//!
+//! **Full Deserialization** (~750-850 ns):
+//! - Construct owned `Note` with all heap allocations
+//! - Should be 1.5-2x slower than zero-copy
+//! - Still sub-microsecond for small notes (<1KB serialized)
+//! - Bottleneck: heap allocation, not rkyv logic
+//!
+//! **Single Writes** (~3-4 ms):
+//! - Individual transaction per write (includes fsync overhead)
+//! - Dominated by transaction commit cost, not serialization
+//! - Should scale O(1) regardless of note size (for notes <10KB)
+//! - Bottleneck: fsync to disk, not database logic
+//!
+//! **Batch Writes** (~250-300 notes/sec sustained):
+//! - Multiple items per transaction amortizes fsync cost
+//! - Should scale linearly with batch size: O(n)
+//! - Expected: 100 notes → ~400ms, 500 notes → ~2s, 1000 notes → ~4s
+//! - Bottleneck: I/O contention at scale, not transaction overhead
+//!
+//! **Deletes** (~3-4 ms):
+//! - Similar to single writes (transaction-dominated)
+//! - Should be comparable to write performance
+//! - Bottleneck: fsync, not key removal logic
+//!
+//! **Cache Effectiveness** (~460-470 ns, minimal difference):
+//! - redb uses mmap, relies on OS page cache
+//! - Hot vs cold difference should be <10% for in-memory data
+//! - tmpfs eliminates real disk I/O variance
+//! - Bottleneck: B-tree traversal, not cache misses
+//!
+//! **Transaction Overhead** (batch should match individual):
+//! - Batching within single transaction vs separate transactions
+//! - Expected: similar performance (both include single fsync per transaction)
+//! - If batched is >20% faster → amortization working as expected
+//! - Bottleneck: fsync frequency, not lock contention
+//!
 //! # Interpreting Results
 //!
 //! **Meaningful changes**:
@@ -132,15 +178,15 @@
 //!
 //! # Benchmark Index
 //!
-//! | Group                    | Focus                                     |
-//! | ------------------------ | ----------------------------------------- |
-//! | `read_zero_copy`         | Archived access without deserialization   |
-//! | `read_deserialize`       | Full owned value construction             |
-//! | `write_single`           | Individual transaction per write          |
-//! | `write_batch`            | Bulk operations in single transaction     |
-//! | `delete`                 | Key removal performance                   |
-//! | `cache_effectiveness`    | Hot vs cold access patterns               |
-//! | `transaction_overhead`   | Batch vs individual commit cost           |
+//! | Group                    | Expected Time     | Focus                                     |
+//! | ------------------------ | ----------------- | ----------------------------------------- |
+//! | `read_zero_copy`         | ~450-500 ns       | Archived access without deserialization   |
+//! | `read_deserialize`       | ~750-850 ns       | Full owned value construction             |
+//! | `write_single`           | ~3-4 ms           | Individual transaction per write          |
+//! | `write_batch`            | ~400ms-4s (100-1K)| Bulk operations in single transaction     |
+//! | `delete`                 | ~3-4 ms           | Key removal performance                   |
+//! | `cache_effectiveness`    | ~460-470 ns       | Hot vs cold access patterns               |
+//! | `transaction_overhead`   | ~400ms (100)      | Batch vs individual commit cost           |
 //!
 //! # Safety
 //!

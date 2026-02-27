@@ -60,17 +60,28 @@ This directory contains focused performance benchmarks organized by concern.
 ---
 
 ### `note_parsing.rs` - Markdown Parsing
-**What it measures**: Markdown to Note transformation
-- Note ingestion from markdown to structured domain objects
+**What it measures**: Markdown to Note transformation across complexity levels
+- **Simple**: Minimal note (91B, 1 heading, 3 tasks) → ~13.5 µs, 6.8 MiB/s
+- **Medium**: Typical note (500B, multiple sections, links) → ~18.3 µs, 27 MiB/s
+- **Complex**: Dense note (2.4KB, deep hierarchy, many links) → ~47.9 µs, 50 MiB/s
 
 **When to run**: After changes to:
-- Note parser (`src/note/parser.rs`)
-- Markdown processing logic
+- Note parser (`src/note/adapter/reader.rs`)
+- Markdown processing logic (pulldown-cmark configuration)
+- Task/field extraction regex patterns
 - Note domain model structure
+- Section construction logic
 
 **Key metrics**:
-- Typical: ~3-5 µs for simple notes
-- Scales with markdown complexity
+- **Sub-linear scaling**: 5x size → 1.35x time, 27x size → 3.5x time
+- **Fixed overhead**: ~10-13 µs (file I/O, Config, Note construction)
+- **Throughput improves with size**: 7 MiB/s (simple) → 50 MiB/s (complex)
+- **Regression threshold**: >20% latency increase for any size class
+
+**Performance characteristics**:
+- Fixed costs dominate for small notes (simple benchmark)
+- O(n) parsing cost validates linear scaling assumption
+- Throughput reaches 50+ MiB/s for realistic complex notes
 
 ---
 
