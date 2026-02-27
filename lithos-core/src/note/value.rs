@@ -255,7 +255,7 @@ impl FieldValue {
             serde_yaml::Value::Number(n) => {
                 let f = n
                     .as_f64()
-                    .ok_or_else(|| "invalid number in YAML".to_owned())?;
+                    .ok_or_else(|| String::from("invalid number in YAML"))?;
                 Ok(Self::Number(f))
             }
             serde_yaml::Value::String(s) => Ok(Self::String(s.clone().into())),
@@ -268,14 +268,14 @@ impl FieldValue {
                 let mut obj = HashMap::new();
                 for (k, v) in map {
                     let key = k.as_str().ok_or_else(|| {
-                        "non-string key in YAML map".to_owned()
+                        String::from("non-string key in YAML map")
                     })?;
                     obj.insert(key.into(), Self::from_yaml(v)?);
                 }
                 Ok(Self::Object(obj))
             }
             serde_yaml::Value::Tagged(_) => {
-                Err("tagged YAML values not supported".into())
+                Err(String::from("tagged YAML values not supported"))
             }
         }
     }
@@ -659,7 +659,7 @@ mod tests {
 
         let obj = val
             .as_object()
-            .ok_or_else(|| "val should be an object".to_owned())?;
+            .ok_or_else(|| String::from("val should be an object"))?;
 
         assert_eq!(obj.get("str").and_then(FieldValue::as_str), Some("hello"));
         assert_eq!(
@@ -670,18 +670,18 @@ mod tests {
 
         let arr = obj
             .get("arr")
-            .ok_or_else(|| "missing 'arr' key".to_owned())?
+            .ok_or_else(|| String::from("missing 'arr' key"))?
             .as_array()
-            .ok_or_else(|| "'arr' should be an array".to_owned())?;
+            .ok_or_else(|| String::from("'arr' should be an array"))?;
 
         assert_eq!(arr.first().and_then(FieldValue::as_number), Some(1.0f64));
         assert_eq!(arr.get(1).and_then(FieldValue::as_str), Some("two"));
 
         let nested = obj
             .get("obj")
-            .ok_or_else(|| "missing 'obj' key".to_owned())?
+            .ok_or_else(|| String::from("missing 'obj' key"))?
             .as_object()
-            .ok_or_else(|| "'obj' should be an object".to_owned())?;
+            .ok_or_else(|| String::from("'obj' should be an object"))?;
 
         assert_eq!(
             nested.get("nested").and_then(FieldValue::as_str),

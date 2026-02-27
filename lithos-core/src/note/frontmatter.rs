@@ -538,11 +538,11 @@ mod tests {
 
             let raw = RawConfig {
                 frontmatter: Some(RawFrontmatter {
-                    alias_key: Some("names".to_owned()),
-                    date_created_key: Some("date_created".to_owned()),
-                    date_modified_key: Some("date_modified".to_owned()),
-                    file_class_key: Some("kind".to_owned()),
-                    title_key: Some("subject".to_owned()),
+                    alias_key: Some("names".into()),
+                    date_created_key: Some("date_created".into()),
+                    date_modified_key: Some("date_modified".into()),
+                    file_class_key: Some("kind".into()),
+                    title_key: Some("subject".into()),
                 }),
                 ..Default::default()
             };

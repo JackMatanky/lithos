@@ -69,19 +69,19 @@ impl Tag {
     /// Returns [`NoteError::Tag`] if validation fails.
     #[inline]
     pub fn new(input: &str) -> Result<Self, NoteError> {
-        let tag_path_str = input.strip_prefix('#').ok_or_else(|| {
-            NoteError::Tag("Tag must start with #".to_owned())
-        })?;
+        let tag_path_str = input
+            .strip_prefix('#')
+            .ok_or_else(|| NoteError::Tag("Tag must start with #".into()))?;
 
         if tag_path_str.is_empty() {
-            return Err(NoteError::Tag("Tag cannot be empty".to_owned()));
+            return Err(NoteError::Tag("Tag cannot be empty".into()));
         }
 
         let segments_count = tag_path_str.split('/').count();
         let mut segments = Vec::with_capacity(segments_count);
         for segment in tag_path_str.split('/') {
             if segment.is_empty() {
-                return Err(NoteError::Tag("Empty tag segment".to_owned()));
+                return Err(NoteError::Tag("Empty tag segment".into()));
             }
 
             if !segment
@@ -253,22 +253,22 @@ mod tests {
         #[rstest]
         #[case::missing_hash(
             "invalid",
-            NoteError::Tag("Tag must start with #".to_owned())
+            NoteError::Tag("Tag must start with #".into())
         )]
         #[case::only_hash(
             "#",
-            NoteError::Tag("Tag cannot be empty".to_owned())
+            NoteError::Tag("Tag cannot be empty".into())
         )]
         #[case::empty_segments(
             "#work//urgent",
-            NoteError::Tag("Empty tag segment".to_owned())
+            NoteError::Tag("Empty tag segment".into())
         )]
         #[case::invalid_chars(
             "#work project",
             NoteError::Tag(
                 "Invalid tag segment 'work project': only alphanumeric, \
                   underscore, and hyphen allowed"
-                    .to_owned(),
+                    .into(),
             )
         )]
         fn tag_parsing_rejects_invalid_inputs(

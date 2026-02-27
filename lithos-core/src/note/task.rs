@@ -533,17 +533,17 @@ mod tests {
 
     fn config_with_fields() -> TaskConfig {
         let mut fields = HashMap::new();
-        fields.insert("priority".to_owned(), RawFieldSpec::Integer {
+        fields.insert("priority".into(), RawFieldSpec::Integer {
             min: None,
             max: None,
         });
-        fields.insert("project".to_owned(), RawFieldSpec::String {
+        fields.insert("project".into(), RawFieldSpec::String {
             pattern: None,
         });
 
         let raw = RawTaskConfig {
             enabled: Some(true),
-            task_tags: Some(vec!["#task".to_owned()]),
+            task_tags: Some(vec!["#task".into()]),
             status: None,
             dates: None,
             fields: Some(fields),

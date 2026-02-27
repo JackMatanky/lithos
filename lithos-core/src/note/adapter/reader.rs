@@ -1133,7 +1133,7 @@ mod tests {
                 ..
             } => {
                 return Err(NoteError::Structure(
-                    "expected checkbox list item".to_owned(),
+                    "expected checkbox list item".into(),
                 ));
             }
         };

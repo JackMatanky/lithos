@@ -64,7 +64,7 @@ impl Heading {
         let text = text.into();
         if text.trim().is_empty() {
             return Err(NoteError::ValidationFailed(
-                "Heading text cannot be empty".to_owned(),
+                "Heading text cannot be empty".into(),
             ));
         }
 
@@ -245,7 +245,7 @@ mod tests {
         pub fn summary_heading() -> Result<Heading, NoteError> {
             Heading::new(
                 HeadingLevel::try_new(3)?,
-                "Summary".to_owned(),
+                "Summary",
                 SourceByteOffset::from(22u32),
             )
         }
@@ -253,7 +253,7 @@ mod tests {
         pub fn implementation_heading() -> Result<Heading, NoteError> {
             Heading::new(
                 HeadingLevel::try_new(2)?,
-                "Implementation".to_owned(),
+                "Implementation",
                 SourceByteOffset::from(10u32),
             )
         }
@@ -261,7 +261,7 @@ mod tests {
         pub fn intro_heading() -> Result<Heading, NoteError> {
             Heading::new(
                 HeadingLevel::try_new(1)?,
-                "Intro".to_owned(),
+                "Intro",
                 SourceByteOffset::from(0u32),
             )
         }
@@ -271,7 +271,7 @@ mod tests {
             let end = SourceByteOffset::from(4u32);
             Ok(Section::new(
                 Some(intro_heading()?),
-                "Body".to_owned(),
+                "Body",
                 SourceByteRange::new(start, end)?,
             ))
         }
@@ -374,7 +374,7 @@ mod tests {
         #[test]
         fn new_returns_error_for_empty_text() -> Result<(), NoteError> {
             let level = HeadingLevel::try_new(1)?;
-            let text = "   ".to_owned();
+            let text: String = "   ".into();
             let pos = SourceByteOffset::from(0u32);
             let result = Heading::new(level, text, pos);
             assert!(
