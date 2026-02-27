@@ -160,6 +160,12 @@ pub enum TaskError {
         /// Parse error details.
         reason: Box<str>,
     },
+    /// Task priority value is invalid.
+    #[error("invalid task priority: {reason}")]
+    InvalidPriority {
+        /// Validation failure details.
+        reason: Box<str>,
+    },
 }
 
 /// Errors surfaced when validating or parsing links.
@@ -328,6 +334,9 @@ mod tests {
     #[case(NoteError::Link(LinkError::EmptyTarget))]
     #[case(NoteError::Tag(TagError::MissingHash))]
     #[case(NoteError::Task(TaskError::EmptyText))]
+    #[case(NoteError::Task(TaskError::InvalidPriority {
+        reason: "not finite".into(),
+    }))]
     #[case(NoteError::ListDepthOutOfRange {
         depth: 300,
         reason: "out of range".into(),

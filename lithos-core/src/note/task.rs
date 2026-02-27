@@ -85,13 +85,13 @@ impl TaskPriority {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::ValidationFailed`] if the value is not finite.
+    /// Returns [`NoteError::Task`] if the value is not finite.
     #[inline]
     pub fn try_new(value: f64) -> Result<Self, NoteError> {
         if !value.is_finite() {
-            return Err(NoteError::ValidationFailed(
-                "task priority must be finite".into(),
-            ));
+            return Err(NoteError::Task(TaskError::InvalidPriority {
+                reason: "task priority must be finite".into(),
+            }));
         }
         Ok(Self(value))
     }
