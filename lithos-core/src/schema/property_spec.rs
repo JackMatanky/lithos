@@ -544,9 +544,10 @@ impl FileSpec {
             let value_path = Path::new(value);
             let dir_path = Path::new(dir.as_str());
 
-            if value_path == dir_path || !value_path.starts_with(dir_path) {
+            // File must be INSIDE directory, not AT directory level
+            if !value_path.starts_with(dir_path) || value_path == dir_path {
                 return Err(SchemaError::InvalidDirectoryPath(format!(
-                    "File {value} must be in directory {}",
+                    "File {value} must be inside (not at) directory {}",
                     dir.as_str()
                 )));
             }
@@ -1462,7 +1463,7 @@ mod tests {
             "other/note.md",
             "notes/",
             Err(SchemaError::InvalidDirectoryPath(
-                "File other/note.md must be in directory notes/".to_owned(),
+                "File other/note.md must be inside (not at) directory notes/".to_owned(),
             ))
         )]
         fn file_spec_validation_matrix(
@@ -1525,6 +1526,22 @@ mod tests {
                 result,
                 Err(SchemaError::InvalidDirectoryPath(_))
             ));
+        }
+
+        #[test]
+        fn file_spec_rejects_directory_path_without_trailing_slash() {
+            // GIVEN: FileSpec with directory "assets"
+            let spec = validated_spec_with_dir("assets");
+
+            // WHEN: validating path exactly equal to directory (without slash)
+            let result = spec.validate_str("assets");
+
+            // THEN: it should reject (file must be INSIDE directory, not AT
+            // directory level)
+            assert!(
+                matches!(result, Err(SchemaError::InvalidDirectoryPath(_))),
+                "Expected InvalidDirectoryPath error for exact directory match"
+            );
         }
 
         #[test]
