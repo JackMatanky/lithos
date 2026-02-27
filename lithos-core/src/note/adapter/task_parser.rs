@@ -10,7 +10,7 @@ use crate::{
         value::{DateSpec, FieldSpec},
     },
     note::{
-        error::NoteError,
+        error::{NoteError, TaskError},
         tag::Tag,
         task::{
             Task, TaskAttributes, TaskFieldKey, TaskMetadata, TaskTimestamp,
@@ -51,13 +51,9 @@ impl<'config> TaskParser<'config> {
             .status()
             .name_for_symbol(status_symbol)
             .ok_or_else(|| {
-                NoteError::Task(
-                    format!(
-                        "unrecognized status symbol: '{}'",
-                        status_symbol.value()
-                    )
-                    .into(),
-                )
+                NoteError::Task(TaskError::UnrecognizedStatusSymbol {
+                    symbol: status_symbol.value(),
+                })
             })?
             .clone();
         let text = self.extract_clean_text(raw_text)?;
@@ -109,7 +105,7 @@ impl<'config> TaskParser<'config> {
         }
 
         if text.trim().is_empty() {
-            return Err(NoteError::Task("task text cannot be empty".into()));
+            return Err(NoteError::Task(TaskError::EmptyText));
         }
 
         Ok(text.into())
@@ -160,23 +156,16 @@ impl<'config> TaskParser<'config> {
 
             let date = chrono::NaiveDate::parse_from_str(value, spec.format())
                 .map_err(|error| {
-                    NoteError::Task(
-                        format!(
-                            "invalid date for field '{}': {error}",
-                            spec.keyword().as_str()
-                        )
-                        .into(),
-                    )
+                    NoteError::Task(TaskError::InvalidDate {
+                        keyword: spec.keyword().as_str().into(),
+                        reason: error.to_string().into(),
+                    })
                 })?;
 
             let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-                NoteError::Task(
-                    format!(
-                        "invalid time for date in field '{}'",
-                        spec.keyword().as_str()
-                    )
-                    .into(),
-                )
+                NoteError::Task(TaskError::InvalidDateTime {
+                    keyword: spec.keyword().as_str().into(),
+                })
             })?;
 
             Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
@@ -213,19 +202,17 @@ impl<'config> TaskParser<'config> {
             if let Some(spec) = self.config.field_spec(keyword) {
                 let json_value = parse_metadata_value(raw_value, spec)?;
                 spec.validate_raw_value(&json_value).map_err(|error| {
-                    NoteError::Task(
-                        format!("invalid metadata field '{keyword}': {error}")
-                            .into(),
-                    )
+                    NoteError::Task(TaskError::InvalidMetadataField {
+                        keyword: keyword.into(),
+                        reason: error.to_string().into(),
+                    })
                 })?;
                 let field_value =
                     FieldValue::from_json(&json_value).map_err(|error| {
-                        NoteError::Task(
-                            format!(
-                                "invalid metadata field '{keyword}': {error}"
-                            )
-                            .into(),
-                        )
+                        NoteError::Task(TaskError::InvalidMetadataField {
+                            keyword: keyword.into(),
+                            reason: error.to_string().into(),
+                        })
                     })?;
                 let key = TaskFieldKey::try_new(keyword)?;
                 metadata.insert(key, field_value);
@@ -283,10 +270,10 @@ fn parse_metadata_value(
             ..
         } => {
             let value = raw_value.parse::<i64>().map_err(|error| {
-                NoteError::Task(
-                    format!("invalid integer value '{raw_value}': {error}")
-                        .into(),
-                )
+                NoteError::Task(TaskError::InvalidInteger {
+                    raw: raw_value.into(),
+                    reason: error.to_string().into(),
+                })
             })?;
             Ok(serde_json::Value::Number(value.into()))
         }
@@ -294,16 +281,17 @@ fn parse_metadata_value(
             ..
         } => {
             let value = raw_value.parse::<f64>().map_err(|error| {
-                NoteError::Task(
-                    format!("invalid float value '{raw_value}': {error}")
-                        .into(),
-                )
+                NoteError::Task(TaskError::InvalidFloat {
+                    raw: raw_value.into(),
+                    reason: error.to_string().into(),
+                })
             })?;
             let number =
                 serde_json::Number::from_f64(value).ok_or_else(|| {
-                    NoteError::Task(
-                        format!("invalid float value '{raw_value}'").into(),
-                    )
+                    NoteError::Task(TaskError::InvalidFloat {
+                        raw: raw_value.into(),
+                        reason: "float value is not finite".into(),
+                    })
                 })?;
             Ok(serde_json::Value::Number(number))
         }

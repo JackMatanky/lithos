@@ -51,7 +51,7 @@ pub enum NoteError {
 
     /// Task error.
     #[error("task error: {0}")]
-    Task(Box<str>),
+    Task(#[from] TaskError),
 
     /// List nesting depth is out of range.
     #[error("list depth out of range: {depth}")]
@@ -92,6 +92,73 @@ pub enum TagError {
     InvalidSegment {
         /// The invalid segment text.
         segment: Box<str>,
+    },
+}
+
+/// Errors surfaced when validating or parsing tasks.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TaskError {
+    /// Task text is empty after trimming.
+    #[error("task text cannot be empty")]
+    EmptyText,
+    /// Task field key is empty after trimming.
+    #[error("task field key cannot be empty")]
+    FieldKeyEmpty,
+    /// Task field key contains invalid characters.
+    #[error("task field key must be ASCII alphanumeric, '_' or '-'")]
+    FieldKeyInvalidChars,
+    /// Checkbox status symbol is not recognized in the config.
+    #[error("unrecognized status symbol: '{symbol}'")]
+    UnrecognizedStatusSymbol {
+        /// The raw status symbol.
+        symbol: char,
+    },
+    /// Checkbox status symbol is invalid.
+    #[error("invalid status symbol '{symbol}': {reason}")]
+    InvalidStatusSymbol {
+        /// The raw status symbol.
+        symbol: char,
+        /// Validation failure details.
+        reason: Box<str>,
+    },
+    /// Task date field is not parseable.
+    #[error("invalid date for field '{keyword}': {reason}")]
+    InvalidDate {
+        /// The field keyword.
+        keyword: Box<str>,
+        /// Parse error details.
+        reason: Box<str>,
+    },
+    /// Task date field contains an invalid time.
+    #[error("invalid time for date in field '{keyword}'")]
+    InvalidDateTime {
+        /// The field keyword.
+        keyword: Box<str>,
+    },
+    /// Task metadata field failed validation.
+    #[error("invalid metadata field '{keyword}': {reason}")]
+    InvalidMetadataField {
+        /// The field keyword.
+        keyword: Box<str>,
+        /// Validation failure details.
+        reason: Box<str>,
+    },
+    /// Task metadata integer value is invalid.
+    #[error("invalid integer value '{raw}': {reason}")]
+    InvalidInteger {
+        /// The raw value string.
+        raw: Box<str>,
+        /// Parse error details.
+        reason: Box<str>,
+    },
+    /// Task metadata float value is invalid.
+    #[error("invalid float value '{raw}': {reason}")]
+    InvalidFloat {
+        /// The raw value string.
+        raw: Box<str>,
+        /// Parse error details.
+        reason: Box<str>,
     },
 }
 
@@ -203,7 +270,7 @@ mod tests {
     }))]
     #[case(NoteError::Link("broken link".into()))]
     #[case(NoteError::Tag(TagError::MissingHash))]
-    #[case(NoteError::Task("invalid task".into()))]
+    #[case(NoteError::Task(TaskError::EmptyText))]
     #[case(NoteError::ListDepthOutOfRange {
         depth: 300,
         reason: "out of range".into(),

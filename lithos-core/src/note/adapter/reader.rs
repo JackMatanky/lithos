@@ -18,7 +18,7 @@ use crate::{
     note::{
         adapter::{tag_scanner::TagScanner, task_parser::TaskParser},
         aggregate::Note,
-        error::NoteError,
+        error::{NoteError, TaskError},
         frontmatter::Frontmatter,
         link::{Anchor, EmbedType, Link, Target},
         list::{List, ListDepth, ListItem, ListType},
@@ -1136,9 +1136,10 @@ fn status_symbol_from_marker(checked: bool) -> Result<StatusSymbol, NoteError> {
         ' '
     };
     StatusSymbol::try_new(symbol).map_err(|error| {
-        NoteError::Task(
-            format!("invalid status symbol '{symbol}': {error}").into(),
-        )
+        NoteError::Task(TaskError::InvalidStatusSymbol {
+            symbol,
+            reason: error.to_string().into(),
+        })
     })
 }
 

@@ -18,7 +18,10 @@ use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{
-    error::NoteError, tag::Tag, types::SourceByteOffset, value::FieldValue,
+    error::{NoteError, TaskError},
+    tag::Tag,
+    types::SourceByteOffset,
+    value::FieldValue,
 };
 use crate::config::task::StatusName;
 
@@ -127,17 +130,13 @@ impl TaskFieldKey {
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         let text = value.trim();
         if text.is_empty() {
-            return Err(NoteError::Task(
-                "task field key cannot be empty".into(),
-            ));
+            return Err(NoteError::Task(TaskError::FieldKeyEmpty));
         }
         if !text
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
-            return Err(NoteError::Task(
-                "task field key must be ASCII alphanumeric, '_' or '-'".into(),
-            ));
+            return Err(NoteError::Task(TaskError::FieldKeyInvalidChars));
         }
         Ok(Self(text.into()))
     }
@@ -272,7 +271,7 @@ impl Task {
     ) -> Result<Self, NoteError> {
         let text = text.into();
         if text.trim().is_empty() {
-            return Err(NoteError::Task("task text cannot be empty".into()));
+            return Err(NoteError::Task(TaskError::EmptyText));
         }
 
         Ok(Self {
