@@ -1129,6 +1129,8 @@ fn parse_depth(depth: usize) -> Result<u8, NoteError> {
 }
 
 fn status_symbol_from_marker(checked: bool) -> Result<StatusSymbol, NoteError> {
+    // pulldown-cmark only exposes a checked boolean, so custom symbols in the
+    // source cannot be recovered here.
     let symbol = if checked {
         'x'
     } else {
