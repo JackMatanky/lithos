@@ -12,7 +12,11 @@
               docs"
 )]
 
-use super::{error::NoteError, types::SourceByteOffset};
+use super::{
+    aggregate::{NoteId, NotePath},
+    error::NoteError,
+    types::SourceByteOffset,
+};
 
 /// Sub-note anchor (heading or block reference).
 ///
@@ -175,10 +179,10 @@ pub enum Target {
     },
     /// Resolved: target exists in vault.
     Resolved {
-        /// UUID of the target note.
-        id: uuid::Uuid,
+        /// Identifier of the target note.
+        id: NoteId,
         /// Vault-relative path to the target.
-        path: Box<str>,
+        path: NotePath,
     },
     /// Unresolved: target doesn't exist yet.
     Unresolved {
@@ -409,7 +413,7 @@ impl Link {
             Target::Resolved {
                 path,
                 ..
-            } => path.is_empty(),
+            } => path.as_str().is_empty(),
             Target::Unresolved {
                 raw,
             } => raw.is_empty(),
@@ -459,7 +463,7 @@ impl Target {
             Self::Resolved {
                 path,
                 ..
-            } => Some(path.as_ref()),
+            } => Some(path.as_str()),
             Self::Unresolved {
                 raw,
             } => Some(raw.as_ref()),
