@@ -135,6 +135,80 @@ impl SourceLineColumn {
     }
 }
 
+/// Precomputed line start offsets for fast line/column lookups.
+#[derive(Debug, Clone)]
+pub struct SourceLineIndex {
+    line_starts: Vec<usize>,
+}
+
+impl SourceLineIndex {
+    /// Builds a new line index for the provided source text.
+    #[inline]
+    #[must_use]
+    pub fn new(source: &str) -> Self {
+        let mut line_starts = Vec::with_capacity(32);
+        line_starts.push(0);
+        for (idx, ch) in source.char_indices() {
+            if ch == '\n' {
+                let next = idx.saturating_add(ch.len_utf8());
+                if next <= source.len() {
+                    line_starts.push(next);
+                }
+            }
+        }
+        Self {
+            line_starts,
+        }
+    }
+
+    /// Converts a byte offset into a line/column using the cached index.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if the offset is out of bounds or not
+    /// on a UTF-8 character boundary.
+    #[inline]
+    pub fn line_column(
+        &self,
+        offset: SourceByteOffset,
+        source: &str,
+    ) -> Result<SourceLineColumn, NoteError> {
+        let offset = usize::from(offset);
+        if offset > source.len() {
+            return Err(NoteError::Structure(
+                "source offset exceeds input length".into(),
+            ));
+        }
+        if !source.is_char_boundary(offset) {
+            return Err(NoteError::Structure(
+                "source offset is not on a character boundary".into(),
+            ));
+        }
+
+        let line_index = self
+            .line_starts
+            .partition_point(|&start| start <= offset)
+            .saturating_sub(1);
+        let line_start = self.line_starts.get(line_index).copied().unwrap_or(0);
+        let slice = source.get(line_start..offset).ok_or_else(|| {
+            NoteError::Structure("source offset is not on a boundary".into())
+        })?;
+        let column_count = slice.chars().count().saturating_add(1);
+        let line =
+            u32::try_from(line_index.saturating_add(1)).map_err(|_error| {
+                NoteError::Structure("line index out of range".into())
+            })?;
+        let column = u32::try_from(column_count).map_err(|_error| {
+            NoteError::Structure("column index out of range".into())
+        })?;
+
+        Ok(SourceLineColumn {
+            line,
+            column,
+        })
+    }
+}
+
 impl From<u32> for SourceByteOffset {
     #[inline]
     fn from(offset: u32) -> Self {
@@ -313,5 +387,21 @@ mod tests {
         let offset = SourceByteOffset::new(2);
         let result = offset.line_column(source);
         assert!(matches!(result, Err(NoteError::Structure(_))));
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn line_index_matches_offset_lookup() -> Result<(), NoteError> {
+        let source = "first\nsecond\nthird";
+        let index = SourceLineIndex::new(source);
+        let offset = SourceByteOffset::try_from("first\nsecond".len())
+            .map_err(|error| NoteError::Structure(error.to_string().into()))?;
+        let line_column = index.line_column(offset, source)?;
+        assert_eq!(line_column.line(), 2);
+        assert_eq!(line_column.column(), 7);
+        Ok(())
     }
 }
