@@ -10,7 +10,6 @@ use crate::{
         value::{DateSpec, FieldSpec},
     },
     note::{
-        adapter::tag_scanner::TagScanner,
         error::NoteError,
         tag::Tag,
         task::{Task, TaskAttributes, TaskMetadata, TaskTimestamp},
@@ -34,13 +33,13 @@ impl<'config> TaskParser<'config> {
     }
 
     #[inline]
-    pub(crate) fn parse_promoted_checkbox(
+    pub(crate) fn parse_promoted_checkbox_with_tags(
         self,
         raw_text: &str,
+        tags: Vec<Tag>,
         status_symbol: StatusSymbol,
         position: SourceByteOffset,
     ) -> Result<Option<Task>, NoteError> {
-        let tags = TagScanner::new(raw_text).collect_tags();
         if !self.should_promote_from_tags(&tags) {
             return Ok(None);
         }

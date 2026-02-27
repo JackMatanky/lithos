@@ -510,6 +510,9 @@ impl<'config> ParseState<'config> {
         }
         if let Some(item) = self.current_item.as_mut() {
             item.text.push_str(text);
+            if !is_code && self.current_link.is_none() {
+                item.tag_scan_text.push_str(text);
+            }
         }
     }
 
@@ -531,6 +534,9 @@ impl<'config> ParseState<'config> {
         }
         if let Some(item) = self.current_item.as_mut() {
             item.text.push(' ');
+            if self.current_link.is_none() && self.code_block_depth == 0 {
+                item.tag_scan_text.push(' ');
+            }
         }
     }
 
@@ -570,11 +576,16 @@ impl<'config> ParseState<'config> {
         let raw_text = item.text.trim();
         if let Some(status) = item.status {
             let mut task_id = None;
-            if let Some(task) = self.task_parser.parse_promoted_checkbox(
-                raw_text,
-                status,
-                item.position,
-            )? {
+            let tag_scan_text = item.tag_scan_text.trim();
+            let tags = TagScanner::new(tag_scan_text).collect_tags();
+            if let Some(task) =
+                self.task_parser.parse_promoted_checkbox_with_tags(
+                    raw_text,
+                    tags,
+                    status,
+                    item.position,
+                )?
+            {
                 task_id = Some(task.id());
                 self.tasks.push(task);
             }
@@ -936,16 +947,22 @@ fn toml_to_field_map(
     let mut fields = std::collections::HashMap::with_capacity(table.len());
 
     for (key, value) in table {
-        let field_value = field_value_from_toml(value.clone())?;
+        let field_value = field_value_from_toml(value)?;
         fields.insert(key.as_str().into(), field_value);
     }
 
     Ok(fields)
 }
 
-fn field_value_from_toml(value: toml::Value) -> Result<FieldValue, NoteError> {
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "matching on &Value keeps conversion concise"
+)]
+fn field_value_from_toml(value: &toml::Value) -> Result<FieldValue, NoteError> {
     match value {
-        toml::Value::String(text) => Ok(FieldValue::String(text.into())),
+        toml::Value::String(text) => {
+            Ok(FieldValue::String(text.clone().into()))
+        }
         toml::Value::Integer(number) => {
             const MAX_SAFE_INTEGER: u64 = 0x0020_0000_0000_0000;
             let magnitude = number.unsigned_abs();
@@ -964,11 +981,11 @@ fn field_value_from_toml(value: toml::Value) -> Result<FieldValue, NoteError> {
                 clippy::cast_precision_loss,
                 reason = "checked MAX_SAFE_INTEGER ensures exact f64"
             )]
-            let parsed = number as f64;
+            let parsed = (*number) as f64;
             Ok(FieldValue::Number(parsed))
         }
-        toml::Value::Float(number) => Ok(FieldValue::Number(number)),
-        toml::Value::Boolean(flag) => Ok(FieldValue::Boolean(flag)),
+        toml::Value::Float(number) => Ok(FieldValue::Number(*number)),
+        toml::Value::Boolean(flag) => Ok(FieldValue::Boolean(*flag)),
         toml::Value::Datetime(datetime) => {
             Ok(FieldValue::String(datetime.to_string().into()))
         }
@@ -996,6 +1013,7 @@ fn field_value_from_toml(value: toml::Value) -> Result<FieldValue, NoteError> {
 struct ItemState {
     position: SourceByteOffset,
     text: String,
+    tag_scan_text: String,
     status: Option<StatusSymbol>,
 }
 
@@ -1004,6 +1022,7 @@ impl ItemState {
         Self {
             position,
             text: String::new(),
+            tag_scan_text: String::new(),
             status: None,
         }
     }

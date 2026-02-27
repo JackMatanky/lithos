@@ -536,27 +536,41 @@ mod tests {
     fn should_promote_requires_task_tag() {
         let config = TaskConfig::default();
         let parser = TaskParser::new(&config);
+        let promoted_tags =
+            crate::note::adapter::tag_scanner::TagScanner::new("#task Do work")
+                .collect_tags();
         let promoted = parser
-            .parse_promoted_checkbox(
+            .parse_promoted_checkbox_with_tags(
                 "#task Do work",
+                promoted_tags,
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(0),
             )
             .expect("parse should succeed");
         assert!(promoted.is_some());
 
+        let skipped_tags =
+            crate::note::adapter::tag_scanner::TagScanner::new("Do work")
+                .collect_tags();
         let skipped = parser
-            .parse_promoted_checkbox(
+            .parse_promoted_checkbox_with_tags(
                 "Do work",
+                skipped_tags,
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(0),
             )
             .expect("parse should succeed");
         assert!(skipped.is_none());
 
-        let skipped_partial = parser
-            .parse_promoted_checkbox(
+        let skipped_partial_tags =
+            crate::note::adapter::tag_scanner::TagScanner::new(
                 "#tasker Do work",
+            )
+            .collect_tags();
+        let skipped_partial = parser
+            .parse_promoted_checkbox_with_tags(
+                "#tasker Do work",
+                skipped_partial_tags,
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(0),
             )
@@ -568,9 +582,14 @@ mod tests {
     fn from_checkbox_extracts_text_and_metadata() {
         let config = config_with_fields();
         let parser = TaskParser::new(&config);
+        let tags = crate::note::adapter::tag_scanner::TagScanner::new(
+            "#task Review PR [priority:: 2] [project:: lithos]",
+        )
+        .collect_tags();
         let task = parser
-            .parse_promoted_checkbox(
+            .parse_promoted_checkbox_with_tags(
                 "#task Review PR [priority:: 2] [project:: lithos]",
+                tags,
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(12),
             )
@@ -592,9 +611,14 @@ mod tests {
     fn from_checkbox_collects_hierarchical_tags() {
         let config = TaskConfig::default();
         let parser = TaskParser::new(&config);
+        let tags = crate::note::adapter::tag_scanner::TagScanner::new(
+            "#task Fix #work/project/urgent issue",
+        )
+        .collect_tags();
         let task = parser
-            .parse_promoted_checkbox(
+            .parse_promoted_checkbox_with_tags(
                 "#task Fix #work/project/urgent issue",
+                tags,
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(0),
             )
@@ -615,9 +639,14 @@ mod tests {
     fn from_checkbox_ignores_invalid_tags() {
         let config = TaskConfig::default();
         let parser = TaskParser::new(&config);
+        let tags = crate::note::adapter::tag_scanner::TagScanner::new(
+            "#task Review #bad/ tags",
+        )
+        .collect_tags();
         let task = parser
-            .parse_promoted_checkbox(
+            .parse_promoted_checkbox_with_tags(
                 "#task Review #bad/ tags",
+                tags,
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(0),
             )
@@ -632,10 +661,16 @@ mod tests {
     fn task_timestamp_provides_semantic_methods() {
         let config = TaskConfig::default();
         let parser = TaskParser::new(&config);
+        let tags = crate::note::adapter::tag_scanner::TagScanner::new(
+            "#task Test task with dates [created:: 2024-01-01] [due:: \
+             2024-12-31]",
+        )
+        .collect_tags();
         let task = parser
-            .parse_promoted_checkbox(
+            .parse_promoted_checkbox_with_tags(
                 "#task Test task with dates [created:: 2024-01-01] [due:: \
                  2024-12-31]",
+                tags,
                 StatusSymbol::try_new(' ').expect("valid status"),
                 SourceByteOffset::new(0),
             )
