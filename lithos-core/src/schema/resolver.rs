@@ -69,8 +69,6 @@ impl Resolver {
         let order = tree.nodes();
         let mut resolved_cache: HashMap<SchemaId, Schema> =
             HashMap::with_capacity(order.len());
-        let mut depth_cache: HashMap<SchemaId, usize> =
-            HashMap::with_capacity(order.len());
         let mut results: Vec<Schema> = Vec::with_capacity(order.len());
 
         for &id in order {
@@ -80,13 +78,11 @@ impl Resolver {
                 ))
             })?;
 
-            // E-03: Compute inheritance depth
-            let depth = Self::compute_depth(
-                node.parent_id,
-                &resolved_cache,
-                known_parents,
-                &depth_cache,
-            );
+            // E-03: Use depth computed by Extender
+            // The Extender already computed depth correctly via BFS, accounting
+            // for DB-fresh parents. We convert NodeDepth -> usize
+            // for the limit check.
+            let depth: usize = node.depth.into();
 
             // Check against maximum allowed depth
             if depth > INHERITANCE_MAX_DEPTH {
@@ -117,45 +113,11 @@ impl Resolver {
             let name = SchemaName::new(&node.name)?;
             let schema = Schema::new(id, name, node.parent_id, merged)?;
 
-            // Track depth for this schema
-            depth_cache.insert(id, depth);
             resolved_cache.insert(id, schema.clone());
             results.push(schema);
         }
 
         Ok(results)
-    }
-
-    /// Compute the inheritance depth for a schema.
-    /// Depth = 1 for root schemas, increases with each level of inheritance.
-    /// Note: `_resolved_cache` reserved for future depth tracking
-    /// optimizations.
-    fn compute_depth(
-        parent_id: Option<SchemaId>,
-        _resolved_cache: &HashMap<SchemaId, Schema>,
-        known_parents: &HashMap<SchemaId, Schema>,
-        depth_cache: &HashMap<SchemaId, usize>,
-    ) -> usize {
-        match parent_id {
-            None => 1, // Root schema has depth 1
-            Some(pid) => {
-                // First check if it's in the current resolution batch
-                if let Some(depth) = depth_cache.get(&pid) {
-                    return depth.saturating_add(1);
-                }
-                // Then check if it's a known parent from the DB
-                if let Some(_parent) = known_parents.get(&pid) {
-                    // For DB-fresh parents, we can't easily know their depth
-                    // so we assume they're valid roots (depth 1) or use a
-                    // default. In practice, this only
-                    // happens for the root of a resolution batch.
-                    return 1;
-                }
-                // This shouldn't happen in normal operation since topological
-                // order guarantees parents are resolved first
-                1
-            }
-        }
     }
 
     /// Merge parent and own properties into a single sorted vector, applying
@@ -529,18 +491,6 @@ mod tests {
                 error_str.contains("101"),
                 "Error message should include the depth value"
             );
-        }
-
-        /// Test depth computation for root schema (no parent).
-        #[test]
-        fn depth_computation_for_root_schema() {
-            let depth = Resolver::compute_depth(
-                None,
-                &HashMap::new(),
-                &HashMap::new(),
-                &HashMap::new(),
-            );
-            assert_eq!(depth, 1, "Root schema should have depth 1");
         }
     }
 }
