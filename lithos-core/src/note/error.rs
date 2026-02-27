@@ -47,7 +47,7 @@ pub enum NoteError {
 
     /// Tag error.
     #[error("tag error: {0}")]
-    Tag(Box<str>),
+    Tag(#[from] TagError),
 
     /// Task error.
     #[error("task error: {0}")]
@@ -69,6 +69,30 @@ pub enum NoteError {
     /// Note validation failed.
     #[error("note validation failed: {0}")]
     ValidationFailed(Box<str>),
+}
+
+/// Errors surfaced when validating or parsing tags.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TagError {
+    /// Tag does not start with '#'.
+    #[error("tag must start with #")]
+    MissingHash,
+    /// Tag is empty after the hash.
+    #[error("tag cannot be empty")]
+    EmptyTag,
+    /// Tag contains an empty path segment.
+    #[error("empty tag segment")]
+    EmptySegment,
+    /// Tag segment contains invalid characters.
+    #[error(
+        "invalid tag segment '{segment}': only alphanumeric, underscore, and \
+         hyphen allowed"
+    )]
+    InvalidSegment {
+        /// The invalid segment text.
+        segment: Box<str>,
+    },
 }
 
 /// Errors surfaced by Note command operations.
@@ -178,7 +202,7 @@ mod tests {
         key: "title".into(),
     }))]
     #[case(NoteError::Link("broken link".into()))]
-    #[case(NoteError::Tag("invalid tag".into()))]
+    #[case(NoteError::Tag(TagError::MissingHash))]
     #[case(NoteError::Task("invalid task".into()))]
     #[case(NoteError::ListDepthOutOfRange {
         depth: 300,

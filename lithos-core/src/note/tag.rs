@@ -18,7 +18,7 @@ use std::ops::Deref;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::error::NoteError;
+use super::error::{NoteError, TagError};
 
 /// Represents a hierarchical tag with segments.
 ///
@@ -71,30 +71,26 @@ impl Tag {
     pub fn new(input: &str) -> Result<Self, NoteError> {
         let tag_path_str = input
             .strip_prefix('#')
-            .ok_or_else(|| NoteError::Tag("Tag must start with #".into()))?;
+            .ok_or(NoteError::Tag(TagError::MissingHash))?;
 
         if tag_path_str.is_empty() {
-            return Err(NoteError::Tag("Tag cannot be empty".into()));
+            return Err(NoteError::Tag(TagError::EmptyTag));
         }
 
         let segments_count = tag_path_str.split('/').count();
         let mut segments = Vec::with_capacity(segments_count);
         for segment in tag_path_str.split('/') {
             if segment.is_empty() {
-                return Err(NoteError::Tag("Empty tag segment".into()));
+                return Err(NoteError::Tag(TagError::EmptySegment));
             }
 
             if !segment
                 .chars()
                 .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
             {
-                return Err(NoteError::Tag(
-                    format!(
-                        "Invalid tag segment '{segment}': only alphanumeric, \
-                         underscore, and hyphen allowed"
-                    )
-                    .into(),
-                ));
+                return Err(NoteError::Tag(TagError::InvalidSegment {
+                    segment: segment.into(),
+                }));
             }
             segments.push(segment.into());
         }
@@ -254,25 +250,17 @@ mod tests {
         }
 
         #[rstest]
-        #[case::missing_hash(
-            "invalid",
-            NoteError::Tag("Tag must start with #".into())
-        )]
-        #[case::only_hash(
-            "#",
-            NoteError::Tag("Tag cannot be empty".into())
-        )]
+        #[case::missing_hash("invalid", NoteError::Tag(TagError::MissingHash))]
+        #[case::only_hash("#", NoteError::Tag(TagError::EmptyTag))]
         #[case::empty_segments(
             "#work//urgent",
-            NoteError::Tag("Empty tag segment".into())
+            NoteError::Tag(TagError::EmptySegment)
         )]
         #[case::invalid_chars(
             "#work project",
-            NoteError::Tag(
-                "Invalid tag segment 'work project': only alphanumeric, \
-                  underscore, and hyphen allowed"
-                    .into(),
-            )
+            NoteError::Tag(TagError::InvalidSegment {
+                segment: "work project".into(),
+            })
         )]
         fn tag_parsing_rejects_invalid_inputs(
             #[case] input: &str,
