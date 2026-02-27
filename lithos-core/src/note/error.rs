@@ -41,6 +41,10 @@ pub enum NoteError {
     #[error("note metadata error: {0}")]
     Metadata(#[from] NoteMetadataError),
 
+    /// Configuration validation error.
+    #[error("config error: {0}")]
+    Config(#[from] crate::config::error::ConfigError),
+
     /// Note not found.
     #[error("note not found: {0}")]
     NotFound(NoteId),
@@ -350,6 +354,12 @@ mod tests {
     ))]
     #[case(NoteError::ValidationFailed("invalid".into()))]
     #[case(NoteError::Metadata(NoteMetadataError::HeadingTextEmpty))]
+    #[case(NoteError::Config(
+        crate::config::error::ConfigError::ValidationFailed {
+            field: "frontmatter_key".into(),
+            message: "empty".into(),
+        }
+    ))]
     #[case(NoteError::Frontmatter(FrontmatterParseError::NotYamlMapping))]
     #[case(NoteError::FrontmatterAccess(FrontmatterError::Missing {
         key: "title".into(),

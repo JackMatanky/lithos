@@ -454,11 +454,7 @@ mod tests {
 
             let key =
                 crate::config::frontmatter::FrontmatterKey::try_new("category")
-                    .map_err(|error| {
-                        NoteQueryError::Domain(NoteError::ValidationFailed(
-                            error.to_string().into(),
-                        ))
-                    })?;
+                    .map_err(|error| NoteQueryError::Domain(error.into()))?;
             let by_frontmatter = qry.query_frontmatter_kv(&key, "docs")?;
             assert!(by_frontmatter.iter().any(|note| note.id() == id));
 

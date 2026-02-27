@@ -471,7 +471,7 @@ impl AliasName {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::ValidationFailed`] if the alias is empty.
+    /// Returns [`NoteError::Metadata`] if the alias is empty.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
@@ -515,7 +515,7 @@ impl FileClassName {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::ValidationFailed`] if the class is empty.
+    /// Returns [`NoteError::Metadata`] if the class is empty.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
@@ -559,7 +559,7 @@ impl FolderPath {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::ValidationFailed`] if the folder is empty.
+    /// Returns [`NoteError::Metadata`] if the folder is empty.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
         if value.trim().is_empty() {
