@@ -187,24 +187,19 @@ impl PropertySpec {
     pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
         match self {
             Self::Bool(spec) => {
-                hasher.update(&[0u8]);
-                spec.hash_into_blake3(hasher);
+                hash_tagged(hasher, 0u8, |h| spec.hash_into_blake3(h));
             }
             Self::Date(spec) => {
-                hasher.update(&[1u8]);
-                spec.hash_into_blake3(hasher);
+                hash_tagged(hasher, 1u8, |h| spec.hash_into_blake3(h));
             }
             Self::File(spec) => {
-                hasher.update(&[2u8]);
-                spec.hash_into_blake3(hasher);
+                hash_tagged(hasher, 2u8, |h| spec.hash_into_blake3(h));
             }
             Self::Number(spec) => {
-                hasher.update(&[3u8]);
-                spec.hash_into_blake3(hasher);
+                hash_tagged(hasher, 3u8, |h| spec.hash_into_blake3(h));
             }
             Self::String(spec) => {
-                hasher.update(&[4u8]);
-                spec.hash_into_blake3(hasher);
+                hash_tagged(hasher, 4u8, |h| spec.hash_into_blake3(h));
             }
         }
     }
@@ -241,46 +236,54 @@ impl PropertySpec {
         match self {
             Self::Bool(_) => {
                 if !value.is_boolean() {
-                    return Err(SchemaError::InvalidType {
-                        value: value.to_string(),
-                        expected: "boolean".into(),
-                    });
+                    return Err(Self::invalid_type(value, "boolean"));
                 }
                 Ok(())
             }
             Self::Date(s) => {
-                let val =
-                    value.as_str().ok_or_else(|| SchemaError::InvalidType {
-                        value: value.to_string(),
-                        expected: "string (date)".into(),
-                    })?;
+                let val = Self::expect_str(value, "string (date)")?;
                 s.validate_str(val)
             }
             Self::File(s) => {
-                let val =
-                    value.as_str().ok_or_else(|| SchemaError::InvalidType {
-                        value: value.to_string(),
-                        expected: "string (file path)".into(),
-                    })?;
+                let val = Self::expect_str(value, "string (file path)")?;
                 s.validate_str(val)
             }
             Self::Number(s) => {
-                let n =
-                    value.as_f64().ok_or_else(|| SchemaError::InvalidType {
-                        value: value.to_string(),
-                        expected: "number".into(),
-                    })?;
+                let n = Self::expect_f64(value, "number")?;
                 s.validate_value(n)
             }
             Self::String(s) => {
-                let val =
-                    value.as_str().ok_or_else(|| SchemaError::InvalidType {
-                        value: value.to_string(),
-                        expected: "string".into(),
-                    })?;
+                let val = Self::expect_str(value, "string")?;
                 s.validate_str(val)
             }
         }
+    }
+
+    #[inline]
+    fn invalid_type(
+        value: &serde_json::Value,
+        expected: &'static str,
+    ) -> SchemaError {
+        SchemaError::InvalidType {
+            value: value.to_string(),
+            expected: expected.into(),
+        }
+    }
+
+    #[inline]
+    fn expect_str<'value>(
+        value: &'value serde_json::Value,
+        expected: &'static str,
+    ) -> Result<&'value str, SchemaError> {
+        value.as_str().ok_or_else(|| Self::invalid_type(value, expected))
+    }
+
+    #[inline]
+    fn expect_f64(
+        value: &serde_json::Value,
+        expected: &'static str,
+    ) -> Result<f64, SchemaError> {
+        value.as_f64().ok_or_else(|| Self::invalid_type(value, expected))
     }
 }
 
@@ -572,18 +575,14 @@ impl FileSpec {
     /// ```
     #[inline]
     pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
-        if let Some(dir) = self.directory.as_ref() {
-            hasher.update(&[1u8]);
-            hasher.update(dir.as_str().as_bytes());
-        } else {
-            hasher.update(&[0u8]);
-        }
-        if let Some(fc) = self.file_class.as_ref() {
-            hasher.update(&[1u8]);
-            hasher.update(fc.as_bytes());
-        } else {
-            hasher.update(&[0u8]);
-        }
+        hash_optional_bytes(
+            hasher,
+            self.directory.as_ref().map(|dir| dir.as_str().as_bytes()),
+        );
+        hash_optional_bytes(
+            hasher,
+            self.file_class.as_ref().map(|fc| fc.as_bytes()),
+        );
     }
 
     /// Apply overrides from a raw file spec.
@@ -769,16 +768,17 @@ impl NumberSpec {
         if let Some(step) = self.step {
             let base = self.bounds.min().map_or(0.0f64, FiniteF64::get);
             let offset = (value - base).abs();
-            let remainder = offset % step.get();
+            let step = step.get();
+            let remainder = offset % step;
 
             // Use relative epsilon scaled to step size for robust comparison
             // across different magnitudes (handles both large and tiny steps)
-            let epsilon = step.get().abs() * 1e-10f64;
+            let epsilon = step.abs() * 1e-10f64;
 
-            if remainder > epsilon && (step.get() - remainder) > epsilon {
+            if remainder > epsilon && (step - remainder) > epsilon {
                 return Err(SchemaError::InvalidStepValue {
                     value,
-                    step: step.get(),
+                    step,
                 });
             }
         }
@@ -826,8 +826,9 @@ impl NumberSpec {
             }
         }
         if let Some(step) = self.step {
+            let step = step.get();
             hasher.update(&[1u8]);
-            hasher.update(&step.get().to_le_bytes());
+            hasher.update(&step.to_le_bytes());
         } else {
             hasher.update(&[0u8]);
         }
@@ -1022,28 +1023,22 @@ impl StringSpec {
             hasher.update(&(entries.len() as u64).to_le_bytes());
             for entry in entries {
                 hasher.update(entry.value.as_bytes());
-                if let Some(label) = entry.label.as_ref() {
-                    hasher.update(&[1u8]);
-                    hasher.update(label.as_bytes());
-                } else {
-                    hasher.update(&[0u8]);
-                }
+                hash_optional_bytes(
+                    hasher,
+                    entry.label.as_ref().map(|label| label.as_bytes()),
+                );
             }
         } else {
             hasher.update(&0u64.to_le_bytes());
         }
-        if let Some(pattern) = self.pattern.as_ref() {
-            hasher.update(&[1u8]);
-            hasher.update(pattern.as_bytes());
-        } else {
-            hasher.update(&[0u8]);
-        }
-        if let Some(format) = self.format {
-            hasher.update(&[1u8]);
-            hasher.update(format.name().as_bytes());
-        } else {
-            hasher.update(&[0u8]);
-        }
+        hash_optional_bytes(
+            hasher,
+            self.pattern.as_ref().map(|pattern| pattern.as_bytes()),
+        );
+        hash_optional_bytes(
+            hasher,
+            self.format.map(|format| format.name().as_bytes()),
+        );
     }
 
     /// Apply overrides from a raw string spec.
@@ -1225,6 +1220,26 @@ fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
     }
 
     Ok(())
+}
+
+#[inline]
+fn hash_optional_bytes(hasher: &mut blake3::Hasher, value: Option<&[u8]>) {
+    if let Some(bytes) = value {
+        hasher.update(&[1u8]);
+        hasher.update(bytes);
+    } else {
+        hasher.update(&[0u8]);
+    }
+}
+
+#[inline]
+fn hash_tagged(
+    hasher: &mut blake3::Hasher,
+    tag: u8,
+    f: impl FnOnce(&mut blake3::Hasher),
+) {
+    hasher.update(&[tag]);
+    f(hasher);
 }
 
 /// Cache for user-defined custom regex patterns.
