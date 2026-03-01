@@ -353,7 +353,7 @@ struct ParseState<'config, 'source> {
     metadata_kind: Option<pulldown_cmark::MetadataBlockKind>,
     list_stack: Vec<List>,
     current_item: Option<ItemState>,
-    current_heading: Option<HeadingState>,
+    heading_collector: HeadingCollector,
     link_collector: LinkCollector,
     code_block_depth: u32,
 }
@@ -374,7 +374,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
             metadata_kind: None,
             list_stack: Vec::with_capacity(4),
             current_item: None,
-            current_heading: None,
+            heading_collector: HeadingCollector::new(),
             link_collector: LinkCollector::new(),
             code_block_depth: 0,
         }
@@ -426,7 +426,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
             CmarkTag::Heading {
                 level,
                 ..
-            } => self.start_heading(level, position)?,
+            } => self.heading_collector.start_heading(level, position)?,
             CmarkTag::MetadataBlock(kind) => self.start_metadata_block(kind),
             CmarkTag::Link {
                 link_type,
@@ -474,7 +474,10 @@ impl<'config, 'source> ParseState<'config, 'source> {
             }
             TagEnd::Item => self.end_item()?,
             TagEnd::Heading(_) => {
-                self.end_heading()?;
+                self.heading_collector.end_heading(
+                    &mut self.headings,
+                    &mut self.section_collector,
+                )?;
                 close_block = true;
             }
             TagEnd::Link | TagEnd::Image => {
@@ -523,9 +526,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
 
         self.link_collector.collect_alias_text(text);
 
-        if let Some(heading) = self.current_heading.as_mut() {
-            heading.text.push_str(text);
-        }
+        self.heading_collector.push_text(text);
         if let Some(item) = self.current_item.as_mut() {
             item.text.push_str(text);
             if !is_code && !self.link_collector.has_open_link() {
@@ -542,9 +543,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
 
         self.link_collector.collect_alias_break();
 
-        if let Some(heading) = self.current_heading.as_mut() {
-            heading.text.push(' ');
-        }
+        self.heading_collector.push_break();
         if let Some(item) = self.current_item.as_mut() {
             item.text.push(' ');
             if !self.link_collector.has_open_link()
@@ -643,50 +642,6 @@ impl<'config, 'source> ParseState<'config, 'source> {
             tags: self.tag_collector.take_tags(),
             frontmatter: self.frontmatter,
         })
-    }
-
-    #[tracing::instrument(skip(self, level, position), level = "debug")]
-    fn start_heading(
-        &mut self,
-        level: pulldown_cmark::HeadingLevel,
-        position: usize,
-    ) -> Result<(), NoteError> {
-        let level = match level {
-            pulldown_cmark::HeadingLevel::H1 => HeadingLevel::try_new(1)?,
-            pulldown_cmark::HeadingLevel::H2 => HeadingLevel::try_new(2)?,
-            pulldown_cmark::HeadingLevel::H3 => HeadingLevel::try_new(3)?,
-            pulldown_cmark::HeadingLevel::H4 => HeadingLevel::try_new(4)?,
-            pulldown_cmark::HeadingLevel::H5 => HeadingLevel::try_new(5)?,
-            pulldown_cmark::HeadingLevel::H6 => HeadingLevel::try_new(6)?,
-        };
-
-        let position = parse_offset(position)?;
-
-        self.current_heading = Some(HeadingState {
-            level,
-            text: String::new(),
-            position,
-        });
-
-        Ok(())
-    }
-
-    #[tracing::instrument(skip(self), level = "debug")]
-    fn end_heading(&mut self) -> Result<(), NoteError> {
-        let Some(heading_state) = self.current_heading.take() else {
-            return Ok(());
-        };
-
-        let heading = Heading::new(
-            heading_state.level,
-            heading_state.text,
-            heading_state.position,
-        )?;
-
-        self.section_collector.maybe_assign_heading(&heading);
-
-        self.headings.push(heading);
-        Ok(())
     }
 
     #[tracing::instrument(skip(self), level = "debug")]
@@ -883,6 +838,76 @@ struct HeadingState {
     level: HeadingLevel,
     text: String,
     position: SourceByteOffset,
+}
+
+#[derive(Debug, Default)]
+struct HeadingCollector {
+    current: Option<HeadingState>,
+}
+
+impl HeadingCollector {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    #[tracing::instrument(skip(self, level, position), level = "debug")]
+    fn start_heading(
+        &mut self,
+        level: pulldown_cmark::HeadingLevel,
+        position: usize,
+    ) -> Result<(), NoteError> {
+        let level = match level {
+            pulldown_cmark::HeadingLevel::H1 => HeadingLevel::try_new(1)?,
+            pulldown_cmark::HeadingLevel::H2 => HeadingLevel::try_new(2)?,
+            pulldown_cmark::HeadingLevel::H3 => HeadingLevel::try_new(3)?,
+            pulldown_cmark::HeadingLevel::H4 => HeadingLevel::try_new(4)?,
+            pulldown_cmark::HeadingLevel::H5 => HeadingLevel::try_new(5)?,
+            pulldown_cmark::HeadingLevel::H6 => HeadingLevel::try_new(6)?,
+        };
+
+        let position = parse_offset(position)?;
+
+        self.current = Some(HeadingState {
+            level,
+            text: String::new(),
+            position,
+        });
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, headings, sections), level = "debug")]
+    fn end_heading(
+        &mut self,
+        headings: &mut Vec<Heading>,
+        sections: &mut SectionCollector<'_>,
+    ) -> Result<(), NoteError> {
+        let Some(heading_state) = self.current.take() else {
+            return Ok(());
+        };
+
+        let heading = Heading::new(
+            heading_state.level,
+            heading_state.text,
+            heading_state.position,
+        )?;
+
+        sections.maybe_assign_heading(&heading);
+        headings.push(heading);
+        Ok(())
+    }
+
+    fn push_text(&mut self, text: &str) {
+        if let Some(heading) = self.current.as_mut() {
+            heading.text.push_str(text);
+        }
+    }
+
+    fn push_break(&mut self) {
+        if let Some(heading) = self.current.as_mut() {
+            heading.text.push(' ');
+        }
+    }
 }
 
 #[derive(Debug)]
