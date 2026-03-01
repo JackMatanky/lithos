@@ -2,7 +2,6 @@
 //!
 //! Provides validated vault-relative paths for notes and folders.
 #![allow(
-    missing_docs,
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
     reason = "rkyv derives generate archived/resolver items that are missing \
@@ -79,6 +78,7 @@ impl NotePath {
     /// Returns the path as a string slice.
     #[inline]
     #[must_use]
+    /// Returns the folder path as a string slice.
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
@@ -124,6 +124,7 @@ impl FolderPath {
         Ok(Self(relative))
     }
 
+    /// Returns the folder path as a string slice.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -262,10 +263,6 @@ impl RelativePath {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::panic_in_result_fn,
-    reason = "Tests use assertions in Result-returning functions."
-)]
 mod tests {
     use super::*;
 
@@ -300,9 +297,8 @@ mod tests {
     }
 
     #[test]
-    fn accepts_valid_vault_path() -> Result<(), NoteError> {
-        let path = NotePath::new("folder/note.md")?;
+    fn accepts_valid_vault_path() {
+        let path = NotePath::new("folder/note.md").unwrap();
         assert_eq!(path.as_str(), "folder/note.md");
-        Ok(())
     }
 }
