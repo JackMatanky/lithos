@@ -180,6 +180,13 @@ impl TaskAttributes {
     pub fn builder() -> TaskAttributesBuilder {
         TaskAttributesBuilder::default()
     }
+
+    /// Returns the schedule timestamps for the task attributes.
+    #[inline]
+    #[must_use]
+    pub fn schedule(&self) -> &TaskSchedule {
+        &self.schedule
+    }
 }
 
 /// Builder for [`TaskAttributes`].
@@ -222,6 +229,14 @@ impl TaskAttributesBuilder {
     #[must_use]
     pub fn metadata(mut self, metadata: TaskMetadata) -> Self {
         self.metadata = metadata;
+        self
+    }
+
+    /// Sets the task schedule timestamps.
+    #[inline]
+    #[must_use]
+    pub fn schedule(mut self, schedule: TaskSchedule) -> Self {
+        self.schedule = schedule;
         self
     }
 
@@ -361,6 +376,13 @@ impl Task {
     #[must_use]
     pub const fn metadata(&self) -> &TaskMetadata {
         &self.metadata
+    }
+
+    /// Returns the schedule timestamps for the task.
+    #[inline]
+    #[must_use]
+    pub fn schedule(&self) -> &TaskSchedule {
+        &self.schedule
     }
 }
 
