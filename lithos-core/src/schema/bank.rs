@@ -355,6 +355,10 @@ impl PropertyBank {
 
     /// Gets a property by name or ID (string).
     ///
+    /// # Errors
+    /// Returns `SchemaError::PropertyNotFound` if the property does not exist
+    /// or `SchemaError::InvalidPropertyName` if the name is invalid.
+    ///
     /// # Examples
     ///
     /// ```
@@ -362,21 +366,21 @@ impl PropertyBank {
     ///
     /// let bank = PropertyBank::new();
     ///
-    /// assert!(bank.get("any").is_none(), "Missing property should be None");
+    /// assert!(bank.get("any").is_err(), "Missing property should error");
     /// ```
     #[inline]
-    #[must_use]
-    pub fn get(&self, key: &str) -> Option<&Property> {
+    pub fn get(&self, key: &str) -> Result<&Property, SchemaError> {
         // Try by ID first
         if let Ok(id) = Uuid::parse_str(key)
             && let Some(prop) = self.get_by_id(PropertyId::from_uuid(id))
         {
-            return Some(prop);
+            return Ok(prop);
         }
 
         // Fall back to name lookup
-        let name = PropertyName::try_from(key).ok()?;
+        let name = PropertyName::try_from(key)?;
         self.get_by_name(&name)
+            .ok_or_else(|| SchemaError::PropertyNotFound(key.into()))
     }
 
     /// Decodes a `$ref` path to a Property.
@@ -400,17 +404,7 @@ impl PropertyBank {
     /// ```
     #[inline]
     pub fn decode(&self, key: &str) -> Result<&Property, SchemaError> {
-        // Try parsing key as UUID first
-        if let Ok(id) = Uuid::parse_str(key)
-            && let Some(prop) = self.get_by_id(PropertyId::from_uuid(id))
-        {
-            return Ok(prop);
-        }
-
-        // Fall back to name lookup
-        let name = PropertyName::try_from(key)?;
-        self.get_by_name(&name)
-            .ok_or_else(|| SchemaError::PropertyNotFound(key.into()))
+        self.get(key)
     }
 
     /// Checks if a property exists by ID.
@@ -1003,7 +997,7 @@ mod tests {
                 .expect("Valid property bank fixture");
 
             assert!(
-                bank.get(id.as_uuid().to_string().as_str()).is_some(),
+                bank.get(id.as_uuid().to_string().as_str()).is_ok(),
                 "Should retrieve property by ID string: {id:?}"
             );
         }
