@@ -11,15 +11,14 @@ use crate::{
     config::{frontmatter::FrontmatterKey, task::StatusName},
     db::Database,
     note::{
-        aggregate::{
-            AliasName, FileClassName, FolderPath, Note, NoteId, NotePath,
-        },
+        aggregate::{AliasName, FileClassName, Note, NoteId},
         db_table::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
             PATH_TO_ID, TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
             TASKS_BY_DUE_DATE, TASKS_BY_PRIORITY, TASKS_BY_PROJECT,
             TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
         },
+        path::{FolderPath, NotePath},
         ports::Query,
         task::{TaskPriority, TaskTimestamp},
     },
@@ -270,8 +269,9 @@ mod tests {
             },
             note::{
                 adapter::command::CommandAdapter,
-                aggregate::{Note, NoteId, NotePath},
+                aggregate::{Note, NoteId},
                 frontmatter::Frontmatter,
+                path::NotePath,
                 ports::Command,
                 position::SourceByteOffset,
                 task::{Task, TaskAttributes, TaskMetadata, TaskTimestamp},

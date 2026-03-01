@@ -14,7 +14,8 @@
 //! Async wrappers should be added at the CLI/LSP boundary if needed.
 
 use super::{
-    aggregate::{AliasName, FileClassName, FolderPath, Note, NoteId, NotePath},
+    aggregate::{AliasName, FileClassName, Note, NoteId},
+    path::{FolderPath, NotePath},
     task::{TaskPriority, TaskTimestamp},
 };
 use crate::config::{frontmatter::FrontmatterKey, task::StatusName};

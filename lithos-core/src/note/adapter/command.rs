@@ -11,7 +11,7 @@ use crate::{
     config::aggregate::Config,
     db::{BatchWriter, Database, DbError},
     note::{
-        aggregate::{Note, NoteId, NotePath},
+        aggregate::{Note, NoteId},
         db_table::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
             PATH_TO_ID, TAGS_TO_NOTES, TASKS_BY_COMPLETED_DATE,
@@ -20,6 +20,7 @@ use crate::{
         },
         error::NoteError,
         frontmatter::Frontmatter,
+        path::NotePath,
         ports::Command,
         value::FieldValue,
     },
@@ -458,10 +459,7 @@ mod tests {
                 raw::RawConfig,
                 vault::{VaultId, VaultRoot},
             },
-            note::{
-                aggregate::{NoteId, NotePath},
-                tag::Tag,
-            },
+            note::{aggregate::NoteId, path::NotePath, tag::Tag},
         };
 
         // pub const TEST_MISSING_ID: Uuid =

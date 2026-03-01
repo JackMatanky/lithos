@@ -4,8 +4,9 @@
 //! through the note command port.
 
 use super::{
-    aggregate::{Note, NoteId, NotePath},
+    aggregate::{Note, NoteId},
     error::NoteCommandError,
+    path::NotePath,
     ports as note_ports,
 };
 
