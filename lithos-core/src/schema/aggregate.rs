@@ -53,15 +53,6 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
-/// Unix timestamp in seconds.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::aggregate::Timestamp;
-///
-/// let ts = Timestamp::from_secs(1_234);
-/// assert_eq!(ts.as_secs(), 1_234);
-/// ```
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
@@ -148,14 +139,7 @@ impl<'de> serde::Deserialize<'de> for Schema {
 
         let de = SchemaDe::deserialize(deserializer)?;
         // Convert Vec<Property> to BTreeMap<PropertyName, Arc<Property>>
-        let properties: BTreeMap<PropertyName, Arc<Property>> = de
-            .properties
-            .into_iter()
-            .map(|p| {
-                let prop_name = p.name().clone();
-                (prop_name, Arc::new(p))
-            })
-            .collect();
+        let properties = Schema::to_property_map(de.properties);
 
         Ok(Self {
             id: de.id,
@@ -168,6 +152,19 @@ impl<'de> serde::Deserialize<'de> for Schema {
 }
 
 impl Schema {
+    #[inline]
+    fn to_property_map(
+        properties: Vec<Property>,
+    ) -> BTreeMap<PropertyName, Arc<Property>> {
+        properties
+            .into_iter()
+            .map(|p| {
+                let prop_name = p.name().clone();
+                (prop_name, Arc::new(p))
+            })
+            .collect()
+    }
+
     /// Create a new resolved Schema.
     ///
     /// This constructor is intended for genuinely new schemas. It emits both
@@ -200,13 +197,7 @@ impl Schema {
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
         // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
-        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
-            .into_iter()
-            .map(|p| {
-                let prop_name = p.name().clone();
-                (prop_name, Arc::new(p))
-            })
-            .collect();
+        let properties = Self::to_property_map(properties);
 
         let mut schema = Self {
             id,
@@ -257,13 +248,7 @@ impl Schema {
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
         // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
-        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
-            .into_iter()
-            .map(|p| {
-                let prop_name = p.name().clone();
-                (prop_name, Arc::new(p))
-            })
-            .collect();
+        let properties = Self::to_property_map(properties);
 
         let mut schema = Self {
             id,
@@ -295,13 +280,7 @@ impl Schema {
         properties: Vec<Property>,
     ) -> Self {
         // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
-        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
-            .into_iter()
-            .map(|p| {
-                let prop_name = p.name().clone();
-                (prop_name, Arc::new(p))
-            })
-            .collect();
+        let properties = Self::to_property_map(properties);
 
         Self {
             id,
