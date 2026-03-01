@@ -115,6 +115,114 @@ impl NoteContent {
     }
 }
 
+/// Borrowed iterator over note links.
+pub struct NoteLinks<'note> {
+    inner: std::slice::Iter<'note, Link>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "NoteLinks relies on default iterator methods."
+)]
+impl<'note> Iterator for NoteLinks<'note> {
+    type Item = &'note Link;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+/// Borrowed iterator over note tags.
+pub struct NoteTags<'note> {
+    inner: std::slice::Iter<'note, Tag>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "NoteTags relies on default iterator methods."
+)]
+impl<'note> Iterator for NoteTags<'note> {
+    type Item = &'note Tag;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+/// Borrowed iterator over note headings.
+pub struct NoteHeadings<'note> {
+    inner: std::slice::Iter<'note, Heading>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "NoteHeadings relies on default iterator methods."
+)]
+impl<'note> Iterator for NoteHeadings<'note> {
+    type Item = &'note Heading;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+/// Borrowed iterator over note tasks.
+pub struct NoteTasks<'note> {
+    inner: std::slice::Iter<'note, Task>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "NoteTasks relies on default iterator methods."
+)]
+impl<'note> Iterator for NoteTasks<'note> {
+    type Item = &'note Task;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+/// Borrowed iterator over note lists.
+pub struct NoteLists<'note> {
+    inner: std::slice::Iter<'note, List>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "NoteLists relies on default iterator methods."
+)]
+impl<'note> Iterator for NoteLists<'note> {
+    type Item = &'note List;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+/// Borrowed iterator over note sections.
+pub struct NoteSections<'note> {
+    inner: std::slice::Iter<'note, Section>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "NoteSections relies on default iterator methods."
+)]
+impl<'note> Iterator for NoteSections<'note> {
+    type Item = &'note Section;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
 impl Note {
     /// Creates a new [`Note`] with the given ID and path.
     ///
@@ -181,8 +289,11 @@ impl Note {
 
     /// Returns an iterator over all links in this note.
     #[inline]
-    pub fn links(&self) -> impl Iterator<Item = &Link> {
-        self.content.links.iter()
+    #[must_use]
+    pub fn links(&self) -> NoteLinks<'_> {
+        NoteLinks {
+            inner: self.content.links.iter(),
+        }
     }
 
     /// Adds a link to the note.
@@ -193,8 +304,11 @@ impl Note {
 
     /// Returns an iterator over all tags in this note.
     #[inline]
-    pub fn tags(&self) -> impl Iterator<Item = &Tag> {
-        self.content.tags.iter()
+    #[must_use]
+    pub fn tags(&self) -> NoteTags<'_> {
+        NoteTags {
+            inner: self.content.tags.iter(),
+        }
     }
 
     /// Adds a tag to the note.
@@ -205,8 +319,11 @@ impl Note {
 
     /// Returns an iterator over all headings in this note.
     #[inline]
-    pub fn headings(&self) -> impl Iterator<Item = &Heading> {
-        self.content.headings.iter()
+    #[must_use]
+    pub fn headings(&self) -> NoteHeadings<'_> {
+        NoteHeadings {
+            inner: self.content.headings.iter(),
+        }
     }
 
     /// Adds a heading to the note.
@@ -217,8 +334,11 @@ impl Note {
 
     /// Returns an iterator over all tasks in this note.
     #[inline]
-    pub fn tasks(&self) -> impl Iterator<Item = &Task> {
-        self.content.tasks.iter()
+    #[must_use]
+    pub fn tasks(&self) -> NoteTasks<'_> {
+        NoteTasks {
+            inner: self.content.tasks.iter(),
+        }
     }
 
     /// Adds a task to the note.
@@ -229,8 +349,11 @@ impl Note {
 
     /// Returns an iterator over all lists in this note.
     #[inline]
-    pub fn lists(&self) -> impl Iterator<Item = &List> {
-        self.content.lists.iter()
+    #[must_use]
+    pub fn lists(&self) -> NoteLists<'_> {
+        NoteLists {
+            inner: self.content.lists.iter(),
+        }
     }
 
     /// Adds a list to the note.
@@ -241,8 +364,11 @@ impl Note {
 
     /// Returns an iterator over all sections in this note.
     #[inline]
-    pub fn sections(&self) -> impl Iterator<Item = &Section> {
-        self.content.sections.iter()
+    #[must_use]
+    pub fn sections(&self) -> NoteSections<'_> {
+        NoteSections {
+            inner: self.content.sections.iter(),
+        }
     }
 
     /// Adds a section to the note.
