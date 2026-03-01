@@ -32,7 +32,7 @@ use super::error::{NoteError, TagError};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let tag = Tag::new("#work/project/urgent")?;
 /// assert_eq!(tag.full_path(), "work/project/urgent");
-/// assert_eq!(tag.segments().len(), 3);
+/// assert_eq!(tag.segments().count(), 3);
 /// # Ok(())
 /// # }
 /// ```
@@ -111,8 +111,10 @@ impl Tag {
     /// Returns the individual segments of the tag.
     #[inline]
     #[must_use]
-    pub fn segments(&self) -> &[Box<str>] {
-        &self.segments.0
+    pub fn segments(&self) -> TagSegments<'_> {
+        TagSegments {
+            inner: self.segments.0.iter(),
+        }
     }
 }
 
@@ -155,6 +157,24 @@ impl Deref for TagPath {
 )]
 #[rkyv(derive(Debug))]
 struct Segments(Vec<Box<str>>);
+
+/// Borrowed iterator over tag segments.
+pub struct TagSegments<'tag> {
+    inner: std::slice::Iter<'tag, Box<str>>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "TagSegments relies on default iterator methods."
+)]
+impl<'tag> Iterator for TagSegments<'tag> {
+    type Item = &'tag str;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(Box::as_ref)
+    }
+}
 
 impl Deref for Segments {
     type Target = [Box<str>];
@@ -214,16 +234,21 @@ mod tests {
         #[test]
         fn segments_length_matches_expected() -> Result<(), NoteError> {
             let tag = tag_with_project_path()?;
-            assert_eq!(tag.segments().len(), 2, "Segments length should match");
+            assert_eq!(
+                tag.segments().count(),
+                2,
+                "Segments length should match"
+            );
             Ok(())
         }
 
         #[test]
         fn segments_match_expected_values() -> Result<(), NoteError> {
             let tag = tag_with_project_path()?;
+            let segments: Vec<&str> = tag.segments().collect();
             assert_eq!(
-                tag.segments(),
-                &["work".into(), "project".into()],
+                segments,
+                vec!["work", "project"],
                 "Segments should match expected values"
             );
             Ok(())
@@ -240,8 +265,7 @@ mod tests {
             #[case] expected: Vec<&str>,
         ) -> Result<(), NoteError> {
             let tag = Tag::new(input)?;
-            let actual_segments: Vec<&str> =
-                tag.segments().iter().map(AsRef::as_ref).collect();
+            let actual_segments: Vec<&str> = tag.segments().collect();
             assert_eq!(
                 actual_segments, expected,
                 "Tag segments should match expected for input: {input}"
