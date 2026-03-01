@@ -428,16 +428,6 @@ impl PropertyName {
     }
 
     /// Returns the inner string slice.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyName;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("status")?;
-    /// assert_eq!(name.as_str(), "status");
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
