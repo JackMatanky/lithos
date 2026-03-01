@@ -385,8 +385,9 @@ impl<'config, 'source> ParseState<'config, 'source> {
             Event::Start(tag) => self.handle_start_tag(tag, range.start)?,
             Event::End(tag_end) => self.handle_end_tag(tag_end)?,
             Event::TaskListMarker(checked) => {
-                self.item_collector
-                    .set_status(status_symbol_from_marker(checked)?);
+                self.item_collector.set_status(
+                    ItemCollector::status_symbol_from_marker(checked)?,
+                );
             }
             Event::Text(text) => self.handle_text(&text, false),
             Event::Code(text) => self.handle_text(&text, true),
@@ -836,6 +837,24 @@ impl ItemCollector {
             item.status = Some(status);
         }
     }
+
+    fn status_symbol_from_marker(
+        checked: bool,
+    ) -> Result<StatusSymbol, NoteError> {
+        // pulldown-cmark only exposes a checked boolean, so custom symbols in
+        // the source cannot be recovered here.
+        let symbol = if checked {
+            'x'
+        } else {
+            ' '
+        };
+        StatusSymbol::try_new(symbol).map_err(|error| {
+            NoteError::Task(TaskError::InvalidStatusSymbol {
+                symbol,
+                reason: error.to_string().into(),
+            })
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -1272,7 +1291,7 @@ impl LinkCollector {
             | PLinkType::Shortcut
             | PLinkType::ShortcutUnknown => {
                 let target = dest_url.as_ref();
-                let is_external = is_external_link(link_type, target);
+                let is_external = Self::is_external_link(link_type, target);
                 self.current = Some(LinkState {
                     target: target.into(),
                     alias: None,
@@ -1361,7 +1380,7 @@ impl LinkCollector {
         };
 
         if state.is_markdown_image {
-            let embed_type = determine_embed_type(target_str);
+            let embed_type = Self::determine_embed_type(target_str);
             Link::new_markdown_embed(
                 target,
                 embed_type,
@@ -1369,7 +1388,7 @@ impl LinkCollector {
                 state.position,
             )
         } else if state.is_embed {
-            let embed_type = determine_embed_type(target_str);
+            let embed_type = Self::determine_embed_type(target_str);
             Link::new_embed(
                 target,
                 embed_type,
@@ -1393,6 +1412,77 @@ impl LinkCollector {
             )
         }
     }
+
+    /// Determine embed type from file extension.
+    fn determine_embed_type(path: &str) -> EmbedType {
+        let Some((_, ext)) = path.rsplit_once('.') else {
+            return EmbedType::Note;
+        };
+
+        // Use case-insensitive comparison without allocation
+        if ext.eq_ignore_ascii_case("png")
+            || ext.eq_ignore_ascii_case("jpg")
+            || ext.eq_ignore_ascii_case("jpeg")
+            || ext.eq_ignore_ascii_case("gif")
+            || ext.eq_ignore_ascii_case("svg")
+            || ext.eq_ignore_ascii_case("webp")
+        {
+            return EmbedType::Image;
+        }
+
+        if ext.eq_ignore_ascii_case("mp4")
+            || ext.eq_ignore_ascii_case("webm")
+            || ext.eq_ignore_ascii_case("ogv")
+            || ext.eq_ignore_ascii_case("mov")
+        {
+            return EmbedType::Video;
+        }
+
+        if ext.eq_ignore_ascii_case("mp3")
+            || ext.eq_ignore_ascii_case("wav")
+            || ext.eq_ignore_ascii_case("ogg")
+            || ext.eq_ignore_ascii_case("m4a")
+        {
+            return EmbedType::Audio;
+        }
+
+        if ext.eq_ignore_ascii_case("pdf") {
+            return EmbedType::Pdf;
+        }
+
+        EmbedType::Note
+    }
+
+    /// Check if link target should be treated as external.
+    fn is_external_link(
+        link_type: pulldown_cmark::LinkType,
+        target: &str,
+    ) -> bool {
+        matches!(
+            link_type,
+            pulldown_cmark::LinkType::Autolink
+                | pulldown_cmark::LinkType::Email
+        ) || Self::has_scheme(target)
+    }
+
+    fn has_scheme(target: &str) -> bool {
+        let mut chars = target.chars();
+        let Some(first) = chars.next() else {
+            return false;
+        };
+        if !first.is_ascii_alphabetic() {
+            return false;
+        }
+        for ch in chars {
+            if ch == ':' {
+                return true;
+            }
+            if !(ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.')) {
+                return false;
+            }
+        }
+        false
+    }
 }
 
 fn is_block_tag(tag: &CmarkTag<'_>) -> bool {
@@ -1410,94 +1500,11 @@ fn is_block_tag(tag: &CmarkTag<'_>) -> bool {
     )
 }
 
-/// Determine embed type from file extension.
-fn determine_embed_type(path: &str) -> EmbedType {
-    let Some((_, ext)) = path.rsplit_once('.') else {
-        return EmbedType::Note;
-    };
-
-    // Use case-insensitive comparison without allocation
-    if ext.eq_ignore_ascii_case("png")
-        || ext.eq_ignore_ascii_case("jpg")
-        || ext.eq_ignore_ascii_case("jpeg")
-        || ext.eq_ignore_ascii_case("gif")
-        || ext.eq_ignore_ascii_case("svg")
-        || ext.eq_ignore_ascii_case("webp")
-    {
-        return EmbedType::Image;
-    }
-
-    if ext.eq_ignore_ascii_case("mp4")
-        || ext.eq_ignore_ascii_case("webm")
-        || ext.eq_ignore_ascii_case("ogv")
-        || ext.eq_ignore_ascii_case("mov")
-    {
-        return EmbedType::Video;
-    }
-
-    if ext.eq_ignore_ascii_case("mp3")
-        || ext.eq_ignore_ascii_case("wav")
-        || ext.eq_ignore_ascii_case("ogg")
-        || ext.eq_ignore_ascii_case("m4a")
-    {
-        return EmbedType::Audio;
-    }
-
-    if ext.eq_ignore_ascii_case("pdf") {
-        return EmbedType::Pdf;
-    }
-
-    EmbedType::Note
-}
-
-/// Check if link target should be treated as external.
-fn is_external_link(link_type: pulldown_cmark::LinkType, target: &str) -> bool {
-    matches!(
-        link_type,
-        pulldown_cmark::LinkType::Autolink | pulldown_cmark::LinkType::Email
-    ) || has_scheme(target)
-}
-
-fn has_scheme(target: &str) -> bool {
-    let mut chars = target.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if !first.is_ascii_alphabetic() {
-        return false;
-    }
-    for ch in chars {
-        if ch == ':' {
-            return true;
-        }
-        if !(ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.')) {
-            return false;
-        }
-    }
-    false
-}
-
 fn parse_offset(offset: usize) -> Result<SourceByteOffset, NoteError> {
     SourceByteOffset::try_from(offset).map_err(|error| {
         NoteError::Structure(
             format!("source offset out of range: {error}").into(),
         )
-    })
-}
-
-fn status_symbol_from_marker(checked: bool) -> Result<StatusSymbol, NoteError> {
-    // pulldown-cmark only exposes a checked boolean, so custom symbols in the
-    // source cannot be recovered here.
-    let symbol = if checked {
-        'x'
-    } else {
-        ' '
-    };
-    StatusSymbol::try_new(symbol).map_err(|error| {
-        NoteError::Task(TaskError::InvalidStatusSymbol {
-            symbol,
-            reason: error.to_string().into(),
-        })
     })
 }
 
