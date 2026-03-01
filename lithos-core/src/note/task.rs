@@ -64,7 +64,7 @@ use crate::config::task::StatusName;
 pub struct Task {
     id: TaskId,
     status: StatusName,
-    text: Box<str>,
+    text: TaskText,
     position: SourceByteOffset,
     tags: Vec<Tag>,
     metadata: TaskMetadata,
@@ -217,6 +217,53 @@ pub struct TaskSchedule {
     completed: Option<TaskTimestamp>,
 }
 
+/// Validated task text content.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct TaskText(Box<str>);
+
+impl TaskText {
+    /// Creates a validated task text value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Task`] if the text is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        Self::try_from_boxed(value.into())
+    }
+
+    /// Creates a validated task text value from a boxed string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Task`] if the text is empty.
+    #[inline]
+    pub fn try_from_boxed(value: Box<str>) -> Result<Self, NoteError> {
+        if value.trim().is_empty() {
+            return Err(NoteError::Task(TaskError::EmptyText));
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the underlying text as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl TaskAttributesBuilder {
     #[inline]
     #[must_use]
@@ -292,10 +339,7 @@ impl Task {
         position: SourceByteOffset,
         attributes: TaskAttributes,
     ) -> Result<Self, NoteError> {
-        let text = text.into();
-        if text.trim().is_empty() {
-            return Err(NoteError::Task(TaskError::EmptyText));
-        }
+        let text = TaskText::try_from_boxed(text.into())?;
 
         Ok(Self {
             id: TaskId::new(),
@@ -326,7 +370,7 @@ impl Task {
     #[inline]
     #[must_use]
     pub fn text(&self) -> &str {
-        &self.text
+        self.text.as_str()
     }
 
     /// Returns the byte position of the task in the note source.
