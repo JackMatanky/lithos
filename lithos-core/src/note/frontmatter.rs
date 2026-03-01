@@ -100,8 +100,10 @@ impl Frontmatter {
 
     #[inline]
     #[must_use]
-    pub(crate) fn fields(&self) -> &HashMap<Box<str>, FieldValue> {
-        &self.fields
+    pub(crate) fn fields(&self) -> FrontmatterFields<'_> {
+        FrontmatterFields {
+            inner: self.fields.iter(),
+        }
     }
 
     /// Strictly extracts a typed value from frontmatter.
@@ -431,7 +433,25 @@ pub fn as_string_array_lossy(value: &FieldValue) -> Option<Vec<Box<str>>> {
     value.as_str().map(|s| vec![s.into()])
 }
 
-/// Borrowed alias iterator returned by [`Frontmatter::aliases_ref`].
+/// Borrowed frontmatter fields iterator.
+pub(crate) struct FrontmatterFields<'frontmatter> {
+    inner: std::collections::hash_map::Iter<'frontmatter, Box<str>, FieldValue>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "FrontmatterFields relies on default iterator methods."
+)]
+impl<'frontmatter> Iterator for FrontmatterFields<'frontmatter> {
+    type Item = (&'frontmatter str, &'frontmatter FieldValue);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(key, value)| (key.as_ref(), value))
+    }
+}
+
+/// Borrowed alias iterator returned by [`Frontmatter::aliases`].
 pub struct AliasValues<'frontmatter> {
     source: AliasSource<'frontmatter>,
 }

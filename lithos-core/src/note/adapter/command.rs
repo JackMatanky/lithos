@@ -299,8 +299,8 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
 
     fn frontmatter_entries(frontmatter: &Frontmatter) -> Vec<Box<str>> {
         let mut entries = Vec::new();
-        let mut fields: Vec<_> = frontmatter.fields().iter().collect();
-        fields.sort_by(|left, right| left.0.as_ref().cmp(right.0.as_ref()));
+        let mut fields: Vec<_> = frontmatter.fields().collect();
+        fields.sort_by(|left, right| left.0.cmp(right.0));
 
         for (key, value) in fields {
             let values = field_value_index_values(value);
@@ -308,7 +308,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
                 let capacity =
                     key.len().saturating_add(value_str.len()).saturating_add(1);
                 let mut combined = String::with_capacity(capacity);
-                combined.push_str(key.as_ref());
+                combined.push_str(key);
                 combined.push(':');
                 combined.push_str(value_str.as_ref());
                 entries.push(combined.into_boxed_str());
