@@ -29,7 +29,7 @@ use lithos_core::{
         adapter::ingestor::Ingestor,
         aggregate::SchemaName,
         error::SchemaError,
-        property::{Cardinality, Multiplicity},
+        property::{Multiplicity, Optionality},
     },
 };
 use tempfile::TempDir;
@@ -141,7 +141,7 @@ fn multi_level_inheritance_resolves() -> TestResult {
 ///
 /// Verifies:
 /// - Child property with same name overrides parent
-/// - Cardinality and multiplicity reflect child definition
+/// - Optionality and multiplicity reflect child definition
 #[test]
 fn child_overrides_parent_property() -> TestResult {
     // GIVEN: Parent defines required property, child overrides to optional
@@ -200,7 +200,7 @@ fn child_overrides_parent_property() -> TestResult {
         .find(|p| p.name().as_str() == "title")
         .expect("title property should exist");
 
-    assert_eq!(title.cardinality(), Cardinality::Optional);
+    assert_eq!(title.optionality(), Optionality::Optional);
     assert_eq!(title.multiplicity(), Multiplicity::Many);
 
     Ok(())

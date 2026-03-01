@@ -36,7 +36,7 @@ use super::{
 /// ```
 /// # use lithos_core::schema::bank::PropertyBank;
 /// # use lithos_core::schema::property::{
-/// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+/// #     Multiplicity, Optionality, Property, PropertyId, PropertyName,
 /// # };
 /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -47,7 +47,7 @@ use super::{
 /// let property = Property::new(
 ///     id,
 ///     name.clone(),
-///     Cardinality::Required,
+///     Optionality::Required,
 ///     Multiplicity::Single,
 ///     spec,
 /// );
@@ -181,7 +181,7 @@ impl PropertyBank {
             let property = Property::new(
                 id,
                 prop_name,
-                super::property::Cardinality::Optional,
+                super::property::Optionality::Optional,
                 multiplicity,
                 spec,
             );
@@ -230,7 +230,7 @@ impl PropertyBank {
     /// use lithos_core::schema::{
     ///     bank::PropertyBank,
     ///     property::{
-    ///         Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+    ///         Multiplicity, Optionality, Property, PropertyId, PropertyName,
     ///     },
     ///     property_spec::{BoolSpec, PropertySpec},
     /// };
@@ -244,7 +244,7 @@ impl PropertyBank {
     /// let property = Property::new(
     ///     id,
     ///     name,
-    ///     Cardinality::Required,
+    ///     Optionality::Required,
     ///     Multiplicity::Single,
     ///     spec,
     /// );
@@ -746,7 +746,7 @@ mod tests {
     use super::{
         super::{
             property::{
-                Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+                Multiplicity, Optionality, Property, PropertyId, PropertyName,
             },
             property_spec::{BoolSpec, PropertySpec, StringSpec},
         },
@@ -762,7 +762,7 @@ mod tests {
             let property = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
                 PropertyName::new("flag")?,
-                Cardinality::Required,
+                Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
@@ -791,7 +791,7 @@ mod tests {
             let prop = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
                 name,
-                Cardinality::Optional,
+                Optionality::Optional,
                 Multiplicity::Single,
                 spec,
             );
@@ -823,7 +823,7 @@ mod tests {
             let prop1 = Property::new(
                 id,
                 name1,
-                Cardinality::Optional,
+                Optionality::Optional,
                 Multiplicity::Single,
                 spec1,
             );
@@ -836,7 +836,7 @@ mod tests {
             let prop2 = Property::new(
                 id,
                 name2,
-                Cardinality::Required,
+                Optionality::Required,
                 Multiplicity::Many,
                 spec2,
             );
@@ -914,7 +914,7 @@ mod tests {
             let prop1 = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
                 name.clone(),
-                Cardinality::Optional,
+                Optionality::Optional,
                 Multiplicity::Single,
                 spec1,
             );
@@ -925,7 +925,7 @@ mod tests {
             let prop2 = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_B),
                 name,
-                Cardinality::Optional,
+                Optionality::Optional,
                 Multiplicity::Single,
                 spec2,
             );

@@ -32,7 +32,7 @@ use lithos_core::{
         RedbSchemaCommand, RedbSchemaQuery,
         aggregate::{SchemaId, SchemaName},
         bank::{PropertyBank, PropertyBankId},
-        property::{Cardinality, Multiplicity, PropertyId, PropertyName},
+        property::{Multiplicity, Optionality, PropertyId, PropertyName},
     },
 };
 use uuid::Uuid;
@@ -953,22 +953,22 @@ mod schema {
         Ok(())
     }
 
-    /// **3.4-INT-023**: Schema properties with different cardinality persist.
+    /// **3.4-INT-023**: Schema properties with different optionality persist.
     ///
     /// Verifies:
     /// - Required and Optional properties both work
-    /// - Cardinality is preserved correctly
+    /// - Optionality is preserved correctly
     #[test]
-    fn cardinality_persists() -> TestResult {
-        // GIVEN: Schema with mixed cardinality
+    fn optionality_persists() -> TestResult {
+        // GIVEN: Schema with mixed optionality
         let test_db = TestDb::new()?;
         let (command, query) = setup_cqrs(test_db.db());
 
         let required = PropertyBuilder::new("title")
-            .cardinality(Cardinality::Required)
+            .optionality(Optionality::Required)
             .build_string_default()?;
         let optional = PropertyBuilder::new("description")
-            .cardinality(Cardinality::Optional)
+            .optionality(Optionality::Optional)
             .build_string_default()?;
 
         let schema = SchemaBuilder::new("test")
@@ -981,18 +981,18 @@ mod schema {
         let loaded =
             query.find_by_id(schema.id())?.expect("Schema should exist");
 
-        // THEN: Cardinality preserved
+        // THEN: Optionality preserved
         let title_prop = loaded
             .properties()
             .find(|p| p.name().as_str() == "title")
             .expect("title property should exist");
-        assert_eq!(title_prop.cardinality(), Cardinality::Required);
+        assert_eq!(title_prop.optionality(), Optionality::Required);
 
         let desc_prop = loaded
             .properties()
             .find(|p| p.name().as_str() == "description")
             .expect("description property should exist");
-        assert_eq!(desc_prop.cardinality(), Cardinality::Optional);
+        assert_eq!(desc_prop.optionality(), Optionality::Optional);
 
         Ok(())
     }

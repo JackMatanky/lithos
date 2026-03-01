@@ -26,7 +26,7 @@ use super::{
     bank::PropertyBank,
     error::SchemaError,
     property::{
-        Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+        Multiplicity, Optionality, Property, PropertyId, PropertyName,
         PropertyRef,
     },
     property_spec::PropertySpec,
@@ -148,12 +148,12 @@ impl<'bank> Dereferencer<'bank> {
             RawProperty::Inline(inline) => {
                 let prop_name = PropertyName::new(name)?;
                 let spec = inline.spec.try_into_validated()?;
-                let cardinality = Cardinality::from(inline.required);
+                let optionality = Optionality::from(inline.required);
                 let multiplicity = Multiplicity::from(inline.multi);
                 Ok(Property::new(
                     PropertyId::new(),
                     prop_name,
-                    cardinality,
+                    optionality,
                     multiplicity,
                     spec,
                 ))
@@ -183,15 +183,15 @@ impl<'bank> Dereferencer<'bank> {
             SchemaError::PropertyRefNotFound(ref_entry.ref_path.to_string())
         })?;
 
-        let cardinality =
-            ref_entry.required.map_or(base.cardinality(), Cardinality::from);
+        let optionality =
+            ref_entry.required.map_or(base.optionality(), Optionality::from);
         let multiplicity =
             ref_entry.multi.map_or(base.multiplicity(), Multiplicity::from);
 
         let spec = Self::apply_spec_overrides(base.spec(), ref_entry)?;
 
         let prop_name = PropertyName::new(name)?;
-        Ok(Property::new(base.id(), prop_name, cardinality, multiplicity, spec))
+        Ok(Property::new(base.id(), prop_name, optionality, multiplicity, spec))
     }
 
     /// Apply type-specific spec overrides, rejecting type changes (R-10).
@@ -323,7 +323,7 @@ mod tests {
     use crate::schema::{
         aggregate::SchemaId,
         bank::PropertyBank,
-        property::{Cardinality, Multiplicity, PropertyId, PropertyName},
+        property::{Multiplicity, Optionality, PropertyId, PropertyName},
         property_spec::{BoolSpec, PropertySpec},
         raw::{
             RawBoolSpec, RawDateSpec, RawFileSpec, RawNumberSpec, RawProperty,
@@ -339,7 +339,7 @@ mod tests {
             Ok(Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID),
                 PropertyName::new(name)?,
-                Cardinality::Required,
+                Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             ))
@@ -390,7 +390,7 @@ mod tests {
             let prop =
                 deref.deref_entry("flag", fixtures::inline_bool_entry())?;
             assert_eq!(prop.name().as_str(), "flag");
-            assert_eq!(prop.cardinality(), Cardinality::Required);
+            assert_eq!(prop.optionality(), Optionality::Required);
             assert_eq!(prop.multiplicity(), Multiplicity::Single);
             Ok(())
         }
@@ -409,7 +409,7 @@ mod tests {
         }
 
         #[test]
-        fn ref_overrides_cardinality_and_multiplicity()
+        fn ref_overrides_optionality_and_multiplicity()
         -> Result<(), SchemaError> {
             let base = fixtures::bool_property("status")?;
             let bank = fixtures::bank_with(base)?;
@@ -424,7 +424,7 @@ mod tests {
                 file: RawFileSpec::default(),
             });
             let prop = deref.deref_entry("status", entry)?;
-            assert_eq!(prop.cardinality(), Cardinality::Optional);
+            assert_eq!(prop.optionality(), Optionality::Optional);
             assert_eq!(prop.multiplicity(), Multiplicity::Many);
             Ok(())
         }

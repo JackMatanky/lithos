@@ -852,7 +852,7 @@ mod tests {
     use super::{
         super::{
             property::{
-                Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+                Multiplicity, Optionality, Property, PropertyId, PropertyName,
             },
             property_spec::{BoolSpec, PropertySpec},
         },
@@ -867,7 +867,7 @@ mod tests {
             let property = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_C),
                 PropertyName::new("flag")?,
-                Cardinality::Required,
+                Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );

@@ -9,7 +9,7 @@ use super::super::{
     aggregate::{Schema, SchemaId, SchemaName, Timestamp},
     bank::BankVersion,
     error::SchemaError,
-    property::{Cardinality, Multiplicity, Property, PropertyId, PropertyName},
+    property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},
     property_spec::PropertySpec,
 };
 
@@ -52,7 +52,7 @@ pub(crate) struct StoredProperty {
     pub id: PropertyId,
     /// Property name (flattened from `PropertyName` newtype).
     pub name: Box<str>,
-    /// Whether the property is required (flattened from `Cardinality`).
+    /// Whether the property is required (flattened from `Optionality`).
     pub required: bool,
     /// Whether the property accepts multiple values (flattened from
     /// `Multiplicity`).
@@ -78,7 +78,7 @@ pub(crate) fn to_stored(
         .map(|p| StoredProperty {
             id: p.id(),
             name: p.name().as_str().into(),
-            required: p.cardinality() == Cardinality::Required,
+            required: p.optionality() == Optionality::Required,
             multi: p.multiplicity() == Multiplicity::Many,
             spec: p.spec().clone(),
         })
@@ -107,12 +107,12 @@ impl TryFrom<StoredSchema> for Schema {
             .into_iter()
             .map(|sp| {
                 let prop_name = PropertyName::new(&sp.name)?;
-                let cardinality = Cardinality::from(sp.required);
+                let optionality = Optionality::from(sp.required);
                 let multiplicity = Multiplicity::from(sp.multi);
                 Ok(Property::new(
                     sp.id,
                     prop_name,
-                    cardinality,
+                    optionality,
                     multiplicity,
                     sp.spec,
                 ))
@@ -186,7 +186,7 @@ mod tests {
         let prop = Property::new(
             TEST_PROP_ID,
             prop_name,
-            Cardinality::Required,
+            Optionality::Required,
             Multiplicity::Single,
             PropertySpec::Bool(BoolSpec::default()),
         );
