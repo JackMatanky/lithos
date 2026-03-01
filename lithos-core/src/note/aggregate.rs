@@ -32,6 +32,77 @@ use super::{
     task::Task,
 };
 
+fn normalize_path_separators(path: &str) -> std::borrow::Cow<'_, str> {
+    if path.contains('\\') {
+        let mut owned = String::with_capacity(path.len());
+        for ch in path.chars() {
+            if ch == '\\' {
+                owned.push('/');
+            } else {
+                owned.push(ch);
+            }
+        }
+        std::borrow::Cow::Owned(owned)
+    } else {
+        std::borrow::Cow::Borrowed(path)
+    }
+}
+
+fn validate_relative_path(path: &str) -> Result<(), NoteError> {
+    if path.is_empty() {
+        return Err(NoteError::InvalidPath("path cannot be empty".into()));
+    }
+
+    if NotePath::has_drive_or_unc_prefix(path) {
+        return Err(NoteError::InvalidPath(
+            "windows-style prefixes are not allowed".into(),
+        ));
+    }
+
+    if path.split('/').any(|segment| segment == ".") {
+        return Err(NoteError::InvalidPath(
+            "path must not include '.' components".into(),
+        ));
+    }
+
+    let normalized_path = std::path::Path::new(path);
+    if normalized_path.is_absolute() {
+        return Err(NoteError::InvalidPath("path must be relative".into()));
+    }
+
+    for component in normalized_path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                return Err(NoteError::InvalidPath(
+                    "path traversal not allowed".into(),
+                ));
+            }
+            std::path::Component::CurDir => {
+                return Err(NoteError::InvalidPath(
+                    "path must not include '.' components".into(),
+                ));
+            }
+            std::path::Component::Normal(segment) => {
+                let segment = segment.to_str().ok_or_else(|| {
+                    NoteError::InvalidPath("path contains invalid utf-8".into())
+                })?;
+                if segment.starts_with('.') {
+                    return Err(NoteError::InvalidPath(
+                        "hidden path components not allowed".into(),
+                    ));
+                }
+            }
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
+                return Err(NoteError::InvalidPath(
+                    "path must be relative".into(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Represents an Obsidian-compatible markdown note.
 ///
 /// `Note` is the aggregate root for the note bounded context. It maintains
@@ -552,7 +623,7 @@ impl NotePath {
     /// Returns [`NoteError::InvalidPath`] if the path is invalid.
     #[inline]
     pub fn new(path: &str) -> Result<Self, NoteError> {
-        let normalized = Self::normalize_note_path(path);
+        let normalized = normalize_path_separators(path);
         Self::validate_note_path(normalized.as_ref())?;
         Ok(Self(normalized.into()))
     }
@@ -582,88 +653,10 @@ impl NotePath {
         false
     }
 
-    fn has_curdir_segment(path: &str) -> bool {
-        if path == "." || path.starts_with("./") || path.ends_with("/.") {
-            return true;
-        }
-
-        let bytes = path.as_bytes();
-        bytes.windows(3).any(|window| window == b"/./")
-    }
-
-    fn normalize_note_path(path: &str) -> std::borrow::Cow<'_, str> {
-        if path.contains('\\') {
-            let mut owned = String::with_capacity(path.len());
-            for ch in path.chars() {
-                if ch == '\\' {
-                    owned.push('/');
-                } else {
-                    owned.push(ch);
-                }
-            }
-            std::borrow::Cow::Owned(owned)
-        } else {
-            std::borrow::Cow::Borrowed(path)
-        }
-    }
-
     fn validate_note_path(path: &str) -> Result<(), NoteError> {
-        if path.is_empty() {
-            return Err(NoteError::InvalidPath("path cannot be empty".into()));
-        }
-
-        if Self::has_curdir_segment(path) {
-            return Err(NoteError::InvalidPath(
-                "path must not include '.' components".into(),
-            ));
-        }
-
-        if Self::has_drive_or_unc_prefix(path) {
-            return Err(NoteError::InvalidPath(
-                "windows-style prefixes are not allowed".into(),
-            ));
-        }
+        validate_relative_path(path)?;
 
         let normalized_path = std::path::Path::new(path);
-        if normalized_path.is_absolute() {
-            return Err(NoteError::InvalidPath("path must be relative".into()));
-        }
-
-        for component in normalized_path.components() {
-            match component {
-                std::path::Component::ParentDir => {
-                    return Err(NoteError::InvalidPath(
-                        "path traversal not allowed".into(),
-                    ));
-                }
-                std::path::Component::CurDir => {
-                    return Err(NoteError::InvalidPath(
-                        "path must not include '.' components".into(),
-                    ));
-                }
-                std::path::Component::Normal(segment) => {
-                    if segment.to_str().is_some_and(|segment| segment == ".") {
-                        return Err(NoteError::InvalidPath(
-                            "path must not include '.' components".into(),
-                        ));
-                    }
-                    if segment
-                        .to_str()
-                        .is_some_and(|segment| segment.starts_with('.'))
-                    {
-                        return Err(NoteError::InvalidPath(
-                            "hidden path components not allowed".into(),
-                        ));
-                    }
-                }
-                std::path::Component::Prefix(_)
-                | std::path::Component::RootDir => {
-                    return Err(NoteError::InvalidPath(
-                        "path must be relative".into(),
-                    ));
-                }
-            }
-        }
 
         if !normalized_path
             .extension()
@@ -796,12 +789,16 @@ impl FolderPath {
     /// # Errors
     ///
     /// Returns [`NoteError::Metadata`] if the folder is empty.
+    /// Returns [`NoteError::InvalidPath`] if the folder path is invalid.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        if value.trim().is_empty() {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
             return Err(NoteError::Metadata(NoteMetadataError::FolderEmpty));
         }
-        Ok(Self(value.trim().into()))
+        let normalized = normalize_path_separators(trimmed);
+        validate_relative_path(normalized.as_ref())?;
+        Ok(Self(normalized.into()))
     }
 
     #[inline]
