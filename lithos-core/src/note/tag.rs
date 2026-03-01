@@ -172,6 +172,19 @@ impl Segments {
     }
 }
 
+impl<'segments> IntoIterator for &'segments Segments {
+    type IntoIter = std::iter::Map<
+        std::slice::Iter<'segments, Box<str>>,
+        fn(&'segments Box<str>) -> &'segments str,
+    >;
+    type Item = &'segments str;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter().map(Box::as_ref)
+    }
+}
+
 impl ArchivedTag {
     /// Returns the full tag path.
     #[inline]
