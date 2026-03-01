@@ -348,9 +348,7 @@ struct ParseState<'config, 'source> {
     section_collector: SectionCollector<'source>,
     links: Vec<Link>,
     tag_collector: TagCollector,
-    frontmatter: Option<Frontmatter>,
-    metadata_text: String,
-    metadata_kind: Option<pulldown_cmark::MetadataBlockKind>,
+    frontmatter_collector: FrontmatterCollector,
     list_stack: Vec<List>,
     current_item: Option<ItemState>,
     heading_collector: HeadingCollector,
@@ -369,9 +367,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
             section_collector: SectionCollector::new(source),
             links: Vec::new(),
             tag_collector: TagCollector::new(),
-            frontmatter: None,
-            metadata_text: String::new(),
-            metadata_kind: None,
+            frontmatter_collector: FrontmatterCollector::new(),
             list_stack: Vec::with_capacity(4),
             current_item: None,
             heading_collector: HeadingCollector::new(),
@@ -427,7 +423,9 @@ impl<'config, 'source> ParseState<'config, 'source> {
                 level,
                 ..
             } => self.heading_collector.start_heading(level, position)?,
-            CmarkTag::MetadataBlock(kind) => self.start_metadata_block(kind),
+            CmarkTag::MetadataBlock(kind) => {
+                self.frontmatter_collector.start(kind);
+            }
             CmarkTag::Link {
                 link_type,
                 dest_url,
@@ -483,7 +481,13 @@ impl<'config, 'source> ParseState<'config, 'source> {
             TagEnd::Link | TagEnd::Image => {
                 self.link_collector.end_link(&mut self.links)?;
             }
-            TagEnd::MetadataBlock(kind) => self.end_metadata_block(kind)?,
+            TagEnd::MetadataBlock(kind) => {
+                self.frontmatter_collector.end(
+                    kind,
+                    self.config,
+                    &mut self.tag_collector,
+                )?;
+            }
             TagEnd::CodeBlock => {
                 self.code_block_depth = self.code_block_depth.saturating_sub(1);
                 close_block = true;
@@ -514,13 +518,13 @@ impl<'config, 'source> ParseState<'config, 'source> {
     }
 
     fn handle_text(&mut self, text: &str, is_code: bool) {
-        if self.metadata_kind.is_some() {
-            self.metadata_text.push_str(text);
-        }
-        if self.metadata_kind.is_none()
-            && !is_code
-            && self.code_block_depth == 0
-        {
+        #[expect(
+            clippy::else_if_without_else,
+            reason = "No work needed when neither condition applies."
+        )]
+        if self.frontmatter_collector.is_active() {
+            self.frontmatter_collector.push_text(text);
+        } else if !is_code && self.code_block_depth == 0 {
             self.collect_tags_from_text(text);
         }
 
@@ -536,8 +540,8 @@ impl<'config, 'source> ParseState<'config, 'source> {
     }
 
     fn handle_break(&mut self) {
-        if self.metadata_kind.is_some() {
-            self.metadata_text.push('\n');
+        if self.frontmatter_collector.is_active() {
+            self.frontmatter_collector.push_break();
             return;
         }
 
@@ -624,10 +628,6 @@ impl<'config, 'source> ParseState<'config, 'source> {
         self.tag_collector.collect_from_text(text);
     }
 
-    fn collect_tags_from_frontmatter(&mut self, frontmatter: &Frontmatter) {
-        self.tag_collector.collect_from_frontmatter(self.config, frontmatter);
-    }
-
     fn finish(mut self) -> Result<ParseOutcome, NoteError> {
         if !self.list_stack.is_empty() {
             self.lists.append(&mut self.list_stack);
@@ -640,66 +640,8 @@ impl<'config, 'source> ParseState<'config, 'source> {
             sections: self.section_collector.take_sections(),
             links: self.links,
             tags: self.tag_collector.take_tags(),
-            frontmatter: self.frontmatter,
+            frontmatter: self.frontmatter_collector.take_frontmatter(),
         })
-    }
-
-    #[tracing::instrument(skip(self), level = "debug")]
-    fn start_metadata_block(
-        &mut self,
-        kind: pulldown_cmark::MetadataBlockKind,
-    ) {
-        self.metadata_kind = Some(kind);
-        self.metadata_text.clear();
-    }
-
-    #[tracing::instrument(skip(self), level = "debug")]
-    fn end_metadata_block(
-        &mut self,
-        kind: pulldown_cmark::MetadataBlockKind,
-    ) -> Result<(), NoteError> {
-        if self.metadata_kind != Some(kind) {
-            self.metadata_kind = None;
-            self.metadata_text.clear();
-            return Ok(());
-        }
-        self.metadata_kind = None;
-
-        if self.metadata_text.is_empty() {
-            return Ok(());
-        }
-
-        let fields = match kind {
-            pulldown_cmark::MetadataBlockKind::YamlStyle => {
-                let yaml_value: serde_yaml::Value =
-                    serde_yaml::from_str(&self.metadata_text).map_err(|e| {
-                        NoteError::Frontmatter(
-                            FrontmatterParseError::InvalidYaml {
-                                reason: e.to_string().into(),
-                            },
-                        )
-                    })?;
-                yaml_to_field_map(&yaml_value)?
-            }
-            pulldown_cmark::MetadataBlockKind::PlusesStyle => {
-                let toml_value: toml::Value =
-                    toml::from_str(&self.metadata_text).map_err(|e| {
-                        NoteError::Frontmatter(
-                            FrontmatterParseError::InvalidToml {
-                                reason: e.to_string().into(),
-                            },
-                        )
-                    })?;
-                toml_to_field_map(&toml_value)?
-            }
-        };
-
-        let frontmatter = Frontmatter::new(fields);
-        self.collect_tags_from_frontmatter(&frontmatter);
-        self.frontmatter = Some(frontmatter);
-        self.metadata_text.clear();
-
-        Ok(())
     }
 }
 
@@ -843,6 +785,92 @@ struct HeadingState {
 #[derive(Debug, Default)]
 struct HeadingCollector {
     current: Option<HeadingState>,
+}
+
+#[derive(Debug, Default)]
+struct FrontmatterCollector {
+    kind: Option<pulldown_cmark::MetadataBlockKind>,
+    text: String,
+    frontmatter: Option<Frontmatter>,
+}
+
+impl FrontmatterCollector {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn is_active(&self) -> bool {
+        self.kind.is_some()
+    }
+
+    #[tracing::instrument(skip(self), level = "debug")]
+    fn start(&mut self, kind: pulldown_cmark::MetadataBlockKind) {
+        self.kind = Some(kind);
+        self.text.clear();
+    }
+
+    fn push_text(&mut self, text: &str) {
+        self.text.push_str(text);
+    }
+
+    fn push_break(&mut self) {
+        self.text.push('\n');
+    }
+
+    #[tracing::instrument(skip(self, config, tags), level = "debug")]
+    fn end(
+        &mut self,
+        kind: pulldown_cmark::MetadataBlockKind,
+        config: &Config,
+        tags: &mut TagCollector,
+    ) -> Result<(), NoteError> {
+        if self.kind != Some(kind) {
+            self.kind = None;
+            self.text.clear();
+            return Ok(());
+        }
+        self.kind = None;
+
+        if self.text.is_empty() {
+            return Ok(());
+        }
+
+        let fields = match kind {
+            pulldown_cmark::MetadataBlockKind::YamlStyle => {
+                let yaml_value: serde_yaml::Value =
+                    serde_yaml::from_str(&self.text).map_err(|e| {
+                        NoteError::Frontmatter(
+                            FrontmatterParseError::InvalidYaml {
+                                reason: e.to_string().into(),
+                            },
+                        )
+                    })?;
+                yaml_to_field_map(&yaml_value)?
+            }
+            pulldown_cmark::MetadataBlockKind::PlusesStyle => {
+                let toml_value: toml::Value = toml::from_str(&self.text)
+                    .map_err(|e| {
+                        NoteError::Frontmatter(
+                            FrontmatterParseError::InvalidToml {
+                                reason: e.to_string().into(),
+                            },
+                        )
+                    })?;
+                toml_to_field_map(&toml_value)?
+            }
+        };
+
+        let frontmatter = Frontmatter::new(fields);
+        tags.collect_from_frontmatter(config, &frontmatter);
+        self.frontmatter = Some(frontmatter);
+        self.text.clear();
+
+        Ok(())
+    }
+
+    fn take_frontmatter(self) -> Option<Frontmatter> {
+        self.frontmatter
+    }
 }
 
 impl HeadingCollector {
