@@ -552,8 +552,8 @@ impl NotePath {
     /// Returns [`NoteError::InvalidPath`] if the path is invalid.
     #[inline]
     pub fn new(path: &str) -> Result<Self, NoteError> {
-        let normalized = normalize_note_path(path);
-        validate_note_path(normalized.as_ref())?;
+        let normalized = Self::normalize_note_path(path);
+        Self::validate_note_path(normalized.as_ref())?;
         Ok(Self(normalized.into()))
     }
 
@@ -562,6 +562,120 @@ impl NotePath {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    fn has_drive_or_unc_prefix(path: &str) -> bool {
+        let mut chars = path.chars();
+        let first = chars.next();
+        let second = chars.next();
+        let Some(first) = first else {
+            return false;
+        };
+        if let Some(second) = second {
+            if first.is_ascii_alphabetic() && second == ':' {
+                return true;
+            }
+            if first == '/' && second == '/' {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn has_curdir_segment(path: &str) -> bool {
+        if path == "." || path.starts_with("./") || path.ends_with("/.") {
+            return true;
+        }
+
+        let bytes = path.as_bytes();
+        bytes.windows(3).any(|window| window == b"/./")
+    }
+
+    fn normalize_note_path(path: &str) -> std::borrow::Cow<'_, str> {
+        if path.contains('\\') {
+            let mut owned = String::with_capacity(path.len());
+            for ch in path.chars() {
+                if ch == '\\' {
+                    owned.push('/');
+                } else {
+                    owned.push(ch);
+                }
+            }
+            std::borrow::Cow::Owned(owned)
+        } else {
+            std::borrow::Cow::Borrowed(path)
+        }
+    }
+
+    fn validate_note_path(path: &str) -> Result<(), NoteError> {
+        if path.is_empty() {
+            return Err(NoteError::InvalidPath("path cannot be empty".into()));
+        }
+
+        if Self::has_curdir_segment(path) {
+            return Err(NoteError::InvalidPath(
+                "path must not include '.' components".into(),
+            ));
+        }
+
+        if Self::has_drive_or_unc_prefix(path) {
+            return Err(NoteError::InvalidPath(
+                "windows-style prefixes are not allowed".into(),
+            ));
+        }
+
+        let normalized_path = std::path::Path::new(path);
+        if normalized_path.is_absolute() {
+            return Err(NoteError::InvalidPath("path must be relative".into()));
+        }
+
+        for component in normalized_path.components() {
+            match component {
+                std::path::Component::ParentDir => {
+                    return Err(NoteError::InvalidPath(
+                        "path traversal not allowed".into(),
+                    ));
+                }
+                std::path::Component::CurDir => {
+                    return Err(NoteError::InvalidPath(
+                        "path must not include '.' components".into(),
+                    ));
+                }
+                std::path::Component::Normal(segment) => {
+                    if segment.to_str().is_some_and(|segment| segment == ".") {
+                        return Err(NoteError::InvalidPath(
+                            "path must not include '.' components".into(),
+                        ));
+                    }
+                    if segment
+                        .to_str()
+                        .is_some_and(|segment| segment.starts_with('.'))
+                    {
+                        return Err(NoteError::InvalidPath(
+                            "hidden path components not allowed".into(),
+                        ));
+                    }
+                }
+                std::path::Component::Prefix(_)
+                | std::path::Component::RootDir => {
+                    return Err(NoteError::InvalidPath(
+                        "path must be relative".into(),
+                    ));
+                }
+            }
+        }
+
+        if !normalized_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+        {
+            return Err(NoteError::InvalidPath(
+                "path must have .md extension".into(),
+            ));
+        }
+
+        Ok(())
     }
 }
 
@@ -720,119 +834,6 @@ impl TryFrom<String> for NotePath {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::new(&value)
     }
-}
-
-fn has_drive_or_unc_prefix(path: &str) -> bool {
-    let mut chars = path.chars();
-    let first = chars.next();
-    let second = chars.next();
-    let Some(first) = first else {
-        return false;
-    };
-    if let Some(second) = second {
-        if first.is_ascii_alphabetic() && second == ':' {
-            return true;
-        }
-        if first == '/' && second == '/' {
-            return true;
-        }
-    }
-    false
-}
-
-fn has_curdir_segment(path: &str) -> bool {
-    if path == "." || path.starts_with("./") || path.ends_with("/.") {
-        return true;
-    }
-
-    let bytes = path.as_bytes();
-    bytes.windows(3).any(|window| window == b"/./")
-}
-
-fn normalize_note_path(path: &str) -> std::borrow::Cow<'_, str> {
-    if path.contains('\\') {
-        let mut owned = String::with_capacity(path.len());
-        for ch in path.chars() {
-            if ch == '\\' {
-                owned.push('/');
-            } else {
-                owned.push(ch);
-            }
-        }
-        std::borrow::Cow::Owned(owned)
-    } else {
-        std::borrow::Cow::Borrowed(path)
-    }
-}
-
-fn validate_note_path(path: &str) -> Result<(), NoteError> {
-    if path.is_empty() {
-        return Err(NoteError::InvalidPath("path cannot be empty".into()));
-    }
-
-    if has_curdir_segment(path) {
-        return Err(NoteError::InvalidPath(
-            "path must not include '.' components".into(),
-        ));
-    }
-
-    if has_drive_or_unc_prefix(path) {
-        return Err(NoteError::InvalidPath(
-            "windows-style prefixes are not allowed".into(),
-        ));
-    }
-
-    let normalized_path = std::path::Path::new(path);
-    if normalized_path.is_absolute() {
-        return Err(NoteError::InvalidPath("path must be relative".into()));
-    }
-
-    for component in normalized_path.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                return Err(NoteError::InvalidPath(
-                    "path traversal not allowed".into(),
-                ));
-            }
-            std::path::Component::CurDir => {
-                return Err(NoteError::InvalidPath(
-                    "path must not include '.' components".into(),
-                ));
-            }
-            std::path::Component::Normal(segment) => {
-                if segment.to_str().is_some_and(|segment| segment == ".") {
-                    return Err(NoteError::InvalidPath(
-                        "path must not include '.' components".into(),
-                    ));
-                }
-                if segment
-                    .to_str()
-                    .is_some_and(|segment| segment.starts_with('.'))
-                {
-                    return Err(NoteError::InvalidPath(
-                        "hidden path components not allowed".into(),
-                    ));
-                }
-            }
-            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
-                return Err(NoteError::InvalidPath(
-                    "path must be relative".into(),
-                ));
-            }
-        }
-    }
-
-    if !normalized_path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-    {
-        return Err(NoteError::InvalidPath(
-            "path must have .md extension".into(),
-        ));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
