@@ -145,7 +145,18 @@ impl Segments {
         let segments_count = path.split('/').count();
         let mut segments = Vec::with_capacity(segments_count);
         for segment in path.split('/') {
-            Self::validate_segment(segment)?;
+            if segment.is_empty() {
+                return Err(NoteError::Tag(TagError::EmptySegment));
+            }
+
+            if !segment
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
+                return Err(NoteError::Tag(TagError::InvalidSegment {
+                    segment: segment.into(),
+                }));
+            }
             segments.push(segment.into());
         }
 
@@ -154,21 +165,6 @@ impl Segments {
 
     fn iter(&self) -> impl Iterator<Item = &str> + '_ {
         self.0.iter().map(Box::as_ref)
-    }
-
-    fn validate_segment(segment: &str) -> Result<(), NoteError> {
-        if segment.is_empty() {
-            return Err(NoteError::Tag(TagError::EmptySegment));
-        }
-
-        if !segment.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-        {
-            return Err(NoteError::Tag(TagError::InvalidSegment {
-                segment: segment.into(),
-            }));
-        }
-
-        Ok(())
     }
 }
 
