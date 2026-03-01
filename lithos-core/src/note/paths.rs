@@ -175,36 +175,12 @@ struct RelativePath(Box<str>);
 impl RelativePath {
     fn try_new(path: &str) -> Result<Self, NoteError> {
         let normalized = Self::normalize(path);
-        Self::validate(normalized.as_ref())?;
-        Ok(Self(normalized.into()))
-    }
-
-    fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    fn normalize(path: &str) -> std::borrow::Cow<'_, str> {
-        if path.contains('\\') {
-            let mut owned = String::with_capacity(path.len());
-            for ch in path.chars() {
-                if ch == '\\' {
-                    owned.push('/');
-                } else {
-                    owned.push(ch);
-                }
-            }
-            std::borrow::Cow::Owned(owned)
-        } else {
-            std::borrow::Cow::Borrowed(path)
-        }
-    }
-
-    fn validate(path: &str) -> Result<(), NoteError> {
-        if path.is_empty() {
+        let normalized_str = normalized.as_ref();
+        if normalized_str.is_empty() {
             return Err(NoteError::InvalidPath("path cannot be empty".into()));
         }
 
-        let bytes = path.as_bytes();
+        let bytes = normalized_str.as_bytes();
         if let (Some(first), Some(second)) = (bytes.first(), bytes.get(1))
             && ((first.is_ascii_alphabetic() && *second == b':')
                 || (*first == b'/' && *second == b'/'))
@@ -214,13 +190,13 @@ impl RelativePath {
             ));
         }
 
-        if path.split('/').any(|segment| segment == ".") {
+        if normalized_str.split('/').any(|segment| segment == ".") {
             return Err(NoteError::InvalidPath(
                 "path must not include '.' components".into(),
             ));
         }
 
-        let normalized_path = std::path::Path::new(path);
+        let normalized_path = std::path::Path::new(normalized_str);
         if normalized_path.is_absolute() {
             return Err(NoteError::InvalidPath("path must be relative".into()));
         }
@@ -257,8 +233,27 @@ impl RelativePath {
                 }
             }
         }
+        Ok(Self(normalized.into()))
+    }
 
-        Ok(())
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn normalize(path: &str) -> std::borrow::Cow<'_, str> {
+        if path.contains('\\') {
+            let mut owned = String::with_capacity(path.len());
+            for ch in path.chars() {
+                if ch == '\\' {
+                    owned.push('/');
+                } else {
+                    owned.push(ch);
+                }
+            }
+            std::borrow::Cow::Owned(owned)
+        } else {
+            std::borrow::Cow::Borrowed(path)
+        }
     }
 }
 
