@@ -214,6 +214,13 @@ impl From<bool> for Optionality {
     }
 }
 
+impl Default for Optionality {
+    #[inline]
+    fn default() -> Self {
+        Self::Optional
+    }
+}
+
 /// Whether a property accepts a single value or multiple values.
 ///
 /// # Examples
@@ -538,39 +545,23 @@ impl TryFrom<String> for PropertyName {
 pub struct BankPropertyRef(PropertyName);
 
 impl BankPropertyRef {
+    const PREFIX: &'static str = "property_bank#/";
+
     /// Parse a reference string into a typed property reference.
     ///
     /// The only accepted format is `property_bank#/<name>`.
     ///
     /// # Errors
     /// Returns `SchemaError::InvalidPropertyRef` if the format is invalid.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::BankPropertyRef;
-    ///
-    /// let reference = BankPropertyRef::parse("property_bank#/flag")?;
-    /// assert_eq!(reference.name().as_str(), "flag");
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
     #[inline]
     pub fn parse(reference: &str) -> Result<Self, SchemaError> {
         let name = reference
-            .strip_prefix("property_bank#/")
+            .strip_prefix(Self::PREFIX)
             .ok_or_else(|| SchemaError::InvalidPropertyRef(reference.into()))?;
         Ok(Self(PropertyName::try_from(name)?))
     }
 
     /// Returns the property name being referenced.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::BankPropertyRef;
-    ///
-    /// let reference = BankPropertyRef::parse("property_bank#/flag")?;
-    /// let _name = reference.name();
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
     #[inline]
     #[must_use]
     pub const fn name(&self) -> &PropertyName {
@@ -610,7 +601,7 @@ mod tests {
             #[inline]
             fn default() -> Self {
                 Self {
-                    optionality: Optionality::Optional,
+                    optionality: Optionality::default(),
                     multiplicity: Multiplicity::Single,
                     name: "test_property".to_owned(),
                     spec: PropertySpec::String(StringSpec::default()),

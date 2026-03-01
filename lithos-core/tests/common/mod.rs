@@ -140,14 +140,14 @@ impl PropertyBuilder {
     /// Create a new builder with a property name.
     ///
     /// Defaults:
-    /// - Optionality: Required
+    /// - Optionality: Optional
     /// - Multiplicity: Single
     /// - ID: Auto-generated UUID v7
     #[must_use]
     pub fn new<S: Into<String>>(name: S) -> Self {
         Self {
             name: name.into(),
-            optionality: Optionality::Required,
+            optionality: Optionality::default(),
             multiplicity: Multiplicity::Single,
             id: None,
         }
