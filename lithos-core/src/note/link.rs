@@ -15,6 +15,7 @@
 use super::{
     aggregate::{NoteId, NotePath},
     error::{LinkError, NoteError},
+    structure::{BlockRefId, HeadingText},
     types::SourceByteOffset,
 };
 
@@ -53,80 +54,6 @@ pub enum Anchor {
     BlockRef(BlockRefId),
     /// Heading anchor: `#heading-text`.
     Heading(HeadingText),
-}
-
-/// Validated block reference identifier.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct BlockRefId(Box<str>);
-
-impl BlockRefId {
-    /// Creates a validated block reference identifier.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Link`] if the identifier is empty.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        let text = value.trim();
-        if text.is_empty() {
-            return Err(NoteError::Link(LinkError::EmptyBlockRefAnchor));
-        }
-        Ok(Self(text.into()))
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Validated heading anchor text.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct HeadingText(Box<str>);
-
-impl HeadingText {
-    /// Creates a validated heading anchor text.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Link`] if the text is empty.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        let text = value.trim();
-        if text.is_empty() {
-            return Err(NoteError::Link(LinkError::EmptyHeadingAnchor));
-        }
-        Ok(Self(text.into()))
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
 }
 
 /// Validated link alias text.
@@ -323,7 +250,7 @@ impl Anchor {
     /// Returns [`NoteError::Link`] if the heading text is empty.
     #[inline]
     pub fn heading(value: &str) -> Result<Self, NoteError> {
-        Ok(Self::Heading(HeadingText::try_new(value)?))
+        Ok(Self::Heading(HeadingText::try_new_anchor(value)?))
     }
 
     /// Returns `true` if this is a block reference.

@@ -10,7 +10,7 @@
 //! notes. Headings (H1-H6) mark structural points in the document, while
 //! sections group content between headings.
 
-use super::error::{NoteError, NoteMetadataError};
+use super::error::{LinkError, NoteError, NoteMetadataError};
 use crate::note::types::{SourceByteOffset, SourceByteRange};
 
 /// Represents a heading within a note.
@@ -118,6 +118,20 @@ impl HeadingText {
         Self::try_from_boxed(value.into())
     }
 
+    /// Creates a validated heading text value for link anchors.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Link`] if the text is empty.
+    #[inline]
+    pub fn try_new_anchor(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Link(LinkError::EmptyHeadingAnchor));
+        }
+        Ok(Self(text.into()))
+    }
+
     /// Creates a validated heading text value from a boxed string.
     ///
     /// # Errors
@@ -134,6 +148,44 @@ impl HeadingText {
     }
 
     /// Returns the underlying text as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Validated block reference identifier.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct BlockRefId(Box<str>);
+
+impl BlockRefId {
+    /// Creates a validated block reference identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Link`] if the identifier is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Link(LinkError::EmptyBlockRefAnchor));
+        }
+        Ok(Self(text.into()))
+    }
+
+    /// Returns the block reference identifier as a string slice.
     #[inline]
     #[must_use]
     pub fn as_str(&self) -> &str {
