@@ -543,7 +543,7 @@ impl FileSpec {
 
     #[inline]
     fn validate_str(&self, value: &str) -> Result<(), SchemaError> {
-        validate_vault_rel_path(value)?;
+        VaultRelPath::validate_path(value)?;
 
         if let Some(dir) = self.directory.as_ref() {
             let value_path = Path::new(value);
@@ -1175,7 +1175,7 @@ struct VaultRelPath(Box<str>);
 impl VaultRelPath {
     #[inline]
     fn try_new(path: &str) -> Result<Self, SchemaError> {
-        validate_vault_rel_path(path)?;
+        Self::validate_path(path)?;
         Ok(Self(path.into()))
     }
 
@@ -1183,43 +1183,43 @@ impl VaultRelPath {
     fn as_str(&self) -> &str {
         &self.0
     }
-}
 
-#[inline]
-fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
-    if path.is_empty() {
-        return Err(SchemaError::InvalidDirectoryPath(
-            "Path cannot be empty".into(),
-        ));
-    }
+    #[inline]
+    fn validate_path(path: &str) -> Result<(), SchemaError> {
+        if path.is_empty() {
+            return Err(SchemaError::InvalidDirectoryPath(
+                "Path cannot be empty".into(),
+            ));
+        }
 
-    for component in Path::new(path).components() {
-        match component {
-            Component::Normal(_) => {}
-            Component::CurDir => {
-                return Err(SchemaError::InvalidDirectoryPath(format!(
-                    "Invalid path {path}: '.' component is not allowed"
-                )));
-            }
-            Component::ParentDir => {
-                return Err(SchemaError::InvalidDirectoryPath(format!(
-                    "Invalid path {path}: '..' component is not allowed"
-                )));
-            }
-            Component::RootDir => {
-                return Err(SchemaError::InvalidDirectoryPath(format!(
-                    "Invalid path {path}: absolute paths are not allowed"
-                )));
-            }
-            Component::Prefix(_) => {
-                return Err(SchemaError::InvalidDirectoryPath(format!(
-                    "Invalid path {path}: path prefixes are not allowed"
-                )));
+        for component in Path::new(path).components() {
+            match component {
+                Component::Normal(_) => {}
+                Component::CurDir => {
+                    return Err(SchemaError::InvalidDirectoryPath(format!(
+                        "Invalid path {path}: '.' component is not allowed"
+                    )));
+                }
+                Component::ParentDir => {
+                    return Err(SchemaError::InvalidDirectoryPath(format!(
+                        "Invalid path {path}: '..' component is not allowed"
+                    )));
+                }
+                Component::RootDir => {
+                    return Err(SchemaError::InvalidDirectoryPath(format!(
+                        "Invalid path {path}: absolute paths are not allowed"
+                    )));
+                }
+                Component::Prefix(_) => {
+                    return Err(SchemaError::InvalidDirectoryPath(format!(
+                        "Invalid path {path}: path prefixes are not allowed"
+                    )));
+                }
             }
         }
-    }
 
-    Ok(())
+        Ok(())
+    }
 }
 
 #[inline]
