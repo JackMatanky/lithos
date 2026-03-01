@@ -1910,7 +1910,7 @@ Content";
 
         // Check nested object access
         let metadata = fm.get_raw("metadata").expect("should have metadata");
-        assert!(metadata.as_object().is_some());
+        assert!(metadata.object_fields().is_some());
 
         Ok(())
     }

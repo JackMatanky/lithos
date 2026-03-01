@@ -640,8 +640,8 @@ mod tests {
             obj_map.insert("k".into(), FieldValue::Boolean(false));
             let value = FieldValue::Object(obj_map);
             assert!(
-                value.as_object().is_some(),
-                "Object should coerce to HashMap"
+                value.object_fields().is_some(),
+                "Object should coerce to fields"
             );
         }
 
@@ -666,7 +666,7 @@ mod tests {
         fn string_does_not_coerce_to_object() {
             let value = FieldValue::String("s".into());
             assert!(
-                value.as_object().is_none(),
+                value.object_fields().is_none(),
                 "String should not coerce to object"
             );
         }

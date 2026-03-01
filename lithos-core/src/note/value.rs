@@ -180,6 +180,15 @@ impl FieldValue {
         }
     }
 
+    /// Returns an iterator over object fields if this is an `Object` variant.
+    #[inline]
+    #[must_use]
+    pub fn object_fields(&self) -> Option<FieldObjectFields<'_>> {
+        self.as_object().map(|obj| FieldObjectFields {
+            inner: obj.iter(),
+        })
+    }
+
     /// Returns the string value if this is a `String` variant.
     #[inline]
     #[must_use]
@@ -361,6 +370,24 @@ impl FieldValue {
                 out.push('}');
             }
         }
+    }
+}
+
+/// Borrowed iterator over object fields in a [`FieldValue::Object`].
+pub struct FieldObjectFields<'value> {
+    inner: std::collections::hash_map::Iter<'value, Box<str>, FieldValue>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "FieldObjectFields relies on default iterator methods."
+)]
+impl<'value> Iterator for FieldObjectFields<'value> {
+    type Item = (&'value str, &'value FieldValue);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(key, value)| (key.as_ref(), value))
     }
 }
 
