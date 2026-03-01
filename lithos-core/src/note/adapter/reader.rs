@@ -354,7 +354,7 @@ struct ParseState<'config, 'source> {
     list_stack: Vec<List>,
     current_item: Option<ItemState>,
     current_heading: Option<HeadingState>,
-    current_link: Option<LinkState>,
+    link_collector: LinkCollector,
     code_block_depth: u32,
 }
 
@@ -375,7 +375,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
             list_stack: Vec::with_capacity(4),
             current_item: None,
             current_heading: None,
-            current_link: None,
+            link_collector: LinkCollector::new(),
             code_block_depth: 0,
         }
     }
@@ -432,12 +432,16 @@ impl<'config, 'source> ParseState<'config, 'source> {
                 link_type,
                 dest_url,
                 ..
-            } => self.start_link(link_type, &dest_url, position, false)?,
+            } => self
+                .link_collector
+                .start_link(link_type, &dest_url, position, false)?,
             CmarkTag::Image {
                 link_type,
                 dest_url,
                 ..
-            } => self.start_link(link_type, &dest_url, position, true)?,
+            } => self
+                .link_collector
+                .start_link(link_type, &dest_url, position, true)?,
             CmarkTag::CodeBlock(_) => {
                 self.code_block_depth = self.code_block_depth.saturating_add(1);
             }
@@ -473,7 +477,9 @@ impl<'config, 'source> ParseState<'config, 'source> {
                 self.end_heading()?;
                 close_block = true;
             }
-            TagEnd::Link | TagEnd::Image => self.end_link()?,
+            TagEnd::Link | TagEnd::Image => {
+                self.link_collector.end_link(&mut self.links)?;
+            }
             TagEnd::MetadataBlock(kind) => self.end_metadata_block(kind)?,
             TagEnd::CodeBlock => {
                 self.code_block_depth = self.code_block_depth.saturating_sub(1);
@@ -515,19 +521,14 @@ impl<'config, 'source> ParseState<'config, 'source> {
             self.collect_tags_from_text(text);
         }
 
-        if let Some(link) = self.current_link.as_mut()
-            && link.collect_alias
-        {
-            let alias = link.alias.get_or_insert_with(String::new);
-            alias.push_str(text);
-        }
+        self.link_collector.collect_alias_text(text);
 
         if let Some(heading) = self.current_heading.as_mut() {
             heading.text.push_str(text);
         }
         if let Some(item) = self.current_item.as_mut() {
             item.text.push_str(text);
-            if !is_code && self.current_link.is_none() {
+            if !is_code && !self.link_collector.has_open_link() {
                 item.tag_scan_text.push_str(text);
             }
         }
@@ -539,19 +540,16 @@ impl<'config, 'source> ParseState<'config, 'source> {
             return;
         }
 
-        if let Some(link) = self.current_link.as_mut()
-            && link.collect_alias
-        {
-            let alias = link.alias.get_or_insert_with(String::new);
-            alias.push(' ');
-        }
+        self.link_collector.collect_alias_break();
 
         if let Some(heading) = self.current_heading.as_mut() {
             heading.text.push(' ');
         }
         if let Some(item) = self.current_item.as_mut() {
             item.text.push(' ');
-            if self.current_link.is_none() && self.code_block_depth == 0 {
+            if !self.link_collector.has_open_link()
+                && self.code_block_depth == 0
+            {
                 item.tag_scan_text.push(' ');
             }
         }
@@ -689,162 +687,6 @@ impl<'config, 'source> ParseState<'config, 'source> {
 
         self.headings.push(heading);
         Ok(())
-    }
-
-    #[tracing::instrument(
-        skip(self, link_type, dest_url),
-        level = "debug",
-        fields(dest_url = %dest_url, is_embed)
-    )]
-    fn start_link(
-        &mut self,
-        link_type: pulldown_cmark::LinkType,
-        dest_url: &pulldown_cmark::CowStr<'_>,
-        position: usize,
-        is_embed: bool,
-    ) -> Result<(), NoteError> {
-        use pulldown_cmark::LinkType as PLinkType;
-
-        let position = parse_offset(position)?;
-
-        match link_type {
-            PLinkType::WikiLink {
-                has_pothole,
-            } => {
-                // WikiLink: [[target]] or [[target|alias]]
-                // dest_url contains: "target" or "target#heading" or
-                // "target#^blockref"
-                self.current_link = Some(LinkState {
-                    target: dest_url.as_ref().into(),
-                    alias: None,
-                    position,
-                    is_embed,
-                    is_wikilink: true,
-                    is_markdown_image: false,
-                    is_external: false,
-                    collect_alias: has_pothole,
-                });
-            }
-            PLinkType::Autolink | PLinkType::Email => {
-                let target = dest_url.as_ref();
-                self.current_link = Some(LinkState {
-                    target: target.into(),
-                    alias: None,
-                    position,
-                    is_embed,
-                    is_wikilink: false,
-                    is_markdown_image: is_embed,
-                    is_external: true,
-                    collect_alias: false,
-                });
-            }
-            PLinkType::Inline
-            | PLinkType::Reference
-            | PLinkType::ReferenceUnknown
-            | PLinkType::Collapsed
-            | PLinkType::CollapsedUnknown
-            | PLinkType::Shortcut
-            | PLinkType::ShortcutUnknown => {
-                // Standard markdown link: [text](url)
-                let target = dest_url.as_ref();
-                let is_external = is_external_link(link_type, target);
-                self.current_link = Some(LinkState {
-                    target: target.into(),
-                    alias: None,
-                    position,
-                    is_embed,
-                    is_wikilink: false,
-                    is_markdown_image: is_embed,
-                    is_external,
-                    collect_alias: true,
-                });
-            }
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(skip(self), level = "debug")]
-    fn end_link(&mut self) -> Result<(), NoteError> {
-        let Some(link_state) = self.current_link.take() else {
-            return Ok(());
-        };
-
-        let link = Self::build_link(&link_state)?;
-        self.links.push(link);
-        Ok(())
-    }
-
-    fn build_link(state: &LinkState) -> Result<Link, NoteError> {
-        let raw_target = state.target.as_ref();
-        let (target_str, anchor) = if state.is_external {
-            (raw_target, None)
-        } else if let Some(pothole_idx) = raw_target.find('#') {
-            let (target, anchor_part) = raw_target.split_at(pothole_idx);
-            let anchor = if let Some(block_ref) = anchor_part.strip_prefix("#^")
-            {
-                let block_ref = block_ref.trim();
-                if block_ref.is_empty() {
-                    None
-                } else {
-                    Some(Anchor::block_ref(block_ref)?)
-                }
-            } else {
-                let anchor_part = anchor_part.strip_prefix('#').unwrap_or("");
-                let anchor_part = anchor_part.trim();
-                if anchor_part.is_empty() {
-                    None
-                } else {
-                    Some(Anchor::heading(anchor_part)?)
-                }
-            };
-            (target, anchor)
-        } else {
-            (raw_target, None)
-        };
-
-        let target = if state.is_external {
-            Target::External {
-                url: raw_target.into(),
-            }
-        } else {
-            Target::Unresolved {
-                raw: target_str.into(),
-            }
-        };
-
-        if state.is_markdown_image {
-            let embed_type = determine_embed_type(target_str);
-            Link::new_markdown_embed(
-                target,
-                embed_type,
-                state.alias.as_deref(),
-                state.position,
-            )
-        } else if state.is_embed {
-            let embed_type = determine_embed_type(target_str);
-            Link::new_embed(
-                target,
-                embed_type,
-                state.alias.as_deref(),
-                anchor,
-                state.position,
-            )
-        } else if state.is_wikilink {
-            Link::new_wikilink(
-                target,
-                state.alias.as_deref(),
-                anchor,
-                state.position,
-            )
-        } else {
-            Link::new_markdown_link(
-                target,
-                state.alias.as_deref(),
-                anchor,
-                state.position,
-            )
-        }
     }
 
     #[tracing::instrument(skip(self), level = "debug")]
@@ -1250,6 +1092,191 @@ struct LinkState {
     is_markdown_image: bool,
     is_external: bool,
     collect_alias: bool,
+}
+
+#[derive(Debug, Default)]
+struct LinkCollector {
+    current: Option<LinkState>,
+}
+
+impl LinkCollector {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    #[tracing::instrument(
+        skip(self, link_type, dest_url),
+        level = "debug",
+        fields(dest_url = %dest_url, is_embed)
+    )]
+    fn start_link(
+        &mut self,
+        link_type: pulldown_cmark::LinkType,
+        dest_url: &pulldown_cmark::CowStr<'_>,
+        position: usize,
+        is_embed: bool,
+    ) -> Result<(), NoteError> {
+        use pulldown_cmark::LinkType as PLinkType;
+
+        let position = parse_offset(position)?;
+
+        match link_type {
+            PLinkType::WikiLink {
+                has_pothole,
+            } => {
+                self.current = Some(LinkState {
+                    target: dest_url.as_ref().into(),
+                    alias: None,
+                    position,
+                    is_embed,
+                    is_wikilink: true,
+                    is_markdown_image: false,
+                    is_external: false,
+                    collect_alias: has_pothole,
+                });
+            }
+            PLinkType::Autolink | PLinkType::Email => {
+                let target = dest_url.as_ref();
+                self.current = Some(LinkState {
+                    target: target.into(),
+                    alias: None,
+                    position,
+                    is_embed,
+                    is_wikilink: false,
+                    is_markdown_image: is_embed,
+                    is_external: true,
+                    collect_alias: false,
+                });
+            }
+            PLinkType::Inline
+            | PLinkType::Reference
+            | PLinkType::ReferenceUnknown
+            | PLinkType::Collapsed
+            | PLinkType::CollapsedUnknown
+            | PLinkType::Shortcut
+            | PLinkType::ShortcutUnknown => {
+                let target = dest_url.as_ref();
+                let is_external = is_external_link(link_type, target);
+                self.current = Some(LinkState {
+                    target: target.into(),
+                    alias: None,
+                    position,
+                    is_embed,
+                    is_wikilink: false,
+                    is_markdown_image: is_embed,
+                    is_external,
+                    collect_alias: true,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, links), level = "debug")]
+    fn end_link(&mut self, links: &mut Vec<Link>) -> Result<(), NoteError> {
+        let Some(link_state) = self.current.take() else {
+            return Ok(());
+        };
+
+        let link = Self::build_link(&link_state)?;
+        links.push(link);
+        Ok(())
+    }
+
+    fn collect_alias_text(&mut self, text: &str) {
+        if let Some(link) = self.current.as_mut()
+            && link.collect_alias
+        {
+            let alias = link.alias.get_or_insert_with(String::new);
+            alias.push_str(text);
+        }
+    }
+
+    fn collect_alias_break(&mut self) {
+        if let Some(link) = self.current.as_mut()
+            && link.collect_alias
+        {
+            let alias = link.alias.get_or_insert_with(String::new);
+            alias.push(' ');
+        }
+    }
+
+    fn has_open_link(&self) -> bool {
+        self.current.is_some()
+    }
+
+    fn build_link(state: &LinkState) -> Result<Link, NoteError> {
+        let raw_target = state.target.as_ref();
+        let (target_str, anchor) = if state.is_external {
+            (raw_target, None)
+        } else if let Some(pothole_idx) = raw_target.find('#') {
+            let (target, anchor_part) = raw_target.split_at(pothole_idx);
+            let anchor = if let Some(block_ref) = anchor_part.strip_prefix("#^")
+            {
+                let block_ref = block_ref.trim();
+                if block_ref.is_empty() {
+                    None
+                } else {
+                    Some(Anchor::block_ref(block_ref)?)
+                }
+            } else {
+                let anchor_part = anchor_part.strip_prefix('#').unwrap_or("");
+                let anchor_part = anchor_part.trim();
+                if anchor_part.is_empty() {
+                    None
+                } else {
+                    Some(Anchor::heading(anchor_part)?)
+                }
+            };
+            (target, anchor)
+        } else {
+            (raw_target, None)
+        };
+
+        let target = if state.is_external {
+            Target::External {
+                url: raw_target.into(),
+            }
+        } else {
+            Target::Unresolved {
+                raw: target_str.into(),
+            }
+        };
+
+        if state.is_markdown_image {
+            let embed_type = determine_embed_type(target_str);
+            Link::new_markdown_embed(
+                target,
+                embed_type,
+                state.alias.as_deref(),
+                state.position,
+            )
+        } else if state.is_embed {
+            let embed_type = determine_embed_type(target_str);
+            Link::new_embed(
+                target,
+                embed_type,
+                state.alias.as_deref(),
+                anchor,
+                state.position,
+            )
+        } else if state.is_wikilink {
+            Link::new_wikilink(
+                target,
+                state.alias.as_deref(),
+                anchor,
+                state.position,
+            )
+        } else {
+            Link::new_markdown_link(
+                target,
+                state.alias.as_deref(),
+                anchor,
+                state.position,
+            )
+        }
+    }
 }
 
 fn is_block_tag(tag: &CmarkTag<'_>) -> bool {
