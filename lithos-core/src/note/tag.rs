@@ -73,31 +73,11 @@ impl Tag {
             .strip_prefix('#')
             .ok_or(NoteError::Tag(TagError::MissingHash))?;
 
-        if tag_path_str.is_empty() {
-            return Err(NoteError::Tag(TagError::EmptyTag));
-        }
-
-        let segments_count = tag_path_str.split('/').count();
-        let mut segments = Vec::with_capacity(segments_count);
-        for segment in tag_path_str.split('/') {
-            if segment.is_empty() {
-                return Err(NoteError::Tag(TagError::EmptySegment));
-            }
-
-            if !segment
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-            {
-                return Err(NoteError::Tag(TagError::InvalidSegment {
-                    segment: segment.into(),
-                }));
-            }
-            segments.push(segment.into());
-        }
+        let (full_path, segments) = parse_tag_path(tag_path_str)?;
 
         Ok(Self {
-            full_path: TagPath(tag_path_str.into()),
-            segments: Segments(segments),
+            full_path,
+            segments,
         })
     }
 
@@ -183,6 +163,30 @@ impl Deref for Segments {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
+
+fn parse_tag_path(path: &str) -> Result<(TagPath, Segments), NoteError> {
+    if path.is_empty() {
+        return Err(NoteError::Tag(TagError::EmptyTag));
+    }
+
+    let segments_count = path.split('/').count();
+    let mut segments = Vec::with_capacity(segments_count);
+    for segment in path.split('/') {
+        if segment.is_empty() {
+            return Err(NoteError::Tag(TagError::EmptySegment));
+        }
+
+        if !segment.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(NoteError::Tag(TagError::InvalidSegment {
+                segment: segment.into(),
+            }));
+        }
+        segments.push(segment.into());
+    }
+
+    Ok((TagPath(path.into()), Segments(segments)))
 }
 
 impl ArchivedTag {
