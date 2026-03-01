@@ -78,7 +78,7 @@ pub struct Note {
     /// Domain events pending emission (not serialized).
     #[rkyv(with = rkyv::with::Skip)]
     #[serde(skip)]
-    pending_events: Vec<NoteEvents>,
+    pending_events: PendingEvents,
 }
 
 #[derive(
@@ -112,6 +112,25 @@ struct NoteContent {
 impl NoteContent {
     fn new() -> Self {
         Self::default()
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+struct PendingEvents {
+    events: Vec<NoteEvents>,
+}
+
+impl PendingEvents {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn push(&mut self, event: NoteEvents) {
+        self.events.push(event);
+    }
+
+    fn take(&mut self) -> Vec<NoteEvents> {
+        std::mem::take(&mut self.events)
     }
 }
 
@@ -244,7 +263,7 @@ impl Note {
             path: NotePath::try_from(path)?,
             content: NoteContent::new(),
             frontmatter: None,
-            pending_events: Vec::new(),
+            pending_events: PendingEvents::new(),
         })
     }
 
@@ -387,7 +406,7 @@ impl Note {
     #[inline]
     #[must_use]
     pub fn take_events(&mut self) -> Vec<NoteEvents> {
-        std::mem::take(&mut self.pending_events)
+        self.pending_events.take()
     }
 }
 
