@@ -273,8 +273,8 @@ mod tests {
                 aggregate::{Note, NoteId, NotePath},
                 frontmatter::Frontmatter,
                 ports::Command,
+                position::SourceByteOffset,
                 task::{Task, TaskAttributes, TaskMetadata, TaskTimestamp},
-                types::SourceByteOffset,
                 value::FieldValue,
             },
         };

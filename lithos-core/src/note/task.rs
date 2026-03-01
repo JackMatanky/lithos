@@ -19,8 +19,8 @@ use uuid::Uuid;
 
 use super::{
     error::{NoteError, TaskError},
+    position::SourceByteOffset,
     tag::Tag,
-    types::SourceByteOffset,
     value::FieldValue,
 };
 use crate::config::task::StatusName;
@@ -34,7 +34,7 @@ use crate::config::task::StatusName;
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{task::Task, types::SourceByteOffset};
+/// # use lithos_core::note::{task::Task, position::SourceByteOffset};
 /// # use lithos_core::config::task::StatusName;
 /// # use lithos_core::note::task::TaskAttributes;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {

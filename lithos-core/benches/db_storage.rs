@@ -223,10 +223,10 @@ use lithos_core::{
         aggregate::{Note, NoteId},
         frontmatter::Frontmatter,
         link::{Link, Target},
+        position::{SourceByteOffset, SourceByteRange},
         structure::{Heading, HeadingLevel, Section},
         tag::Tag,
         task::Task,
-        types::{SourceByteOffset, SourceByteRange},
     },
 };
 use redb::TableDefinition;

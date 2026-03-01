@@ -853,7 +853,7 @@ mod tests {
         use crate::note::{
             error::NoteError,
             link::{EmbedType, Link, Target},
-            types::SourceByteOffset,
+            position::SourceByteOffset,
         };
 
         /// Fixed UUID for deterministic tests (valid UUID v7 format).
@@ -911,7 +911,7 @@ mod tests {
 
     use crate::note::{
         list::{List, ListType},
-        types::SourceByteOffset,
+        position::SourceByteOffset,
     };
 
     mod accessors {

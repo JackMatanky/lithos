@@ -26,10 +26,10 @@ use crate::{
         frontmatter::Frontmatter,
         link::{Anchor, EmbedType, Link, Target},
         list::{List, ListDepth, ListItem, ListType},
+        position::{SourceByteOffset, SourceByteRange},
         structure::{Heading, HeadingLevel, Section},
         tag::Tag as NoteTag,
         task::Task,
-        types::{SourceByteOffset, SourceByteRange},
         value::FieldValue,
     },
 };

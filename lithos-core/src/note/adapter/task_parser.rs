@@ -7,12 +7,12 @@ use crate::{
     },
     note::{
         error::{NoteError, TaskError},
+        position::SourceByteOffset,
         tag::Tag,
         task::{
             Task, TaskAttributes, TaskAttributesBuilder, TaskFieldKey,
             TaskMetadata, TaskTimestamp,
         },
-        types::SourceByteOffset,
         value::FieldValue,
     },
 };

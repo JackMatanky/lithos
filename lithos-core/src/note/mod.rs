@@ -82,8 +82,8 @@ pub mod task;
 pub mod error;
 /// Note domain events.
 pub mod events;
-/// Shared domain types for the Note context.
-pub mod types;
+/// Shared position primitives for the Note context.
+pub mod position;
 /// Shared primitive for dynamic note values.
 pub mod value;
 

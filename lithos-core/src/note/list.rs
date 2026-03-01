@@ -9,7 +9,7 @@
 
 use std::fmt;
 
-use super::{error::NoteError, task::TaskId, types::SourceByteOffset};
+use super::{error::NoteError, position::SourceByteOffset, task::TaskId};
 use crate::config::task::StatusSymbol;
 
 /// Markdown list structure.
@@ -203,7 +203,7 @@ impl<'list> Iterator for ListItems<'list> {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{list::ListItem, types::SourceByteOffset};
+/// # use lithos_core::note::{list::ListItem, position::SourceByteOffset};
 /// let item = ListItem::Plain {
 ///     text: "Buy groceries".into(),
 ///     position: SourceByteOffset::new(0),

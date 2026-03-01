@@ -18,7 +18,7 @@ use super::error::NoteError;
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::types::SourceByteOffset;
+/// # use lithos_core::note::position::SourceByteOffset;
 /// let offset = SourceByteOffset::new(1024);
 /// assert_eq!(u32::from(offset), 1024);
 /// ```
@@ -268,7 +268,7 @@ impl From<SourceByteOffset> for usize {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::types::{SourceByteOffset, SourceByteRange};
+/// # use lithos_core::note::position::{SourceByteOffset, SourceByteRange};
 /// let start = SourceByteOffset::new(0);
 /// let end = SourceByteOffset::new(10);
 /// let range = SourceByteRange::new(start, end)?;

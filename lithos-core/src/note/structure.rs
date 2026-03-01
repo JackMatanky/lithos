@@ -11,7 +11,7 @@
 //! sections group content between headings.
 
 use super::error::{LinkError, NoteError, NoteMetadataError};
-use crate::note::types::{SourceByteOffset, SourceByteRange};
+use crate::note::position::{SourceByteOffset, SourceByteRange};
 
 /// Represents a heading within a note.
 ///
@@ -20,7 +20,7 @@ use crate::note::types::{SourceByteOffset, SourceByteRange};
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{structure::{Heading, HeadingLevel}, types::SourceByteOffset};
+/// # use lithos_core::note::{structure::{Heading, HeadingLevel}, position::SourceByteOffset};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let level = HeadingLevel::try_new(1)?;
 /// let heading = Heading::new(level, "Project Overview", SourceByteOffset::new(0))?;
@@ -100,7 +100,7 @@ impl Heading {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{structure::Section, types::SourceByteRange, types::SourceByteOffset};
+/// # use lithos_core::note::{structure::Section, position::SourceByteRange, position::SourceByteOffset};
 /// let range = SourceByteRange::new(
 ///     SourceByteOffset::new(0),
 ///     SourceByteOffset::new(50),

@@ -15,8 +15,8 @@
 use super::{
     aggregate::{NoteId, NotePath},
     error::{LinkError, NoteError},
+    position::SourceByteOffset,
     structure::{BlockRefId, HeadingText},
-    types::SourceByteOffset,
 };
 
 /// Represents a link within a note.
@@ -27,7 +27,7 @@ use super::{
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{link::{Link, Target}, types::SourceByteOffset};
+/// # use lithos_core::note::{link::{Link, Target}, position::SourceByteOffset};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let target = Target::Unresolved { raw: "Main Page".into() };
 /// let link = Link::new_wikilink(target, None, None, SourceByteOffset::new(0))?;
@@ -549,7 +549,7 @@ impl Target {
 mod tests {
     mod fixtures {
         use super::super::{Anchor, EmbedType, Link, Target};
-        use crate::note::{error::NoteError, types::SourceByteOffset};
+        use crate::note::{error::NoteError, position::SourceByteOffset};
 
         pub fn unresolved_target(name: &str) -> Target {
             Target::Unresolved {
@@ -614,7 +614,7 @@ mod tests {
                 target,
                 None,
                 None,
-                crate::note::types::SourceByteOffset::new(0u32),
+                crate::note::position::SourceByteOffset::new(0u32),
             );
             result.unwrap_err();
         }
@@ -628,7 +628,7 @@ mod tests {
                 target,
                 None,
                 Some(super::super::Anchor::heading("frag")?),
-                crate::note::types::SourceByteOffset::new(0u32),
+                crate::note::position::SourceByteOffset::new(0u32),
             );
             result.unwrap_err();
             Ok(())
