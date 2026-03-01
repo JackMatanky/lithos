@@ -347,8 +347,7 @@ struct ParseState<'config, 'source> {
     headings: Vec<Heading>,
     section_collector: SectionCollector<'source>,
     links: Vec<Link>,
-    tags: Vec<NoteTag>,
-    tag_set: HashSet<Box<str>>,
+    tag_collector: TagCollector,
     frontmatter: Option<Frontmatter>,
     metadata_text: String,
     metadata_kind: Option<pulldown_cmark::MetadataBlockKind>,
@@ -369,8 +368,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
             headings: Vec::new(),
             section_collector: SectionCollector::new(source),
             links: Vec::new(),
-            tags: Vec::new(),
-            tag_set: HashSet::new(),
+            tag_collector: TagCollector::new(),
             frontmatter: None,
             metadata_text: String::new(),
             metadata_kind: None,
@@ -626,59 +624,11 @@ impl<'config, 'source> ParseState<'config, 'source> {
     }
 
     fn collect_tags_from_text(&mut self, text: &str) {
-        for tag in TagScanner::new(text).collect_tags() {
-            self.add_tag(tag);
-        }
+        self.tag_collector.collect_from_text(text);
     }
 
     fn collect_tags_from_frontmatter(&mut self, frontmatter: &Frontmatter) {
-        let key = self.config.frontmatter().tags();
-        let Some(value) = frontmatter.get(key) else {
-            return;
-        };
-
-        if let Some(text) = value.as_str() {
-            self.collect_tags_from_tokens(text);
-            return;
-        }
-
-        if let Some(values) = value.as_array() {
-            for item in values {
-                if let Some(text) = item.as_str() {
-                    self.collect_tags_from_tokens(text);
-                }
-            }
-        }
-    }
-
-    fn collect_tags_from_tokens(&mut self, text: &str) {
-        for token in text.split(|ch: char| ch.is_whitespace() || ch == ',') {
-            let token = token.trim();
-            if token.is_empty() {
-                continue;
-            }
-
-            let raw = if token.starts_with('#') {
-                token.to_owned()
-            } else {
-                let mut with_hash =
-                    String::with_capacity(token.len().saturating_add(1));
-                with_hash.push('#');
-                with_hash.push_str(token);
-                with_hash
-            };
-
-            if let Ok(tag) = NoteTag::new(&raw) {
-                self.add_tag(tag);
-            }
-        }
-    }
-
-    fn add_tag(&mut self, tag: NoteTag) {
-        let key: Box<str> = tag.full_path().into();
-        if self.tag_set.insert(key) {
-            self.tags.push(tag);
-        }
+        self.tag_collector.collect_from_frontmatter(self.config, frontmatter);
     }
 
     fn finish(mut self) -> Result<ParseOutcome, NoteError> {
@@ -692,7 +642,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
             headings: self.headings,
             sections: self.section_collector.take_sections(),
             links: self.links,
-            tags: self.tags,
+            tags: self.tag_collector.take_tags(),
             frontmatter: self.frontmatter,
         })
     }
@@ -1107,6 +1057,82 @@ struct SectionCollector<'source> {
     current: Option<SectionState>,
     last_offset: usize,
     sections: Vec<Section>,
+}
+
+#[derive(Debug, Default)]
+struct TagCollector {
+    tags: Vec<NoteTag>,
+    tag_set: HashSet<Box<str>>,
+}
+
+impl TagCollector {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn collect_from_text(&mut self, text: &str) {
+        for tag in TagScanner::new(text).collect_tags() {
+            self.add_tag(tag);
+        }
+    }
+
+    fn collect_from_frontmatter(
+        &mut self,
+        config: &Config,
+        frontmatter: &Frontmatter,
+    ) {
+        let key = config.frontmatter().tags();
+        let Some(value) = frontmatter.get(key) else {
+            return;
+        };
+
+        if let Some(text) = value.as_str() {
+            self.collect_from_tokens(text);
+            return;
+        }
+
+        if let Some(values) = value.as_array() {
+            for item in values {
+                if let Some(text) = item.as_str() {
+                    self.collect_from_tokens(text);
+                }
+            }
+        }
+    }
+
+    fn collect_from_tokens(&mut self, text: &str) {
+        for token in text.split(|ch: char| ch.is_whitespace() || ch == ',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+
+            let raw = if token.starts_with('#') {
+                token.to_owned()
+            } else {
+                let mut with_hash =
+                    String::with_capacity(token.len().saturating_add(1));
+                with_hash.push('#');
+                with_hash.push_str(token);
+                with_hash
+            };
+
+            if let Ok(tag) = NoteTag::new(&raw) {
+                self.add_tag(tag);
+            }
+        }
+    }
+
+    fn add_tag(&mut self, tag: NoteTag) {
+        let key: Box<str> = tag.full_path().into();
+        if self.tag_set.insert(key) {
+            self.tags.push(tag);
+        }
+    }
+
+    fn take_tags(self) -> Vec<NoteTag> {
+        self.tags
+    }
 }
 
 impl<'source> SectionCollector<'source> {
