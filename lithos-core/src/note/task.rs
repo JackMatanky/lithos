@@ -748,11 +748,31 @@ impl TaskMetadata {
         self.get(field)?.as_number()
     }
 
-    /// Returns a reference to the internal metadata field map.
+    /// Returns an iterator over all metadata fields.
     #[inline]
     #[must_use]
-    pub const fn fields(&self) -> &HashMap<TaskFieldKey, FieldValue> {
-        &self.fields
+    pub fn fields(&self) -> TaskMetadataFields<'_> {
+        TaskMetadataFields {
+            inner: self.fields.iter(),
+        }
+    }
+}
+
+/// Borrowed iterator over task metadata fields.
+pub struct TaskMetadataFields<'meta> {
+    inner: std::collections::hash_map::Iter<'meta, TaskFieldKey, FieldValue>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "TaskMetadataFields relies on default iterator methods."
+)]
+impl<'meta> Iterator for TaskMetadataFields<'meta> {
+    type Item = (&'meta TaskFieldKey, &'meta FieldValue);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
     }
 }
 
