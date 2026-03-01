@@ -6,7 +6,11 @@
 //! deterministic and test-friendly while keeping storage concerns centralized
 //! in the adapter layer.
 
-use std::{collections::HashSet, ops::Range, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::Range,
+    path::Path,
+};
 
 use pulldown_cmark::{
     Event, Options, Parser, Tag as CmarkTag, TagEnd, utils::TextMergeWithOffset,
@@ -410,7 +414,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
         tag: CmarkTag<'_>,
         position: usize,
     ) -> Result<(), NoteError> {
-        if is_block_tag(&tag) {
+        if Self::is_block_tag(&tag) {
             let is_heading = matches!(tag, CmarkTag::Heading { .. });
             self.section_collector.start_block(position, is_heading)?;
         }
@@ -555,6 +559,21 @@ impl<'config, 'source> ParseState<'config, 'source> {
         );
     }
 
+    fn is_block_tag(tag: &CmarkTag<'_>) -> bool {
+        matches!(
+            tag,
+            CmarkTag::List(_)
+                | CmarkTag::Heading { .. }
+                | CmarkTag::Paragraph
+                | CmarkTag::BlockQuote(_)
+                | CmarkTag::CodeBlock(_)
+                | CmarkTag::HtmlBlock
+                | CmarkTag::FootnoteDefinition(_)
+                | CmarkTag::DefinitionList
+                | CmarkTag::Table(_)
+        )
+    }
+
     fn start_list(&mut self, start: Option<u64>) -> Result<(), NoteError> {
         self.list_collector.start_list(start)?;
         Ok(())
@@ -579,117 +598,6 @@ impl<'config, 'source> ParseState<'config, 'source> {
             tags: self.tag_collector.take_tags(),
             frontmatter: self.frontmatter_collector.take_frontmatter(),
         })
-    }
-}
-
-/// Convert `serde_yaml` Value to our `FieldValue` map.
-///
-/// Uses `FieldValue::from_yaml()` for the conversion logic, which is
-/// centralized in the value module.
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "matching on &Value is clearer than *value for YAML"
-)]
-fn yaml_to_field_map(
-    yaml: &serde_yaml::Value,
-) -> Result<std::collections::HashMap<Box<str>, FieldValue>, NoteError> {
-    let serde_yaml::Value::Mapping(map) = yaml else {
-        return Err(NoteError::Frontmatter(
-            FrontmatterParseError::NotYamlMapping,
-        ));
-    };
-
-    let mut fields = std::collections::HashMap::with_capacity(map.len());
-
-    for (key, value) in map {
-        let key_str = key.as_str().ok_or(NoteError::Frontmatter(
-            FrontmatterParseError::NonStringKey,
-        ))?;
-
-        let field_value = FieldValue::from_yaml(value).map_err(|error| {
-            NoteError::Frontmatter(FrontmatterParseError::InvalidYamlValue {
-                reason: error.to_string().into(),
-            })
-        })?;
-        fields.insert(key_str.into(), field_value);
-    }
-
-    Ok(fields)
-}
-
-fn toml_to_field_map(
-    toml: &toml::Value,
-) -> Result<std::collections::HashMap<Box<str>, FieldValue>, NoteError> {
-    let table = toml
-        .as_table()
-        .ok_or(NoteError::Frontmatter(FrontmatterParseError::NotTomlTable))?;
-
-    let mut fields = std::collections::HashMap::with_capacity(table.len());
-
-    for (key, value) in table {
-        let field_value = field_value_from_toml(value)?;
-        fields.insert(key.as_str().into(), field_value);
-    }
-
-    Ok(fields)
-}
-
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "matching on &Value keeps conversion concise"
-)]
-fn field_value_from_toml(value: &toml::Value) -> Result<FieldValue, NoteError> {
-    match value {
-        toml::Value::String(text) => {
-            Ok(FieldValue::String(text.clone().into()))
-        }
-        toml::Value::Integer(number) => {
-            const MAX_SAFE_INTEGER: u64 = 0x0020_0000_0000_0000;
-            let magnitude = number.unsigned_abs();
-            if magnitude > MAX_SAFE_INTEGER {
-                return Err(NoteError::Frontmatter(
-                    FrontmatterParseError::InvalidTomlValue {
-                        reason: format!(
-                            "integer value '{number}' exceeds safe f64 range"
-                        )
-                        .into(),
-                    },
-                ));
-            }
-
-            #[expect(
-                clippy::as_conversions,
-                reason = "checked MAX_SAFE_INTEGER ensures exact f64"
-            )]
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "checked MAX_SAFE_INTEGER ensures exact f64"
-            )]
-            let parsed = (*number) as f64;
-            Ok(FieldValue::Number(parsed))
-        }
-        toml::Value::Float(number) => Ok(FieldValue::Number(*number)),
-        toml::Value::Boolean(flag) => Ok(FieldValue::Boolean(*flag)),
-        toml::Value::Datetime(datetime) => {
-            Ok(FieldValue::String(datetime.to_string().into()))
-        }
-        toml::Value::Array(values) => {
-            let mut items = Vec::with_capacity(values.len());
-            for item in values {
-                items.push(field_value_from_toml(item)?);
-            }
-            Ok(FieldValue::Array(items))
-        }
-        toml::Value::Table(table) => {
-            let mut obj = std::collections::HashMap::with_capacity(table.len());
-            for (key, value_item) in table {
-                obj.insert(
-                    key.as_str().into(),
-                    field_value_from_toml(value_item)?,
-                );
-            }
-            Ok(FieldValue::Object(obj))
-        }
     }
 }
 
@@ -927,7 +835,7 @@ impl FrontmatterCollector {
                             },
                         )
                     })?;
-                yaml_to_field_map(&yaml_value)?
+                Self::yaml_to_field_map(&yaml_value)?
             }
             pulldown_cmark::MetadataBlockKind::PlusesStyle => {
                 let toml_value: toml::Value = toml::from_str(&self.text)
@@ -938,7 +846,7 @@ impl FrontmatterCollector {
                             },
                         )
                     })?;
-                toml_to_field_map(&toml_value)?
+                Self::toml_to_field_map(&toml_value)?
             }
         };
 
@@ -952,6 +860,119 @@ impl FrontmatterCollector {
 
     fn take_frontmatter(self) -> Option<Frontmatter> {
         self.frontmatter
+    }
+
+    fn yaml_to_field_map(
+        value: &serde_yaml::Value,
+    ) -> Result<HashMap<Box<str>, FieldValue>, NoteError> {
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "matching on &Value keeps conversion concise"
+        )]
+        let serde_yaml::Value::Mapping(map) = value else {
+            return Err(NoteError::Frontmatter(
+                FrontmatterParseError::NotYamlMapping,
+            ));
+        };
+
+        let mut fields = HashMap::with_capacity(map.len());
+
+        for (key, value_item) in map {
+            let key_str = key.as_str().ok_or(NoteError::Frontmatter(
+                FrontmatterParseError::NonStringKey,
+            ))?;
+
+            let field_value =
+                FieldValue::from_yaml(value_item).map_err(|error| {
+                    NoteError::Frontmatter(
+                        FrontmatterParseError::InvalidYamlValue {
+                            reason: error.to_string().into(),
+                        },
+                    )
+                })?;
+            fields.insert(key_str.into(), field_value);
+        }
+
+        Ok(fields)
+    }
+
+    fn toml_to_field_map(
+        value: &toml::Value,
+    ) -> Result<HashMap<Box<str>, FieldValue>, NoteError> {
+        let table = value.as_table().ok_or(NoteError::Frontmatter(
+            FrontmatterParseError::NotTomlTable,
+        ))?;
+
+        let mut fields = HashMap::with_capacity(table.len());
+
+        for (key, value_item) in table {
+            let field_value = Self::field_value_from_toml(value_item)?;
+            fields.insert(key.as_str().into(), field_value);
+        }
+
+        Ok(fields)
+    }
+
+    fn field_value_from_toml(
+        value: &toml::Value,
+    ) -> Result<FieldValue, NoteError> {
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "matching on &Value keeps conversion concise"
+        )]
+        match value {
+            toml::Value::String(text) => {
+                Ok(FieldValue::String(text.clone().into()))
+            }
+            toml::Value::Integer(number) => {
+                const MAX_SAFE_INTEGER: u64 = 0x0020_0000_0000_0000;
+                let magnitude = number.unsigned_abs();
+                if magnitude > MAX_SAFE_INTEGER {
+                    return Err(NoteError::Frontmatter(
+                        FrontmatterParseError::InvalidTomlValue {
+                            reason: format!(
+                                "integer value '{number}' exceeds safe f64 \
+                                 range"
+                            )
+                            .into(),
+                        },
+                    ));
+                }
+
+                #[expect(
+                    clippy::as_conversions,
+                    reason = "checked MAX_SAFE_INTEGER ensures exact f64"
+                )]
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "checked MAX_SAFE_INTEGER ensures exact f64"
+                )]
+                let parsed = (*number) as f64;
+                Ok(FieldValue::Number(parsed))
+            }
+            toml::Value::Float(value) => Ok(FieldValue::Number(*value)),
+            toml::Value::Boolean(value) => Ok(FieldValue::Boolean(*value)),
+            toml::Value::Datetime(datetime) => {
+                Ok(FieldValue::String(datetime.to_string().into()))
+            }
+            toml::Value::Array(values) => {
+                let mut items = Vec::with_capacity(values.len());
+                for item in values {
+                    items.push(Self::field_value_from_toml(item)?);
+                }
+                Ok(FieldValue::Array(items))
+            }
+            toml::Value::Table(table) => {
+                let mut obj = HashMap::with_capacity(table.len());
+                for (key, value_item) in table {
+                    obj.insert(
+                        key.as_str().into(),
+                        Self::field_value_from_toml(value_item)?,
+                    );
+                }
+                Ok(FieldValue::Object(obj))
+            }
+        }
     }
 }
 
@@ -1483,21 +1504,6 @@ impl LinkCollector {
         }
         false
     }
-}
-
-fn is_block_tag(tag: &CmarkTag<'_>) -> bool {
-    matches!(
-        tag,
-        CmarkTag::List(_)
-            | CmarkTag::Heading { .. }
-            | CmarkTag::Paragraph
-            | CmarkTag::BlockQuote(_)
-            | CmarkTag::CodeBlock(_)
-            | CmarkTag::HtmlBlock
-            | CmarkTag::FootnoteDefinition(_)
-            | CmarkTag::DefinitionList
-            | CmarkTag::Table(_)
-    )
 }
 
 fn parse_offset(offset: usize) -> Result<SourceByteOffset, NoteError> {

@@ -100,7 +100,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
 
         IndexData {
             path: note.path().as_str().into(),
-            folder: note_folder(note.path().as_str()),
+            folder: Self::note_folder(note.path().as_str()),
             tags: note.tags().map(|tag| tag.full_path().into()).collect(),
             aliases,
             file_class,
@@ -176,20 +176,20 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             data.statuses.push(task.status().as_str().into());
 
             if let Some(timestamp) = task.created_at() {
-                data.created_dates.push(format_i64(timestamp.as_i64()));
+                data.created_dates.push(Self::format_i64(timestamp.as_i64()));
             }
             if let Some(timestamp) = task.due_at() {
-                data.due_dates.push(format_i64(timestamp.as_i64()));
+                data.due_dates.push(Self::format_i64(timestamp.as_i64()));
             }
             if let Some(timestamp) = task.reminder_at() {
-                data.reminder_dates.push(format_i64(timestamp.as_i64()));
+                data.reminder_dates.push(Self::format_i64(timestamp.as_i64()));
             }
             if let Some(timestamp) = task.completed_at() {
-                data.completed_dates.push(format_i64(timestamp.as_i64()));
+                data.completed_dates.push(Self::format_i64(timestamp.as_i64()));
             }
 
             if let Some(priority) = task.metadata().get_number("priority") {
-                data.priorities.push(format_f64(priority));
+                data.priorities.push(Self::format_f64(priority));
             }
             if let Some(project) = task.metadata().get_string("project") {
                 data.projects.push(project.into());
@@ -303,7 +303,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         fields.sort_by(|left, right| left.0.cmp(right.0));
 
         for (key, value) in fields {
-            let values = field_value_index_values(value);
+            let values = Self::field_value_index_values(value);
             for value_str in values {
                 let capacity =
                     key.len().saturating_add(value_str.len()).saturating_add(1);
@@ -315,6 +315,52 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             }
         }
         entries
+    }
+
+    fn note_folder(path: &str) -> Option<Box<str>> {
+        Path::new(path)
+            .parent()
+            .and_then(|parent| parent.to_str())
+            .filter(|folder| !folder.is_empty())
+            .map(Into::into)
+    }
+
+    fn field_value_index_values(value: &FieldValue) -> Vec<Box<str>> {
+        if let Some(text) = value.as_str() {
+            return vec![text.into()];
+        }
+        if let Some(flag) = value.as_bool() {
+            return if flag {
+                vec!["true".into()]
+            } else {
+                vec!["false".into()]
+            };
+        }
+        if let Some(timestamp) = value.as_date() {
+            return vec![Self::format_i64(timestamp)];
+        }
+        if let Some(number) = value.as_number() {
+            return vec![Self::format_f64(number)];
+        }
+        if let Some(values) = value.as_array() {
+            let mut out = Vec::new();
+            for item in values {
+                out.extend(Self::field_value_index_values(item));
+            }
+            return out;
+        }
+
+        vec![value.to_json_string().into()]
+    }
+
+    fn format_i64(value: i64) -> Box<str> {
+        let mut buffer = itoa::Buffer::new();
+        buffer.format(value).into()
+    }
+
+    fn format_f64(value: f64) -> Box<str> {
+        let mut buffer = ryu::Buffer::new();
+        buffer.format(value).into()
     }
 }
 
@@ -390,52 +436,6 @@ impl Command for CommandAdapter<'_, '_> {
 
         Ok(note)
     }
-}
-
-fn note_folder(path: &str) -> Option<Box<str>> {
-    Path::new(path)
-        .parent()
-        .and_then(|parent| parent.to_str())
-        .filter(|folder| !folder.is_empty())
-        .map(Into::into)
-}
-
-fn field_value_index_values(value: &FieldValue) -> Vec<Box<str>> {
-    if let Some(text) = value.as_str() {
-        return vec![text.into()];
-    }
-    if let Some(flag) = value.as_bool() {
-        return if flag {
-            vec!["true".into()]
-        } else {
-            vec!["false".into()]
-        };
-    }
-    if let Some(timestamp) = value.as_date() {
-        return vec![format_i64(timestamp)];
-    }
-    if let Some(number) = value.as_number() {
-        return vec![format_f64(number)];
-    }
-    if let Some(values) = value.as_array() {
-        let mut out = Vec::new();
-        for item in values {
-            out.extend(field_value_index_values(item));
-        }
-        return out;
-    }
-
-    vec![value.to_json_string().into()]
-}
-
-fn format_i64(value: i64) -> Box<str> {
-    let mut buffer = itoa::Buffer::new();
-    buffer.format(value).into()
-}
-
-fn format_f64(value: f64) -> Box<str> {
-    let mut buffer = ryu::Buffer::new();
-    buffer.format(value).into()
 }
 
 #[cfg(test)]

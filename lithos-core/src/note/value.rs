@@ -209,6 +209,31 @@ impl FieldValue {
         }
     }
 
+    fn write_json_string(out: &mut String, value: &str) {
+        out.push('"');
+        for ch in value.chars() {
+            match ch {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                '\u{08}' => out.push_str("\\b"),
+                '\u{0C}' => out.push_str("\\f"),
+                _ if ch.is_control() => {
+                    use std::fmt::Write as _;
+                    #[expect(
+                        clippy::let_underscore_must_use,
+                        reason = "Writing to String is infallible"
+                    )]
+                    let _ = write!(out, "\\u{:04X}", u32::from(ch));
+                }
+                _ => out.push(ch),
+            }
+        }
+        out.push('"');
+    }
+
     /// Convert a `serde_json::Value` into a `FieldValue`.
     ///
     /// This is useful for adapters parsing JSON-like structures (including
@@ -325,7 +350,7 @@ impl FieldValue {
     fn write_json(&self, out: &mut String) {
         match self {
             Self::String(s) => {
-                write_json_string(out, s);
+                Self::write_json_string(out, s);
             }
             Self::Number(n) => {
                 use std::fmt::Write as _;
@@ -368,7 +393,7 @@ impl FieldValue {
                     if i > 0 {
                         out.push_str(", ");
                     }
-                    write_json_string(out, key);
+                    Self::write_json_string(out, key);
                     out.push_str(": ");
                     if let Some(value) = obj.get(*key) {
                         value.write_json(out);
@@ -416,31 +441,6 @@ impl<'value> Iterator for FieldArrayItems<'value> {
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
     }
-}
-
-fn write_json_string(out: &mut String, value: &str) {
-    out.push('"');
-    for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{08}' => out.push_str("\\b"),
-            '\u{0C}' => out.push_str("\\f"),
-            _ if ch.is_control() => {
-                use std::fmt::Write as _;
-                #[expect(
-                    clippy::let_underscore_must_use,
-                    reason = "Writing to String is infallible"
-                )]
-                let _ = write!(out, "\\u{:04X}", u32::from(ch));
-            }
-            _ => out.push(ch),
-        }
-    }
-    out.push('"');
 }
 
 // ----------------------------------------------------------- //
