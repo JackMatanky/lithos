@@ -1552,9 +1552,9 @@ mod tests {
 
         let list = lists.first().expect("list should exist");
         assert!(matches!(list.list_type(), ListType::Unordered));
-        assert_eq!(list.items().len(), 2, "expected two list items");
+        assert_eq!(list.items().count(), 2, "expected two list items");
 
-        let first_item = list.items().first().expect("first item");
+        let first_item = list.items().next().expect("first item");
         let (task_id, status) = match first_item {
             ListItem::Checkbox {
                 task_id,
@@ -2046,7 +2046,7 @@ title: My Note
             ..
         } = reader.parse_str(markdown)?;
         let list = lists.first().expect("list should exist");
-        let item = list.items().first().expect("item should exist");
+        let item = list.items().next().expect("item should exist");
         assert_eq!(item.text(), "Item with link");
         Ok(())
     }

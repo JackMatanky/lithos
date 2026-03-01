@@ -63,9 +63,9 @@ mod tests {
             .iter()
             .find(|list| matches!(list.list_type(), ListType::Unordered))
             .expect("unordered list missing");
-        assert_eq!(unordered.items().len(), 2, "unordered list item count");
+        assert_eq!(unordered.items().count(), 2, "unordered list item count");
 
-        let first_item = unordered.items().first().expect("missing first item");
+        let first_item = unordered.items().next().expect("missing first item");
         let ListItem::Checkbox {
             task_id,
             status,

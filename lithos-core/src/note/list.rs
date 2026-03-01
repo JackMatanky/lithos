@@ -100,8 +100,10 @@ impl List {
     /// Returns the list items in source order.
     #[inline]
     #[must_use]
-    pub fn items(&self) -> &[ListItem] {
-        &self.items
+    pub fn items(&self) -> ListItems<'_> {
+        ListItems {
+            inner: self.items.iter(),
+        }
     }
 
     /// Returns the list nesting depth (0 = top level).
@@ -171,6 +173,24 @@ impl fmt::Display for ListDepth {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+/// Borrowed iterator over list items.
+pub struct ListItems<'list> {
+    inner: std::slice::Iter<'list, ListItem>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "ListItems relies on default iterator methods."
+)]
+impl<'list> Iterator for ListItems<'list> {
+    type Item = &'list ListItem;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
     }
 }
 
