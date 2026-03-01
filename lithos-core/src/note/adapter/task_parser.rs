@@ -9,7 +9,8 @@ use crate::{
         error::{NoteError, TaskError},
         tag::Tag,
         task::{
-            Task, TaskAttributes, TaskFieldKey, TaskMetadata, TaskTimestamp,
+            Task, TaskAttributes, TaskAttributesBuilder, TaskFieldKey,
+            TaskMetadata, TaskTimestamp,
         },
         types::SourceByteOffset,
         value::FieldValue,
@@ -53,16 +54,8 @@ impl<'config> TaskParser<'config> {
             })?
             .clone();
         let text = self.extract_clean_text(raw_text)?;
-        let (created_at, due_at, reminder_at, completed_at, metadata) =
-            self.parse_inline_fields(raw_text)?;
-        let attributes = TaskAttributes::builder()
-            .tags(tags)
-            .metadata(metadata)
-            .created_at(created_at)
-            .due_at(due_at)
-            .reminder_at(reminder_at)
-            .completed_at(completed_at)
-            .build();
+        let parsed = self.parse_inline_fields(raw_text)?;
+        let attributes = parsed.into_attributes(tags);
 
         Task::new(status, text, position, attributes).map(Some)
     }
@@ -179,13 +172,20 @@ impl<'config> TaskParser<'config> {
     }
 }
 
-type ParsedInlineFields = (
-    Option<TaskTimestamp>,
-    Option<TaskTimestamp>,
-    Option<TaskTimestamp>,
-    Option<TaskTimestamp>,
-    TaskMetadata,
-);
+#[derive(Debug)]
+struct ParsedInlineFields {
+    slots: TemporalSlots,
+    metadata: TaskMetadata,
+}
+
+impl ParsedInlineFields {
+    fn into_attributes(self, tags: Vec<Tag>) -> TaskAttributes {
+        self.slots
+            .apply_to_builder(TaskAttributes::builder().tags(tags))
+            .metadata(self.metadata)
+            .build()
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 enum DateSlot {
@@ -209,13 +209,10 @@ struct TemporalSlots {
 
 impl TemporalSlots {
     fn finish(self, metadata: TaskMetadata) -> ParsedInlineFields {
-        (
-            self.created_at,
-            self.due_at,
-            self.reminder_at,
-            self.completed_at,
+        ParsedInlineFields {
+            slots: self,
             metadata,
-        )
+        }
     }
 
     fn get(&self, slot: DateSlot) -> Option<TaskTimestamp> {
@@ -234,6 +231,17 @@ impl TemporalSlots {
             DateSlot::Reminder => self.reminder_at = Some(value),
             DateSlot::Completed => self.completed_at = Some(value),
         }
+    }
+
+    fn apply_to_builder(
+        self,
+        builder: TaskAttributesBuilder,
+    ) -> TaskAttributesBuilder {
+        builder
+            .created_at(self.created_at)
+            .due_at(self.due_at)
+            .reminder_at(self.reminder_at)
+            .completed_at(self.completed_at)
     }
 }
 
