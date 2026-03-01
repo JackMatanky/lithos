@@ -264,6 +264,24 @@ impl TaskText {
     }
 }
 
+/// Borrowed iterator over task tags.
+pub struct TaskTags<'task> {
+    inner: std::slice::Iter<'task, Tag>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "TaskTags relies on default iterator methods."
+)]
+impl<'task> Iterator for TaskTags<'task> {
+    type Item = &'task Tag;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
 impl TaskAttributesBuilder {
     #[inline]
     #[must_use]
@@ -383,8 +401,10 @@ impl Task {
     /// Returns the collection of tags associated with this task.
     #[inline]
     #[must_use]
-    pub fn tags(&self) -> &[Tag] {
-        &self.tags
+    pub fn tags(&self) -> TaskTags<'_> {
+        TaskTags {
+            inner: self.tags.iter(),
+        }
     }
 
     /// Returns the task's creation timestamp, if known.
@@ -910,13 +930,11 @@ mod tests {
             .expect("task should be promoted");
 
         // Verify hierarchical tags are properly extracted
-        assert!(task.tags().iter().any(|tag| tag.full_path() == "task"));
+        assert!(task.tags().any(|tag| tag.full_path() == "task"));
         assert!(
-            task.tags()
-                .iter()
-                .any(|tag| tag.full_path() == "work/project/urgent")
+            task.tags().any(|tag| tag.full_path() == "work/project/urgent")
         );
-        assert_eq!(task.tags().len(), 2);
+        assert_eq!(task.tags().count(), 2);
     }
 
     #[test]
@@ -937,8 +955,8 @@ mod tests {
             .expect("task should parse")
             .expect("task should be promoted");
 
-        assert!(task.tags().iter().any(|tag| tag.full_path() == "task"));
-        assert_eq!(task.tags().len(), 1);
+        assert!(task.tags().any(|tag| tag.full_path() == "task"));
+        assert_eq!(task.tags().count(), 1);
     }
 
     #[test]
