@@ -48,6 +48,20 @@ impl SourceByteOffset {
         Self(offset)
     }
 
+    /// Creates a new `SourceByteOffset` from a `usize` offset.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if the offset cannot fit in `u32`.
+    #[inline]
+    pub fn try_from_usize(offset: usize) -> Result<Self, NoteError> {
+        Self::try_from(offset).map_err(|error| {
+            NoteError::Structure(
+                format!("source offset out of range: {error}").into(),
+            )
+        })
+    }
+
     /// Converts this byte offset into a line/column pair for the given source.
     ///
     /// Line and column numbers are 1-based. Column counts Unicode scalar

@@ -673,7 +673,7 @@ impl ItemCollector {
     }
 
     fn start_item(&mut self, start: usize) -> Result<(), NoteError> {
-        let position = parse_offset(start)?;
+        let position = SourceByteOffset::try_from_usize(start)?;
         self.current = Some(ItemState::new(position));
         Ok(())
     }
@@ -996,7 +996,7 @@ impl HeadingCollector {
             pulldown_cmark::HeadingLevel::H6 => HeadingLevel::try_new(6)?,
         };
 
-        let position = parse_offset(position)?;
+        let position = SourceByteOffset::try_from_usize(position)?;
 
         self.current = Some(HeadingState {
             level,
@@ -1154,7 +1154,7 @@ impl<'source> SectionCollector<'source> {
         is_heading: bool,
     ) -> Result<(), NoteError> {
         if self.block_depth == 0 {
-            let start = parse_offset(position)?;
+            let start = SourceByteOffset::try_from_usize(position)?;
             self.current = Some(SectionState {
                 start,
                 heading: None,
@@ -1184,8 +1184,8 @@ impl<'source> SectionCollector<'source> {
         if self.block_depth != 0 {
             return Ok(());
         }
-        let start = parse_offset(start)?;
-        let end = parse_offset(end)?;
+        let start = SourceByteOffset::try_from_usize(start)?;
+        let end = SourceByteOffset::try_from_usize(end)?;
         self.push_section(None, start, end)
     }
 
@@ -1213,7 +1213,7 @@ impl<'source> SectionCollector<'source> {
         let Some(section) = self.current.take() else {
             return Ok(());
         };
-        let end = parse_offset(self.last_offset)?;
+        let end = SourceByteOffset::try_from_usize(self.last_offset)?;
         self.push_section(section.heading, section.start, end)
     }
 
@@ -1274,7 +1274,7 @@ impl LinkCollector {
     ) -> Result<(), NoteError> {
         use pulldown_cmark::LinkType as PLinkType;
 
-        let position = parse_offset(position)?;
+        let position = SourceByteOffset::try_from_usize(position)?;
 
         match link_type {
             PLinkType::WikiLink {
@@ -1504,14 +1504,6 @@ impl LinkCollector {
         }
         false
     }
-}
-
-fn parse_offset(offset: usize) -> Result<SourceByteOffset, NoteError> {
-    SourceByteOffset::try_from(offset).map_err(|error| {
-        NoteError::Structure(
-            format!("source offset out of range: {error}").into(),
-        )
-    })
 }
 
 #[cfg(test)]

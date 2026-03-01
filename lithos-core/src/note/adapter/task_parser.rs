@@ -187,6 +187,14 @@ type ParsedInlineFields = (
     TaskMetadata,
 );
 
+#[derive(Debug, Clone, Copy)]
+enum DateSlot {
+    Created,
+    Due,
+    Reminder,
+    Completed,
+}
+
 #[derive(Debug, Default)]
 #[expect(
     clippy::struct_field_names,
@@ -209,6 +217,24 @@ impl TemporalSlots {
             metadata,
         )
     }
+
+    fn get(&self, slot: DateSlot) -> Option<TaskTimestamp> {
+        match slot {
+            DateSlot::Created => self.created_at,
+            DateSlot::Due => self.due_at,
+            DateSlot::Reminder => self.reminder_at,
+            DateSlot::Completed => self.completed_at,
+        }
+    }
+
+    fn set(&mut self, slot: DateSlot, value: TaskTimestamp) {
+        match slot {
+            DateSlot::Created => self.created_at = Some(value),
+            DateSlot::Due => self.due_at = Some(value),
+            DateSlot::Reminder => self.reminder_at = Some(value),
+            DateSlot::Completed => self.completed_at = Some(value),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -228,14 +254,9 @@ impl InlineFieldState {
         keyword: &str,
         raw_value: &str,
     ) -> Result<(), NoteError> {
-        if let Some(spec) = Self::match_date_spec(config, keyword) {
+        if let Some((slot, spec)) = Self::match_date_spec(config, keyword) {
             let parsed = Self::parse_date_str(raw_value, spec)?;
-            Self::assign_date_for_keyword(
-                config,
-                spec.keyword().as_str(),
-                parsed,
-                &mut self.slots,
-            );
+            self.slots.set(slot, parsed);
             return Ok(());
         }
 
@@ -247,37 +268,30 @@ impl InlineFieldState {
         config: &TaskConfig,
         text: &str,
     ) -> Result<(), NoteError> {
-        if let Some(spec) = config.created()
-            && self.slots.created_at.is_none()
-            && let Some(emoji) = spec.emoji()
-            && let Some(value) = Self::find_emoji_field(text, emoji)
-        {
-            self.slots.created_at = Some(Self::parse_date_str(value, spec)?);
-        }
-
-        if let Some(spec) = config.due()
-            && self.slots.due_at.is_none()
-            && let Some(emoji) = spec.emoji()
-            && let Some(value) = Self::find_emoji_field(text, emoji)
-        {
-            self.slots.due_at = Some(Self::parse_date_str(value, spec)?);
-        }
-
-        if let Some(spec) = config.reminder()
-            && self.slots.reminder_at.is_none()
-            && let Some(emoji) = spec.emoji()
-            && let Some(value) = Self::find_emoji_field(text, emoji)
-        {
-            self.slots.reminder_at = Some(Self::parse_date_str(value, spec)?);
-        }
-
-        if let Some(spec) = config.completed()
-            && self.slots.completed_at.is_none()
-            && let Some(emoji) = spec.emoji()
-            && let Some(value) = Self::find_emoji_field(text, emoji)
-        {
-            self.slots.completed_at = Some(Self::parse_date_str(value, spec)?);
-        }
+        Self::fill_emoji_slot(
+            DateSlot::Created,
+            config.created(),
+            text,
+            &mut self.slots,
+        )?;
+        Self::fill_emoji_slot(
+            DateSlot::Due,
+            config.due(),
+            text,
+            &mut self.slots,
+        )?;
+        Self::fill_emoji_slot(
+            DateSlot::Reminder,
+            config.reminder(),
+            text,
+            &mut self.slots,
+        )?;
+        Self::fill_emoji_slot(
+            DateSlot::Completed,
+            config.completed(),
+            text,
+            &mut self.slots,
+        )?;
 
         Ok(())
     }
@@ -336,39 +350,26 @@ impl InlineFieldState {
         }
     }
 
-    fn assign_date_for_keyword(
-        config: &TaskConfig,
-        keyword: &str,
-        value: TaskTimestamp,
+    fn fill_emoji_slot(
+        slot: DateSlot,
+        spec: Option<&DateSpec>,
+        text: &str,
         slots: &mut TemporalSlots,
-    ) {
-        if config
-            .created()
-            .is_some_and(|spec| spec.keyword().as_str() == keyword)
-        {
-            slots.created_at = Some(value);
-            return;
+    ) -> Result<(), NoteError> {
+        let Some(spec) = spec else {
+            return Ok(());
+        };
+        if slots.get(slot).is_some() {
+            return Ok(());
         }
-
-        if config.due().is_some_and(|spec| spec.keyword().as_str() == keyword) {
-            slots.due_at = Some(value);
-            return;
-        }
-
-        if config
-            .reminder()
-            .is_some_and(|spec| spec.keyword().as_str() == keyword)
-        {
-            slots.reminder_at = Some(value);
-            return;
-        }
-
-        if config
-            .completed()
-            .is_some_and(|spec| spec.keyword().as_str() == keyword)
-        {
-            slots.completed_at = Some(value);
-        }
+        let Some(emoji) = spec.emoji() else {
+            return Ok(());
+        };
+        let Some(value) = Self::find_emoji_field(text, emoji) else {
+            return Ok(());
+        };
+        slots.set(slot, Self::parse_date_str(value, spec)?);
+        Ok(())
     }
 
     fn insert_metadata(
@@ -405,26 +406,26 @@ impl InlineFieldState {
     fn match_date_spec<'config>(
         config: &'config TaskConfig,
         keyword: &str,
-    ) -> Option<&'config DateSpec> {
+    ) -> Option<(DateSlot, &'config DateSpec)> {
         if let Some(spec) = config.created()
             && spec.keyword().as_str() == keyword
         {
-            return Some(spec);
+            return Some((DateSlot::Created, spec));
         }
         if let Some(spec) = config.due()
             && spec.keyword().as_str() == keyword
         {
-            return Some(spec);
+            return Some((DateSlot::Due, spec));
         }
         if let Some(spec) = config.reminder()
             && spec.keyword().as_str() == keyword
         {
-            return Some(spec);
+            return Some((DateSlot::Reminder, spec));
         }
         if let Some(spec) = config.completed()
             && spec.keyword().as_str() == keyword
         {
-            return Some(spec);
+            return Some((DateSlot::Completed, spec));
         }
         None
     }
