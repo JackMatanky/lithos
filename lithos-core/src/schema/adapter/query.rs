@@ -7,14 +7,14 @@ use crate::{
     db::{BatchReader, Database, DbError},
     schema::{
         adapter::stored::{
-            StoredBankMetadata, StoredBankProperty, StoredPropertyBank,
+            StoredBankProperty, StoredMetadata, StoredPropertyBank,
             StoredSchema,
         },
         aggregate::{Schema, SchemaId, SchemaName, Timestamp},
         bank::{BankVersion, PropertyBank},
         db_table::{
             BANK_METADATA, BANK_PROPERTY_BY_NAME, PROPERTY_BANK_KEY,
-            SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
+            SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
         },
         ports::{NameIdPair, Query},
     },
@@ -67,10 +67,9 @@ impl Query for QueryAdapter<'_> {
 
     #[inline]
     fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
-        let Some(metadata) = self.db.get_owned::<StoredBankMetadata>(
-            BANK_METADATA,
-            PROPERTY_BANK_KEY,
-        )?
+        let Some(metadata) = self
+            .db
+            .get_owned::<StoredMetadata>(BANK_METADATA, PROPERTY_BANK_KEY)?
         else {
             return Ok(None);
         };
@@ -99,10 +98,9 @@ impl Query for QueryAdapter<'_> {
 
     #[inline]
     fn is_bank_stale(&self, version: BankVersion) -> Result<bool, Self::Error> {
-        let Some(stored) = self.db.get_owned::<StoredBankMetadata>(
-            BANK_METADATA,
-            PROPERTY_BANK_KEY,
-        )?
+        let Some(stored) = self
+            .db
+            .get_owned::<StoredMetadata>(BANK_METADATA, PROPERTY_BANK_KEY)?
         else {
             return Ok(true);
         };
@@ -126,11 +124,19 @@ impl Query for QueryAdapter<'_> {
         modified_at: Option<Timestamp>,
         bank_version: BankVersion,
     ) -> Result<bool, Self::Error> {
-        let Some(stored) = self
+        let Some(_stored) = self
             .db
             .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
         else {
             // No stored record — always stale.
+            return Ok(true);
+        };
+
+        let id_key = id.into_uuid().to_string();
+        let Some(stored) = self
+            .db
+            .get_owned::<StoredMetadata>(SCHEMA_METADATA, id_key.as_str())?
+        else {
             return Ok(true);
         };
 

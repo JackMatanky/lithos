@@ -10,14 +10,14 @@ use crate::{
     db::{Database, DbError},
     schema::{
         adapter::stored::{
-            StoredBankMetadata, StoredBankProperty, StoredProperty,
-            StoredSchema,
+            StoredBankProperty, StoredMetadata, StoredProperty, StoredSchema,
         },
         aggregate::{Schema, SchemaId, Timestamp},
         bank::{BankVersion, PropertyBank},
         db_table::{
             BANK_METADATA, BANK_PROPERTY_BY_ID, BANK_PROPERTY_BY_NAME,
             PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
+            SCHEMA_METADATA,
         },
         ports::Command,
         property::{Multiplicity, Optionality},
@@ -36,35 +36,6 @@ use crate::{
 /// ```
 pub struct CommandAdapter<'db> {
     db: &'db Database,
-}
-
-/// Metadata bundle for persisting a schema.
-///
-/// This adapter-specific type carries the storage metadata needed to build
-/// `StoredSchema`. It lives in the adapter layer and is never exposed to
-/// the domain.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::adapter::command::SaveMetadata;
-/// use lithos_core::schema::bank::BankVersion;
-///
-/// let metadata = SaveMetadata {
-///     bank_version: BankVersion::initial(),
-///     created_at: None,
-///     modified_at: None,
-/// };
-/// let _ = metadata;
-/// ```
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct SaveMetadata {
-    /// Property bank version at time of resolution.
-    pub bank_version: BankVersion,
-    /// Filesystem birthtime (from `Metadata::created()`), if available.
-    pub created_at: Option<Timestamp>,
-    /// Filesystem mtime (from `Metadata::modified()`), if available.
-    pub modified_at: Option<Timestamp>,
 }
 
 impl<'db> CommandAdapter<'db> {
@@ -102,12 +73,13 @@ impl<'db> CommandAdapter<'db> {
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::adapter::command::{CommandAdapter, SaveMetadata};
+    /// use lithos_core::schema::adapter::command::CommandAdapter;
+    /// use lithos_core::schema::adapter::stored::StoredMetadata;
     ///
     /// let db = todo!("Provide a Database instance");
     /// let adapter = CommandAdapter::new(&db);
     /// let schemas = Vec::new();
-    /// let metadata: Vec<SaveMetadata> = Vec::new();
+    /// let metadata: Vec<StoredMetadata> = Vec::new();
     /// adapter.save_batch_with_metadata(&schemas, &metadata)?;
     /// # Ok::<_, lithos_core::db::DbError>(())
     /// ```
@@ -119,7 +91,7 @@ impl<'db> CommandAdapter<'db> {
     pub fn save_batch_with_metadata(
         &self,
         schemas: &[Schema],
-        metadata: &[SaveMetadata],
+        metadata: &[StoredMetadata],
     ) -> Result<(), DbError> {
         assert_eq!(
             schemas.len(),
@@ -153,12 +125,7 @@ impl<'db> CommandAdapter<'db> {
         // Atomic write
         self.db.batch_write(|batch| {
             for (schema, meta) in schemas.iter().zip(metadata.iter()) {
-                let stored = StoredSchema::from_schema(
-                    schema,
-                    meta.bank_version,
-                    meta.created_at,
-                    meta.modified_at,
-                );
+                let stored = StoredSchema::from_schema(schema);
                 let id_key = schema.id().into_uuid().to_string();
                 batch.put(SCHEMA_BY_ID, id_key.as_str(), &stored)?;
                 batch.put(
@@ -166,6 +133,7 @@ impl<'db> CommandAdapter<'db> {
                     schema.name().as_str(),
                     &schema.id(),
                 )?;
+                batch.put(SCHEMA_METADATA, id_key.as_str(), meta)?;
             }
             Ok(())
         })
@@ -183,13 +151,9 @@ impl Command for CommandAdapter<'_> {
     fn save_batch(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
         // Use default metadata for port trait implementation
         // (tests and simple use cases don't need file timestamps)
-        let metadata: Vec<SaveMetadata> = schemas
+        let metadata: Vec<StoredMetadata> = schemas
             .iter()
-            .map(|_| SaveMetadata {
-                bank_version: BankVersion::initial(),
-                created_at: None,
-                modified_at: None,
-            })
+            .map(|_| StoredMetadata::new(BankVersion::initial(), None, None))
             .collect();
 
         self.save_batch_with_metadata(schemas, &metadata)
@@ -228,7 +192,7 @@ impl Command for CommandAdapter<'_> {
         let bank_version = bank.version();
         let recorded_at = Timestamp::now();
 
-        let metadata = StoredBankMetadata {
+        let metadata = StoredMetadata {
             bank_version,
             created_at: None,
             modified_at: None,

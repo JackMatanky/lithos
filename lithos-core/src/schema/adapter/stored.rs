@@ -1,9 +1,8 @@
 //! Storage representation for schema aggregates.
 //!
 //! [`StoredSchema`] is the rkyv-serialized adapter type persisted to the
-//! `schema_by_id` table. It carries all metadata needed for staleness
-//! checking and tree reconstruction, eliminating the need for a separate
-//! `schema_metadata` table.
+//! `schema_by_id` table. Metadata for staleness checking lives in the
+//! `schema_metadata` table via [`StoredMetadata`].
 //!
 //! Property bank storage uses:
 //! - `bank_metadata` for version/timestamp tracking
@@ -38,30 +37,17 @@ pub(crate) struct StoredSchema {
     pub parent_id: Option<SchemaId>,
     /// Resolved properties (flattened).
     pub properties: Vec<StoredProperty>,
-    /// Bank version at time of resolution; used for staleness detection.
-    pub bank_version: BankVersion,
-    /// Filesystem birthtime (from `Metadata::created()`), if available.
-    pub created_at: Option<Timestamp>,
-    /// Filesystem mtime (from `Metadata::modified()`), if available.
-    pub modified_at: Option<Timestamp>,
-    /// Wall-clock timestamp when this record was written to the database.
-    pub recorded_at: Timestamp,
 }
 
 impl StoredSchema {
-    /// Build a [`StoredSchema`] from a domain [`Schema`] and storage metadata.
+    /// Build a [`StoredSchema`] from a domain [`Schema`].
     ///
     /// Called by the command adapter before persisting.
     ///
     /// The `parent_id` parameter is now sourced from `schema.parent_id()`
     /// instead of being passed separately (as of the `parent_id` domain
     /// migration).
-    pub(crate) fn from_schema(
-        schema: &Schema,
-        bank_version: BankVersion,
-        created_at: Option<Timestamp>,
-        modified_at: Option<Timestamp>,
-    ) -> Self {
+    pub(crate) fn from_schema(schema: &Schema) -> Self {
         let properties = schema
             .properties()
             .map(|p| StoredProperty {
@@ -78,10 +64,6 @@ impl StoredSchema {
             name: schema.name().as_str().into(),
             parent_id: schema.parent_id(),
             properties,
-            bank_version,
-            created_at,
-            modified_at,
-            recorded_at: Timestamp::now(),
         }
     }
 }
@@ -130,7 +112,7 @@ pub(crate) struct StoredPropertyBank {
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
-pub(crate) struct StoredBankMetadata {
+pub struct StoredMetadata {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
     /// Filesystem birthtime (from `Metadata::created()`), if available.
@@ -139,6 +121,23 @@ pub(crate) struct StoredBankMetadata {
     pub modified_at: Option<Timestamp>,
     /// Wall-clock timestamp when this record was written.
     pub recorded_at: Timestamp,
+}
+
+impl StoredMetadata {
+    /// Build metadata for storage.
+    #[inline]
+    pub(crate) fn new(
+        bank_version: BankVersion,
+        created_at: Option<Timestamp>,
+        modified_at: Option<Timestamp>,
+    ) -> Self {
+        Self {
+            bank_version,
+            created_at,
+            modified_at,
+            recorded_at: Timestamp::now(),
+        }
+    }
 }
 
 /// Adapter storage representation of a single bank property snapshot.
@@ -218,7 +217,6 @@ mod tests {
     use super::*;
     use crate::schema::{
         aggregate::SchemaId,
-        bank::BankVersion,
         property_spec::{BoolSpec, PropertySpec},
     };
 
@@ -237,28 +235,12 @@ mod tests {
     #[test]
     fn to_stored_round_trips_to_schema() {
         let schema = make_schema();
-        let stored = StoredSchema::from_schema(
-            &schema,
-            BankVersion::initial(),
-            Some(Timestamp::from_secs(1_000_000)),
-            Some(Timestamp::from_secs(2_000_000)),
-        );
+        let stored = StoredSchema::from_schema(&schema);
 
         assert_eq!(stored.id, TEST_SCHEMA_ID, "ID should match");
         assert_eq!(stored.name.as_ref(), "test-stored", "Name should match");
         assert!(stored.parent_id.is_none(), "No parent");
         assert!(stored.properties.is_empty(), "No properties");
-        assert_eq!(
-            stored.created_at,
-            Some(Timestamp::from_secs(1_000_000)),
-            "Created time should match"
-        );
-        assert_eq!(
-            stored.modified_at,
-            Some(Timestamp::from_secs(2_000_000)),
-            "Modified time should match"
-        );
-
         let recovered =
             Schema::try_from(stored).expect("Round-trip should succeed");
         assert_eq!(
@@ -283,12 +265,7 @@ mod tests {
         let schema =
             Schema::reconstruct(TEST_SCHEMA_ID, schema_name, None, vec![prop]);
 
-        let stored = StoredSchema::from_schema(
-            &schema,
-            BankVersion::initial(),
-            Some(Timestamp::from_secs(0)),
-            Some(Timestamp::from_secs(0)),
-        );
+        let stored = StoredSchema::from_schema(&schema);
 
         assert_eq!(stored.properties.len(), 1, "One property stored");
         let sp = stored.properties.first().expect("One property stored");

@@ -30,7 +30,7 @@
 use std::collections::HashMap;
 
 use crate::schema::{
-    adapter::{command::SaveMetadata, ingestor::Ingestor},
+    adapter::{ingestor::Ingestor, stored::StoredMetadata},
     aggregate::{Schema, SchemaId, SchemaName, Timestamp},
     bank::PropertyBank,
     command::Command,
@@ -203,18 +203,14 @@ impl<'db> SchemaService<'db> {
             }
 
             // Build metadata vector in same order as schemas
-            let metadata: Vec<SaveMetadata> = resolved
+            let metadata: Vec<StoredMetadata> = resolved
                 .iter()
                 .map(|schema| {
                     let (modified, created) = time_map
                         .get(&schema.id())
                         .copied()
                         .unwrap_or((None, None));
-                    SaveMetadata {
-                        bank_version: current_bank_version,
-                        created_at: created,
-                        modified_at: modified,
-                    }
+                    StoredMetadata::new(current_bank_version, created, modified)
                 })
                 .collect();
 
