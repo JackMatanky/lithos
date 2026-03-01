@@ -50,15 +50,6 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
-/// Registry of reusable properties for schema validation.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::bank::PropertyBank;
-///
-/// let bank = PropertyBank::new();
-/// assert_eq!(bank.all().count(), 0);
-/// ```
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct PropertyBank {
@@ -99,6 +90,8 @@ impl PropertyBank {
     /// Preserves existing property IDs by name when `existing` is provided.
     /// New properties (not found in existing by name) get generated IDs.
     ///
+    /// Properties are loaded in deterministic name order.
+    ///
     /// # Errors
     /// Returns `SchemaError` if any property fails validation.
     ///
@@ -114,18 +107,16 @@ impl PropertyBank {
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "Property order in bank is not deterministic; from_raw \
-                  preserves insertion order"
-    )]
     pub fn from_raw(
         raw: super::raw::RawPropertyBank,
         existing: Option<&Self>,
     ) -> Result<Self, SchemaError> {
         let mut bank = Self::new();
 
-        for (name, entry) in raw.properties {
+        let mut entries: Vec<_> = raw.properties.into_iter().collect();
+        entries.sort_by(|left, right| left.0.cmp(&right.0));
+
+        for (name, entry) in entries {
             let prop_name = PropertyName::try_from(name)?;
             let spec = entry.spec.try_into_validated()?;
             let multiplicity = if entry.multi {

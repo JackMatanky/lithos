@@ -11,7 +11,7 @@ use crate::{
     schema::{
         adapter::stored::{
             StoredBankMetadata, StoredBankProperty, StoredProperty,
-            bank_property_key, to_stored,
+            StoredSchema, bank_property_key,
         },
         aggregate::{Schema, SchemaId, Timestamp},
         bank::{BankVersion, PropertyBank},
@@ -23,6 +23,20 @@ use crate::{
         property::{Multiplicity, Optionality},
     },
 };
+
+/// Redb-backed schema command adapter.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::adapter::command::CommandAdapter;
+///
+/// let db = todo!("Provide a Database instance");
+/// let adapter = CommandAdapter::new(&db);
+/// let _ = adapter;
+/// ```
+pub struct CommandAdapter<'db> {
+    db: &'db Database,
+}
 
 /// Metadata bundle for persisting a schema.
 ///
@@ -51,20 +65,6 @@ pub struct SaveMetadata {
     pub created_at: Option<Timestamp>,
     /// Filesystem mtime (from `Metadata::modified()`), if available.
     pub modified_at: Option<Timestamp>,
-}
-
-/// Redb-backed schema command adapter.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::adapter::command::CommandAdapter;
-///
-/// let db = todo!("Provide a Database instance");
-/// let adapter = CommandAdapter::new(&db);
-/// let _ = adapter;
-/// ```
-pub struct CommandAdapter<'db> {
-    db: &'db Database,
 }
 
 impl<'db> CommandAdapter<'db> {
@@ -153,7 +153,7 @@ impl<'db> CommandAdapter<'db> {
         // Atomic write
         self.db.batch_write(|batch| {
             for (schema, meta) in schemas.iter().zip(metadata.iter()) {
-                let stored = to_stored(
+                let stored = StoredSchema::from_schema(
                     schema,
                     meta.bank_version,
                     meta.created_at,

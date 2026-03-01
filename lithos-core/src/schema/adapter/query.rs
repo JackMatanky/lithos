@@ -66,15 +66,6 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error> {
-        self.db
-            .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
-            .map(Schema::try_from)
-            .transpose()
-            .map_err(|e| DbError::Deserialization(e.to_string()))
-    }
-
-    #[inline]
     fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
         let Some(metadata) = self.db.get_owned::<StoredBankMetadata>(
             BANK_METADATA,
@@ -116,6 +107,15 @@ impl Query for QueryAdapter<'_> {
             return Ok(true);
         };
         Ok(stored.bank_version != version)
+    }
+
+    #[inline]
+    fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error> {
+        self.db
+            .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
+            .map(Schema::try_from)
+            .transpose()
+            .map_err(|e| DbError::Deserialization(e.to_string()))
     }
 
     #[inline]

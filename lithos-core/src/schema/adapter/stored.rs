@@ -48,6 +48,44 @@ pub(crate) struct StoredSchema {
     pub recorded_at: Timestamp,
 }
 
+impl StoredSchema {
+    /// Build a [`StoredSchema`] from a domain [`Schema`] and storage metadata.
+    ///
+    /// Called by the command adapter before persisting.
+    ///
+    /// The `parent_id` parameter is now sourced from `schema.parent_id()`
+    /// instead of being passed separately (as of the `parent_id` domain
+    /// migration).
+    pub(crate) fn from_schema(
+        schema: &Schema,
+        bank_version: BankVersion,
+        created_at: Option<Timestamp>,
+        modified_at: Option<Timestamp>,
+    ) -> Self {
+        let properties = schema
+            .properties()
+            .map(|p| StoredProperty {
+                id: p.id(),
+                name: p.name().as_str().into(),
+                required: p.optionality() == Optionality::Required,
+                multi: p.multiplicity() == Multiplicity::Many,
+                spec: p.spec().clone(),
+            })
+            .collect();
+
+        Self {
+            id: schema.id(),
+            name: schema.name().as_str().into(),
+            parent_id: schema.parent_id(),
+            properties,
+            bank_version,
+            created_at,
+            modified_at,
+            recorded_at: Timestamp::now(),
+        }
+    }
+}
+
 /// Flat storage representation of a single property.
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
@@ -107,53 +145,6 @@ pub(crate) struct StoredPropertyBank {
     pub properties: Vec<StoredProperty>,
 }
 
-/// Format a bank property key for the given version.
-#[inline]
-pub(crate) fn bank_property_key(version: BankVersion, suffix: &str) -> String {
-    format!("{}:{suffix}", version.as_u64())
-}
-
-/// Format a bank property key prefix for the given version.
-#[inline]
-pub(crate) fn bank_property_prefix(version: BankVersion) -> String {
-    format!("{}:", version.as_u64())
-}
-
-/// Build a [`StoredSchema`] from a domain [`Schema`] and storage metadata.
-///
-/// Called by the command adapter before persisting.
-///
-/// The `parent_id` parameter is now sourced from `schema.parent_id()` instead
-/// of being passed separately (as of the `parent_id` domain migration).
-pub(crate) fn to_stored(
-    schema: &Schema,
-    bank_version: BankVersion,
-    created_at: Option<Timestamp>,
-    modified_at: Option<Timestamp>,
-) -> StoredSchema {
-    let properties = schema
-        .properties()
-        .map(|p| StoredProperty {
-            id: p.id(),
-            name: p.name().as_str().into(),
-            required: p.optionality() == Optionality::Required,
-            multi: p.multiplicity() == Multiplicity::Many,
-            spec: p.spec().clone(),
-        })
-        .collect();
-
-    StoredSchema {
-        id: schema.id(),
-        name: schema.name().as_str().into(),
-        parent_id: schema.parent_id(),
-        properties,
-        bank_version,
-        created_at,
-        modified_at,
-        recorded_at: Timestamp::now(),
-    }
-}
-
 impl TryFrom<StoredPropertyBank> for PropertyBank {
     type Error = SchemaError;
 
@@ -206,6 +197,18 @@ impl TryFrom<StoredSchema> for Schema {
     }
 }
 
+/// Format a bank property key for the given version.
+#[inline]
+pub(crate) fn bank_property_key(version: BankVersion, suffix: &str) -> String {
+    format!("{}:{suffix}", version.as_u64())
+}
+
+/// Format a bank property key prefix for the given version.
+#[inline]
+pub(crate) fn bank_property_prefix(version: BankVersion) -> String {
+    format!("{}:", version.as_u64())
+}
+
 #[cfg(test)]
 mod tests {
     use uuid::Uuid;
@@ -232,7 +235,7 @@ mod tests {
     #[test]
     fn to_stored_round_trips_to_schema() {
         let schema = make_schema();
-        let stored = to_stored(
+        let stored = StoredSchema::from_schema(
             &schema,
             BankVersion::initial(),
             Some(Timestamp::from_secs(1_000_000)),
@@ -278,7 +281,7 @@ mod tests {
         let schema =
             Schema::reconstruct(TEST_SCHEMA_ID, schema_name, None, vec![prop]);
 
-        let stored = to_stored(
+        let stored = StoredSchema::from_schema(
             &schema,
             BankVersion::initial(),
             Some(Timestamp::from_secs(0)),
