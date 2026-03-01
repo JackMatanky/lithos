@@ -3,11 +3,15 @@
 use crate::{
     db::{BatchReader, Database, DbError},
     schema::{
-        adapter::stored::{StoredPropertyBank, StoredSchema},
+        adapter::stored::{
+            StoredBankMetadata, StoredBankProperty, StoredPropertyBank,
+            StoredSchema, bank_property_prefix,
+        },
         aggregate::{Schema, SchemaId, SchemaName, Timestamp},
         bank::{BankVersion, PropertyBank},
         db_table::{
-            PROPERTY_BANK, PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
+            BANK_METADATA, BANK_PROPERTY_BY_NAME, PROPERTY_BANK_KEY,
+            SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
         },
         ports::{NameIdPair, Query},
     },
@@ -69,17 +73,40 @@ impl Query for QueryAdapter<'_> {
 
     #[inline]
     fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
-        self.db
-            .get_owned::<StoredPropertyBank>(PROPERTY_BANK, PROPERTY_BANK_KEY)?
-            .map(PropertyBank::try_from)
-            .transpose()
+        let Some(metadata) = self.db.get_owned::<StoredBankMetadata>(
+            BANK_METADATA,
+            PROPERTY_BANK_KEY,
+        )?
+        else {
+            return Ok(None);
+        };
+
+        let prefix = bank_property_prefix(metadata.bank_version);
+        let entries = self.db.list_key_value_pairs::<StoredBankProperty>(
+            BANK_PROPERTY_BY_NAME,
+        )?;
+        let properties: Vec<_> = entries
+            .into_iter()
+            .filter_map(|(key, stored)| {
+                key.starts_with(&prefix).then_some(stored.property)
+            })
+            .collect();
+
+        let stored = StoredPropertyBank {
+            bank_version: metadata.bank_version,
+            recorded_at: metadata.recorded_at,
+            properties,
+        };
+
+        PropertyBank::try_from(stored)
+            .map(Some)
             .map_err(|e| DbError::Deserialization(e.to_string()))
     }
 
     #[inline]
     fn is_bank_stale(&self, version: BankVersion) -> Result<bool, Self::Error> {
-        let Some(stored) = self.db.get_owned::<StoredPropertyBank>(
-            PROPERTY_BANK,
+        let Some(stored) = self.db.get_owned::<StoredBankMetadata>(
+            BANK_METADATA,
             PROPERTY_BANK_KEY,
         )?
         else {

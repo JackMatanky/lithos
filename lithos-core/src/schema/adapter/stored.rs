@@ -4,6 +4,11 @@
 //! `schema_by_id` table. It carries all metadata needed for staleness
 //! checking and tree reconstruction, eliminating the need for a separate
 //! `schema_metadata` table.
+//!
+//! Property bank storage uses:
+//! - `bank_metadata` for version/timestamp tracking
+//! - `bank_property_by_id` for ID-keyed snapshots
+//! - `bank_property_by_name` for name-keyed snapshots
 
 use super::super::{
     aggregate::{Schema, SchemaId, SchemaName, Timestamp},
@@ -61,6 +66,34 @@ pub(crate) struct StoredProperty {
     pub spec: PropertySpec,
 }
 
+/// Adapter storage representation of property bank metadata.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+pub(crate) struct StoredBankMetadata {
+    /// Bank version at time of persistence.
+    pub bank_version: BankVersion,
+    /// Filesystem birthtime (from `Metadata::created()`), if available.
+    pub created_at: Option<Timestamp>,
+    /// Filesystem mtime (from `Metadata::modified()`), if available.
+    pub modified_at: Option<Timestamp>,
+    /// Wall-clock timestamp when this record was written.
+    pub recorded_at: Timestamp,
+}
+
+/// Adapter storage representation of a single bank property snapshot.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+pub(crate) struct StoredBankProperty {
+    /// Bank version at time of persistence.
+    pub bank_version: BankVersion,
+    /// Wall-clock timestamp when this record was written.
+    pub recorded_at: Timestamp,
+    /// Flattened property payload.
+    pub property: StoredProperty,
+}
+
 /// Adapter storage representation of a property bank snapshot.
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
@@ -72,6 +105,18 @@ pub(crate) struct StoredPropertyBank {
     pub recorded_at: Timestamp,
     /// Flattened properties in the bank.
     pub properties: Vec<StoredProperty>,
+}
+
+/// Format a bank property key for the given version.
+#[inline]
+pub(crate) fn bank_property_key(version: BankVersion, suffix: &str) -> String {
+    format!("{}:{suffix}", version.as_u64())
+}
+
+/// Format a bank property key prefix for the given version.
+#[inline]
+pub(crate) fn bank_property_prefix(version: BankVersion) -> String {
+    format!("{}:", version.as_u64())
 }
 
 /// Build a [`StoredSchema`] from a domain [`Schema`] and storage metadata.
@@ -106,28 +151,6 @@ pub(crate) fn to_stored(
         created_at,
         modified_at,
         recorded_at: Timestamp::now(),
-    }
-}
-
-/// Build a [`StoredPropertyBank`] from a domain [`PropertyBank`].
-pub(crate) fn to_stored_property_bank(
-    bank: &PropertyBank,
-) -> StoredPropertyBank {
-    let properties = bank
-        .all()
-        .map(|p| StoredProperty {
-            id: p.id(),
-            name: p.name().as_str().into(),
-            required: p.optionality() == Optionality::Required,
-            multi: p.multiplicity() == Multiplicity::Many,
-            spec: p.spec().clone(),
-        })
-        .collect();
-
-    StoredPropertyBank {
-        bank_version: bank.version(),
-        recorded_at: Timestamp::now(),
-        properties,
     }
 }
 

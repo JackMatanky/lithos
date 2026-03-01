@@ -5,13 +5,18 @@ use tracing::instrument;
 use crate::{
     db::{Database, DbError},
     schema::{
-        adapter::stored::{to_stored, to_stored_property_bank},
+        adapter::stored::{
+            StoredBankMetadata, StoredBankProperty, StoredProperty,
+            bank_property_key, to_stored,
+        },
         aggregate::{Schema, SchemaId, Timestamp},
         bank::{BankVersion, PropertyBank},
         db_table::{
-            PROPERTY_BANK, PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
+            BANK_METADATA, BANK_PROPERTY_BY_ID, BANK_PROPERTY_BY_NAME,
+            PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
         },
         ports::Command,
+        property::{Multiplicity, Optionality},
     },
 };
 
@@ -215,8 +220,44 @@ impl Command for CommandAdapter<'_> {
         &self,
         bank: &PropertyBank,
     ) -> Result<(), Self::Error> {
-        let stored = to_stored_property_bank(bank);
-        self.db.put(PROPERTY_BANK, PROPERTY_BANK_KEY, &stored)?;
-        Ok(())
+        let bank_version = bank.version();
+        let recorded_at = Timestamp::now();
+
+        let metadata = StoredBankMetadata {
+            bank_version,
+            created_at: None,
+            modified_at: None,
+            recorded_at,
+        };
+
+        self.db.batch_write(|batch| {
+            batch.put(BANK_METADATA, PROPERTY_BANK_KEY, &metadata)?;
+
+            for property in bank.all() {
+                let stored_property = StoredProperty {
+                    id: property.id(),
+                    name: property.name().as_str().into(),
+                    required: property.optionality() == Optionality::Required,
+                    multi: property.multiplicity() == Multiplicity::Many,
+                    spec: property.spec().clone(),
+                };
+
+                let stored = StoredBankProperty {
+                    bank_version,
+                    recorded_at,
+                    property: stored_property,
+                };
+
+                let id_key =
+                    bank_property_key(bank_version, &property.id().to_string());
+                let name_key =
+                    bank_property_key(bank_version, property.name().as_str());
+
+                batch.put(BANK_PROPERTY_BY_ID, &id_key, &stored)?;
+                batch.put(BANK_PROPERTY_BY_NAME, &name_key, &stored)?;
+            }
+
+            Ok(())
+        })
     }
 }
