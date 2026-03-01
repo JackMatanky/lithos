@@ -74,34 +74,6 @@ pub struct Property {
 }
 
 impl Property {
-    /// Returns the property's unique identifier.
-    #[inline]
-    #[must_use]
-    pub const fn id(&self) -> PropertyId {
-        self.id
-    }
-
-    /// Returns the property's optionality.
-    #[inline]
-    #[must_use]
-    pub const fn optionality(&self) -> Optionality {
-        self.optionality
-    }
-
-    /// Returns the property's multiplicity.
-    #[inline]
-    #[must_use]
-    pub const fn multiplicity(&self) -> Multiplicity {
-        self.multiplicity
-    }
-
-    /// Returns the property's name.
-    #[inline]
-    #[must_use]
-    pub const fn name(&self) -> &PropertyName {
-        &self.name
-    }
-
     /// Create a new property.
     ///
     /// All validation is done at the component level (`PropertyName`,
@@ -124,12 +96,32 @@ impl Property {
         }
     }
 
-    /// Returns true if this property is required.
+    /// Returns the property's unique identifier.
     #[inline]
     #[must_use]
-    pub fn is_required_scalar(&self) -> bool {
-        self.optionality == Optionality::Required
-            && self.multiplicity == Multiplicity::Single
+    pub const fn id(&self) -> PropertyId {
+        self.id
+    }
+
+    /// Returns the property's name.
+    #[inline]
+    #[must_use]
+    pub const fn name(&self) -> &PropertyName {
+        &self.name
+    }
+
+    /// Returns the property's optionality.
+    #[inline]
+    #[must_use]
+    pub const fn optionality(&self) -> Optionality {
+        self.optionality
+    }
+
+    /// Returns the property's multiplicity.
+    #[inline]
+    #[must_use]
+    pub const fn multiplicity(&self) -> Multiplicity {
+        self.multiplicity
     }
 
     /// Returns the type-specific validation specification.
@@ -137,6 +129,14 @@ impl Property {
     #[must_use]
     pub const fn spec(&self) -> &PropertySpec {
         &self.spec
+    }
+
+    /// Returns true if this property is required.
+    #[inline]
+    #[must_use]
+    pub fn is_required_scalar(&self) -> bool {
+        self.optionality == Optionality::Required
+            && self.multiplicity == Multiplicity::Single
     }
 
     /// Validate a value against this property's specification.
@@ -164,78 +164,6 @@ impl Property {
             Ok(())
         } else {
             self.spec.validate(value)
-        }
-    }
-}
-
-/// Whether a property is required or optional.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Optionality {
-    /// Optional property.
-    #[default]
-    Optional,
-    /// Required property.
-    Required,
-}
-
-impl From<bool> for Optionality {
-    #[inline]
-    fn from(required: bool) -> Self {
-        if required {
-            Self::Required
-        } else {
-            Self::Optional
-        }
-    }
-}
-
-/// Whether a property accepts a single value or multiple values.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Multiplicity {
-    /// Single scalar value.
-    #[default]
-    Single,
-    /// Multiple values (array).
-    Many,
-}
-
-impl From<bool> for Multiplicity {
-    #[inline]
-    fn from(multi: bool) -> Self {
-        if multi {
-            Self::Many
-        } else {
-            Self::Single
         }
     }
 }
@@ -270,6 +198,13 @@ impl From<bool> for Multiplicity {
 pub struct PropertyId(Uuid);
 
 impl PropertyId {
+    /// Creates a new UUID v7-based `PropertyId`.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+
     /// Wraps a UUID into a `PropertyId`.
     #[inline]
     #[must_use]
@@ -289,13 +224,6 @@ impl PropertyId {
     #[must_use]
     pub const fn into_uuid(self) -> Uuid {
         self.0
-    }
-
-    /// Creates a new UUID v7-based `PropertyId`.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
     }
 }
 
@@ -521,6 +449,78 @@ impl TryFrom<&str> for BankPropertyRef {
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Self::parse(value)
+    }
+}
+
+/// Whether a property is required or optional.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Optionality {
+    /// Optional property.
+    #[default]
+    Optional,
+    /// Required property.
+    Required,
+}
+
+impl From<bool> for Optionality {
+    #[inline]
+    fn from(required: bool) -> Self {
+        if required {
+            Self::Required
+        } else {
+            Self::Optional
+        }
+    }
+}
+
+/// Whether a property accepts a single value or multiple values.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Multiplicity {
+    /// Single scalar value.
+    #[default]
+    Single,
+    /// Multiple values (array).
+    Many,
+}
+
+impl From<bool> for Multiplicity {
+    #[inline]
+    fn from(multi: bool) -> Self {
+        if multi {
+            Self::Many
+        } else {
+            Self::Single
+        }
     }
 }
 

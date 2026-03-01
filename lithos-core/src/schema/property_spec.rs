@@ -27,28 +27,6 @@ use crate::bounds::{Bounds, BoundsError};
 //
 // Internal invariant helpers live near the bottom of the file.
 
-/// A validated option entry with optional display label.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct OptionEntry {
-    /// The option value used in validation.
-    pub value: Box<str>,
-    /// Optional display label for UI consumers.
-    pub label: Option<Box<str>>,
-}
-
 /// Validated sum type for all supported property specifications.
 ///
 /// # Examples
@@ -85,6 +63,28 @@ pub enum PropertySpec {
     Number(NumberSpec),
     /// String property constraints.
     String(StringSpec),
+}
+
+/// A validated option entry with optional display label.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct OptionEntry {
+    /// The option value used in validation.
+    pub value: Box<str>,
+    /// Optional display label for UI consumers.
+    pub label: Option<Box<str>>,
 }
 
 impl PropertySpec {
