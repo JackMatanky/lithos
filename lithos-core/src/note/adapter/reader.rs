@@ -1105,17 +1105,7 @@ impl TagCollector {
                 continue;
             }
 
-            let raw = if token.starts_with('#') {
-                token.to_owned()
-            } else {
-                let mut with_hash =
-                    String::with_capacity(token.len().saturating_add(1));
-                with_hash.push('#');
-                with_hash.push_str(token);
-                with_hash
-            };
-
-            if let Ok(tag) = NoteTag::new(&raw) {
+            if let Ok(tag) = NoteTag::from_token(token) {
                 self.add_tag(tag);
             }
         }

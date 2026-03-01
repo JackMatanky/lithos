@@ -80,6 +80,31 @@ impl Tag {
         })
     }
 
+    /// Creates a new `Tag` from a token with or without a leading `#`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Tag`] if validation fails.
+    #[inline]
+    pub fn from_token(token: &str) -> Result<Self, NoteError> {
+        let token = token.trim();
+        if token.is_empty() {
+            return Err(NoteError::Tag(TagError::EmptyTag));
+        }
+
+        let tag_path_str = token.strip_prefix('#').unwrap_or(token);
+        if tag_path_str.is_empty() {
+            return Err(NoteError::Tag(TagError::EmptyTag));
+        }
+
+        let path = TagPath::try_new(tag_path_str)?;
+        let segments = Segments::try_new(tag_path_str)?;
+        Ok(Self {
+            path,
+            segments,
+        })
+    }
+
     /// Returns the full tag path (without leading `#`).
     #[inline]
     #[must_use]
