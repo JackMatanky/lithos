@@ -148,7 +148,7 @@ impl PropertyBuilder {
         Self {
             name: name.into(),
             optionality: Optionality::default(),
-            multiplicity: Multiplicity::Single,
+            multiplicity: Multiplicity::default(),
             id: None,
         }
     }

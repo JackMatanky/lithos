@@ -185,6 +185,7 @@ impl Property {
     Debug,
     Clone,
     Copy,
+    Default,
     PartialEq,
     Eq,
     Hash,
@@ -198,6 +199,7 @@ impl Property {
 #[non_exhaustive]
 pub enum Optionality {
     /// Optional property.
+    #[default]
     Optional,
     /// Required property.
     Required,
@@ -211,13 +213,6 @@ impl From<bool> for Optionality {
         } else {
             Self::Optional
         }
-    }
-}
-
-impl Default for Optionality {
-    #[inline]
-    fn default() -> Self {
-        Self::Optional
     }
 }
 
@@ -238,6 +233,7 @@ impl Default for Optionality {
     Debug,
     Clone,
     Copy,
+    Default,
     PartialEq,
     Eq,
     Hash,
@@ -251,6 +247,7 @@ impl Default for Optionality {
 #[non_exhaustive]
 pub enum Multiplicity {
     /// Single scalar value.
+    #[default]
     Single,
     /// Multiple values (array).
     Many,
@@ -412,6 +409,7 @@ impl Display for PropertyId {
 pub struct PropertyName(Box<str>);
 
 impl PropertyName {
+    const MAX_LEN: usize = 64;
     /// Property name validation pattern: mixed-case letters, underscores, and
     /// hyphens.
     ///
@@ -447,7 +445,7 @@ impl PropertyName {
         if name.is_empty() {
             return Err(SchemaError::EmptyPropertyName);
         }
-        if name.len() > 64 {
+        if name.len() > Self::MAX_LEN {
             return Err(SchemaError::PropertyNameTooLong(name.len()));
         }
 
@@ -602,7 +600,7 @@ mod tests {
             fn default() -> Self {
                 Self {
                     optionality: Optionality::default(),
-                    multiplicity: Multiplicity::Single,
+                    multiplicity: Multiplicity::default(),
                     name: "test_property".to_owned(),
                     spec: PropertySpec::String(StringSpec::default()),
                 }
