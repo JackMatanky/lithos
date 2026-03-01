@@ -537,7 +537,13 @@ mod tests {
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0702);
 
     mod property_bank {
+        use std::collections::HashMap;
+
         use super::*;
+        use crate::schema::raw::{
+            RawPropertyBank, RawPropertyBankEntry, RawPropertySpec,
+            RawStringSpec,
+        };
 
         /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
         /// Priority: P1.
@@ -667,6 +673,46 @@ mod tests {
                 "Duplicate property name should be rejected with \
                  DuplicatePropertyName, got: {res:?}"
             );
+        }
+
+        /// 3.3-UNIT-025: `from_raw_reuses_ids_by_name`.
+        /// Priority: P1.
+        #[test]
+        fn from_raw_reuses_ids_by_name() -> Result<(), SchemaError> {
+            let mut bank = PropertyBank::new();
+            let name = PropertyName::new("status")?;
+            let prop = Property::new(
+                PropertyId::from_uuid(TEST_PROPERTY_ID_A),
+                name.clone(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::Bool(BoolSpec::default()),
+            );
+            bank.register(prop)?;
+
+            let mut properties = HashMap::new();
+            properties.insert("status".into(), RawPropertyBankEntry {
+                multi: false,
+                spec: RawPropertySpec::String(RawStringSpec::default()),
+            });
+
+            let raw = RawPropertyBank {
+                version: "1.0".into(),
+                properties,
+            };
+            let rebuilt = PropertyBank::from_raw(raw, Some(&bank))?;
+            let rebuilt_prop =
+                rebuilt.get_by_name(&name).expect("Expected rebuilt property");
+
+            let expected_id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
+            if rebuilt_prop.id() != expected_id {
+                return Err(SchemaError::ValidationFailed(format!(
+                    "Expected ID {expected_id}, got {}",
+                    rebuilt_prop.id()
+                )));
+            }
+
+            Ok(())
         }
 
         /// 3.2-UNIT-011: `property_bank_accessors_cover_names`.
