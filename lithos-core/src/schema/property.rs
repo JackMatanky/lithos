@@ -434,41 +434,6 @@ impl PropertyName {
     /// ```
     #[inline]
     pub fn new(name: &str) -> Result<Self, SchemaError> {
-        Self::validate(name)?;
-        Ok(Self(name.into()))
-    }
-
-    /// Returns the inner string slice.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyName;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("status")?;
-    /// assert_eq!(name.as_str(), "status");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Validates a property name string.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyName;
-    ///
-    /// PropertyName::validate("status")?;
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
-    #[inline]
-    pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
             LazyLock::new(|| Regex::new(PropertyName::PATTERN));
 
@@ -488,7 +453,24 @@ impl PropertyName {
         if !re.is_match(name) {
             return Err(SchemaError::InvalidPropertyName(name.into()));
         }
-        Ok(())
+        Ok(Self(name.into()))
+    }
+
+    /// Returns the inner string slice.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property::PropertyName;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = PropertyName::new("status")?;
+    /// assert_eq!(name.as_str(), "status");
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
@@ -545,17 +527,17 @@ impl TryFrom<String> for PropertyName {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::property::PropertyRef;
+/// use lithos_core::schema::property::BankPropertyRef;
 ///
-/// let reference = PropertyRef::parse("property_bank#/flag")?;
+/// let reference = BankPropertyRef::parse("property_bank#/flag")?;
 /// assert_eq!(reference.name().as_str(), "flag");
 /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct PropertyRef(PropertyName);
+pub struct BankPropertyRef(PropertyName);
 
-impl PropertyRef {
+impl BankPropertyRef {
     /// Parse a reference string into a typed property reference.
     ///
     /// The only accepted format is `property_bank#/<name>`.
@@ -565,9 +547,9 @@ impl PropertyRef {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::schema::property::PropertyRef;
+    /// use lithos_core::schema::property::BankPropertyRef;
     ///
-    /// let reference = PropertyRef::parse("property_bank#/flag")?;
+    /// let reference = BankPropertyRef::parse("property_bank#/flag")?;
     /// assert_eq!(reference.name().as_str(), "flag");
     /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
     /// ```
@@ -583,9 +565,9 @@ impl PropertyRef {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::schema::property::PropertyRef;
+    /// use lithos_core::schema::property::BankPropertyRef;
     ///
-    /// let reference = PropertyRef::parse("property_bank#/flag")?;
+    /// let reference = BankPropertyRef::parse("property_bank#/flag")?;
     /// let _name = reference.name();
     /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
     /// ```
@@ -596,7 +578,7 @@ impl PropertyRef {
     }
 }
 
-impl TryFrom<&str> for PropertyRef {
+impl TryFrom<&str> for BankPropertyRef {
     type Error = SchemaError;
 
     #[inline]
@@ -680,15 +662,11 @@ mod tests {
                 Self::default()
             }
 
-            /// Sets whether the property is required.
+            /// Sets the property to required.
             #[inline]
             #[must_use]
-            pub fn required(mut self, required: bool) -> Self {
-                self.optionality = if required {
-                    Optionality::Required
-                } else {
-                    Optionality::Optional
-                };
+            pub fn required(mut self) -> Self {
+                self.optionality = Optionality::Required;
                 self
             }
 
@@ -708,7 +686,7 @@ mod tests {
             fn build_property() -> Property {
                 PropertyBuilder::new()
                     .name("priority")
-                    .required(true)
+                    .required()
                     .array(true)
                     .spec(PropertySpec::String(StringSpec::default()))
                     .build()

@@ -26,8 +26,8 @@ use super::{
     bank::PropertyBank,
     error::SchemaError,
     property::{
-        Multiplicity, Optionality, Property, PropertyId, PropertyName,
-        PropertyRef,
+        BankPropertyRef, Multiplicity, Optionality, Property, PropertyId,
+        PropertyName,
     },
     property_spec::PropertySpec,
     raw::{RawProperty, RawPropertyRef, RawSchema},
@@ -178,7 +178,7 @@ impl<'bank> Dereferencer<'bank> {
         name: &str,
         ref_entry: &RawPropertyRef,
     ) -> Result<Property, SchemaError> {
-        let prop_ref = PropertyRef::try_from(ref_entry.ref_path.as_ref())?;
+        let prop_ref = BankPropertyRef::try_from(ref_entry.ref_path.as_ref())?;
         let base = bank.get_by_name(prop_ref.name()).ok_or_else(|| {
             SchemaError::PropertyRefNotFound(ref_entry.ref_path.to_string())
         })?;
