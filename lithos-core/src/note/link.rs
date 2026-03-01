@@ -19,111 +19,6 @@ use super::{
     types::SourceByteOffset,
 };
 
-/// Sub-note anchor (heading or block reference).
-///
-/// An anchor represents a specific location within a note, allowing links
-/// to point to more than just the file level.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::link::Anchor;
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let heading = Anchor::heading("Introduction")?;
-/// let block = Anchor::block_ref("abc123")?;
-///
-/// assert!(heading.is_heading());
-/// assert_eq!(block.text(), "abc123");
-/// # Ok(())
-/// # }
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Anchor {
-    /// Block reference: `^block-id`.
-    BlockRef(BlockRefId),
-    /// Heading anchor: `#heading-text`.
-    Heading(HeadingText),
-}
-
-/// Validated link alias text.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct LinkAlias(Box<str>);
-
-impl LinkAlias {
-    /// Creates a validated link alias.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Link`] if the alias is empty.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        let text = value.trim();
-        if text.is_empty() {
-            return Err(NoteError::Link(LinkError::EmptyAlias));
-        }
-        Ok(Self(text.into()))
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Represents different types of embedded content.
-///
-/// Used when a link is prefixed with `!` (e.g., `![[image.png]]`),
-/// indicating that the content should be displayed inline.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum EmbedType {
-    /// Embedded audio: `![[audio.mp3]]`.
-    Audio,
-    /// Embedded image: `![[image.png]]`.
-    Image,
-    /// Embedded note content: `![[another-note]]`.
-    Note,
-    /// Embedded PDF: `![[document.pdf]]`.
-    Pdf,
-    /// Embedded video: `![[video.mp4]]`.
-    Video,
-}
-
 /// Represents a link within a note.
 ///
 /// Supports multiple syntactic styles (Wiki-links vs Markdown links) and
@@ -160,28 +55,6 @@ pub struct Link {
     alias: Option<LinkAlias>,
     style: Style,
     embed_type: Option<EmbedType>,
-}
-
-/// Represents the syntactic style of a link.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Style {
-    /// Markdown-style link: `[text](url)` or `![text](url)`.
-    MdLink,
-    /// Wiki-style link: `[[target]]` or `![[target]]`.
-    WikiLink,
 }
 
 /// Target of a link - may or may not resolve to an existing note.
@@ -230,6 +103,133 @@ pub enum Target {
         /// Raw target string from the markdown source.
         raw: Box<str>,
     },
+}
+
+/// Sub-note anchor (heading or block reference).
+///
+/// An anchor represents a specific location within a note, allowing links
+/// to point to more than just the file level.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::link::Anchor;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let heading = Anchor::heading("Introduction")?;
+/// let block = Anchor::block_ref("abc123")?;
+///
+/// assert!(heading.is_heading());
+/// assert_eq!(block.text(), "abc123");
+/// # Ok(())
+/// # }
+/// ```
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Anchor {
+    /// Block reference: `^block-id`.
+    BlockRef(BlockRefId),
+    /// Heading anchor: `#heading-text`.
+    Heading(HeadingText),
+}
+
+/// Represents the syntactic style of a link.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Style {
+    /// Markdown-style link: `[text](url)` or `![text](url)`.
+    MdLink,
+    /// Wiki-style link: `[[target]]` or `![[target]]`.
+    WikiLink,
+}
+
+/// Represents different types of embedded content.
+///
+/// Used when a link is prefixed with `!` (e.g., `![[image.png]]`),
+/// indicating that the content should be displayed inline.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum EmbedType {
+    /// Embedded audio: `![[audio.mp3]]`.
+    Audio,
+    /// Embedded image: `![[image.png]]`.
+    Image,
+    /// Embedded note content: `![[another-note]]`.
+    Note,
+    /// Embedded PDF: `![[document.pdf]]`.
+    Pdf,
+    /// Embedded video: `![[video.mp4]]`.
+    Video,
+}
+
+/// Validated link alias text.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct LinkAlias(Box<str>);
+
+impl LinkAlias {
+    /// Creates a validated link alias.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Link`] if the alias is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Link(LinkError::EmptyAlias));
+        }
+        Ok(Self(text.into()))
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl Anchor {

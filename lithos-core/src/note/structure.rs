@@ -92,107 +92,6 @@ impl Heading {
     }
 }
 
-/// Validated heading text content.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct HeadingText(Box<str>);
-
-impl HeadingText {
-    /// Creates a validated heading text value.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Metadata`] if the text is empty.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        Self::try_from_boxed(value.into())
-    }
-
-    /// Creates a validated heading text value for link anchors.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Link`] if the text is empty.
-    #[inline]
-    pub fn try_new_anchor(value: &str) -> Result<Self, NoteError> {
-        let text = value.trim();
-        if text.is_empty() {
-            return Err(NoteError::Link(LinkError::EmptyHeadingAnchor));
-        }
-        Ok(Self(text.into()))
-    }
-
-    /// Creates a validated heading text value from a boxed string.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Metadata`] if the text is empty.
-    #[inline]
-    pub fn try_from_boxed(value: Box<str>) -> Result<Self, NoteError> {
-        if value.trim().is_empty() {
-            return Err(NoteError::Metadata(
-                NoteMetadataError::HeadingTextEmpty,
-            ));
-        }
-        Ok(Self(value))
-    }
-
-    /// Returns the underlying text as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Validated block reference identifier.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct BlockRefId(Box<str>);
-
-impl BlockRefId {
-    /// Creates a validated block reference identifier.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Link`] if the identifier is empty.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        let text = value.trim();
-        if text.is_empty() {
-            return Err(NoteError::Link(LinkError::EmptyBlockRefAnchor));
-        }
-        Ok(Self(text.into()))
-    }
-
-    /// Returns the block reference identifier as a string slice.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
 /// Represents a content section within a note.
 ///
 /// A section groups content between headings. Content before the first
@@ -313,6 +212,107 @@ impl HeadingLevel {
     #[must_use]
     pub const fn as_u8(&self) -> u8 {
         self.0
+    }
+}
+
+/// Validated heading text content.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct HeadingText(Box<str>);
+
+impl HeadingText {
+    /// Creates a validated heading text value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Metadata`] if the text is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        Self::try_from_boxed(value.into())
+    }
+
+    /// Creates a validated heading text value for link anchors.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Link`] if the text is empty.
+    #[inline]
+    pub fn try_new_anchor(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Link(LinkError::EmptyHeadingAnchor));
+        }
+        Ok(Self(text.into()))
+    }
+
+    /// Creates a validated heading text value from a boxed string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Metadata`] if the text is empty.
+    #[inline]
+    pub fn try_from_boxed(value: Box<str>) -> Result<Self, NoteError> {
+        if value.trim().is_empty() {
+            return Err(NoteError::Metadata(
+                NoteMetadataError::HeadingTextEmpty,
+            ));
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the underlying text as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Validated block reference identifier.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct BlockRefId(Box<str>);
+
+impl BlockRefId {
+    /// Creates a validated block reference identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Link`] if the identifier is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Link(LinkError::EmptyBlockRefAnchor));
+        }
+        Ok(Self(text.into()))
+    }
+
+    /// Returns the block reference identifier as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
