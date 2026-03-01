@@ -110,7 +110,7 @@ impl Heading {
 ///     SourceByteOffset::new(0),
 ///     SourceByteOffset::new(50),
 /// )?;
-/// let section = Section::new(None, "Initial preamble content.", range);
+/// let section = Section::new(None, range);
 ///
 /// assert!(section.heading().is_none());
 /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -131,8 +131,6 @@ pub struct Section {
     /// Optional heading that starts this section (None for content before
     /// first heading).
     heading: Option<Heading>,
-    /// Section content text.
-    content: Box<str>,
     /// Character range in the source document.
     range: SourceByteRange,
 }
@@ -141,23 +139,11 @@ impl Section {
     /// Creates a new section.
     #[inline]
     #[must_use]
-    pub fn new<T: Into<Box<str>>>(
-        heading: Option<Heading>,
-        content: T,
-        range: SourceByteRange,
-    ) -> Self {
+    pub fn new(heading: Option<Heading>, range: SourceByteRange) -> Self {
         Self {
             heading,
-            content: content.into(),
             range,
         }
-    }
-
-    /// Returns the section content text.
-    #[inline]
-    #[must_use]
-    pub fn content(&self) -> &str {
-        &self.content
     }
 
     /// Returns the optional heading that starts this section.
@@ -274,7 +260,6 @@ mod tests {
             let end = SourceByteOffset::from(4u32);
             Ok(Section::new(
                 Some(intro_heading()?),
-                "Body",
                 SourceByteRange::new(start, end)?,
             ))
         }
@@ -296,8 +281,7 @@ mod tests {
                 SourceByteOffset::from(0u32),
                 SourceByteOffset::from(15u32),
             )?;
-            let section =
-                Section::new(heading.clone(), "Section content", range);
+            let section = Section::new(heading.clone(), range);
             Ok((section, heading, range))
         }
     }
@@ -397,17 +381,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn section_content_accessor_returns_content() -> Result<(), NoteError> {
-            let section = fixtures::section_with_intro()?;
-            assert_eq!(
-                section.content(),
-                "Body",
-                "Section content should be 'Body'"
-            );
-            Ok(())
-        }
-
-        #[test]
         fn section_heading_accessor_returns_heading() -> Result<(), NoteError> {
             let section = fixtures::section_with_intro()?;
             assert!(
@@ -439,17 +412,6 @@ mod tests {
                 section.heading(),
                 heading.as_ref(),
                 "Section heading should match input"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn new_section_sets_content() -> Result<(), NoteError> {
-            let (section, _heading, _range) = fixtures::section_with_title()?;
-            assert_eq!(
-                section.content(),
-                "Section content",
-                "Section content should match input"
             );
             Ok(())
         }

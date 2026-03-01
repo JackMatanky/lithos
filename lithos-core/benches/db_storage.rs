@@ -328,7 +328,6 @@ fn create_test_note(index: usize) -> Note {
 
     note.add_section(Section::new(
         None,
-        "Test section content",
         SourceByteRange::new(
             SourceByteOffset::new(0),
             SourceByteOffset::new(100),

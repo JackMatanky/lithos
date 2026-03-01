@@ -1202,10 +1202,10 @@ impl<'source> SectionCollector<'source> {
         let range = SourceByteRange::new(start, end)?;
         let start = usize::from(start);
         let end = usize::from(end);
-        let content = self.source.get(start..end).ok_or_else(|| {
+        self.source.get(start..end).ok_or_else(|| {
             NoteError::Structure("section range is not on a boundary".into())
         })?;
-        self.sections.push(Section::new(heading, content, range));
+        self.sections.push(Section::new(heading, range));
         Ok(())
     }
 }
