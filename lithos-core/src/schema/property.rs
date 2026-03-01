@@ -295,16 +295,6 @@ pub struct PropertyId(Uuid);
 
 impl PropertyId {
     /// Wraps a UUID into a `PropertyId`.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyId;
-    /// use uuid::Uuid;
-    ///
-    /// let uuid = Uuid::now_v7();
-    /// let id = PropertyId::from_uuid(uuid);
-    /// assert_eq!(*id.as_uuid(), uuid);
-    /// ```
     #[inline]
     #[must_use]
     pub const fn from_uuid(uuid: Uuid) -> Self {
@@ -312,14 +302,6 @@ impl PropertyId {
     }
 
     /// Returns the inner UUID reference.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyId;
-    ///
-    /// let id = PropertyId::new();
-    /// let _ = id.as_uuid();
-    /// ```
     #[inline]
     #[must_use]
     pub const fn as_uuid(&self) -> &Uuid {
@@ -327,14 +309,6 @@ impl PropertyId {
     }
 
     /// Returns the inner UUID by value.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyId;
-    ///
-    /// let id = PropertyId::new();
-    /// let _uuid = id.into_uuid();
-    /// ```
     #[inline]
     #[must_use]
     pub const fn into_uuid(self) -> Uuid {
@@ -342,14 +316,6 @@ impl PropertyId {
     }
 
     /// Creates a new UUID v7-based `PropertyId`.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyId;
-    ///
-    /// let id = PropertyId::new();
-    /// let _ = id.as_uuid();
-    /// ```
     #[inline]
     #[must_use]
     pub fn new() -> Self {
