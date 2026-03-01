@@ -369,7 +369,15 @@ impl NotePath {
     pub fn new(path: &str) -> Result<Self, NoteError> {
         // Basic normalization: convert backslashes to forward slashes
         let normalized = if path.contains('\\') {
-            std::borrow::Cow::Owned(path.replace('\\', "/"))
+            let mut owned = String::with_capacity(path.len());
+            for ch in path.chars() {
+                if ch == '\\' {
+                    owned.push('/');
+                } else {
+                    owned.push(ch);
+                }
+            }
+            std::borrow::Cow::Owned(owned)
         } else {
             std::borrow::Cow::Borrowed(path)
         };
@@ -384,7 +392,7 @@ impl NotePath {
             ));
         }
 
-        if has_windows_prefix(normalized.as_ref()) {
+        if has_drive_or_unc_prefix(normalized.as_ref()) {
             return Err(NoteError::InvalidPath(
                 "windows-style prefixes are not allowed".into(),
             ));
@@ -402,8 +410,17 @@ impl NotePath {
                         "path traversal not allowed".into(),
                     ));
                 }
-                std::path::Component::CurDir => {}
+                std::path::Component::CurDir => {
+                    return Err(NoteError::InvalidPath(
+                        "path must not include '.' components".into(),
+                    ));
+                }
                 std::path::Component::Normal(segment) => {
+                    if segment.to_str().is_some_and(|segment| segment == ".") {
+                        return Err(NoteError::InvalidPath(
+                            "path must not include '.' components".into(),
+                        ));
+                    }
                     if segment
                         .to_str()
                         .is_some_and(|segment| segment.starts_with('.'))
@@ -600,11 +617,7 @@ impl TryFrom<String> for NotePath {
     }
 }
 
-fn has_curdir_segment(path: &str) -> bool {
-    path.split('/').any(|segment| segment == ".")
-}
-
-fn has_windows_prefix(path: &str) -> bool {
+fn has_drive_or_unc_prefix(path: &str) -> bool {
     let mut chars = path.chars();
     let first = chars.next();
     let second = chars.next();
@@ -620,6 +633,15 @@ fn has_windows_prefix(path: &str) -> bool {
         }
     }
     false
+}
+
+fn has_curdir_segment(path: &str) -> bool {
+    if path == "." || path.starts_with("./") || path.ends_with("/.") {
+        return true;
+    }
+
+    let bytes = path.as_bytes();
+    bytes.windows(3).any(|window| window == b"/./")
 }
 
 #[cfg(test)]

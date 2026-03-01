@@ -60,7 +60,9 @@ pub trait Query: Send + Sync {
     type Error: std::error::Error;
 
     /// Archived note type for zero-copy reads.
-    type NoteArchived<'archived>;
+    type NoteArchived<'archived>
+    where
+        Self: 'archived;
 
     /// Finds a single note by its configured alias.
     ///

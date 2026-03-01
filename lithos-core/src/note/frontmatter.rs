@@ -242,24 +242,29 @@ impl Frontmatter {
         self.get(config.frontmatter().file_class()).and_then(FieldValue::as_str)
     }
 
-    /// Returns the aliases of the note as a vector of boxed strings.
-    #[inline]
-    #[must_use]
-    pub fn aliases(
-        &self,
-        config: &crate::config::aggregate::Config,
-    ) -> Vec<Box<str>> {
-        self.aliases_ref(config).map(Into::into).collect()
-    }
-
     /// Returns a borrowed iterator over aliases.
+    ///
+    /// This is zero-copy; use [`Frontmatter::aliases_owned`] when you need
+    /// owned values.
     #[inline]
     #[must_use]
-    pub fn aliases_ref<'frontmatter>(
+    pub fn aliases<'frontmatter>(
         &'frontmatter self,
         config: &crate::config::aggregate::Config,
     ) -> AliasValues<'frontmatter> {
         AliasValues::new(self.get(config.frontmatter().alias()))
+    }
+
+    /// Returns the aliases of the note as a vector of boxed strings.
+    ///
+    /// This allocates; prefer [`Frontmatter::aliases`] in hot paths.
+    #[inline]
+    #[must_use]
+    pub fn aliases_owned(
+        &self,
+        config: &crate::config::aggregate::Config,
+    ) -> Vec<Box<str>> {
+        self.aliases(config).map(Into::into).collect()
     }
 
     #[inline]

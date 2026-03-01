@@ -90,7 +90,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
     fn collect_index_data(&self, note: &Note) -> IndexData {
         let frontmatter = note.frontmatter();
         let aliases = frontmatter
-            .map(|fm| fm.aliases_ref(self.config).map(Into::into).collect())
+            .map(|fm| fm.aliases(self.config).map(Into::into).collect())
             .unwrap_or_default();
         let file_class = frontmatter
             .and_then(|fm| fm.file_class(self.config))

@@ -22,10 +22,10 @@ use crate::{
         frontmatter::Frontmatter,
         link::{Anchor, EmbedType, Link, Target},
         list::{List, ListDepth, ListItem, ListType},
-        structure::{Heading, HeadingLevel},
+        structure::{Heading, HeadingLevel, Section},
         tag::Tag as NoteTag,
         task::Task,
-        types::SourceByteOffset,
+        types::{SourceByteOffset, SourceByteRange},
         value::FieldValue,
     },
 };
@@ -131,7 +131,7 @@ impl<'config> NoteReader<'config> {
         &self,
         markdown: &str,
     ) -> Result<ParseOutcome, NoteError> {
-        let mut state = ParseState::new(self.config);
+        let mut state = ParseState::new(self.config, markdown);
 
         let events = Parser::new_ext(markdown, self.options).into_offset_iter();
         let merged = TextMergeWithOffset::new(events);
@@ -139,7 +139,7 @@ impl<'config> NoteReader<'config> {
             state.handle_event(event, range)?;
         }
 
-        Ok(state.finish())
+        state.finish()
     }
 
     /// Parses markdown and applies extracted elements to a note.
@@ -233,6 +233,9 @@ impl<'config> NoteReader<'config> {
         for heading in parsed.headings {
             note.add_heading(heading);
         }
+        for section in parsed.sections {
+            note.add_section(section);
+        }
         for link in parsed.links {
             note.add_link(link);
         }
@@ -278,6 +281,7 @@ pub struct ParseOutcome {
     lists: Vec<List>,
     tasks: Vec<Task>,
     headings: Vec<Heading>,
+    sections: Vec<Section>,
     links: Vec<Link>,
     tags: Vec<NoteTag>,
     frontmatter: Option<Frontmatter>,
@@ -305,6 +309,13 @@ impl ParseOutcome {
         &self.headings
     }
 
+    /// Sections parsed from the markdown body.
+    #[inline]
+    #[must_use]
+    pub fn sections(&self) -> &[Section] {
+        &self.sections
+    }
+
     /// Links parsed from the markdown body.
     #[inline]
     #[must_use]
@@ -328,12 +339,14 @@ impl ParseOutcome {
 }
 
 #[derive(Debug)]
-struct ParseState<'config> {
+struct ParseState<'config, 'source> {
     config: &'config Config,
+    source: &'source str,
     task_parser: TaskParser<'config>,
     lists: Vec<List>,
     tasks: Vec<Task>,
     headings: Vec<Heading>,
+    sections: Vec<Section>,
     links: Vec<Link>,
     tags: Vec<NoteTag>,
     tag_set: HashSet<Box<str>>,
@@ -345,16 +358,21 @@ struct ParseState<'config> {
     current_heading: Option<HeadingState>,
     current_link: Option<LinkState>,
     code_block_depth: u32,
+    block_depth: u32,
+    current_section: Option<SectionState>,
+    last_offset: usize,
 }
 
-impl<'config> ParseState<'config> {
-    fn new(config: &'config Config) -> Self {
+impl<'config, 'source> ParseState<'config, 'source> {
+    fn new(config: &'config Config, source: &'source str) -> Self {
         Self {
             config,
+            source,
             task_parser: TaskParser::new(config.task()),
             lists: Vec::new(),
             tasks: Vec::new(),
             headings: Vec::new(),
+            sections: Vec::new(),
             links: Vec::new(),
             tags: Vec::new(),
             tag_set: HashSet::new(),
@@ -366,6 +384,9 @@ impl<'config> ParseState<'config> {
             current_heading: None,
             current_link: None,
             code_block_depth: 0,
+            block_depth: 0,
+            current_section: None,
+            last_offset: 0,
         }
     }
 
@@ -375,6 +396,7 @@ impl<'config> ParseState<'config> {
         event: Event<'_>,
         range: Range<usize>,
     ) -> Result<(), NoteError> {
+        self.last_offset = range.end;
         match event {
             Event::Start(tag) => self.handle_start_tag(tag, range.start)?,
             Event::End(tag_end) => self.handle_end_tag(tag_end)?,
@@ -391,7 +413,11 @@ impl<'config> ParseState<'config> {
             | Event::Html(_)
             | Event::InlineHtml(_)
             | Event::FootnoteReference(_)
-            | Event::Rule => {}
+            | Event::Rule => {
+                if self.block_depth == 0 {
+                    self.add_rule_section(range.start, range.end)?;
+                }
+            }
         }
 
         Ok(())
@@ -402,6 +428,10 @@ impl<'config> ParseState<'config> {
         tag: CmarkTag<'_>,
         position: usize,
     ) -> Result<(), NoteError> {
+        if is_block_tag(&tag) {
+            let is_heading = matches!(tag, CmarkTag::Heading { .. });
+            self.start_block(position, is_heading)?;
+        }
         match tag {
             CmarkTag::List(start) => self.start_list(start)?,
             CmarkTag::Item => self.start_item(position)?,
@@ -444,23 +474,33 @@ impl<'config> ParseState<'config> {
     }
 
     fn handle_end_tag(&mut self, tag_end: TagEnd) -> Result<(), NoteError> {
+        let mut close_block = false;
         match tag_end {
-            TagEnd::List(_) => self.end_list(),
+            TagEnd::List(_) => {
+                self.end_list();
+                close_block = true;
+            }
             TagEnd::Item => self.end_item()?,
-            TagEnd::Heading(_) => self.end_heading()?,
+            TagEnd::Heading(_) => {
+                self.end_heading()?;
+                close_block = true;
+            }
             TagEnd::Link | TagEnd::Image => self.end_link()?,
             TagEnd::MetadataBlock(kind) => self.end_metadata_block(kind)?,
             TagEnd::CodeBlock => {
                 self.code_block_depth = self.code_block_depth.saturating_sub(1);
+                close_block = true;
             }
             TagEnd::Paragraph
             | TagEnd::BlockQuote(_)
             | TagEnd::HtmlBlock
             | TagEnd::FootnoteDefinition
             | TagEnd::DefinitionList
-            | TagEnd::DefinitionListTitle
+            | TagEnd::Table => {
+                close_block = true;
+            }
+            TagEnd::DefinitionListTitle
             | TagEnd::DefinitionListDefinition
-            | TagEnd::Table
             | TagEnd::TableHead
             | TagEnd::TableRow
             | TagEnd::TableCell
@@ -469,6 +509,9 @@ impl<'config> ParseState<'config> {
             | TagEnd::Strikethrough
             | TagEnd::Superscript
             | TagEnd::Subscript => {}
+        }
+        if close_block {
+            self.end_block()?;
         }
         Ok(())
     }
@@ -524,6 +567,68 @@ impl<'config> ParseState<'config> {
                 item.tag_scan_text.push(' ');
             }
         }
+    }
+
+    fn start_block(
+        &mut self,
+        position: usize,
+        is_heading: bool,
+    ) -> Result<(), NoteError> {
+        if self.block_depth == 0 {
+            let start = parse_offset(position)?;
+            self.current_section = Some(SectionState {
+                start,
+                heading: None,
+                awaiting_heading: is_heading,
+            });
+        }
+        self.block_depth = self.block_depth.saturating_add(1);
+        Ok(())
+    }
+
+    fn end_block(&mut self) -> Result<(), NoteError> {
+        if self.block_depth == 0 {
+            return Ok(());
+        }
+        self.block_depth = self.block_depth.saturating_sub(1);
+        if self.block_depth == 0 {
+            self.close_current_section()?;
+        }
+        Ok(())
+    }
+
+    fn add_rule_section(
+        &mut self,
+        start: usize,
+        end: usize,
+    ) -> Result<(), NoteError> {
+        let start = parse_offset(start)?;
+        let end = parse_offset(end)?;
+        self.push_section(None, start, end)
+    }
+
+    fn close_current_section(&mut self) -> Result<(), NoteError> {
+        let Some(section) = self.current_section.take() else {
+            return Ok(());
+        };
+        let end = parse_offset(self.last_offset)?;
+        self.push_section(section.heading, section.start, end)
+    }
+
+    fn push_section(
+        &mut self,
+        heading: Option<Heading>,
+        start: SourceByteOffset,
+        end: SourceByteOffset,
+    ) -> Result<(), NoteError> {
+        let range = SourceByteRange::new(start, end)?;
+        let start = usize::from(start);
+        let end = usize::from(end);
+        let content = self.source.get(start..end).ok_or_else(|| {
+            NoteError::Structure("section range is not on a boundary".into())
+        })?;
+        self.sections.push(Section::new(heading, content, range));
+        Ok(())
     }
 
     fn start_list(&mut self, start: Option<u64>) -> Result<(), NoteError> {
@@ -648,18 +753,22 @@ impl<'config> ParseState<'config> {
         }
     }
 
-    fn finish(mut self) -> ParseOutcome {
+    fn finish(mut self) -> Result<ParseOutcome, NoteError> {
         if !self.list_stack.is_empty() {
             self.lists.append(&mut self.list_stack);
         }
-        ParseOutcome {
+        if self.current_section.is_some() {
+            self.close_current_section()?;
+        }
+        Ok(ParseOutcome {
             lists: self.lists,
             tasks: self.tasks,
             headings: self.headings,
+            sections: self.sections,
             links: self.links,
             tags: self.tags,
             frontmatter: self.frontmatter,
-        }
+        })
     }
 
     #[tracing::instrument(skip(self, level, position), level = "debug")]
@@ -699,6 +808,13 @@ impl<'config> ParseState<'config> {
             heading_state.text,
             heading_state.position,
         )?;
+
+        if let Some(section) = self.current_section.as_mut()
+            && section.awaiting_heading
+        {
+            section.heading = Some(heading.clone());
+            section.awaiting_heading = false;
+        }
 
         self.headings.push(heading);
         Ok(())
@@ -1057,6 +1173,13 @@ struct HeadingState {
 }
 
 #[derive(Debug)]
+struct SectionState {
+    start: SourceByteOffset,
+    heading: Option<Heading>,
+    awaiting_heading: bool,
+}
+
+#[derive(Debug)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "Parser state flags are naturally independent booleans"
@@ -1070,6 +1193,21 @@ struct LinkState {
     is_markdown_image: bool,
     is_external: bool,
     collect_alias: bool,
+}
+
+fn is_block_tag(tag: &CmarkTag<'_>) -> bool {
+    matches!(
+        tag,
+        CmarkTag::List(_)
+            | CmarkTag::Heading { .. }
+            | CmarkTag::Paragraph
+            | CmarkTag::BlockQuote(_)
+            | CmarkTag::CodeBlock(_)
+            | CmarkTag::HtmlBlock
+            | CmarkTag::FootnoteDefinition(_)
+            | CmarkTag::DefinitionList
+            | CmarkTag::Table(_)
+    )
 }
 
 /// Determine embed type from file extension.

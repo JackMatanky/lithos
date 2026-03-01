@@ -3,6 +3,8 @@
 //! Provides high-performance, zero-copy read operations for notes and tasks,
 //! utilizing specialized database indexes.
 
+use std::sync::Arc;
+
 use uuid::Uuid;
 
 use crate::{
@@ -24,15 +26,15 @@ use crate::{
 };
 
 /// Query implementation for Note read operations.
-pub struct QueryAdapter<'db> {
-    db: &'db Database,
+pub struct QueryAdapter {
+    db: Arc<Database>,
 }
 
-impl<'db> QueryAdapter<'db> {
+impl QueryAdapter {
     /// Create a new `QueryAdapter` with a database reference.
     #[inline]
     #[must_use]
-    pub const fn new(db: &'db Database) -> Self {
+    pub fn new(db: Arc<Database>) -> Self {
         Self {
             db,
         }
@@ -58,9 +60,12 @@ impl<'db> QueryAdapter<'db> {
     }
 }
 
-impl Query for QueryAdapter<'_> {
+impl Query for QueryAdapter {
     type Error = crate::db::DbError;
-    type NoteArchived<'archived> = &'archived rkyv::Archived<Note>;
+    type NoteArchived<'archived>
+        = &'archived rkyv::Archived<Note>
+    where
+        Self: 'archived;
 
     #[inline]
     fn find_by_alias(
@@ -393,7 +398,7 @@ mod tests {
                 .map_err(|e| {
                     NoteQueryError::Domain(NoteError::Storage(e.into()))
                 })?;
-            let qry = QueryAdapter::new(&db);
+            let qry = QueryAdapter::new(Arc::new(db));
 
             let observed = qry
                 .find_by_id(id)?
@@ -408,7 +413,7 @@ mod tests {
             let (_dir, db) = fixtures::test_db().map_err(|e| {
                 NoteQueryError::Domain(NoteError::Storage(e.into()))
             })?;
-            let qry = QueryAdapter::new(&db);
+            let qry = QueryAdapter::new(Arc::new(db));
             let miss =
                 qry.find_by_id(NoteId::from(fixtures::TEST_MISSING_ID))?;
             assert!(miss.is_none(), "Non-existent ID should return None");
@@ -421,7 +426,7 @@ mod tests {
                 .map_err(|e| {
                     NoteQueryError::Domain(NoteError::Storage(e.into()))
                 })?;
-            let qry = QueryAdapter::new(&db);
+            let qry = QueryAdapter::new(Arc::new(db));
             let notes = qry.list()?;
             assert_eq!(notes.len(), 1);
             Ok(())
@@ -434,7 +439,7 @@ mod tests {
                 .map_err(|e| {
                     NoteQueryError::Domain(NoteError::Storage(e.into()))
                 })?;
-            let qry = QueryAdapter::new(&db);
+            let qry = QueryAdapter::new(Arc::new(db));
 
             let alias =
                 AliasName::try_new("Alias").map_err(NoteQueryError::Domain)?;

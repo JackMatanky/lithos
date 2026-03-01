@@ -1,9 +1,5 @@
 //! Task parsing helpers for markdown ingestion.
 
-use std::sync::LazyLock;
-
-use regex::Regex;
-
 use crate::{
     config::{
         task::{StatusSymbol, Task as TaskConfig},
@@ -57,9 +53,8 @@ impl<'config> TaskParser<'config> {
             })?
             .clone();
         let text = self.extract_clean_text(raw_text)?;
-        let (created_at, due_at, reminder_at, completed_at) =
-            self.parse_temporal_fields(raw_text)?;
-        let metadata = self.parse_metadata(raw_text)?;
+        let (created_at, due_at, reminder_at, completed_at, metadata) =
+            self.parse_inline_fields(raw_text)?;
         let attributes = TaskAttributes::builder()
             .tags(tags)
             .metadata(metadata)
@@ -98,9 +93,7 @@ impl<'config> TaskParser<'config> {
             }
         }
 
-        if let Some(mat) = METADATA_REGEX.find(text)
-            && let Some(prefix) = text.get(..mat.start())
-        {
+        if let Some(prefix) = strip_inline_fields(text) {
             text = prefix.trim_end();
         }
 
@@ -111,151 +104,93 @@ impl<'config> TaskParser<'config> {
         Ok(text.into())
     }
 
-    fn parse_temporal_fields(
+    fn parse_inline_fields(
         self,
         text: &str,
-    ) -> Result<TemporalFields, NoteError> {
-        let created_at = self
-            .config
-            .created()
-            .map(|spec| Self::parse_date_field(text, spec))
-            .transpose()?
-            .flatten();
-        let due_at = self
-            .config
-            .due()
-            .map(|spec| Self::parse_date_field(text, spec))
-            .transpose()?
-            .flatten();
-        let reminder_at = self
-            .config
-            .reminder()
-            .map(|spec| Self::parse_date_field(text, spec))
-            .transpose()?
-            .flatten();
-        let completed_at = self
-            .config
-            .completed()
-            .map(|spec| Self::parse_date_field(text, spec))
-            .transpose()?
-            .flatten();
-
-        Ok((created_at, due_at, reminder_at, completed_at))
-    }
-
-    fn parse_date_field(
-        text: &str,
-        spec: &DateSpec,
-    ) -> Result<Option<TaskTimestamp>, NoteError> {
-        let parse_date_str = |value: &str| -> Result<TaskTimestamp, NoteError> {
-            if let Ok(naive) =
-                chrono::NaiveDateTime::parse_from_str(value, spec.format())
-            {
-                return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
-            }
-
-            let date = chrono::NaiveDate::parse_from_str(value, spec.format())
-                .map_err(|error| {
-                    NoteError::Task(TaskError::InvalidDate {
-                        keyword: spec.keyword().as_str().into(),
-                        reason: error.to_string().into(),
-                    })
-                })?;
-
-            let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
-                NoteError::Task(TaskError::InvalidDateTime {
-                    keyword: spec.keyword().as_str().into(),
-                })
-            })?;
-
-            Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
-        };
-
-        if let Some(value) = find_inline_field(text, spec.keyword().as_str()) {
-            return parse_date_str(value).map(Some);
-        }
-
-        if let Some(emoji) = spec.emoji()
-            && let Some(value) = find_emoji_field(text, emoji)
-        {
-            return parse_date_str(value).map(Some);
-        }
-
-        Ok(None)
-    }
-
-    fn parse_metadata(self, text: &str) -> Result<TaskMetadata, NoteError> {
+    ) -> Result<ParsedInlineFields, NoteError> {
+        let mut slots = TemporalSlots::new();
         let mut metadata = TaskMetadata::new();
 
-        for caps in METADATA_REGEX.captures_iter(text) {
-            let keyword = caps.get(1).map_or("", |m| m.as_str().trim());
-            let raw_value = caps.get(2).map_or("", |m| m.as_str().trim());
-
-            if keyword.is_empty() {
-                continue;
+        for_each_inline_field(text, |keyword, raw_value| {
+            if let Some(spec) = self.match_date_spec(keyword) {
+                let parsed = parse_date_str(raw_value, spec)?;
+                assign_date_for_keyword(
+                    self.config,
+                    spec.keyword().as_str(),
+                    parsed,
+                    &mut slots,
+                );
+                return Ok(());
             }
 
-            if self.is_temporal_keyword(keyword) {
-                continue;
-            }
+            insert_metadata(self.config, &mut metadata, keyword, raw_value)
+        })?;
 
-            if let Some(spec) = self.config.field_spec(keyword) {
-                let json_value = parse_metadata_value(raw_value, spec)?;
-                spec.validate_raw_value(&json_value).map_err(|error| {
-                    NoteError::Task(TaskError::InvalidMetadataField {
-                        keyword: keyword.into(),
-                        reason: error.to_string().into(),
-                    })
-                })?;
-                let field_value =
-                    FieldValue::from_json(&json_value).map_err(|error| {
-                        NoteError::Task(TaskError::InvalidMetadataField {
-                            keyword: keyword.into(),
-                            reason: error.to_string().into(),
-                        })
-                    })?;
-                let key = TaskFieldKey::try_new(keyword)?;
-                metadata.insert(key, field_value);
-            } else {
-                let key = TaskFieldKey::try_new(keyword)?;
-                metadata.insert(key, FieldValue::String(raw_value.into()));
-            }
-        }
+        fill_emoji_dates(self.config, text, &mut slots)?;
 
-        Ok(metadata)
+        Ok(slots.finish(metadata))
     }
 
-    fn is_temporal_keyword(self, keyword: &str) -> bool {
-        self.config
-            .created()
-            .is_some_and(|spec| spec.keyword().as_str() == keyword)
-            || self
-                .config
-                .due()
-                .is_some_and(|spec| spec.keyword().as_str() == keyword)
-            || self
-                .config
-                .reminder()
-                .is_some_and(|spec| spec.keyword().as_str() == keyword)
-            || self
-                .config
-                .completed()
-                .is_some_and(|spec| spec.keyword().as_str() == keyword)
+    fn match_date_spec(self, keyword: &str) -> Option<&'config DateSpec> {
+        if let Some(spec) = self.config.created()
+            && spec.keyword().as_str() == keyword
+        {
+            return Some(spec);
+        }
+        if let Some(spec) = self.config.due()
+            && spec.keyword().as_str() == keyword
+        {
+            return Some(spec);
+        }
+        if let Some(spec) = self.config.reminder()
+            && spec.keyword().as_str() == keyword
+        {
+            return Some(spec);
+        }
+        if let Some(spec) = self.config.completed()
+            && spec.keyword().as_str() == keyword
+        {
+            return Some(spec);
+        }
+        None
     }
 }
 
-type TemporalFields = (
+type ParsedInlineFields = (
     Option<TaskTimestamp>,
     Option<TaskTimestamp>,
     Option<TaskTimestamp>,
     Option<TaskTimestamp>,
+    TaskMetadata,
 );
 
-// Pre-compiled regexes for performance
-static METADATA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    #[expect(clippy::expect_used, reason = "Internal regex compilation")]
-    Regex::new(r"\[([^:\]]+)::\s*([^\]]+)\]").expect("Invalid metadata regex")
-});
+#[derive(Debug, Default)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "Temporal slots share consistent suffixes by design."
+)]
+struct TemporalSlots {
+    created_at: Option<TaskTimestamp>,
+    due_at: Option<TaskTimestamp>,
+    reminder_at: Option<TaskTimestamp>,
+    completed_at: Option<TaskTimestamp>,
+}
+
+impl TemporalSlots {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn finish(self, metadata: TaskMetadata) -> ParsedInlineFields {
+        (
+            self.created_at,
+            self.due_at,
+            self.reminder_at,
+            self.completed_at,
+            metadata,
+        )
+    }
+}
 
 #[expect(
     clippy::pattern_type_mismatch,
@@ -307,29 +242,187 @@ fn parse_metadata_value(
     }
 }
 
-#[expect(
-    clippy::string_slice,
-    reason = "Indices are validated by match_indices."
-)]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "Offset addition is safe after successful match."
-)]
-fn find_inline_field<'text>(
-    text: &'text str,
+fn assign_date_for_keyword(
+    config: &TaskConfig,
     keyword: &str,
-) -> Option<&'text str> {
-    for (start, _) in text.match_indices('[') {
-        let after_bracket = &text[start + 1..];
-        if let Some(after_keyword) = after_bracket.strip_prefix(keyword)
-            && let Some(rest) = after_keyword.strip_prefix("::")
-            && let Some(value_end) = rest.find(']')
-        {
-            let value = rest[..value_end].trim();
-            if !value.is_empty() {
-                return Some(value);
+    value: TaskTimestamp,
+    slots: &mut TemporalSlots,
+) {
+    if config.created().is_some_and(|spec| spec.keyword().as_str() == keyword) {
+        slots.created_at = Some(value);
+        return;
+    }
+
+    if config.due().is_some_and(|spec| spec.keyword().as_str() == keyword) {
+        slots.due_at = Some(value);
+        return;
+    }
+
+    if config.reminder().is_some_and(|spec| spec.keyword().as_str() == keyword)
+    {
+        slots.reminder_at = Some(value);
+        return;
+    }
+
+    if config.completed().is_some_and(|spec| spec.keyword().as_str() == keyword)
+    {
+        slots.completed_at = Some(value);
+    }
+}
+
+fn insert_metadata(
+    config: &TaskConfig,
+    metadata: &mut TaskMetadata,
+    keyword: &str,
+    raw_value: &str,
+) -> Result<(), NoteError> {
+    if let Some(spec) = config.field_spec(keyword) {
+        let json_value = parse_metadata_value(raw_value, spec)?;
+        spec.validate_raw_value(&json_value).map_err(|error| {
+            NoteError::Task(TaskError::InvalidMetadataField {
+                keyword: keyword.into(),
+                reason: error.to_string().into(),
+            })
+        })?;
+        let field_value =
+            FieldValue::from_json(&json_value).map_err(|error| {
+                NoteError::Task(TaskError::InvalidMetadataField {
+                    keyword: keyword.into(),
+                    reason: error.to_string().into(),
+                })
+            })?;
+        let key = TaskFieldKey::try_new(keyword)?;
+        metadata.insert(key, field_value);
+    } else {
+        let key = TaskFieldKey::try_new(keyword)?;
+        metadata.insert(key, FieldValue::String(raw_value.into()));
+    }
+
+    Ok(())
+}
+
+fn fill_emoji_dates(
+    config: &TaskConfig,
+    text: &str,
+    slots: &mut TemporalSlots,
+) -> Result<(), NoteError> {
+    if let Some(spec) = config.created()
+        && slots.created_at.is_none()
+        && let Some(emoji) = spec.emoji()
+        && let Some(value) = find_emoji_field(text, emoji)
+    {
+        slots.created_at = Some(parse_date_str(value, spec)?);
+    }
+
+    if let Some(spec) = config.due()
+        && slots.due_at.is_none()
+        && let Some(emoji) = spec.emoji()
+        && let Some(value) = find_emoji_field(text, emoji)
+    {
+        slots.due_at = Some(parse_date_str(value, spec)?);
+    }
+
+    if let Some(spec) = config.reminder()
+        && slots.reminder_at.is_none()
+        && let Some(emoji) = spec.emoji()
+        && let Some(value) = find_emoji_field(text, emoji)
+    {
+        slots.reminder_at = Some(parse_date_str(value, spec)?);
+    }
+
+    if let Some(spec) = config.completed()
+        && slots.completed_at.is_none()
+        && let Some(emoji) = spec.emoji()
+        && let Some(value) = find_emoji_field(text, emoji)
+    {
+        slots.completed_at = Some(parse_date_str(value, spec)?);
+    }
+
+    Ok(())
+}
+
+fn parse_date_str(
+    value: &str,
+    spec: &DateSpec,
+) -> Result<TaskTimestamp, NoteError> {
+    if let Ok(naive) =
+        chrono::NaiveDateTime::parse_from_str(value, spec.format())
+    {
+        return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
+    }
+
+    let date = chrono::NaiveDate::parse_from_str(value, spec.format())
+        .map_err(|error| {
+            NoteError::Task(TaskError::InvalidDate {
+                keyword: spec.keyword().as_str().into(),
+                reason: error.to_string().into(),
+            })
+        })?;
+
+    let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
+        NoteError::Task(TaskError::InvalidDateTime {
+            keyword: spec.keyword().as_str().into(),
+        })
+    })?;
+
+    Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
+}
+
+fn for_each_inline_field(
+    text: &str,
+    mut f: impl FnMut(&str, &str) -> Result<(), NoteError>,
+) -> Result<(), NoteError> {
+    let bytes = text.as_bytes();
+    let mut cursor = 0;
+    while let Some(open_rel) = bytes
+        .get(cursor..)
+        .and_then(|slice| slice.iter().position(|&b| b == b'['))
+    {
+        let open = cursor.saturating_add(open_rel);
+        let after_open = open.saturating_add(1);
+        let Some(close_rel) = bytes
+            .get(after_open..)
+            .and_then(|slice| slice.iter().position(|&b| b == b']'))
+        else {
+            break;
+        };
+        let close = after_open.saturating_add(close_rel);
+        let Some(inner) = text.get(after_open..close) else {
+            break;
+        };
+        if let Some((key, value)) = inner.split_once("::") {
+            let key = key.trim();
+            let value = value.trim();
+            if !key.is_empty() && !value.is_empty() {
+                f(key, value)?;
             }
         }
+        cursor = close.saturating_add(1);
+    }
+    Ok(())
+}
+
+fn strip_inline_fields(text: &str) -> Option<&str> {
+    let bytes = text.as_bytes();
+    let mut cursor = 0;
+    while let Some(open_rel) = bytes
+        .get(cursor..)
+        .and_then(|slice| slice.iter().position(|&b| b == b'['))
+    {
+        let open = cursor.saturating_add(open_rel);
+        let after_open = open.saturating_add(1);
+        let close_rel = bytes
+            .get(after_open..)
+            .and_then(|slice| slice.iter().position(|&b| b == b']'))?;
+        let close = after_open.saturating_add(close_rel);
+        let inner = text.get(after_open..close)?;
+        if let Some((key, value)) = inner.split_once("::")
+            && !key.trim().is_empty()
+            && !value.trim().is_empty()
+        {
+            return text.get(..open);
+        }
+        cursor = close.saturating_add(1);
     }
     None
 }
