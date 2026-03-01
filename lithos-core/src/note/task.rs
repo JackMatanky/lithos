@@ -71,41 +71,15 @@ pub struct Task {
     schedule: TaskSchedule,
 }
 
-/// Validated task priority.
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize,
-)]
-pub struct TaskPriority(f64);
-
-impl TaskPriority {
-    /// Creates a validated task priority.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Task`] if the value is not finite.
-    #[inline]
-    pub fn try_new(value: f64) -> Result<Self, NoteError> {
-        if !value.is_finite() {
-            return Err(NoteError::Task(TaskError::InvalidPriority {
-                reason: "task priority must be finite".into(),
-            }));
-        }
-        Ok(Self(value))
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn as_f64(self) -> f64 {
-        self.0
-    }
-}
-
-/// Validated key for task metadata fields.
+/// Unique identifier for a Task (UUID v7).
 #[derive(
     Debug,
     Clone,
+    Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     serde::Serialize,
     serde::Deserialize,
@@ -113,56 +87,36 @@ impl TaskPriority {
     Serialize,
     Deserialize,
 )]
-#[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
-pub struct TaskFieldKey(Box<str>);
+#[rkyv(derive(Debug))]
+pub struct TaskId(Uuid);
 
-impl TaskFieldKey {
-    /// Creates a validated task field key.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Task`] if the key is empty or contains
-    /// non-ASCII alphanumeric characters outside `_` and `-`.
-    #[inline]
-    pub fn try_new(value: &str) -> Result<Self, NoteError> {
-        let text = value.trim();
-        if text.is_empty() {
-            return Err(NoteError::Task(TaskError::FieldKeyEmpty));
-        }
-        if !text
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        {
-            return Err(NoteError::Task(TaskError::FieldKeyInvalidChars));
-        }
-        Ok(Self(text.into()))
-    }
-
+impl TaskId {
+    /// Creates a new random `TaskId` (UUID v7).
     #[inline]
     #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
     }
 }
 
-impl AsRef<str> for TaskFieldKey {
+impl Default for TaskId {
     #[inline]
-    fn as_ref(&self) -> &str {
-        self.as_str()
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-impl Borrow<str> for TaskFieldKey {
+impl From<Uuid> for TaskId {
     #[inline]
-    fn borrow(&self) -> &str {
-        self.as_str()
+    fn from(uuid: Uuid) -> Self {
+        Self(uuid)
     }
 }
 
-impl fmt::Display for TaskFieldKey {
+impl From<TaskId> for Uuid {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
+    fn from(id: TaskId) -> Uuid {
+        id.0
     }
 }
 
@@ -450,55 +404,6 @@ impl Task {
     }
 }
 
-/// Unique identifier for a Task (UUID v7).
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct TaskId(Uuid);
-
-impl TaskId {
-    /// Creates a new random `TaskId` (UUID v7).
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
-}
-
-impl Default for TaskId {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl From<Uuid> for TaskId {
-    #[inline]
-    fn from(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-}
-
-impl From<TaskId> for Uuid {
-    #[inline]
-    fn from(id: TaskId) -> Uuid {
-        id.0
-    }
-}
-
 /// A timestamp representing task temporal data.
 ///
 /// Wraps an `i64` Unix timestamp for semantic clarity while maintaining
@@ -679,6 +584,101 @@ impl From<TaskTimestamp> for std::time::SystemTime {
         std::time::UNIX_EPOCH
             .checked_add(std::time::Duration::from_secs(timestamp.0 as u64))
             .unwrap_or(std::time::UNIX_EPOCH)
+    }
+}
+
+/// Validated task priority.
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize,
+)]
+pub struct TaskPriority(f64);
+
+impl TaskPriority {
+    /// Creates a validated task priority.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Task`] if the value is not finite.
+    #[inline]
+    pub fn try_new(value: f64) -> Result<Self, NoteError> {
+        if !value.is_finite() {
+            return Err(NoteError::Task(TaskError::InvalidPriority {
+                reason: "task priority must be finite".into(),
+            }));
+        }
+        Ok(Self(value))
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn as_f64(self) -> f64 {
+        self.0
+    }
+}
+
+/// Validated key for task metadata fields.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
+pub struct TaskFieldKey(Box<str>);
+
+impl TaskFieldKey {
+    /// Creates a validated task field key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Task`] if the key is empty or contains
+    /// non-ASCII alphanumeric characters outside `_` and `-`.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Task(TaskError::FieldKeyEmpty));
+        }
+        if !text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(NoteError::Task(TaskError::FieldKeyInvalidChars));
+        }
+        Ok(Self(text.into()))
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for TaskFieldKey {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Borrow<str> for TaskFieldKey {
+    #[inline]
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for TaskFieldKey {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
