@@ -203,7 +203,14 @@ impl RelativePath {
             return Err(NoteError::InvalidPath("path cannot be empty".into()));
         }
 
-        if Self::has_drive_or_unc_prefix(path) {
+        let mut chars = path.chars();
+        let first = chars.next();
+        let second = chars.next();
+        if let Some(first) = first
+            && let Some(second) = second
+            && ((first.is_ascii_alphabetic() && second == ':')
+                || (first == '/' && second == '/'))
+        {
             return Err(NoteError::InvalidPath(
                 "windows-style prefixes are not allowed".into(),
             ));
@@ -254,24 +261,6 @@ impl RelativePath {
         }
 
         Ok(())
-    }
-
-    fn has_drive_or_unc_prefix(path: &str) -> bool {
-        let mut chars = path.chars();
-        let first = chars.next();
-        let second = chars.next();
-        let Some(first) = first else {
-            return false;
-        };
-        if let Some(second) = second {
-            if first.is_ascii_alphabetic() && second == ':' {
-                return true;
-            }
-            if first == '/' && second == '/' {
-                return true;
-            }
-        }
-        false
     }
 }
 
