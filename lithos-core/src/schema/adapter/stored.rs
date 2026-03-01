@@ -86,22 +86,44 @@ impl StoredSchema {
     }
 }
 
-/// Flat storage representation of a single property.
+impl TryFrom<StoredSchema> for Schema {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(stored: StoredSchema) -> Result<Self, Self::Error> {
+        let name = SchemaName::new(&stored.name)?;
+        let properties: Result<Vec<_>, _> = stored
+            .properties
+            .into_iter()
+            .map(|sp| {
+                let prop_name = PropertyName::new(&sp.name)?;
+                let optionality = Optionality::from(sp.required);
+                let multiplicity = Multiplicity::from(sp.multi);
+                Ok(Property::new(
+                    sp.id,
+                    prop_name,
+                    optionality,
+                    multiplicity,
+                    sp.spec,
+                ))
+            })
+            .collect();
+        let properties = properties?;
+        Ok(Schema::reconstruct(stored.id, name, stored.parent_id, properties))
+    }
+}
+
+/// Adapter storage representation of a property bank snapshot.
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
-pub(crate) struct StoredProperty {
-    /// Property identity.
-    pub id: PropertyId,
-    /// Property name (flattened from `PropertyName` newtype).
-    pub name: Box<str>,
-    /// Whether the property is required (flattened from `Optionality`).
-    pub required: bool,
-    /// Whether the property accepts multiple values (flattened from
-    /// `Multiplicity`).
-    pub multi: bool,
-    /// Type-specific validation constraints.
-    pub spec: PropertySpec,
+pub(crate) struct StoredPropertyBank {
+    /// Bank version at time of persistence.
+    pub bank_version: BankVersion,
+    /// Wall-clock timestamp when this record was written.
+    pub recorded_at: Timestamp,
+    /// Flattened properties in the bank.
+    pub properties: Vec<StoredProperty>,
 }
 
 /// Adapter storage representation of property bank metadata.
@@ -132,17 +154,18 @@ pub(crate) struct StoredBankProperty {
     pub property: StoredProperty,
 }
 
-/// Adapter storage representation of a property bank snapshot.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
-pub(crate) struct StoredPropertyBank {
-    /// Bank version at time of persistence.
-    pub bank_version: BankVersion,
-    /// Wall-clock timestamp when this record was written.
-    pub recorded_at: Timestamp,
-    /// Flattened properties in the bank.
-    pub properties: Vec<StoredProperty>,
+impl StoredBankProperty {
+    /// Format a bank property key for the given version.
+    #[inline]
+    pub(crate) fn key(version: BankVersion, suffix: &str) -> String {
+        format!("{}:{suffix}", version.as_u64())
+    }
+
+    /// Format a bank property key prefix for the given version.
+    #[inline]
+    pub(crate) fn prefix(version: BankVersion) -> String {
+        format!("{}:", version.as_u64())
+    }
 }
 
 impl TryFrom<StoredPropertyBank> for PropertyBank {
@@ -170,43 +193,22 @@ impl TryFrom<StoredPropertyBank> for PropertyBank {
     }
 }
 
-impl TryFrom<StoredSchema> for Schema {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(stored: StoredSchema) -> Result<Self, Self::Error> {
-        let name = SchemaName::new(&stored.name)?;
-        let properties: Result<Vec<_>, _> = stored
-            .properties
-            .into_iter()
-            .map(|sp| {
-                let prop_name = PropertyName::new(&sp.name)?;
-                let optionality = Optionality::from(sp.required);
-                let multiplicity = Multiplicity::from(sp.multi);
-                Ok(Property::new(
-                    sp.id,
-                    prop_name,
-                    optionality,
-                    multiplicity,
-                    sp.spec,
-                ))
-            })
-            .collect();
-        let properties = properties?;
-        Ok(Schema::reconstruct(stored.id, name, stored.parent_id, properties))
-    }
-}
-
-/// Format a bank property key for the given version.
-#[inline]
-pub(crate) fn bank_property_key(version: BankVersion, suffix: &str) -> String {
-    format!("{}:{suffix}", version.as_u64())
-}
-
-/// Format a bank property key prefix for the given version.
-#[inline]
-pub(crate) fn bank_property_prefix(version: BankVersion) -> String {
-    format!("{}:", version.as_u64())
+/// Flat storage representation of a single property.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+pub(crate) struct StoredProperty {
+    /// Property identity.
+    pub id: PropertyId,
+    /// Property name (flattened from `PropertyName` newtype).
+    pub name: Box<str>,
+    /// Whether the property is required (flattened from `Optionality`).
+    pub required: bool,
+    /// Whether the property accepts multiple values (flattened from
+    /// `Multiplicity`).
+    pub multi: bool,
+    /// Type-specific validation constraints.
+    pub spec: PropertySpec,
 }
 
 #[cfg(test)]

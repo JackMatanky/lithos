@@ -11,7 +11,7 @@ use crate::{
     schema::{
         adapter::stored::{
             StoredBankMetadata, StoredBankProperty, StoredProperty,
-            StoredSchema, bank_property_key,
+            StoredSchema,
         },
         aggregate::{Schema, SchemaId, Timestamp},
         bank::{BankVersion, PropertyBank},
@@ -253,10 +253,14 @@ impl Command for CommandAdapter<'_> {
                     property: stored_property,
                 };
 
-                let id_key =
-                    bank_property_key(bank_version, &property.id().to_string());
-                let name_key =
-                    bank_property_key(bank_version, property.name().as_str());
+                let id_key = StoredBankProperty::key(
+                    bank_version,
+                    &property.id().to_string(),
+                );
+                let name_key = StoredBankProperty::key(
+                    bank_version,
+                    property.name().as_str(),
+                );
 
                 batch.put(BANK_PROPERTY_BY_ID, &id_key, &stored)?;
                 batch.put(BANK_PROPERTY_BY_NAME, &name_key, &stored)?;

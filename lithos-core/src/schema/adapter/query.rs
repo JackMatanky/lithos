@@ -8,7 +8,7 @@ use crate::{
     schema::{
         adapter::stored::{
             StoredBankMetadata, StoredBankProperty, StoredPropertyBank,
-            StoredSchema, bank_property_prefix,
+            StoredSchema,
         },
         aggregate::{Schema, SchemaId, SchemaName, Timestamp},
         bank::{BankVersion, PropertyBank},
@@ -75,7 +75,7 @@ impl Query for QueryAdapter<'_> {
             return Ok(None);
         };
 
-        let prefix = bank_property_prefix(metadata.bank_version);
+        let prefix = StoredBankProperty::prefix(metadata.bank_version);
         let entries = self.db.list_key_value_pairs::<StoredBankProperty>(
             BANK_PROPERTY_BY_NAME,
         )?;
