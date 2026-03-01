@@ -13,7 +13,7 @@ use super::{
 
 /// Registry of reusable Property definitions keyed by name.
 ///
-/// The `PropertyBank` acts as a singleton registry with a stable UUID identity.
+/// The `PropertyBank` acts as a singleton registry with versioned persistence.
 /// It is loaded first at program start and versioned for incremental
 /// resolution.
 ///
@@ -22,6 +22,7 @@ use super::{
 /// The `PropertyBank` is a singleton registry persisted by the adapter layer.
 /// - **Lifecycle**: Loaded once at startup, persisted on modification
 /// - **Versioning**: `BankVersion` increments on any property change
+/// - **Storage**: `bank_metadata` and versioned `bank_property_by_*` tables
 ///
 /// # Examples
 ///

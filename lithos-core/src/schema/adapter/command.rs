@@ -1,4 +1,8 @@
 //! Redb-backed implementation of the [`crate::schema::ports::Command`] trait.
+//!
+//! Property bank persistence writes:
+//! - `bank_metadata` for version/timestamps
+//! - `bank_property_by_id` and `bank_property_by_name` for versioned rows
 
 use tracing::instrument;
 
@@ -220,6 +224,7 @@ impl Command for CommandAdapter<'_> {
         &self,
         bank: &PropertyBank,
     ) -> Result<(), Self::Error> {
+        // Persist metadata plus versioned property rows.
         let bank_version = bank.version();
         let recorded_at = Timestamp::now();
 

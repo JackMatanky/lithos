@@ -1,4 +1,7 @@
 //! Redb-backed implementation of the [`crate::schema::ports::Query`] trait.
+//!
+//! Property bank reads use `bank_metadata` plus versioned rows from
+//! `bank_property_by_name`.
 
 use crate::{
     db::{BatchReader, Database, DbError},
