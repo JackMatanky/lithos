@@ -1,7 +1,7 @@
 //! Integration tests for Schema CQRS persistence.
 //!
 //! Tests the full CQRS stack for `PropertyBank` and Schema aggregates:
-//! - `PropertyBank`: Singleton identity, versioning, persistence
+//! - `PropertyBank`: Singleton persistence, versioning
 //! - Schema: CRUD operations, batch saves, indices, roundtrips
 //! - Cross-aggregate: `PropertyBank` ↔ Schema consistency
 //!
@@ -31,7 +31,7 @@ use lithos_core::{
     schema::{
         RedbSchemaCommand, RedbSchemaQuery,
         aggregate::{SchemaId, SchemaName},
-        bank::{PropertyBank, PropertyBankId},
+        bank::PropertyBank,
         property::{Multiplicity, Optionality, PropertyId, PropertyName},
     },
 };
@@ -54,50 +54,11 @@ const TEST_SCHEMA_ID_PROJECT: Uuid =
 mod property_bank {
     use super::*;
 
-    /// **3.4-INT-001**: `PropertyBank` singleton identity persists correctly.
-    ///
-    /// Verifies:
-    /// - `PropertyBank` uses singleton ID
-    /// - Saved bank has correct singleton identity
-    /// - Loaded bank preserves singleton ID
-    #[test]
-    fn singleton_identity_persists() -> TestResult {
-        // GIVEN: A database and PropertyBank with singleton ID
-        let test_db = TestDb::new()?;
-        let (command, query) = setup_cqrs(test_db.db());
-
-        let bank = PropertyBank::new();
-        assert_eq!(
-            bank.id(),
-            PropertyBankId::singleton(),
-            "New PropertyBank should have singleton ID"
-        );
-
-        // WHEN: Saving the PropertyBank
-        command.save_property_bank(&bank)?;
-
-        // THEN: Loaded bank has singleton ID
-        let loaded = query.find_property_bank()?;
-        assert!(
-            loaded.is_some(),
-            "PropertyBank should be retrievable after save"
-        );
-
-        let loaded_bank = loaded.expect("just verified bank exists");
-        assert_eq!(
-            loaded_bank.id(),
-            PropertyBankId::singleton(),
-            "Loaded PropertyBank should preserve singleton ID"
-        );
-
-        Ok(())
-    }
-
-    /// **3.4-INT-002**: `PropertyBank` save creates singleton when missing.
+    /// **3.4-INT-002**: `PropertyBank` save persists when missing.
     ///
     /// Verifies:
     /// - Empty database returns None for `PropertyBank`
-    /// - First save creates singleton entry
+    /// - First save persists the bank
     /// - Subsequent find returns the saved bank
     #[test]
     fn save_creates_singleton() -> TestResult {
@@ -280,11 +241,6 @@ mod property_bank {
 
         let loaded_bank = loaded.expect("just verified bank exists");
         assert_eq!(
-            loaded_bank.id(),
-            PropertyBankId::singleton(),
-            "Singleton ID should persist"
-        );
-        assert_eq!(
             loaded_bank.version(),
             original_version,
             "Version should persist"
@@ -303,10 +259,10 @@ mod property_bank {
     /// **3.4-INT-006**: `PropertyBank` roundtrip preserves all fields.
     ///
     /// Verifies:
-    /// - ID preserves correctly
+    /// - Properties preserve correctly
     /// - Version preserves correctly
     /// - Properties preserve correctly
-    /// - Indices rebuild correctly
+    /// - Name lookup rebuilds correctly
     #[test]
     fn roundtrip_preserves_all_fields() -> TestResult {
         // GIVEN: A PropertyBank with multiple properties
@@ -324,7 +280,6 @@ mod property_bank {
         bank.register(prop1)?;
         bank.register(prop2)?;
 
-        let original_id = bank.id();
         let original_version = bank.version();
         let original_count = bank.all().count();
 
@@ -333,7 +288,6 @@ mod property_bank {
         let loaded = query.find_property_bank()?.expect("Bank should exist");
 
         // THEN: All fields preserved
-        assert_eq!(loaded.id(), original_id, "ID should preserve");
         assert_eq!(
             loaded.version(),
             original_version,
@@ -345,25 +299,13 @@ mod property_bank {
             "Property count should preserve"
         );
 
-        // Verify dual indices work
+        // Verify name lookup works
         let status_name = PropertyName::new("status")?;
         let title_name = PropertyName::new("title")?;
 
-        assert!(loaded.has_id(PropertyId::from_uuid(TEST_PROPERTY_ID_A)));
-        assert!(loaded.has_id(PropertyId::from_uuid(TEST_PROPERTY_ID_B)));
         assert!(loaded.has_name(&status_name));
         assert!(loaded.has_name(&title_name));
 
-        assert!(
-            loaded
-                .get_by_id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
-                .is_some()
-        );
-        assert!(
-            loaded
-                .get_by_id(PropertyId::from_uuid(TEST_PROPERTY_ID_B))
-                .is_some()
-        );
         assert!(loaded.get_by_name(&status_name).is_some());
         assert!(loaded.get_by_name(&title_name).is_some());
 
@@ -377,7 +319,7 @@ mod property_bank {
     /// Verifies:
     /// - Empty `PropertyBank` can be saved
     /// - Loaded bank is also empty
-    /// - Singleton ID and version still persist
+    /// - Version still persists
     #[test]
     fn empty_bank_persists() -> TestResult {
         // GIVEN: An empty PropertyBank
@@ -393,18 +335,16 @@ mod property_bank {
         // THEN: Loaded bank is empty but valid
         let loaded = query.find_property_bank()?.expect("Bank should exist");
         assert_eq!(loaded.all().count(), 0, "Bank should be empty");
-        assert_eq!(loaded.id(), PropertyBankId::singleton());
         assert_eq!(loaded.version(), original_version);
 
         Ok(())
     }
 
-    /// **3.4-INT-008**: `PropertyBank` indices work after multiple updates.
+    /// **3.4-INT-008**: `PropertyBank` name lookup works after updates.
     ///
     /// Verifies:
-    /// - ID index remains consistent after updates
-    /// - Name index remains consistent after updates
-    /// - Both indices return correct properties
+    /// - Name lookup remains consistent after updates
+    /// - Lookups return correct properties
     #[test]
     fn indices_consistent_after_updates() -> TestResult {
         // GIVEN: A PropertyBank that's updated multiple times
@@ -430,28 +370,16 @@ mod property_bank {
         // WHEN: Loading bank
         let loaded = query.find_property_bank()?.expect("Bank should exist");
 
-        // THEN: Both indices work correctly
-        assert!(loaded.has_id(PropertyId::from_uuid(TEST_PROPERTY_ID_A)));
-        assert!(loaded.has_id(PropertyId::from_uuid(TEST_PROPERTY_ID_B)));
-
+        // THEN: Name lookup works correctly
         let alpha_name = PropertyName::new("alpha")?;
         let beta_name = PropertyName::new("beta")?;
         assert!(loaded.has_name(&alpha_name));
         assert!(loaded.has_name(&beta_name));
 
-        // Verify get_by_* methods
-        let prop_by_id = loaded
-            .get_by_id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
-            .expect("Property should exist by ID");
-        assert_eq!(prop_by_id.name().as_str(), "alpha");
-
         let prop_by_name = loaded
             .get_by_name(&beta_name)
             .expect("Property should exist by name");
-        assert_eq!(
-            prop_by_name.id(),
-            PropertyId::from_uuid(TEST_PROPERTY_ID_B)
-        );
+        assert_eq!(prop_by_name.name().as_str(), "beta");
 
         Ok(())
     }
@@ -460,7 +388,7 @@ mod property_bank {
     ///
     /// Verifies:
     /// - Properties are iterable via `all()`
-    /// - Order is deterministic (sorted by `PropertyId`)
+    /// - Order is deterministic (sorted by name)
     /// - All registered properties are included
     #[test]
     fn iteration_order_consistent() -> TestResult {

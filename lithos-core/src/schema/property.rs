@@ -192,7 +192,7 @@ impl Property {
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
 #[serde(transparent)]
 #[non_exhaustive]
 pub struct PropertyId(Uuid);

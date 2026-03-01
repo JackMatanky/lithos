@@ -3,10 +3,12 @@
 use crate::{
     db::{BatchReader, Database, DbError},
     schema::{
-        adapter::stored::StoredSchema,
+        adapter::stored::{StoredPropertyBank, StoredSchema},
         aggregate::{Schema, SchemaId, SchemaName, Timestamp},
-        bank::{BankVersion, PropertyBank, PropertyBankId},
-        db_table::{PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
+        bank::{BankVersion, PropertyBank},
+        db_table::{
+            PROPERTY_BANK, PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
+        },
         ports::{NameIdPair, Query},
     },
 };
@@ -67,20 +69,23 @@ impl Query for QueryAdapter<'_> {
 
     #[inline]
     fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
-        let id = PropertyBankId::singleton();
-        self.db.get_owned_by_uuid(PROPERTY_BANK, id.into_uuid())
+        self.db
+            .get_owned::<StoredPropertyBank>(PROPERTY_BANK, PROPERTY_BANK_KEY)?
+            .map(PropertyBank::try_from)
+            .transpose()
+            .map_err(|e| DbError::Deserialization(e.to_string()))
     }
 
     #[inline]
     fn is_bank_stale(&self, version: BankVersion) -> Result<bool, Self::Error> {
-        let id = PropertyBankId::singleton();
-        let Some(bank) = self
-            .db
-            .get_owned_by_uuid::<PropertyBank>(PROPERTY_BANK, id.into_uuid())?
+        let Some(stored) = self.db.get_owned::<StoredPropertyBank>(
+            PROPERTY_BANK,
+            PROPERTY_BANK_KEY,
+        )?
         else {
             return Ok(true);
         };
-        Ok(bank.version() != version)
+        Ok(stored.bank_version != version)
     }
 
     #[inline]

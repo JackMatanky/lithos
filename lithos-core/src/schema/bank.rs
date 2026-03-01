@@ -1,14 +1,9 @@
 //! PropertyBank domain aggregate for centralized property registration.
 //!
-//! Provides O(1) dual-indexed property lookup by ID and Name with singleton
-//! identity and versioning for incremental resolution.
+//! Provides name-indexed property lookup with singleton persistence and
+//! versioning for incremental resolution.
 
-use std::{
-    collections::{HashMap, hash_map::Entry},
-    fmt::Display,
-};
-
-use uuid::Uuid;
+use std::{collections::BTreeMap, fmt::Display};
 
 use super::{
     error::SchemaError,
@@ -16,9 +11,7 @@ use super::{
     property::{Property, PropertyId, PropertyName},
 };
 
-/// Registry of reusable Property definitions with dual indexing.
-///
-/// Provides O(1) lookup by ID and Name.
+/// Registry of reusable Property definitions keyed by name.
 ///
 /// The `PropertyBank` acts as a singleton registry with a stable UUID identity.
 /// It is loaded first at program start and versioned for incremental
@@ -26,8 +19,7 @@ use super::{
 ///
 /// # Storage Strategy
 ///
-/// The `PropertyBank` uses UUID-first storage with a singleton identity:
-/// - **Primary key**: `PropertyBankId::singleton()` (fixed UUID)
+/// The `PropertyBank` is a singleton registry persisted by the adapter layer.
 /// - **Lifecycle**: Loaded once at startup, persisted on modification
 /// - **Versioning**: `BankVersion` increments on any property change
 ///
@@ -66,50 +58,21 @@ use super::{
 /// let bank = PropertyBank::new();
 /// assert_eq!(bank.all().count(), 0);
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct PropertyBank {
-    /// Unique identity for the property bank (singleton).
-    id: PropertyBankId,
-    /// Index mapping ID -> index in properties vector.
-    /// O(1) lookup by `PropertyId`.
-    id_index: HashMap<PropertyId, usize>,
-    /// Index mapping Name -> index in properties vector.
-    /// O(1) lookup by `PropertyName`.
-    name_index: HashMap<PropertyName, usize>,
-    /// Dense storage of properties.
-    /// Uses Vec for cache-friendly iteration and index-based access.
-    properties: Vec<Property>,
+    /// Registered properties keyed by name.
+    ///
+    /// Stored as `BTreeMap` for deterministic iteration order.
+    properties: BTreeMap<PropertyName, Property>,
     /// Version counter for staleness detection.
     version: BankVersion,
     /// Domain events pending emission.
-    #[serde(skip)]
     pending_events: Option<Vec<Events>>,
 }
 
-/// Design note: `PropertyBank` uses a triple-index structure (`id_index`,
-/// `name_index`, properties) to optimize different access patterns.
-///
-/// **Tradeoffs:**
-/// - Memory: 3N data structures for N properties (2 `HashMaps` + 1 Vec)
-/// - Benefit: O(1) lookups by both ID and name, plus cache-friendly iteration
-/// - Alternative: Could use single `HashMap`<`PropertyName`, Property> but
-///   would lose O(1) ID lookups needed for $ref resolution in schemas
-///
-/// This design was chosen because:
-/// 1. `PropertyBank` is singleton (only one instance per vault)
-/// 2. Property count is bounded (~100s, not 1000s)
-/// 3. Both ID and name lookups are frequently needed
-/// 4. The memory overhead is acceptable for a singleton
+/// Design note: `PropertyBank` stores properties by name for consistent
+/// dereferencing behavior and deterministic iteration order.
 impl PropertyBank {
     /// Create a new empty `PropertyBank`.
     ///
@@ -124,10 +87,7 @@ impl PropertyBank {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            id: PropertyBankId::singleton(),
-            id_index: HashMap::new(),
-            name_index: HashMap::new(),
-            properties: Vec::new(),
+            properties: BTreeMap::new(),
             version: BankVersion::initial(),
             pending_events: None,
         }
@@ -165,7 +125,7 @@ impl PropertyBank {
         let mut bank = Self::new();
 
         for (name, entry) in raw.properties {
-            let prop_name = PropertyName::new(&name)?;
+            let prop_name = PropertyName::try_from(name)?;
             let spec = entry.spec.try_into_validated()?;
             let multiplicity = if entry.multi {
                 super::property::Multiplicity::Many
@@ -192,19 +152,33 @@ impl PropertyBank {
         Ok(bank)
     }
 
-    /// Returns the `PropertyBank`'s unique identifier.
+    /// Reconstruct a `PropertyBank` from stored properties.
     ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBank;
-    ///
-    /// let bank = PropertyBank::new();
-    /// let _id = bank.id();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn id(&self) -> PropertyBankId {
-        self.id
+    /// This skips event emission and preserves the provided version.
+    pub(crate) fn reconstruct(
+        properties: Vec<Property>,
+        version: BankVersion,
+    ) -> Result<Self, SchemaError> {
+        let mut bank = Self::new();
+        bank.version = version;
+
+        for property in properties {
+            let name = property.name().clone();
+            if bank.properties.contains_key(&name) {
+                return Err(SchemaError::DuplicatePropertyName(
+                    name.as_str().into(),
+                ));
+            }
+            if bank.properties.values().any(|prop| prop.id() == property.id()) {
+                return Err(SchemaError::AlreadyExists(format!(
+                    "Property ID {} already registered under a different name",
+                    property.id()
+                )));
+            }
+            bank.properties.insert(name, property);
+        }
+
+        Ok(bank)
     }
 
     /// Returns the current `PropertyBank` version.
@@ -262,78 +236,34 @@ impl PropertyBank {
         let id = property.id();
         let name = property.name().clone();
 
-        match self.id_index.entry(id) {
-            Entry::Occupied(id_entry) => {
-                // Verify that the existing property matches the new one
-                let idx = *id_entry.get();
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "Index guaranteed valid: idx came from id_index \
-                              which points to properties Vec. Invariant \
-                              maintained by register() logic."
-                )]
-                let existing = &self.properties[idx];
-
-                // Check if content matches (idempotent case)
-                if existing == &property {
-                    // Idempotent success: no event, no version increment
-                    Ok(())
-                } else {
-                    // Same ID, different content - this is an error
-                    Err(SchemaError::AlreadyExists(format!(
-                        "Property ID {} already registered with different \
-                         content: existing name={}, new name={}",
-                        id,
-                        existing.name().as_str(),
-                        property.name().as_str()
-                    )))
-                }
+        if let Some(existing) = self.properties.get(&name) {
+            if existing == &property {
+                return Ok(());
             }
-            Entry::Vacant(id_entry) => {
-                // Prevent duplicate names
-                if self.name_index.contains_key(&name) {
-                    return Err(SchemaError::DuplicatePropertyName(
-                        name.as_str().into(),
-                    ));
-                }
-
-                let idx = self.properties.len();
-                id_entry.insert(idx);
-                self.name_index.insert(name.clone(), idx);
-                self.properties.push(property);
-                self.version = self.version.increment();
-
-                let event =
-                    Events::PropertyRegistered(PropertyRegistered::new(
-                        id,
-                        &name,
-                        super::aggregate::Timestamp::now(),
-                    ));
-                self.add_event(event);
-                Ok(())
-            }
+            return Err(SchemaError::DuplicatePropertyName(
+                name.as_str().into(),
+            ));
         }
+
+        if self.properties.values().any(|prop| prop.id() == id) {
+            return Err(SchemaError::AlreadyExists(format!(
+                "Property ID {id} already registered under a different name"
+            )));
+        }
+
+        self.properties.insert(name.clone(), property);
+        self.version = self.version.increment();
+
+        let event = Events::PropertyRegistered(PropertyRegistered::new(
+            id,
+            &name,
+            super::aggregate::Timestamp::now(),
+        ));
+        self.add_event(event);
+        Ok(())
     }
 
-    /// Lookup property by ID (O(1)).
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBank;
-    ///
-    /// let bank = PropertyBank::new();
-    /// let missing =
-    ///     bank.get_by_id(lithos_core::schema::property::PropertyId::new());
-    /// assert!(missing.is_none());
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn get_by_id(&self, id: PropertyId) -> Option<&Property> {
-        let &idx = self.id_index.get(&id)?;
-        self.properties.get(idx)
-    }
-
-    /// Lookup property by Name (O(1)).
+    /// Lookup property by name (O(log n)).
     ///
     /// # Examples
     /// ```
@@ -349,11 +279,10 @@ impl PropertyBank {
     #[inline]
     #[must_use]
     pub fn get_by_name(&self, name: &PropertyName) -> Option<&Property> {
-        let &idx = self.name_index.get(name)?;
-        self.properties.get(idx)
+        self.properties.get(name)
     }
 
-    /// Gets a property by name or ID (string).
+    /// Gets a property by name (string).
     ///
     /// # Errors
     /// Returns `SchemaError::PropertyNotFound` if the property does not exist
@@ -370,33 +299,10 @@ impl PropertyBank {
     /// ```
     #[inline]
     pub fn get(&self, key: &str) -> Result<&Property, SchemaError> {
-        // Try by ID first
-        if let Ok(id) = Uuid::parse_str(key)
-            && let Some(prop) = self.get_by_id(PropertyId::from_uuid(id))
-        {
-            return Ok(prop);
-        }
-
         // Fall back to name lookup
         let name = PropertyName::try_from(key)?;
         self.get_by_name(&name)
             .ok_or_else(|| SchemaError::PropertyNotFound(key.into()))
-    }
-
-    /// Checks if a property exists by ID.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::{bank::PropertyBank, property::PropertyId};
-    ///
-    /// let bank = PropertyBank::new();
-    /// let id = PropertyId::new();
-    /// assert!(!bank.has_id(id));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn has_id(&self, id: PropertyId) -> bool {
-        self.id_index.contains_key(&id)
     }
 
     /// Checks if a property exists by name.
@@ -414,7 +320,7 @@ impl PropertyBank {
     #[inline]
     #[must_use]
     pub fn has_name(&self, name: &PropertyName) -> bool {
-        self.name_index.contains_key(name)
+        self.properties.contains_key(name)
     }
 
     /// Get all properties in the bank.
@@ -429,7 +335,7 @@ impl PropertyBank {
     /// ```
     #[inline]
     pub fn all(&self) -> impl Iterator<Item = &Property> {
-        self.properties.iter()
+        self.properties.values()
     }
 
     /// Returns a reference to pending domain events.
@@ -473,123 +379,6 @@ impl Default for PropertyBank {
     #[inline]
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Unique identity for a property bank.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::bank::PropertyBankId;
-///
-/// let id = PropertyBankId::new();
-/// let _ = id.as_uuid();
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct PropertyBankId(Uuid);
-
-impl PropertyBankId {
-    /// Creates a new UUID v7-based `PropertyBankId`.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBankId;
-    ///
-    /// let id = PropertyBankId::new();
-    /// let _ = id.as_uuid();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
-
-    /// Returns the singleton `PropertyBank` ID.
-    ///
-    /// The `PropertyBank` uses a fixed UUID to act as a singleton registry.
-    /// This ensures consistent identity across all program runs.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBankId;
-    ///
-    /// let id = PropertyBankId::singleton();
-    /// let _ = id.as_uuid();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn singleton() -> Self {
-        // Fixed UUID v7 for singleton PropertyBank
-        Self(Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0001))
-    }
-
-    /// Wraps a UUID into a `PropertyBankId`.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBankId;
-    /// use uuid::Uuid;
-    ///
-    /// let uuid = Uuid::now_v7();
-    /// let id = PropertyBankId::from_uuid(uuid);
-    /// assert_eq!(*id.as_uuid(), uuid);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn from_uuid(uuid: Uuid) -> Self {
-        Self(uuid)
-    }
-
-    /// Returns the inner UUID reference.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBankId;
-    ///
-    /// let id = PropertyBankId::new();
-    /// let _ = id.as_uuid();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_uuid(&self) -> &Uuid {
-        &self.0
-    }
-
-    /// Returns the inner UUID by value.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBankId;
-    ///
-    /// let id = PropertyBankId::new();
-    /// let _uuid = id.into_uuid();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn into_uuid(self) -> Uuid {
-        self.0
-    }
-}
-
-impl Default for PropertyBankId {
-    #[inline]
-    fn default() -> Self {
-        Self::singleton()
     }
 }
 
@@ -819,49 +608,20 @@ mod tests {
                 "Should reject same ID with different content"
             );
 
-            if let Err(SchemaError::AlreadyExists(msg)) = result {
-                assert!(
-                    msg.contains("already registered with different content"),
-                    "Error message should explain the conflict: {msg}"
-                );
-                assert!(
-                    msg.contains("status"),
-                    "Error should mention existing name: {msg}"
-                );
-                assert!(
-                    msg.contains("priority"),
-                    "Error should mention new name: {msg}"
-                );
-            } else {
-                #[expect(
-                    clippy::panic,
-                    reason = "Test assertion: Expected specific error variant"
-                )]
-                {
-                    panic!(
-                        "Expected SchemaError::AlreadyExists, got: {result:?}"
-                    );
-                }
-            }
-        }
-
-        /// 3.3-UNIT-020: `maintains_dual_indices_for_fast_lookup`.
-        /// Priority: P1.
-        #[test]
-        fn maintains_id_index_for_fast_lookup() {
-            let (bank, id) = fixtures::bank_with_property()
-                .expect("Valid property bank fixture");
-
             assert!(
-                bank.get_by_id(id).is_some(),
-                "Registered property should be retrievable by ID: {id:?}"
+                matches!(
+                    &result,
+                    Err(SchemaError::AlreadyExists(msg))
+                        if msg.contains("already registered under a different name")
+                ),
+                "Expected SchemaError::AlreadyExists, got: {result:?}"
             );
         }
 
-        /// 3.3-UNIT-020: `maintains_dual_indices_for_fast_lookup`.
+        /// 3.3-UNIT-020: `maintains_name_lookup_for_fast_access`.
         /// Priority: P1.
         #[test]
-        fn maintains_name_index_for_fast_lookup() {
+        fn maintains_name_lookup_for_fast_access() {
             let (bank, _id) = fixtures::bank_with_property()
                 .expect("Valid property bank fixture");
 
@@ -909,20 +669,7 @@ mod tests {
             );
         }
 
-        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
-        /// Priority: P1.
-        #[test]
-        fn property_bank_has_id() {
-            let (bank, id) = fixtures::bank_with_property()
-                .expect("Valid property bank fixture");
-
-            assert!(
-                bank.has_id(id),
-                "PropertyBank should contain property by ID"
-            );
-        }
-
-        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
+        /// 3.2-UNIT-011: `property_bank_accessors_cover_names`.
         /// Priority: P1.
         #[test]
         fn property_bank_has_name() {
@@ -937,20 +684,7 @@ mod tests {
             );
         }
 
-        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
-        /// Priority: P1.
-        #[test]
-        fn property_bank_gets_by_id() {
-            let (bank, id) = fixtures::bank_with_property()
-                .expect("Valid property bank fixture");
-
-            assert!(
-                bank.get_by_id(id).is_some(),
-                "Should retrieve property by ID: {id:?}"
-            );
-        }
-
-        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
+        /// 3.2-UNIT-011: `property_bank_accessors_cover_names`.
         /// Priority: P1.
         #[test]
         fn property_bank_gets_by_name() {
@@ -965,27 +699,14 @@ mod tests {
             );
         }
 
-        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
+        /// 3.2-UNIT-011: `property_bank_accessors_cover_names`.
         /// Priority: P1.
         #[test]
-        fn property_bank_gets_by_id_string() {
-            let (bank, id) = fixtures::bank_with_property()
+        fn property_bank_gets_by_name_string() {
+            let (bank, _id) = fixtures::bank_with_property()
                 .expect("Valid property bank fixture");
 
-            assert!(
-                bank.get(id.as_uuid().to_string().as_str()).is_ok(),
-                "Should retrieve property by ID string: {id:?}"
-            );
-        }
-
-        /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
-        /// Priority: P1.
-        #[test]
-        fn property_bank_decodes_id_string() {
-            let (bank, id) = fixtures::bank_with_property()
-                .expect("Valid property bank fixture");
-
-            let result = bank.get(id.as_uuid().to_string().as_str());
+            let result = bank.get("flag");
             assert!(result.is_ok(), "Get should succeed: {result:?}");
         }
 

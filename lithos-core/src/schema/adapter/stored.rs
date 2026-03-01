@@ -7,7 +7,7 @@
 
 use super::super::{
     aggregate::{Schema, SchemaId, SchemaName, Timestamp},
-    bank::BankVersion,
+    bank::{BankVersion, PropertyBank},
     error::SchemaError,
     property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},
     property_spec::PropertySpec,
@@ -61,6 +61,19 @@ pub(crate) struct StoredProperty {
     pub spec: PropertySpec,
 }
 
+/// Adapter storage representation of a property bank snapshot.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+pub(crate) struct StoredPropertyBank {
+    /// Bank version at time of persistence.
+    pub bank_version: BankVersion,
+    /// Wall-clock timestamp when this record was written.
+    pub recorded_at: Timestamp,
+    /// Flattened properties in the bank.
+    pub properties: Vec<StoredProperty>,
+}
+
 /// Build a [`StoredSchema`] from a domain [`Schema`] and storage metadata.
 ///
 /// Called by the command adapter before persisting.
@@ -93,6 +106,53 @@ pub(crate) fn to_stored(
         created_at,
         modified_at,
         recorded_at: Timestamp::now(),
+    }
+}
+
+/// Build a [`StoredPropertyBank`] from a domain [`PropertyBank`].
+pub(crate) fn to_stored_property_bank(
+    bank: &PropertyBank,
+) -> StoredPropertyBank {
+    let properties = bank
+        .all()
+        .map(|p| StoredProperty {
+            id: p.id(),
+            name: p.name().as_str().into(),
+            required: p.optionality() == Optionality::Required,
+            multi: p.multiplicity() == Multiplicity::Many,
+            spec: p.spec().clone(),
+        })
+        .collect();
+
+    StoredPropertyBank {
+        bank_version: bank.version(),
+        recorded_at: Timestamp::now(),
+        properties,
+    }
+}
+
+impl TryFrom<StoredPropertyBank> for PropertyBank {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(stored: StoredPropertyBank) -> Result<Self, Self::Error> {
+        let properties: Result<Vec<_>, _> = stored
+            .properties
+            .into_iter()
+            .map(|sp| {
+                let prop_name = PropertyName::try_from(sp.name)?;
+                let optionality = Optionality::from(sp.required);
+                let multiplicity = Multiplicity::from(sp.multi);
+                Ok(Property::new(
+                    sp.id,
+                    prop_name,
+                    optionality,
+                    multiplicity,
+                    sp.spec,
+                ))
+            })
+            .collect();
+        PropertyBank::reconstruct(properties?, stored.bank_version)
     }
 }
 

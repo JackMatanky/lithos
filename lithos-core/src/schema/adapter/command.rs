@@ -5,10 +5,12 @@ use tracing::instrument;
 use crate::{
     db::{Database, DbError},
     schema::{
-        adapter::stored::to_stored,
+        adapter::stored::{to_stored, to_stored_property_bank},
         aggregate::{Schema, SchemaId, Timestamp},
         bank::{BankVersion, PropertyBank},
-        db_table::{PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
+        db_table::{
+            PROPERTY_BANK, PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
+        },
         ports::Command,
     },
 };
@@ -208,16 +210,13 @@ impl Command for CommandAdapter<'_> {
     }
 
     #[inline]
-    #[instrument(
-        skip(self, bank),
-        fields(operation = "save_property_bank", bank_id = %bank.id().as_uuid())
-    )]
+    #[instrument(skip(self, bank), fields(operation = "save_property_bank"))]
     fn save_property_bank(
         &self,
         bank: &PropertyBank,
     ) -> Result<(), Self::Error> {
-        let id_uuid = bank.id().into_uuid();
-        self.db.put_by_uuid(PROPERTY_BANK, id_uuid, bank)?;
+        let stored = to_stored_property_bank(bank);
+        self.db.put(PROPERTY_BANK, PROPERTY_BANK_KEY, &stored)?;
         Ok(())
     }
 }

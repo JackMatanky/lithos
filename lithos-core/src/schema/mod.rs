@@ -64,6 +64,7 @@ pub(crate) mod db_table {
         TableDefinition::new("schema_id_by_name");
     pub(crate) const PROPERTY_BANK: TableDefinition<&str, &[u8]> =
         TableDefinition::new("property_bank");
+    pub(crate) const PROPERTY_BANK_KEY: &str = "singleton";
 }
 
 // --- Public API ---
