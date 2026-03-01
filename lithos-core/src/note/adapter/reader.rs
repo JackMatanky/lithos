@@ -342,14 +342,13 @@ impl ParseOutcome {
 struct ParseState<'config, 'source> {
     config: &'config Config,
     task_parser: TaskParser<'config>,
-    lists: Vec<List>,
+    list_collector: ListCollector,
     tasks: Vec<Task>,
     headings: Vec<Heading>,
     section_collector: SectionCollector<'source>,
     links: Vec<Link>,
     tag_collector: TagCollector,
     frontmatter_collector: FrontmatterCollector,
-    list_stack: Vec<List>,
     item_collector: ItemCollector,
     heading_collector: HeadingCollector,
     link_collector: LinkCollector,
@@ -361,14 +360,13 @@ impl<'config, 'source> ParseState<'config, 'source> {
         Self {
             config,
             task_parser: TaskParser::new(config.task()),
-            lists: Vec::new(),
+            list_collector: ListCollector::new(),
             tasks: Vec::new(),
             headings: Vec::new(),
             section_collector: SectionCollector::new(source),
             links: Vec::new(),
             tag_collector: TagCollector::new(),
             frontmatter_collector: FrontmatterCollector::new(),
-            list_stack: Vec::with_capacity(4),
             item_collector: ItemCollector::new(),
             heading_collector: HeadingCollector::new(),
             link_collector: LinkCollector::new(),
@@ -470,7 +468,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
                 close_block = true;
             }
             TagEnd::Item => self.item_collector.end_item(
-                &mut self.list_stack,
+                self.list_collector.current_stack_mut(),
                 &mut self.tasks,
                 self.task_parser,
             )?,
@@ -557,22 +555,12 @@ impl<'config, 'source> ParseState<'config, 'source> {
     }
 
     fn start_list(&mut self, start: Option<u64>) -> Result<(), NoteError> {
-        let depth = ListDepth::try_new(self.list_stack.len())?;
-        let list_type = match start {
-            Some(start) => ListType::Ordered {
-                start,
-            },
-            None => ListType::Unordered,
-        };
-        let list = List::with_depth(list_type, depth);
-        self.list_stack.push(list);
+        self.list_collector.start_list(start)?;
         Ok(())
     }
 
     fn end_list(&mut self) {
-        if let Some(list) = self.list_stack.pop() {
-            self.lists.push(list);
-        }
+        self.list_collector.end_list();
     }
 
     fn collect_tags_from_text(&mut self, text: &str) {
@@ -580,12 +568,9 @@ impl<'config, 'source> ParseState<'config, 'source> {
     }
 
     fn finish(mut self) -> Result<ParseOutcome, NoteError> {
-        if !self.list_stack.is_empty() {
-            self.lists.append(&mut self.list_stack);
-        }
         self.section_collector.close()?;
         Ok(ParseOutcome {
-            lists: self.lists,
+            lists: self.list_collector.take_lists(),
             tasks: self.tasks,
             headings: self.headings,
             sections: self.section_collector.take_sections(),
@@ -729,6 +714,48 @@ impl ItemState {
 #[derive(Debug, Default)]
 struct ItemCollector {
     current: Option<ItemState>,
+}
+
+#[derive(Debug, Default)]
+struct ListCollector {
+    lists: Vec<List>,
+    stack: Vec<List>,
+}
+
+impl ListCollector {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn start_list(&mut self, start: Option<u64>) -> Result<(), NoteError> {
+        let depth = ListDepth::try_new(self.stack.len())?;
+        let list_type = match start {
+            Some(start) => ListType::Ordered {
+                start,
+            },
+            None => ListType::Unordered,
+        };
+        let list = List::with_depth(list_type, depth);
+        self.stack.push(list);
+        Ok(())
+    }
+
+    fn end_list(&mut self) {
+        if let Some(list) = self.stack.pop() {
+            self.lists.push(list);
+        }
+    }
+
+    fn current_stack_mut(&mut self) -> &mut [List] {
+        &mut self.stack
+    }
+
+    fn take_lists(mut self) -> Vec<List> {
+        if !self.stack.is_empty() {
+            self.lists.append(&mut self.stack);
+        }
+        self.lists
+    }
 }
 
 impl ItemCollector {
@@ -1546,7 +1573,7 @@ mod tests {
         assert!(task_id.is_some(), "expected promoted task id");
 
         let task = tasks.first().expect("task should exist");
-        assert_eq!(task_id, &Some(task.id()));
+        assert_eq!(task_id.as_ref(), Some(&task.id()));
         Ok(())
     }
 
