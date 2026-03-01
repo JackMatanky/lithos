@@ -350,7 +350,7 @@ struct ParseState<'config, 'source> {
     tag_collector: TagCollector,
     frontmatter_collector: FrontmatterCollector,
     list_stack: Vec<List>,
-    current_item: Option<ItemState>,
+    item_collector: ItemCollector,
     heading_collector: HeadingCollector,
     link_collector: LinkCollector,
     code_block_depth: u32,
@@ -369,7 +369,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
             tag_collector: TagCollector::new(),
             frontmatter_collector: FrontmatterCollector::new(),
             list_stack: Vec::with_capacity(4),
-            current_item: None,
+            item_collector: ItemCollector::new(),
             heading_collector: HeadingCollector::new(),
             link_collector: LinkCollector::new(),
             code_block_depth: 0,
@@ -387,9 +387,8 @@ impl<'config, 'source> ParseState<'config, 'source> {
             Event::Start(tag) => self.handle_start_tag(tag, range.start)?,
             Event::End(tag_end) => self.handle_end_tag(tag_end)?,
             Event::TaskListMarker(checked) => {
-                if let Some(item) = self.current_item.as_mut() {
-                    item.status = Some(status_symbol_from_marker(checked)?);
-                }
+                self.item_collector
+                    .set_status(status_symbol_from_marker(checked)?);
             }
             Event::Text(text) => self.handle_text(&text, false),
             Event::Code(text) => self.handle_text(&text, true),
@@ -418,7 +417,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
         }
         match tag {
             CmarkTag::List(start) => self.start_list(start)?,
-            CmarkTag::Item => self.start_item(position)?,
+            CmarkTag::Item => self.item_collector.start_item(position)?,
             CmarkTag::Heading {
                 level,
                 ..
@@ -470,7 +469,11 @@ impl<'config, 'source> ParseState<'config, 'source> {
                 self.end_list();
                 close_block = true;
             }
-            TagEnd::Item => self.end_item()?,
+            TagEnd::Item => self.item_collector.end_item(
+                &mut self.list_stack,
+                &mut self.tasks,
+                self.task_parser,
+            )?,
             TagEnd::Heading(_) => {
                 self.heading_collector.end_heading(
                     &mut self.headings,
@@ -531,12 +534,11 @@ impl<'config, 'source> ParseState<'config, 'source> {
         self.link_collector.collect_alias_text(text);
 
         self.heading_collector.push_text(text);
-        if let Some(item) = self.current_item.as_mut() {
-            item.text.push_str(text);
-            if !is_code && !self.link_collector.has_open_link() {
-                item.tag_scan_text.push_str(text);
-            }
-        }
+        self.item_collector.push_text(
+            text,
+            is_code,
+            self.link_collector.has_open_link(),
+        );
     }
 
     fn handle_break(&mut self) {
@@ -548,14 +550,10 @@ impl<'config, 'source> ParseState<'config, 'source> {
         self.link_collector.collect_alias_break();
 
         self.heading_collector.push_break();
-        if let Some(item) = self.current_item.as_mut() {
-            item.text.push(' ');
-            if !self.link_collector.has_open_link()
-                && self.code_block_depth == 0
-            {
-                item.tag_scan_text.push(' ');
-            }
-        }
+        self.item_collector.push_break(
+            self.link_collector.has_open_link(),
+            self.code_block_depth == 0,
+        );
     }
 
     fn start_list(&mut self, start: Option<u64>) -> Result<(), NoteError> {
@@ -575,53 +573,6 @@ impl<'config, 'source> ParseState<'config, 'source> {
         if let Some(list) = self.list_stack.pop() {
             self.lists.push(list);
         }
-    }
-
-    fn start_item(&mut self, start: usize) -> Result<(), NoteError> {
-        let position = parse_offset(start)?;
-        self.current_item = Some(ItemState::new(position));
-        Ok(())
-    }
-
-    fn end_item(&mut self) -> Result<(), NoteError> {
-        let Some(item) = self.current_item.take() else {
-            return Ok(());
-        };
-        let Some(list) = self.list_stack.last_mut() else {
-            return Ok(());
-        };
-
-        let raw_text = item.text.trim();
-        if let Some(status) = item.status {
-            let mut task_id = None;
-            let tag_scan_text = item.tag_scan_text.trim();
-            let tags = TagScanner::new(tag_scan_text).collect_tags();
-            if let Some(task) =
-                self.task_parser.parse_promoted_checkbox_with_tags(
-                    raw_text,
-                    tags,
-                    status,
-                    item.position,
-                )?
-            {
-                task_id = Some(task.id());
-                self.tasks.push(task);
-            }
-
-            list.add_item(ListItem::Checkbox {
-                text: raw_text.into(),
-                status,
-                position: item.position,
-                task_id,
-            });
-        } else {
-            list.add_item(ListItem::Plain {
-                text: raw_text.into(),
-                position: item.position,
-            });
-        }
-
-        Ok(())
     }
 
     fn collect_tags_from_text(&mut self, text: &str) {
@@ -771,6 +722,91 @@ impl ItemState {
             text: String::new(),
             tag_scan_text: String::new(),
             status: None,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct ItemCollector {
+    current: Option<ItemState>,
+}
+
+impl ItemCollector {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn start_item(&mut self, start: usize) -> Result<(), NoteError> {
+        let position = parse_offset(start)?;
+        self.current = Some(ItemState::new(position));
+        Ok(())
+    }
+
+    fn end_item(
+        &mut self,
+        list_stack: &mut [List],
+        tasks: &mut Vec<Task>,
+        task_parser: TaskParser<'_>,
+    ) -> Result<(), NoteError> {
+        let Some(item) = self.current.take() else {
+            return Ok(());
+        };
+        let Some(list) = list_stack.last_mut() else {
+            return Ok(());
+        };
+
+        let raw_text = item.text.trim();
+        if let Some(status) = item.status {
+            let mut task_id = None;
+            let tag_scan_text = item.tag_scan_text.trim();
+            let tags = TagScanner::new(tag_scan_text).collect_tags();
+            if let Some(task) = task_parser.parse_promoted_checkbox_with_tags(
+                raw_text,
+                tags,
+                status,
+                item.position,
+            )? {
+                task_id = Some(task.id());
+                tasks.push(task);
+            }
+
+            list.add_item(ListItem::Checkbox {
+                text: raw_text.into(),
+                status,
+                position: item.position,
+                task_id,
+            });
+        } else {
+            list.add_item(ListItem::Plain {
+                text: raw_text.into(),
+                position: item.position,
+            });
+        }
+
+        Ok(())
+    }
+
+    fn push_text(&mut self, text: &str, is_code: bool, has_open_link: bool) {
+        if let Some(item) = self.current.as_mut() {
+            item.text.push_str(text);
+            if !is_code && !has_open_link {
+                item.tag_scan_text.push_str(text);
+            }
+        }
+    }
+
+    fn push_break(&mut self, has_open_link: bool, track_tags: bool) {
+        if let Some(item) = self.current.as_mut() {
+            item.text.push(' ');
+            if !has_open_link && track_tags {
+                item.tag_scan_text.push(' ');
+            }
+        }
+    }
+
+    fn set_status(&mut self, status: StatusSymbol) {
+        if let Some(item) = self.current.as_mut() {
+            item.status = Some(status);
         }
     }
 }
