@@ -566,7 +566,10 @@ mod tests {
         #[test]
         fn array_coerces_to_array() {
             let value = FieldValue::Array(vec![FieldValue::Boolean(true)]);
-            assert!(value.as_array().is_some(), "Array should coerce to array");
+            assert!(
+                value.array_items().is_some(),
+                "Array should coerce to items"
+            );
         }
 
         #[test]
@@ -588,7 +591,7 @@ mod tests {
         fn boolean_does_not_coerce_to_array() {
             let value = FieldValue::Boolean(true);
             assert!(
-                value.as_array().is_none(),
+                value.array_items().is_none(),
                 "Boolean should not coerce to array"
             );
         }

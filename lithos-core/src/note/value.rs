@@ -136,6 +136,15 @@ impl FieldValue {
         }
     }
 
+    /// Returns an iterator over array items if this is an `Array` variant.
+    #[inline]
+    #[must_use]
+    pub fn array_items(&self) -> Option<FieldArrayItems<'_>> {
+        self.as_array().map(|arr| FieldArrayItems {
+            inner: arr.iter(),
+        })
+    }
+
     /// Returns the boolean value if this is a `Boolean` variant.
     #[inline]
     #[must_use]
@@ -388,6 +397,24 @@ impl<'value> Iterator for FieldObjectFields<'value> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(key, value)| (key.as_ref(), value))
+    }
+}
+
+/// Borrowed iterator over array items in a [`FieldValue::Array`].
+pub struct FieldArrayItems<'value> {
+    inner: std::slice::Iter<'value, FieldValue>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "FieldArrayItems relies on default iterator methods."
+)]
+impl<'value> Iterator for FieldArrayItems<'value> {
+    type Item = &'value FieldValue;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
     }
 }
 
@@ -753,14 +780,15 @@ mod tests {
         );
         assert_eq!(obj.get("bool").and_then(FieldValue::as_bool), Some(true));
 
-        let arr = obj
+        let arr: Vec<&FieldValue> = obj
             .get("arr")
             .ok_or_else(|| String::from("missing 'arr' key"))?
-            .as_array()
-            .ok_or_else(|| String::from("'arr' should be an array"))?;
+            .array_items()
+            .ok_or_else(|| String::from("'arr' should be an array"))?
+            .collect();
 
-        assert_eq!(arr.first().and_then(FieldValue::as_number), Some(1.0f64));
-        assert_eq!(arr.get(1).and_then(FieldValue::as_str), Some("two"));
+        assert_eq!(arr.first().and_then(|item| item.as_number()), Some(1.0f64));
+        assert_eq!(arr.get(1).and_then(|item| item.as_str()), Some("two"));
 
         let nested = obj
             .get("obj")
