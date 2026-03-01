@@ -198,7 +198,7 @@ impl<'config> NoteReader<'config> {
         path: &Path,
     ) -> Result<(), NoteError> {
         let parsed = self.parse(reader, path)?;
-        Self::apply_parts(note, parsed);
+        parsed.apply_to(note);
         Ok(())
     }
 
@@ -218,33 +218,8 @@ impl<'config> NoteReader<'config> {
         markdown: &str,
     ) -> Result<(), NoteError> {
         let parsed = self.parse_str(markdown)?;
-        Self::apply_parts(note, parsed);
+        parsed.apply_to(note);
         Ok(())
-    }
-
-    #[inline]
-    fn apply_parts(note: &mut Note, parsed: ParseOutcome) {
-        for list in parsed.lists {
-            note.add_list(list);
-        }
-        for task in parsed.tasks {
-            note.add_task(task);
-        }
-        for heading in parsed.headings {
-            note.add_heading(heading);
-        }
-        for section in parsed.sections {
-            note.add_section(section);
-        }
-        for link in parsed.links {
-            note.add_link(link);
-        }
-        for tag in parsed.tags {
-            note.add_tag(tag);
-        }
-        if let Some(fm) = parsed.frontmatter {
-            note.set_frontmatter(Some(fm));
-        }
     }
 }
 
@@ -335,6 +310,31 @@ impl ParseOutcome {
     #[must_use]
     pub fn frontmatter(&self) -> Option<&Frontmatter> {
         self.frontmatter.as_ref()
+    }
+
+    #[inline]
+    fn apply_to(self, note: &mut Note) {
+        for list in self.lists {
+            note.add_list(list);
+        }
+        for task in self.tasks {
+            note.add_task(task);
+        }
+        for heading in self.headings {
+            note.add_heading(heading);
+        }
+        for section in self.sections {
+            note.add_section(section);
+        }
+        for link in self.links {
+            note.add_link(link);
+        }
+        for tag in self.tags {
+            note.add_tag(tag);
+        }
+        if let Some(fm) = self.frontmatter {
+            note.set_frontmatter(Some(fm));
+        }
     }
 }
 
