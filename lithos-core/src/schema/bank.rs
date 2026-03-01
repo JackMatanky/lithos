@@ -383,30 +383,6 @@ impl PropertyBank {
             .ok_or_else(|| SchemaError::PropertyNotFound(key.into()))
     }
 
-    /// Decodes a `$ref` path to a Property.
-    ///
-    /// This method performs a key lookup for a property. Format-specific
-    /// parsing (e.g., handling "#/properties/") must be handled by the
-    /// adapters.
-    ///
-    /// # Errors
-    /// Returns `PropertyNotFound` if key does not exist.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBank;
-    ///
-    /// let bank = PropertyBank::new();
-    ///
-    /// let result = bank.decode("missing");
-    /// assert!(result.is_err(), "Decoding missing property should fail");
-    /// ```
-    #[inline]
-    pub fn decode(&self, key: &str) -> Result<&Property, SchemaError> {
-        self.get(key)
-    }
-
     /// Checks if a property exists by ID.
     ///
     /// # Examples
@@ -1009,8 +985,8 @@ mod tests {
             let (bank, id) = fixtures::bank_with_property()
                 .expect("Valid property bank fixture");
 
-            let result = bank.decode(id.as_uuid().to_string().as_str());
-            assert!(result.is_ok(), "Decode should succeed: {result:?}");
+            let result = bank.get(id.as_uuid().to_string().as_str());
+            assert!(result.is_ok(), "Get should succeed: {result:?}");
         }
 
         /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.
