@@ -488,11 +488,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
                 self.link_collector.end_link(&mut self.links)?;
             }
             TagEnd::MetadataBlock(kind) => {
-                self.frontmatter_collector.end(
-                    kind,
-                    self.config,
-                    &mut self.tag_collector,
-                )?;
+                self.frontmatter_collector.end(kind)?;
             }
             TagEnd::CodeBlock => {
                 self.code_block_depth = self.code_block_depth.saturating_sub(1);
@@ -589,6 +585,10 @@ impl<'config, 'source> ParseState<'config, 'source> {
 
     fn finish(mut self) -> Result<ParseOutcome, NoteError> {
         self.section_collector.close()?;
+        if let Some(frontmatter) = self.frontmatter_collector.frontmatter() {
+            self.tag_collector
+                .collect_from_frontmatter(self.config, frontmatter);
+        }
         Ok(ParseOutcome {
             lists: self.list_collector.take_lists(),
             tasks: self.tasks,
@@ -807,12 +807,10 @@ impl FrontmatterCollector {
         self.text.push('\n');
     }
 
-    #[tracing::instrument(skip(self, config, tags), level = "debug")]
+    #[tracing::instrument(skip(self), level = "debug")]
     fn end(
         &mut self,
         kind: pulldown_cmark::MetadataBlockKind,
-        config: &Config,
-        tags: &mut TagCollector,
     ) -> Result<(), NoteError> {
         if self.kind != Some(kind) {
             self.kind = None;
@@ -850,9 +848,7 @@ impl FrontmatterCollector {
             }
         };
 
-        let frontmatter = Frontmatter::new(fields);
-        tags.collect_from_frontmatter(config, &frontmatter);
-        self.frontmatter = Some(frontmatter);
+        self.frontmatter = Some(Frontmatter::new(fields));
         self.text.clear();
 
         Ok(())
@@ -860,6 +856,10 @@ impl FrontmatterCollector {
 
     fn take_frontmatter(self) -> Option<Frontmatter> {
         self.frontmatter
+    }
+
+    fn frontmatter(&self) -> Option<&Frontmatter> {
+        self.frontmatter.as_ref()
     }
 
     fn yaml_to_field_map(
