@@ -45,7 +45,7 @@ pub struct Heading {
     /// Heading level (1-6, corresponding to # through ######).
     level: HeadingLevel,
     /// Heading text content.
-    text: Box<str>,
+    text: HeadingText,
     /// Character position in the source document.
     position: SourceByteOffset,
 }
@@ -61,12 +61,7 @@ impl Heading {
         text: T,
         position: SourceByteOffset,
     ) -> Result<Self, NoteError> {
-        let text = text.into();
-        if text.trim().is_empty() {
-            return Err(NoteError::Metadata(
-                NoteMetadataError::HeadingTextEmpty,
-            ));
-        }
+        let text = HeadingText::try_from_boxed(text.into())?;
 
         Ok(Self {
             level,
@@ -93,7 +88,56 @@ impl Heading {
     #[inline]
     #[must_use]
     pub fn text(&self) -> &str {
-        &self.text
+        self.text.as_str()
+    }
+}
+
+/// Validated heading text content.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct HeadingText(Box<str>);
+
+impl HeadingText {
+    /// Creates a validated heading text value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Metadata`] if the text is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        Self::try_from_boxed(value.into())
+    }
+
+    /// Creates a validated heading text value from a boxed string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Metadata`] if the text is empty.
+    #[inline]
+    pub fn try_from_boxed(value: Box<str>) -> Result<Self, NoteError> {
+        if value.trim().is_empty() {
+            return Err(NoteError::Metadata(
+                NoteMetadataError::HeadingTextEmpty,
+            ));
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the underlying text as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
