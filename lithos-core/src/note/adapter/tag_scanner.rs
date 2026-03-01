@@ -39,7 +39,7 @@ impl<'text> TagScanner<'text> {
             }
 
             if raw.len() > 1
-                && let Ok(tag) = Tag::new(&raw)
+                && let Ok(tag) = Tag::from_token(&raw)
             {
                 tags.push(tag);
             }

@@ -510,7 +510,7 @@ mod tests {
         }
 
         pub fn parse_tag(tag: &str) -> Result<Tag, String> {
-            Tag::new(tag).map_err(|e| e.to_string())
+            Tag::from_token(tag).map_err(|e| e.to_string())
         }
 
         pub fn stored_note(
