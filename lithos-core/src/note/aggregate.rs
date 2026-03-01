@@ -242,6 +242,24 @@ impl<'note> Iterator for NoteSections<'note> {
     }
 }
 
+/// Borrowed iterator over note embeds.
+pub struct NoteEmbeds<'note> {
+    inner: std::slice::Iter<'note, Link>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "NoteEmbeds relies on default iterator methods."
+)]
+impl<'note> Iterator for NoteEmbeds<'note> {
+    type Item = &'note Link;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.by_ref().find(|link| link.is_embed())
+    }
+}
+
 impl Note {
     /// Creates a new [`Note`] with the given ID and path.
     ///
@@ -398,8 +416,11 @@ impl Note {
 
     /// Returns all embeds in this note.
     #[inline]
-    pub fn embeds(&self) -> impl Iterator<Item = &Link> {
-        self.content.links.iter().filter(|l| l.is_embed())
+    #[must_use]
+    pub fn embeds(&self) -> NoteEmbeds<'_> {
+        NoteEmbeds {
+            inner: self.content.links.iter(),
+        }
     }
 
     /// Takes all pending domain events, leaving the collection empty.
