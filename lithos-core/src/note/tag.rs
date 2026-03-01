@@ -14,8 +14,6 @@
               docs"
 )]
 
-use std::ops::Deref;
-
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::{NoteError, TagError};
@@ -73,7 +71,8 @@ impl Tag {
             .strip_prefix('#')
             .ok_or(NoteError::Tag(TagError::MissingHash))?;
 
-        let (full_path, segments) = Self::parse_tag_path(tag_path_str)?;
+        let segments = Segments::try_new(tag_path_str)?;
+        let full_path = TagPath::try_new(tag_path_str)?;
 
         Ok(Self {
             full_path,
@@ -85,42 +84,13 @@ impl Tag {
     #[inline]
     #[must_use]
     pub fn full_path(&self) -> &str {
-        &self.full_path.0
+        self.full_path.as_str()
     }
 
     /// Returns the individual segments of the tag.
     #[inline]
-    #[must_use]
-    pub fn segments(&self) -> TagSegments<'_> {
-        TagSegments {
-            inner: self.segments.0.iter(),
-        }
-    }
-
-    fn parse_tag_path(path: &str) -> Result<(TagPath, Segments), NoteError> {
-        if path.is_empty() {
-            return Err(NoteError::Tag(TagError::EmptyTag));
-        }
-
-        let segments_count = path.split('/').count();
-        let mut segments = Vec::with_capacity(segments_count);
-        for segment in path.split('/') {
-            if segment.is_empty() {
-                return Err(NoteError::Tag(TagError::EmptySegment));
-            }
-
-            if !segment
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-            {
-                return Err(NoteError::Tag(TagError::InvalidSegment {
-                    segment: segment.into(),
-                }));
-            }
-            segments.push(segment.into());
-        }
-
-        Ok((TagPath(path.into()), Segments(segments)))
+    pub fn segments(&self) -> impl Iterator<Item = &str> + '_ {
+        self.segments.iter()
     }
 }
 
@@ -140,11 +110,17 @@ impl Tag {
 #[rkyv(derive(Debug))]
 struct TagPath(Box<str>);
 
-impl Deref for TagPath {
-    type Target = str;
+impl TagPath {
+    #[inline]
+    fn try_new(path: &str) -> Result<Self, NoteError> {
+        if path.is_empty() {
+            return Err(NoteError::Tag(TagError::EmptyTag));
+        }
+        Ok(Self(path.into()))
+    }
 
     #[inline]
-    fn deref(&self) -> &Self::Target {
+    fn as_str(&self) -> &str {
         &self.0
     }
 }
@@ -164,30 +140,39 @@ impl Deref for TagPath {
 #[rkyv(derive(Debug))]
 struct Segments(Vec<Box<str>>);
 
-/// Borrowed iterator over tag segments.
-pub struct TagSegments<'tag> {
-    inner: std::slice::Iter<'tag, Box<str>>,
-}
+impl Segments {
+    fn try_new(path: &str) -> Result<Self, NoteError> {
+        if path.is_empty() {
+            return Err(NoteError::Tag(TagError::EmptyTag));
+        }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "TagSegments relies on default iterator methods."
-)]
-impl<'tag> Iterator for TagSegments<'tag> {
-    type Item = &'tag str;
+        let segments_count = path.split('/').count();
+        let mut segments = Vec::with_capacity(segments_count);
+        for segment in path.split('/') {
+            Self::validate_segment(segment)?;
+            segments.push(segment.into());
+        }
 
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(Box::as_ref)
+        Ok(Self(segments))
     }
-}
 
-impl Deref for Segments {
-    type Target = [Box<str>];
+    fn iter(&self) -> impl Iterator<Item = &str> + '_ {
+        self.0.iter().map(Box::as_ref)
+    }
 
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    fn validate_segment(segment: &str) -> Result<(), NoteError> {
+        if segment.is_empty() {
+            return Err(NoteError::Tag(TagError::EmptySegment));
+        }
+
+        if !segment.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(NoteError::Tag(TagError::InvalidSegment {
+                segment: segment.into(),
+            }));
+        }
+
+        Ok(())
     }
 }
 
