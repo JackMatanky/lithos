@@ -71,6 +71,30 @@ pub struct Note {
     id: NoteId,
     /// Vault-relative path.
     path: NotePath,
+    /// Parsed content and indexable structures.
+    content: NoteContent,
+    /// YAML metadata.
+    frontmatter: Option<Frontmatter>,
+    /// Domain events pending emission (not serialized).
+    #[rkyv(with = rkyv::with::Skip)]
+    #[serde(skip)]
+    pending_events: Vec<NoteEvents>,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+struct NoteContent {
     /// All links (wiki-links, markdown links, and embeds).
     links: Vec<Link>,
     /// Hierarchical tags.
@@ -83,12 +107,12 @@ pub struct Note {
     tasks: Vec<Task>,
     /// Document sections.
     sections: Vec<Section>,
-    /// YAML metadata.
-    frontmatter: Option<Frontmatter>,
-    /// Domain events pending emission (not serialized).
-    #[rkyv(with = rkyv::with::Skip)]
-    #[serde(skip)]
-    pending_events: Vec<NoteEvents>,
+}
+
+impl NoteContent {
+    fn new() -> Self {
+        Self::default()
+    }
 }
 
 impl Note {
@@ -110,12 +134,7 @@ impl Note {
         Ok(Self {
             id,
             path: NotePath::try_from(path)?,
-            links: Vec::new(),
-            tags: Vec::new(),
-            headings: Vec::new(),
-            lists: Vec::new(),
-            tasks: Vec::new(),
-            sections: Vec::new(),
+            content: NoteContent::new(),
             frontmatter: None,
             pending_events: Vec::new(),
         })
@@ -163,79 +182,79 @@ impl Note {
     /// Returns an iterator over all links in this note.
     #[inline]
     pub fn links(&self) -> impl Iterator<Item = &Link> {
-        self.links.iter()
+        self.content.links.iter()
     }
 
     /// Adds a link to the note.
     #[inline]
     pub fn add_link(&mut self, link: Link) {
-        self.links.push(link);
+        self.content.links.push(link);
     }
 
     /// Returns an iterator over all tags in this note.
     #[inline]
     pub fn tags(&self) -> impl Iterator<Item = &Tag> {
-        self.tags.iter()
+        self.content.tags.iter()
     }
 
     /// Adds a tag to the note.
     #[inline]
     pub fn add_tag(&mut self, tag: Tag) {
-        self.tags.push(tag);
+        self.content.tags.push(tag);
     }
 
     /// Returns an iterator over all headings in this note.
     #[inline]
     pub fn headings(&self) -> impl Iterator<Item = &Heading> {
-        self.headings.iter()
+        self.content.headings.iter()
     }
 
     /// Adds a heading to the note.
     #[inline]
     pub fn add_heading(&mut self, heading: Heading) {
-        self.headings.push(heading);
+        self.content.headings.push(heading);
     }
 
     /// Returns an iterator over all tasks in this note.
     #[inline]
     pub fn tasks(&self) -> impl Iterator<Item = &Task> {
-        self.tasks.iter()
+        self.content.tasks.iter()
     }
 
     /// Adds a task to the note.
     #[inline]
     pub fn add_task(&mut self, task: Task) {
-        self.tasks.push(task);
+        self.content.tasks.push(task);
     }
 
     /// Returns an iterator over all lists in this note.
     #[inline]
     pub fn lists(&self) -> impl Iterator<Item = &List> {
-        self.lists.iter()
+        self.content.lists.iter()
     }
 
     /// Adds a list to the note.
     #[inline]
     pub fn add_list(&mut self, list: List) {
-        self.lists.push(list);
+        self.content.lists.push(list);
     }
 
     /// Returns an iterator over all sections in this note.
     #[inline]
     pub fn sections(&self) -> impl Iterator<Item = &Section> {
-        self.sections.iter()
+        self.content.sections.iter()
     }
 
     /// Adds a section to the note.
     #[inline]
     pub fn add_section(&mut self, section: Section) {
-        self.sections.push(section);
+        self.content.sections.push(section);
     }
 
     /// Returns all embeds in this note.
     #[inline]
     pub fn embeds(&self) -> impl Iterator<Item = &Link> {
-        self.links.iter().filter(|l| l.is_embed())
+        self.content.links.iter().filter(|l| l.is_embed())
     }
 
     /// Takes all pending domain events, leaving the collection empty.
