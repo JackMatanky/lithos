@@ -49,7 +49,7 @@ use super::error::{NoteError, TagError};
 #[non_exhaustive]
 pub struct Tag {
     /// Full tag path (without leading `#`).
-    full_path: TagPath,
+    path: TagPath,
     /// Individual path segments.
     segments: Segments,
 }
@@ -71,11 +71,11 @@ impl Tag {
             .strip_prefix('#')
             .ok_or(NoteError::Tag(TagError::MissingHash))?;
 
-        let full_path = TagPath::try_new(tag_path_str)?;
+        let path = TagPath::try_new(tag_path_str)?;
         let segments = Segments::try_new(tag_path_str)?;
 
         Ok(Self {
-            full_path,
+            path,
             segments,
         })
     }
@@ -84,7 +84,7 @@ impl Tag {
     #[inline]
     #[must_use]
     pub fn full_path(&self) -> &str {
-        self.full_path.as_str()
+        self.path.as_str()
     }
 
     /// Returns the individual segments of the tag.
@@ -186,7 +186,7 @@ impl ArchivedTag {
     #[inline]
     #[must_use]
     pub fn full_path(&self) -> &str {
-        self.full_path.as_str()
+        self.path.as_str()
     }
 }
 
