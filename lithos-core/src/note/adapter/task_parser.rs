@@ -108,51 +108,15 @@ impl<'config> TaskParser<'config> {
         self,
         text: &str,
     ) -> Result<ParsedInlineFields, NoteError> {
-        let mut slots = TemporalSlots::new();
-        let mut metadata = TaskMetadata::new();
+        let mut state = InlineFieldState::new();
 
         for_each_inline_field(text, |keyword, raw_value| {
-            if let Some(spec) = self.match_date_spec(keyword) {
-                let parsed = parse_date_str(raw_value, spec)?;
-                assign_date_for_keyword(
-                    self.config,
-                    spec.keyword().as_str(),
-                    parsed,
-                    &mut slots,
-                );
-                return Ok(());
-            }
-
-            insert_metadata(self.config, &mut metadata, keyword, raw_value)
+            state.handle_inline_field(self.config, keyword, raw_value)
         })?;
 
-        fill_emoji_dates(self.config, text, &mut slots)?;
+        state.fill_emoji_dates(self.config, text)?;
 
-        Ok(slots.finish(metadata))
-    }
-
-    fn match_date_spec(self, keyword: &str) -> Option<&'config DateSpec> {
-        if let Some(spec) = self.config.created()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some(spec);
-        }
-        if let Some(spec) = self.config.due()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some(spec);
-        }
-        if let Some(spec) = self.config.reminder()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some(spec);
-        }
-        if let Some(spec) = self.config.completed()
-            && spec.keyword().as_str() == keyword
-        {
-            return Some(spec);
-        }
-        None
+        Ok(state.finish())
     }
 }
 
@@ -177,10 +141,6 @@ struct TemporalSlots {
 }
 
 impl TemporalSlots {
-    fn new() -> Self {
-        Self::default()
-    }
-
     fn finish(self, metadata: TaskMetadata) -> ParsedInlineFields {
         (
             self.created_at,
@@ -189,6 +149,50 @@ impl TemporalSlots {
             self.completed_at,
             metadata,
         )
+    }
+}
+
+#[derive(Debug, Default)]
+struct InlineFieldState {
+    slots: TemporalSlots,
+    metadata: TaskMetadata,
+}
+
+impl InlineFieldState {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn handle_inline_field(
+        &mut self,
+        config: &TaskConfig,
+        keyword: &str,
+        raw_value: &str,
+    ) -> Result<(), NoteError> {
+        if let Some(spec) = match_date_spec(config, keyword) {
+            let parsed = parse_date_str(raw_value, spec)?;
+            assign_date_for_keyword(
+                config,
+                spec.keyword().as_str(),
+                parsed,
+                &mut self.slots,
+            );
+            return Ok(());
+        }
+
+        insert_metadata(config, &mut self.metadata, keyword, raw_value)
+    }
+
+    fn fill_emoji_dates(
+        &mut self,
+        config: &TaskConfig,
+        text: &str,
+    ) -> Result<(), NoteError> {
+        fill_emoji_dates(config, text, &mut self.slots)
+    }
+
+    fn finish(self) -> ParsedInlineFields {
+        self.slots.finish(self.metadata)
     }
 }
 
@@ -299,6 +303,33 @@ fn insert_metadata(
     }
 
     Ok(())
+}
+
+fn match_date_spec<'config>(
+    config: &'config TaskConfig,
+    keyword: &str,
+) -> Option<&'config DateSpec> {
+    if let Some(spec) = config.created()
+        && spec.keyword().as_str() == keyword
+    {
+        return Some(spec);
+    }
+    if let Some(spec) = config.due()
+        && spec.keyword().as_str() == keyword
+    {
+        return Some(spec);
+    }
+    if let Some(spec) = config.reminder()
+        && spec.keyword().as_str() == keyword
+    {
+        return Some(spec);
+    }
+    if let Some(spec) = config.completed()
+        && spec.keyword().as_str() == keyword
+    {
+        return Some(spec);
+    }
+    None
 }
 
 fn fill_emoji_dates(
