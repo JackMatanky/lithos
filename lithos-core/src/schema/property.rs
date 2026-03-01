@@ -169,18 +169,6 @@ impl Property {
 }
 
 /// Whether a property is required or optional.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::property::Optionality;
-///
-/// let required = Optionality::Required;
-/// match required {
-///     Optionality::Required => {}
-///     Optionality::Optional => {}
-///     _ => {}
-/// }
-/// ```
 #[derive(
     Debug,
     Clone,
@@ -217,18 +205,6 @@ impl From<bool> for Optionality {
 }
 
 /// Whether a property accepts a single value or multiple values.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::property::Multiplicity;
-///
-/// let multi = Multiplicity::Many;
-/// match multi {
-///     Multiplicity::Many => {}
-///     Multiplicity::Single => {}
-///     _ => {}
-/// }
-/// ```
 #[derive(
     Debug,
     Clone,
