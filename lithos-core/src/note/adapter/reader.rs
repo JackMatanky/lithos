@@ -341,12 +341,11 @@ impl ParseOutcome {
 #[derive(Debug)]
 struct ParseState<'config, 'source> {
     config: &'config Config,
-    source: &'source str,
     task_parser: TaskParser<'config>,
     lists: Vec<List>,
     tasks: Vec<Task>,
     headings: Vec<Heading>,
-    sections: Vec<Section>,
+    section_collector: SectionCollector<'source>,
     links: Vec<Link>,
     tags: Vec<NoteTag>,
     tag_set: HashSet<Box<str>>,
@@ -358,21 +357,17 @@ struct ParseState<'config, 'source> {
     current_heading: Option<HeadingState>,
     current_link: Option<LinkState>,
     code_block_depth: u32,
-    block_depth: u32,
-    current_section: Option<SectionState>,
-    last_offset: usize,
 }
 
 impl<'config, 'source> ParseState<'config, 'source> {
     fn new(config: &'config Config, source: &'source str) -> Self {
         Self {
             config,
-            source,
             task_parser: TaskParser::new(config.task()),
             lists: Vec::new(),
             tasks: Vec::new(),
             headings: Vec::new(),
-            sections: Vec::new(),
+            section_collector: SectionCollector::new(source),
             links: Vec::new(),
             tags: Vec::new(),
             tag_set: HashSet::new(),
@@ -384,9 +379,6 @@ impl<'config, 'source> ParseState<'config, 'source> {
             current_heading: None,
             current_link: None,
             code_block_depth: 0,
-            block_depth: 0,
-            current_section: None,
-            last_offset: 0,
         }
     }
 
@@ -396,7 +388,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
         event: Event<'_>,
         range: Range<usize>,
     ) -> Result<(), NoteError> {
-        self.last_offset = range.end;
+        self.section_collector.update_last_offset(range.end);
         match event {
             Event::Start(tag) => self.handle_start_tag(tag, range.start)?,
             Event::End(tag_end) => self.handle_end_tag(tag_end)?,
@@ -413,11 +405,9 @@ impl<'config, 'source> ParseState<'config, 'source> {
             | Event::Html(_)
             | Event::InlineHtml(_)
             | Event::FootnoteReference(_)
-            | Event::Rule => {
-                if self.block_depth == 0 {
-                    self.add_rule_section(range.start, range.end)?;
-                }
-            }
+            | Event::Rule => self
+                .section_collector
+                .add_rule_section(range.start, range.end)?,
         }
 
         Ok(())
@@ -430,7 +420,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
     ) -> Result<(), NoteError> {
         if is_block_tag(&tag) {
             let is_heading = matches!(tag, CmarkTag::Heading { .. });
-            self.start_block(position, is_heading)?;
+            self.section_collector.start_block(position, is_heading)?;
         }
         match tag {
             CmarkTag::List(start) => self.start_list(start)?,
@@ -511,7 +501,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
             | TagEnd::Subscript => {}
         }
         if close_block {
-            self.end_block()?;
+            self.section_collector.end_block()?;
         }
         Ok(())
     }
@@ -567,68 +557,6 @@ impl<'config, 'source> ParseState<'config, 'source> {
                 item.tag_scan_text.push(' ');
             }
         }
-    }
-
-    fn start_block(
-        &mut self,
-        position: usize,
-        is_heading: bool,
-    ) -> Result<(), NoteError> {
-        if self.block_depth == 0 {
-            let start = parse_offset(position)?;
-            self.current_section = Some(SectionState {
-                start,
-                heading: None,
-                awaiting_heading: is_heading,
-            });
-        }
-        self.block_depth = self.block_depth.saturating_add(1);
-        Ok(())
-    }
-
-    fn end_block(&mut self) -> Result<(), NoteError> {
-        if self.block_depth == 0 {
-            return Ok(());
-        }
-        self.block_depth = self.block_depth.saturating_sub(1);
-        if self.block_depth == 0 {
-            self.close_current_section()?;
-        }
-        Ok(())
-    }
-
-    fn add_rule_section(
-        &mut self,
-        start: usize,
-        end: usize,
-    ) -> Result<(), NoteError> {
-        let start = parse_offset(start)?;
-        let end = parse_offset(end)?;
-        self.push_section(None, start, end)
-    }
-
-    fn close_current_section(&mut self) -> Result<(), NoteError> {
-        let Some(section) = self.current_section.take() else {
-            return Ok(());
-        };
-        let end = parse_offset(self.last_offset)?;
-        self.push_section(section.heading, section.start, end)
-    }
-
-    fn push_section(
-        &mut self,
-        heading: Option<Heading>,
-        start: SourceByteOffset,
-        end: SourceByteOffset,
-    ) -> Result<(), NoteError> {
-        let range = SourceByteRange::new(start, end)?;
-        let start = usize::from(start);
-        let end = usize::from(end);
-        let content = self.source.get(start..end).ok_or_else(|| {
-            NoteError::Structure("section range is not on a boundary".into())
-        })?;
-        self.sections.push(Section::new(heading, content, range));
-        Ok(())
     }
 
     fn start_list(&mut self, start: Option<u64>) -> Result<(), NoteError> {
@@ -757,14 +685,12 @@ impl<'config, 'source> ParseState<'config, 'source> {
         if !self.list_stack.is_empty() {
             self.lists.append(&mut self.list_stack);
         }
-        if self.current_section.is_some() {
-            self.close_current_section()?;
-        }
+        self.section_collector.close()?;
         Ok(ParseOutcome {
             lists: self.lists,
             tasks: self.tasks,
             headings: self.headings,
-            sections: self.sections,
+            sections: self.section_collector.take_sections(),
             links: self.links,
             tags: self.tags,
             frontmatter: self.frontmatter,
@@ -809,12 +735,7 @@ impl<'config, 'source> ParseState<'config, 'source> {
             heading_state.position,
         )?;
 
-        if let Some(section) = self.current_section.as_mut()
-            && section.awaiting_heading
-        {
-            section.heading = Some(heading.clone());
-            section.awaiting_heading = false;
-        }
+        self.section_collector.maybe_assign_heading(&heading);
 
         self.headings.push(heading);
         Ok(())
@@ -1177,6 +1098,116 @@ struct SectionState {
     start: SourceByteOffset,
     heading: Option<Heading>,
     awaiting_heading: bool,
+}
+
+#[derive(Debug)]
+struct SectionCollector<'source> {
+    source: &'source str,
+    block_depth: u32,
+    current: Option<SectionState>,
+    last_offset: usize,
+    sections: Vec<Section>,
+}
+
+impl<'source> SectionCollector<'source> {
+    fn new(source: &'source str) -> Self {
+        Self {
+            source,
+            block_depth: 0,
+            current: None,
+            last_offset: 0,
+            sections: Vec::new(),
+        }
+    }
+
+    fn update_last_offset(&mut self, offset: usize) {
+        self.last_offset = offset;
+    }
+
+    fn start_block(
+        &mut self,
+        position: usize,
+        is_heading: bool,
+    ) -> Result<(), NoteError> {
+        if self.block_depth == 0 {
+            let start = parse_offset(position)?;
+            self.current = Some(SectionState {
+                start,
+                heading: None,
+                awaiting_heading: is_heading,
+            });
+        }
+        self.block_depth = self.block_depth.saturating_add(1);
+        Ok(())
+    }
+
+    fn end_block(&mut self) -> Result<(), NoteError> {
+        if self.block_depth == 0 {
+            return Ok(());
+        }
+        self.block_depth = self.block_depth.saturating_sub(1);
+        if self.block_depth == 0 {
+            self.close_current()?;
+        }
+        Ok(())
+    }
+
+    fn add_rule_section(
+        &mut self,
+        start: usize,
+        end: usize,
+    ) -> Result<(), NoteError> {
+        if self.block_depth != 0 {
+            return Ok(());
+        }
+        let start = parse_offset(start)?;
+        let end = parse_offset(end)?;
+        self.push_section(None, start, end)
+    }
+
+    fn maybe_assign_heading(&mut self, heading: &Heading) {
+        if let Some(section) = self.current.as_mut()
+            && section.awaiting_heading
+        {
+            section.heading = Some(heading.clone());
+            section.awaiting_heading = false;
+        }
+    }
+
+    fn close(&mut self) -> Result<(), NoteError> {
+        if self.current.is_some() {
+            self.close_current()?;
+        }
+        Ok(())
+    }
+
+    fn take_sections(self) -> Vec<Section> {
+        self.sections
+    }
+
+    fn close_current(&mut self) -> Result<(), NoteError> {
+        let Some(section) = self.current.take() else {
+            return Ok(());
+        };
+        let end = parse_offset(self.last_offset)?;
+        self.push_section(section.heading, section.start, end)
+    }
+
+    fn push_section(
+        &mut self,
+        heading: Option<Heading>,
+        start: SourceByteOffset,
+        end: SourceByteOffset,
+    ) -> Result<(), NoteError> {
+        let range = SourceByteRange::new(start, end)?;
+        let start = usize::from(start);
+        let end = usize::from(end);
+        let content = self.source.get(start..end).ok_or_else(|| {
+            NoteError::Structure("section range is not on a boundary".into())
+        })?;
+        self.sections.push(Section::new(heading, content, range));
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
