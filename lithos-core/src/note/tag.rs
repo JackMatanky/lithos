@@ -71,8 +71,8 @@ impl Tag {
             .strip_prefix('#')
             .ok_or(NoteError::Tag(TagError::MissingHash))?;
 
-        let segments = Segments::try_new(tag_path_str)?;
         let full_path = TagPath::try_new(tag_path_str)?;
+        let segments = Segments::try_new(tag_path_str)?;
 
         Ok(Self {
             full_path,
@@ -142,10 +142,6 @@ struct Segments(Vec<Box<str>>);
 
 impl Segments {
     fn try_new(path: &str) -> Result<Self, NoteError> {
-        if path.is_empty() {
-            return Err(NoteError::Tag(TagError::EmptyTag));
-        }
-
         let segments_count = path.split('/').count();
         let mut segments = Vec::with_capacity(segments_count);
         for segment in path.split('/') {
