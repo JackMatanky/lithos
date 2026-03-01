@@ -914,6 +914,16 @@ impl VaultRelPath {
     }
 }
 
+impl TryFrom<Box<str>> for VaultRelPath {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
+        Self::validate_path(&value)?;
+        Ok(Self(value))
+    }
+}
+
 /// Cache for user-defined custom regex patterns.
 ///
 /// Built-in formats use static `OnceLock` per format. Custom patterns use this

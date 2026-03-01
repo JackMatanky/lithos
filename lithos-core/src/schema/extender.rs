@@ -319,7 +319,7 @@ impl Extender {
         let Some(parent_name) = deref.extends.as_ref() else {
             return Ok(None);
         };
-        SchemaName::validate(parent_name.as_ref())?;
+        SchemaName::try_from(parent_name.as_ref())?;
         // `Box<str>: Borrow<str>` so `.get(&str)` works here.
         name_to_id
             .get(parent_name.as_ref())

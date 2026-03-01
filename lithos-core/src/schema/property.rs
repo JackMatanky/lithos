@@ -381,6 +381,12 @@ impl PropertyName {
     /// ```
     #[inline]
     pub fn new(name: &str) -> Result<Self, SchemaError> {
+        Self::validate(name)?;
+        Ok(Self(name.into()))
+    }
+
+    #[inline]
+    fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
             LazyLock::new(|| Regex::new(PropertyName::PATTERN));
 
@@ -400,7 +406,7 @@ impl PropertyName {
         if !re.is_match(name) {
             return Err(SchemaError::InvalidPropertyName(name.into()));
         }
-        Ok(Self(name.into()))
+        Ok(())
     }
 
     /// Returns the inner string slice.
@@ -453,7 +459,17 @@ impl TryFrom<String> for PropertyName {
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(&value)
+        Self::try_from(value.into_boxed_str())
+    }
+}
+
+impl TryFrom<Box<str>> for PropertyName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
+        Self::validate(&value)?;
+        Ok(Self(value))
     }
 }
 
