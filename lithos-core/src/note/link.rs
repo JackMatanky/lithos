@@ -129,6 +129,43 @@ impl HeadingText {
     }
 }
 
+/// Validated link alias text.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct LinkAlias(Box<str>);
+
+impl LinkAlias {
+    /// Creates a validated link alias.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Link`] if the alias is empty.
+    #[inline]
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Link(LinkError::EmptyAlias));
+        }
+        Ok(Self(text.into()))
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Represents different types of embedded content.
 ///
 /// Used when a link is prefixed with `!` (e.g., `![[image.png]]`),
@@ -193,7 +230,7 @@ pub struct Link {
     target: Target,
     anchor: Option<Anchor>,
     position: SourceByteOffset,
-    alias: Option<Box<str>>,
+    alias: Option<LinkAlias>,
     style: Style,
     embed_type: Option<EmbedType>,
 }
@@ -324,7 +361,7 @@ impl Link {
     #[inline]
     #[must_use]
     pub fn alias(&self) -> Option<&str> {
-        self.alias.as_deref()
+        self.alias.as_ref().map(LinkAlias::as_str)
     }
 
     /// Returns the optional anchor (heading or block reference).
@@ -376,8 +413,9 @@ impl Link {
     ) -> Result<Self, NoteError> {
         Self::validate_target(&target)?;
         Self::validate_external_anchor(&target, anchor.as_ref())?;
+        let alias = Self::parse_alias(alias)?;
         Ok(Self {
-            alias: alias.map(Into::into),
+            alias,
             anchor,
             embed_type: Some(embed_type),
             position,
@@ -399,8 +437,9 @@ impl Link {
     ) -> Result<Self, NoteError> {
         Self::validate_target(&target)?;
         Self::validate_external_anchor(&target, None)?;
+        let alias = Self::parse_alias(alias)?;
         Ok(Self {
-            alias: alias.map(Into::into),
+            alias,
             anchor: None,
             embed_type: Some(embed_type),
             position,
@@ -422,8 +461,9 @@ impl Link {
     ) -> Result<Self, NoteError> {
         Self::validate_target(&target)?;
         Self::validate_external_anchor(&target, anchor.as_ref())?;
+        let alias = Self::parse_alias(alias)?;
         Ok(Self {
-            alias: alias.map(Into::into),
+            alias,
             anchor,
             embed_type: None,
             position,
@@ -445,8 +485,9 @@ impl Link {
     ) -> Result<Self, NoteError> {
         Self::validate_target(&target)?;
         Self::validate_external_anchor(&target, anchor.as_ref())?;
+        let alias = Self::parse_alias(alias)?;
         Ok(Self {
-            alias: alias.map(Into::into),
+            alias,
             anchor,
             embed_type: None,
             position,
@@ -494,6 +535,12 @@ impl Link {
             return Err(NoteError::Link(LinkError::ExternalAnchor));
         }
         Ok(())
+    }
+
+    fn parse_alias(
+        alias: Option<&str>,
+    ) -> Result<Option<LinkAlias>, NoteError> {
+        alias.map(LinkAlias::try_new).transpose()
     }
 
     #[expect(

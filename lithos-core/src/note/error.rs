@@ -188,6 +188,9 @@ pub enum LinkError {
     /// Block reference anchor text is empty.
     #[error("block reference anchor cannot be empty")]
     EmptyBlockRefAnchor,
+    /// Link alias text is empty.
+    #[error("link alias cannot be empty")]
+    EmptyAlias,
 }
 
 /// Errors surfaced when validating note metadata values.
