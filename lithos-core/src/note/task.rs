@@ -68,10 +68,7 @@ pub struct Task {
     position: SourceByteOffset,
     tags: Vec<Tag>,
     metadata: TaskMetadata,
-    created_at: Option<TaskTimestamp>,
-    due_at: Option<TaskTimestamp>,
-    reminder_at: Option<TaskTimestamp>,
-    completed_at: Option<TaskTimestamp>,
+    schedule: TaskSchedule,
 }
 
 /// Validated task priority.
@@ -174,10 +171,7 @@ impl fmt::Display for TaskFieldKey {
 pub struct TaskAttributes {
     tags: Vec<Tag>,
     metadata: TaskMetadata,
-    created_at: Option<TaskTimestamp>,
-    due_at: Option<TaskTimestamp>,
-    reminder_at: Option<TaskTimestamp>,
-    completed_at: Option<TaskTimestamp>,
+    schedule: TaskSchedule,
 }
 
 impl TaskAttributes {
@@ -193,10 +187,27 @@ impl TaskAttributes {
 pub struct TaskAttributesBuilder {
     tags: Vec<Tag>,
     metadata: TaskMetadata,
-    created_at: Option<TaskTimestamp>,
-    due_at: Option<TaskTimestamp>,
-    reminder_at: Option<TaskTimestamp>,
-    completed_at: Option<TaskTimestamp>,
+    schedule: TaskSchedule,
+}
+
+/// Task schedule timestamps.
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct TaskSchedule {
+    created: Option<TaskTimestamp>,
+    due: Option<TaskTimestamp>,
+    reminder: Option<TaskTimestamp>,
+    completed: Option<TaskTimestamp>,
 }
 
 impl TaskAttributesBuilder {
@@ -217,28 +228,28 @@ impl TaskAttributesBuilder {
     #[inline]
     #[must_use]
     pub fn created_at(mut self, created_at: Option<TaskTimestamp>) -> Self {
-        self.created_at = created_at;
+        self.schedule.created = created_at;
         self
     }
 
     #[inline]
     #[must_use]
     pub fn due_at(mut self, due_at: Option<TaskTimestamp>) -> Self {
-        self.due_at = due_at;
+        self.schedule.due = due_at;
         self
     }
 
     #[inline]
     #[must_use]
     pub fn reminder_at(mut self, reminder_at: Option<TaskTimestamp>) -> Self {
-        self.reminder_at = reminder_at;
+        self.schedule.reminder = reminder_at;
         self
     }
 
     #[inline]
     #[must_use]
     pub fn completed_at(mut self, completed_at: Option<TaskTimestamp>) -> Self {
-        self.completed_at = completed_at;
+        self.schedule.completed = completed_at;
         self
     }
 
@@ -248,10 +259,7 @@ impl TaskAttributesBuilder {
         TaskAttributes {
             tags: self.tags,
             metadata: self.metadata,
-            created_at: self.created_at,
-            due_at: self.due_at,
-            reminder_at: self.reminder_at,
-            completed_at: self.completed_at,
+            schedule: self.schedule,
         }
     }
 }
@@ -281,10 +289,7 @@ impl Task {
             position,
             tags: attributes.tags,
             metadata: attributes.metadata,
-            created_at: attributes.created_at,
-            due_at: attributes.due_at,
-            reminder_at: attributes.reminder_at,
-            completed_at: attributes.completed_at,
+            schedule: attributes.schedule,
         })
     }
 
@@ -327,28 +332,28 @@ impl Task {
     #[inline]
     #[must_use]
     pub const fn created_at(&self) -> Option<TaskTimestamp> {
-        self.created_at
+        self.schedule.created
     }
 
     /// Returns the task's due date, if set.
     #[inline]
     #[must_use]
     pub const fn due_at(&self) -> Option<TaskTimestamp> {
-        self.due_at
+        self.schedule.due
     }
 
     /// Returns the task's reminder date, if set.
     #[inline]
     #[must_use]
     pub const fn reminder_at(&self) -> Option<TaskTimestamp> {
-        self.reminder_at
+        self.schedule.reminder
     }
 
     /// Returns the timestamp when the task was completed, if applicable.
     #[inline]
     #[must_use]
     pub const fn completed_at(&self) -> Option<TaskTimestamp> {
-        self.completed_at
+        self.schedule.completed
     }
 
     /// Returns the task's structured metadata fields.
