@@ -1,6 +1,14 @@
 //! Path value objects for the Note context.
 //!
 //! Provides validated vault-relative paths for notes and folders.
+//!
+//! # Validation Rules
+//!
+//! - Non-empty, vault-relative paths only.
+//! - Reject Windows drive letters and UNC prefixes.
+//! - Reject traversal (`..`) and current-dir (`.`) components.
+//! - Reject hidden path segments (leading `.`).
+//! - Reject non-UTF-8 segments.
 #![allow(
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
@@ -174,14 +182,6 @@ struct RelativePath(Box<str>);
 
 impl RelativePath {
     fn try_new(path: &str) -> Result<Self, NoteError> {
-        /* Validation Rules.
-         *
-         * - Non-empty, vault-relative paths only.
-         * - Reject Windows drive letters and UNC prefixes.
-         * - Reject traversal (`..`) and current-dir (`.`) components.
-         * - Reject hidden path segments (leading `.`).
-         * - Reject non-UTF-8 segments.
-         */
         let normalized = Self::normalize(path);
         let normalized_str = normalized.as_ref();
         if normalized_str.is_empty() {
