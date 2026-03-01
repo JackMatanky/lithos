@@ -6,7 +6,7 @@
 use super::{
     aggregate::{AliasName, FileClassName, Note, NoteId},
     error::NoteQueryError,
-    path::{FolderPath, NotePath},
+    paths::{FolderPath, NotePath},
     ports as note_ports,
     task::{TaskPriority, TaskTimestamp},
 };

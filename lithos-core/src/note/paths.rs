@@ -15,114 +15,6 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use super::error::{NoteError, NoteMetadataError};
 
-fn normalize_path_separators(path: &str) -> std::borrow::Cow<'_, str> {
-    if path.contains('\\') {
-        let mut owned = String::with_capacity(path.len());
-        for ch in path.chars() {
-            if ch == '\\' {
-                owned.push('/');
-            } else {
-                owned.push(ch);
-            }
-        }
-        std::borrow::Cow::Owned(owned)
-    } else {
-        std::borrow::Cow::Borrowed(path)
-    }
-}
-
-fn has_drive_or_unc_prefix(path: &str) -> bool {
-    let mut chars = path.chars();
-    let first = chars.next();
-    let second = chars.next();
-    let Some(first) = first else {
-        return false;
-    };
-    if let Some(second) = second {
-        if first.is_ascii_alphabetic() && second == ':' {
-            return true;
-        }
-        if first == '/' && second == '/' {
-            return true;
-        }
-    }
-    false
-}
-
-fn validate_relative_path(path: &str) -> Result<(), NoteError> {
-    if path.is_empty() {
-        return Err(NoteError::InvalidPath("path cannot be empty".into()));
-    }
-
-    if has_drive_or_unc_prefix(path) {
-        return Err(NoteError::InvalidPath(
-            "windows-style prefixes are not allowed".into(),
-        ));
-    }
-
-    if path.split('/').any(|segment| segment == ".") {
-        return Err(NoteError::InvalidPath(
-            "path must not include '.' components".into(),
-        ));
-    }
-
-    let normalized_path = std::path::Path::new(path);
-    if normalized_path.is_absolute() {
-        return Err(NoteError::InvalidPath("path must be relative".into()));
-    }
-
-    for component in normalized_path.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                return Err(NoteError::InvalidPath(
-                    "path traversal not allowed".into(),
-                ));
-            }
-            std::path::Component::CurDir => {
-                return Err(NoteError::InvalidPath(
-                    "path must not include '.' components".into(),
-                ));
-            }
-            std::path::Component::Normal(segment) => {
-                let segment = segment.to_str().ok_or_else(|| {
-                    NoteError::InvalidPath("path contains invalid utf-8".into())
-                })?;
-                if segment.starts_with('.') {
-                    return Err(NoteError::InvalidPath(
-                        "hidden path components not allowed".into(),
-                    ));
-                }
-            }
-            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
-                return Err(NoteError::InvalidPath(
-                    "path must be relative".into(),
-                ));
-            }
-        }
-    }
-
-    Ok(())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct RelativePath(Box<str>);
-
-impl RelativePath {
-    fn try_new(path: &str) -> Result<Self, NoteError> {
-        let normalized = normalize_path_separators(path);
-        validate_relative_path(normalized.as_ref())?;
-        Ok(Self(normalized.into()))
-    }
-
-    fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    fn into_boxed(self) -> Box<str> {
-        self.0
-    }
-}
-
 /// Validated vault-relative path for a note.
 ///
 /// Ensures the path follows Obsidian conventions (e.g., forward slashes,
@@ -138,7 +30,7 @@ impl RelativePath {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::path::NotePath;
+/// # use lithos_core::note::paths::NotePath;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let path = NotePath::new("daily/2024-01-01.md")?;
 /// assert_eq!(path.as_str(), "daily/2024-01-01.md");
@@ -262,6 +154,114 @@ impl TryFrom<String> for NotePath {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::new(&value)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct RelativePath(Box<str>);
+
+impl RelativePath {
+    fn try_new(path: &str) -> Result<Self, NoteError> {
+        let normalized = normalize_path_separators(path);
+        validate_relative_path(normalized.as_ref())?;
+        Ok(Self(normalized.into()))
+    }
+
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn into_boxed(self) -> Box<str> {
+        self.0
+    }
+}
+
+fn normalize_path_separators(path: &str) -> std::borrow::Cow<'_, str> {
+    if path.contains('\\') {
+        let mut owned = String::with_capacity(path.len());
+        for ch in path.chars() {
+            if ch == '\\' {
+                owned.push('/');
+            } else {
+                owned.push(ch);
+            }
+        }
+        std::borrow::Cow::Owned(owned)
+    } else {
+        std::borrow::Cow::Borrowed(path)
+    }
+}
+
+fn validate_relative_path(path: &str) -> Result<(), NoteError> {
+    if path.is_empty() {
+        return Err(NoteError::InvalidPath("path cannot be empty".into()));
+    }
+
+    if has_drive_or_unc_prefix(path) {
+        return Err(NoteError::InvalidPath(
+            "windows-style prefixes are not allowed".into(),
+        ));
+    }
+
+    if path.split('/').any(|segment| segment == ".") {
+        return Err(NoteError::InvalidPath(
+            "path must not include '.' components".into(),
+        ));
+    }
+
+    let normalized_path = std::path::Path::new(path);
+    if normalized_path.is_absolute() {
+        return Err(NoteError::InvalidPath("path must be relative".into()));
+    }
+
+    for component in normalized_path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                return Err(NoteError::InvalidPath(
+                    "path traversal not allowed".into(),
+                ));
+            }
+            std::path::Component::CurDir => {
+                return Err(NoteError::InvalidPath(
+                    "path must not include '.' components".into(),
+                ));
+            }
+            std::path::Component::Normal(segment) => {
+                let segment = segment.to_str().ok_or_else(|| {
+                    NoteError::InvalidPath("path contains invalid utf-8".into())
+                })?;
+                if segment.starts_with('.') {
+                    return Err(NoteError::InvalidPath(
+                        "hidden path components not allowed".into(),
+                    ));
+                }
+            }
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
+                return Err(NoteError::InvalidPath(
+                    "path must be relative".into(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn has_drive_or_unc_prefix(path: &str) -> bool {
+    let mut chars = path.chars();
+    let first = chars.next();
+    let second = chars.next();
+    let Some(first) = first else {
+        return false;
+    };
+    if let Some(second) = second {
+        if first.is_ascii_alphabetic() && second == ':' {
+            return true;
+        }
+        if first == '/' && second == '/' {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]

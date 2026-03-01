@@ -6,7 +6,7 @@
 use super::{
     aggregate::{Note, NoteId},
     error::NoteCommandError,
-    path::NotePath,
+    paths::NotePath,
     ports as note_ports,
 };
 

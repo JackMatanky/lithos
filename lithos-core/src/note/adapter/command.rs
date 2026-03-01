@@ -20,7 +20,7 @@ use crate::{
         },
         error::NoteError,
         frontmatter::Frontmatter,
-        path::NotePath,
+        paths::NotePath,
         ports::Command,
         value::FieldValue,
     },
@@ -459,7 +459,7 @@ mod tests {
                 raw::RawConfig,
                 vault::{VaultId, VaultRoot},
             },
-            note::{aggregate::NoteId, path::NotePath, tag::Tag},
+            note::{aggregate::NoteId, paths::NotePath, tag::Tag},
         };
 
         // pub const TEST_MISSING_ID: Uuid =

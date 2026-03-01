@@ -27,7 +27,7 @@ use super::{
     frontmatter::Frontmatter,
     link::Link,
     list::List,
-    path::NotePath,
+    paths::NotePath,
     structure::{Heading, Section},
     tag::Tag,
     task::Task,

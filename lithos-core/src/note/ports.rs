@@ -15,7 +15,7 @@
 
 use super::{
     aggregate::{AliasName, FileClassName, Note, NoteId},
-    path::{FolderPath, NotePath},
+    paths::{FolderPath, NotePath},
     task::{TaskPriority, TaskTimestamp},
 };
 use crate::config::{frontmatter::FrontmatterKey, task::StatusName};

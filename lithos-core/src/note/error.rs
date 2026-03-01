@@ -5,7 +5,7 @@
 //! This module defines note-specific errors using thiserror for
 //! structured error handling.
 
-use super::{aggregate::NoteId, path::NotePath, value::FieldValueType};
+use super::{aggregate::NoteId, paths::NotePath, value::FieldValueType};
 
 /// Note-related errors.
 ///

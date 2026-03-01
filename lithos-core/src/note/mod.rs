@@ -83,7 +83,7 @@ pub mod error;
 /// Note domain events.
 pub mod events;
 /// Path value objects for the Note context.
-pub mod path;
+pub mod paths;
 /// Shared position primitives for the Note context.
 pub mod position;
 /// Shared primitive for dynamic note values.

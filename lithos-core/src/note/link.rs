@@ -15,7 +15,7 @@
 use super::{
     aggregate::NoteId,
     error::{LinkError, NoteError},
-    path::NotePath,
+    paths::NotePath,
     position::SourceByteOffset,
     structure::{BlockRefId, HeadingText},
 };
