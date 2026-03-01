@@ -173,8 +173,8 @@ struct RelativePath(Box<str>);
 
 impl RelativePath {
     fn try_new(path: &str) -> Result<Self, NoteError> {
-        let normalized = Self::normalize_path_separators(path);
-        Self::validate_relative_path(normalized.as_ref())?;
+        let normalized = Self::normalize(path);
+        Self::validate(normalized.as_ref())?;
         Ok(Self(normalized.into()))
     }
 
@@ -182,7 +182,7 @@ impl RelativePath {
         &self.0
     }
 
-    fn normalize_path_separators(path: &str) -> std::borrow::Cow<'_, str> {
+    fn normalize(path: &str) -> std::borrow::Cow<'_, str> {
         if path.contains('\\') {
             let mut owned = String::with_capacity(path.len());
             for ch in path.chars() {
@@ -198,18 +198,15 @@ impl RelativePath {
         }
     }
 
-    fn validate_relative_path(path: &str) -> Result<(), NoteError> {
+    fn validate(path: &str) -> Result<(), NoteError> {
         if path.is_empty() {
             return Err(NoteError::InvalidPath("path cannot be empty".into()));
         }
 
-        let mut chars = path.chars();
-        let first = chars.next();
-        let second = chars.next();
-        if let Some(first) = first
-            && let Some(second) = second
-            && ((first.is_ascii_alphabetic() && second == ':')
-                || (first == '/' && second == '/'))
+        let bytes = path.as_bytes();
+        if let (Some(first), Some(second)) = (bytes.first(), bytes.get(1))
+            && ((first.is_ascii_alphabetic() && *second == b':')
+                || (*first == b'/' && *second == b'/'))
         {
             return Err(NoteError::InvalidPath(
                 "windows-style prefixes are not allowed".into(),
