@@ -155,19 +155,6 @@ impl Frontmatter {
         })
     }
 
-    #[cfg(test)]
-    fn string_array_lossy(value: &FieldValue) -> Option<Vec<Box<str>>> {
-        if let Some(items) = value.array_items() {
-            return Some(
-                items
-                    .filter_map(|item| item.as_str().map(Into::into))
-                    .collect(),
-            );
-        }
-
-        value.as_str().map(|s| vec![s.into()])
-    }
-
     /// Performs strict string-array extraction.
     ///
     /// This fails if an array contains any non-string elements.
@@ -800,9 +787,21 @@ mod tests {
         fn lenient_string_vec_drops_non_string_elements() {
             let fm = fixtures::frontmatter_with_aliases_mixed();
             assert_eq!(
-                fm.get_raw("aliases").and_then(Frontmatter::string_array_lossy),
+                fm.get_raw("aliases").and_then(string_array_lossy),
                 Some(vec!["ok".into()])
             );
+        }
+
+        fn string_array_lossy(value: &FieldValue) -> Option<Vec<Box<str>>> {
+            if let Some(items) = value.array_items() {
+                return Some(
+                    items
+                        .filter_map(|item| item.as_str().map(Into::into))
+                        .collect(),
+                );
+            }
+
+            value.as_str().map(|s| vec![s.into()])
         }
 
         #[test]
