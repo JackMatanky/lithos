@@ -190,9 +190,63 @@ impl Command for CommandAdapter<'_> {
         &self,
         bank: &PropertyBank,
     ) -> Result<(), Self::Error> {
-        // Persist metadata plus versioned property rows.
+        // Persist metadata plus versioned property rows with version retention.
+        // Keeps last 3 versions to prevent unbounded disk growth.
+        const VERSION_RETENTION_COUNT: u64 = 3;
+
         let bank_version = bank.version();
         let recorded_at = Timestamp::now();
+
+        // Read current metadata to determine old versions to delete
+        let previous_metadata = self
+            .db
+            .get_owned::<StoredMetadata>(BANK_METADATA, PROPERTY_BANK_KEY)?;
+
+        // Determine which version to delete (keep last 3: current-2, current-1,
+        // current)
+        let version_to_delete = previous_metadata.and_then(|meta| {
+            let current = meta.bank_version.as_u64();
+            // Only delete if we have accumulated enough versions
+            // Example: current=5, keep [3,4,5], delete 2
+            (current >= VERSION_RETENTION_COUNT).then(|| {
+                BankVersion::from_u64(
+                    current
+                        .saturating_sub(VERSION_RETENTION_COUNT)
+                        .saturating_add(1),
+                )
+            })
+        });
+
+        // Collect keys to delete from both tables before write transaction
+        let keys_to_delete = if let Some(old_version) = version_to_delete {
+            let prefix = StoredBankProperty::prefix(old_version);
+            let id_keys = self
+                .db
+                .batch_read(|reader| {
+                    reader.scan_range::<StoredBankProperty>(
+                        BANK_PROPERTY_BY_ID,
+                        &prefix,
+                    )
+                })
+                .unwrap_or_default();
+
+            let name_keys = self
+                .db
+                .batch_read(|reader| {
+                    reader.scan_range::<StoredBankProperty>(
+                        BANK_PROPERTY_BY_NAME,
+                        &prefix,
+                    )
+                })
+                .unwrap_or_default();
+
+            (
+                id_keys.into_iter().map(|(k, _)| k).collect::<Vec<_>>(),
+                name_keys.into_iter().map(|(k, _)| k).collect::<Vec<_>>(),
+            )
+        } else {
+            (Vec::new(), Vec::new())
+        };
 
         let metadata = StoredMetadata {
             bank_version,
@@ -201,9 +255,21 @@ impl Command for CommandAdapter<'_> {
             recorded_at,
         };
 
+        // Atomic write: delete old versions + write new metadata + write new
+        // properties
         self.db.batch_write(|batch| {
+            // Delete old versioned properties
+            for id_key in &keys_to_delete.0 {
+                batch.delete(BANK_PROPERTY_BY_ID, id_key)?;
+            }
+            for name_key in &keys_to_delete.1 {
+                batch.delete(BANK_PROPERTY_BY_NAME, name_key)?;
+            }
+
+            // Write new metadata
             batch.put(BANK_METADATA, PROPERTY_BANK_KEY, &metadata)?;
 
+            // Write new versioned properties
             for property in bank.all() {
                 let stored_property = StoredProperty {
                     id: property.id(),

@@ -451,6 +451,21 @@ impl BankVersion {
         self.0
     }
 
+    /// Constructs a version from a raw integer.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::BankVersion;
+    ///
+    /// let version = BankVersion::from_u64(5);
+    /// assert_eq!(version.as_u64(), 5);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn from_u64(value: u64) -> Self {
+        Self(value)
+    }
+
     /// Returns true when this version is older than the other.
     ///
     /// # Examples
