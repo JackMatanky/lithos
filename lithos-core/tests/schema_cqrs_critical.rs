@@ -288,3 +288,50 @@ fn save_succeeds_without_property_bank() -> TestResult {
 
     Ok(())
 }
+
+/// **ERROR-001**: Query detects corrupted schema data.
+///
+/// Verifies that `QueryAdapter` properly detects and reports corrupted
+/// rkyv-serialized data instead of returning invalid schemas or panicking.
+#[test]
+fn query_detects_corrupted_schema_data() -> TestResult {
+    use redb::TableDefinition;
+
+    // Table definition for direct database access
+    const SCHEMA_BY_ID: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_by_id");
+
+    // GIVEN: A database with corrupted schema data
+    let test_db = TestDb::new()?;
+    let (_command, query) = setup_cqrs(test_db.db());
+
+    // Manually write invalid rkyv bytes to SCHEMA_BY_ID table
+    // Access table directly to bypass validation layers
+    test_db.db().batch_write(|batch| {
+        // Write garbage data that cannot be deserialized as StoredSchema
+        batch.put(SCHEMA_BY_ID, "corrupt-schema-key", &[
+            0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8,
+        ])?;
+        Ok(())
+    })?;
+
+    // WHEN: Attempting to list all schemas
+    let result = query.list();
+
+    // THEN: Query fails with storage error (not panic, not invalid data)
+    assert!(
+        result.is_err(),
+        "Corrupted data should trigger error, not return invalid schemas"
+    );
+
+    // Verify it's a storage error (not a validation error)
+    if let Err(e) = result {
+        let error_msg = e.to_string();
+        assert!(
+            error_msg.contains("storage") || error_msg.contains("deserializ"),
+            "Error should indicate storage/deserialization issue: {error_msg}"
+        );
+    }
+
+    Ok(())
+}
