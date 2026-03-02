@@ -10,7 +10,8 @@ use crate::{
     db::{Database, DbError},
     schema::{
         adapter::stored::{
-            StoredBankProperty, StoredMetadata, StoredProperty, StoredSchema,
+            StoredBankProperty, StoredMetadata, StoredProperty,
+            StoredPropertyBank, StoredSchema,
         },
         aggregate::{Schema, SchemaId, Timestamp},
         bank::{BankVersion, PropertyBank},
@@ -121,6 +122,49 @@ impl<'db> CommandAdapter<'db> {
                 )));
             }
         }
+
+        // Validate property references against PropertyBank
+        if let Some(bank_metadata) = self
+            .db
+            .get_owned::<StoredMetadata>(BANK_METADATA, PROPERTY_BANK_KEY)?
+        {
+            // Load PropertyBank to validate property references
+            let prefix = StoredBankProperty::prefix(bank_metadata.bank_version);
+            let entries = self.db.scan_range::<StoredBankProperty>(
+                BANK_PROPERTY_BY_NAME,
+                &prefix,
+            )?;
+            let properties: Vec<_> = entries
+                .into_iter()
+                .map(|(_, stored)| stored.property)
+                .collect();
+
+            let stored = StoredPropertyBank {
+                bank_version: bank_metadata.bank_version,
+                recorded_at: bank_metadata.recorded_at,
+                properties,
+            };
+
+            let bank = PropertyBank::try_from(stored)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+
+            // Validate each schema's property references
+            for schema in schemas {
+                for property in schema.properties() {
+                    if !bank.has_name(property.name()) {
+                        return Err(DbError::Transaction(format!(
+                            "property '{}' in schema '{}' not found in \
+                             PropertyBank",
+                            property.name().as_str(),
+                            schema.name().as_str()
+                        )));
+                    }
+                }
+            }
+        }
+        // If PropertyBank doesn't exist yet, allow saving schemas without
+        // validation. This handles the initial bootstrap case where schemas
+        // might be saved before the PropertyBank is initialized.
 
         // Atomic write
         self.db.batch_write(|batch| {

@@ -186,3 +186,105 @@ fn is_schema_stale_returns_false_for_fresh_schema() -> TestResult {
 
     Ok(())
 }
+
+/// **P0-006**: Schema save validates property references.
+///
+/// Verifies that `save_batch_with_metadata()` rejects schemas with property
+/// references that don't exist in `PropertyBank`.
+#[test]
+fn save_rejects_invalid_property_references() -> TestResult {
+    // GIVEN: A PropertyBank with one property
+    let test_db = TestDb::new()?;
+    let (command, _query) = setup_cqrs(test_db.db());
+
+    let mut bank = PropertyBank::new();
+    let valid_prop = PropertyBuilder::new("status").build_bool()?;
+    bank.register(valid_prop)?;
+    command.save_property_bank(&bank)?;
+
+    // WHEN: Attempting to save schema with invalid property reference
+    let schema = SchemaBuilder::new("test-schema")
+        .property(PropertyBuilder::new("invalid_prop").build_bool()?)
+        .build()?;
+
+    let result = command.save_one(&schema);
+
+    // THEN: Save fails with clear error
+    assert!(
+        result.is_err(),
+        "Should reject schema with invalid property reference"
+    );
+
+    let err = result.unwrap_err();
+    let err_msg = err.to_string().to_lowercase();
+    assert!(
+        err_msg.contains("invalid_prop") && err_msg.contains("not found"),
+        "Error should mention missing property: {err}"
+    );
+
+    Ok(())
+}
+
+/// **P0-007**: Schema save succeeds with valid property references.
+///
+/// Verifies that `save_batch_with_metadata()` accepts schemas when all
+/// property references exist in `PropertyBank`.
+#[test]
+fn save_succeeds_with_valid_property_references() -> TestResult {
+    // GIVEN: A PropertyBank with registered properties
+    let test_db = TestDb::new()?;
+    let (command, query) = setup_cqrs(test_db.db());
+
+    let mut bank = PropertyBank::new();
+    let prop1 = PropertyBuilder::new("status").build_bool()?;
+    let prop2 = PropertyBuilder::new("title").build_string_default()?;
+    bank.register(prop1.clone())?;
+    bank.register(prop2.clone())?;
+    command.save_property_bank(&bank)?;
+
+    // WHEN: Saving schema with valid property references
+    let schema = SchemaBuilder::new("test-schema")
+        .property(prop1)
+        .property(prop2)
+        .build()?;
+
+    let result = command.save_one(&schema);
+
+    // THEN: Save succeeds
+    assert!(result.is_ok(), "Should accept valid property references");
+
+    // Schema is retrievable
+    let loaded = query.find_by_id(schema.id())?;
+    assert!(loaded.is_some(), "Schema should be saved");
+
+    Ok(())
+}
+
+/// **P0-008**: Schema save without `PropertyBank` succeeds (bootstrap case).
+///
+/// Verifies that schemas can be saved before `PropertyBank` exists,
+/// allowing initial bootstrap.
+#[test]
+fn save_succeeds_without_property_bank() -> TestResult {
+    // GIVEN: An empty database (no PropertyBank)
+    let test_db = TestDb::new()?;
+    let (command, query) = setup_cqrs(test_db.db());
+
+    // Verify PropertyBank doesn't exist
+    assert!(
+        query.get_property_bank()?.is_none(),
+        "PropertyBank should not exist"
+    );
+
+    // WHEN: Saving schema without PropertyBank
+    let schema = SchemaBuilder::new("test-schema").build()?;
+    let result = command.save_one(&schema);
+
+    // THEN: Save succeeds (allows bootstrap)
+    assert!(
+        result.is_ok(),
+        "Should allow saving schemas before PropertyBank exists"
+    );
+
+    Ok(())
+}
