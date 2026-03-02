@@ -118,6 +118,7 @@ impl<'db> SchemaService<'db> {
         type SchemaWithTimes =
             (SchemaId, RawSchema, Option<Timestamp>, Option<Timestamp>);
         type TimestampPair = (Option<Timestamp>, Option<Timestamp>);
+        type StalenessCheck = (SchemaId, Option<Timestamp>, Option<Timestamp>);
 
         // ── Step 1: file ingestion ──────────────────────────────────────────
         let raw_bank = ingestor.load_raw_property_bank()?;
@@ -141,23 +142,40 @@ impl<'db> SchemaService<'db> {
         // ── Step 4: staleness partitioning ─────────────────────────────────
         let bank_stale = self.query.is_bank_stale(current_bank_version)?;
 
-        let mut stale: Vec<SchemaWithTimes> = Vec::new();
-        let mut fresh_ids: Vec<SchemaId> = Vec::new();
+        // Build schema ID and staleness check data in one pass
+        let mut schema_ids: Vec<SchemaId> =
+            Vec::with_capacity(raw_schemas_with_times.len());
+        let mut staleness_checks: Vec<StalenessCheck> =
+            Vec::with_capacity(raw_schemas_with_times.len());
 
-        for (raw_schema, modified, created) in raw_schemas_with_times {
+        #[expect(
+            clippy::ref_patterns,
+            reason = "Required for borrowing RawSchema while destructuring \
+                      tuple"
+        )]
+        for &(ref raw_schema, modified, created) in &raw_schemas_with_times {
             let schema_name = SchemaName::new(&raw_schema.name)?;
             let id = name_to_id
                 .get(&schema_name)
                 .copied()
                 .unwrap_or_else(SchemaId::new);
+            schema_ids.push(id);
+            staleness_checks.push((id, created, modified));
+        }
 
-            let is_stale = bank_stale
-                || self.query.is_schema_stale(
-                    id,
-                    created,
-                    modified,
-                    current_bank_version,
-                )?;
+        // Batch staleness check: O(1) transaction for all schemas
+        let staleness_map = self
+            .query
+            .batch_is_stale(&staleness_checks, current_bank_version)?;
+
+        let mut stale: Vec<SchemaWithTimes> = Vec::new();
+        let mut fresh_ids: Vec<SchemaId> = Vec::new();
+
+        for (id, (raw_schema, modified, created)) in
+            schema_ids.into_iter().zip(raw_schemas_with_times.into_iter())
+        {
+            let schema_stale = staleness_map.get(&id).copied().unwrap_or(true);
+            let is_stale = bank_stale || schema_stale;
 
             if is_stale {
                 stale.push((id, raw_schema, modified, created));
@@ -167,13 +185,8 @@ impl<'db> SchemaService<'db> {
         }
 
         // ── Step 5: load fresh schemas as known_parents ─────────────────────
-        let mut known_parents: HashMap<SchemaId, Schema> =
-            HashMap::with_capacity(fresh_ids.len());
-        for fresh_id in fresh_ids {
-            if let Some(schema) = self.query.find_by_id(fresh_id)? {
-                known_parents.insert(fresh_id, schema);
-            }
-        }
+        // Batch load: O(1) transaction for all fresh schemas
+        let known_parents = self.query.batch_find_by_ids(&fresh_ids)?;
 
         // ── Step 6: pipeline (Dereferencer → Extender → Resolver) ──────────
         // Extract just (id, raw_schema) for dereferencer, keep timestamps
