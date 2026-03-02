@@ -669,7 +669,16 @@ impl RawOptions {
                 let mut entries: Vec<_> = map
                     .into_iter()
                     .filter_map(|(key, value)| {
-                        key.parse::<u32>().ok().map(|order| (order, value))
+                        key.parse::<u32>()
+                            .inspect_err(|e| {
+                                tracing::debug!(
+                                    key = %key,
+                                    error = %e,
+                                    "Option map key is not a valid u32, entry will be skipped"
+                                );
+                            })
+                            .ok()
+                            .map(|order| (order, value))
                     })
                     .collect();
                 entries.sort_by_key(|&(order, _)| order);
