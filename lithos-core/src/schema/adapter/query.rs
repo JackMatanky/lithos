@@ -169,6 +169,19 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
+    fn with_metadata<F, R>(
+        &self,
+        id: SchemaId,
+        f: F,
+    ) -> Result<Option<R>, Self::Error>
+    where
+        F: FnOnce(&rkyv::Archived<StoredMetadata>) -> R,
+    {
+        let id_key = id.into_uuid().to_string();
+        self.db.get::<StoredMetadata, _, _>(SCHEMA_METADATA, id_key.as_str(), f)
+    }
+
+    #[inline]
     fn list(&self) -> Result<Vec<Schema>, Self::Error> {
         let stored: Vec<StoredSchema> = self.db.list_owned(SCHEMA_BY_ID)?;
         stored

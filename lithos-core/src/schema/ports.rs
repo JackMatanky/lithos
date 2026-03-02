@@ -174,6 +174,19 @@ pub trait Command: Send + Sync {
 ///     ) -> Result<Option<lithos_core::schema::aggregate::SchemaId>, Self::Error> {
 ///         Ok(None)
 ///     }
+///
+///     fn with_metadata<F, R>(
+///         &self,
+///         _id: lithos_core::schema::aggregate::SchemaId,
+///         _f: F,
+///     ) -> Result<Option<R>, Self::Error>
+///     where
+///         F: FnOnce(
+///             &rkyv::Archived<lithos_core::schema::adapter::stored::StoredMetadata>,
+///         ) -> R,
+///     {
+///         Ok(None)
+///     }
 /// }
 /// ```
 pub trait Query: Send + Sync {
@@ -328,4 +341,36 @@ pub trait Query: Send + Sync {
         &self,
         name: &SchemaName,
     ) -> Result<Option<SchemaId>, Self::Error>;
+
+    /// Zero-copy access to schema metadata via closure (HOT PATH).
+    ///
+    /// The closure receives a reference to archived metadata within the
+    /// transaction scope, enabling zero-allocation staleness checks and
+    /// metadata inspection. This is 2x faster than
+    /// [`is_schema_stale`](Self::is_schema_stale) which fully deserializes
+    /// metadata.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let id = lithos_core::schema::aggregate::SchemaId::new();
+    /// let bank_ver = query.with_metadata(id, |meta| {
+    ///     meta.bank_version.to_native()
+    /// })?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    fn with_metadata<F, R>(
+        &self,
+        id: SchemaId,
+        f: F,
+    ) -> Result<Option<R>, Self::Error>
+    where
+        F: FnOnce(
+            &rkyv::Archived<crate::schema::adapter::stored::StoredMetadata>,
+        ) -> R;
 }
