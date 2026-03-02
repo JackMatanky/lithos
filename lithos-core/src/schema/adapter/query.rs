@@ -75,15 +75,11 @@ impl Query for QueryAdapter<'_> {
         };
 
         let prefix = StoredBankProperty::prefix(metadata.bank_version);
-        let entries = self.db.list_key_value_pairs::<StoredBankProperty>(
-            BANK_PROPERTY_BY_NAME,
-        )?;
-        let properties: Vec<_> = entries
-            .into_iter()
-            .filter_map(|(key, stored)| {
-                key.starts_with(&prefix).then_some(stored.property)
-            })
-            .collect();
+        let entries = self
+            .db
+            .scan_range::<StoredBankProperty>(BANK_PROPERTY_BY_NAME, &prefix)?;
+        let properties: Vec<_> =
+            entries.into_iter().map(|(_, stored)| stored.property).collect();
 
         let stored = StoredPropertyBank {
             bank_version: metadata.bank_version,
