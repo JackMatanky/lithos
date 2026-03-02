@@ -1,5 +1,4 @@
 {
-  "name": "dir_contact",
   "properties": {
     "name_last": {
       "type": "string"

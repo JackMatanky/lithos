@@ -1,5 +1,4 @@
 {
-  "name": "lib_documentation",
   "properties": {
     "aliases": {
       "$ref": "property_bank#/aliases"

@@ -1,5 +1,4 @@
 {
-  "name": "lib_journal",
   "properties": {
     "author": {
       "multi": true,

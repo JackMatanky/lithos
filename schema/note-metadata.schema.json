@@ -4,7 +4,7 @@
   "title": "Lithos Note Schema",
   "description": "Defines the format of a Lithos note schema file. A note schema describes the frontmatter properties expected on a type of markdown note in the vault. Properties may be defined inline or referenced from the property bank using '$ref: property_bank#/<name>'. Schemas may extend a parent schema and exclude inherited properties they don't need.",
   "type": "object",
-  "required": ["name", "properties"],
+  "required": ["properties"],
   "additionalProperties": false,
   "properties": {
     "$version": {
@@ -16,10 +16,11 @@
       "examples": ["1.0"]
     },
     "name": {
-      "title": "Schema Name",
-      "description": "The unique identifier for this schema. Must be lowercase, using only letters, digits, and underscores. This name is used in 'extends' fields of child schemas and in 'file_class' fields of file-type properties.",
+      "title": "Schema Name (Deprecated)",
+      "description": "DEPRECATED: The schema name is now derived from the filename (without extension). This field is ignored if present. For backward compatibility, if provided, it must match the filename. Will be removed in a future version.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*$",
+      "deprecated": true,
       "examples": ["task", "daily_note", "project"]
     },
     "properties": {

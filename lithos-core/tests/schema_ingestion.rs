@@ -253,8 +253,10 @@ fn schema_scanner_finds_all_files() -> TestResult {
     // THEN: All schemas found (excluding property bank)
     assert_eq!(raw_schemas.len(), 3);
 
-    let names: Vec<_> =
-        raw_schemas.iter().map(|entry| entry.0.name.as_ref()).collect();
+    let names: Vec<_> = raw_schemas
+        .iter()
+        .filter_map(|entry| entry.0.name.as_deref())
+        .collect();
     assert!(names.contains(&"task"));
     assert!(names.contains(&"note"));
     assert!(names.contains(&"project"));

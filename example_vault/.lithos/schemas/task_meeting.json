@@ -1,5 +1,4 @@
 {
-  "name": "task_meeting",
   "properties": {
     "subtype": {
       "type": "string",

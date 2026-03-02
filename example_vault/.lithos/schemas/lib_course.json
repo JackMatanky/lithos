@@ -1,5 +1,4 @@
 {
-  "name": "lib_course",
   "properties": {
     "lecturer": {
       "multi": true,

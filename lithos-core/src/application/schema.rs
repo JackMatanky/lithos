@@ -111,6 +111,7 @@ impl<'db> SchemaService<'db> {
     /// Returns [`SchemaServiceError`] on any I/O, parsing, domain, query, or
     /// command failure.
     #[inline]
+    #[expect(clippy::too_many_lines, reason = "Complex pipeline orchestration")]
     pub fn load(
         &self,
         ingestor: &Ingestor<'_>,
@@ -173,7 +174,13 @@ impl<'db> SchemaService<'db> {
                       tuple"
         )]
         for &(ref raw_schema, modified, created) in &raw_schemas_with_times {
-            let schema_name = SchemaName::new(&raw_schema.name)?;
+            // Name is always Some because Ingestor sets it from filename
+            let name_str = raw_schema.name.as_ref().ok_or_else(|| {
+                SchemaError::InvalidSchemaName(
+                    "Schema name not set by Ingestor".into(),
+                )
+            })?;
+            let schema_name = SchemaName::new(name_str)?;
             let id = name_to_id
                 .get(&schema_name)
                 .copied()

@@ -131,7 +131,11 @@ impl<'bank> Dereferencer<'bank> {
         }
 
         Ok(DereferencedSchema {
-            name: raw.name,
+            name: raw.name.ok_or_else(|| {
+                SchemaError::InvalidSchemaName(
+                    "Schema name not set by Ingestor".into(),
+                )
+            })?,
             extends: raw.extends,
             excludes: raw.excludes,
             properties,
@@ -498,7 +502,7 @@ mod tests {
             props.insert("a".into(), fixtures::inline_bool_entry());
             let raw = RawSchema {
                 version: crate::schema::raw::SCHEMA_VERSION.into(),
-                name: "test".into(),
+                name: Some("test".into()),
                 extends: None,
                 excludes: Vec::new(),
                 properties: props,
@@ -517,7 +521,7 @@ mod tests {
             let deref = Dereferencer::new(&bank);
             let raw = RawSchema {
                 version: crate::schema::raw::SCHEMA_VERSION.into(),
-                name: "child".into(),
+                name: Some("child".into()),
                 extends: Some("parent".into()),
                 excludes: vec!["old-prop".into()],
                 properties: HashMap::new(),

@@ -1,5 +1,4 @@
 {
-  "name": "goal",
   "properties": {
     "title": {
       "$ref": "property_bank#/title"
