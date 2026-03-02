@@ -320,10 +320,10 @@ impl InlineFieldState {
             FieldSpec::Integer {
                 ..
             } => {
-                let value = raw_value.parse::<i64>().map_err(|error| {
+                let value = raw_value.parse::<i64>().map_err(|_error| {
                     NoteError::Task(TaskError::InvalidInteger {
                         raw: raw_value.into(),
-                        reason: error.to_string().into(),
+                        reason: "failed to parse integer",
                     })
                 })?;
                 Ok(serde_json::Value::Number(value.into()))
@@ -331,17 +331,17 @@ impl InlineFieldState {
             FieldSpec::Float {
                 ..
             } => {
-                let value = raw_value.parse::<f64>().map_err(|error| {
+                let value = raw_value.parse::<f64>().map_err(|_error| {
                     NoteError::Task(TaskError::InvalidFloat {
                         raw: raw_value.into(),
-                        reason: error.to_string().into(),
+                        reason: "failed to parse float",
                     })
                 })?;
                 let number =
                     serde_json::Number::from_f64(value).ok_or_else(|| {
                         NoteError::Task(TaskError::InvalidFloat {
                             raw: raw_value.into(),
-                            reason: "float value is not finite".into(),
+                            reason: "float value is not finite",
                         })
                     })?;
                 Ok(serde_json::Value::Number(number))
@@ -388,17 +388,17 @@ impl InlineFieldState {
     ) -> Result<(), NoteError> {
         if let Some(spec) = config.field_spec(keyword) {
             let json_value = Self::parse_metadata_value(raw_value, spec)?;
-            spec.validate_raw_value(&json_value).map_err(|error| {
+            spec.validate_raw_value(&json_value).map_err(|_error| {
                 NoteError::Task(TaskError::InvalidMetadataField {
                     keyword: keyword.into(),
-                    reason: error.to_string().into(),
+                    reason: "failed validation",
                 })
             })?;
             let field_value =
-                FieldValue::from_json(&json_value).map_err(|error| {
+                FieldValue::from_json(&json_value).map_err(|_error| {
                     NoteError::Task(TaskError::InvalidMetadataField {
                         keyword: keyword.into(),
-                        reason: error.to_string().into(),
+                        reason: "failed conversion",
                     })
                 })?;
             let key = TaskFieldKey::try_new(keyword)?;
@@ -449,10 +449,10 @@ impl InlineFieldState {
         }
 
         let date = chrono::NaiveDate::parse_from_str(value, spec.format())
-            .map_err(|error| {
+            .map_err(|_error| {
                 NoteError::Task(TaskError::InvalidDate {
                     keyword: spec.keyword().as_str().into(),
-                    reason: error.to_string().into(),
+                    reason: "failed to parse date string",
                 })
             })?;
 

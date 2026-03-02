@@ -343,7 +343,7 @@ impl FieldValue {
     #[inline]
     #[must_use]
     pub fn to_json_string(&self) -> String {
-        let mut out = String::new();
+        let mut out = String::with_capacity(128);
         self.write_json(&mut out);
         out
     }

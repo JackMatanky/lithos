@@ -194,6 +194,9 @@ impl TaskText {
     /// Returns [`NoteError::Task`] if the text is empty.
     #[inline]
     pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        if value.trim().is_empty() {
+            return Err(NoteError::Task(TaskError::EmptyText));
+        }
         Self::try_from_boxed(value.into())
     }
 
@@ -581,7 +584,7 @@ impl TaskPriority {
     pub fn try_new(value: f64) -> Result<Self, NoteError> {
         if !value.is_finite() {
             return Err(NoteError::Task(TaskError::InvalidPriority {
-                reason: "task priority must be finite".into(),
+                reason: "task priority must be finite",
             }));
         }
         Ok(Self(value))

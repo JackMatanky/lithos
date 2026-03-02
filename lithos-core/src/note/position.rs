@@ -55,10 +55,8 @@ impl SourceByteOffset {
     /// Returns [`NoteError::Structure`] if the offset cannot fit in `u32`.
     #[inline]
     pub fn try_from_usize(offset: usize) -> Result<Self, NoteError> {
-        Self::try_from(offset).map_err(|error| {
-            NoteError::Structure(
-                format!("source offset out of range: {error}").into(),
-            )
+        Self::try_from(offset).map_err(|_error| {
+            NoteError::Structure("source offset out of range")
         })
     }
 
@@ -83,12 +81,12 @@ impl SourceByteOffset {
         let offset = usize::from(self);
         if offset > source.len() {
             return Err(NoteError::Structure(
-                "source offset exceeds input length".into(),
+                "source offset exceeds input length",
             ));
         }
         if !source.is_char_boundary(offset) {
             return Err(NoteError::Structure(
-                "source offset is not on a character boundary".into(),
+                "source offset is not on a character boundary",
             ));
         }
 
@@ -190,12 +188,12 @@ impl SourceLineIndex {
         let offset = usize::from(offset);
         if offset > source.len() {
             return Err(NoteError::Structure(
-                "source offset exceeds input length".into(),
+                "source offset exceeds input length",
             ));
         }
         if !source.is_char_boundary(offset) {
             return Err(NoteError::Structure(
-                "source offset is not on a character boundary".into(),
+                "source offset is not on a character boundary",
             ));
         }
 
@@ -204,16 +202,16 @@ impl SourceLineIndex {
             .partition_point(|&start| start <= offset)
             .saturating_sub(1);
         let line_start = self.line_starts.get(line_index).copied().unwrap_or(0);
-        let slice = source.get(line_start..offset).ok_or_else(|| {
-            NoteError::Structure("source offset is not on a boundary".into())
+        let slice = source.get(line_start..offset).ok_or({
+            NoteError::Structure("source offset is not on a boundary")
         })?;
         let column_count = slice.chars().count().saturating_add(1);
         let line =
             u32::try_from(line_index.saturating_add(1)).map_err(|_error| {
-                NoteError::Structure("line index out of range".into())
+                NoteError::Structure("line index out of range")
             })?;
         let column = u32::try_from(column_count).map_err(|_error| {
-            NoteError::Structure("column index out of range".into())
+            NoteError::Structure("column index out of range")
         })?;
 
         Ok(SourceLineColumn {
@@ -303,7 +301,7 @@ impl SourceByteRange {
     ) -> Result<Self, NoteError> {
         if start > end {
             return Err(NoteError::Structure(
-                "source range start must be <= end".into(),
+                "source range start must be <= end",
             ));
         }
         Ok(Self {
@@ -367,13 +365,13 @@ mod tests {
     fn line_column_tracks_unicode_and_newlines() -> Result<(), NoteError> {
         let source = "a\u{00E9}\nb";
         let offset = SourceByteOffset::try_from("a".len())
-            .map_err(|error| NoteError::Structure(error.to_string().into()))?;
+            .map_err(|_error| NoteError::Structure("test error"))?;
         let line_column = offset.line_column(source)?;
         assert_eq!(line_column.line(), 1);
         assert_eq!(line_column.column(), 2);
 
         let newline_offset = SourceByteOffset::try_from("a\u{00E9}\n".len())
-            .map_err(|error| NoteError::Structure(error.to_string().into()))?;
+            .map_err(|_error| NoteError::Structure("test error"))?;
         let line_column_after_newline = newline_offset.line_column(source)?;
         assert_eq!(line_column_after_newline.line(), 2);
         assert_eq!(line_column_after_newline.column(), 1);
@@ -405,7 +403,7 @@ mod tests {
         let source = "first\nsecond\nthird";
         let index = SourceLineIndex::new(source);
         let offset = SourceByteOffset::try_from("first\nsecond".len())
-            .map_err(|error| NoteError::Structure(error.to_string().into()))?;
+            .map_err(|_error| NoteError::Structure("test error"))?;
         let line_column = index.line_column(offset, source)?;
         assert_eq!(line_column.line(), 2);
         assert_eq!(line_column.column(), 7);

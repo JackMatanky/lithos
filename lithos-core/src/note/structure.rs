@@ -199,10 +199,7 @@ impl HeadingLevel {
             Ok(Self(level))
         } else {
             Err(NoteError::Structure(
-                format!(
-                    "Invalid heading level: {level}. Must be between 1 and 6."
-                )
-                .into(),
+                "invalid heading level: must be between 1 and 6",
             ))
         }
     }

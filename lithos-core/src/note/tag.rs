@@ -50,8 +50,6 @@ use super::error::{NoteError, TagError};
 pub struct Tag {
     /// Full tag path (without leading `#`).
     path: TagPath,
-    /// Individual path segments.
-    segments: Segments,
 }
 
 impl Tag {
@@ -72,11 +70,9 @@ impl Tag {
             .ok_or(NoteError::Tag(TagError::MissingHash))?;
 
         let path = TagPath::try_new(tag_path_str)?;
-        let segments = Segments::try_new(tag_path_str)?;
 
         Ok(Self {
             path,
-            segments,
         })
     }
 
@@ -98,10 +94,8 @@ impl Tag {
         }
 
         let path = TagPath::try_new(tag_path_str)?;
-        let segments = Segments::try_new(tag_path_str)?;
         Ok(Self {
             path,
-            segments,
         })
     }
 
@@ -115,7 +109,7 @@ impl Tag {
     /// Returns the individual segments of the tag.
     #[inline]
     pub fn segments(&self) -> impl Iterator<Item = &str> + '_ {
-        self.segments.iter()
+        self.path.as_str().split('/')
     }
 }
 
@@ -141,39 +135,10 @@ impl TagPath {
         if path.is_empty() {
             return Err(NoteError::Tag(TagError::EmptyTag));
         }
-        Ok(Self(path.into()))
-    }
-
-    #[inline]
-    fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Internal wrapper for tag segments.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
-#[rkyv(derive(Debug))]
-struct Segments(Vec<Box<str>>);
-
-impl Segments {
-    fn try_new(path: &str) -> Result<Self, NoteError> {
-        let segments_count = path.split('/').count();
-        let mut segments = Vec::with_capacity(segments_count);
         for segment in path.split('/') {
             if segment.is_empty() {
                 return Err(NoteError::Tag(TagError::EmptySegment));
             }
-
             if !segment
                 .chars()
                 .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
@@ -182,27 +147,13 @@ impl Segments {
                     segment: segment.into(),
                 }));
             }
-            segments.push(segment.into());
         }
-
-        Ok(Self(segments))
+        Ok(Self(path.into()))
     }
-
-    fn iter(&self) -> impl Iterator<Item = &str> + '_ {
-        self.0.iter().map(Box::as_ref)
-    }
-}
-
-impl<'segments> IntoIterator for &'segments Segments {
-    type IntoIter = std::iter::Map<
-        std::slice::Iter<'segments, Box<str>>,
-        fn(&'segments Box<str>) -> &'segments str,
-    >;
-    type Item = &'segments str;
 
     #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter().map(Box::as_ref)
+    fn as_str(&self) -> &str {
+        &self.0
     }
 }
 

@@ -64,12 +64,12 @@ pub enum NoteError {
         /// The observed list depth.
         depth: usize,
         /// Conversion error details.
-        reason: Box<str>,
+        reason: &'static str,
     },
 
     /// Structural error within a note.
     #[error("note structure error: {0}")]
-    Structure(Box<str>),
+    Structure(&'static str),
 }
 
 /// Errors surfaced when validating or parsing tags.
@@ -121,7 +121,7 @@ pub enum TaskError {
         /// The raw status symbol.
         symbol: char,
         /// Validation failure details.
-        reason: Box<str>,
+        reason: &'static str,
     },
     /// Task date field is not parseable.
     #[error("invalid date for field '{keyword}': {reason}")]
@@ -129,7 +129,7 @@ pub enum TaskError {
         /// The field keyword.
         keyword: Box<str>,
         /// Parse error details.
-        reason: Box<str>,
+        reason: &'static str,
     },
     /// Task date field contains an invalid time.
     #[error("invalid time for date in field '{keyword}'")]
@@ -143,7 +143,7 @@ pub enum TaskError {
         /// The field keyword.
         keyword: Box<str>,
         /// Validation failure details.
-        reason: Box<str>,
+        reason: &'static str,
     },
     /// Task metadata integer value is invalid.
     #[error("invalid integer value '{raw}': {reason}")]
@@ -151,7 +151,7 @@ pub enum TaskError {
         /// The raw value string.
         raw: Box<str>,
         /// Parse error details.
-        reason: Box<str>,
+        reason: &'static str,
     },
     /// Task metadata float value is invalid.
     #[error("invalid float value '{raw}': {reason}")]
@@ -159,13 +159,13 @@ pub enum TaskError {
         /// The raw value string.
         raw: Box<str>,
         /// Parse error details.
-        reason: Box<str>,
+        reason: &'static str,
     },
     /// Task priority value is invalid.
     #[error("invalid task priority: {reason}")]
     InvalidPriority {
         /// Validation failure details.
-        reason: Box<str>,
+        reason: &'static str,
     },
 }
 
@@ -299,13 +299,13 @@ pub enum FrontmatterParseError {
     #[error("invalid YAML: {reason}")]
     InvalidYaml {
         /// Parse error details.
-        reason: Box<str>,
+        reason: &'static str,
     },
     /// TOML frontmatter could not be parsed.
     #[error("invalid TOML: {reason}")]
     InvalidToml {
         /// Parse error details.
-        reason: Box<str>,
+        reason: &'static str,
     },
     /// Frontmatter must be a YAML mapping.
     #[error("frontmatter must be a YAML mapping")]
@@ -320,13 +320,13 @@ pub enum FrontmatterParseError {
     #[error("{reason}")]
     InvalidYamlValue {
         /// Conversion error details.
-        reason: Box<str>,
+        reason: &'static str,
     },
     /// TOML value could not be converted.
     #[error("{reason}")]
     InvalidTomlValue {
         /// Conversion error details.
-        reason: Box<str>,
+        reason: &'static str,
     },
 }
 
@@ -363,11 +363,11 @@ mod tests {
     #[case(NoteError::Tag(TagError::MissingHash))]
     #[case(NoteError::Task(TaskError::EmptyText))]
     #[case(NoteError::Task(TaskError::InvalidPriority {
-        reason: "not finite".into(),
+        reason: "not finite",
     }))]
     #[case(NoteError::ListDepthOutOfRange {
         depth: 300,
-        reason: "out of range".into(),
+        reason: "out of range",
     })]
     #[case(NoteError::Storage("io error".into()))]
     fn note_error_display_is_comprehensive(#[case] error: NoteError) {

@@ -758,10 +758,10 @@ impl ItemCollector {
         } else {
             ' '
         };
-        StatusSymbol::try_new(symbol).map_err(|error| {
+        StatusSymbol::try_new(symbol).map_err(|_error| {
             NoteError::Task(TaskError::InvalidStatusSymbol {
                 symbol,
-                reason: error.to_string().into(),
+                reason: "invalid status character",
             })
         })
     }
@@ -828,10 +828,10 @@ impl FrontmatterCollector {
         let fields = match kind {
             pulldown_cmark::MetadataBlockKind::YamlStyle => {
                 let yaml_value: serde_yaml::Value =
-                    serde_yaml::from_str(&self.text).map_err(|e| {
+                    serde_yaml::from_str(&self.text).map_err(|_e| {
                         NoteError::Frontmatter(
                             FrontmatterParseError::InvalidYaml {
-                                reason: e.to_string().into(),
+                                reason: "failed to parse yaml",
                             },
                         )
                     })?;
@@ -839,10 +839,10 @@ impl FrontmatterCollector {
             }
             pulldown_cmark::MetadataBlockKind::PlusesStyle => {
                 let toml_value: toml::Value = toml::from_str(&self.text)
-                    .map_err(|e| {
+                    .map_err(|_e| {
                         NoteError::Frontmatter(
                             FrontmatterParseError::InvalidToml {
-                                reason: e.to_string().into(),
+                                reason: "failed to parse toml",
                             },
                         )
                     })?;
@@ -885,10 +885,10 @@ impl FrontmatterCollector {
             ))?;
 
             let field_value =
-                FieldValue::from_yaml(value_item).map_err(|error| {
+                FieldValue::from_yaml(value_item).map_err(|_error| {
                     NoteError::Frontmatter(
                         FrontmatterParseError::InvalidYamlValue {
-                            reason: error.to_string().into(),
+                            reason: "invalid yaml value",
                         },
                     )
                 })?;
@@ -932,11 +932,7 @@ impl FrontmatterCollector {
                 if magnitude > MAX_SAFE_INTEGER {
                     return Err(NoteError::Frontmatter(
                         FrontmatterParseError::InvalidTomlValue {
-                            reason: format!(
-                                "integer value '{number}' exceeds safe f64 \
-                                 range"
-                            )
-                            .into(),
+                            reason: "integer value exceeds safe f64 range",
                         },
                     ));
                 }
@@ -1114,8 +1110,8 @@ impl TagCollector {
     }
 
     fn add_tag(&mut self, tag: NoteTag) {
-        let key: Box<str> = tag.full_path().into();
-        if self.tag_set.insert(key) {
+        if !self.tag_set.contains(tag.full_path()) {
+            self.tag_set.insert(tag.full_path().into());
             self.tags.push(tag);
         }
     }
@@ -1218,8 +1214,8 @@ impl<'source> SectionCollector<'source> {
         let range = SourceByteRange::new(start, end)?;
         let start = usize::from(start);
         let end = usize::from(end);
-        self.source.get(start..end).ok_or_else(|| {
-            NoteError::Structure("section range is not on a boundary".into())
+        self.source.get(start..end).ok_or({
+            NoteError::Structure("section range is not on a boundary")
         })?;
         self.sections.push(Section::new(heading, range));
         Ok(())
@@ -1562,7 +1558,7 @@ mod tests {
                 ..
             } => {
                 return Err(NoteError::Structure(
-                    "expected checkbox list item".into(),
+                    "expected checkbox list item",
                 ));
             }
         };
