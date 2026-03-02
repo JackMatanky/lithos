@@ -28,7 +28,8 @@ impl<'text> TagScanner<'text> {
                 continue;
             }
 
-            let mut raw = String::from("#");
+            let mut raw = String::with_capacity(16);
+            raw.push('#');
             while let Some(&next) = chars.peek() {
                 if !(next.is_alphanumeric() || matches!(next, '_' | '-' | '/'))
                 {

@@ -354,7 +354,7 @@ impl InlineFieldState {
             }
             | FieldSpec::DateTime {
                 ..
-            } => Ok(serde_json::Value::String(raw_value.to_owned())),
+            } => Ok(serde_json::Value::String(raw_value.into())),
         }
     }
 

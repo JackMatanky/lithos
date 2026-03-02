@@ -116,7 +116,7 @@ impl<'config> NoteReader<'config> {
         let markdown = reader
             .read_with::<String, crate::fs::ParseError, _>(
                 path,
-                |_, content| Ok(content.to_owned()),
+                |_, content| Ok(content.into()),
             )
             .map_err(|error| NoteError::Storage(format!("{error}").into()))?;
         self.parse_str(&markdown)
