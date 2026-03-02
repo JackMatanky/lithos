@@ -335,3 +335,142 @@ fn query_detects_corrupted_schema_data() -> TestResult {
 
     Ok(())
 }
+
+/// **ERROR-002**: Query detects missing metadata for existing schema.
+///
+/// Verifies that `find_by_id` detects database corruption when a schema
+/// exists but its metadata is missing (orphaned schema record).
+#[test]
+fn query_detects_missing_metadata_corruption() -> TestResult {
+    use redb::TableDefinition;
+
+    // Table definition for direct database access
+    const SCHEMA_METADATA: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_metadata");
+
+    // GIVEN: A normally saved schema
+    let test_db = TestDb::new()?;
+    let (command, query) = setup_cqrs(test_db.db());
+
+    let schema = SchemaBuilder::new("orphaned-schema").build()?;
+    let schema_id = schema.id();
+
+    // Save schema normally (includes metadata)
+    command.save_one(&schema)?;
+
+    // WHEN: Manually delete metadata to simulate corruption
+    let id_key = schema_id.into_uuid().to_string();
+    test_db.db().batch_write(|batch| {
+        batch.delete(SCHEMA_METADATA, id_key.as_str())?;
+        Ok(())
+    })?;
+
+    // THEN: Attempting to find the orphaned schema detects corruption
+    let result = query.find_by_id(schema_id);
+
+    assert!(
+        result.is_err(),
+        "Orphaned schema (missing metadata) should trigger corruption error"
+    );
+
+    // Verify it's a corruption error
+    if let Err(e) = result {
+        let error_msg = e.to_string();
+        assert!(
+            error_msg.contains("corruption")
+                || error_msg.contains("metadata is missing"),
+            "Error should indicate metadata corruption: {error_msg}"
+        );
+    }
+
+    Ok(())
+}
+
+/// **ERROR-003**: Query detects corrupted property bank metadata.
+///
+/// Verifies that property bank queries handle corrupted metadata gracefully.
+#[test]
+fn query_detects_corrupted_property_bank_metadata() -> TestResult {
+    use redb::TableDefinition;
+
+    // Table definition for direct database access
+    const BANK_METADATA: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("bank_metadata");
+
+    // GIVEN: A database with corrupted property bank metadata
+    let test_db = TestDb::new()?;
+    let (_command, query) = setup_cqrs(test_db.db());
+
+    // Manually write invalid rkyv bytes to BANK_METADATA table
+    test_db.db().batch_write(|batch| {
+        batch.put(BANK_METADATA, "singleton", &[
+            0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8,
+        ])?;
+        Ok(())
+    })?;
+
+    // WHEN: Attempting to get property bank
+    let result = query.get_property_bank();
+
+    // THEN: Query fails with storage/deserialization error
+    assert!(
+        result.is_err(),
+        "Corrupted property bank metadata should trigger error"
+    );
+
+    // Verify it's a storage error
+    if let Err(e) = result {
+        let error_msg = e.to_string();
+        assert!(
+            error_msg.contains("storage") || error_msg.contains("deserializ"),
+            "Error should indicate storage/deserialization issue: {error_msg}"
+        );
+    }
+
+    Ok(())
+}
+
+/// **ERROR-004**: Query detects corrupted name index.
+///
+/// Verifies that schema name lookups handle corrupted index data gracefully.
+#[test]
+fn query_detects_corrupted_name_index() -> TestResult {
+    use redb::TableDefinition;
+
+    // Table definition for direct database access
+    const SCHEMA_ID_BY_NAME: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_id_by_name");
+
+    // GIVEN: A database with corrupted name index
+    let test_db = TestDb::new()?;
+    let (_command, query) = setup_cqrs(test_db.db());
+
+    // Manually write invalid rkyv bytes to SCHEMA_ID_BY_NAME table
+    test_db.db().batch_write(|batch| {
+        batch.put(SCHEMA_ID_BY_NAME, "corrupt-index-key", &[
+            0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8,
+        ])?;
+        Ok(())
+    })?;
+
+    // Create a valid schema name to search for
+    let schema_name =
+        lithos_core::schema::aggregate::SchemaName::new("corrupt-index-key")?;
+
+    // WHEN: Attempting to find schema by name with corrupted index
+    let result = query.find_by_name(&schema_name);
+
+    // THEN: Query fails with storage/deserialization error
+    assert!(result.is_err(), "Corrupted name index should trigger error");
+
+    // Verify it's a storage error
+    if let Err(e) = result {
+        let error_msg = e.to_string();
+        assert!(
+            error_msg.contains("storage") || error_msg.contains("deserializ"),
+            "Error should indicate storage/deserialization issue: {error_msg}"
+        );
+    }
+
+    Ok(())
+}
