@@ -225,8 +225,13 @@ pub trait Query: Send + Sync {
     /// This is more efficient than calling `find_by_id` multiple times,
     /// as it uses a single database transaction for all lookups.
     ///
+    /// Missing schemas are silently skipped - only found schemas are returned
+    /// in the result map. Duplicate IDs in the input slice will result in
+    /// only one entry in the output map (last occurrence wins).
+    ///
     /// # Errors
-    /// Returns a storage-specific error if query fails.
+    /// Returns a storage-specific error if query fails or if schema-metadata
+    /// consistency validation detects database corruption.
     ///
     /// # Examples
     ///
@@ -239,6 +244,7 @@ pub trait Query: Send + Sync {
     /// #     lithos_core::schema::aggregate::SchemaId::new(),
     /// # ];
     /// let schemas: HashMap<_, _> = query.batch_find_by_ids(&ids)?;
+    /// // Result contains only schemas that exist in storage
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     fn batch_find_by_ids(
@@ -250,6 +256,17 @@ pub trait Query: Send + Sync {
     ///
     /// This is more efficient than calling `is_schema_stale` multiple times,
     /// as it uses a single database transaction for all staleness checks.
+    ///
+    /// Schemas are considered stale when:
+    /// - No stored metadata exists for the schema ID (returns `true`)
+    /// - Stored `bank_version` differs from the provided `bank_version`
+    /// - Stored `created_at` differs from provided `created_at` (when both
+    ///   present)
+    /// - Stored `modified_at` is older than provided `modified_at` (file
+    ///   changed)
+    ///
+    /// Duplicate IDs in the input slice will result in only one entry in the
+    /// output map (last occurrence wins).
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
@@ -265,6 +282,7 @@ pub trait Query: Send + Sync {
     /// #     (lithos_core::schema::aggregate::SchemaId::new(), None, None),
     /// # ];
     /// let staleness: HashMap<_, _> = query.batch_is_stale(&schemas, bank_version)?;
+    /// // Returns true for stale schemas, false for fresh schemas
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     fn batch_is_stale(
