@@ -176,6 +176,32 @@ where
         })
     }
 
+    /// Returns the `PropertyBank` or an error if it doesn't exist.
+    ///
+    /// This is a convenience method that returns a clear error when the
+    /// `PropertyBank` is missing, rather than requiring callers to unwrap
+    /// the `Option` returned by `get_property_bank()`.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError::PropertyBankNotFound` if `PropertyBank`
+    /// doesn't exist, or `SchemaQueryError::Storage` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # let query = todo!("Provide a Query instance");
+    /// let bank = query.require_property_bank()?;
+    /// // Use bank without unwrapping Option
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn require_property_bank(
+        &self,
+    ) -> Result<PropertyBank, SchemaQueryError> {
+        self.get_property_bank()?.ok_or(SchemaQueryError::PropertyBankNotFound)
+    }
+
     /// Returns `true` if the stored schema for `id` is stale.
     ///
     /// # Errors
@@ -449,6 +475,46 @@ mod tests {
                 )
                 .expect("Staleness check should succeed");
             assert!(stale, "Created-at mismatch should be stale");
+        }
+
+        #[test]
+        fn require_property_bank_returns_error_when_missing() {
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+
+            let result = qry.require_property_bank();
+
+            assert!(result.is_err(), "Should return error when bank missing");
+            assert!(
+                matches!(result, Err(SchemaQueryError::PropertyBankNotFound)),
+                "Should return PropertyBankNotFound error"
+            );
+        }
+
+        #[test]
+        fn require_property_bank_returns_bank_when_present() {
+            use crate::schema::{
+                RedbSchemaCommand, adapter::command::CommandAdapter,
+                bank::PropertyBank,
+            };
+
+            let (_dir, db) =
+                fixtures::test_db().expect("Failed to create test DB");
+            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
+            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+
+            // Save PropertyBank
+            let bank = PropertyBank::new();
+            cmd.save_property_bank(&bank).expect("Save should succeed");
+
+            // WHEN: Requiring PropertyBank
+            let result = qry.require_property_bank();
+
+            // THEN: Bank is returned without Option wrapping
+            assert!(result.is_ok(), "Should return bank when present");
+            let loaded_bank = result.expect("Should unwrap to PropertyBank");
+            assert_eq!(loaded_bank.version(), bank.version());
         }
     }
 }

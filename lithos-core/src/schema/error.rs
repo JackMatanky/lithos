@@ -237,6 +237,16 @@ pub enum SchemaQueryError {
         /// Name or identifier.
         name: Box<str>,
     },
+
+    /// `PropertyBank` not found in database.
+    ///
+    /// This error indicates that the `PropertyBank` singleton has not been
+    /// initialized. `PropertyBank` must be created before querying schemas.
+    #[error(
+        "PropertyBank not found in database - initialize by loading schema \
+         files or creating properties"
+    )]
+    PropertyBankNotFound,
 }
 
 /// Schema ingestion errors.
