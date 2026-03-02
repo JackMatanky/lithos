@@ -58,6 +58,65 @@ impl<'db> QueryAdapter<'db> {
     }
 }
 
+/// Helper function to check if a stored schema is fresh.
+///
+/// Returns `Ok(true)` if fresh, `Ok(false)` if stale.
+fn check_schema_freshness(
+    stored: &rkyv::Archived<StoredMetadata>,
+    id: SchemaId,
+    created_at: Option<Timestamp>,
+    modified_at: Option<Timestamp>,
+    bank_version: BankVersion,
+) -> Result<bool, DbError> {
+    // Deserialize only the fields we need
+    let stored_version: BankVersion = rkyv::deserialize::<
+        BankVersion,
+        rkyv::rancor::Error,
+    >(&stored.bank_version)
+    .map_err(|e| DbError::Deserialization(e.to_string()))?;
+
+    if stored_version != bank_version {
+        return Ok(false); // Not fresh: version mismatch
+    }
+
+    // Verify file identity via created_at when possible
+    if let (Some(file_created), Some(archived_created)) =
+        (created_at, stored.created_at.as_ref())
+    {
+        let stored_created: Timestamp = rkyv::deserialize::<
+            Timestamp,
+            rkyv::rancor::Error,
+        >(archived_created)
+        .map_err(|e| DbError::Deserialization(e.to_string()))?;
+
+        if file_created.as_secs() != stored_created.as_secs() {
+            return Ok(false); // Not fresh: created_at mismatch
+        }
+    } else if created_at.is_some() != stored.created_at.is_some() {
+        tracing::warn!(
+            schema_id = %id,
+            "Cannot verify schema identity: created_at unavailable"
+        );
+    } else {
+        // Both are None - no timestamp to verify
+    }
+
+    // Check modified time
+    if let (Some(file_mtime), Some(archived_mtime)) =
+        (modified_at, stored.modified_at.as_ref())
+    {
+        let stored_mtime: Timestamp =
+            rkyv::deserialize::<Timestamp, rkyv::rancor::Error>(archived_mtime)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+
+        if stored_mtime.as_secs() < file_mtime.as_secs() {
+            return Ok(false); // Not fresh: file modified
+        }
+    }
+
+    Ok(true) // Fresh
+}
+
 impl Query for QueryAdapter<'_> {
     type Error = DbError;
 
@@ -67,6 +126,95 @@ impl Query for QueryAdapter<'_> {
         F: FnOnce(&BatchReader) -> Result<R, Self::Error>,
     {
         self.db.batch_read(f)
+    }
+
+    #[inline]
+    fn batch_find_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<std::collections::HashMap<SchemaId, Schema>, Self::Error> {
+        use std::collections::HashMap;
+
+        self.db.batch_read(|reader| {
+            let mut results = HashMap::with_capacity(ids.len());
+
+            for id in ids {
+                let id_key = id.into_uuid().to_string();
+
+                let Some(stored) = reader
+                    .get_owned::<StoredSchema>(SCHEMA_BY_ID, id_key.as_str())?
+                else {
+                    continue; // Skip missing schemas
+                };
+
+                // Validate schema-metadata consistency to detect corruption
+                let metadata_exists = reader
+                    .get_owned::<StoredMetadata>(
+                        SCHEMA_METADATA,
+                        id_key.as_str(),
+                    )?
+                    .is_some();
+
+                if !metadata_exists {
+                    return Err(DbError::Corruption(format!(
+                        "schema {} exists but metadata is missing (database \
+                         corruption detected)",
+                        id.as_uuid()
+                    )));
+                }
+
+                let schema = Schema::try_from(stored).map_err(
+                    |e: super::super::error::SchemaError| {
+                        DbError::Deserialization(e.to_string())
+                    },
+                )?;
+                results.insert(*id, schema);
+            }
+
+            Ok(results)
+        })
+    }
+
+    #[inline]
+    fn batch_is_stale(
+        &self,
+        schemas: &[super::super::ports::StalenessCheck],
+        bank_version: BankVersion,
+    ) -> Result<std::collections::HashMap<SchemaId, bool>, Self::Error> {
+        use std::collections::HashMap;
+
+        self.db.batch_read(|reader| {
+            let mut results = HashMap::with_capacity(schemas.len());
+
+            for &(id, created_at, modified_at) in schemas {
+                // Check if metadata exists (missing = stale)
+                let Some(is_fresh_result) = reader
+                    .get::<StoredMetadata, _, _>(
+                        SCHEMA_METADATA,
+                        id.into_uuid().to_string().as_str(),
+                        |stored| {
+                            check_schema_freshness(
+                                stored,
+                                id,
+                                created_at,
+                                modified_at,
+                                bank_version,
+                            )
+                        },
+                    )?
+                else {
+                    // Missing metadata = stale
+                    results.insert(id, true);
+                    continue;
+                };
+
+                // Invert: is_fresh -> is_stale
+                let is_fresh = is_fresh_result?;
+                results.insert(id, !is_fresh);
+            }
+
+            Ok(results)
+        })
     }
 
     #[inline]

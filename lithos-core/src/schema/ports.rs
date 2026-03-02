@@ -12,6 +12,11 @@ use crate::db::BatchReader;
 /// A schema name-to-ID pair returned by [`Query::list_name_id_pairs`].
 pub type NameIdPair = (SchemaName, SchemaId);
 
+/// A staleness check tuple: (`SchemaId`, `created_at`, `modified_at`).
+///
+/// Used by [`Query::batch_is_stale`] to check multiple schemas efficiently.
+pub type StalenessCheck = (SchemaId, Option<Timestamp>, Option<Timestamp>);
+
 /// Command port for Schema write operations.
 ///
 /// # Examples
@@ -133,6 +138,13 @@ pub trait Command: Send + Sync {
 ///         Ok(None)
 ///     }
 ///
+///     fn batch_find_by_ids(
+///         &self,
+///         _ids: &[lithos_core::schema::aggregate::SchemaId],
+///     ) -> Result<std::collections::HashMap<lithos_core::schema::aggregate::SchemaId, lithos_core::schema::aggregate::Schema>, Self::Error> {
+///         Ok(std::collections::HashMap::new())
+///     }
+///
 ///     fn get_property_bank(
 ///         &self,
 ///     ) -> Result<Option<lithos_core::schema::bank::PropertyBank>, Self::Error> {
@@ -161,6 +173,14 @@ pub trait Command: Send + Sync {
 ///         _bank_version: lithos_core::schema::bank::BankVersion,
 ///     ) -> Result<bool, Self::Error> {
 ///         Ok(false)
+///     }
+///
+///     fn batch_is_stale(
+///         &self,
+///         _schemas: &[lithos_core::schema::ports::StalenessCheck],
+///         _bank_version: lithos_core::schema::bank::BankVersion,
+///     ) -> Result<std::collections::HashMap<lithos_core::schema::aggregate::SchemaId, bool>, Self::Error> {
+///         Ok(std::collections::HashMap::new())
 ///     }
 ///
 ///     fn list(
@@ -199,6 +219,59 @@ pub trait Command: Send + Sync {
 pub trait Query: Send + Sync {
     /// Storage error type for query operations.
     type Error: std::error::Error;
+
+    /// Find multiple schemas by their IDs in a single transaction.
+    ///
+    /// This is more efficient than calling `find_by_id` multiple times,
+    /// as it uses a single database transaction for all lookups.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # use std::collections::HashMap;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let ids = vec![
+    /// #     lithos_core::schema::aggregate::SchemaId::new(),
+    /// #     lithos_core::schema::aggregate::SchemaId::new(),
+    /// # ];
+    /// let schemas: HashMap<_, _> = query.batch_find_by_ids(&ids)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    fn batch_find_by_ids(
+        &self,
+        ids: &[SchemaId],
+    ) -> Result<std::collections::HashMap<SchemaId, Schema>, Self::Error>;
+
+    /// Check staleness for multiple schemas in a single transaction.
+    ///
+    /// This is more efficient than calling `is_schema_stale` multiple times,
+    /// as it uses a single database transaction for all staleness checks.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # use std::collections::HashMap;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let bank_version = lithos_core::schema::bank::BankVersion::initial();
+    /// # let schemas = vec![
+    /// #     (lithos_core::schema::aggregate::SchemaId::new(), None, None),
+    /// # ];
+    /// let staleness: HashMap<_, _> = query.batch_is_stale(&schemas, bank_version)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    fn batch_is_stale(
+        &self,
+        schemas: &[StalenessCheck],
+        bank_version: BankVersion,
+    ) -> Result<std::collections::HashMap<SchemaId, bool>, Self::Error>;
 
     /// Execute multiple read operations within a single transaction.
     ///
