@@ -120,52 +120,74 @@ impl Query for QueryAdapter<'_> {
         modified_at: Option<Timestamp>,
         bank_version: BankVersion,
     ) -> Result<bool, Self::Error> {
-        let Some(_stored) = self
-            .db
-            .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
-        else {
-            // No stored record — always stale.
-            return Ok(true);
-        };
+        // Zero-copy metadata check using closure-based API.
+        // This eliminates the double deserialization in the old implementation:
+        // - Old: get() to check existence, then get_owned() to deserialize full
+        //   struct
+        // - New: Single zero-copy read with minimal field deserialization
+        let Some(result) =
+            self.with_metadata(id, |stored| -> Result<bool, DbError> {
+                // Deserialize only the primitive fields we need to compare.
+                // This is faster than get_owned() which allocates and
+                // deserializes the entire struct including
+                // fields we don't need.
+                let stored_version: BankVersion =
+                    rkyv::deserialize::<BankVersion, rkyv::rancor::Error>(
+                        &stored.bank_version,
+                    )
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
 
-        let id_key = id.into_uuid().to_string();
-        let Some(stored) = self
-            .db
-            .get_owned::<StoredMetadata>(SCHEMA_METADATA, id_key.as_str())?
-        else {
-            return Ok(true);
-        };
-
-        if stored.bank_version != bank_version {
-            return Ok(true);
-        }
-
-        // Verify file identity via created_at when possible.
-        match (created_at, stored.created_at) {
-            (Some(file_created), Some(stored_created)) => {
-                if file_created.as_secs() != stored_created.as_secs() {
-                    return Ok(true);
+                if stored_version != bank_version {
+                    return Ok(false);
                 }
-            }
-            (None, Some(_)) | (Some(_), None) => {
-                tracing::warn!(
-                    schema_id = %id,
-                    "Cannot verify schema identity: created_at unavailable"
-                );
-            }
-            (None, None) => {}
-        }
 
-        // Compare file mtime with stored mtime (both are Option<Timestamp>).
-        // Schema is stale if file has been modified since last ingestion.
-        if let (Some(file_mtime), Some(stored_mtime)) =
-            (modified_at, stored.modified_at)
-            && stored_mtime.as_secs() < file_mtime.as_secs()
-        {
+                // Verify file identity via created_at when possible.
+                if let (Some(file_created), Some(archived_created)) =
+                    (created_at, stored.created_at.as_ref())
+                {
+                    let stored_created: Timestamp =
+                        rkyv::deserialize::<Timestamp, rkyv::rancor::Error>(
+                            archived_created,
+                        )
+                        .map_err(|e| DbError::Deserialization(e.to_string()))?;
+
+                    if file_created.as_secs() != stored_created.as_secs() {
+                        return Ok(false);
+                    }
+                } else if created_at.is_some() != stored.created_at.is_some() {
+                    tracing::warn!(
+                        schema_id = %id,
+                        "Cannot verify schema identity: created_at unavailable"
+                    );
+                } else {
+                    // Both are None - no timestamp to verify
+                }
+
+                // Compare file mtime with stored mtime.
+                if let (Some(file_mtime), Some(archived_mtime)) =
+                    (modified_at, stored.modified_at.as_ref())
+                {
+                    let stored_mtime: Timestamp =
+                        rkyv::deserialize::<Timestamp, rkyv::rancor::Error>(
+                            archived_mtime,
+                        )
+                        .map_err(|e| DbError::Deserialization(e.to_string()))?;
+
+                    if stored_mtime.as_secs() < file_mtime.as_secs() {
+                        return Ok(false);
+                    }
+                }
+
+                Ok(true)
+            })?
+        else {
+            // Metadata not found → schema is stale.
             return Ok(true);
-        }
+        };
 
-        Ok(false)
+        // Flatten the nested Result
+        let is_fresh = result?;
+        Ok(!is_fresh)
     }
 
     #[inline]
