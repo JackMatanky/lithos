@@ -120,11 +120,7 @@ impl<'db> SchemaService<'db> {
         type TimestampPair = (Option<Timestamp>, Option<Timestamp>);
         type StalenessCheck = (SchemaId, Option<Timestamp>, Option<Timestamp>);
 
-        // ── Step 1: file ingestion ──────────────────────────────────────────
-        let raw_bank = ingestor.load_raw_property_bank()?;
-        let raw_schemas_with_times = ingestor.scan_raw_schemas()?;
-
-        // ── Step 2: read existing DB state ──────────────────────────────────
+        // ── Step 1: read existing DB state ──────────────────────────────────
         let existing_pairs = self.query.list_name_id_pairs()?;
         let stored_bank = self.query.get_property_bank()?;
 
@@ -135,12 +131,35 @@ impl<'db> SchemaService<'db> {
             name_to_id.insert(name, id);
         }
 
-        // ── Step 3: build PropertyBank ──────────────────────────────────────
-        let bank = PropertyBank::from_raw(raw_bank, stored_bank.as_ref())?;
+        // ── Step 2: PropertyBank staleness check ────────────────────────────
+        // Check if we can use stored bank or need to rebuild from files
+        let (bank, bank_stale) = if let Some(stored) = stored_bank {
+            let stored_version = stored.version();
+            let is_stale = self.query.is_bank_stale(stored_version)?;
+
+            if is_stale {
+                // Bank is stale - rebuild from raw files
+                let raw_bank = ingestor.load_raw_property_bank()?;
+                let rebuilt_bank =
+                    PropertyBank::from_raw(raw_bank, Some(&stored))?;
+                (rebuilt_bank, true)
+            } else {
+                // Bank is fresh - use stored version
+                (stored, false)
+            }
+        } else {
+            // No stored bank - load and build from raw files
+            let raw_bank = ingestor.load_raw_property_bank()?;
+            let new_bank = PropertyBank::from_raw(raw_bank, None)?;
+            (new_bank, true)
+        };
+
         let current_bank_version = bank.version();
 
+        // ── Step 3: scan raw schemas ────────────────────────────────────────
+        let raw_schemas_with_times = ingestor.scan_raw_schemas()?;
+
         // ── Step 4: staleness partitioning ─────────────────────────────────
-        let bank_stale = self.query.is_bank_stale(current_bank_version)?;
 
         // Build schema ID and staleness check data in one pass
         let mut schema_ids: Vec<SchemaId> =
