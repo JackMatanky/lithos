@@ -181,7 +181,7 @@ impl Query for QueryAdapter<'_> {
                     .map_err(|e| DbError::Deserialization(e.to_string()))?;
 
                 if stored_version != bank_version {
-                    return Ok(false);
+                    return Ok(false); // Not fresh: version mismatch
                 }
 
                 // Verify file identity via created_at when possible.
@@ -195,7 +195,7 @@ impl Query for QueryAdapter<'_> {
                         .map_err(|e| DbError::Deserialization(e.to_string()))?;
 
                     if file_created.as_secs() != stored_created.as_secs() {
-                        return Ok(false);
+                        return Ok(false); // Not fresh: created_at mismatch
                     }
                 } else if created_at.is_some() != stored.created_at.is_some() {
                     tracing::warn!(
@@ -217,11 +217,11 @@ impl Query for QueryAdapter<'_> {
                         .map_err(|e| DbError::Deserialization(e.to_string()))?;
 
                     if stored_mtime.as_secs() < file_mtime.as_secs() {
-                        return Ok(false);
+                        return Ok(false); // Not fresh: file modified after storage
                     }
                 }
 
-                Ok(true)
+                Ok(true) // Fresh: all checks passed
             })?
         else {
             // Metadata not found → schema is stale.
