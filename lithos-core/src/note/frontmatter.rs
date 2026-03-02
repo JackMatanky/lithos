@@ -354,7 +354,7 @@ where
                 actual,
             } => FrontmatterError::TypeMismatch {
                 key: "".into(),
-                expected: format!("{expected}").into(),
+                expected,
                 actual,
             },
             super::value::FieldValueError::InvalidDateTimestamp {
@@ -393,7 +393,7 @@ where
                 actual,
             } => FrontmatterError::TypeMismatch {
                 key: "".into(),
-                expected: format!("{expected}").into(),
+                expected,
                 actual,
             },
             super::value::FieldValueError::InvalidDateTimestamp {
@@ -777,7 +777,7 @@ mod tests {
                         actual,
                     })
                         if error_key.as_ref() == "s"
-                            && expected.as_ref() == "boolean"
+                            && *expected == FieldValueType::Boolean
                             && *actual == FieldValueType::String
                 ),
                 "type mismatch should error: {result:?}"
@@ -855,7 +855,7 @@ mod tests {
                         actual,
                     })
                         if error_key.as_ref() == "n"
-                            && expected.as_ref() == "string"
+                            && *expected == FieldValueType::String
                             && *actual == FieldValueType::Number
                 ),
                 "type mismatch should error: {result:?}"

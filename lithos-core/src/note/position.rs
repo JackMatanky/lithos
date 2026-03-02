@@ -249,14 +249,7 @@ impl TryFrom<usize> for SourceByteOffset {
 impl From<SourceByteOffset> for usize {
     #[inline]
     fn from(offset: SourceByteOffset) -> Self {
-        // Safe because u32 always fits in usize on Lithos supported platforms
-        #[expect(
-            clippy::as_conversions,
-            reason = "Safe conversion from u32 to usize"
-        )]
-        {
-            offset.0 as usize
-        }
+        usize::try_from(offset.0).unwrap_or_default()
     }
 }
 

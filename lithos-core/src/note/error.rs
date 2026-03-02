@@ -258,7 +258,7 @@ pub enum FrontmatterError {
         /// The key that was requested.
         key: Box<str>,
         /// The expected type description.
-        expected: Box<str>,
+        expected: FieldValueType,
         /// The actual runtime type.
         actual: FieldValueType,
     },

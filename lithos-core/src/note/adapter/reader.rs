@@ -203,6 +203,7 @@ impl<'config> NoteReader<'config> {
     ) -> Result<(), NoteError> {
         let parsed = self.parse(reader, path)?;
         parsed.apply_to(note);
+        note.shrink_to_fit();
         Ok(())
     }
 
@@ -223,6 +224,7 @@ impl<'config> NoteReader<'config> {
     ) -> Result<(), NoteError> {
         let parsed = self.parse_str(markdown)?;
         parsed.apply_to(note);
+        note.shrink_to_fit();
         Ok(())
     }
 }

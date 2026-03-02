@@ -39,12 +39,12 @@ struct IndexData {
 
 #[derive(Debug, Default)]
 struct TaskIndexData {
-    completed_dates: Vec<Box<str>>,
-    created_dates: Vec<Box<str>>,
-    due_dates: Vec<Box<str>>,
-    reminder_dates: Vec<Box<str>>,
+    completed_dates: Vec<i64>,
+    created_dates: Vec<i64>,
+    due_dates: Vec<i64>,
+    reminder_dates: Vec<i64>,
     statuses: Vec<Box<str>>,
-    priorities: Vec<Box<str>>,
+    priorities: Vec<f64>,
     projects: Vec<Box<str>>,
 }
 
@@ -177,20 +177,20 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             data.statuses.push(task.status().as_str().into());
 
             if let Some(timestamp) = task.created_at() {
-                data.created_dates.push(Self::format_i64(timestamp.as_i64()));
+                data.created_dates.push(timestamp.as_i64());
             }
             if let Some(timestamp) = task.due_at() {
-                data.due_dates.push(Self::format_i64(timestamp.as_i64()));
+                data.due_dates.push(timestamp.as_i64());
             }
             if let Some(timestamp) = task.reminder_at() {
-                data.reminder_dates.push(Self::format_i64(timestamp.as_i64()));
+                data.reminder_dates.push(timestamp.as_i64());
             }
             if let Some(timestamp) = task.completed_at() {
-                data.completed_dates.push(Self::format_i64(timestamp.as_i64()));
+                data.completed_dates.push(timestamp.as_i64());
             }
 
             if let Some(priority) = task.metadata().get_number("priority") {
-                data.priorities.push(Self::format_f64(priority));
+                data.priorities.push(priority);
             }
             if let Some(project) = task.metadata().get_string("project") {
                 data.projects.push(project.into());
@@ -205,37 +205,44 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         index_data: &TaskIndexData,
         id_str: &str,
     ) -> Result<(), DbError> {
+        let mut itoa_buffer = itoa::Buffer::new();
+        let mut ryu_buffer = ryu::Buffer::new();
+
         for status in &index_data.statuses {
             batch.multimap_insert(TASKS_BY_STATUS, status.as_ref(), id_str)?;
         }
         for date in &index_data.created_dates {
             batch.multimap_insert(
                 TASKS_BY_CREATED_DATE,
-                date.as_ref(),
+                itoa_buffer.format(*date),
                 id_str,
             )?;
         }
         for date in &index_data.due_dates {
-            batch.multimap_insert(TASKS_BY_DUE_DATE, date.as_ref(), id_str)?;
+            batch.multimap_insert(
+                TASKS_BY_DUE_DATE,
+                itoa_buffer.format(*date),
+                id_str,
+            )?;
         }
         for date in &index_data.reminder_dates {
             batch.multimap_insert(
                 TASKS_BY_REMINDER_DATE,
-                date.as_ref(),
+                itoa_buffer.format(*date),
                 id_str,
             )?;
         }
         for date in &index_data.completed_dates {
             batch.multimap_insert(
                 TASKS_BY_COMPLETED_DATE,
-                date.as_ref(),
+                itoa_buffer.format(*date),
                 id_str,
             )?;
         }
         for priority in &index_data.priorities {
             batch.multimap_insert(
                 TASKS_BY_PRIORITY,
-                priority.as_ref(),
+                ryu_buffer.format(*priority),
                 id_str,
             )?;
         }
@@ -254,37 +261,44 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         index_data: &TaskIndexData,
         id_str: &str,
     ) -> Result<(), DbError> {
+        let mut itoa_buffer = itoa::Buffer::new();
+        let mut ryu_buffer = ryu::Buffer::new();
+
         for status in &index_data.statuses {
             batch.multimap_remove(TASKS_BY_STATUS, status.as_ref(), id_str)?;
         }
         for date in &index_data.created_dates {
             batch.multimap_remove(
                 TASKS_BY_CREATED_DATE,
-                date.as_ref(),
+                itoa_buffer.format(*date),
                 id_str,
             )?;
         }
         for date in &index_data.due_dates {
-            batch.multimap_remove(TASKS_BY_DUE_DATE, date.as_ref(), id_str)?;
+            batch.multimap_remove(
+                TASKS_BY_DUE_DATE,
+                itoa_buffer.format(*date),
+                id_str,
+            )?;
         }
         for date in &index_data.reminder_dates {
             batch.multimap_remove(
                 TASKS_BY_REMINDER_DATE,
-                date.as_ref(),
+                itoa_buffer.format(*date),
                 id_str,
             )?;
         }
         for date in &index_data.completed_dates {
             batch.multimap_remove(
                 TASKS_BY_COMPLETED_DATE,
-                date.as_ref(),
+                itoa_buffer.format(*date),
                 id_str,
             )?;
         }
         for priority in &index_data.priorities {
             batch.multimap_remove(
                 TASKS_BY_PRIORITY,
-                priority.as_ref(),
+                ryu_buffer.format(*priority),
                 id_str,
             )?;
         }

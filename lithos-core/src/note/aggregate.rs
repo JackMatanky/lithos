@@ -466,6 +466,17 @@ impl Note {
     pub fn take_events(&mut self) -> Vec<NoteEvents> {
         self.pending_events.take()
     }
+
+    /// Shrinks the capacity of all internal collections as much as possible.
+    #[inline]
+    pub fn shrink_to_fit(&mut self) {
+        self.content.links.shrink_to_fit();
+        self.content.tags.shrink_to_fit();
+        self.content.headings.shrink_to_fit();
+        self.content.lists.shrink_to_fit();
+        self.content.tasks.shrink_to_fit();
+        self.content.sections.shrink_to_fit();
+    }
 }
 
 /// Unique identifier for a Note.
