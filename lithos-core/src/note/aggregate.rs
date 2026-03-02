@@ -142,7 +142,7 @@ pub struct NoteLinks<'note> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "NoteLinks relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'note> Iterator for NoteLinks<'note> {
     type Item = &'note Link;
@@ -150,6 +150,11 @@ impl<'note> Iterator for NoteLinks<'note> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -160,7 +165,7 @@ pub struct NoteTags<'note> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "NoteTags relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'note> Iterator for NoteTags<'note> {
     type Item = &'note Tag;
@@ -168,6 +173,11 @@ impl<'note> Iterator for NoteTags<'note> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -178,7 +188,7 @@ pub struct NoteHeadings<'note> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "NoteHeadings relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'note> Iterator for NoteHeadings<'note> {
     type Item = &'note Heading;
@@ -186,6 +196,11 @@ impl<'note> Iterator for NoteHeadings<'note> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -196,7 +211,7 @@ pub struct NoteTasks<'note> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "NoteTasks relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'note> Iterator for NoteTasks<'note> {
     type Item = &'note Task;
@@ -204,6 +219,11 @@ impl<'note> Iterator for NoteTasks<'note> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -214,7 +234,7 @@ pub struct NoteLists<'note> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "NoteLists relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'note> Iterator for NoteLists<'note> {
     type Item = &'note List;
@@ -222,6 +242,11 @@ impl<'note> Iterator for NoteLists<'note> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -232,7 +257,7 @@ pub struct NoteSections<'note> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "NoteSections relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'note> Iterator for NoteSections<'note> {
     type Item = &'note Section;
@@ -240,6 +265,11 @@ impl<'note> Iterator for NoteSections<'note> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -250,7 +280,7 @@ pub struct NoteEmbeds<'note> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "NoteEmbeds relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'note> Iterator for NoteEmbeds<'note> {
     type Item = &'note Link;
@@ -258,6 +288,12 @@ impl<'note> Iterator for NoteEmbeds<'note> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.by_ref().find(|link| link.is_embed())
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (_, upper) = self.inner.size_hint();
+        (0, upper)
     }
 }
 

@@ -36,12 +36,8 @@ use crate::config::task::StatusSymbol;
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-#[expect(
-    clippy::struct_field_names,
-    reason = "list_type is the clearest name for the list kind."
-)]
 pub struct List {
-    list_type: ListType,
+    kind: ListType,
     items: Vec<ListItem>,
     depth: ListDepth,
 }
@@ -52,7 +48,7 @@ impl List {
     #[must_use]
     pub fn new(list_type: ListType) -> Self {
         Self {
-            list_type,
+            kind: list_type,
             items: Vec::new(),
             depth: ListDepth::root(),
         }
@@ -63,7 +59,7 @@ impl List {
     #[must_use]
     pub fn with_depth(list_type: ListType, depth: ListDepth) -> Self {
         Self {
-            list_type,
+            kind: list_type,
             items: Vec::new(),
             depth,
         }
@@ -78,7 +74,7 @@ impl List {
         capacity: usize,
     ) -> Self {
         Self {
-            list_type,
+            kind: list_type,
             items: Vec::with_capacity(capacity),
             depth,
         }
@@ -94,7 +90,7 @@ impl List {
     #[inline]
     #[must_use]
     pub const fn list_type(&self) -> ListType {
-        self.list_type
+        self.kind
     }
 
     /// Returns the list items in source order.
@@ -183,7 +179,7 @@ pub struct ListItems<'list> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "ListItems relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'list> Iterator for ListItems<'list> {
     type Item = &'list ListItem;
@@ -191,6 +187,11 @@ impl<'list> Iterator for ListItems<'list> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -245,13 +246,16 @@ pub enum ListItem {
 
 #[expect(
     clippy::pattern_type_mismatch,
-    reason = "Accessor methods intentionally use match ergonomics on `&self` \
-              to keep code concise."
+    reason = "Match ergonomics on &self keep accessors concise."
 )]
 impl ListItem {
     /// Returns the source byte position of this list item.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
     pub const fn position(&self) -> SourceByteOffset {
         match self {
             Self::Plain {
@@ -268,6 +272,10 @@ impl ListItem {
     /// Returns the text content of this list item.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
     pub fn text(&self) -> &str {
         match self {
             Self::Plain {
@@ -277,13 +285,17 @@ impl ListItem {
             | Self::Checkbox {
                 text,
                 ..
-            } => text,
+            } => text.as_ref(),
         }
     }
 
     /// Returns the checkbox status symbol if this is a checkbox item.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
     pub const fn status(&self) -> Option<StatusSymbol> {
         match self {
             Self::Checkbox {
@@ -299,6 +311,10 @@ impl ListItem {
     /// Returns the task id if this checkbox was promoted.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
     pub const fn task_id(&self) -> Option<TaskId> {
         match self {
             Self::Checkbox {
@@ -313,6 +329,10 @@ impl ListItem {
 
     /// Sets the task id for a promoted checkbox item.
     #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &mut self"
+    )]
     pub fn set_task_id(&mut self, task_id: TaskId) {
         if let Self::Checkbox {
             task_id: slot,

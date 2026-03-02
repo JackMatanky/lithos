@@ -225,7 +225,7 @@ pub struct TaskTags<'task> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "TaskTags relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'task> Iterator for TaskTags<'task> {
     type Item = &'task Tag;
@@ -233,6 +233,11 @@ impl<'task> Iterator for TaskTags<'task> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -448,17 +453,11 @@ impl TaskTimestamp {
     #[inline]
     #[must_use]
     pub fn now() -> Self {
-        #[expect(
-            clippy::cast_possible_wrap,
-            clippy::as_conversions,
-            reason = "Unix timestamp fits in i64 for Lithos time range"
-        )]
-        Self(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64,
-        )
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        Self(i64::try_from(secs).unwrap_or(i64::MAX))
     }
 
     /// Returns the raw Unix timestamp value.
@@ -494,23 +493,15 @@ impl TaskTimestamp {
     /// for past).
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Timestamp arithmetic is safe"
-    )]
     pub fn seconds_from_now(&self) -> i64 {
-        self.0 - Self::now().0
+        self.0.saturating_sub(Self::now().0)
     }
 
     /// Returns the duration in seconds between this timestamp and another.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Timestamp arithmetic is safe"
-    )]
     pub const fn duration_from(&self, other: Self) -> i64 {
-        self.0 - other.0
+        self.0.saturating_sub(other.0)
     }
 
     /// Returns `true` if this timestamp is within the specified duration
@@ -521,18 +512,14 @@ impl TaskTimestamp {
     /// * `relative_to` - Optional reference time; defaults to system 'now'.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Timestamp arithmetic is safe"
-    )]
     pub fn is_within(
         &self,
         duration_seconds: i64,
         relative_to: Option<Self>,
     ) -> bool {
         let reference = relative_to.unwrap_or_else(Self::now);
-        let diff = (self.0 - reference.0).abs();
-        diff <= duration_seconds
+        let diff = self.0.saturating_sub(reference.0).unsigned_abs();
+        diff <= duration_seconds.unsigned_abs()
     }
 }
 
@@ -560,29 +547,20 @@ impl From<TaskTimestamp> for i64 {
 impl From<std::time::SystemTime> for TaskTimestamp {
     #[inline]
     fn from(time: std::time::SystemTime) -> Self {
-        #[expect(
-            clippy::cast_possible_wrap,
-            clippy::as_conversions,
-            reason = "Unix timestamp fits in i64 for Lithos time range"
-        )]
-        Self(
-            time.duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64,
-        )
+        let secs = time
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        Self(i64::try_from(secs).unwrap_or(i64::MAX))
     }
 }
 
 impl From<TaskTimestamp> for std::time::SystemTime {
     #[inline]
     fn from(timestamp: TaskTimestamp) -> Self {
-        #[expect(
-            clippy::cast_sign_loss,
-            clippy::as_conversions,
-            reason = "Timestamp is non-negative for Duration conversion"
-        )]
+        let secs = u64::try_from(timestamp.0).unwrap_or_default();
         std::time::UNIX_EPOCH
-            .checked_add(std::time::Duration::from_secs(timestamp.0 as u64))
+            .checked_add(std::time::Duration::from_secs(secs))
             .unwrap_or(std::time::UNIX_EPOCH)
     }
 }
@@ -785,7 +763,7 @@ pub struct TaskMetadataFields<'meta> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "TaskMetadataFields relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'meta> Iterator for TaskMetadataFields<'meta> {
     type Item = (&'meta TaskFieldKey, &'meta FieldValue);
@@ -793,6 +771,11 @@ impl<'meta> Iterator for TaskMetadataFields<'meta> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 

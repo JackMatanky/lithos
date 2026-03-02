@@ -5,8 +5,9 @@
     missing_docs,
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
+    clippy::missing_trait_methods,
     reason = "rkyv derives generate archived/resolver items that are missing \
-              docs"
+              docs, Error trait requires default impls that we don't use"
 )]
 
 use std::collections::HashMap;
@@ -414,7 +415,7 @@ pub struct FieldObjectFields<'value> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "FieldObjectFields relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'value> Iterator for FieldObjectFields<'value> {
     type Item = (&'value str, &'value FieldValue);
@@ -422,6 +423,11 @@ impl<'value> Iterator for FieldObjectFields<'value> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(key, value)| (key.as_ref(), value))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -432,7 +438,7 @@ pub struct FieldArrayItems<'value> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "FieldArrayItems relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'value> Iterator for FieldArrayItems<'value> {
     type Item = &'value FieldValue;
@@ -440,6 +446,11 @@ impl<'value> Iterator for FieldArrayItems<'value> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -540,17 +551,19 @@ impl core::fmt::Display for FieldValueYamlError {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Default trait methods are sufficient for this simple error type"
-)]
-impl std::error::Error for FieldValueYamlError {}
+impl std::error::Error for FieldValueYamlError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Default trait methods are sufficient for this simple error type"
-)]
-impl std::error::Error for FieldValueParseError {}
+impl std::error::Error for FieldValueParseError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
 
 impl core::fmt::Display for FieldValueError {
     #[inline]
@@ -582,11 +595,12 @@ impl core::fmt::Display for FieldValueError {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Default trait methods are sufficient for this simple error type"
-)]
-impl std::error::Error for FieldValueError {}
+impl std::error::Error for FieldValueError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
 
 // ----------------------------------------------------------- //
 //                      Trait Definitions                      //

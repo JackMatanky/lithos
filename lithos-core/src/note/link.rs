@@ -269,13 +269,12 @@ impl Anchor {
     }
 
     /// Returns the anchor text (heading text or block ID).
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Matching on &Anchor with non-Copy fields uses match \
-                  ergonomics."
-    )]
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
     pub fn text(&self) -> &str {
         match self {
             Self::BlockRef(s) => s.as_str(),
@@ -473,8 +472,7 @@ impl Link {
 
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Matching on &Target with non-Copy fields uses match \
-                  ergonomics."
+        reason = "Match ergonomics on &Target"
     )]
     fn validate_target(target: &Target) -> Result<(), NoteError> {
         let is_empty = match target {
@@ -519,13 +517,12 @@ impl Target {
     }
 
     /// Returns the path if resolved, or the raw string if unresolved.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Matching on &Target with non-Copy fields uses match \
-                  ergonomics."
-    )]
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &Target"
+    )]
     pub fn vault_path(&self) -> Option<&str> {
         match self {
             Self::External {

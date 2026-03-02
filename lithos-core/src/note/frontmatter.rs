@@ -423,7 +423,7 @@ pub(crate) struct FrontmatterFields<'frontmatter> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "FrontmatterFields relies on default iterator methods."
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'frontmatter> Iterator for FrontmatterFields<'frontmatter> {
     type Item = (&'frontmatter str, &'frontmatter FieldValue);
@@ -431,6 +431,11 @@ impl<'frontmatter> Iterator for FrontmatterFields<'frontmatter> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(key, value)| (key.as_ref(), value))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -466,7 +471,7 @@ impl<'frontmatter> AliasValues<'frontmatter> {
 
 #[expect(
     clippy::missing_trait_methods,
-    reason = "AliasValues relies on default Iterator methods"
+    reason = "Iterator wrapper forwards core methods only."
 )]
 impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
     type Item = &'frontmatter str;
@@ -483,6 +488,22 @@ impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
                     }
                 }
                 None
+            }
+        }
+    }
+
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match &self.source {
+            AliasSource::Empty | AliasSource::Single(None) => (0, Some(0)),
+            AliasSource::Single(Some(_)) => (1, Some(1)),
+            AliasSource::Array(iter) => {
+                let (_, upper) = iter.size_hint();
+                (0, upper)
             }
         }
     }
