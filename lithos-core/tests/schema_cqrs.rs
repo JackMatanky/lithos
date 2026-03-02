@@ -66,7 +66,7 @@ mod property_bank {
         let test_db = TestDb::new()?;
         let (command, query) = setup_cqrs(test_db.db());
 
-        let initial = query.find_property_bank()?;
+        let initial = query.get_property_bank()?;
         assert!(
             initial.is_none(),
             "Fresh database should have no PropertyBank"
@@ -81,7 +81,7 @@ mod property_bank {
         command.save_property_bank(&bank)?;
 
         // THEN: PropertyBank is retrievable
-        let loaded = query.find_property_bank()?;
+        let loaded = query.get_property_bank()?;
         assert!(loaded.is_some(), "PropertyBank should exist after save");
 
         let loaded_bank = loaded.expect("just verified bank exists");
@@ -124,7 +124,7 @@ mod property_bank {
         command.save_property_bank(&bank)?;
 
         // THEN: Loaded bank reflects updates
-        let loaded = query.find_property_bank()?.expect("Bank should exist");
+        let loaded = query.get_property_bank()?.expect("Bank should exist");
         assert_eq!(
             loaded.all().count(),
             2,
@@ -183,7 +183,7 @@ mod property_bank {
             "Version should increment after second property"
         );
 
-        let loaded = query.find_property_bank()?.expect("Bank should exist");
+        let loaded = query.get_property_bank()?.expect("Bank should exist");
         assert_eq!(
             loaded.version(),
             version_after_second,
@@ -233,7 +233,7 @@ mod property_bank {
         );
 
         // THEN: PropertyBank is intact
-        let loaded = query.find_property_bank()?;
+        let loaded = query.get_property_bank()?;
         assert!(
             loaded.is_some(),
             "PropertyBank should survive database restart"
@@ -285,7 +285,7 @@ mod property_bank {
 
         // WHEN: Saving and loading
         command.save_property_bank(&bank)?;
-        let loaded = query.find_property_bank()?.expect("Bank should exist");
+        let loaded = query.get_property_bank()?.expect("Bank should exist");
 
         // THEN: All fields preserved
         assert_eq!(
@@ -333,7 +333,7 @@ mod property_bank {
         command.save_property_bank(&bank)?;
 
         // THEN: Loaded bank is empty but valid
-        let loaded = query.find_property_bank()?.expect("Bank should exist");
+        let loaded = query.get_property_bank()?.expect("Bank should exist");
         assert_eq!(loaded.all().count(), 0, "Bank should be empty");
         assert_eq!(loaded.version(), original_version);
 
@@ -368,7 +368,7 @@ mod property_bank {
         command.save_property_bank(&bank)?;
 
         // WHEN: Loading bank
-        let loaded = query.find_property_bank()?.expect("Bank should exist");
+        let loaded = query.get_property_bank()?.expect("Bank should exist");
 
         // THEN: Name lookup works correctly
         let alpha_name = PropertyName::new("alpha")?;
@@ -410,7 +410,7 @@ mod property_bank {
         command.save_property_bank(&bank)?;
 
         // WHEN: Loading and iterating
-        let loaded = query.find_property_bank()?.expect("Bank should exist");
+        let loaded = query.get_property_bank()?.expect("Bank should exist");
         let prop_names: Vec<_> =
             loaded.all().map(|p| p.name().as_str()).collect();
 
@@ -1002,7 +1002,7 @@ mod cross_aggregate {
 
         // THEN: Both retrievable independently
         let loaded_bank =
-            query.find_property_bank()?.expect("Bank should exist");
+            query.get_property_bank()?.expect("Bank should exist");
         let loaded_schema =
             query.find_by_id(schema_id)?.expect("Schema should exist");
 
@@ -1077,7 +1077,7 @@ mod cross_aggregate {
 
         // THEN: PropertyBank version unchanged
         let loaded_bank =
-            query.find_property_bank()?.expect("Bank should exist");
+            query.get_property_bank()?.expect("Bank should exist");
         assert_eq!(loaded_bank.version(), bank_version);
 
         // Schema still exists

@@ -66,7 +66,7 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
+    fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
         let Some(metadata) = self
             .db
             .get_owned::<StoredMetadata>(BANK_METADATA, PROPERTY_BANK_KEY)?

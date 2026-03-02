@@ -175,7 +175,7 @@ fn schema_fresh_when_metadata_matches() -> TestResult {
         .expect("schema should exist");
     let schema_id = schema.id();
 
-    let bank = query2.find_property_bank()?.expect("bank should exist");
+    let bank = query2.get_property_bank()?.expect("bank should exist");
     let bank_version = bank.version();
 
     let schema_path = dir.path().join("schemas/task.json");
@@ -227,7 +227,7 @@ fn schema_stale_when_modified_differs() -> TestResult {
         .expect("schema should exist");
     let schema_id = schema.id();
 
-    let bank = query2.find_property_bank()?.expect("bank should exist");
+    let bank = query2.get_property_bank()?.expect("bank should exist");
     let bank_version = bank.version();
 
     let schema_path = dir.path().join("schemas/task.json");
@@ -282,7 +282,7 @@ fn schema_stale_when_bank_version_differs() -> TestResult {
         .expect("schema should exist");
     let schema_id = schema.id();
 
-    let bank = query2.find_property_bank()?.expect("bank should exist");
+    let bank = query2.get_property_bank()?.expect("bank should exist");
     let bank_version = bank.version();
 
     let schema_path = dir.path().join("schemas/task.json");

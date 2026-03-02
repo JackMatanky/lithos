@@ -9,7 +9,7 @@
 //!   scan_raw_schemas()             → Vec<(RawSchema, Option<Timestamp>)>
 //! Query
 //!   list_name_id_pairs()           → existing name → id map
-//!   find_property_bank()           → Option<PropertyBank>
+//!   get_property_bank()           → Option<PropertyBank>
 //! PropertyBank::from_raw()         → PropertyBank
 //! Staleness partitioning
 //!   is_bank_stale() / is_schema_stale()
@@ -125,7 +125,7 @@ impl<'db> SchemaService<'db> {
 
         // ── Step 2: read existing DB state ──────────────────────────────────
         let existing_pairs = self.query.list_name_id_pairs()?;
-        let stored_bank = self.query.find_property_bank()?;
+        let stored_bank = self.query.get_property_bank()?;
 
         // Build name → id lookup from DB pairs.
         let mut name_to_id: HashMap<SchemaName, SchemaId> =

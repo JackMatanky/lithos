@@ -170,7 +170,8 @@ impl Command for CommandAdapter<'_> {
         let id_uuid = id.into_uuid();
         let id_key = id_uuid.to_string();
 
-        // Atomic delete: read + delete name index + delete schema in single tx
+        // Atomic delete: read + delete name index + delete schema + delete
+        // metadata in single tx
         self.db.read_write_unit_of_work(|tx| {
             if let Some(stored) =
                 tx.get_owned::<StoredSchema>(SCHEMA_BY_ID, id_key.as_str())?
@@ -178,6 +179,7 @@ impl Command for CommandAdapter<'_> {
                 tx.delete(SCHEMA_ID_BY_NAME, stored.name.as_ref())?;
             }
             tx.delete(SCHEMA_BY_ID, id_key.as_str())?;
+            tx.delete(SCHEMA_METADATA, id_key.as_str())?;
             Ok(())
         })
     }

@@ -164,14 +164,14 @@ where
     /// ```ignore
     /// # use lithos_core::schema::query::Query;
     /// # let query = todo!("Provide a Query instance");
-    /// let _ = query.find_property_bank()?;
+    /// let _ = query.get_property_bank()?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn find_property_bank(
+    pub fn get_property_bank(
         &self,
     ) -> Result<Option<PropertyBank>, SchemaQueryError> {
-        self.query_port.find_property_bank().map_err(|error| {
+        self.query_port.get_property_bank().map_err(|error| {
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
