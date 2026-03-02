@@ -164,14 +164,14 @@ where
     /// ```ignore
     /// # use lithos_core::schema::query::Query;
     /// # let query = todo!("Provide a Query instance");
-    /// let _ = query.find_property_bank()?;
+    /// let _ = query.get_property_bank()?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn find_property_bank(
+    pub fn get_property_bank(
         &self,
     ) -> Result<Option<PropertyBank>, SchemaQueryError> {
-        self.query_port.find_property_bank().map_err(|error| {
+        self.query_port.get_property_bank().map_err(|error| {
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
@@ -304,8 +304,8 @@ mod tests {
     use crate::schema::{
         RedbSchemaCommand, RedbSchemaQuery,
         adapter::{
-            command::{CommandAdapter, SaveMetadata},
-            query::QueryAdapter,
+            command::CommandAdapter, query::QueryAdapter,
+            stored::StoredMetadata,
         },
         aggregate::{SchemaId, SchemaName},
     };
@@ -433,11 +433,11 @@ mod tests {
             let stored_created = Timestamp::from_secs(1_000_000);
             let file_created = Timestamp::from_secs(2_000_000);
 
-            cmd.save_batch_with_metadata(&[schema], &[SaveMetadata {
-                bank_version: BankVersion::initial(),
-                created_at: Some(stored_created),
-                modified_at: None,
-            }])
+            cmd.save_batch_with_metadata(&[schema], &[StoredMetadata::new(
+                BankVersion::initial(),
+                Some(stored_created),
+                None,
+            )])
             .expect("Save should succeed");
 
             let stale = qry

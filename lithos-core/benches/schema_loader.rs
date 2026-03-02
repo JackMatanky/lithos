@@ -541,7 +541,7 @@ fn bench_property_bank_lookup(c: &mut Criterion) {
         b.iter(|| {
             // Lookup a frequently-used property ($ref'd in task schema)
             let prop = bank.get("pillar");
-            black_box(prop.is_some())
+            black_box(prop.is_ok())
         });
     });
 

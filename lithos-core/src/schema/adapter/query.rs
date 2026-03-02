@@ -1,12 +1,21 @@
 //! Redb-backed implementation of the [`crate::schema::ports::Query`] trait.
+//!
+//! Property bank reads use `bank_metadata` plus versioned rows from
+//! `bank_property_by_name`.
 
 use crate::{
     db::{BatchReader, Database, DbError},
     schema::{
-        adapter::stored::StoredSchema,
+        adapter::stored::{
+            StoredBankProperty, StoredMetadata, StoredPropertyBank,
+            StoredSchema,
+        },
         aggregate::{Schema, SchemaId, SchemaName, Timestamp},
-        bank::{BankVersion, PropertyBank, PropertyBankId},
-        db_table::{PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
+        bank::{BankVersion, PropertyBank},
+        db_table::{
+            BANK_METADATA, BANK_PROPERTY_BY_NAME, PROPERTY_BANK_KEY,
+            SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
+        },
         ports::{NameIdPair, Query},
     },
 };
@@ -57,30 +66,54 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
+    fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
+        let Some(metadata) = self
+            .db
+            .get_owned::<StoredMetadata>(BANK_METADATA, PROPERTY_BANK_KEY)?
+        else {
+            return Ok(None);
+        };
+
+        let prefix = StoredBankProperty::prefix(metadata.bank_version);
+        let entries = self.db.list_key_value_pairs::<StoredBankProperty>(
+            BANK_PROPERTY_BY_NAME,
+        )?;
+        let properties: Vec<_> = entries
+            .into_iter()
+            .filter_map(|(key, stored)| {
+                key.starts_with(&prefix).then_some(stored.property)
+            })
+            .collect();
+
+        let stored = StoredPropertyBank {
+            bank_version: metadata.bank_version,
+            recorded_at: metadata.recorded_at,
+            properties,
+        };
+
+        PropertyBank::try_from(stored)
+            .map(Some)
+            .map_err(|e| DbError::Deserialization(e.to_string()))
+    }
+
+    #[inline]
+    fn is_bank_stale(&self, version: BankVersion) -> Result<bool, Self::Error> {
+        let Some(stored) = self
+            .db
+            .get_owned::<StoredMetadata>(BANK_METADATA, PROPERTY_BANK_KEY)?
+        else {
+            return Ok(true);
+        };
+        Ok(stored.bank_version != version)
+    }
+
+    #[inline]
     fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error> {
         self.db
             .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
             .map(Schema::try_from)
             .transpose()
             .map_err(|e| DbError::Deserialization(e.to_string()))
-    }
-
-    #[inline]
-    fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error> {
-        let id = PropertyBankId::singleton();
-        self.db.get_owned_by_uuid(PROPERTY_BANK, id.into_uuid())
-    }
-
-    #[inline]
-    fn is_bank_stale(&self, version: BankVersion) -> Result<bool, Self::Error> {
-        let id = PropertyBankId::singleton();
-        let Some(bank) = self
-            .db
-            .get_owned_by_uuid::<PropertyBank>(PROPERTY_BANK, id.into_uuid())?
-        else {
-            return Ok(true);
-        };
-        Ok(bank.version() != version)
     }
 
     #[inline]
@@ -91,11 +124,19 @@ impl Query for QueryAdapter<'_> {
         modified_at: Option<Timestamp>,
         bank_version: BankVersion,
     ) -> Result<bool, Self::Error> {
-        let Some(stored) = self
+        let Some(_stored) = self
             .db
             .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
         else {
             // No stored record — always stale.
+            return Ok(true);
+        };
+
+        let id_key = id.into_uuid().to_string();
+        let Some(stored) = self
+            .db
+            .get_owned::<StoredMetadata>(SCHEMA_METADATA, id_key.as_str())?
+        else {
             return Ok(true);
         };
 

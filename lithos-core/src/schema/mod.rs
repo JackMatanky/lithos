@@ -62,8 +62,15 @@ pub(crate) mod db_table {
         TableDefinition::new("schema_by_id");
     pub(crate) const SCHEMA_ID_BY_NAME: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_id_by_name");
-    pub(crate) const PROPERTY_BANK: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("property_bank");
+    pub(crate) const SCHEMA_METADATA: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_metadata");
+    pub(crate) const BANK_METADATA: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("bank_metadata");
+    pub(crate) const BANK_PROPERTY_BY_ID: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("bank_property_by_id");
+    pub(crate) const BANK_PROPERTY_BY_NAME: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("bank_property_by_name");
+    pub(crate) const PROPERTY_BANK_KEY: &str = "singleton";
 }
 
 // --- Public API ---

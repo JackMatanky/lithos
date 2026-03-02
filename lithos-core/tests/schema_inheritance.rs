@@ -1,0 +1,353 @@
+//! Integration tests for schema inheritance resolution.
+//!
+//! Validates multi-level inheritance, child overrides, excludes, and
+//! cycle detection through the full ingestion pipeline.
+
+#![expect(
+    clippy::panic_in_result_fn,
+    reason = "Integration tests use assertions which panic on failure."
+)]
+#![expect(
+    clippy::tests_outside_test_module,
+    reason = "Integration tests are top-level by default."
+)]
+
+mod common;
+
+use std::path::Path;
+
+use common::*;
+use lithos_core::{
+    application::schema::{SchemaService, SchemaServiceError},
+    config::{
+        aggregate::Config,
+        raw::RawConfig,
+        vault::{VaultId, VaultRoot},
+    },
+    fs::FsReader,
+    schema::{
+        adapter::ingestor::Ingestor,
+        aggregate::SchemaName,
+        error::SchemaError,
+        property::{Multiplicity, Optionality},
+    },
+};
+use tempfile::TempDir;
+
+/// Write a file to the test directory.
+fn write_file(root: &Path, relative: &str, content: &str) -> TestResult {
+    let path = root.join(relative);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, content)?;
+    Ok(())
+}
+
+/// Create a test config for a vault root.
+fn test_config(root: &Path) -> TestResult<Config> {
+    let raw = RawConfig::default();
+    let root = VaultRoot::try_new(root.to_path_buf())?;
+    let config = Config::build(&raw, VaultId::new(), root)?;
+    Ok(config)
+}
+
+// ========================================================================
+//                          Inheritance Resolution
+// ========================================================================
+
+/// **3.6-INT-001**: Multi-level inheritance resolves correctly.
+///
+/// Verifies:
+/// - Parent properties are inherited
+/// - Grandchild receives all ancestor properties
+/// - Property order is stable
+#[test]
+fn multi_level_inheritance_resolves() -> TestResult {
+    // GIVEN: Property bank and three-level schema chain
+    let dir = TempDir::new()?;
+    write_file(
+        dir.path(),
+        "schemas/property_bank.json",
+        r#"{
+            "$version": "1.0",
+            "properties": {
+                "title": { "type": "string" },
+                "status": { "type": "bool" },
+                "priority": { "type": "string" }
+            }
+        }"#,
+    )?;
+    write_file(
+        dir.path(),
+        "schemas/base.json",
+        r#"{
+            "$version": "1.0",
+            "name": "base",
+            "properties": {
+                "title": {"$ref": "property_bank#/title"}
+            }
+        }"#,
+    )?;
+    write_file(
+        dir.path(),
+        "schemas/task.json",
+        r#"{
+            "$version": "1.0",
+            "name": "task",
+            "extends": "base",
+            "properties": {
+                "status": {"$ref": "property_bank#/status"}
+            }
+        }"#,
+    )?;
+    write_file(
+        dir.path(),
+        "schemas/urgent_task.json",
+        r#"{
+            "$version": "1.0",
+            "name": "urgent_task",
+            "extends": "task",
+            "properties": {
+                "priority": {"$ref": "property_bank#/priority"}
+            }
+        }"#,
+    )?;
+
+    let config = test_config(dir.path())?;
+    let test_db = TestDb::new()?;
+    let (command, query) = setup_cqrs(test_db.db());
+
+    // WHEN: Running pipeline
+    let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
+    let service = SchemaService::new(query, command);
+    service.load(&ingestor)?;
+
+    // THEN: Grandchild has all properties
+    let (_cmd, query2) = setup_cqrs(test_db.db());
+    let schema = query2
+        .find_by_name(&SchemaName::new("urgent_task")?)?
+        .expect("schema should exist");
+
+    assert_eq!(schema.properties().count(), 3);
+    assert_has_property(&schema, "title", "inheritance");
+    assert_has_property(&schema, "status", "inheritance");
+    assert_has_property(&schema, "priority", "inheritance");
+
+    Ok(())
+}
+
+/// **3.6-INT-002**: Child overrides parent property definition.
+///
+/// Verifies:
+/// - Child property with same name overrides parent
+/// - Optionality and multiplicity reflect child definition
+#[test]
+fn child_overrides_parent_property() -> TestResult {
+    // GIVEN: Parent defines required property, child overrides to optional
+    let dir = TempDir::new()?;
+    write_file(
+        dir.path(),
+        "schemas/property_bank.json",
+        r#"{
+            "$version": "1.0",
+            "properties": {
+                "title": { "type": "string" }
+            }
+        }"#,
+    )?;
+    write_file(
+        dir.path(),
+        "schemas/parent.json",
+        r#"{
+            "$version": "1.0",
+            "name": "parent",
+            "properties": {
+                "title": {"$ref": "property_bank#/title"}
+            }
+        }"#,
+    )?;
+    write_file(
+        dir.path(),
+        "schemas/child.json",
+        r#"{
+            "$version": "1.0",
+            "name": "child",
+            "extends": "parent",
+            "properties": {
+                "title": {"type": "string", "required": false, "multi": true}
+            }
+        }"#,
+    )?;
+
+    let config = test_config(dir.path())?;
+    let test_db = TestDb::new()?;
+    let (command, query) = setup_cqrs(test_db.db());
+
+    // WHEN: Running pipeline
+    let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
+    let service = SchemaService::new(query, command);
+    service.load(&ingestor)?;
+
+    // THEN: Child's property overrides parent
+    let (_cmd, query2) = setup_cqrs(test_db.db());
+    let schema = query2
+        .find_by_name(&SchemaName::new("child")?)?
+        .expect("schema should exist");
+
+    let title = schema
+        .properties()
+        .find(|p| p.name().as_str() == "title")
+        .expect("title property should exist");
+
+    assert_eq!(title.optionality(), Optionality::Optional);
+    assert_eq!(title.multiplicity(), Multiplicity::Many);
+
+    Ok(())
+}
+
+/// **3.6-INT-003**: Child excludes parent property.
+///
+/// Verifies:
+/// - `excludes` removes inherited properties
+/// - Non-excluded properties remain
+#[test]
+fn child_excludes_parent_property() -> TestResult {
+    // GIVEN: Parent with two properties, child excludes one
+    let dir = TempDir::new()?;
+    write_file(
+        dir.path(),
+        "schemas/property_bank.json",
+        r#"{
+            "$version": "1.0",
+            "properties": {
+                "title": { "type": "string" },
+                "status": { "type": "bool" }
+            }
+        }"#,
+    )?;
+    write_file(
+        dir.path(),
+        "schemas/parent.json",
+        r#"{
+            "$version": "1.0",
+            "name": "parent",
+            "properties": {
+                "title": {"$ref": "property_bank#/title"},
+                "status": {"$ref": "property_bank#/status"}
+            }
+        }"#,
+    )?;
+    write_file(
+        dir.path(),
+        "schemas/child.json",
+        r#"{
+            "$version": "1.0",
+            "name": "child",
+            "extends": "parent",
+            "excludes": ["status"],
+            "properties": {}
+        }"#,
+    )?;
+
+    let config = test_config(dir.path())?;
+    let test_db = TestDb::new()?;
+    let (command, query) = setup_cqrs(test_db.db());
+
+    // WHEN: Running pipeline
+    let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
+    let service = SchemaService::new(query, command);
+    service.load(&ingestor)?;
+
+    // THEN: Excluded property is removed
+    let (_cmd, query2) = setup_cqrs(test_db.db());
+    let schema = query2
+        .find_by_name(&SchemaName::new("child")?)?
+        .expect("schema should exist");
+
+    assert_has_property(&schema, "title", "excludes");
+    assert_not_has_property(&schema, "status", "excludes");
+
+    Ok(())
+}
+
+/// **3.6-INT-004**: Circular inheritance returns error.
+///
+/// Verifies:
+/// - Cycle detection returns `SchemaError::CircularInheritance`
+#[test]
+fn circular_inheritance_returns_error() -> TestResult {
+    // GIVEN: Two schemas that extend each other
+    let dir = TempDir::new()?;
+    write_file(
+        dir.path(),
+        "schemas/property_bank.json",
+        r#"{"$version": "1.0", "properties": {}}"#,
+    )?;
+    write_file(
+        dir.path(),
+        "schemas/a.json",
+        r#"{"$version": "1.0", "name": "a", "extends": "b", "properties": {}}"#,
+    )?;
+    write_file(
+        dir.path(),
+        "schemas/b.json",
+        r#"{"$version": "1.0", "name": "b", "extends": "a", "properties": {}}"#,
+    )?;
+
+    let config = test_config(dir.path())?;
+    let test_db = TestDb::new()?;
+    let (command, query) = setup_cqrs(test_db.db());
+
+    // WHEN: Running pipeline
+    let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
+    let service = SchemaService::new(query, command);
+    let result = service.load(&ingestor);
+
+    // THEN: Circular inheritance error
+    match result {
+        Err(SchemaServiceError::Domain(SchemaError::CircularInheritance(
+            _,
+        ))) => Ok(()),
+        Err(other) => Err(format!("unexpected error: {other:?}").into()),
+        Ok(_) => Err("expected circular inheritance error".into()),
+    }
+}
+
+/// **3.6-INT-005**: Missing parent returns error.
+///
+/// Verifies:
+/// - Parent not found results in `SchemaError::ParentNotFound`
+#[test]
+fn missing_parent_returns_error() -> TestResult {
+    // GIVEN: Schema extends a missing parent
+    let dir = TempDir::new()?;
+    write_file(
+        dir.path(),
+        "schemas/property_bank.json",
+        r#"{"$version": "1.0", "properties": {}}"#,
+    )?;
+    write_file(
+        dir.path(),
+        "schemas/child.json",
+        r#"{"$version": "1.0", "name": "child", "extends": "missing", "properties": {}}"#,
+    )?;
+
+    let config = test_config(dir.path())?;
+    let test_db = TestDb::new()?;
+    let (command, query) = setup_cqrs(test_db.db());
+
+    // WHEN: Running pipeline
+    let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
+    let service = SchemaService::new(query, command);
+    let result = service.load(&ingestor);
+
+    // THEN: Parent not found error
+    match result {
+        Err(SchemaServiceError::Domain(SchemaError::ParentNotFound(_))) => {
+            Ok(())
+        }
+        Err(other) => Err(format!("unexpected error: {other:?}").into()),
+        Ok(_) => Err("expected parent not found error".into()),
+    }
+}

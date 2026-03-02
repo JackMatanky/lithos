@@ -9,7 +9,7 @@
 //!   scan_raw_schemas()             → Vec<(RawSchema, Option<Timestamp>)>
 //! Query
 //!   list_name_id_pairs()           → existing name → id map
-//!   find_property_bank()           → Option<PropertyBank>
+//!   get_property_bank()           → Option<PropertyBank>
 //! PropertyBank::from_raw()         → PropertyBank
 //! Staleness partitioning
 //!   is_bank_stale() / is_schema_stale()
@@ -30,7 +30,7 @@
 use std::collections::HashMap;
 
 use crate::schema::{
-    adapter::{command::SaveMetadata, ingestor::Ingestor},
+    adapter::{ingestor::Ingestor, stored::StoredMetadata},
     aggregate::{Schema, SchemaId, SchemaName, Timestamp},
     bank::PropertyBank,
     command::Command,
@@ -125,7 +125,7 @@ impl<'db> SchemaService<'db> {
 
         // ── Step 2: read existing DB state ──────────────────────────────────
         let existing_pairs = self.query.list_name_id_pairs()?;
-        let stored_bank = self.query.find_property_bank()?;
+        let stored_bank = self.query.get_property_bank()?;
 
         // Build name → id lookup from DB pairs.
         let mut name_to_id: HashMap<SchemaName, SchemaId> =
@@ -203,18 +203,14 @@ impl<'db> SchemaService<'db> {
             }
 
             // Build metadata vector in same order as schemas
-            let metadata: Vec<SaveMetadata> = resolved
+            let metadata: Vec<StoredMetadata> = resolved
                 .iter()
                 .map(|schema| {
                     let (modified, created) = time_map
                         .get(&schema.id())
                         .copied()
                         .unwrap_or((None, None));
-                    SaveMetadata {
-                        bank_version: current_bank_version,
-                        created_at: created,
-                        modified_at: modified,
-                    }
+                    StoredMetadata::new(current_bank_version, created, modified)
                 })
                 .collect();
 

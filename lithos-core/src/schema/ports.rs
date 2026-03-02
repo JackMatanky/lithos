@@ -133,7 +133,7 @@ pub trait Command: Send + Sync {
 ///         Ok(None)
 ///     }
 ///
-///     fn find_property_bank(
+///     fn get_property_bank(
 ///         &self,
 ///     ) -> Result<Option<lithos_core::schema::bank::PropertyBank>, Self::Error> {
 ///         Ok(None)
@@ -216,7 +216,7 @@ pub trait Query: Send + Sync {
     /// ```
     fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error>;
 
-    /// Find the `PropertyBank` registry.
+    /// Get the singleton `PropertyBank` registry.
     ///
     /// # Errors
     /// Returns a storage-specific error if query fails.
@@ -226,10 +226,10 @@ pub trait Query: Send + Sync {
     /// ```ignore
     /// # use lithos_core::schema::ports::Query;
     /// # let query = todo!("Provide a Query implementation");
-    /// let _ = query.find_property_bank()?;
+    /// let _ = query.get_property_bank()?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
-    fn find_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error>;
+    fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error>;
 
     /// Returns `true` if the stored bank version differs from `version`.
     ///

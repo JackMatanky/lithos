@@ -1,46 +1,28 @@
 //! Redb-backed implementation of the [`crate::schema::ports::Command`] trait.
+//!
+//! Property bank persistence writes:
+//! - `bank_metadata` for version/timestamps
+//! - `bank_property_by_id` and `bank_property_by_name` for versioned rows
 
 use tracing::instrument;
 
 use crate::{
     db::{Database, DbError},
     schema::{
-        adapter::stored::to_stored,
+        adapter::stored::{
+            StoredBankProperty, StoredMetadata, StoredProperty, StoredSchema,
+        },
         aggregate::{Schema, SchemaId, Timestamp},
         bank::{BankVersion, PropertyBank},
-        db_table::{PROPERTY_BANK, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
+        db_table::{
+            BANK_METADATA, BANK_PROPERTY_BY_ID, BANK_PROPERTY_BY_NAME,
+            PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
+            SCHEMA_METADATA,
+        },
         ports::Command,
+        property::{Multiplicity, Optionality},
     },
 };
-
-/// Metadata bundle for persisting a schema.
-///
-/// This adapter-specific type carries the storage metadata needed to build
-/// `StoredSchema`. It lives in the adapter layer and is never exposed to
-/// the domain.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::adapter::command::SaveMetadata;
-/// use lithos_core::schema::bank::BankVersion;
-///
-/// let metadata = SaveMetadata {
-///     bank_version: BankVersion::initial(),
-///     created_at: None,
-///     modified_at: None,
-/// };
-/// let _ = metadata;
-/// ```
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct SaveMetadata {
-    /// Property bank version at time of resolution.
-    pub bank_version: BankVersion,
-    /// Filesystem birthtime (from `Metadata::created()`), if available.
-    pub created_at: Option<Timestamp>,
-    /// Filesystem mtime (from `Metadata::modified()`), if available.
-    pub modified_at: Option<Timestamp>,
-}
 
 /// Redb-backed schema command adapter.
 ///
@@ -91,12 +73,13 @@ impl<'db> CommandAdapter<'db> {
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::adapter::command::{CommandAdapter, SaveMetadata};
+    /// use lithos_core::schema::adapter::command::CommandAdapter;
+    /// use lithos_core::schema::adapter::stored::StoredMetadata;
     ///
     /// let db = todo!("Provide a Database instance");
     /// let adapter = CommandAdapter::new(&db);
     /// let schemas = Vec::new();
-    /// let metadata: Vec<SaveMetadata> = Vec::new();
+    /// let metadata: Vec<StoredMetadata> = Vec::new();
     /// adapter.save_batch_with_metadata(&schemas, &metadata)?;
     /// # Ok::<_, lithos_core::db::DbError>(())
     /// ```
@@ -108,7 +91,7 @@ impl<'db> CommandAdapter<'db> {
     pub fn save_batch_with_metadata(
         &self,
         schemas: &[Schema],
-        metadata: &[SaveMetadata],
+        metadata: &[StoredMetadata],
     ) -> Result<(), DbError> {
         assert_eq!(
             schemas.len(),
@@ -142,12 +125,7 @@ impl<'db> CommandAdapter<'db> {
         // Atomic write
         self.db.batch_write(|batch| {
             for (schema, meta) in schemas.iter().zip(metadata.iter()) {
-                let stored = to_stored(
-                    schema,
-                    meta.bank_version,
-                    meta.created_at,
-                    meta.modified_at,
-                );
+                let stored = StoredSchema::from_schema(schema);
                 let id_key = schema.id().into_uuid().to_string();
                 batch.put(SCHEMA_BY_ID, id_key.as_str(), &stored)?;
                 batch.put(
@@ -155,6 +133,7 @@ impl<'db> CommandAdapter<'db> {
                     schema.name().as_str(),
                     &schema.id(),
                 )?;
+                batch.put(SCHEMA_METADATA, id_key.as_str(), meta)?;
             }
             Ok(())
         })
@@ -172,13 +151,9 @@ impl Command for CommandAdapter<'_> {
     fn save_batch(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
         // Use default metadata for port trait implementation
         // (tests and simple use cases don't need file timestamps)
-        let metadata: Vec<SaveMetadata> = schemas
+        let metadata: Vec<StoredMetadata> = schemas
             .iter()
-            .map(|_| SaveMetadata {
-                bank_version: BankVersion::initial(),
-                created_at: None,
-                modified_at: None,
-            })
+            .map(|_| StoredMetadata::new(BankVersion::initial(), None, None))
             .collect();
 
         self.save_batch_with_metadata(schemas, &metadata)
@@ -195,7 +170,8 @@ impl Command for CommandAdapter<'_> {
         let id_uuid = id.into_uuid();
         let id_key = id_uuid.to_string();
 
-        // Atomic delete: read + delete name index + delete schema in single tx
+        // Atomic delete: read + delete name index + delete schema + delete
+        // metadata in single tx
         self.db.read_write_unit_of_work(|tx| {
             if let Some(stored) =
                 tx.get_owned::<StoredSchema>(SCHEMA_BY_ID, id_key.as_str())?
@@ -203,21 +179,60 @@ impl Command for CommandAdapter<'_> {
                 tx.delete(SCHEMA_ID_BY_NAME, stored.name.as_ref())?;
             }
             tx.delete(SCHEMA_BY_ID, id_key.as_str())?;
+            tx.delete(SCHEMA_METADATA, id_key.as_str())?;
             Ok(())
         })
     }
 
     #[inline]
-    #[instrument(
-        skip(self, bank),
-        fields(operation = "save_property_bank", bank_id = %bank.id().as_uuid())
-    )]
+    #[instrument(skip(self, bank), fields(operation = "save_property_bank"))]
     fn save_property_bank(
         &self,
         bank: &PropertyBank,
     ) -> Result<(), Self::Error> {
-        let id_uuid = bank.id().into_uuid();
-        self.db.put_by_uuid(PROPERTY_BANK, id_uuid, bank)?;
-        Ok(())
+        // Persist metadata plus versioned property rows.
+        let bank_version = bank.version();
+        let recorded_at = Timestamp::now();
+
+        let metadata = StoredMetadata {
+            bank_version,
+            created_at: None,
+            modified_at: None,
+            recorded_at,
+        };
+
+        self.db.batch_write(|batch| {
+            batch.put(BANK_METADATA, PROPERTY_BANK_KEY, &metadata)?;
+
+            for property in bank.all() {
+                let stored_property = StoredProperty {
+                    id: property.id(),
+                    name: property.name().as_str().into(),
+                    required: property.optionality() == Optionality::Required,
+                    multi: property.multiplicity() == Multiplicity::Many,
+                    spec: property.spec().clone(),
+                };
+
+                let stored = StoredBankProperty {
+                    bank_version,
+                    recorded_at,
+                    property: stored_property,
+                };
+
+                let id_key = StoredBankProperty::key(
+                    bank_version,
+                    &property.id().to_string(),
+                );
+                let name_key = StoredBankProperty::key(
+                    bank_version,
+                    property.name().as_str(),
+                );
+
+                batch.put(BANK_PROPERTY_BY_ID, &id_key, &stored)?;
+                batch.put(BANK_PROPERTY_BY_NAME, &name_key, &stored)?;
+            }
+
+            Ok(())
+        })
     }
 }

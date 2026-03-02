@@ -233,7 +233,7 @@ mod tests {
         error::SchemaError,
         extender::Extender,
         property::{
-            Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+            Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec},
     };
@@ -245,7 +245,7 @@ mod tests {
             Ok(Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
                 PropertyName::new(name)?,
-                Cardinality::Required,
+                Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             ))
@@ -372,14 +372,14 @@ mod tests {
             let parent_prop = Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
                 PropertyName::new("shared")?,
-                Cardinality::Required,
+                Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
             let child_prop = Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
                 PropertyName::new("shared")?,
-                Cardinality::Optional,
+                Optionality::Optional,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
@@ -405,9 +405,9 @@ mod tests {
             let prop_name = PropertyName::new("shared")?;
             let shared = child.get(&prop_name).expect("shared property");
             assert_eq!(
-                shared.cardinality(),
-                Cardinality::Optional,
-                "Child should override parent's cardinality"
+                shared.optionality(),
+                Optionality::Optional,
+                "Child should override parent's optionality"
             );
             Ok(())
         }

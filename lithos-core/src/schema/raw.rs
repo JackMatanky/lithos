@@ -13,7 +13,7 @@ use super::{
     formats::StringFormat,
     property_spec::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, OptionEntry, PropertySpec,
-        PropertySpecType, StringSpec,
+        StringSpec,
     },
 };
 
@@ -228,35 +228,6 @@ pub enum RawPropertySpec {
 }
 
 impl RawPropertySpec {
-    /// Get the spec type identifier.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::{
-    ///     property_spec::PropertySpecType,
-    ///     raw::{RawBoolSpec, RawPropertySpec},
-    /// };
-    ///
-    /// let spec = RawPropertySpec::Bool(RawBoolSpec);
-    /// assert_eq!(spec.spec_type(), PropertySpecType::Bool);
-    /// ```
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &enum are intentional here for \
-                  readability"
-    )]
-    pub const fn spec_type(&self) -> PropertySpecType {
-        match self {
-            Self::Bool(_) => PropertySpecType::Bool,
-            Self::Date(_) => PropertySpecType::Date,
-            Self::File(_) => PropertySpecType::File,
-            Self::Number(_) => PropertySpecType::Number,
-            Self::String(_) => PropertySpecType::String,
-        }
-    }
-
     /// Validate and compile a persisted definition into a validated spec.
     ///
     /// # Errors
@@ -283,8 +254,8 @@ impl RawPropertySpec {
                 Ok(PropertySpec::Date(DateSpec::try_new(&format)?))
             }
             Self::File(def) => Ok(PropertySpec::File(FileSpec::try_new(
-                def.directory.map(String::from),
-                def.file_class.map(String::from),
+                def.directory.as_deref(),
+                def.file_class.as_deref(),
             )?)),
             Self::Number(def) => Ok(PropertySpec::Number(NumberSpec::try_new(
                 def.min, def.max, def.step,

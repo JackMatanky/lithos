@@ -53,15 +53,6 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
-/// Unix timestamp in seconds.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::aggregate::Timestamp;
-///
-/// let ts = Timestamp::from_secs(1_234);
-/// assert_eq!(ts.as_secs(), 1_234);
-/// ```
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
@@ -148,14 +139,7 @@ impl<'de> serde::Deserialize<'de> for Schema {
 
         let de = SchemaDe::deserialize(deserializer)?;
         // Convert Vec<Property> to BTreeMap<PropertyName, Arc<Property>>
-        let properties: BTreeMap<PropertyName, Arc<Property>> = de
-            .properties
-            .into_iter()
-            .map(|p| {
-                let prop_name = p.name().clone();
-                (prop_name, Arc::new(p))
-            })
-            .collect();
+        let properties = Schema::to_property_map(de.properties);
 
         Ok(Self {
             id: de.id,
@@ -168,6 +152,19 @@ impl<'de> serde::Deserialize<'de> for Schema {
 }
 
 impl Schema {
+    #[inline]
+    fn to_property_map(
+        properties: Vec<Property>,
+    ) -> BTreeMap<PropertyName, Arc<Property>> {
+        properties
+            .into_iter()
+            .map(|p| {
+                let prop_name = p.name().clone();
+                (prop_name, Arc::new(p))
+            })
+            .collect()
+    }
+
     /// Create a new resolved Schema.
     ///
     /// This constructor is intended for genuinely new schemas. It emits both
@@ -200,13 +197,7 @@ impl Schema {
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
         // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
-        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
-            .into_iter()
-            .map(|p| {
-                let prop_name = p.name().clone();
-                (prop_name, Arc::new(p))
-            })
-            .collect();
+        let properties = Self::to_property_map(properties);
 
         let mut schema = Self {
             id,
@@ -257,13 +248,7 @@ impl Schema {
         properties: Vec<Property>,
     ) -> Result<Self, SchemaError> {
         // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
-        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
-            .into_iter()
-            .map(|p| {
-                let prop_name = p.name().clone();
-                (prop_name, Arc::new(p))
-            })
-            .collect();
+        let properties = Self::to_property_map(properties);
 
         let mut schema = Self {
             id,
@@ -295,13 +280,7 @@ impl Schema {
         properties: Vec<Property>,
     ) -> Self {
         // Convert to BTreeMap<PropertyName, Arc<Property>> for O(log n) lookups
-        let properties: BTreeMap<PropertyName, Arc<Property>> = properties
-            .into_iter()
-            .map(|p| {
-                let prop_name = p.name().clone();
-                (prop_name, Arc::new(p))
-            })
-            .collect();
+        let properties = Self::to_property_map(properties);
 
         Self {
             id,
@@ -679,37 +658,8 @@ impl SchemaName {
         Ok(Self(name.into()))
     }
 
-    /// Returns the inner string slice.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::aggregate::SchemaName;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("project")?;
-    /// assert_eq!(name.as_str(), "project");
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Validates a schema name string.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::aggregate::SchemaName;
-    ///
-    /// SchemaName::validate("project")?;
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
-    #[inline]
-    pub fn validate(name: &str) -> Result<(), SchemaError> {
+    fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
             LazyLock::new(|| Regex::new(SchemaName::PATTERN));
 
@@ -730,6 +680,23 @@ impl SchemaName {
             return Err(SchemaError::InvalidSchemaName(name.into()));
         }
         Ok(())
+    }
+
+    /// Returns the inner string slice.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::aggregate::SchemaName;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let name = SchemaName::new("project")?;
+    /// assert_eq!(name.as_str(), "project");
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
@@ -775,7 +742,17 @@ impl TryFrom<String> for SchemaName {
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(&value)
+        Self::try_from(value.into_boxed_str())
+    }
+}
+
+impl TryFrom<Box<str>> for SchemaName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
+        Self::validate(&value)?;
+        Ok(Self(value))
     }
 }
 
@@ -873,7 +850,7 @@ mod tests {
     use super::{
         super::{
             property::{
-                Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+                Multiplicity, Optionality, Property, PropertyId, PropertyName,
             },
             property_spec::{BoolSpec, PropertySpec},
         },
@@ -888,7 +865,7 @@ mod tests {
             let property = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_C),
                 PropertyName::new("flag")?,
-                Cardinality::Required,
+                Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );

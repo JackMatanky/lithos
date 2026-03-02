@@ -31,7 +31,7 @@ use super::{error::SchemaError, property_spec::PropertySpec};
 /// ```
 /// use lithos_core::schema::{
 ///     property::{
-///         Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+///         Multiplicity, Optionality, Property, PropertyId, PropertyName,
 ///     },
 ///     property_spec::{BoolSpec, PropertySpec},
 /// };
@@ -41,7 +41,7 @@ use super::{error::SchemaError, property_spec::PropertySpec};
 /// let property = Property::new(
 ///     PropertyId::new(),
 ///     name,
-///     Cardinality::Required,
+///     Optionality::Required,
 ///     Multiplicity::Single,
 ///     spec,
 /// );
@@ -66,7 +66,7 @@ pub struct Property {
     /// Property name.
     name: PropertyName,
     /// Whether property is required.
-    cardinality: Cardinality,
+    optionality: Optionality,
     /// Whether property accepts array of values.
     multiplicity: Multiplicity,
     /// Type-specific validation specification.
@@ -74,220 +74,69 @@ pub struct Property {
 }
 
 impl Property {
-    /// Returns the property's unique identifier.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::schema::property::{
-    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
-    /// # };
-    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("flag")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property = Property::new(
-    ///     PropertyId::new(),
-    ///     name,
-    ///     Cardinality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// );
-    /// let _id = property.id();
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn id(&self) -> PropertyId {
-        self.id
-    }
-
-    /// Returns the property's cardinality.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::schema::property::{
-    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
-    /// # };
-    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("flag")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property = Property::new(
-    ///     PropertyId::new(),
-    ///     name,
-    ///     Cardinality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// );
-    /// assert_eq!(property.cardinality(), Cardinality::Required);
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn cardinality(&self) -> Cardinality {
-        self.cardinality
-    }
-
-    /// Returns the property's multiplicity.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::schema::property::{
-    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
-    /// # };
-    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("flag")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property = Property::new(
-    ///     PropertyId::new(),
-    ///     name,
-    ///     Cardinality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// );
-    /// assert_eq!(property.multiplicity(), Multiplicity::Single);
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn multiplicity(&self) -> Multiplicity {
-        self.multiplicity
-    }
-
-    /// Returns the property's name.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::schema::property::{
-    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
-    /// # };
-    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("flag")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property = Property::new(
-    ///     PropertyId::new(),
-    ///     name,
-    ///     Cardinality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// );
-    /// assert_eq!(property.name().as_str(), "flag");
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn name(&self) -> &PropertyName {
-        &self.name
-    }
-
     /// Create a new property.
     ///
     /// All validation is done at the component level (`PropertyName`,
     /// `PropertySpec`), so this constructor is infallible.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use lithos_core::schema::property::{
-    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
-    /// # };
-    /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
-    /// # use uuid::Uuid;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("is_active")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let id = PropertyId::new();
-    ///
-    /// let property = Property::new(
-    ///     id,
-    ///     name,
-    ///     Cardinality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// );
-    /// assert!(property.is_required_scalar(), "Property should be required");
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
     #[must_use]
     pub const fn new(
         id: PropertyId,
         name: PropertyName,
-        cardinality: Cardinality,
+        optionality: Optionality,
         multiplicity: Multiplicity,
         spec: PropertySpec,
     ) -> Self {
         Self {
             id,
             name,
-            cardinality,
+            optionality,
             multiplicity,
             spec,
         }
     }
 
-    /// Returns true if this property is required.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::schema::property::{
-    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
-    /// # };
-    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("flag")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property = Property::new(
-    ///     PropertyId::new(),
-    ///     name,
-    ///     Cardinality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// );
-    /// assert!(property.is_required_scalar());
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// Returns the property's unique identifier.
     #[inline]
     #[must_use]
-    pub fn is_required_scalar(&self) -> bool {
-        self.cardinality == Cardinality::Required
-            && self.multiplicity == Multiplicity::Single
+    pub const fn id(&self) -> PropertyId {
+        self.id
+    }
+
+    /// Returns the property's name.
+    #[inline]
+    #[must_use]
+    pub const fn name(&self) -> &PropertyName {
+        &self.name
+    }
+
+    /// Returns the property's optionality.
+    #[inline]
+    #[must_use]
+    pub const fn optionality(&self) -> Optionality {
+        self.optionality
+    }
+
+    /// Returns the property's multiplicity.
+    #[inline]
+    #[must_use]
+    pub const fn multiplicity(&self) -> Multiplicity {
+        self.multiplicity
     }
 
     /// Returns the type-specific validation specification.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::schema::property::{
-    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
-    /// # };
-    /// # use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("flag")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property = Property::new(
-    ///     PropertyId::new(),
-    ///     name,
-    ///     Cardinality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// );
-    /// let _spec = property.spec();
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
     #[must_use]
     pub const fn spec(&self) -> &PropertySpec {
         &self.spec
+    }
+
+    /// Returns true if this property is required.
+    #[inline]
+    #[must_use]
+    pub fn is_required_scalar(&self) -> bool {
+        self.optionality == Optionality::Required
+            && self.multiplicity == Multiplicity::Single
     }
 
     /// Validate a value against this property's specification.
@@ -298,28 +147,6 @@ impl Property {
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_core::schema::property::{
-    /// #     Cardinality, Multiplicity, Property, PropertyId, PropertyName,
-    /// # };
-    /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
-    /// # use uuid::Uuid;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("enabled")?;
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let property = Property::new(
-    ///     PropertyId::new(),
-    ///     name,
-    ///     Cardinality::Required,
-    ///     Multiplicity::Single,
-    ///     spec,
-    /// );
-    /// property.validate_value(&serde_json::json!(true))?;
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
     pub fn validate_value(
         &self,
@@ -337,98 +164,6 @@ impl Property {
             Ok(())
         } else {
             self.spec.validate(value)
-        }
-    }
-}
-
-/// Whether a property is required or optional.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::property::Cardinality;
-///
-/// let required = Cardinality::Required;
-/// match required {
-///     Cardinality::Required => {}
-///     Cardinality::Optional => {}
-///     _ => {}
-/// }
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Cardinality {
-    /// Optional property.
-    Optional,
-    /// Required property.
-    Required,
-}
-
-impl From<bool> for Cardinality {
-    #[inline]
-    fn from(required: bool) -> Self {
-        if required {
-            Self::Required
-        } else {
-            Self::Optional
-        }
-    }
-}
-
-/// Whether a property accepts a single value or multiple values.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::property::Multiplicity;
-///
-/// let multi = Multiplicity::Many;
-/// match multi {
-///     Multiplicity::Many => {}
-///     Multiplicity::Single => {}
-///     _ => {}
-/// }
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub enum Multiplicity {
-    /// Single scalar value.
-    Single,
-    /// Multiple values (array).
-    Many,
-}
-
-impl From<bool> for Multiplicity {
-    #[inline]
-    fn from(multi: bool) -> Self {
-        if multi {
-            Self::Many
-        } else {
-            Self::Single
         }
     }
 }
@@ -457,23 +192,20 @@ impl From<bool> for Multiplicity {
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
-#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
+#[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
 #[serde(transparent)]
 #[non_exhaustive]
 pub struct PropertyId(Uuid);
 
 impl PropertyId {
+    /// Creates a new UUID v7-based `PropertyId`.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+
     /// Wraps a UUID into a `PropertyId`.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyId;
-    /// use uuid::Uuid;
-    ///
-    /// let uuid = Uuid::now_v7();
-    /// let id = PropertyId::from_uuid(uuid);
-    /// assert_eq!(*id.as_uuid(), uuid);
-    /// ```
     #[inline]
     #[must_use]
     pub const fn from_uuid(uuid: Uuid) -> Self {
@@ -481,14 +213,6 @@ impl PropertyId {
     }
 
     /// Returns the inner UUID reference.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyId;
-    ///
-    /// let id = PropertyId::new();
-    /// let _ = id.as_uuid();
-    /// ```
     #[inline]
     #[must_use]
     pub const fn as_uuid(&self) -> &Uuid {
@@ -496,33 +220,10 @@ impl PropertyId {
     }
 
     /// Returns the inner UUID by value.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyId;
-    ///
-    /// let id = PropertyId::new();
-    /// let _uuid = id.into_uuid();
-    /// ```
     #[inline]
     #[must_use]
     pub const fn into_uuid(self) -> Uuid {
         self.0
-    }
-
-    /// Creates a new UUID v7-based `PropertyId`.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyId;
-    ///
-    /// let id = PropertyId::new();
-    /// let _ = id.as_uuid();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
     }
 }
 
@@ -578,6 +279,7 @@ impl Display for PropertyId {
 pub struct PropertyName(Box<str>);
 
 impl PropertyName {
+    const MAX_LEN: usize = 64;
     /// Property name validation pattern: mixed-case letters, underscores, and
     /// hyphens.
     ///
@@ -611,44 +313,15 @@ impl PropertyName {
         Ok(Self(name.into()))
     }
 
-    /// Returns the inner string slice.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyName;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = PropertyName::new("status")?;
-    /// assert_eq!(name.as_str(), "status");
-    /// # Ok(())
-    /// # }
-    /// ```
     #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Validates a property name string.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyName;
-    ///
-    /// PropertyName::validate("status")?;
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
-    #[inline]
-    pub fn validate(name: &str) -> Result<(), SchemaError> {
+    fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Result<Regex, regex::Error>> =
             LazyLock::new(|| Regex::new(PropertyName::PATTERN));
 
         if name.is_empty() {
             return Err(SchemaError::EmptyPropertyName);
         }
-        if name.len() > 64 {
+        if name.len() > Self::MAX_LEN {
             return Err(SchemaError::PropertyNameTooLong(name.len()));
         }
 
@@ -662,6 +335,13 @@ impl PropertyName {
             return Err(SchemaError::InvalidPropertyName(name.into()));
         }
         Ok(())
+    }
+
+    /// Returns the inner string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
@@ -707,7 +387,17 @@ impl TryFrom<String> for PropertyName {
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(&value)
+        Self::try_from(value.into_boxed_str())
+    }
+}
+
+impl TryFrom<Box<str>> for PropertyName {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
+        Self::validate(&value)?;
+        Ok(Self(value))
     }
 }
 
@@ -718,50 +408,34 @@ impl TryFrom<String> for PropertyName {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::property::PropertyRef;
+/// use lithos_core::schema::property::BankPropertyRef;
 ///
-/// let reference = PropertyRef::parse("property_bank#/flag")?;
+/// let reference = BankPropertyRef::parse("property_bank#/flag")?;
 /// assert_eq!(reference.name().as_str(), "flag");
 /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct PropertyRef(PropertyName);
+pub struct BankPropertyRef(PropertyName);
 
-impl PropertyRef {
+impl BankPropertyRef {
+    const PREFIX: &'static str = "property_bank#/";
+
     /// Parse a reference string into a typed property reference.
     ///
     /// The only accepted format is `property_bank#/<name>`.
     ///
     /// # Errors
     /// Returns `SchemaError::InvalidPropertyRef` if the format is invalid.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyRef;
-    ///
-    /// let reference = PropertyRef::parse("property_bank#/flag")?;
-    /// assert_eq!(reference.name().as_str(), "flag");
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
     #[inline]
     pub fn parse(reference: &str) -> Result<Self, SchemaError> {
         let name = reference
-            .strip_prefix("property_bank#/")
+            .strip_prefix(Self::PREFIX)
             .ok_or_else(|| SchemaError::InvalidPropertyRef(reference.into()))?;
         Ok(Self(PropertyName::try_from(name)?))
     }
 
     /// Returns the property name being referenced.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property::PropertyRef;
-    ///
-    /// let reference = PropertyRef::parse("property_bank#/flag")?;
-    /// let _name = reference.name();
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
     #[inline]
     #[must_use]
     pub const fn name(&self) -> &PropertyName {
@@ -769,12 +443,84 @@ impl PropertyRef {
     }
 }
 
-impl TryFrom<&str> for PropertyRef {
+impl TryFrom<&str> for BankPropertyRef {
     type Error = SchemaError;
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Self::parse(value)
+    }
+}
+
+/// Whether a property is required or optional.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Optionality {
+    /// Optional property.
+    #[default]
+    Optional,
+    /// Required property.
+    Required,
+}
+
+impl From<bool> for Optionality {
+    #[inline]
+    fn from(required: bool) -> Self {
+        if required {
+            Self::Required
+        } else {
+            Self::Optional
+        }
+    }
+}
+
+/// Whether a property accepts a single value or multiple values.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum Multiplicity {
+    /// Single scalar value.
+    #[default]
+    Single,
+    /// Multiple values (array).
+    Many,
+}
+
+impl From<bool> for Multiplicity {
+    #[inline]
+    fn from(multi: bool) -> Self {
+        if multi {
+            Self::Many
+        } else {
+            Self::Single
+        }
     }
 }
 
@@ -791,7 +537,7 @@ mod tests {
 
         /// `PropertyBuilder` for flexible test data generation.
         pub struct PropertyBuilder {
-            cardinality: Cardinality,
+            optionality: Optionality,
             multiplicity: Multiplicity,
             name: String,
             spec: PropertySpec,
@@ -801,8 +547,8 @@ mod tests {
             #[inline]
             fn default() -> Self {
                 Self {
-                    cardinality: Cardinality::Optional,
-                    multiplicity: Multiplicity::Single,
+                    optionality: Optionality::default(),
+                    multiplicity: Multiplicity::default(),
                     name: "test_property".to_owned(),
                     spec: PropertySpec::String(StringSpec::default()),
                 }
@@ -832,7 +578,7 @@ mod tests {
                 Ok(Property::new(
                     PropertyId::from_uuid(TEST_PROPERTY_ID),
                     name,
-                    self.cardinality,
+                    self.optionality,
                     self.multiplicity,
                     self.spec,
                 ))
@@ -853,15 +599,11 @@ mod tests {
                 Self::default()
             }
 
-            /// Sets whether the property is required.
+            /// Sets the property to required.
             #[inline]
             #[must_use]
-            pub fn required(mut self, required: bool) -> Self {
-                self.cardinality = if required {
-                    Cardinality::Required
-                } else {
-                    Cardinality::Optional
-                };
+            pub fn required(mut self) -> Self {
+                self.optionality = Optionality::Required;
                 self
             }
 
@@ -881,7 +623,7 @@ mod tests {
             fn build_property() -> Property {
                 PropertyBuilder::new()
                     .name("priority")
-                    .required(true)
+                    .required()
                     .array(true)
                     .spec(PropertySpec::String(StringSpec::default()))
                     .build()
@@ -904,7 +646,7 @@ mod tests {
                 let property = build_property();
 
                 assert!(
-                    property.cardinality() == Cardinality::Required,
+                    property.optionality() == Optionality::Required,
                     "Builder should set required flag to true"
                 );
             }
@@ -938,7 +680,7 @@ mod tests {
             Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID),
                 name,
-                Cardinality::Required,
+                Optionality::Required,
                 Multiplicity::Single,
                 spec,
             )
@@ -949,7 +691,7 @@ mod tests {
             let property = required_scalar_property();
 
             assert!(
-                property.cardinality() == Cardinality::Required,
+                property.optionality() == Optionality::Required,
                 "Property should be required when required flag is true"
             );
         }

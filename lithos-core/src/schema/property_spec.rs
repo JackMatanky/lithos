@@ -11,7 +11,6 @@
 
 use std::{
     collections::HashMap,
-    hash::Hash,
     path::{Component, Path},
     sync::{Arc, OnceLock, RwLock},
 };
@@ -27,78 +26,6 @@ use crate::bounds::{Bounds, BoundsError};
 //   construction).
 //
 // Internal invariant helpers live near the bottom of the file.
-
-/// A validated option entry with optional display label.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::property_spec::OptionEntry;
-///
-/// let entry = OptionEntry {
-///     value: "open".into(),
-///     label: Some("Open".into()),
-/// };
-/// assert_eq!(entry.value.as_ref(), "open");
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct OptionEntry {
-    /// The option value used in validation.
-    pub value: Box<str>,
-    /// Optional display label for UI consumers.
-    pub label: Option<Box<str>>,
-}
-
-/// Supported property specification types.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::property_spec::PropertySpecType;
-///
-/// let kind = PropertySpecType::Bool;
-/// match kind {
-///     PropertySpecType::Bool => {}
-///     _ => {}
-/// }
-/// ```
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum PropertySpecType {
-    /// Boolean type.
-    Bool,
-    /// Date type.
-    Date,
-    /// File reference type.
-    File,
-    /// Numeric type.
-    Number,
-    /// String type.
-    String,
-}
-
-// --- Validated runtime types: *Spec ---
 
 /// Validated sum type for all supported property specifications.
 ///
@@ -138,77 +65,29 @@ pub enum PropertySpec {
     String(StringSpec),
 }
 
+/// A validated option entry with optional display label.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct OptionEntry {
+    /// The option value used in validation.
+    pub value: Box<str>,
+    /// Optional display label for UI consumers.
+    pub label: Option<Box<str>>,
+}
+
 impl PropertySpec {
-    /// Get the spec type identifier.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property_spec::{
-    ///     BoolSpec, PropertySpec, PropertySpecType,
-    /// };
-    ///
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// assert_eq!(spec.spec_type(), PropertySpecType::Bool);
-    /// ```
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &enum are intentional here for \
-                  readability"
-    )]
-    pub fn spec_type(&self) -> PropertySpecType {
-        match self {
-            Self::Bool(_) => PropertySpecType::Bool,
-            Self::Date(_) => PropertySpecType::Date,
-            Self::File(_) => PropertySpecType::File,
-            Self::Number(_) => PropertySpecType::Number,
-            Self::String(_) => PropertySpecType::String,
-        }
-    }
-
-    /// Feed spec content into a blake3 hasher for stable hashing.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::property_spec::{BoolSpec, PropertySpec};
-    ///
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let mut hasher = blake3::Hasher::new();
-    /// spec.hash_into_blake3(&mut hasher);
-    /// let _digest = hasher.finalize();
-    /// ```
-    #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &enum are intentional here for \
-                  readability"
-    )]
-    pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
-        match self {
-            Self::Bool(spec) => {
-                hasher.update(&[0u8]);
-                spec.hash_into_blake3(hasher);
-            }
-            Self::Date(spec) => {
-                hasher.update(&[1u8]);
-                spec.hash_into_blake3(hasher);
-            }
-            Self::File(spec) => {
-                hasher.update(&[2u8]);
-                spec.hash_into_blake3(hasher);
-            }
-            Self::Number(spec) => {
-                hasher.update(&[3u8]);
-                spec.hash_into_blake3(hasher);
-            }
-            Self::String(spec) => {
-                hasher.update(&[4u8]);
-                spec.hash_into_blake3(hasher);
-            }
-        }
-    }
-
     /// Validate a value against this spec's constraints.
     ///
     /// This method uses `serde_json::Value` as a universal Intermediate
@@ -241,57 +120,60 @@ impl PropertySpec {
         match self {
             Self::Bool(_) => {
                 if !value.is_boolean() {
-                    return Err(SchemaError::InvalidType {
-                        value: value.to_string(),
-                        expected: "boolean".into(),
-                    });
+                    return Err(Self::invalid_type(value, "boolean"));
                 }
                 Ok(())
             }
             Self::Date(s) => {
-                let val =
-                    value.as_str().ok_or_else(|| SchemaError::InvalidType {
-                        value: value.to_string(),
-                        expected: "string (date)".into(),
-                    })?;
+                let val = Self::expect_str(value, "string (date)")?;
                 s.validate_str(val)
             }
             Self::File(s) => {
-                let val =
-                    value.as_str().ok_or_else(|| SchemaError::InvalidType {
-                        value: value.to_string(),
-                        expected: "string (file path)".into(),
-                    })?;
+                let val = Self::expect_str(value, "string (file path)")?;
                 s.validate_str(val)
             }
             Self::Number(s) => {
-                let n =
-                    value.as_f64().ok_or_else(|| SchemaError::InvalidType {
-                        value: value.to_string(),
-                        expected: "number".into(),
-                    })?;
+                let n = Self::expect_f64(value, "number")?;
                 s.validate_value(n)
             }
             Self::String(s) => {
-                let val =
-                    value.as_str().ok_or_else(|| SchemaError::InvalidType {
-                        value: value.to_string(),
-                        expected: "string".into(),
-                    })?;
+                let val = Self::expect_str(value, "string")?;
                 s.validate_str(val)
             }
         }
+    }
+
+    #[inline]
+    fn invalid_type(
+        value: &serde_json::Value,
+        expected: &'static str,
+    ) -> SchemaError {
+        SchemaError::InvalidType {
+            value: value.to_string(),
+            expected: expected.into(),
+        }
+    }
+
+    #[inline]
+    fn expect_str<'value>(
+        value: &'value serde_json::Value,
+        expected: &'static str,
+    ) -> Result<&'value str, SchemaError> {
+        value.as_str().ok_or_else(|| Self::invalid_type(value, expected))
+    }
+
+    #[inline]
+    fn expect_f64(
+        value: &serde_json::Value,
+        expected: &'static str,
+    ) -> Result<f64, SchemaError> {
+        value.as_f64().ok_or_else(|| Self::invalid_type(value, expected))
     }
 }
 
 /// Boolean property constraints (marker type).
 ///
-/// # Examples
-/// ```
-/// use lithos_core::schema::property_spec::BoolSpec;
-///
-/// let _spec = BoolSpec::default();
-/// ```
+/// This type intentionally has no methods because it carries no data.
 #[derive(
     Debug,
     Clone,
@@ -308,33 +190,7 @@ impl PropertySpec {
 #[non_exhaustive]
 pub struct BoolSpec;
 
-impl BoolSpec {
-    /// Feed spec content into a blake3 hasher for stable hashing.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::property_spec::BoolSpec;
-    ///
-    /// let spec = BoolSpec::default();
-    /// let mut hasher = blake3::Hasher::new();
-    /// spec.hash_into_blake3(&mut hasher);
-    /// let _digest = hasher.finalize();
-    /// ```
-    #[inline]
-    pub fn hash_into_blake3(&self, _hasher: &mut blake3::Hasher) {
-        // BoolSpec is a marker type with no fields
-    }
-}
-
 /// Date property validation constraints.
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::property_spec::DateSpec;
-///
-/// let _spec = DateSpec::try_new("%Y-%m-%d")?;
-/// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-/// ```
 #[derive(
     Debug,
     Clone,
@@ -361,14 +217,6 @@ impl DateSpec {
     /// # Errors
     /// Returns `SchemaError::InvalidDateFormat` if the format is empty or not
     /// a valid strftime pattern.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property_spec::DateSpec;
-    ///
-    /// let _spec = DateSpec::try_new("%Y-%m-%d")?;
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
     ///
     /// # Panics
     ///
@@ -424,23 +272,6 @@ impl DateSpec {
         Ok(())
     }
 
-    /// Feed spec content into a blake3 hasher for stable hashing.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::property_spec::DateSpec;
-    ///
-    /// let spec = DateSpec::try_new("%Y-%m-%d")?;
-    /// let mut hasher = blake3::Hasher::new();
-    /// spec.hash_into_blake3(&mut hasher);
-    /// let _digest = hasher.finalize();
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
-    #[inline]
-    pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
-        hasher.update(self.format.as_bytes());
-    }
-
     /// Apply overrides from a raw date spec.
     ///
     /// If the override format is `None`, the base format is preserved.
@@ -448,16 +279,6 @@ impl DateSpec {
     /// # Errors
     /// Returns `SchemaError::InvalidDateFormat` if the override format is
     /// invalid.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::{property_spec::DateSpec, raw::RawDateSpec};
-    ///
-    /// let base = DateSpec::try_new("%Y-%m-%d")?;
-    /// let overrides = RawDateSpec::default();
-    /// let _updated = base.apply_overrides(&overrides)?;
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
     #[inline]
     pub fn apply_overrides(
         self,
@@ -510,21 +331,21 @@ impl FileSpec {
     /// ```
     /// use lithos_core::schema::property_spec::FileSpec;
     ///
-    /// let spec = FileSpec::try_new(Some("attachments".to_string()), None)?;
+    /// let spec = FileSpec::try_new(Some("attachments"), None)?;
     /// let _ = spec;
     /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
     /// ```
     #[inline]
     pub fn try_new(
-        directory: Option<String>,
-        file_class: Option<String>,
+        directory: Option<&str>,
+        file_class: Option<&str>,
     ) -> Result<Self, SchemaError> {
         let directory = match directory {
-            Some(dir) => Some(VaultRelPath::try_new(&dir)?),
+            Some(dir) => Some(VaultRelPath::try_new(dir)?),
             None => None,
         };
 
-        if let Some(fc) = file_class.as_ref()
+        if let Some(fc) = file_class
             && fc.is_empty()
         {
             return Err(SchemaError::InvalidFileClass(
@@ -534,13 +355,13 @@ impl FileSpec {
 
         Ok(Self {
             directory,
-            file_class: file_class.map(String::into_boxed_str),
+            file_class: file_class.map(Into::into),
         })
     }
 
     #[inline]
     fn validate_str(&self, value: &str) -> Result<(), SchemaError> {
-        validate_vault_rel_path(value)?;
+        VaultRelPath::validate_path(value)?;
 
         if let Some(dir) = self.directory.as_ref() {
             let value_path = Path::new(value);
@@ -556,34 +377,6 @@ impl FileSpec {
         }
 
         Ok(())
-    }
-
-    /// Feed spec content into a blake3 hasher for stable hashing.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::property_spec::FileSpec;
-    ///
-    /// let spec = FileSpec::try_new(None, None)?;
-    /// let mut hasher = blake3::Hasher::new();
-    /// spec.hash_into_blake3(&mut hasher);
-    /// let _digest = hasher.finalize();
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
-    #[inline]
-    pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
-        if let Some(dir) = self.directory.as_ref() {
-            hasher.update(&[1u8]);
-            hasher.update(dir.as_str().as_bytes());
-        } else {
-            hasher.update(&[0u8]);
-        }
-        if let Some(fc) = self.file_class.as_ref() {
-            hasher.update(&[1u8]);
-            hasher.update(fc.as_bytes());
-        } else {
-            hasher.update(&[0u8]);
-        }
     }
 
     /// Apply overrides from a raw file spec.
@@ -609,18 +402,10 @@ impl FileSpec {
     ) -> Result<Self, SchemaError> {
         let directory = overrides
             .directory
-            .as_ref()
-            .map(std::convert::AsRef::as_ref)
-            .map(String::from)
-            .or_else(|| self.directory.as_ref().map(|d| d.as_str().to_owned()));
-        let file_class = overrides
-            .file_class
-            .as_ref()
-            .map(std::convert::AsRef::as_ref)
-            .map(String::from)
-            .or_else(|| {
-                self.file_class.as_ref().map(|fc| fc.as_ref().to_owned())
-            });
+            .as_deref()
+            .or_else(|| self.directory.as_ref().map(VaultRelPath::as_str));
+        let file_class =
+            overrides.file_class.as_deref().or(self.file_class.as_deref());
         Self::try_new(directory, file_class)
     }
 }
@@ -769,68 +554,21 @@ impl NumberSpec {
         if let Some(step) = self.step {
             let base = self.bounds.min().map_or(0.0f64, FiniteF64::get);
             let offset = (value - base).abs();
-            let remainder = offset % step.get();
+            let step = step.get();
+            let remainder = offset % step;
 
             // Use relative epsilon scaled to step size for robust comparison
             // across different magnitudes (handles both large and tiny steps)
-            let epsilon = step.get().abs() * 1e-10f64;
+            let epsilon = step.abs() * 1e-10f64;
 
-            if remainder > epsilon && (step.get() - remainder) > epsilon {
+            if remainder > epsilon && (step - remainder) > epsilon {
                 return Err(SchemaError::InvalidStepValue {
                     value,
-                    step: step.get(),
+                    step,
                 });
             }
         }
         Ok(())
-    }
-
-    /// Feed spec content into a blake3 hasher for stable hashing.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::property_spec::NumberSpec;
-    ///
-    /// let spec = NumberSpec::try_new(None, None, None)?;
-    /// let mut hasher = blake3::Hasher::new();
-    /// spec.hash_into_blake3(&mut hasher);
-    /// let _digest = hasher.finalize();
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
-    #[inline]
-    #[expect(
-        clippy::little_endian_bytes,
-        reason = "Little-endian is intentional for consistent hash values \
-                  across platforms"
-    )]
-    pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
-        match self.bounds {
-            Bounds::Unbounded => {
-                hasher.update(&[0u8]);
-            }
-            Bounds::Min(min) => {
-                hasher.update(&[1u8]);
-                hasher.update(&min.get().to_le_bytes());
-            }
-            Bounds::Max(max) => {
-                hasher.update(&[2u8]);
-                hasher.update(&max.get().to_le_bytes());
-            }
-            Bounds::Range {
-                min,
-                max,
-            } => {
-                hasher.update(&[3u8]);
-                hasher.update(&min.get().to_le_bytes());
-                hasher.update(&max.get().to_le_bytes());
-            }
-        }
-        if let Some(step) = self.step {
-            hasher.update(&[1u8]);
-            hasher.update(&step.get().to_le_bytes());
-        } else {
-            hasher.update(&[0u8]);
-        }
     }
 
     /// Apply overrides from a raw number spec.
@@ -995,57 +733,6 @@ impl StringSpec {
         Ok(())
     }
 
-    /// Feed spec content into a blake3 hasher for stable hashing.
-    ///
-    /// # Examples
-    /// ```ignore
-    /// use lithos_core::schema::property_spec::StringSpec;
-    ///
-    /// let spec = StringSpec::try_new(None, None, None)?;
-    /// let mut hasher = blake3::Hasher::new();
-    /// spec.hash_into_blake3(&mut hasher);
-    /// let _digest = hasher.finalize();
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
-    #[inline]
-    #[expect(
-        clippy::as_conversions,
-        reason = "usize to u64 for hash stability; usize <= u64 on all \
-                  platforms"
-    )]
-    #[expect(
-        clippy::little_endian_bytes,
-        reason = "Little-endian for consistent hash values across platforms"
-    )]
-    pub fn hash_into_blake3(&self, hasher: &mut blake3::Hasher) {
-        if let Some(entries) = self.options.as_ref() {
-            hasher.update(&(entries.len() as u64).to_le_bytes());
-            for entry in entries {
-                hasher.update(entry.value.as_bytes());
-                if let Some(label) = entry.label.as_ref() {
-                    hasher.update(&[1u8]);
-                    hasher.update(label.as_bytes());
-                } else {
-                    hasher.update(&[0u8]);
-                }
-            }
-        } else {
-            hasher.update(&0u64.to_le_bytes());
-        }
-        if let Some(pattern) = self.pattern.as_ref() {
-            hasher.update(&[1u8]);
-            hasher.update(pattern.as_bytes());
-        } else {
-            hasher.update(&[0u8]);
-        }
-        if let Some(format) = self.format {
-            hasher.update(&[1u8]);
-            hasher.update(format.name().as_bytes());
-        } else {
-            hasher.update(&[0u8]);
-        }
-    }
-
     /// Apply overrides from a raw string spec.
     ///
     /// Fields that are `None` in the overrides preserve the base values.
@@ -1180,7 +867,7 @@ struct VaultRelPath(Box<str>);
 impl VaultRelPath {
     #[inline]
     fn try_new(path: &str) -> Result<Self, SchemaError> {
-        validate_vault_rel_path(path)?;
+        Self::validate_path(path)?;
         Ok(Self(path.into()))
     }
 
@@ -1188,43 +875,53 @@ impl VaultRelPath {
     fn as_str(&self) -> &str {
         &self.0
     }
-}
 
-#[inline]
-fn validate_vault_rel_path(path: &str) -> Result<(), SchemaError> {
-    if path.is_empty() {
-        return Err(SchemaError::InvalidDirectoryPath(
-            "Path cannot be empty".into(),
-        ));
-    }
+    #[inline]
+    fn validate_path(path: &str) -> Result<(), SchemaError> {
+        if path.is_empty() {
+            return Err(SchemaError::InvalidDirectoryPath(
+                "Path cannot be empty".into(),
+            ));
+        }
 
-    for component in Path::new(path).components() {
-        match component {
-            Component::Normal(_) => {}
-            Component::CurDir => {
-                return Err(SchemaError::InvalidDirectoryPath(format!(
-                    "Invalid path {path}: '.' component is not allowed"
-                )));
-            }
-            Component::ParentDir => {
-                return Err(SchemaError::InvalidDirectoryPath(format!(
-                    "Invalid path {path}: '..' component is not allowed"
-                )));
-            }
-            Component::RootDir => {
-                return Err(SchemaError::InvalidDirectoryPath(format!(
-                    "Invalid path {path}: absolute paths are not allowed"
-                )));
-            }
-            Component::Prefix(_) => {
-                return Err(SchemaError::InvalidDirectoryPath(format!(
-                    "Invalid path {path}: path prefixes are not allowed"
-                )));
+        for component in Path::new(path).components() {
+            match component {
+                Component::Normal(_) => {}
+                Component::CurDir => {
+                    return Err(SchemaError::InvalidDirectoryPath(format!(
+                        "Invalid path {path}: '.' component is not allowed"
+                    )));
+                }
+                Component::ParentDir => {
+                    return Err(SchemaError::InvalidDirectoryPath(format!(
+                        "Invalid path {path}: '..' component is not allowed"
+                    )));
+                }
+                Component::RootDir => {
+                    return Err(SchemaError::InvalidDirectoryPath(format!(
+                        "Invalid path {path}: absolute paths are not allowed"
+                    )));
+                }
+                Component::Prefix(_) => {
+                    return Err(SchemaError::InvalidDirectoryPath(format!(
+                        "Invalid path {path}: path prefixes are not allowed"
+                    )));
+                }
             }
         }
-    }
 
-    Ok(())
+        Ok(())
+    }
+}
+
+impl TryFrom<Box<str>> for VaultRelPath {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
+        Self::validate_path(&value)?;
+        Ok(Self(value))
+    }
 }
 
 /// Cache for user-defined custom regex patterns.
@@ -1502,8 +1199,7 @@ mod tests {
         use crate::schema::{error::SchemaError, property_spec::FileSpec};
 
         fn validated_spec_with_dir(dir: &str) -> FileSpec {
-            FileSpec::try_new(Some(dir.to_owned()), None)
-                .expect("Expected valid FileSpec")
+            FileSpec::try_new(Some(dir), None).expect("Expected valid FileSpec")
         }
 
         /// 3.3-UNIT-013: File Specification Validation Matrix.
@@ -1598,8 +1294,7 @@ mod tests {
         #[test]
         fn file_spec_validates_file_class_format() {
             // GIVEN: a valid file_class spec
-            let result =
-                FileSpec::try_new(None, Some("any-schema-name".to_owned()));
+            let result = FileSpec::try_new(None, Some("any-schema-name"));
             assert!(
                 result.is_ok(),
                 "Expected valid file_class spec, got: {result:?}"
@@ -1609,7 +1304,7 @@ mod tests {
         #[test]
         fn file_spec_rejects_empty_file_class() {
             // GIVEN: an empty file_class spec
-            let result = FileSpec::try_new(None, Some(String::new()));
+            let result = FileSpec::try_new(None, Some(""));
 
             // THEN: it should be invalid
             assert!(
@@ -1675,62 +1370,13 @@ mod tests {
     }
 
     mod property_spec {
-        use crate::schema::{
-            property_spec::{PropertySpec, PropertySpecType},
-            raw::{RawBoolSpec, RawNumberSpec, RawPropertySpec, RawStringSpec},
-        };
-
-        fn bool_spec() -> PropertySpec {
-            RawPropertySpec::Bool(RawBoolSpec)
-                .try_into_validated()
-                .expect("Expected default BoolSpec to validate")
-        }
-
-        fn string_spec() -> PropertySpec {
-            RawPropertySpec::String(RawStringSpec::default())
-                .try_into_validated()
-                .expect("Expected default StringSpec to validate")
-        }
-
-        fn number_spec() -> PropertySpec {
-            RawPropertySpec::Number(RawNumberSpec::default())
-                .try_into_validated()
-                .expect("Expected default NumberSpec to validate")
-        }
-
-        #[test]
-        fn bool_spec_type_reports_bool() {
-            let spec = bool_spec();
-            assert_eq!(
-                spec.spec_type(),
-                PropertySpecType::Bool,
-                "BoolSpec should return Bool type"
-            );
-        }
-
-        #[test]
-        fn string_spec_type_reports_string() {
-            let spec = string_spec();
-            assert_eq!(
-                spec.spec_type(),
-                PropertySpecType::String,
-                "StringSpec should return String type"
-            );
-        }
-
-        #[test]
-        fn number_spec_type_reports_number() {
-            let spec = number_spec();
-            assert_eq!(
-                spec.spec_type(),
-                PropertySpecType::Number,
-                "NumberSpec should return Number type"
-            );
-        }
+        use crate::schema::raw::{RawBoolSpec, RawPropertySpec};
 
         #[test]
         fn validate_dispatches_to_bool_spec() {
-            let spec = bool_spec();
+            let spec = RawPropertySpec::Bool(RawBoolSpec)
+                .try_into_validated()
+                .expect("Expected default BoolSpec to validate");
             let result = spec.validate(&serde_json::Value::Bool(true));
             assert!(
                 result.is_ok(),

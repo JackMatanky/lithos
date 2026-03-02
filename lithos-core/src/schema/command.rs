@@ -186,7 +186,7 @@ impl Command<crate::schema::adapter::command::CommandAdapter<'_>> {
     /// # use lithos_core::schema::command::Command;
     /// # let command = todo!("Provide a CommandAdapter-backed Command");
     /// # let schemas: Vec<lithos_core::schema::aggregate::Schema> = Vec::new();
-    /// # let metadata: Vec<lithos_core::schema::adapter::command::SaveMetadata> = Vec::new();
+    /// # let metadata: Vec<lithos_core::schema::adapter::stored::StoredMetadata> = Vec::new();
     /// command.save_batch_with_metadata(&schemas, &metadata)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
@@ -194,7 +194,7 @@ impl Command<crate::schema::adapter::command::CommandAdapter<'_>> {
     pub fn save_batch_with_metadata(
         &self,
         schemas: &[Schema],
-        metadata: &[crate::schema::adapter::command::SaveMetadata],
+        metadata: &[crate::schema::adapter::stored::StoredMetadata],
     ) -> Result<(), SchemaCommandError> {
         self.command_port.save_batch_with_metadata(schemas, metadata).map_err(
             |error| {

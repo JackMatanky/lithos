@@ -17,7 +17,7 @@ use lithos_core::{
         adapter::{command::CommandAdapter, query::QueryAdapter},
         aggregate::{Schema, SchemaId, SchemaName},
         property::{
-            Cardinality, Multiplicity, Property, PropertyId, PropertyName,
+            Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec, StringSpec},
     },
@@ -123,7 +123,7 @@ pub fn setup_cqrs(
 /// # use tests::common::{PropertyBuilder, TestResult};
 /// # fn test() -> TestResult {
 /// let prop = PropertyBuilder::new("status")
-///     .cardinality(lithos_core::schema::property::Cardinality::Required)
+///     .optionality(lithos_core::schema::property::Optionality::Required)
 ///     .build_bool()?;
 /// # Ok(())
 /// # }
@@ -131,7 +131,7 @@ pub fn setup_cqrs(
 #[derive(Debug)]
 pub struct PropertyBuilder {
     name: String,
-    cardinality: Cardinality,
+    optionality: Optionality,
     multiplicity: Multiplicity,
     id: Option<PropertyId>,
 }
@@ -140,23 +140,23 @@ impl PropertyBuilder {
     /// Create a new builder with a property name.
     ///
     /// Defaults:
-    /// - Cardinality: Required
+    /// - Optionality: Optional
     /// - Multiplicity: Single
     /// - ID: Auto-generated UUID v7
     #[must_use]
     pub fn new<S: Into<String>>(name: S) -> Self {
         Self {
             name: name.into(),
-            cardinality: Cardinality::Required,
-            multiplicity: Multiplicity::Single,
+            optionality: Optionality::default(),
+            multiplicity: Multiplicity::default(),
             id: None,
         }
     }
 
-    /// Set the property's cardinality.
+    /// Set the property's optionality.
     #[must_use]
-    pub const fn cardinality(mut self, cardinality: Cardinality) -> Self {
-        self.cardinality = cardinality;
+    pub const fn optionality(mut self, optionality: Optionality) -> Self {
+        self.optionality = optionality;
         self
     }
 
@@ -213,7 +213,7 @@ impl PropertyBuilder {
     pub fn build_with_spec(self, spec: PropertySpec) -> TestResult<Property> {
         let name = PropertyName::new(&self.name)?;
         let id = self.id.unwrap_or_default();
-        Ok(Property::new(id, name, self.cardinality, self.multiplicity, spec))
+        Ok(Property::new(id, name, self.optionality, self.multiplicity, spec))
     }
 }
 
@@ -384,9 +384,9 @@ pub fn assert_schema_eq(actual: &Schema, expected: &Schema, context: &str) {
             "{context}: Property names should match"
         );
         assert_eq!(
-            actual_prop.cardinality(),
-            expected_prop.cardinality(),
-            "{context}: Property '{}' cardinality should match",
+            actual_prop.optionality(),
+            expected_prop.optionality(),
+            "{context}: Property '{}' optionality should match",
             actual_prop.name()
         );
         assert_eq!(
