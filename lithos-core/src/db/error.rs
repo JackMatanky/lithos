@@ -38,6 +38,62 @@ pub enum DbError {
     Table(String),
 }
 
+impl DbError {
+    /// Returns true if this error might be transient and worth retrying.
+    ///
+    /// Transient errors include:
+    /// - Database locked/busy (concurrent access)
+    /// - Temporary I/O errors
+    /// - Some transaction conflicts
+    ///
+    /// Non-transient errors that should NOT be retried:
+    /// - Corruption
+    /// - Deserialization/validation errors
+    /// - Missing data (`NotFound`)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::db::DbError;
+    ///
+    /// let io_error = DbError::Database("database is locked".into());
+    /// // Note: actual transient detection depends on error message analysis
+    ///
+    /// let corruption = DbError::Corruption("data corrupted".into());
+    /// assert!(!corruption.is_transient());
+    /// ```
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match pattern ergonomics preferred for readability"
+    )]
+    pub fn is_transient(&self) -> bool {
+        match self {
+            // Database errors might be transient (locked, I/O)
+            Self::Database(msg) => {
+                let lower = msg.to_lowercase();
+                lower.contains("locked")
+                    || lower.contains("busy")
+                    || lower.contains("i/o error")
+                    || lower.contains("temporarily unavailable")
+            }
+            // Transaction errors might be transient (conflicts)
+            Self::Transaction(msg) => {
+                let lower = msg.to_lowercase();
+                lower.contains("conflict") || lower.contains("locked")
+            }
+            // All other errors are permanent (not retryable)
+            Self::Corruption(_)
+            | Self::Deserialization(_)
+            | Self::Serialization(_)
+            | Self::NotFound
+            | Self::Open(_)
+            | Self::Table(_) => false,
+        }
+    }
+}
+
 impl From<redb::DatabaseError> for DbError {
     #[inline]
     fn from(e: redb::DatabaseError) -> Self {

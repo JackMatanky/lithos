@@ -35,6 +35,7 @@
 
 mod error;
 mod reader;
+pub mod retry;
 mod writer;
 
 use std::path::Path;
