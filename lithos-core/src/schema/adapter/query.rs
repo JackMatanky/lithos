@@ -13,10 +13,14 @@ use crate::{
         aggregate::{Schema, SchemaId, SchemaName, Timestamp},
         bank::{BankVersion, PropertyBank},
         db_table::{
-            BANK_METADATA, BANK_PROPERTY_BY_NAME, PROPERTY_BANK_KEY,
-            SCHEMA_BY_ID, SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
+            BANK_METADATA, BANK_PROPERTY_BY_ID, BANK_PROPERTY_BY_NAME,
+            PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
+            SCHEMA_METADATA,
         },
         ports::{NameIdPair, Query},
+        property::{
+            Multiplicity, Optionality, Property, PropertyId, PropertyName,
+        },
     },
 };
 
@@ -90,6 +94,45 @@ impl Query for QueryAdapter<'_> {
         PropertyBank::try_from(stored)
             .map(Some)
             .map_err(|e| DbError::Deserialization(e.to_string()))
+    }
+
+    #[inline]
+    fn get_property_by_id(
+        &self,
+        id: PropertyId,
+    ) -> Result<Option<Property>, Self::Error> {
+        // Get current bank version from metadata
+        let Some(metadata) = self
+            .db
+            .get_owned::<StoredMetadata>(BANK_METADATA, PROPERTY_BANK_KEY)?
+        else {
+            return Ok(None);
+        };
+
+        // Query BANK_PROPERTY_BY_ID with versioned key
+        let key =
+            StoredBankProperty::key(metadata.bank_version, &id.to_string());
+        let Some(stored) = self
+            .db
+            .get_owned::<StoredBankProperty>(BANK_PROPERTY_BY_ID, &key)?
+        else {
+            return Ok(None);
+        };
+
+        // Reconstruct Property from StoredProperty
+        let sp = stored.property;
+        let prop_name = PropertyName::try_from(sp.name)
+            .map_err(|e| DbError::Deserialization(e.to_string()))?;
+        let optionality = Optionality::from(sp.required);
+        let multiplicity = Multiplicity::from(sp.multi);
+
+        Ok(Some(Property::new(
+            sp.id,
+            prop_name,
+            optionality,
+            multiplicity,
+            sp.spec,
+        )))
     }
 
     #[inline]

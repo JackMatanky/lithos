@@ -139,6 +139,13 @@ pub trait Command: Send + Sync {
 ///         Ok(None)
 ///     }
 ///
+///     fn get_property_by_id(
+///         &self,
+///         _id: lithos_core::schema::property::PropertyId,
+///     ) -> Result<Option<lithos_core::schema::property::Property>, Self::Error> {
+///         Ok(None)
+///     }
+///
 ///     fn is_bank_stale(
 ///         &self,
 ///         _version: lithos_core::schema::bank::BankVersion,
@@ -243,6 +250,29 @@ pub trait Query: Send + Sync {
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error>;
+
+    /// Get a single property from the current property bank by ID.
+    ///
+    /// Returns `None` if the property bank does not exist or if the property
+    /// with the given ID is not found in the current version.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if query or deserialization fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # use lithos_core::schema::property::PropertyId;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let id = PropertyId::new();
+    /// let property = query.get_property_by_id(id)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    fn get_property_by_id(
+        &self,
+        id: super::property::PropertyId,
+    ) -> Result<Option<super::property::Property>, Self::Error>;
 
     /// Returns `true` if the stored bank version differs from `version`.
     ///
