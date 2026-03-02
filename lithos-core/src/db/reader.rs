@@ -181,6 +181,53 @@ impl Database {
         scan_table_key_value::<V>(&self.inner, table)
     }
 
+    /// Scan a table range matching a key prefix and return key-value pairs.
+    ///
+    /// This is significantly more efficient than
+    /// [`list_key_value_pairs`](Self::list_key_value_pairs) followed by
+    /// filtering, as it uses redb's native range query support
+    /// to only iterate over matching entries (O(K) where K is matches, not O(N)
+    /// where N is total table size).
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use lithos_core::db::Database;
+    /// # use redb::TableDefinition;
+    /// # #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+    /// # #[rkyv(bytecheck(bounds()))]
+    /// # struct Property { id: String }
+    /// # fn example(db: &Database) -> Result<(), Box<dyn std::error::Error>> {
+    /// # const TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("props");
+    /// // Get all properties for schema version 2
+    /// let properties: Vec<(String, Property)> =
+    ///     db.scan_range(TABLE, "schema:v2:")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if transaction or deserialization fails.
+    #[inline]
+    pub fn scan_range<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        key_prefix: &str,
+    ) -> Result<Vec<(String, V)>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        scan_range_impl::<V>(&self.inner, table, key_prefix)
+    }
+
     /// Execute multiple read operations within a single transaction.
     ///
     /// This amortizes transaction creation cost across multiple reads,
@@ -325,6 +372,34 @@ impl BatchReader {
             >,
     {
         scan_table_key_value_tx::<V>(&self.tx, table)
+    }
+
+    /// Scan a table range matching a key prefix and return key-value pairs.
+    ///
+    /// This is significantly more efficient than
+    /// [`list_key_value_pairs`](Self::list_key_value_pairs) followed by
+    /// filtering, as it uses redb's native range query support.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if transaction or deserialization fails.
+    #[inline]
+    pub fn scan_range<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        key_prefix: &str,
+    ) -> Result<Vec<(String, V)>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        scan_range_tx::<V>(&self.tx, table, key_prefix)
     }
 }
 
@@ -747,7 +822,118 @@ where
     Ok(results)
 }
 
+/// Scan entries in a table matching a key prefix and return key-value pairs.
+///
+/// Uses redb's range query to only iterate over keys starting with the given
+/// prefix. This is O(K) where K is the number of matching entries, versus O(N)
+/// for a full table scan with filtering.
+fn scan_range_impl<V>(
+    db: &redb::Database,
+    table: TableDefinition<&str, &[u8]>,
+    key_prefix: &str,
+) -> Result<Vec<(String, V)>, DbError>
+where
+    V: rkyv::Archive,
+    V::Archived: rkyv::Portable
+        + for<'archived> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+        > + rkyv::Deserialize<
+            V,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+{
+    let tx = db.begin_read()?;
+    scan_range_tx::<V>(&tx, table, key_prefix)
+}
+
+/// Scan entries in a table matching a key prefix within a transaction.
+fn scan_range_tx<V>(
+    tx: &redb::ReadTransaction,
+    table: TableDefinition<&str, &[u8]>,
+    key_prefix: &str,
+) -> Result<Vec<(String, V)>, DbError>
+where
+    V: rkyv::Archive,
+    V::Archived: rkyv::Portable
+        + for<'archived> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+        > + rkyv::Deserialize<
+            V,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+{
+    let table_ref = match tx.open_table(table) {
+        Ok(table_ref) => table_ref,
+        Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
+
+    // Compute the exclusive end bound for the range scan.
+    // For prefix "abc", we want to scan ["abc", "abd"), which captures all keys
+    // starting with "abc".
+    let end_bound = next_prefix(key_prefix);
+
+    let mut results = Vec::new();
+    let range = table_ref.range(key_prefix..end_bound.as_str())?;
+    for result in range {
+        let (key, value): (redb::AccessGuard<&str>, redb::AccessGuard<&[u8]>) =
+            result?;
+        let key_str = key.value().to_owned();
+        let bytes: &[u8] = value.value();
+
+        let mut aligned = AlignedVec::<16>::new();
+        aligned.extend_from_slice(bytes);
+
+        let archived =
+            rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(&aligned)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+        let deserialized =
+            rkyv::deserialize::<V, rkyv::rancor::Error>(archived)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+        results.push((key_str, deserialized));
+    }
+
+    Ok(results)
+}
+
+/// Compute the next string in lexicographic order for range queries.
+///
+/// For a prefix "abc", this returns "abd", which is the smallest string that is
+/// strictly greater than all strings starting with "abc". This is used as the
+/// exclusive upper bound for range scans.
+///
+/// If the prefix ends in 0xFF bytes or is empty, this returns a string with an
+/// additional 0xFF byte appended, ensuring the range query still works
+/// correctly.
+fn next_prefix(prefix: &str) -> String {
+    let bytes = prefix.as_bytes();
+
+    // Find the last byte that can be incremented (not 0xFF)
+    for i in (0..bytes.len()).rev() {
+        if let Some(&byte) = bytes.get(i)
+            && byte < 255
+        {
+            let mut next =
+                bytes.get(..=i).map_or_else(|| bytes.to_vec(), <[u8]>::to_vec);
+            if let Some(last) = next.get_mut(i) {
+                *last = last.saturating_add(1);
+            }
+            // Safe because we're only incrementing valid UTF-8 bytes
+            return String::from_utf8(next)
+                .unwrap_or_else(|_| format!("{prefix}\u{FFFF}"));
+        }
+    }
+
+    // All bytes are 0xFF or empty string, append a high Unicode character
+    format!("{prefix}\u{FFFF}")
+}
+
 #[cfg(test)]
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "Iterator over Vec<(String, T)> yields &(String, T), requiring \
+              |(k, _)| pattern instead of |&(k, _)| for ergonomic testing"
+)]
 mod tests {
     use super::*;
 
@@ -967,6 +1153,152 @@ mod tests {
                     .expect("multimap_get");
 
                 assert_eq!(values.len(), 0);
+            }
+        }
+
+        mod scan_range {
+            use super::{tables::USERS_TABLE, *};
+
+            #[test]
+            fn scan_range_filters_by_prefix() {
+                let (_temp, db) = temp_db().expect("temp db");
+
+                db.put(USERS_TABLE, "user:1:name", &TestValue {
+                    id: 1,
+                    name: "Alice".to_owned(),
+                })
+                .expect("put");
+                db.put(USERS_TABLE, "user:1:email", &TestValue {
+                    id: 2,
+                    name: "alice@example.com".to_owned(),
+                })
+                .expect("put");
+                db.put(USERS_TABLE, "user:2:name", &TestValue {
+                    id: 3,
+                    name: "Bob".to_owned(),
+                })
+                .expect("put");
+                db.put(USERS_TABLE, "post:1:title", &TestValue {
+                    id: 4,
+                    name: "Post".to_owned(),
+                })
+                .expect("put");
+
+                let results: Vec<(String, TestValue)> =
+                    db.scan_range(USERS_TABLE, "user:1:").expect("scan_range");
+
+                assert_eq!(results.len(), 2);
+                assert!(
+                    results.iter().any(|(k, _)| k.as_str() == "user:1:name")
+                );
+                assert!(
+                    results.iter().any(|(k, _)| k.as_str() == "user:1:email")
+                );
+                assert!(!results.iter().any(|(k, _)| k.starts_with("user:2:")));
+                assert!(!results.iter().any(|(k, _)| k.starts_with("post:")));
+            }
+
+            #[test]
+            fn scan_range_returns_empty_for_no_matches() {
+                let (_temp, db) = temp_db().expect("temp db");
+
+                db.put(USERS_TABLE, "user:1:name", &TestValue {
+                    id: 1,
+                    name: "Alice".to_owned(),
+                })
+                .expect("put");
+
+                let results: Vec<(String, TestValue)> = db
+                    .scan_range(USERS_TABLE, "nonexistent:")
+                    .expect("scan_range");
+
+                assert_eq!(results.len(), 0);
+            }
+
+            #[test]
+            fn scan_range_handles_nested_prefixes() {
+                let (_temp, db) = temp_db().expect("temp db");
+
+                db.put(USERS_TABLE, "a", &TestValue {
+                    id: 1,
+                    name: "A".to_owned(),
+                })
+                .expect("put");
+                db.put(USERS_TABLE, "ab", &TestValue {
+                    id: 2,
+                    name: "AB".to_owned(),
+                })
+                .expect("put");
+                db.put(USERS_TABLE, "abc", &TestValue {
+                    id: 3,
+                    name: "ABC".to_owned(),
+                })
+                .expect("put");
+                db.put(USERS_TABLE, "abd", &TestValue {
+                    id: 4,
+                    name: "ABD".to_owned(),
+                })
+                .expect("put");
+                db.put(USERS_TABLE, "b", &TestValue {
+                    id: 5,
+                    name: "B".to_owned(),
+                })
+                .expect("put");
+
+                let results: Vec<(String, TestValue)> =
+                    db.scan_range(USERS_TABLE, "ab").expect("scan_range");
+
+                assert_eq!(results.len(), 3);
+                assert!(
+                    results
+                        .iter()
+                        .any(|(k, v)| k.as_str() == "ab" && v.id == 2)
+                );
+                assert!(
+                    results
+                        .iter()
+                        .any(|(k, v)| k.as_str() == "abc" && v.id == 3)
+                );
+                assert!(
+                    results
+                        .iter()
+                        .any(|(k, v)| k.as_str() == "abd" && v.id == 4)
+                );
+                assert!(!results.iter().any(|(k, _)| k.as_str() == "a"));
+                assert!(!results.iter().any(|(k, _)| k.as_str() == "b"));
+            }
+
+            #[test]
+            fn batch_reader_scan_range_works() {
+                let (_temp, db) = temp_db().expect("temp db");
+
+                db.put(USERS_TABLE, "schema:v1:prop1", &TestValue {
+                    id: 1,
+                    name: "Prop1".to_owned(),
+                })
+                .expect("put");
+                db.put(USERS_TABLE, "schema:v1:prop2", &TestValue {
+                    id: 2,
+                    name: "Prop2".to_owned(),
+                })
+                .expect("put");
+                db.put(USERS_TABLE, "schema:v2:prop1", &TestValue {
+                    id: 3,
+                    name: "V2Prop1".to_owned(),
+                })
+                .expect("put");
+
+                let results = db
+                    .batch_read(|reader| {
+                        reader
+                            .scan_range::<TestValue>(USERS_TABLE, "schema:v1:")
+                    })
+                    .expect("batch_read");
+
+                assert_eq!(results.len(), 2);
+                assert!(results.iter().any(|(_, v)| v.id == 1));
+                assert!(results.iter().any(|(_, v)| v.id == 2));
+                assert!(!results.iter().any(|(_, v)| v.id == 3));
             }
         }
 
