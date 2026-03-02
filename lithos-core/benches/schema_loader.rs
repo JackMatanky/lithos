@@ -430,7 +430,7 @@ fn generate_vault(size: &VaultSize) -> TempDir {
             if written >= size.schema_count {
                 break;
             }
-            // Generate unique filename and update schema name in content
+            // Generate unique filename (schema name is derived from filename)
             let unique_name = if written < SCHEMAS.len() {
                 (*name).to_owned()
             } else {
@@ -438,18 +438,9 @@ fn generate_vault(size: &VaultSize) -> TempDir {
             };
             let filename = format!("{unique_name}.json");
 
-            // Update schema name in JSON content to be unique
-            let updated_content = if written < SCHEMAS.len() {
-                content.to_string()
-            } else {
-                // Replace the "name" field with unique name
-                content.replace(
-                    &format!(r#""name":"{name}""#),
-                    &format!(r#""name":"{unique_name}""#),
-                )
-            };
-
-            fs::write(schemas_dir.join(filename), updated_content)
+            // Write schema file (name field is deprecated, derived from
+            // filename)
+            fs::write(schemas_dir.join(filename), content)
                 .expect("Failed to write schema");
             written += 1;
         }

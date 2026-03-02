@@ -543,3 +543,76 @@ fn pipeline_handles_malformed_property_bank() -> TestResult {
 
     Ok(())
 }
+
+// ========================================================================
+//                    Schema Name Derivation
+// ========================================================================
+
+/// **3.5-INT-011**: Schema name derived from filename.
+///
+/// Verifies:
+/// - Schema name comes from filename (without extension)
+/// - Name field in file is optional (deprecated)
+/// - Filename takes precedence over name field
+#[test]
+fn schema_name_derived_from_filename() -> TestResult {
+    // GIVEN: Schemas with and without name field
+    let dir = TempDir::new()?;
+    write_file(
+        dir.path(),
+        "schemas/property_bank.json",
+        r#"{"$version": "1.0", "properties": {}}"#,
+    )?;
+
+    // Schema without name field (new format)
+    write_file(
+        dir.path(),
+        "schemas/my_task.json",
+        r#"{"$version": "1.0", "properties": {}}"#,
+    )?;
+
+    // Schema with name field (deprecated format)
+    write_file(
+        dir.path(),
+        "schemas/my_note.json",
+        r#"{"$version": "1.0", "name": "my_note", "properties": {}}"#,
+    )?;
+
+    // Schema with mismatched name field (should warn, use filename)
+    write_file(
+        dir.path(),
+        "schemas/project.json",
+        r#"{"$version": "1.0", "name": "wrong_name", "properties": {}}"#,
+    )?;
+
+    let config = test_config(dir.path())?;
+
+    // WHEN: Scanning schemas
+    let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
+    let raw_schemas = ingestor.scan_raw_schemas()?;
+
+    // THEN: All schemas have names derived from filename
+    assert_eq!(raw_schemas.len(), 3);
+
+    let names: Vec<_> = raw_schemas
+        .iter()
+        .filter_map(|entry| entry.0.name.as_deref())
+        .collect();
+
+    // Names match filenames (not the "name" field)
+    assert!(names.contains(&"my_task"), "my_task from filename");
+    assert!(names.contains(&"my_note"), "my_note from filename");
+    assert!(
+        names.contains(&"project"),
+        "project from filename (not 'wrong_name')"
+    );
+
+    // Verify mismatch case uses filename
+    let project_schema = raw_schemas
+        .iter()
+        .find(|s| s.0.name.as_deref() == Some("project"))
+        .expect("project schema should exist");
+    assert_eq!(project_schema.0.name.as_deref(), Some("project"));
+
+    Ok(())
+}
