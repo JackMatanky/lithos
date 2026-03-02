@@ -223,14 +223,13 @@ fn schema_scanner_finds_all_files() -> TestResult {
     write_file(
         dir.path(),
         "schemas/task.json",
-        r#"{"$version": "1.0", "name": "task", "properties": {}}"#,
+        r#"{"$version": "1.0",  "properties": {}}"#,
     )?;
     write_file(
         dir.path(),
         "schemas/note.toml",
         r#"
         "$version" = "1.0"
-        name = "note"
         [properties]
         "#,
     )?;
@@ -239,7 +238,6 @@ fn schema_scanner_finds_all_files() -> TestResult {
         "schemas/project/project.yaml",
         r#"
         $version: "1.0"
-        name: project
         properties: {}
         "#,
     )?;
@@ -253,10 +251,8 @@ fn schema_scanner_finds_all_files() -> TestResult {
     // THEN: All schemas found (excluding property bank)
     assert_eq!(raw_schemas.len(), 3);
 
-    let names: Vec<_> = raw_schemas
-        .iter()
-        .filter_map(|entry| entry.0.name.as_deref())
-        .collect();
+    let names: Vec<_> =
+        raw_schemas.iter().map(|entry| entry.0.name.as_ref()).collect();
     assert!(names.contains(&"task"));
     assert!(names.contains(&"note"));
     assert!(names.contains(&"project"));
@@ -281,7 +277,7 @@ fn schema_scanner_preserves_timestamps() -> TestResult {
     write_file(
         dir.path(),
         "schemas/task.json",
-        r#"{"$version": "1.0", "name": "task", "properties": {}}"#,
+        r#"{"$version": "1.0",  "properties": {}}"#,
     )?;
 
     let config = test_config(dir.path())?;
@@ -330,7 +326,7 @@ fn full_pipeline_loads_schemas() -> TestResult {
         "schemas/task.json",
         r#"{
             "$version": "1.0",
-            "name": "task",
+
             "properties": {
                 "title": {"$ref": "property_bank#/title"},
                 "is_done": {"$ref": "property_bank#/is_done"}
@@ -403,7 +399,7 @@ fn full_pipeline_resolves_properties() -> TestResult {
         "schemas/document.json",
         r#"{
             "$version": "1.0",
-            "name": "document",
+
             "properties": {
                 "title": {"$ref": "property_bank#/title"},
                 "description": {"$ref": "property_bank#/description"}
@@ -458,7 +454,7 @@ fn full_pipeline_incremental_updates() -> TestResult {
         "schemas/task.json",
         r#"{
             "$version": "1.0",
-            "name": "task",
+
             "properties": {
                 "title": {"$ref": "property_bank#/title"}
             }
@@ -552,11 +548,11 @@ fn pipeline_handles_malformed_property_bank() -> TestResult {
 ///
 /// Verifies:
 /// - Schema name comes from filename (without extension)
-/// - Name field in file is optional (deprecated)
-/// - Filename takes precedence over name field
+/// - Name field is NOT in file content
+/// - Ingestor sets name from filename
 #[test]
 fn schema_name_derived_from_filename() -> TestResult {
-    // GIVEN: Schemas with and without name field
+    // GIVEN: Schemas without name field (name not in file format)
     let dir = TempDir::new()?;
     write_file(
         dir.path(),
@@ -564,25 +560,22 @@ fn schema_name_derived_from_filename() -> TestResult {
         r#"{"$version": "1.0", "properties": {}}"#,
     )?;
 
-    // Schema without name field (new format)
     write_file(
         dir.path(),
         "schemas/my_task.json",
         r#"{"$version": "1.0", "properties": {}}"#,
     )?;
 
-    // Schema with name field (deprecated format)
     write_file(
         dir.path(),
         "schemas/my_note.json",
-        r#"{"$version": "1.0", "name": "my_note", "properties": {}}"#,
+        r#"{"$version": "1.0", "properties": {}}"#,
     )?;
 
-    // Schema with mismatched name field (should warn, use filename)
     write_file(
         dir.path(),
         "schemas/project.json",
-        r#"{"$version": "1.0", "name": "wrong_name", "properties": {}}"#,
+        r#"{"$version": "1.0", "properties": {}}"#,
     )?;
 
     let config = test_config(dir.path())?;
@@ -594,25 +587,13 @@ fn schema_name_derived_from_filename() -> TestResult {
     // THEN: All schemas have names derived from filename
     assert_eq!(raw_schemas.len(), 3);
 
-    let names: Vec<_> = raw_schemas
-        .iter()
-        .filter_map(|entry| entry.0.name.as_deref())
-        .collect();
+    let names: Vec<_> =
+        raw_schemas.iter().map(|entry| entry.0.name.as_ref()).collect();
 
-    // Names match filenames (not the "name" field)
+    // Names match filenames
     assert!(names.contains(&"my_task"), "my_task from filename");
     assert!(names.contains(&"my_note"), "my_note from filename");
-    assert!(
-        names.contains(&"project"),
-        "project from filename (not 'wrong_name')"
-    );
-
-    // Verify mismatch case uses filename
-    let project_schema = raw_schemas
-        .iter()
-        .find(|s| s.0.name.as_deref() == Some("project"))
-        .expect("project schema should exist");
-    assert_eq!(project_schema.0.name.as_deref(), Some("project"));
+    assert!(names.contains(&"project"), "project from filename");
 
     Ok(())
 }

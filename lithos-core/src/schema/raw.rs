@@ -54,13 +54,13 @@ pub struct RawSchema {
     /// Schema format version (defaults to "1.0" if not specified).
     #[serde(rename = "$version", default = "default_schema_version")]
     pub version: Box<str>,
-    /// Schema name (deprecated - now derived from filename).
+    /// Schema name (always derived from filename by Ingestor).
     ///
-    /// If present, it must match the filename (without extension).
-    /// If absent, the name is derived from the filename.
-    /// This field is deprecated and will be removed in a future version.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<Box<str>>,
+    /// This field is NOT read from the file - it is always set by the Ingestor
+    /// based on the filename (without extension). The file format does not
+    /// include a `name` field.
+    #[serde(skip)]
+    pub name: Box<str>,
     /// Optional parent schema name for inheritance.
     pub extends: Option<Box<str>>,
     /// Property names to exclude from parent schema.
@@ -741,7 +741,7 @@ mod tests {
     fn raw_schema_defaults_to_empty_excludes() {
         let schema = RawSchema {
             version: SCHEMA_VERSION.into(),
-            name: Some(schema_name()),
+            name: schema_name(),
             extends: None,
             excludes: Vec::new(),
             properties: HashMap::new(),
@@ -757,7 +757,7 @@ mod tests {
     fn raw_schema_defaults_to_no_extends() {
         let schema = RawSchema {
             version: SCHEMA_VERSION.into(),
-            name: Some(schema_name()),
+            name: schema_name(),
             extends: None,
             excludes: Vec::new(),
             properties: HashMap::new(),

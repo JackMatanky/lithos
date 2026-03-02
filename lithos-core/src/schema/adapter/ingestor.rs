@@ -189,13 +189,6 @@ impl Ingestor<'_> {
                     continue;
                 }
 
-                // Parse the schema file
-                let mut raw: RawSchema = self
-                    .source
-                    .parse_structured(&path)
-                    .map_err(SchemaIngestionError::from)?;
-                raw.validate_version(&path.to_string_lossy())?;
-
                 // Derive schema name from filename (without extension)
                 let filename_stem = path
                     .file_stem()
@@ -210,21 +203,15 @@ impl Ingestor<'_> {
                     )
                 })?;
 
-                // If name is present in file, validate it matches filename
-                if let Some(file_name) = raw.name.as_deref()
-                    && file_name != filename_stem
-                {
-                    tracing::warn!(
-                        path = %path.display(),
-                        file_name = %file_name,
-                        filename_stem = %filename_stem,
-                        "Schema 'name' field in file does not match filename - using filename. \
-                         The 'name' field is deprecated and will be removed in a future version."
-                    );
-                }
+                // Parse the schema file
+                let mut raw: RawSchema = self
+                    .source
+                    .parse_structured(&path)
+                    .map_err(SchemaIngestionError::from)?;
+                raw.validate_version(&path.to_string_lossy())?;
 
-                // Always use filename as the source of truth
-                raw.name = Some(filename_stem.into());
+                // Set name from filename (always, not from file content)
+                raw.name = filename_stem.into();
 
                 let metadata = match self.source.metadata(&path) {
                     Ok(m) => Some(m),
@@ -413,12 +400,8 @@ mod tests {
         let schemas = result.expect("Should scan schemas");
         assert_eq!(schemas.len(), 2);
 
-        let names: Vec<&str> = schemas
-            .iter()
-            .map(|tuple| {
-                tuple.0.name.as_ref().expect("Name should be set").as_ref()
-            })
-            .collect();
+        let names: Vec<&str> =
+            schemas.iter().map(|tuple| tuple.0.name.as_ref()).collect();
         assert!(names.contains(&"note"));
         assert!(names.contains(&"task"));
     }
@@ -430,8 +413,7 @@ mod tests {
             dir.path(),
             "schemas/project.toml",
             r#""$version" = "1.0"
-name = "project"
- [properties]"#,
+[properties]"#,
         );
 
         let config = test_config(dir.path(), None);
@@ -442,7 +424,7 @@ name = "project"
         let schemas = result.expect("Should scan schemas");
         assert_eq!(schemas.len(), 1);
         let schema = schemas.first().expect("should have one schema");
-        assert_eq!(schema.0.name.as_deref(), Some("project"));
+        assert_eq!(schema.0.name.as_ref(), "project");
     }
 
     #[test]

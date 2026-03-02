@@ -1,27 +1,43 @@
 //! Schema application service — orchestrates the full schema ingestion
 //! pipeline.
 //!
-//! # Pipeline
+//! # Pipeline Flow
 //!
-//! ```text
-//! Ingestor
-//!   load_raw_property_bank()       → RawPropertyBank
-//!   scan_raw_schemas()             → Vec<(RawSchema, Option<Timestamp>)>
-//! Query
-//!   list_name_id_pairs()           → existing name → id map
-//!   get_property_bank()           → Option<PropertyBank>
-//! PropertyBank::from_raw()         → PropertyBank
-//! Staleness partitioning
-//!   is_bank_stale() / is_schema_stale()
-//! Query
-//!   find_by_id() for each fresh id → known_parents map
-//! Dereferencer::deref()            → Vec<(SchemaId, DereferencedSchema)>
-//! Extender::build()                → SchemaTree
-//! Resolver::resolve()              → Vec<Schema>
-//! Command
-//!   save_batch()
-//!   save_property_bank()
-//! ```
+//! The service uses **staleness detection** to decide whether to load from
+//! files or reuse cached data from the database:
+//!
+//! 1. **Load existing state from DB**:
+//!    - `Query::list_name_id_pairs()` → name→id map
+//!    - `Query::get_property_bank()` → cached `PropertyBank` (if exists)
+//!
+//! 2. **`PropertyBank` staleness check**:
+//!    - If no bank in DB → **load from file** (`load_raw_property_bank()`)
+//!    - If bank exists:
+//!      - `Query::is_bank_stale()` checks file timestamp vs DB version
+//!      - Stale → **reload from file**
+//!      - Fresh → **reuse cached bank**
+//!
+//! 3. **Scan all schema files** (always from filesystem):
+//!    - `Ingestor::scan_raw_schemas()` → `Vec<(RawSchema, timestamps)>`
+//!    - Schema names derived from filenames
+//!
+//! 4. **Schema staleness partitioning**:
+//!    - `Query::batch_is_stale()` → O(1) check for all schemas
+//!    - Compares file timestamps vs DB metadata
+//!    - **Stale schemas** → reload + re-resolve
+//!    - **Fresh schemas** → reuse from DB (fetch as `known_parents`)
+//!
+//! 5. **Process only stale schemas**:
+//!    - `Dereferencer::deref()` → resolve property refs
+//!    - `Extender::build()` → build inheritance tree
+//!    - `Resolver::resolve()` → merge parent properties
+//!
+//! 6. **Persist changes**:
+//!    - `Command::save_batch()` → save only changed schemas
+//!    - `Command::save_property_bank()` → save bank if stale
+//!
+//! **Key optimization**: Lightweight staleness checks (filename + timestamp)
+//! avoid parsing/processing unchanged files.
 //!
 //! All schema-specific error types live in [`crate::schema::error`].
 
@@ -111,7 +127,6 @@ impl<'db> SchemaService<'db> {
     /// Returns [`SchemaServiceError`] on any I/O, parsing, domain, query, or
     /// command failure.
     #[inline]
-    #[expect(clippy::too_many_lines, reason = "Complex pipeline orchestration")]
     pub fn load(
         &self,
         ingestor: &Ingestor<'_>,
@@ -174,13 +189,8 @@ impl<'db> SchemaService<'db> {
                       tuple"
         )]
         for &(ref raw_schema, modified, created) in &raw_schemas_with_times {
-            // Name is always Some because Ingestor sets it from filename
-            let name_str = raw_schema.name.as_ref().ok_or_else(|| {
-                SchemaError::InvalidSchemaName(
-                    "Schema name not set by Ingestor".into(),
-                )
-            })?;
-            let schema_name = SchemaName::new(name_str)?;
+            // Name is always set by Ingestor from filename
+            let schema_name = SchemaName::new(&raw_schema.name)?;
             let id = name_to_id
                 .get(&schema_name)
                 .copied()

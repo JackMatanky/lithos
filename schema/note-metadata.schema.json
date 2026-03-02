@@ -15,14 +15,6 @@
       "default": "1.0",
       "examples": ["1.0"]
     },
-    "name": {
-      "title": "Schema Name (Deprecated)",
-      "description": "DEPRECATED: The schema name is now derived from the filename (without extension). This field is ignored if present. For backward compatibility, if provided, it must match the filename. Will be removed in a future version.",
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$",
-      "deprecated": true,
-      "examples": ["task", "daily_note", "project"]
-    },
     "properties": {
       "title": "Property Definitions",
       "description": "The properties defined or overridden by this schema. Each key is the frontmatter field name as it appears in the note. Each value is either an inline property definition or a property bank reference (with optional overrides). Properties inherited from a parent schema via 'extends' do not need to be listed here unless they are being overridden.",
