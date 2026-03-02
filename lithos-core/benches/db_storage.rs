@@ -204,6 +204,12 @@
     clippy::excessive_nesting,
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
+#![expect(
+    clippy::pattern_type_mismatch,
+    reason = "Iterating over Vec<(String, T)> creates unavoidable conflicts \
+              between pattern_type_mismatch, ref_patterns, and \
+              needless_borrowed_reference lints"
+)]
 
 use std::collections::HashMap;
 
@@ -774,6 +780,103 @@ fn bench_transaction_overhead(c: &mut Criterion) {
     group.finish();
 }
 
+// ----------------------------------------------------------- //
+//                      Range Query Operations                  //
+// ----------------------------------------------------------- //
+
+/// Benchmarks range query performance using `scan_range` vs full table scan.
+///
+/// # Purpose
+///
+/// Validates the `scan_range` optimization that enables O(K) prefix-based
+/// queries instead of O(N) full table scan + filter. This is critical for
+/// property bank queries where we only need versioned rows matching a specific
+/// prefix.
+///
+/// # What is Measured
+///
+/// - **`scan_range`**: Prefix-based range query using redb's range iteration
+/// - **`full_scan_filter`**: Baseline full table scan with prefix filtering
+///
+/// # Inputs
+///
+/// - **Database**: 1000 notes with predictable key prefixes
+/// - **Query**: Find all notes with prefix "notes/test-01" (matches ~100 notes)
+///
+/// # Expected Characteristics
+///
+/// - **`scan_range`**: ~50-100 µs for 100 matching entries (O(K) where
+///   K=matches)
+/// - **`full_scan_filter`**: ~500-1000 µs for same query (O(N) where N=1000
+///   total)
+/// - **Speedup**: 5-10x faster for `scan_range` vs full scan
+/// - **Scaling**: `scan_range` time proportional to matches, not total table
+///   size
+///
+/// # Interpreting Changes
+///
+/// - **<5x speedup**: Investigate range query implementation or redb upgrade
+/// - **Similar performance**: Prefix optimization not working, check key format
+/// - **>10x speedup**: Excellent - redb B-tree range iteration is efficient
+fn bench_scan_range(c: &mut Criterion) {
+    const TOTAL_NOTES: usize = 1000;
+
+    let temp_dir = TempDir::new().expect("create temp dir");
+    let db_path = temp_dir.path().join("range_bench.db");
+    let db = Database::open(&db_path).expect("open database");
+
+    // Pre-populate with 1000 notes using prefixed keys
+    // Keys format: "notes/test-XXXX" where XXXX is 0000-0999
+    let notes: Vec<Note> = (0..TOTAL_NOTES).map(create_test_note).collect();
+
+    db.batch_write(|writer| {
+        for (i, note) in notes.iter().enumerate() {
+            let key = format!("notes/test-{i:04}");
+            writer.put(NOTES_TABLE, &key, note)?;
+        }
+        Ok(())
+    })
+    .expect("batch write");
+
+    let mut group = c.benchmark_group("scan_range");
+
+    // Optimized: Range query for prefix "notes/test-01" (matches 100 entries:
+    // 0100-0199)
+    group.bench_function("range_query_100_matches", |b| {
+        b.iter(|| {
+            let prefix = "notes/test-01";
+            let results = db
+                .batch_read(|reader| {
+                    reader.scan_range::<Note>(NOTES_TABLE, prefix)
+                })
+                .expect("batch_read");
+            black_box(results.len())
+        });
+    });
+
+    // Baseline: Full table scan with filter (O(N) where N=1000)
+    group.bench_function("full_scan_filter_100_matches", |b| {
+        b.iter(|| {
+            let prefix = "notes/test-01";
+            let results = db
+                .batch_read(|reader| {
+                    let all_pairs =
+                        reader.list_key_value_pairs::<Note>(NOTES_TABLE)?;
+                    let filtered: Vec<_> = all_pairs
+                        .into_iter()
+                        .filter(|(key, _)| key.starts_with(prefix))
+                        .map(|(_, value)| black_box(value))
+                        .collect();
+                    Ok(filtered)
+                })
+                .expect("batch_read");
+            black_box(results.len())
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_zero_copy_read,
@@ -783,5 +886,6 @@ criterion_group!(
     bench_delete,
     bench_cache_effectiveness,
     bench_transaction_overhead,
+    bench_scan_range,
 );
 criterion_main!(benches);

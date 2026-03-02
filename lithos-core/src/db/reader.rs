@@ -86,8 +86,10 @@ impl Database {
             >,
         F: FnOnce(&rkyv::Archived<V>) -> R,
     {
-        let key = uuid_to_str(id);
-        read_archived::<V, _, _>(&self.inner, table, &key, f)
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        read_archived::<V, _, _>(&self.inner, table, key, f)
     }
 
     /// Full deserialization using UUID as key (eliminates allocation).
@@ -112,8 +114,10 @@ impl Database {
                 rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
             >,
     {
-        let key = uuid_to_str(id);
-        deserialize_owned::<V>(&self.inner, table, &key)
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        deserialize_owned::<V>(&self.inner, table, key)
     }
 
     /// Get all values for a key from a multimap table definition.
@@ -619,19 +623,6 @@ fn multimap_get_impl(
     }
 
     Ok(values)
-}
-
-/// Converts UUID to string using a thread-local buffer to avoid allocations.
-///
-/// Uses a thread-local buffer to avoid heap allocation for UUID
-/// stringification. The UUID format is 36 ASCII characters (8-4-4-4-12 hex
-/// digits with dashes).
-#[inline]
-fn uuid_to_str(id: uuid::Uuid) -> String {
-    // For now, fall back to to_string() - the methods calling this
-    // should be updated in a future PR to use a more sophisticated approach
-    // like accepting &str keys or using a buffer pool
-    id.to_string()
 }
 
 // Transaction-based helper functions for BatchReader
