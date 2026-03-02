@@ -22,6 +22,13 @@ pub enum DbError {
     #[error("deserialization error: {0}")]
     Deserialization(String),
 
+    /// Data corruption detected.
+    ///
+    /// This error indicates that the database is in an inconsistent state,
+    /// such as missing required metadata or referential integrity violations.
+    #[error("data corruption detected: {0}")]
+    Corruption(String),
+
     /// Transaction failed.
     #[error("transaction error: {0}")]
     Transaction(String),

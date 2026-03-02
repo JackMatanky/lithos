@@ -148,10 +148,30 @@ impl Query for QueryAdapter<'_> {
 
     #[inline]
     fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error> {
-        self.db
+        let Some(stored) = self
+            .db
             .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
-            .map(Schema::try_from)
-            .transpose()
+        else {
+            return Ok(None);
+        };
+
+        // Validate schema-metadata consistency to detect corruption
+        let id_key = id.into_uuid().to_string();
+        let metadata_exists = self
+            .db
+            .get_owned::<StoredMetadata>(SCHEMA_METADATA, id_key.as_str())?
+            .is_some();
+
+        if !metadata_exists {
+            return Err(DbError::Corruption(format!(
+                "schema {} exists but metadata is missing (database \
+                 corruption detected)",
+                id.as_uuid()
+            )));
+        }
+
+        Schema::try_from(stored)
+            .map(Some)
             .map_err(|e| DbError::Deserialization(e.to_string()))
     }
 
