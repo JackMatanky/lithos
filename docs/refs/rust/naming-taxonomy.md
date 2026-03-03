@@ -53,20 +53,21 @@ Use these prefixes in `Query` trait definitions for read-only operations:
 | Prefix          | Return Type                | Semantics                              | Examples                              |
 | --------------- | -------------------------- | -------------------------------------- | ------------------------------------- |
 | **`find_*`**    | `Option<T>`                | Optional single-entity lookup          | `find_by_id`, `find_by_name`          |
-| **`get_*`**     | `Option<T>` or `T`         | Singleton/expected-to-exist lookup     | `get_global`, `get_property_bank`     |
-| **`list_*`**    | `Vec<T>` or `Iterator`     | Enumeration of multiple entities       | `list()`, `list_name_id_pairs`        |
-| **`*_many`**    | `HashMap<K,V>` (bulk I/O)  | Bulk operations in single transaction  | `find_many_by_ids`                    |
+| **`get_*`**     | `Option<T>` or `T`         | Singleton/config/singleton lookup      | `get_global`, `get_property_bank`     |
+| **`list_*`**    | `Vec<T>` or `Iterator`     | Enumeration of a set (implies many)    | `list()`, `list_children`             |
+| **`find_many_*`**| `HashMap<K,V>` (bulk I/O)  | Bulk lookup of a subset by keys        | `find_many_by_ids`                    |
 | **`are_many_*`**| `HashMap<K, bool>`         | Batch boolean queries (plural of `is_`) | `are_many_stale`                      |
 | **`with_*`**    | `Option<R>` (HRTB closure) | Zero-copy closure-based access         | `with_archived`, `with_metadata`      |
 | **`is_*`**      | `bool`                     | Boolean queries (staleness, existence) | `is_bank_stale`, `is_schema_stale`    |
 | **`has_*`**     | `bool`                     | Possession/presence checks             | `has_name`, `has_default`             |
 | **`count_*`**   | `usize`                    | Cardinality queries                    | `count_schemas` (future)              |
-| **`query_*`**   | `Vec<T>` (complex)         | Multi-predicate searches               | `query_frontmatter_kv`                |
 | **`cascade_*`** | Side-effect (graph ops)    | Traversal with mutations               | `cascade_staleness`                   |
 
-**Note on `search_*` vs `find_*`**: Never use `search_*`. It is not Rust-idiomatic. Rust stdlib iterators and database crates (like SeaORM) use `find`, `filter`, and `position`.
+**Note on `search_*` and `query_*`**: Never use `search_*` or `query_*`. They are not Rust-idiomatic and create taxonomic clutter. Use `find_*` or `list_*` instead.
 
-**Note on `lookup_*`**: Do not use `lookup_*`. Consolidate index mappings and direct fetches into the `find_*` taxonomy (e.g., `find_id_by_name`).
+**Note on `lookup_*`**: Do not use `lookup_*`. Consolidate index mappings into the `find_*` taxonomy (e.g., `find_id_by_name`).
+
+**Note on `list_*` vs `find_many_*`**: Use `list_*` when returning all entities in a set (no input keys) or all children of a parent. Use `find_many_*` when the caller provides a specific list of keys to fetch. Since `list` implies a collection, it never needs a `_many` suffix.
 
 #### `find_*` vs `get_*` Distinction
 
@@ -108,12 +109,13 @@ Use these verbs in `Command` trait definitions for write operations:
 | Verb             | Signature Pattern | Semantics                              | Examples                             |
 | ---------------- | ----------------- | -------------------------------------- | ------------------------------------ |
 | **`create`**     | `(params) → T`    | Insert new entity (ID generated)       | `create(&str) → Note`                |
-| **`save`**       | `(&T)`            | Upsert (insert or replace, idempotent) | `save_batch(&[Schema])`              |
+| **`save`**       | `(&T)`            | Upsert single entity (idempotent)      | `save(&schema)`                      |
+| **`save_many`**  | `(&[T])`          | Bulk upsert items atomically           | `save_many(&schemas)`                |
 | **`update`**     | `(T) → T`         | Modify existing (may error)            | `update(Note) → Note`                |
-| **`delete`**     | `(ID)`            | Remove entity                          | `delete(SchemaId)`                   |
+| **`delete`**     | `(ID)`            | Remove single entity                   | `delete(SchemaId)`                   |
+| **`delete_many`**| `(&[ID])`         | Bulk remove items atomically           | `delete_many(&ids)`                  |
 | **`record_*`**   | `(&T)`            | Task-oriented write (DDD intent)       | `record_global`, `record_vault`      |
 | **`activate_*`** | `→ State`         | State transition                       | `activate_version(...)`              |
-| **`*_many`**     | `(&[T])`          | Bulk write operations                  | `save_many`, `delete_many`           |
 | **`register_*`** | `(K, V)`          | Add to index/registry                  | `register_schema(name, id)` (future) |
 
 #### Task-Oriented Verbs (`record_*`, `activate_*`)
@@ -184,7 +186,7 @@ pub trait Query {
 
 pub trait Command {
     type Error;
-    fn save_batch(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
+    fn save_many(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
 }
 
 // ✅ GOOD: Context-scoped adapters
@@ -521,7 +523,7 @@ impl SchemaService {
     pub fn load(&self, path: &Path) -> Result<Schema, Error> {
         let raw = self.file_source.read(path)?;
         let schema = Schema::try_from(raw)?;
-        self.command.save_batch(&[schema])?;
+        self.command.save_many(&[schema])?;
         Ok(schema)
     }
 }
