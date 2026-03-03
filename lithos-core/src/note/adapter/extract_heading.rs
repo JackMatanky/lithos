@@ -142,10 +142,178 @@ impl Extractor for HeadingExtractor {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test organization groups proptests with unit tests"
+)]
 mod tests {
     use pulldown_cmark::{CowStr, Event, Tag as CmarkTag, TagEnd};
 
     use super::*;
+
+    mod proptests {
+        use proptest::prelude::*;
+
+        use super::*;
+
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "Test ranges use bounded string lengths"
+        )]
+        #[expect(clippy::panic, reason = "Test assertion")]
+        mod ranges {
+            use super::*;
+
+            fn heading_level(level: u8) -> CmarkHeadingLevel {
+                match level {
+                    1 => CmarkHeadingLevel::H1,
+                    2 => CmarkHeadingLevel::H2,
+                    3 => CmarkHeadingLevel::H3,
+                    4 => CmarkHeadingLevel::H4,
+                    5 => CmarkHeadingLevel::H5,
+                    _ => CmarkHeadingLevel::H6,
+                }
+            }
+
+            fn extract_heading(level: u8, text: &str) -> Heading {
+                let mut extractor = HeadingExtractor::new();
+                let ctx = ExtractionContext::default();
+                let heading_level = heading_level(level);
+
+                extractor
+                    .process(
+                        &Event::Start(CmarkTag::Heading {
+                            level: heading_level,
+                            id: None,
+                            classes: Vec::new(),
+                            attrs: Vec::new(),
+                        }),
+                        CowStr::Borrowed(""),
+                        0..1,
+                        &ctx,
+                    )
+                    .unwrap();
+
+                let start = 1usize;
+                let end = start + text.len();
+                extractor
+                    .process(
+                        &Event::Text(CowStr::Borrowed(text)),
+                        CowStr::Borrowed(text),
+                        start..end,
+                        &ctx,
+                    )
+                    .unwrap();
+
+                let result = extractor
+                    .process(
+                        &Event::End(TagEnd::Heading(heading_level)),
+                        CowStr::Borrowed(""),
+                        end..(end + 1),
+                        &ctx,
+                    )
+                    .unwrap();
+
+                match result {
+                    ExtractionState::Emit(heading) => heading,
+                    ExtractionState::Continue => {
+                        panic!("Expected heading emission")
+                    }
+                }
+            }
+
+            proptest! {
+                #[test]
+                fn extracts_heading_text_verbatim(
+                    level in 1u8..=6,
+                    text in "[A-Za-z0-9_-]{1,40}",
+                ) {
+                    let heading = extract_heading(level, &text);
+                    prop_assert_eq!(heading.text(), text);
+                    prop_assert_eq!(heading.level().as_u8(), level);
+                }
+            }
+
+            proptest! {
+                #[test]
+                fn converts_soft_breaks_to_space(
+                    level in 1u8..=6,
+                    left in "[A-Za-z0-9_-]{1,20}",
+                    right in "[A-Za-z0-9_-]{1,20}",
+                ) {
+                    let mut extractor = HeadingExtractor::new();
+                    let ctx = ExtractionContext::default();
+                    let heading_level = heading_level(level);
+
+                    extractor
+                        .process(
+                            &Event::Start(CmarkTag::Heading {
+                                level: heading_level,
+                                id: None,
+                                classes: Vec::new(),
+                                attrs: Vec::new(),
+                            }),
+                            CowStr::Borrowed(""),
+                            0..1,
+                            &ctx,
+                        )
+                        .unwrap();
+
+                    let left_start = 1usize;
+                    let left_end = left_start + left.len();
+                    extractor
+                        .process(
+                            &Event::Text(CowStr::Borrowed(&left)),
+                            CowStr::Borrowed(&left),
+                            left_start..left_end,
+                            &ctx,
+                        )
+                        .unwrap();
+
+                    let break_start = left_end;
+                    let break_end = break_start + 1;
+                    extractor
+                        .process(
+                            &Event::SoftBreak,
+                            CowStr::Borrowed(""),
+                            break_start..break_end,
+                            &ctx,
+                        )
+                        .unwrap();
+
+                    let right_start = break_end;
+                    let right_end = right_start + right.len();
+                    extractor
+                        .process(
+                            &Event::Text(CowStr::Borrowed(&right)),
+                            CowStr::Borrowed(&right),
+                            right_start..right_end,
+                            &ctx,
+                        )
+                        .unwrap();
+
+                    let result = extractor
+                        .process(
+                            &Event::End(TagEnd::Heading(heading_level)),
+                            CowStr::Borrowed(""),
+                            right_end..(right_end + 1),
+                            &ctx,
+                        )
+                        .unwrap();
+
+                    let heading = match result {
+                        ExtractionState::Emit(heading) => heading,
+                        ExtractionState::Continue => {
+                            panic!("Expected heading emission")
+                        }
+                    };
+
+                    let expected = format!("{left} {right}");
+                    prop_assert_eq!(heading.text(), expected);
+                }
+            }
+        }
+    }
 
     #[test]
     fn extracts_h1_through_h6() {

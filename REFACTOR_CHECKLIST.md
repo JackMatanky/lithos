@@ -145,9 +145,9 @@
 - [ ] COMMIT: "test: add characterization tests"
 
 ### Task 5.2: Property-Based Tests (2 hours)
-- [ ] RED: Write 4+ proptest properties (45m)
-- [ ] GREEN: Fix any failures (60m)
-- [ ] REFACTOR: Add more properties (15m)
+- [x] RED: Write 4+ proptest properties (45m)
+- [x] GREEN: Fix any failures (60m)
+- [x] REFACTOR: Add more properties (15m)
 - [ ] COMMIT: "test: add property-based tests"
 
 ### Task 5.3: Performance Verification (2 hours)

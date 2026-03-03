@@ -132,6 +132,10 @@ impl Extractor for TagExtractor<'_> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test organization groups proptests with unit tests"
+)]
 mod tests {
     use std::collections::HashMap;
 
@@ -308,6 +312,50 @@ mod tests {
 
         let tags = extractor.finish().unwrap();
         assert_eq!(tags.len(), 1);
+    }
+
+    mod proptests {
+        use proptest::prelude::*;
+
+        use super::*;
+
+        fn extract_tags(text: &str) -> Vec<NoteTag> {
+            let config = test_config();
+            let mut extractor = TagExtractor::new(&config);
+            let ctx = ExtractionContext::default();
+
+            extractor
+                .process(
+                    &Event::Text(CowStr::Borrowed(text)),
+                    CowStr::Borrowed(text),
+                    0..text.len(),
+                    &ctx,
+                )
+                .unwrap();
+
+            extractor.finish().unwrap()
+        }
+
+        proptest! {
+            #[test]
+            fn extracts_valid_tag_tokens(tag in "#[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*") {
+                let tags = extract_tags(&tag);
+                let expected = tag.trim_start_matches('#');
+
+                prop_assert!(
+                    tags.iter().any(|candidate| candidate.full_path() == expected),
+                    "Expected tag '{expected}' to be extracted"
+                );
+            }
+        }
+
+        proptest! {
+            #[test]
+            fn ignores_invalid_tag_tokens(tag in "#/[A-Za-z0-9_-]*") {
+                let tags = extract_tags(&tag);
+                prop_assert!(tags.is_empty());
+            }
+        }
     }
 
     #[test]
