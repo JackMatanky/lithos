@@ -14,3 +14,4 @@ pub(crate) mod task_parser;
 pub(super) mod extract_heading;
 pub(super) mod extract_link;
 pub(super) mod extract_list;
+pub(super) mod extract_section;

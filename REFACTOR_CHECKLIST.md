@@ -98,11 +98,11 @@
 ## Phase 3: Secondary Extractors ✅ / 🔴 / ⏸️
 
 ### Task 3.1: Section Extractor (2 hours)
-- [ ] RED: Write section boundary tests (30m)
-- [ ] GREEN: Implement block tracking (60m)
-- [ ] REFACTOR: Add heading association (30m)
+- [x] RED: Write section boundary tests (30m)
+- [x] GREEN: Implement block tracking (60m)
+- [x] REFACTOR: Add heading association (30m)
 - [ ] COMMIT: "feat(adapter): add section extractor"
-- [ ] VERIFY: `cargo test extract_section` (6+ tests pass)
+- [x] VERIFY: `cargo test extract_section` (6+ tests pass)
 
 ### Task 3.2: Frontmatter Extractor (2 hours)
 - [ ] RED: Write YAML/TOML tests (30m)
