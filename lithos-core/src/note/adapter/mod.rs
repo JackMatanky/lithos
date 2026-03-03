@@ -9,3 +9,6 @@ pub mod query;
 pub mod reader;
 pub(crate) mod tag_scanner;
 pub(crate) mod task_parser;
+
+// Extractors (Phase 2+)
+pub(super) mod extract_list;
