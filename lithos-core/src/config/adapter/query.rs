@@ -70,12 +70,12 @@ impl Query for QueryAdapter<'_> {
         skip(self),
         level = "debug",
         fields(
-            operation = "get_merged_owned",
+            operation = "find_merged",
             vault_id = %vault_id,
             version = %version
         )
     )]
-    fn get_merged_owned(
+    fn find_merged(
         &self,
         vault_id: VaultId,
         version: Version,

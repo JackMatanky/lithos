@@ -182,7 +182,7 @@ where
         vault_id: VaultId,
     ) -> Result<Version, ConfigCommandError> {
         self.command_port
-            .get_next_version(vault_id)
+            .next_version(vault_id)
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 }
@@ -331,7 +331,7 @@ mod tests {
     impl config_ports::CommandState for DbCommandPort<'_> {
         type Error = DbError;
 
-        fn get_next_version(
+        fn next_version(
             &self,
             vault_id: VaultId,
         ) -> Result<Version, Self::Error> {

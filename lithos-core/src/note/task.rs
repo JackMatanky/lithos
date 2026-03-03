@@ -835,7 +835,7 @@ mod tests {
             indexing: None,
         };
 
-        TaskConfig::from_raw(raw).expect("valid task config")
+        TaskConfig::try_from_raw(raw).expect("valid task config")
     }
 
     #[test]
