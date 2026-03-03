@@ -138,10 +138,10 @@
 ## Phase 5: Testing & Performance ✅ / 🔴 / ⏸️
 
 ### Task 5.1: Characterization Tests (2 hours)
-- [ ] Capture baseline: `cargo bench --bench note_parsing -- --save-baseline before_refactor`
-- [ ] RED: Document current behavior with tests (60m)
-- [ ] GREEN: Verify new impl matches (45m)
-- [ ] REFACTOR: Add new isolation tests (15m)
+- [x] Capture baseline: `cargo bench --bench note_parsing -- --save-baseline before_refactor`
+- [x] RED: Document current behavior with tests (60m)
+- [x] GREEN: Verify new impl matches (45m)
+- [x] REFACTOR: Add new isolation tests (15m)
 - [ ] COMMIT: "test: add characterization tests"
 
 ### Task 5.2: Property-Based Tests (2 hours)
@@ -151,7 +151,7 @@
 - [ ] COMMIT: "test: add property-based tests"
 
 ### Task 5.3: Performance Verification (2 hours)
-- [ ] Run benchmark: `cargo bench --bench note_parsing -- --baseline before_refactor`
+- [x] Run benchmark: `cargo bench --bench note_parsing -- --baseline before_refactor`
 - [ ] Verify simple ≤15µs (±10%)
 - [ ] Verify medium ≤21µs (±10%)
 - [ ] Verify complex ≤53µs (±10%)

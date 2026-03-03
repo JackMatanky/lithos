@@ -195,13 +195,14 @@ impl<'config> NoteReader<'config> {
 
     /// Parses markdown into lists, tasks, headings, and links.
     ///
-    /// This is crate-visible to support unit tests and in-memory parsing while
-    /// keeping the public API focused on file-based ingestion.
+    /// **Internal API**: This is public solely for benchmarking.
+    /// Do not depend on it in production code - use `parse` instead.
     ///
     /// # Errors
     ///
     /// Returns [`NoteError`] when parsing fails.
     #[inline]
+    #[doc(hidden)]
     #[expect(
         clippy::too_many_lines,
         reason = "Orchestration keeps extractor flow in one place"
@@ -210,10 +211,7 @@ impl<'config> NoteReader<'config> {
         clippy::pattern_type_mismatch,
         reason = "Match ergonomics on &Event preferred for clarity"
     )]
-    pub(crate) fn parse_str(
-        &self,
-        markdown: &str,
-    ) -> Result<ParseOutcome, NoteError> {
+    pub fn parse_str(&self, markdown: &str) -> Result<ParseOutcome, NoteError> {
         let mut link_ext = super::extract_link::LinkExtractor::new(self.config);
         let mut list_ext = super::extract_list::ListExtractor::new(self.config);
         let mut heading_ext = super::extract_heading::HeadingExtractor::new();
