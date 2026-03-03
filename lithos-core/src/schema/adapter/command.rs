@@ -255,6 +255,11 @@ impl Command for CommandAdapter<'_> {
 
     #[inline]
     #[instrument(skip(self, bank), fields(operation = "save_property_bank"))]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Function length acceptable for atomic transaction with \
+                  version retention cleanup logic"
+    )]
     fn save_property_bank(
         &self,
         bank: &PropertyBank,
@@ -297,7 +302,16 @@ impl Command for CommandAdapter<'_> {
                         &prefix,
                     )
                 })
-                .unwrap_or_default();
+                .unwrap_or_else(|error| {
+                    tracing::warn!(
+                        version = %old_version.as_u64(),
+                        table = "BANK_PROPERTY_BY_ID",
+                        %error,
+                        "Failed to scan old property bank version for cleanup, \
+                         retention may not work correctly"
+                    );
+                    Vec::new()
+                });
 
             let name_keys = self
                 .db
@@ -307,7 +321,16 @@ impl Command for CommandAdapter<'_> {
                         &prefix,
                     )
                 })
-                .unwrap_or_default();
+                .unwrap_or_else(|error| {
+                    tracing::warn!(
+                        version = %old_version.as_u64(),
+                        table = "BANK_PROPERTY_BY_NAME",
+                        %error,
+                        "Failed to scan old property bank version for cleanup, \
+                         retention may not work correctly"
+                    );
+                    Vec::new()
+                });
 
             (
                 id_keys.into_iter().map(|(k, _)| k).collect::<Vec<_>>(),

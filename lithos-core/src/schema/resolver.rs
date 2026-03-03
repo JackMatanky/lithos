@@ -102,8 +102,23 @@ impl Resolver {
                     resolved_cache
                         .get(&parent_id)
                         .or_else(|| known_parents.get(&parent_id))
-                        .map(|schema| schema.properties().cloned().collect())
-                        .unwrap_or_default()
+                        .map_or_else(
+                            || {
+                                // This should not happen if Extender worked
+                                // correctly - all parents should be in
+                                // resolved_cache or known_parents
+                                tracing::warn!(
+                                    schema_id = %id,
+                                    parent_id = %parent_id,
+                                    "Parent schema not found in \
+                                     resolved_cache or known_parents, using \
+                                     empty properties. This may indicate a bug \
+                                     in Extender or missing parent in database."
+                                );
+                                Vec::new()
+                            },
+                            |schema| schema.properties().cloned().collect(),
+                        )
                 } else {
                     vec![]
                 };
