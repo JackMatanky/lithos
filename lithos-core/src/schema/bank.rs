@@ -141,6 +141,16 @@ impl PropertyBank {
             bank.register(property)?;
         }
 
+        // Emit PropertyBankLoaded event
+        let event = super::events::Events::PropertyBankLoaded(
+            super::events::PropertyBankLoaded::new(
+                bank.all().count(),
+                bank.version(),
+                super::aggregate::Timestamp::now(),
+            ),
+        );
+        bank.add_event(event);
+
         Ok(bank)
     }
 

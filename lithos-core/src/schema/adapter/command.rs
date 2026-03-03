@@ -212,7 +212,11 @@ impl Command for CommandAdapter<'_> {
         fields(operation = "delete_schema", schema_id = %id.as_uuid())
     )]
     fn delete(&self, id: SchemaId) -> Result<(), Self::Error> {
-        use crate::schema::adapter::stored::StoredSchema;
+        use crate::schema::{
+            adapter::stored::StoredSchema,
+            aggregate::SchemaName,
+            events::{Events, SchemaDeleted},
+        };
 
         let id_uuid = id.into_uuid();
         let id_key = id_uuid.to_string();
@@ -223,6 +227,24 @@ impl Command for CommandAdapter<'_> {
             if let Some(stored) =
                 tx.get_owned::<StoredSchema>(SCHEMA_BY_ID, id_key.as_str())?
             {
+                // Emit SchemaDeleted event
+                let schema_name = SchemaName::try_new(stored.name.as_ref())
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
+
+                tracing::info!(
+                    schema_id = %id,
+                    schema_name = %schema_name.as_str(),
+                    "Schema deleted"
+                );
+
+                // TODO(EVENT-001): Persist event to SCHEMA_EVENTS table once
+                // event store is implemented (Phase 2)
+                let _event = Events::SchemaDeleted(SchemaDeleted::new(
+                    id,
+                    &schema_name,
+                    Timestamp::now(),
+                ));
+
                 tx.delete(SCHEMA_ID_BY_NAME, stored.name.as_ref())?;
             }
             tx.delete(SCHEMA_BY_ID, id_key.as_str())?;

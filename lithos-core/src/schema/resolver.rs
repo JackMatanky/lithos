@@ -123,7 +123,16 @@ impl Resolver {
             );
 
             let name = SchemaName::try_new(&node.name)?;
-            let schema = Schema::try_new(id, name, node.parent_id, merged)?;
+
+            // Use resolve_existing for schemas already in DB to avoid emitting
+            // SchemaCreated event for existing schemas (only emit
+            // SchemaResolved)
+            let is_new_schema = !known_parents.contains_key(&id);
+            let schema = if is_new_schema {
+                Schema::try_new(id, name, node.parent_id, merged)?
+            } else {
+                Schema::resolve_existing(id, name, node.parent_id, merged)?
+            };
 
             resolved_cache.insert(id, schema.clone());
             results.push(schema);
