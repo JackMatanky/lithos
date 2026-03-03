@@ -148,13 +148,13 @@
 - [x] RED: Write 4+ proptest properties (45m)
 - [x] GREEN: Fix any failures (60m)
 - [x] REFACTOR: Add more properties (15m)
-- [ ] COMMIT: "test: add property-based tests"
+- [x] COMMIT: "test: add property-based tests"
 
 ### Task 5.3: Performance Verification (2 hours)
 - [x] Run benchmark: `cargo bench --bench note_parsing -- --baseline before_refactor`
-- [ ] Verify simple ≤15µs (±10%)
-- [ ] Verify medium ≤21µs (±10%)
-- [ ] Verify complex ≤53µs (±10%)
+- [x] Verify simple ≤15µs (±10%)
+- [ ] Verify medium ≤21µs (±10%) (observed ~21.9-22.0µs)
+- [ ] Verify complex ≤53µs (±10%) (observed ~58.8-59.0µs)
 - [ ] If regression >10%: Profile and optimize
 - [ ] Update benchmark docs if needed
 
