@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike as _, Timelike as _, Utc};
 
 /// Shared primitive for dynamic note values (frontmatter and task metadata).
 ///
@@ -348,6 +348,133 @@ impl FieldValue {
         out
     }
 
+    /// Convert this `FieldValue` to a `serde_yaml::Value`.
+    ///
+    /// Useful for writing updated frontmatter back to files.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::value::FieldValue;
+    /// let field = FieldValue::String("example".into());
+    /// let yaml = field.to_yaml_value();
+    /// assert!(matches!(yaml, serde_yaml::Value::String(_)));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn to_yaml_value(&self) -> serde_yaml::Value {
+        match self {
+            Self::String(s) => serde_yaml::Value::String(s.to_string()),
+            Self::Number(n) => {
+                serde_yaml::Value::Number(serde_yaml::Number::from(*n))
+            }
+            Self::Boolean(b) => serde_yaml::Value::Bool(*b),
+            Self::Date(ts) => {
+                // Use Unix epoch (1970-01-01 00:00:00 UTC) as fallback for
+                // invalid timestamps
+                let datetime = DateTime::from_timestamp(*ts, 0)
+                    .unwrap_or(DateTime::<Utc>::UNIX_EPOCH);
+                serde_yaml::Value::String(datetime.to_rfc3339())
+            }
+            Self::Array(arr) => {
+                let seq: Vec<_> = arr.iter().map(Self::to_yaml_value).collect();
+                serde_yaml::Value::Sequence(seq)
+            }
+            Self::Object(obj) => {
+                let mut map = serde_yaml::Mapping::new();
+                #[expect(
+                    clippy::iter_over_hash_type,
+                    reason = "Conversion order doesn't affect correctness"
+                )]
+                for (key, value) in obj {
+                    map.insert(
+                        serde_yaml::Value::String(key.to_string()),
+                        value.to_yaml_value(),
+                    );
+                }
+                serde_yaml::Value::Mapping(map)
+            }
+        }
+    }
+
+    /// Convert this `FieldValue` to a `toml::Value`.
+    ///
+    /// # Errors
+    /// Returns error if timestamp cannot be converted to TOML datetime.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::value::FieldValue;
+    /// let field = FieldValue::Number(42.0);
+    /// let toml = field.to_toml_value().unwrap();
+    /// assert!(matches!(toml, toml::Value::Integer(42)));
+    /// ```
+    #[inline]
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        clippy::float_cmp,
+        reason = "Datetime component conversions are bounded and safe; float \
+                  equality check for integer detection is intentional"
+    )]
+    pub fn to_toml_value(
+        &self,
+    ) -> Result<toml::Value, FieldValueConversionError> {
+        match self {
+            Self::String(s) => Ok(toml::Value::String(s.to_string())),
+            Self::Number(n) => {
+                // Check if number is a whole number that fits in i64
+                if n.is_finite()
+                    && n.trunc() == *n
+                    && n.abs() <= i64::MAX as f64
+                {
+                    let int_value = *n as i64;
+                    Ok(toml::Value::Integer(int_value))
+                } else {
+                    Ok(toml::Value::Float(*n))
+                }
+            }
+            Self::Boolean(b) => Ok(toml::Value::Boolean(*b)),
+            Self::Date(ts) => {
+                let datetime = DateTime::from_timestamp(*ts, 0)
+                    .ok_or(FieldValueConversionError::InvalidTimestamp)?;
+                Ok(toml::Value::Datetime(toml::value::Datetime {
+                    date: Some(toml::value::Date {
+                        year: datetime.year() as u16,
+                        month: datetime.month() as u8,
+                        day: datetime.day() as u8,
+                    }),
+                    time: Some(toml::value::Time {
+                        hour: datetime.hour() as u8,
+                        minute: datetime.minute() as u8,
+                        second: datetime.second() as u8,
+                        nanosecond: datetime.nanosecond(),
+                    }),
+                    offset: None,
+                }))
+            }
+            Self::Array(arr) => {
+                let vec: Result<Vec<_>, _> =
+                    arr.iter().map(Self::to_toml_value).collect();
+                Ok(toml::Value::Array(vec?))
+            }
+            Self::Object(obj) => {
+                let mut map = toml::map::Map::new();
+                #[expect(
+                    clippy::iter_over_hash_type,
+                    reason = "Conversion order doesn't affect correctness"
+                )]
+                for (key, value) in obj {
+                    map.insert(key.to_string(), value.to_toml_value()?);
+                }
+                Ok(toml::Value::Table(map))
+            }
+        }
+    }
+
     fn write_json(&self, out: &mut String) {
         match self {
             Self::String(s) => {
@@ -515,6 +642,13 @@ pub enum FieldValueYamlError {
     Tagged,
 }
 
+/// Error type for converting [`FieldValue`] to TOML.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldValueConversionError {
+    /// Invalid timestamp that cannot be converted to TOML datetime.
+    InvalidTimestamp,
+}
+
 impl core::fmt::Display for FieldValueParseError {
     #[inline]
     #[expect(
@@ -557,6 +691,23 @@ impl std::error::Error for FieldValueYamlError {
         None
     }
 }
+
+impl core::fmt::Display for FieldValueConversionError {
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on &self keeps error formatting concise"
+    )]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidTimestamp => {
+                f.write_str("invalid timestamp for conversion")
+            }
+        }
+    }
+}
+
+impl std::error::Error for FieldValueConversionError {}
 
 impl std::error::Error for FieldValueParseError {
     #[inline]
@@ -761,6 +912,80 @@ impl<'value> FromFieldValueRef<'value> for &'value [FieldValue] {
 
 #[cfg(test)]
 mod tests {
+    mod conversion_tests {
+        use super::*;
+
+        #[test]
+        fn yaml_round_trip_string() {
+            let original = FieldValue::String("test".into());
+            let yaml = original.to_yaml_value();
+            let round_trip = FieldValue::from_yaml(&yaml).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn yaml_round_trip_number() {
+            let original = FieldValue::Number(42.5);
+            let yaml = original.to_yaml_value();
+            let round_trip = FieldValue::from_yaml(&yaml).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn yaml_round_trip_boolean() {
+            let original = FieldValue::Boolean(true);
+            let yaml = original.to_yaml_value();
+            let round_trip = FieldValue::from_yaml(&yaml).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn yaml_round_trip_array() {
+            let original = FieldValue::Array(vec![
+                FieldValue::String("a".into()),
+                FieldValue::Number(1.0),
+                FieldValue::Boolean(false),
+            ]);
+            let yaml = original.to_yaml_value();
+            let round_trip = FieldValue::from_yaml(&yaml).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn yaml_round_trip_object() {
+            let mut map = HashMap::new();
+            map.insert("key".into(), FieldValue::String("value".into()));
+            let original = FieldValue::Object(map);
+            let yaml = original.to_yaml_value();
+            let round_trip = FieldValue::from_yaml(&yaml).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn toml_round_trip_string() {
+            let original = FieldValue::String("test".into());
+            let toml = original.to_toml_value().unwrap();
+            // TOML → JSON → FieldValue (existing path)
+            let json = serde_json::to_value(&toml).unwrap();
+            let round_trip = FieldValue::from_json(&json).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn toml_converts_whole_numbers_to_integer() {
+            let original = FieldValue::Number(42.0);
+            let toml = original.to_toml_value().unwrap();
+            assert!(matches!(toml, toml::Value::Integer(42)));
+        }
+
+        #[test]
+        fn toml_converts_floats() {
+            let original = FieldValue::Number(42.5);
+            let toml = original.to_toml_value().unwrap();
+            assert!(matches!(toml, toml::Value::Float(_)));
+        }
+    }
+
     use serde_json::json;
 
     use super::*;
