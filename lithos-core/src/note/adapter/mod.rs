@@ -16,3 +16,4 @@ pub(super) mod extract_heading;
 pub(super) mod extract_link;
 pub(super) mod extract_list;
 pub(super) mod extract_section;
+pub(super) mod extract_tag;

@@ -112,11 +112,11 @@
 - [x] VERIFY: `cargo test extract_frontmatter` (8+ tests pass)
 
 ### Task 3.3: Tag Extractor (2 hours)
-- [ ] RED: Write tag scanning tests (30m)
-- [ ] GREEN: Implement tag extraction (60m)
-- [ ] REFACTOR: Add context awareness (30m)
+- [x] RED: Write tag scanning tests (30m)
+- [x] GREEN: Implement tag extraction (60m)
+- [x] REFACTOR: Add context awareness (30m)
 - [ ] COMMIT: "feat(adapter): add tag extractor"
-- [ ] VERIFY: `cargo test extract_tag` (10+ tests pass)
+- [x] VERIFY: `cargo test extract_tag` (10+ tests pass)
 
 **Phase 3 Complete**: [ ] 3 more extractors, 24+ tests, all green
 
