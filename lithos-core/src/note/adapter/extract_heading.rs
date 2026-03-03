@@ -1,0 +1,488 @@
+//! Heading extraction from markdown event streams.
+//!
+//! Extracts headings (H1-H6) and accumulates heading text across events.
+
+use std::ops::Range;
+
+use pulldown_cmark::{
+    CowStr, Event, HeadingLevel as CmarkHeadingLevel, Tag as CmarkTag, TagEnd,
+};
+
+use super::reader::{ExtractionContext, ExtractionState, Extractor};
+use crate::note::{
+    error::NoteError,
+    position::SourceByteOffset,
+    structure::{Heading, HeadingLevel},
+};
+
+/// Extractor for markdown headings (H1-H6).
+pub struct HeadingExtractor {
+    current: Option<HeadingBuilder>,
+}
+
+/// Builder for accumulating heading data during extraction.
+struct HeadingBuilder {
+    level: HeadingLevel,
+    text: String,
+    position: SourceByteOffset,
+}
+
+impl HeadingBuilder {
+    fn new(level: HeadingLevel, position: SourceByteOffset) -> Self {
+        Self {
+            level,
+            text: String::new(),
+            position,
+        }
+    }
+
+    fn push_text(&mut self, text: &str) {
+        self.text.push_str(text);
+    }
+
+    fn push_break(&mut self) {
+        self.text.push(' ');
+    }
+
+    fn build(self) -> Result<Heading, NoteError> {
+        Heading::new(self.level, self.text, self.position)
+    }
+}
+
+impl HeadingExtractor {
+    #[inline]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Used in tests; will be used by reader orchestration"
+        )
+    )]
+    pub(super) const fn new() -> Self {
+        Self {
+            current: None,
+        }
+    }
+
+    fn start_heading(
+        &mut self,
+        level: CmarkHeadingLevel,
+        position: SourceByteOffset,
+    ) -> Result<(), NoteError> {
+        let level = match level {
+            CmarkHeadingLevel::H1 => HeadingLevel::try_new(1)?,
+            CmarkHeadingLevel::H2 => HeadingLevel::try_new(2)?,
+            CmarkHeadingLevel::H3 => HeadingLevel::try_new(3)?,
+            CmarkHeadingLevel::H4 => HeadingLevel::try_new(4)?,
+            CmarkHeadingLevel::H5 => HeadingLevel::try_new(5)?,
+            CmarkHeadingLevel::H6 => HeadingLevel::try_new(6)?,
+        };
+
+        self.current = Some(HeadingBuilder::new(level, position));
+        Ok(())
+    }
+}
+
+impl Extractor for HeadingExtractor {
+    type Error = NoteError;
+    type Output = Heading;
+
+    fn finish(self) -> Result<Vec<Heading>, NoteError> {
+        // No incomplete headings to flush
+        Ok(Vec::new())
+    }
+
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &Event preferred for clarity"
+    )]
+    fn process(
+        &mut self,
+        event: &Event<'_>,
+        text: CowStr<'_>,
+        range: Range<usize>,
+        _ctx: &ExtractionContext,
+    ) -> Result<ExtractionState<Heading>, NoteError> {
+        match event {
+            Event::Start(CmarkTag::Heading {
+                level,
+                ..
+            }) => {
+                let position = SourceByteOffset::try_from_usize(range.start)?;
+                self.start_heading(*level, position)?;
+                Ok(ExtractionState::Continue)
+            }
+
+            Event::Text(_) | Event::Code(_) => {
+                if let Some(builder) = self.current.as_mut() {
+                    builder.push_text(&text);
+                }
+                Ok(ExtractionState::Continue)
+            }
+
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some(builder) = self.current.as_mut() {
+                    builder.push_break();
+                }
+                Ok(ExtractionState::Continue)
+            }
+
+            Event::End(TagEnd::Heading(_)) => {
+                if let Some(builder) = self.current.take() {
+                    let heading = builder.build()?;
+                    return Ok(ExtractionState::Emit(heading));
+                }
+                Ok(ExtractionState::Continue)
+            }
+
+            Event::Start(_)
+            | Event::End(_)
+            | Event::Html(_)
+            | Event::InlineHtml(_)
+            | Event::FootnoteReference(_)
+            | Event::Rule
+            | Event::TaskListMarker(_)
+            | Event::InlineMath(_)
+            | Event::DisplayMath(_) => Ok(ExtractionState::Continue),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pulldown_cmark::{CowStr, Event, Tag as CmarkTag, TagEnd};
+
+    use super::*;
+
+    #[test]
+    fn extracts_h1_through_h6() {
+        let mut extractor = HeadingExtractor::new();
+        let ctx = ExtractionContext::default();
+
+        for (level, expected) in [
+            (CmarkHeadingLevel::H1, 1),
+            (CmarkHeadingLevel::H2, 2),
+            (CmarkHeadingLevel::H3, 3),
+            (CmarkHeadingLevel::H4, 4),
+            (CmarkHeadingLevel::H5, 5),
+            (CmarkHeadingLevel::H6, 6),
+        ] {
+            extractor
+                .process(
+                    &Event::Start(CmarkTag::Heading {
+                        level,
+                        id: None,
+                        classes: Vec::new(),
+                        attrs: Vec::new(),
+                    }),
+                    CowStr::Borrowed(""),
+                    0..1,
+                    &ctx,
+                )
+                .unwrap();
+
+            extractor
+                .process(
+                    &Event::Text(CowStr::Borrowed("Title")),
+                    CowStr::Borrowed("Title"),
+                    1..6,
+                    &ctx,
+                )
+                .unwrap();
+
+            let result = extractor
+                .process(
+                    &Event::End(TagEnd::Heading(level)),
+                    CowStr::Borrowed(""),
+                    6..7,
+                    &ctx,
+                )
+                .unwrap();
+
+            #[expect(clippy::panic, reason = "Test assertion")]
+            let ExtractionState::Emit(heading) = result else {
+                panic!("Expected heading emission");
+            };
+
+            assert_eq!(heading.level().as_u8(), expected);
+            assert_eq!(heading.text(), "Title");
+        }
+    }
+
+    #[test]
+    fn accumulates_text_across_events() {
+        let mut extractor = HeadingExtractor::new();
+        let ctx = ExtractionContext::default();
+
+        extractor
+            .process(
+                &Event::Start(CmarkTag::Heading {
+                    level: CmarkHeadingLevel::H2,
+                    id: None,
+                    classes: Vec::new(),
+                    attrs: Vec::new(),
+                }),
+                CowStr::Borrowed(""),
+                0..1,
+                &ctx,
+            )
+            .unwrap();
+
+        extractor
+            .process(
+                &Event::Text(CowStr::Borrowed("Hello ")),
+                CowStr::Borrowed("Hello "),
+                1..7,
+                &ctx,
+            )
+            .unwrap();
+
+        extractor
+            .process(
+                &Event::Text(CowStr::Borrowed("World")),
+                CowStr::Borrowed("World"),
+                7..12,
+                &ctx,
+            )
+            .unwrap();
+
+        let result = extractor
+            .process(
+                &Event::End(TagEnd::Heading(CmarkHeadingLevel::H2)),
+                CowStr::Borrowed(""),
+                12..13,
+                &ctx,
+            )
+            .unwrap();
+
+        #[expect(clippy::panic, reason = "Test assertion")]
+        let ExtractionState::Emit(heading) = result else {
+            panic!("Expected heading emission");
+        };
+
+        assert_eq!(heading.text(), "Hello World");
+    }
+
+    #[test]
+    fn converts_breaks_to_spaces() {
+        let mut extractor = HeadingExtractor::new();
+        let ctx = ExtractionContext::default();
+
+        extractor
+            .process(
+                &Event::Start(CmarkTag::Heading {
+                    level: CmarkHeadingLevel::H3,
+                    id: None,
+                    classes: Vec::new(),
+                    attrs: Vec::new(),
+                }),
+                CowStr::Borrowed(""),
+                0..1,
+                &ctx,
+            )
+            .unwrap();
+
+        extractor
+            .process(
+                &Event::Text(CowStr::Borrowed("Hello")),
+                CowStr::Borrowed("Hello"),
+                1..6,
+                &ctx,
+            )
+            .unwrap();
+
+        extractor
+            .process(&Event::SoftBreak, CowStr::Borrowed(""), 6..7, &ctx)
+            .unwrap();
+
+        extractor
+            .process(
+                &Event::Text(CowStr::Borrowed("World")),
+                CowStr::Borrowed("World"),
+                7..12,
+                &ctx,
+            )
+            .unwrap();
+
+        let result = extractor
+            .process(
+                &Event::End(TagEnd::Heading(CmarkHeadingLevel::H3)),
+                CowStr::Borrowed(""),
+                12..13,
+                &ctx,
+            )
+            .unwrap();
+
+        #[expect(clippy::panic, reason = "Test assertion")]
+        let ExtractionState::Emit(heading) = result else {
+            panic!("Expected heading emission");
+        };
+
+        assert_eq!(heading.text(), "Hello World");
+    }
+
+    #[test]
+    fn handles_empty_heading() {
+        let mut extractor = HeadingExtractor::new();
+        let ctx = ExtractionContext::default();
+
+        extractor
+            .process(
+                &Event::Start(CmarkTag::Heading {
+                    level: CmarkHeadingLevel::H1,
+                    id: None,
+                    classes: Vec::new(),
+                    attrs: Vec::new(),
+                }),
+                CowStr::Borrowed(""),
+                0..1,
+                &ctx,
+            )
+            .unwrap();
+
+        let result = extractor.process(
+            &Event::End(TagEnd::Heading(CmarkHeadingLevel::H1)),
+            CowStr::Borrowed(""),
+            1..2,
+            &ctx,
+        );
+
+        let _err: NoteError = result.unwrap_err();
+    }
+
+    #[test]
+    fn handles_heading_with_code() {
+        let mut extractor = HeadingExtractor::new();
+        let ctx = ExtractionContext::default();
+
+        extractor
+            .process(
+                &Event::Start(CmarkTag::Heading {
+                    level: CmarkHeadingLevel::H2,
+                    id: None,
+                    classes: Vec::new(),
+                    attrs: Vec::new(),
+                }),
+                CowStr::Borrowed(""),
+                0..1,
+                &ctx,
+            )
+            .unwrap();
+
+        extractor
+            .process(
+                &Event::Code(CowStr::Borrowed("code")),
+                CowStr::Borrowed("code"),
+                1..7,
+                &ctx,
+            )
+            .unwrap();
+
+        let result = extractor
+            .process(
+                &Event::End(TagEnd::Heading(CmarkHeadingLevel::H2)),
+                CowStr::Borrowed(""),
+                7..8,
+                &ctx,
+            )
+            .unwrap();
+
+        #[expect(clippy::panic, reason = "Test assertion")]
+        let ExtractionState::Emit(heading) = result else {
+            panic!("Expected heading emission");
+        };
+
+        assert_eq!(heading.text(), "code");
+    }
+
+    #[test]
+    fn handles_heading_with_link() {
+        let mut extractor = HeadingExtractor::new();
+        let ctx = ExtractionContext::default();
+
+        extractor
+            .process(
+                &Event::Start(CmarkTag::Heading {
+                    level: CmarkHeadingLevel::H2,
+                    id: None,
+                    classes: Vec::new(),
+                    attrs: Vec::new(),
+                }),
+                CowStr::Borrowed(""),
+                0..1,
+                &ctx,
+            )
+            .unwrap();
+
+        extractor
+            .process(
+                &Event::Start(CmarkTag::Link {
+                    link_type: pulldown_cmark::LinkType::Inline,
+                    dest_url: CowStr::Borrowed("note"),
+                    title: CowStr::Borrowed(""),
+                    id: CowStr::Borrowed(""),
+                }),
+                CowStr::Borrowed(""),
+                1..2,
+                &ctx,
+            )
+            .unwrap();
+
+        extractor
+            .process(
+                &Event::Text(CowStr::Borrowed("Link")),
+                CowStr::Borrowed("Link"),
+                2..6,
+                &ctx,
+            )
+            .unwrap();
+
+        extractor
+            .process(
+                &Event::End(TagEnd::Link),
+                CowStr::Borrowed(""),
+                6..7,
+                &ctx,
+            )
+            .unwrap();
+
+        let result = extractor
+            .process(
+                &Event::End(TagEnd::Heading(CmarkHeadingLevel::H2)),
+                CowStr::Borrowed(""),
+                7..8,
+                &ctx,
+            )
+            .unwrap();
+
+        #[expect(clippy::panic, reason = "Test assertion")]
+        let ExtractionState::Emit(heading) = result else {
+            panic!("Expected heading emission");
+        };
+
+        assert_eq!(heading.text(), "Link");
+    }
+
+    #[test]
+    fn handles_unclosed_heading() {
+        let mut extractor = HeadingExtractor::new();
+        let ctx = ExtractionContext::default();
+
+        extractor
+            .process(
+                &Event::Start(CmarkTag::Heading {
+                    level: CmarkHeadingLevel::H1,
+                    id: None,
+                    classes: Vec::new(),
+                    attrs: Vec::new(),
+                }),
+                CowStr::Borrowed(""),
+                0..1,
+                &ctx,
+            )
+            .unwrap();
+
+        let pending = extractor.finish().unwrap();
+        assert!(pending.is_empty());
+    }
+}

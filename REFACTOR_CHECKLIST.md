@@ -79,17 +79,17 @@
 ### Task 2.3: Heading Extractor (2 hours)
 
 #### Cycle 1: H1-H6 (60 min)
-- [ ] RED: Write heading level tests (20m)
-- [ ] GREEN: Implement heading extraction (30m)
-- [ ] REFACTOR: Extract helpers (10m)
-- [ ] VERIFY: Tests pass
+- [x] RED: Write heading level tests (20m)
+- [x] GREEN: Implement heading extraction (30m)
+- [x] REFACTOR: Extract helpers (10m)
+- [x] VERIFY: Tests pass
 
 #### Cycle 2: Text Accumulation (60 min)
-- [ ] RED: Write text + break tests (20m)
-- [ ] GREEN: Implement text accumulation (30m)
-- [ ] REFACTOR: Polish (10m)
+- [x] RED: Write text + break tests (20m)
+- [x] GREEN: Implement text accumulation (30m)
+- [x] REFACTOR: Polish (10m)
 - [ ] COMMIT: "feat(adapter): add heading extractor"
-- [ ] VERIFY: `cargo test extract_heading` (7+ tests pass)
+- [x] VERIFY: `cargo test extract_heading` (7+ tests pass)
 
 **Phase 2 Complete**: [ ] 3 extractors, 27+ tests, all green
 
