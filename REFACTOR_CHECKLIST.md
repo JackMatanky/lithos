@@ -58,23 +58,23 @@
 ### Task 2.2: Link Extractor (3 hours)
 
 #### Cycle 1: Wiki-links (60 min)
-- [ ] RED: Write wiki-link tests (20m)
-- [ ] GREEN: Implement link state machine (30m)
-- [ ] REFACTOR: Extract anchor parsing (10m)
-- [ ] VERIFY: Tests pass
+- [x] RED: Write wiki-link tests (20m)
+- [x] GREEN: Implement link state machine (30m)
+- [x] REFACTOR: Extract anchor parsing (10m)
+- [x] VERIFY: Tests pass
 
 #### Cycle 2: Anchors (60 min)
-- [ ] RED: Write anchor tests (heading + block-ref) (20m)
-- [ ] GREEN: Implement anchor parsing (30m)
-- [ ] REFACTOR: Use domain EmbedType (10m)
-- [ ] VERIFY: Tests pass
+- [x] RED: Write anchor tests (heading + block-ref) (20m)
+- [x] GREEN: Implement anchor parsing (30m)
+- [x] REFACTOR: Use domain EmbedType (10m)
+- [x] VERIFY: Tests pass
 
 #### Cycle 3: Markdown Links (60 min)
-- [ ] RED: Write markdown link + embed tests (20m)
-- [ ] GREEN: Implement markdown links (30m)
-- [ ] REFACTOR: Extract URL validation (10m)
+- [x] RED: Write markdown link + embed tests (20m)
+- [x] GREEN: Implement markdown links (30m)
+- [x] REFACTOR: Extract URL validation (10m)
 - [ ] COMMIT: "feat(adapter): add link extractor"
-- [ ] VERIFY: `cargo test extract_link` (10+ tests pass)
+- [x] VERIFY: `cargo test extract_link` (10+ tests pass)
 
 ### Task 2.3: Heading Extractor (2 hours)
 

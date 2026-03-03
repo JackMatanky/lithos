@@ -93,10 +93,6 @@ pub(super) trait Extractor {
     ///
     /// Called when the event stream ends. Extractors should flush
     /// any incomplete entities or return empty if nothing is buffered.
-    #[expect(
-        dead_code,
-        reason = "Will be called by reader orchestration in Phase 3"
-    )]
     fn finish(self) -> Result<Vec<Self::Output>, Self::Error>;
 
     /// Process a single markdown event.
