@@ -259,6 +259,34 @@ where
         })
     }
 
+    /// Get a property by its ID from the current `PropertyBank`.
+    ///
+    /// Returns `None` if the property doesn't exist or if `PropertyBank`
+    /// is not loaded.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError::Storage` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # use lithos_core::schema::property::PropertyId;
+    /// # let query = todo!("Provide a Query instance");
+    /// # let id = PropertyId::new();
+    /// let property = query.get_property_by_id(id)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn get_property_by_id(
+        &self,
+        id: super::property::PropertyId,
+    ) -> Result<Option<super::property::Property>, SchemaQueryError> {
+        self.query_port.get_property_by_id(id).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
+    }
+
     /// Returns the `PropertyBank` or an error if it doesn't exist.
     ///
     /// This is a convenience method that returns a clear error when the

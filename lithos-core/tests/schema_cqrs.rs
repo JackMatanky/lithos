@@ -421,6 +421,131 @@ mod property_bank {
 
         Ok(())
     }
+
+    /// **3.4-INT-010**: `get_property_by_id` returns correct property.
+    ///
+    /// Verifies:
+    /// - Property can be retrieved by ID
+    /// - Retrieved property matches original
+    #[test]
+    fn get_property_by_id_returns_correct_property() -> TestResult {
+        // GIVEN: A PropertyBank with registered properties
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        let mut bank = PropertyBank::new();
+        let prop1 = PropertyBuilder::new("status")
+            .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
+            .build_bool()?;
+        let prop2 = PropertyBuilder::new("title")
+            .id(PropertyId::from_uuid(TEST_PROPERTY_ID_B))
+            .build_string_default()?;
+
+        bank.register(prop1.clone())?;
+        bank.register(prop2)?;
+        command.save_property_bank(&bank)?;
+
+        // WHEN: Retrieving property by ID
+        let retrieved = query.get_property_by_id(prop1.id())?;
+
+        // THEN: Correct property is returned
+        assert!(retrieved.is_some(), "Property should exist");
+        let retrieved_prop = retrieved.expect("just verified property exists");
+        assert_eq!(retrieved_prop.id(), prop1.id());
+        assert_eq!(retrieved_prop.name(), prop1.name());
+
+        Ok(())
+    }
+
+    /// **3.4-INT-011**: `get_property_by_id` returns None for invalid ID.
+    ///
+    /// Verifies:
+    /// - Invalid property ID returns None (not error)
+    #[test]
+    fn get_property_by_id_invalid_id_returns_none() -> TestResult {
+        // GIVEN: A PropertyBank with one property
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        let mut bank = PropertyBank::new();
+        let prop = PropertyBuilder::new("status")
+            .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
+            .build_bool()?;
+        bank.register(prop)?;
+        command.save_property_bank(&bank)?;
+
+        // WHEN: Querying with invalid ID
+        let invalid_id = PropertyId::from_uuid(TEST_PROPERTY_ID_B);
+        let result = query.get_property_by_id(invalid_id)?;
+
+        // THEN: Returns None
+        assert!(result.is_none(), "Invalid ID should return None");
+
+        Ok(())
+    }
+
+    /// **3.4-INT-012**: `get_property_by_id` returns None when bank missing.
+    ///
+    /// Verifies:
+    /// - Query gracefully handles missing `PropertyBank`
+    #[test]
+    fn get_property_by_id_bank_missing_returns_none() -> TestResult {
+        // GIVEN: An empty database (no PropertyBank)
+        let test_db = TestDb::new()?;
+        let (_command, query) = setup_cqrs(test_db.db());
+
+        // Verify PropertyBank doesn't exist
+        assert!(
+            query.get_property_bank()?.is_none(),
+            "PropertyBank should not exist"
+        );
+
+        // WHEN: Querying for property by ID
+        let id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
+        let result = query.get_property_by_id(id)?;
+
+        // THEN: Returns None gracefully
+        assert!(
+            result.is_none(),
+            "Should return None when PropertyBank missing"
+        );
+
+        Ok(())
+    }
+
+    /// **3.4-INT-013**: `get_property_by_id` roundtrip preserves data.
+    ///
+    /// Verifies:
+    /// - Register → Save → Get by ID preserves all property fields
+    #[test]
+    fn get_property_by_id_roundtrip_preserves_data() -> TestResult {
+        // GIVEN: A property with all fields set
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        let mut bank = PropertyBank::new();
+        let original_prop = PropertyBuilder::new("priority")
+            .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
+            .optionality(Optionality::Required)
+            .multiplicity(Multiplicity::Many)
+            .build_string_default()?;
+
+        bank.register(original_prop.clone())?;
+        command.save_property_bank(&bank)?;
+
+        // WHEN: Retrieving by ID
+        let retrieved = query
+            .get_property_by_id(original_prop.id())?
+            .expect("Property should exist");
+
+        // THEN: All fields match
+        assert_eq!(retrieved.id(), original_prop.id());
+        assert_eq!(retrieved.name(), original_prop.name());
+        assert_eq!(retrieved.optionality(), original_prop.optionality());
+        assert_eq!(retrieved.multiplicity(), original_prop.multiplicity());
+
+        Ok(())
+    }
 }
 
 // ========================================================================
