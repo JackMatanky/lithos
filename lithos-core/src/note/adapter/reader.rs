@@ -34,6 +34,95 @@ use crate::{
     },
 };
 
+// ----------------------------------------------------------- //
+//                    Extraction Protocol                      //
+// ----------------------------------------------------------- //
+
+/// Extraction context shared across all extractors.
+///
+/// Provides global state about the current parsing context that extractors
+/// need to make decisions (e.g., whether we're inside a link, code block,
+/// etc.).
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Will be used by extractors in Phase 2")
+)]
+pub(super) struct ExtractionContext {
+    /// Whether the parser is currently inside a link.
+    pub inside_link: bool,
+    /// Whether the parser is currently inside a code block.
+    pub inside_code_block: bool,
+    /// Current nesting depth of lists (0 = not in list).
+    pub list_depth: usize,
+}
+
+/// Extraction state returned after processing an event.
+///
+/// Indicates whether the extractor should continue processing or has
+/// produced an output entity.
+#[derive(Debug)]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Will be used by extractors in Phase 2")
+)]
+pub(super) enum ExtractionState<T> {
+    /// Continue processing - no entity emitted yet.
+    Continue,
+    /// Entity extracted and ready to emit.
+    Emit(T),
+}
+
+/// Extracts typed domain entities from pulldown-cmark event stream.
+///
+/// Extractors implement a state machine that processes markdown events
+/// and emits domain entities when complete patterns are recognized.
+///
+/// # Type Parameters
+///
+/// - `Error`: Error type for extraction failures (must convert to `NoteError`)
+/// - `Output`: The domain entity type this extractor produces
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Will be used by extractors in Phase 2")
+)]
+pub(super) trait Extractor {
+    /// Error type for extraction failures.
+    type Error: Into<NoteError>;
+
+    /// The domain entity type produced by this extractor.
+    type Output;
+
+    /// Finalize extraction and return any buffered entities.
+    ///
+    /// Called when the event stream ends. Extractors should flush
+    /// any incomplete entities or return empty if nothing is buffered.
+    fn finish(self) -> Result<Vec<Self::Output>, Self::Error>;
+
+    /// Process a single markdown event.
+    ///
+    /// Returns `ExtractionState::Continue` to keep processing or
+    /// `ExtractionState::Emit` when an entity is ready.
+    ///
+    /// # Parameters
+    ///
+    /// - `event`: The pulldown-cmark event being processed
+    /// - `text`: Text content (empty for non-text events)
+    /// - `range`: Byte range of this event in the source
+    /// - `ctx`: Shared extraction context
+    fn process(
+        &mut self,
+        event: &Event<'_>,
+        text: pulldown_cmark::CowStr<'_>,
+        range: Range<usize>,
+        ctx: &ExtractionContext,
+    ) -> Result<ExtractionState<Self::Output>, Self::Error>;
+}
+
+// ----------------------------------------------------------- //
+//                      Markdown Reader                        //
+// ----------------------------------------------------------- //
+
 /// Markdown reader for extracting note structural elements.
 ///
 /// `NoteReader` uses `pulldown-cmark` to traverse a markdown document and
@@ -1500,6 +1589,96 @@ impl LinkCollector {
     reason = "Tests use assertions in Result-returning functions."
 )]
 mod tests {
+    mod protocol_tests {
+        use pulldown_cmark::CowStr;
+
+        use super::*;
+
+        #[test]
+        fn extraction_context_defaults() {
+            let ctx = ExtractionContext::default();
+            assert!(!ctx.inside_link);
+            assert!(!ctx.inside_code_block);
+            assert_eq!(ctx.list_depth, 0);
+        }
+
+        #[test]
+        fn extraction_state_is_continue() {
+            let state: ExtractionState<String> = ExtractionState::Continue;
+            assert!(matches!(state, ExtractionState::Continue));
+        }
+
+        #[test]
+        fn extraction_state_is_emit() {
+            let state = ExtractionState::Emit(String::from("value"));
+            assert!(matches!(state, ExtractionState::Emit(_)));
+        }
+
+        // Mock extractor for testing protocol
+        struct MockExtractor {
+            calls: usize,
+        }
+
+        impl Extractor for MockExtractor {
+            type Error = NoteError;
+            type Output = String;
+
+            #[expect(
+                clippy::arithmetic_side_effects,
+                reason = "Test counter overflow is unrealistic"
+            )]
+            fn process(
+                &mut self,
+                _event: &Event<'_>,
+                _text: CowStr<'_>,
+                _range: Range<usize>,
+                _ctx: &ExtractionContext,
+            ) -> Result<ExtractionState<String>, NoteError> {
+                self.calls += 1;
+                if self.calls == 3 {
+                    Ok(ExtractionState::Emit(String::from("entity")))
+                } else {
+                    Ok(ExtractionState::Continue)
+                }
+            }
+
+            fn finish(self) -> Result<Vec<String>, NoteError> {
+                Ok(vec![])
+            }
+        }
+
+        #[test]
+        fn mock_extractor_emits_on_third_call() {
+            let mut extractor = MockExtractor {
+                calls: 0,
+            };
+            let ctx = ExtractionContext::default();
+            let event = Event::Text(CowStr::Borrowed("test"));
+
+            // First call
+            let result1 = extractor
+                .process(&event, CowStr::Borrowed("test"), 0..4, &ctx)
+                .unwrap();
+            assert!(matches!(result1, ExtractionState::Continue));
+
+            // Second call
+            let result2 = extractor
+                .process(&event, CowStr::Borrowed("test"), 4..8, &ctx)
+                .unwrap();
+            assert!(matches!(result2, ExtractionState::Continue));
+
+            // Third call - should emit
+            let result3 = extractor
+                .process(&event, CowStr::Borrowed("test"), 8..12, &ctx)
+                .unwrap();
+            #[expect(clippy::panic, reason = "Test assertion")]
+            let ExtractionState::Emit(value) = result3 else {
+                panic!("Expected Emit, got Continue");
+            };
+            assert_eq!(value, "entity");
+        }
+    }
+
     use super::*;
     use crate::{
         config::{
