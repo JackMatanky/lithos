@@ -196,6 +196,53 @@ pub enum EmbedType {
     Video,
 }
 
+impl EmbedType {
+    /// Determine embed type from file extension.
+    ///
+    /// Uses case-insensitive matching without allocation.
+    /// Defaults to [`EmbedType::Note`] for unknown extensions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::link::EmbedType;
+    /// assert_eq!(EmbedType::from_extension("image.png"), EmbedType::Image);
+    /// assert_eq!(EmbedType::from_extension("video.mp4"), EmbedType::Video);
+    /// assert_eq!(EmbedType::from_extension("audio.mp3"), EmbedType::Audio);
+    /// assert_eq!(EmbedType::from_extension("doc.pdf"), EmbedType::Pdf);
+    /// assert_eq!(EmbedType::from_extension("note.md"), EmbedType::Note);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn from_extension(path: &str) -> Self {
+        let Some((_, ext)) = path.rsplit_once('.') else {
+            return Self::Note;
+        };
+
+        if matches_any_ignore_case(ext, &[
+            "png", "jpg", "jpeg", "gif", "svg", "webp",
+        ]) {
+            return Self::Image;
+        }
+        if matches_any_ignore_case(ext, &["mp4", "webm", "ogv", "mov"]) {
+            return Self::Video;
+        }
+        if matches_any_ignore_case(ext, &["mp3", "wav", "ogg", "m4a"]) {
+            return Self::Audio;
+        }
+        if ext.eq_ignore_ascii_case("pdf") {
+            return Self::Pdf;
+        }
+        Self::Note
+    }
+}
+
+/// Helper to check if a string matches any candidate (case-insensitive).
+#[inline]
+fn matches_any_ignore_case(s: &str, candidates: &[&str]) -> bool {
+    candidates.iter().any(|c| s.eq_ignore_ascii_case(c))
+}
+
 /// Validated link alias text.
 #[derive(
     Debug,
@@ -630,6 +677,99 @@ mod tests {
             );
             result.unwrap_err();
             Ok(())
+        }
+    }
+
+    mod embed_type_detection {
+        use super::super::EmbedType;
+
+        #[test]
+        fn detects_image_extensions() {
+            assert_eq!(
+                EmbedType::from_extension("image.png"),
+                EmbedType::Image
+            );
+            assert_eq!(
+                EmbedType::from_extension("photo.jpg"),
+                EmbedType::Image
+            );
+            assert_eq!(EmbedType::from_extension("pic.jpeg"), EmbedType::Image);
+            assert_eq!(EmbedType::from_extension("icon.gif"), EmbedType::Image);
+            assert_eq!(EmbedType::from_extension("logo.svg"), EmbedType::Image);
+            assert_eq!(
+                EmbedType::from_extension("hero.webp"),
+                EmbedType::Image
+            );
+        }
+
+        #[test]
+        fn detects_video_extensions() {
+            assert_eq!(
+                EmbedType::from_extension("video.mp4"),
+                EmbedType::Video
+            );
+            assert_eq!(
+                EmbedType::from_extension("clip.webm"),
+                EmbedType::Video
+            );
+            assert_eq!(
+                EmbedType::from_extension("movie.ogv"),
+                EmbedType::Video
+            );
+            assert_eq!(
+                EmbedType::from_extension("recording.mov"),
+                EmbedType::Video
+            );
+        }
+
+        #[test]
+        fn detects_audio_extensions() {
+            assert_eq!(EmbedType::from_extension("song.mp3"), EmbedType::Audio);
+            assert_eq!(
+                EmbedType::from_extension("sound.wav"),
+                EmbedType::Audio
+            );
+            assert_eq!(
+                EmbedType::from_extension("audio.ogg"),
+                EmbedType::Audio
+            );
+            assert_eq!(
+                EmbedType::from_extension("track.m4a"),
+                EmbedType::Audio
+            );
+        }
+
+        #[test]
+        fn detects_pdf_extension() {
+            assert_eq!(EmbedType::from_extension("doc.pdf"), EmbedType::Pdf);
+            assert_eq!(EmbedType::from_extension("Doc.PDF"), EmbedType::Pdf);
+        }
+
+        #[test]
+        fn case_insensitive_matching() {
+            assert_eq!(
+                EmbedType::from_extension("IMAGE.PNG"),
+                EmbedType::Image
+            );
+            assert_eq!(
+                EmbedType::from_extension("Video.MP4"),
+                EmbedType::Video
+            );
+            assert_eq!(
+                EmbedType::from_extension("Audio.MP3"),
+                EmbedType::Audio
+            );
+        }
+
+        #[test]
+        fn no_extension_defaults_to_note() {
+            assert_eq!(EmbedType::from_extension("filename"), EmbedType::Note);
+        }
+
+        #[test]
+        fn unknown_extension_defaults_to_note() {
+            assert_eq!(EmbedType::from_extension("file.txt"), EmbedType::Note);
+            assert_eq!(EmbedType::from_extension("doc.docx"), EmbedType::Note);
         }
     }
 }
