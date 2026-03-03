@@ -20,13 +20,6 @@ use crate::{
 
 /// Output from list extraction - either a list or a promoted task.
 #[derive(Debug)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Used in tests; will be used by reader orchestration"
-    )
-)]
 pub enum ExtractionOutput {
     /// A complete list with items.
     List(List),
@@ -91,13 +84,6 @@ impl<'config> ListExtractor<'config> {
     ///
     /// This is the standard constructor for creating a list extractor.
     #[inline]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Used in tests; will be used by reader.rs orchestration"
-        )
-    )]
     pub(super) const fn new(config: &'config Config) -> Self {
         Self {
             config,

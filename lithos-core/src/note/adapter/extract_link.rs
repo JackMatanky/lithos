@@ -76,11 +76,18 @@ impl LinkBuilder {
     }
 
     fn build(self) -> Result<Link, NoteError> {
-        // Parse anchor from target
-        let (target_path, anchor) = self.parse_target_and_anchor()?;
+        let raw_target = self.target.as_ref();
+        let is_external = Self::is_external(raw_target);
+
+        // Parse anchor from target (internal links only)
+        let (target_path, anchor) = if is_external {
+            (raw_target, None)
+        } else {
+            self.parse_target_and_anchor()?
+        };
 
         // Determine if external
-        let target = if Self::is_external(target_path) {
+        let target = if is_external {
             Target::External {
                 url: target_path.into(),
             }
@@ -163,13 +170,6 @@ impl LinkBuilder {
 impl<'config> LinkExtractor<'config> {
     /// Creates a new link extractor bound to the provided configuration.
     #[inline]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Used in tests; will be used by reader orchestration"
-        )
-    )]
     pub(super) const fn new(config: &'config Config) -> Self {
         Self {
             config,
@@ -192,7 +192,7 @@ impl<'config> LinkExtractor<'config> {
                     dest_url.as_ref(),
                     position,
                     is_embed,
-                    false,
+                    true,
                     has_pothole,
                 ));
             }
@@ -273,6 +273,13 @@ impl Extractor for LinkExtractor<'_> {
                 Ok(ExtractionState::Continue)
             }
 
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some(builder) = self.current.as_mut() {
+                    builder.add_alias_text(" ");
+                }
+                Ok(ExtractionState::Continue)
+            }
+
             Event::End(TagEnd::Link | TagEnd::Image) => {
                 if let Some(builder) = self.current.take() {
                     let link = builder.build()?;
@@ -290,8 +297,6 @@ impl Extractor for LinkExtractor<'_> {
             | Event::Html(_)
             | Event::InlineHtml(_)
             | Event::FootnoteReference(_)
-            | Event::SoftBreak
-            | Event::HardBreak
             | Event::Rule
             | Event::TaskListMarker(_) => Ok(ExtractionState::Continue),
         }

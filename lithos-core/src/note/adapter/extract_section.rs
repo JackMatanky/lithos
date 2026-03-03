@@ -63,13 +63,6 @@ impl HeadingBuilder {
 
 impl<'source> SectionExtractor<'source> {
     #[inline]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Used in tests; will be used by reader orchestration"
-        )
-    )]
     pub(super) const fn new(source: &'source str) -> Self {
         Self {
             source,

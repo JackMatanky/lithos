@@ -25,13 +25,6 @@ pub struct TagExtractor<'config> {
 
 impl<'config> TagExtractor<'config> {
     #[inline]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Used in tests; will be used by reader orchestration"
-        )
-    )]
     pub(super) fn new(config: &'config Config) -> Self {
         Self {
             config,
@@ -41,13 +34,6 @@ impl<'config> TagExtractor<'config> {
         }
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Used by reader orchestration to supply frontmatter"
-        )
-    )]
     pub(crate) fn set_frontmatter(&mut self, frontmatter: Frontmatter) {
         self.frontmatter = Some(frontmatter);
     }

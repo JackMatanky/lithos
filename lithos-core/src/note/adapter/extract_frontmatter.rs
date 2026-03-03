@@ -23,13 +23,6 @@ pub struct FrontmatterExtractor {
 
 impl FrontmatterExtractor {
     #[inline]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Used in tests; will be used by reader orchestration"
-        )
-    )]
     pub(super) const fn new() -> Self {
         Self {
             kind: None,

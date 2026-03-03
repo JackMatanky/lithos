@@ -125,11 +125,11 @@
 ## Phase 4: Reader Orchestration ✅ / 🔴 / ⏸️
 
 ### Task 4.1: Orchestrate Extractors (3 hours)
-- [ ] RED: Write integration test (30m)
-- [ ] GREEN: Wire extractors in parse_str (90m)
-- [ ] REFACTOR: Extract update_context helper (60m)
+- [x] RED: Write integration test (30m)
+- [x] GREEN: Wire extractors in parse_str (90m)
+- [x] REFACTOR: Extract update_context helper (60m)
 - [ ] COMMIT: "feat(adapter): orchestrate extraction in reader"
-- [ ] VERIFY: `cargo test -p lithos-core --lib note::adapter::reader`
+- [x] VERIFY: `cargo test -p lithos-core --lib note::adapter::reader`
 
 **Phase 4 Complete**: [ ] Full pipeline works, 5+ integration tests
 
