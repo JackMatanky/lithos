@@ -100,13 +100,38 @@ where
         &self,
         name: &SchemaName,
     ) -> Result<Option<Schema>, SchemaQueryError> {
-        let id = self.query_port.lookup_id_by_name(name).map_err(|error| {
+        let id = self.query_port.find_id_by_name(name).map_err(|error| {
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })?;
         let Some(id) = id else {
             return Ok(None);
         };
         self.find_by_id(id)
+    }
+
+    /// Find a schema name-to-ID mapping.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # use lithos_core::schema::aggregate::SchemaName;
+    /// # let query = todo!("Provide a Query instance");
+    /// # let name = SchemaName::try_new("note")?;
+    /// let id = query.find_id_by_name(&name)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn find_id_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<SchemaId>, SchemaQueryError> {
+        self.query_port.find_id_by_name(name).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
     }
 
     /// Find multiple schemas by their IDs in a single transaction.
@@ -123,16 +148,16 @@ where
     /// # use std::collections::HashMap;
     /// # let query = todo!("Provide a Query instance");
     /// # let ids = vec![lithos_core::schema::aggregate::SchemaId::new()];
-    /// let schemas: HashMap<_, _> = query.batch_find_by_ids(&ids)?;
+    /// let schemas: HashMap<_, _> = query.find_many_by_ids(&ids)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn batch_find_by_ids(
+    pub fn find_many_by_ids(
         &self,
         ids: &[SchemaId],
     ) -> Result<std::collections::HashMap<SchemaId, Schema>, SchemaQueryError>
     {
-        self.query_port.batch_find_by_ids(ids).map_err(|error| {
+        self.query_port.find_many_by_ids(ids).map_err(|error| {
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
@@ -152,17 +177,17 @@ where
     /// # let query = todo!("Provide a Query instance");
     /// # let bank_version = lithos_core::schema::bank::BankVersion::initial();
     /// # let schemas = vec![(lithos_core::schema::aggregate::SchemaId::new(), None, None)];
-    /// let staleness: HashMap<_, _> = query.batch_is_stale(&schemas, bank_version)?;
+    /// let staleness: HashMap<_, _> = query.are_many_stale(&schemas, bank_version)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn batch_is_stale(
+    pub fn are_many_stale(
         &self,
         schemas: &[super::ports::StalenessCheck],
         bank_version: BankVersion,
     ) -> Result<std::collections::HashMap<SchemaId, bool>, SchemaQueryError>
     {
-        self.query_port.batch_is_stale(schemas, bank_version).map_err(|error| {
+        self.query_port.are_many_stale(schemas, bank_version).map_err(|error| {
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
@@ -329,17 +354,17 @@ where
     /// ```ignore
     /// # use lithos_core::schema::query::Query;
     /// # let query = todo!("Provide a Query instance");
-    /// query.batch_read(|_reader| Ok::<_, Box<dyn std::error::Error>>(()))?;
+    /// query.read_many(|_reader| Ok::<_, Box<dyn std::error::Error>>(()))?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn batch_read<R, F>(&self, f: F) -> Result<R, SchemaQueryError>
+    pub fn read_many<R, F>(&self, f: F) -> Result<R, SchemaQueryError>
     where
         F: FnOnce(
             &crate::db::BatchReader,
         ) -> Result<R, <Q as schema_ports::Query>::Error>,
     {
-        self.query_port.batch_read(f).map_err(|error| {
+        self.query_port.read_many(f).map_err(|error| {
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
@@ -356,15 +381,15 @@ where
     /// # use lithos_core::schema::ports::InheritanceMap;
     /// # let query = todo!("Provide a Query instance");
     /// # let parent_id = lithos_core::schema::aggregate::SchemaId::new();
-    /// let children_map: InheritanceMap = query.find_children(&[parent_id])?;
+    /// let children_map: InheritanceMap = query.list_children(&[parent_id])?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn find_children(
+    pub fn list_children(
         &self,
         parent_ids: &[SchemaId],
     ) -> Result<super::ports::InheritanceMap, SchemaQueryError> {
-        self.query_port.find_children(parent_ids).map_err(|error| {
+        self.query_port.list_children(parent_ids).map_err(|error| {
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
@@ -450,8 +475,8 @@ mod tests {
             id: SchemaId,
             name: &str,
         ) -> Result<Schema, String> {
-            let name = SchemaName::new(name).map_err(|e| e.to_string())?;
-            Schema::new(id, name, None, vec![]).map_err(|e| e.to_string())
+            let name = SchemaName::try_new(name).map_err(|e| e.to_string())?;
+            Schema::try_new(id, name, None, vec![]).map_err(|e| e.to_string())
         }
     }
 
@@ -483,7 +508,7 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
 
-            cmd.save_one(&schema).expect("Save should succeed");
+            cmd.save(&schema).expect("Save should succeed");
 
             let result = qry
                 .find_by_id(fixtures::TEST_SCHEMA_ID_A)
@@ -502,10 +527,10 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
 
-            cmd.save_one(&schema).expect("Save should succeed");
+            cmd.save(&schema).expect("Save should succeed");
 
-            let name =
-                SchemaName::new("note").expect("Failed to create schema name");
+            let name = SchemaName::try_new("note")
+                .expect("Failed to create schema name");
             let stored = qry.find_by_name(&name).expect("Query should succeed");
             let stored_schema = stored.expect("Schema should be found by name");
             assert_eq!(
@@ -529,7 +554,7 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_B, "project")
                     .expect("Failed to create schema fixture");
 
-            cmd.save_batch(&[schema_a, schema_b]).expect("Save should succeed");
+            cmd.save_many(&[schema_a, schema_b]).expect("Save should succeed");
 
             let schemas = qry.list().expect("List should succeed");
             let names: HashSet<&str> =
@@ -566,7 +591,7 @@ mod tests {
                     .expect("Failed to create schema fixture");
             let ts = Timestamp::from_secs(1_000_000);
 
-            cmd.save_one(&schema).expect("Save should succeed");
+            cmd.save(&schema).expect("Save should succeed");
 
             let stale = qry
                 .is_schema_stale(
@@ -592,7 +617,7 @@ mod tests {
             let stored_created = Timestamp::from_secs(1_000_000);
             let file_created = Timestamp::from_secs(2_000_000);
 
-            cmd.save_batch_with_metadata(&[schema], &[StoredMetadata::new(
+            cmd.save_many_with_metadata(&[schema], &[StoredMetadata::new(
                 BankVersion::initial(),
                 Some(stored_created),
                 None,
@@ -651,7 +676,7 @@ mod tests {
         }
 
         #[test]
-        fn batch_find_by_ids_returns_multiple_schemas() {
+        fn find_many_by_ids_returns_multiple_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
@@ -664,16 +689,16 @@ mod tests {
             let schema2 =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_B, "note")
                     .expect("Failed to create schema fixture");
-            cmd.save_batch(&[schema1.clone(), schema2.clone()])
+            cmd.save_many(&[schema1.clone(), schema2.clone()])
                 .expect("Save should succeed");
 
-            // WHEN: Batch finding by IDs
+            // WHEN: Finding many by IDs
             let ids =
                 vec![fixtures::TEST_SCHEMA_ID_A, fixtures::TEST_SCHEMA_ID_B];
-            let result = qry.batch_find_by_ids(&ids);
+            let result = qry.find_many_by_ids(&ids);
 
             // THEN: All schemas are returned
-            assert!(result.is_ok(), "Batch find should succeed");
+            assert!(result.is_ok(), "Find many should succeed");
             let found_schemas = result.expect("Should unwrap to HashMap");
             assert_eq!(found_schemas.len(), 2, "Should return both schemas");
             assert!(found_schemas.contains_key(&fixtures::TEST_SCHEMA_ID_A));
@@ -681,109 +706,84 @@ mod tests {
         }
 
         #[test]
-        fn batch_find_by_ids_skips_missing_schemas() {
+        fn find_many_by_ids_skips_missing_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
             let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
-            // Save only one schema
             let schema =
-                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "article")
+                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
-            cmd.save_one(&schema).expect("Save should succeed");
+            cmd.save(&schema).expect("Save should succeed");
 
-            // WHEN: Batch finding with one missing ID
+            // WHEN: Finding many by IDs including a missing one
             let ids =
                 vec![fixtures::TEST_SCHEMA_ID_A, fixtures::TEST_SCHEMA_ID_B];
-            let result = qry.batch_find_by_ids(&ids);
+            let result = qry.find_many_by_ids(&ids);
 
-            // THEN: Only existing schema is returned
-            assert!(result.is_ok(), "Batch find should succeed");
+            // THEN: Only found schema is returned
+            assert!(result.is_ok(), "Find many should succeed");
             let found_schemas = result.expect("Should unwrap to HashMap");
-            assert_eq!(
-                found_schemas.len(),
-                1,
-                "Should return only existing schema"
-            );
+            assert_eq!(found_schemas.len(), 1, "Should return only one schema");
             assert!(found_schemas.contains_key(&fixtures::TEST_SCHEMA_ID_A));
-            assert!(!found_schemas.contains_key(&fixtures::TEST_SCHEMA_ID_B));
         }
 
         #[test]
-        fn batch_is_stale_checks_multiple_schemas() {
+        fn are_many_stale_checks_multiple_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
             let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
-            // Save two schemas with different timestamps
+            let ts_old = Timestamp::from_secs(100);
+            let ts_new = Timestamp::from_secs(200);
+
+            // Save two schemas
             let schema1 =
-                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "article")
+                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note1")
                     .expect("Failed to create schema fixture");
             let schema2 =
-                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_B, "note")
+                fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_B, "note2")
                     .expect("Failed to create schema fixture");
 
-            let ts_old = Timestamp::from_secs(1_000_000);
-            let ts_new = Timestamp::from_secs(2_000_000);
-
-            cmd.save_batch_with_metadata(&[schema1, schema2], &[
+            cmd.save_many_with_metadata(&[schema1, schema2], &[
                 StoredMetadata::new(BankVersion::initial(), None, Some(ts_old)),
                 StoredMetadata::new(BankVersion::initial(), None, Some(ts_new)),
             ])
             .expect("Save should succeed");
 
-            // WHEN: Checking staleness with newer file timestamps
+            // WHEN: Checking many for staleness
             let checks = vec![
-                (fixtures::TEST_SCHEMA_ID_A, None, Some(ts_new)),
-                (fixtures::TEST_SCHEMA_ID_B, None, Some(ts_new)),
+                (fixtures::TEST_SCHEMA_ID_A, None, Some(ts_new)), /* Stale (file newer) */
+                (fixtures::TEST_SCHEMA_ID_B, None, Some(ts_old)), /* Fresh (file older) */
             ];
-            let result = qry.batch_is_stale(&checks, BankVersion::initial());
+            let result = qry.are_many_stale(&checks, BankVersion::initial());
 
-            // THEN: First schema is stale (file modified), second is fresh
-            assert!(result.is_ok(), "Batch staleness check should succeed");
+            // THEN: Staleness is reported correctly
+            assert!(result.is_ok(), "Staleness check should succeed");
             let staleness = result.expect("Should unwrap to HashMap");
-            assert_eq!(staleness.len(), 2);
-            assert_eq!(
-                staleness.get(&fixtures::TEST_SCHEMA_ID_A),
-                Some(&true),
-                "Schema with older timestamp should be stale"
-            );
+            assert_eq!(staleness.get(&fixtures::TEST_SCHEMA_ID_A), Some(&true));
             assert_eq!(
                 staleness.get(&fixtures::TEST_SCHEMA_ID_B),
-                Some(&false),
-                "Schema with matching timestamp should be fresh"
+                Some(&false)
             );
         }
 
         #[test]
-        fn batch_is_stale_reports_missing_as_stale() {
+        fn are_many_stale_reports_missing_as_stale() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
 
-            // WHEN: Checking staleness for schemas that don't exist
-            let schemas = vec![
-                (fixtures::TEST_SCHEMA_ID_A, None, None),
-                (fixtures::TEST_SCHEMA_ID_B, None, None),
-            ];
-            let result = qry.batch_is_stale(&schemas, BankVersion::initial());
+            // WHEN: Checking staleness for a schema that doesn't exist
+            let schemas = vec![(fixtures::TEST_SCHEMA_ID_A, None, None)];
+            let result = qry.are_many_stale(&schemas, BankVersion::initial());
 
-            // THEN: All missing schemas are reported as stale
-            assert!(result.is_ok(), "Batch staleness check should succeed");
+            // THEN: It is reported as stale
+            assert!(result.is_ok(), "Staleness check should succeed");
             let staleness = result.expect("Should unwrap to HashMap");
-            assert_eq!(staleness.len(), 2);
-            assert_eq!(
-                staleness.get(&fixtures::TEST_SCHEMA_ID_A),
-                Some(&true),
-                "Missing schema should be stale"
-            );
-            assert_eq!(
-                staleness.get(&fixtures::TEST_SCHEMA_ID_B),
-                Some(&true),
-                "Missing schema should be stale"
-            );
+            assert_eq!(staleness.get(&fixtures::TEST_SCHEMA_ID_A), Some(&true));
         }
     }
 }

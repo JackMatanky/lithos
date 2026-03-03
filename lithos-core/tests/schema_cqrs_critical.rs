@@ -30,7 +30,7 @@ fn delete_removes_schema_completely() -> TestResult {
     let schema = SchemaBuilder::new("test-schema").build()?;
     let schema_id = schema.id();
 
-    command.save_one(&schema)?;
+    command.save(&schema)?;
     assert!(
         query.find_by_id(schema_id)?.is_some(),
         "Schema should exist after save"
@@ -109,7 +109,7 @@ fn batch_save_duplicate_names_in_batch_fails() -> TestResult {
     let schema2 = SchemaBuilder::new("duplicate").build()?; // Same name, different ID
 
     // WHEN: Attempting batch save with duplicates
-    let result = command.save_batch(&[schema1, schema2]);
+    let result = command.save_many(&[schema1, schema2]);
 
     // THEN: Operation fails with duplicate name error
     assert!(result.is_err(), "Batch save should fail with duplicate names");
@@ -167,7 +167,7 @@ fn is_schema_stale_returns_false_for_fresh_schema() -> TestResult {
     // Save a schema (will use BankVersion::initial())
     let schema = SchemaBuilder::new("test-schema").build()?;
     let schema_id = schema.id();
-    command.save_one(&schema)?;
+    command.save(&schema)?;
 
     // WHEN: Checking staleness against initial version (same as saved)
     let is_stale = query.is_schema_stale(
@@ -207,7 +207,7 @@ fn save_rejects_invalid_property_references() -> TestResult {
         .property(PropertyBuilder::new("invalid_prop").build_bool()?)
         .build()?;
 
-    let result = command.save_one(&schema);
+    let result = command.save(&schema);
 
     // THEN: Save fails with clear error
     assert!(
@@ -248,7 +248,7 @@ fn save_succeeds_with_valid_property_references() -> TestResult {
         .property(prop2)
         .build()?;
 
-    let result = command.save_one(&schema);
+    let result = command.save(&schema);
 
     // THEN: Save succeeds
     assert!(result.is_ok(), "Should accept valid property references");
@@ -278,7 +278,7 @@ fn save_succeeds_without_property_bank() -> TestResult {
 
     // WHEN: Saving schema without PropertyBank
     let schema = SchemaBuilder::new("test-schema").build()?;
-    let result = command.save_one(&schema);
+    let result = command.save(&schema);
 
     // THEN: Save succeeds (allows bootstrap)
     assert!(
@@ -356,7 +356,7 @@ fn query_detects_missing_metadata_corruption() -> TestResult {
     let schema_id = schema.id();
 
     // Save schema normally (includes metadata)
-    command.save_one(&schema)?;
+    command.save(&schema)?;
 
     // WHEN: Manually delete metadata to simulate corruption
     let id_key = schema_id.into_uuid().to_string();
@@ -454,8 +454,9 @@ fn query_detects_corrupted_name_index() -> TestResult {
     })?;
 
     // Create a valid schema name to search for
-    let schema_name =
-        lithos_core::schema::aggregate::SchemaName::new("corrupt-index-key")?;
+    let schema_name = lithos_core::schema::aggregate::SchemaName::try_new(
+        "corrupt-index-key",
+    )?;
 
     // WHEN: Attempting to find schema by name with corrupted index
     let result = query.find_by_name(&schema_name);

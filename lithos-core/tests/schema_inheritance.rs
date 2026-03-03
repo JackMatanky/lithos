@@ -126,7 +126,7 @@ fn multi_level_inheritance_resolves() -> TestResult {
     // THEN: Grandchild has all properties
     let (_cmd, query2) = setup_cqrs(test_db.db());
     let schema = query2
-        .find_by_name(&SchemaName::new("urgent_task")?)?
+        .find_by_name(&SchemaName::try_new("urgent_task")?)?
         .expect("schema should exist");
 
     assert_eq!(schema.properties().count(), 3);
@@ -192,7 +192,7 @@ fn child_overrides_parent_property() -> TestResult {
     // THEN: Child's property overrides parent
     let (_cmd, query2) = setup_cqrs(test_db.db());
     let schema = query2
-        .find_by_name(&SchemaName::new("child")?)?
+        .find_by_name(&SchemaName::try_new("child")?)?
         .expect("schema should exist");
 
     let title = schema
@@ -262,7 +262,7 @@ fn child_excludes_parent_property() -> TestResult {
     // THEN: Excluded property is removed
     let (_cmd, query2) = setup_cqrs(test_db.db());
     let schema = query2
-        .find_by_name(&SchemaName::new("child")?)?
+        .find_by_name(&SchemaName::try_new("child")?)?
         .expect("schema should exist");
 
     assert_has_property(&schema, "title", "excludes");

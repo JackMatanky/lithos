@@ -211,7 +211,7 @@ impl PropertyBuilder {
     /// Returns error if property name is invalid.
     #[track_caller]
     pub fn build_with_spec(self, spec: PropertySpec) -> TestResult<Property> {
-        let name = PropertyName::new(&self.name)?;
+        let name = PropertyName::try_new(&self.name)?;
         let id = self.id.unwrap_or_default();
         Ok(Property::new(id, name, self.optionality, self.multiplicity, spec))
     }
@@ -330,9 +330,9 @@ impl SchemaBuilder {
     /// Returns error if schema name is invalid or construction fails.
     #[track_caller]
     pub fn build(self) -> TestResult<Schema> {
-        let name = SchemaName::new(&self.name)?;
+        let name = SchemaName::try_new(&self.name)?;
         let id = self.id.unwrap_or_default();
-        Ok(Schema::new(id, name, self.parent_id, self.properties)?)
+        Ok(Schema::try_new(id, name, self.parent_id, self.properties)?)
     }
 }
 

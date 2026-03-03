@@ -146,7 +146,7 @@ impl<'bank> Dereferencer<'bank> {
     ) -> Result<Property, SchemaError> {
         match entry {
             RawProperty::Inline(inline) => {
-                let prop_name = PropertyName::new(name)?;
+                let prop_name = PropertyName::try_new(name)?;
                 let spec = inline.spec.try_into_validated()?;
                 let optionality = Optionality::from(inline.required);
                 let multiplicity = Multiplicity::from(inline.multi);
@@ -179,7 +179,7 @@ impl<'bank> Dereferencer<'bank> {
         ref_entry: &RawPropertyRef,
     ) -> Result<Property, SchemaError> {
         let prop_ref = BankPropertyRef::try_from(ref_entry.ref_path.as_ref())?;
-        let base = bank.get_by_name(prop_ref.name()).ok_or_else(|| {
+        let base = bank.get(prop_ref.name()).ok_or_else(|| {
             SchemaError::PropertyRefNotFound(ref_entry.ref_path.to_string())
         })?;
 
@@ -190,7 +190,7 @@ impl<'bank> Dereferencer<'bank> {
 
         let spec = Self::apply_spec_overrides(base.spec(), ref_entry)?;
 
-        let prop_name = PropertyName::new(name)?;
+        let prop_name = PropertyName::try_new(name)?;
         Ok(Property::new(base.id(), prop_name, optionality, multiplicity, spec))
     }
 
@@ -338,7 +338,7 @@ mod tests {
         pub fn bool_property(name: &str) -> Result<Property, SchemaError> {
             Ok(Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID),
-                PropertyName::new(name)?,
+                PropertyName::try_new(name)?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),

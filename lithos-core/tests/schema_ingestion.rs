@@ -118,7 +118,7 @@ fn property_bank_loads_from_json() -> TestResult {
 
     // AND: Can be converted to domain and persisted
     let bank =
-        lithos_core::schema::bank::PropertyBank::from_raw(raw_bank, None)?;
+        lithos_core::schema::bank::PropertyBank::try_from_raw(raw_bank, None)?;
     command.save_property_bank(&bank)?;
 
     let loaded = query.get_property_bank()?.expect("Bank should exist");
@@ -363,8 +363,8 @@ fn full_pipeline_loads_schemas() -> TestResult {
     assert_eq!(all_schemas.len(), 2);
 
     // Verify by name
-    assert!(query2.find_by_name(&SchemaName::new("task")?)?.is_some());
-    assert!(query2.find_by_name(&SchemaName::new("note")?)?.is_some());
+    assert!(query2.find_by_name(&SchemaName::try_new("task")?)?.is_some());
+    assert!(query2.find_by_name(&SchemaName::try_new("note")?)?.is_some());
 
     // Verify property bank
     let bank = query2.get_property_bank()?.expect("Bank should exist");
@@ -419,7 +419,7 @@ fn full_pipeline_resolves_properties() -> TestResult {
     // THEN: Schema has resolved properties
     let (_cmd, query2) = setup_cqrs(test_db.db());
     let schema = query2
-        .find_by_name(&SchemaName::new("document")?)?
+        .find_by_name(&SchemaName::try_new("document")?)?
         .expect("Schema should exist");
 
     assert_eq!(schema.properties().count(), 2);
@@ -485,7 +485,7 @@ fn full_pipeline_incremental_updates() -> TestResult {
 
     // AND: Schema still exists in database
     let (_cmd, query3) = setup_cqrs(test_db.db());
-    assert!(query3.find_by_name(&SchemaName::new("task")?)?.is_some());
+    assert!(query3.find_by_name(&SchemaName::try_new("task")?)?.is_some());
 
     Ok(())
 }

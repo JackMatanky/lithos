@@ -171,7 +171,7 @@ fn schema_fresh_when_metadata_matches() -> TestResult {
 
     let (_cmd, query2) = setup_cqrs(test_db.db());
     let schema = query2
-        .find_by_name(&SchemaName::new("task")?)?
+        .find_by_name(&SchemaName::try_new("task")?)?
         .expect("schema should exist");
     let schema_id = schema.id();
 
@@ -223,7 +223,7 @@ fn schema_stale_when_modified_differs() -> TestResult {
 
     let (_cmd, query2) = setup_cqrs(test_db.db());
     let schema = query2
-        .find_by_name(&SchemaName::new("task")?)?
+        .find_by_name(&SchemaName::try_new("task")?)?
         .expect("schema should exist");
     let schema_id = schema.id();
 
@@ -278,7 +278,7 @@ fn schema_stale_when_bank_version_differs() -> TestResult {
 
     let (_cmd, query2) = setup_cqrs(test_db.db());
     let schema = query2
-        .find_by_name(&SchemaName::new("task")?)?
+        .find_by_name(&SchemaName::try_new("task")?)?
         .expect("schema should exist");
     let schema_id = schema.id();
 

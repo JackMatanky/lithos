@@ -127,7 +127,7 @@ impl Query for QueryAdapter<'_> {
     type Error = DbError;
 
     #[inline]
-    fn batch_read<R, F>(&self, f: F) -> Result<R, Self::Error>
+    fn read_many<R, F>(&self, f: F) -> Result<R, Self::Error>
     where
         F: FnOnce(&BatchReader) -> Result<R, Self::Error>,
     {
@@ -135,7 +135,7 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn batch_find_by_ids(
+    fn find_many_by_ids(
         &self,
         ids: &[SchemaId],
     ) -> Result<std::collections::HashMap<SchemaId, Schema>, Self::Error> {
@@ -182,7 +182,7 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn batch_is_stale(
+    fn are_many_stale(
         &self,
         schemas: &[super::super::ports::StalenessCheck],
         bank_version: BankVersion,
@@ -439,7 +439,7 @@ impl Query for QueryAdapter<'_> {
         pairs
             .into_iter()
             .map(|(name, id)| {
-                SchemaName::new(&name)
+                SchemaName::try_new(&name)
                     .map(|schema_name| (schema_name, id))
                     .map_err(|e| DbError::Deserialization(e.to_string()))
             })
@@ -447,7 +447,7 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn lookup_id_by_name(
+    fn find_id_by_name(
         &self,
         name: &SchemaName,
     ) -> Result<Option<SchemaId>, Self::Error> {
@@ -455,7 +455,7 @@ impl Query for QueryAdapter<'_> {
     }
 
     #[inline]
-    fn find_children(
+    fn list_children(
         &self,
         parent_ids: &[SchemaId],
     ) -> Result<crate::schema::ports::InheritanceMap, Self::Error> {
@@ -533,7 +533,7 @@ impl Query for QueryAdapter<'_> {
 
         while !frontier.is_empty() {
             // Query direct children of current frontier from multimap
-            let children_map = self.find_children(&frontier)?;
+            let children_map = self.list_children(&frontier)?;
             if children_map.is_empty() {
                 break;
             }

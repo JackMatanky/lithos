@@ -61,7 +61,7 @@ impl<'db> CommandAdapter<'db> {
         }
     }
 
-    /// Save a batch of schemas with explicit storage metadata.
+    /// Save many schemas with explicit storage metadata.
     ///
     /// This is an adapter-specific method that allows the caller to provide
     /// storage metadata (bank version, file timestamps). The application
@@ -84,15 +84,15 @@ impl<'db> CommandAdapter<'db> {
     /// let adapter = CommandAdapter::new(&db);
     /// let schemas = Vec::new();
     /// let metadata: Vec<StoredMetadata> = Vec::new();
-    /// adapter.save_batch_with_metadata(&schemas, &metadata)?;
+    /// adapter.save_many_with_metadata(&schemas, &metadata)?;
     /// # Ok::<_, lithos_core::db::DbError>(())
     /// ```
     #[inline]
     #[instrument(
         skip(self, schemas, metadata),
-        fields(operation = "save_schema_batch_with_metadata", record_count = schemas.len())
+        fields(operation = "save_schema_many_with_metadata", record_count = schemas.len())
     )]
-    pub fn save_batch_with_metadata(
+    pub fn save_many_with_metadata(
         &self,
         schemas: &[Schema],
         metadata: &[StoredMetadata],
@@ -154,7 +154,7 @@ impl<'db> CommandAdapter<'db> {
             // Validate each schema's property references
             for schema in schemas {
                 for property in schema.properties() {
-                    if !bank.has_name(property.name()) {
+                    if !bank.has(property.name()) {
                         return Err(DbError::Transaction(format!(
                             "property '{}' in schema '{}' not found in \
                              PropertyBank",
@@ -193,9 +193,9 @@ impl Command for CommandAdapter<'_> {
     #[inline]
     #[instrument(
         skip(self, schemas),
-        fields(operation = "save_schema_batch", record_count = schemas.len())
+        fields(operation = "save_schema_many", record_count = schemas.len())
     )]
-    fn save_batch(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
+    fn save_many(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
         // Use default metadata for port trait implementation
         // (tests and simple use cases don't need file timestamps)
         let metadata: Vec<StoredMetadata> = schemas
@@ -203,7 +203,7 @@ impl Command for CommandAdapter<'_> {
             .map(|_| StoredMetadata::new(BankVersion::initial(), None, None))
             .collect();
 
-        self.save_batch_with_metadata(schemas, &metadata)
+        self.save_many_with_metadata(schemas, &metadata)
     }
 
     #[inline]
@@ -350,7 +350,7 @@ impl Command for CommandAdapter<'_> {
     }
 
     #[inline]
-    fn save_inheritance_batch(
+    fn save_inheritance_many(
         &self,
         relationships: &[crate::schema::ports::InheritanceRelationship],
     ) -> Result<(), Self::Error> {

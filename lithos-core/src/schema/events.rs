@@ -27,7 +27,7 @@ use super::{
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// let id = SchemaId::new();
-/// let name = SchemaName::new("schema")?;
+/// let name = SchemaName::try_new("schema")?;
 /// let event = SchemaCreated::new(id, &name, Timestamp::from_secs(1234567890));
 /// assert_eq!(event.id, id, "Schema id should match");
 /// assert_eq!(event.name, name, "Schema name should match");
@@ -67,7 +67,7 @@ impl SchemaCreated {
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
-    /// let name = SchemaName::new("schema")?;
+    /// let name = SchemaName::try_new("schema")?;
     /// let _event = SchemaCreated::new(id, &name, Timestamp::from_secs(456));
     /// # Ok(())
     /// # }
@@ -95,7 +95,7 @@ impl SchemaCreated {
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
-/// let name = SchemaName::new("schema")?;
+/// let name = SchemaName::try_new("schema")?;
 /// let event = SchemaResolved::new(id, &name, Timestamp::from_secs(123));
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.name, name);
@@ -135,7 +135,7 @@ impl SchemaResolved {
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
-    /// let name = SchemaName::new("schema")?;
+    /// let name = SchemaName::try_new("schema")?;
     /// let _event = SchemaResolved::new(id, &name, Timestamp::from_secs(456));
     /// # Ok(())
     /// # }
@@ -163,7 +163,7 @@ impl SchemaResolved {
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
-/// let name = SchemaName::new("schema")?;
+/// let name = SchemaName::try_new("schema")?;
 /// let event = SchemaDeleted::new(id, &name, Timestamp::from_secs(789));
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.name, name);
@@ -203,7 +203,7 @@ impl SchemaDeleted {
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
-    /// let name = SchemaName::new("schema")?;
+    /// let name = SchemaName::try_new("schema")?;
     /// let _event = SchemaDeleted::new(id, &name, Timestamp::from_secs(321));
     /// # Ok(())
     /// # }
@@ -232,7 +232,7 @@ impl SchemaDeleted {
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = PropertyId::new();
-/// let name = PropertyName::new("flag")?;
+/// let name = PropertyName::try_new("flag")?;
 /// let event = PropertyRegistered::new(id, &name, Timestamp::from_secs(42));
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.name, name);
@@ -273,7 +273,7 @@ impl PropertyRegistered {
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = PropertyId::new();
-    /// let name = PropertyName::new("flag")?;
+    /// let name = PropertyName::try_new("flag")?;
     /// let _event = PropertyRegistered::new(id, &name, Timestamp::from_secs(42));
     /// # Ok(())
     /// # }
@@ -376,7 +376,7 @@ impl PropertyBankLoaded {
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
-/// let name = SchemaName::new("schema")?;
+/// let name = SchemaName::try_new("schema")?;
 /// let created = SchemaCreated::new(id, &name, Timestamp::from_secs(1));
 /// let event = Events::SchemaCreated(created);
 /// match event {
@@ -411,7 +411,7 @@ mod tests {
     #[test]
     fn schema_created_captures_payload() {
         let id = SchemaId::new();
-        let name = SchemaName::new("schema").expect("Valid schema name");
+        let name = SchemaName::try_new("schema").expect("Valid schema name");
         let timestamp = Timestamp::from_secs(456);
         let event = SchemaCreated::new(id, &name, timestamp);
 
@@ -423,7 +423,7 @@ mod tests {
     #[test]
     fn schema_resolved_captures_payload() {
         let id = SchemaId::new();
-        let name = SchemaName::new("schema").expect("Valid schema name");
+        let name = SchemaName::try_new("schema").expect("Valid schema name");
         let timestamp = Timestamp::from_secs(456);
         let event = SchemaResolved::new(id, &name, timestamp);
 
@@ -435,7 +435,7 @@ mod tests {
     #[test]
     fn schema_deleted_captures_payload() {
         let id = SchemaId::new();
-        let name = SchemaName::new("schema").expect("Valid schema name");
+        let name = SchemaName::try_new("schema").expect("Valid schema name");
         let timestamp = Timestamp::from_secs(456);
         let event = SchemaDeleted::new(id, &name, timestamp);
 
@@ -447,7 +447,8 @@ mod tests {
     #[test]
     fn property_registered_captures_payload() {
         let id = PropertyId::new();
-        let name = PropertyName::new("status").expect("Valid property name");
+        let name =
+            PropertyName::try_new("status").expect("Valid property name");
         let timestamp = Timestamp::from_secs(789);
         let event = PropertyRegistered::new(id, &name, timestamp);
 

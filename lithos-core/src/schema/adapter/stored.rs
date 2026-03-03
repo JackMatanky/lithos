@@ -73,12 +73,12 @@ impl TryFrom<StoredSchema> for Schema {
 
     #[inline]
     fn try_from(stored: StoredSchema) -> Result<Self, Self::Error> {
-        let name = SchemaName::new(&stored.name)?;
+        let name = SchemaName::try_new(&stored.name)?;
         let properties: Result<Vec<_>, _> = stored
             .properties
             .into_iter()
             .map(|sp| {
-                let prop_name = PropertyName::new(&sp.name)?;
+                let prop_name = PropertyName::try_new(&sp.name)?;
                 let optionality = Optionality::from(sp.required);
                 let multiplicity = Multiplicity::from(sp.multi);
                 Ok(Property::new(
@@ -245,7 +245,7 @@ impl TryFrom<StoredPropertyBank> for PropertyBank {
             .properties
             .into_iter()
             .map(|sp| {
-                let prop_name = PropertyName::try_from(sp.name)?;
+                let prop_name = PropertyName::try_new(&sp.name)?;
                 let optionality = Optionality::from(sp.required);
                 let multiplicity = Multiplicity::from(sp.multi);
                 Ok(Property::new(
@@ -257,7 +257,7 @@ impl TryFrom<StoredPropertyBank> for PropertyBank {
                 ))
             })
             .collect();
-        PropertyBank::reconstruct(properties?, stored.bank_version)
+        PropertyBank::try_reconstruct(properties?, stored.bank_version)
     }
 }
 
@@ -297,7 +297,7 @@ mod tests {
     ));
 
     fn make_schema() -> Schema {
-        let name = SchemaName::new("test-stored").expect("valid name");
+        let name = SchemaName::try_new("test-stored").expect("valid name");
         Schema::reconstruct(TEST_SCHEMA_ID, name, None, vec![])
     }
 
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn to_stored_includes_properties() {
-        let prop_name = PropertyName::new("flag").expect("valid name");
+        let prop_name = PropertyName::try_new("flag").expect("valid name");
         let prop = Property::new(
             TEST_PROP_ID,
             prop_name,
@@ -330,7 +330,8 @@ mod tests {
             PropertySpec::Bool(BoolSpec::default()),
         );
 
-        let schema_name = SchemaName::new("with-props").expect("valid name");
+        let schema_name =
+            SchemaName::try_new("with-props").expect("valid name");
         let schema =
             Schema::reconstruct(TEST_SCHEMA_ID, schema_name, None, vec![prop]);
 

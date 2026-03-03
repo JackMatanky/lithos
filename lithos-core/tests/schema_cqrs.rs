@@ -247,9 +247,9 @@ mod property_bank {
         );
         assert_eq!(loaded_bank.all().count(), 1, "Properties should persist");
 
-        let name = PropertyName::new("status")?;
+        let name = PropertyName::try_new("status")?;
         assert!(
-            loaded_bank.has_name(&name),
+            loaded_bank.has(&name),
             "Property 'status' should exist after restart"
         );
 
@@ -300,14 +300,14 @@ mod property_bank {
         );
 
         // Verify name lookup works
-        let status_name = PropertyName::new("status")?;
-        let title_name = PropertyName::new("title")?;
+        let status_name = PropertyName::try_new("status")?;
+        let title_name = PropertyName::try_new("title")?;
 
-        assert!(loaded.has_name(&status_name));
-        assert!(loaded.has_name(&title_name));
+        assert!(loaded.has(&status_name));
+        assert!(loaded.has(&title_name));
 
-        assert!(loaded.get_by_name(&status_name).is_some());
-        assert!(loaded.get_by_name(&title_name).is_some());
+        assert!(loaded.get(&status_name).is_some());
+        assert!(loaded.get(&title_name).is_some());
 
         Ok(())
     }
@@ -371,14 +371,13 @@ mod property_bank {
         let loaded = query.get_property_bank()?.expect("Bank should exist");
 
         // THEN: Name lookup works correctly
-        let alpha_name = PropertyName::new("alpha")?;
-        let beta_name = PropertyName::new("beta")?;
-        assert!(loaded.has_name(&alpha_name));
-        assert!(loaded.has_name(&beta_name));
+        let alpha_name = PropertyName::try_new("alpha")?;
+        let beta_name = PropertyName::try_new("beta")?;
+        assert!(loaded.has(&alpha_name));
+        assert!(loaded.has(&beta_name));
 
-        let prop_by_name = loaded
-            .get_by_name(&beta_name)
-            .expect("Property should exist by name");
+        let prop_by_name =
+            loaded.get(&beta_name).expect("Property should exist by name");
         assert_eq!(prop_by_name.name().as_str(), "beta");
 
         Ok(())
@@ -453,7 +452,7 @@ mod schema {
         let original_name = schema.name().clone();
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded =
             query.find_by_id(original_id)?.expect("Schema should exist");
 
@@ -482,10 +481,10 @@ mod schema {
             .id(SchemaId::from_uuid(TEST_SCHEMA_ID_PROJECT))
             .build()?;
 
-        command.save_one(&schema)?;
+        command.save(&schema)?;
 
         // WHEN: Finding by name
-        let name = SchemaName::new("project")?;
+        let name = SchemaName::try_new("project")?;
         let loaded = query.find_by_name(&name)?.expect("Schema should exist");
 
         // THEN: Correct schema returned
@@ -507,7 +506,7 @@ mod schema {
         let (_command, query) = setup_cqrs(test_db.db());
 
         // WHEN: Finding nonexistent schema
-        let name = SchemaName::new("nonexistent")?;
+        let name = SchemaName::try_new("nonexistent")?;
         let result = query.find_by_name(&name)?;
 
         // THEN: Returns None
@@ -538,7 +537,7 @@ mod schema {
         let schemas = vec![task_schema, project_schema];
 
         // WHEN: Batch saving
-        command.save_batch(&schemas)?;
+        command.save_many(&schemas)?;
 
         // THEN: All schemas retrievable
         let loaded1 = query
@@ -552,8 +551,10 @@ mod schema {
         assert_eq!(loaded2.name().as_str(), "project");
 
         // Verify name indices
-        assert!(query.find_by_name(&SchemaName::new("task")?)?.is_some());
-        assert!(query.find_by_name(&SchemaName::new("project")?)?.is_some());
+        assert!(query.find_by_name(&SchemaName::try_new("task")?)?.is_some());
+        assert!(
+            query.find_by_name(&SchemaName::try_new("project")?)?.is_some()
+        );
 
         Ok(())
     }
@@ -576,7 +577,7 @@ mod schema {
 
         let schema1 = SchemaBuilder::new("task").build()?;
         let schema2 = SchemaBuilder::new("project").build()?;
-        command.save_batch(&[schema1, schema2])?;
+        command.save_many(&[schema1, schema2])?;
 
         // WHEN: Listing all
         let all = query.list()?;
@@ -609,7 +610,7 @@ mod schema {
         let schema2 = SchemaBuilder::new("project")
             .id(SchemaId::from_uuid(TEST_SCHEMA_ID_PROJECT))
             .build()?;
-        command.save_batch(&[schema1, schema2])?;
+        command.save_many(&[schema1, schema2])?;
 
         // WHEN: Deleting one schema
         command.delete(SchemaId::from_uuid(TEST_SCHEMA_ID_TASK))?;
@@ -620,7 +621,7 @@ mod schema {
                 .find_by_id(SchemaId::from_uuid(TEST_SCHEMA_ID_TASK))?
                 .is_none()
         );
-        assert!(query.find_by_name(&SchemaName::new("task")?)?.is_none());
+        assert!(query.find_by_name(&SchemaName::try_new("task")?)?.is_none());
 
         // Other schema still exists
         assert!(
@@ -628,7 +629,9 @@ mod schema {
                 .find_by_id(SchemaId::from_uuid(TEST_SCHEMA_ID_PROJECT))?
                 .is_some()
         );
-        assert!(query.find_by_name(&SchemaName::new("project")?)?.is_some());
+        assert!(
+            query.find_by_name(&SchemaName::try_new("project")?)?.is_some()
+        );
 
         Ok(())
     }
@@ -655,7 +658,7 @@ mod schema {
             .build()?;
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded =
             query.find_by_id(schema.id())?.expect("Schema should exist");
 
@@ -685,7 +688,7 @@ mod schema {
         let schema_id = schema.id();
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded = query.find_by_id(schema_id)?.expect("Schema should exist");
 
         // THEN: Empty schema works
@@ -728,7 +731,7 @@ mod schema {
             let command = RedbSchemaCommand::new(
                 lithos_core::schema::adapter::command::CommandAdapter::new(&db),
             );
-            command.save_one(&schema)?;
+            command.save(&schema)?;
         } // Database closed
 
         // WHEN: Reopening database
@@ -767,7 +770,7 @@ mod schema {
             .id(SchemaId::from_uuid(TEST_SCHEMA_ID_TASK))
             .property(bool_property("is_done")?)
             .build()?;
-        command.save_one(&schema_v1)?;
+        command.save(&schema_v1)?;
 
         // WHEN: Saving updated version with same ID
         let schema_v2 = SchemaBuilder::new("task")
@@ -775,7 +778,7 @@ mod schema {
             .property(bool_property("is_done")?)
             .property(string_property("title")?)
             .build()?;
-        command.save_one(&schema_v2)?;
+        command.save(&schema_v2)?;
 
         // THEN: Updated version loaded
         let loaded = query
@@ -806,7 +809,7 @@ mod schema {
         let schema2 = SchemaBuilder::new("project")
             .id(SchemaId::from_uuid(TEST_SCHEMA_ID_PROJECT))
             .build()?;
-        command.save_batch(&[schema1, schema2])?;
+        command.save_many(&[schema1, schema2])?;
 
         // WHEN: Listing name-ID pairs
         let pairs = query.list_name_id_pairs()?;
@@ -846,7 +849,7 @@ mod schema {
             .build()?;
 
         // WHEN: Saving and loading
-        command.save_one(&child)?;
+        command.save(&child)?;
         let loaded = query
             .find_by_id(SchemaId::from_uuid(TEST_SCHEMA_ID_TASK))?
             .expect("Schema should exist");
@@ -872,7 +875,7 @@ mod schema {
         let schema_id = schema.id();
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded = query.find_by_id(schema_id)?.expect("Schema should exist");
 
         // THEN: parent_id is None
@@ -905,7 +908,7 @@ mod schema {
             .build()?;
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded =
             query.find_by_id(schema.id())?.expect("Schema should exist");
 
@@ -949,7 +952,7 @@ mod schema {
             .build()?;
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded =
             query.find_by_id(schema.id())?.expect("Schema should exist");
 
@@ -998,7 +1001,7 @@ mod cross_aggregate {
 
         // WHEN: Saving both
         command.save_property_bank(&bank)?;
-        command.save_one(&schema)?;
+        command.save(&schema)?;
 
         // THEN: Both retrievable independently
         let loaded_bank =
@@ -1035,14 +1038,14 @@ mod cross_aggregate {
             SchemaBuilder::new("schema2").property(prop.clone()).build()?;
 
         // WHEN: Saving both schemas
-        command.save_batch(&[schema1, schema2])?;
+        command.save_many(&[schema1, schema2])?;
 
         // THEN: Both schemas exist with same property
         let loaded1 = query
-            .find_by_name(&SchemaName::new("schema1")?)?
+            .find_by_name(&SchemaName::try_new("schema1")?)?
             .expect("schema1 should exist");
         let loaded2 = query
-            .find_by_name(&SchemaName::new("schema2")?)?
+            .find_by_name(&SchemaName::try_new("schema2")?)?
             .expect("schema2 should exist");
 
         assert_has_property(&loaded1, "shared", "schema1");
@@ -1073,7 +1076,7 @@ mod cross_aggregate {
         let schema_id = schema.id();
 
         // WHEN: Saving schema (doesn't touch PropertyBank)
-        command.save_one(&schema)?;
+        command.save(&schema)?;
 
         // THEN: PropertyBank version unchanged
         let loaded_bank =

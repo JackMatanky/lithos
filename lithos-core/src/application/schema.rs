@@ -22,7 +22,7 @@
 //!    - Schema names derived from filenames
 //!
 //! 4. **Schema staleness partitioning**:
-//!    - `Query::batch_is_stale()` → O(1) check for all schemas
+//!    - `Query::are_many_stale()` → O(1) check for all schemas
 //!    - Compares file timestamps vs DB metadata
 //!    - **Cascade staleness**: Parent changes mark all descendants stale
 //!    - **Stale schemas** → reload + re-resolve
@@ -34,8 +34,8 @@
 //!    - `Resolver::resolve()` → merge parent properties
 //!
 //! 6. **Persist changes**:
-//!    - `Command::save_batch()` → save only changed schemas
-//!    - `Command::save_inheritance_batch()` → track parent-child relationships
+//!    - `Command::save_many()` → save only changed schemas
+//!    - `Command::save_inheritance_many()` → track parent-child relationships
 //!    - `Command::save_property_bank()` → save bank if stale
 //!
 //! **Key optimization**: Lightweight staleness checks (filename + timestamp)
@@ -159,7 +159,7 @@ impl<'db> SchemaService<'db> {
 
         // ── Step 5: load fresh schemas as known_parents ─────────────────────
         // Batch load: O(1) transaction for all fresh schemas
-        let known_parents = self.query.batch_find_by_ids(&fresh_ids)?;
+        let known_parents = self.query.find_many_by_ids(&fresh_ids)?;
 
         // ── Step 6: pipeline (Dereferencer → Extender → Resolver) ──────────
         // Extract just (id, raw_schema) for dereferencer, keep timestamps
@@ -220,14 +220,14 @@ impl<'db> SchemaService<'db> {
             if is_stale {
                 let raw_bank = ingestor.load_raw_property_bank()?;
                 let rebuilt_bank =
-                    PropertyBank::from_raw(raw_bank, Some(&stored))?;
+                    PropertyBank::try_from_raw(raw_bank, Some(&stored))?;
                 (rebuilt_bank, true)
             } else {
                 (stored, false)
             }
         } else {
             let raw_bank = ingestor.load_raw_property_bank()?;
-            let new_bank = PropertyBank::from_raw(raw_bank, None)?;
+            let new_bank = PropertyBank::try_from_raw(raw_bank, None)?;
             (new_bank, true)
         };
 
@@ -256,7 +256,7 @@ impl<'db> SchemaService<'db> {
                       tuple"
         )]
         for &(ref raw_schema, modified, created) in raw_schemas_with_times {
-            let schema_name = SchemaName::new(&raw_schema.name)?;
+            let schema_name = SchemaName::try_new(&raw_schema.name)?;
             let id = name_to_id
                 .get(&schema_name)
                 .copied()
@@ -268,7 +268,7 @@ impl<'db> SchemaService<'db> {
         // Check staleness with cascade
         let mut staleness_map = self
             .query
-            .batch_is_stale(&staleness_checks, current_bank_version)?;
+            .are_many_stale(&staleness_checks, current_bank_version)?;
         self.query.cascade_staleness(&mut staleness_map)?;
 
         // Partition into stale and fresh
@@ -323,7 +323,7 @@ impl<'db> SchemaService<'db> {
             .collect();
 
         // Save schemas with metadata
-        self.command.save_batch_with_metadata(resolved, &metadata)?;
+        self.command.save_many_with_metadata(resolved, &metadata)?;
 
         // Build and save inheritance relationships
         let inheritance_data: Vec<InheritanceRelationship> = resolved
@@ -335,7 +335,7 @@ impl<'db> SchemaService<'db> {
             })
             .collect();
 
-        self.command.save_inheritance_batch(&inheritance_data)?;
+        self.command.save_inheritance_many(&inheritance_data)?;
 
         Ok(())
     }

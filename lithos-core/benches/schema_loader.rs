@@ -312,6 +312,7 @@ use lithos_core::{
         command::Command,
         dereferencer::Dereferencer,
         extender::Extender,
+        property::PropertyName,
         query::Query,
         raw::RawSchema,
         resolver::Resolver,
@@ -513,7 +514,7 @@ fn bench_property_bank_validation(c: &mut Criterion) {
 
     group.bench_function("validate", |b| {
         b.iter(|| {
-            let bank = PropertyBank::from_raw(raw_bank.clone(), None)
+            let bank = PropertyBank::try_from_raw(raw_bank.clone(), None)
                 .expect("Failed to validate");
             black_box(bank.all().count())
         });
@@ -538,13 +539,14 @@ fn bench_property_bank_lookup(c: &mut Criterion) {
         Ingestor::new(FsReader::new(vault.path().to_path_buf()), &config);
     let raw_bank = ingestor.load_raw_property_bank().expect("Failed to load");
     let bank =
-        PropertyBank::from_raw(raw_bank, None).expect("Failed to validate");
+        PropertyBank::try_from_raw(raw_bank, None).expect("Failed to validate");
 
+    let pillar_name = PropertyName::try_new("pillar").expect("valid name");
     group.bench_function("get_by_name", |b| {
         b.iter(|| {
             // Lookup a frequently-used property ($ref'd in task schema)
-            let prop = bank.get("pillar");
-            black_box(prop.is_ok())
+            let prop = bank.get(&pillar_name);
+            black_box(prop.is_some())
         });
     });
 
@@ -582,7 +584,7 @@ fn bench_dereferencing(c: &mut Criterion) {
                 let raw_bank = ingestor
                     .load_raw_property_bank()
                     .expect("Failed to load bank");
-                let bank = PropertyBank::from_raw(raw_bank, None)
+                let bank = PropertyBank::try_from_raw(raw_bank, None)
                     .expect("Failed to validate");
                 let raw_schemas = ingestor
                     .scan_raw_schemas()
@@ -638,7 +640,7 @@ fn bench_dag_construction(c: &mut Criterion) {
                 let raw_bank = ingestor
                     .load_raw_property_bank()
                     .expect("Failed to load bank");
-                let bank = PropertyBank::from_raw(raw_bank, None)
+                let bank = PropertyBank::try_from_raw(raw_bank, None)
                     .expect("Failed to validate");
                 let raw_schemas = ingestor
                     .scan_raw_schemas()
@@ -698,7 +700,7 @@ fn bench_property_merging(c: &mut Criterion) {
                 let raw_bank = ingestor
                     .load_raw_property_bank()
                     .expect("Failed to load bank");
-                let bank = PropertyBank::from_raw(raw_bank, None)
+                let bank = PropertyBank::try_from_raw(raw_bank, None)
                     .expect("Failed to validate");
                 let raw_schemas = ingestor
                     .scan_raw_schemas()
@@ -756,15 +758,15 @@ fn setup_db_with_schemas(
 
         // Create a simple schema (name is unique)
         let name_str = format!("schema_{i}");
-        let name = lithos_core::schema::aggregate::SchemaName::new(&name_str)
-            .expect("Failed to create schema name");
-        let schema = Schema::new(id, name, None, Vec::new())
-            .expect("Failed to create schema");
+        let name =
+            lithos_core::schema::aggregate::SchemaName::try_new(&name_str)
+                .expect("Failed to create schema name");
+        let schema =
+            Schema::try_new(id, name, None, Vec::new()).expect("valid schema");
         schemas.push(schema);
     }
 
-    // Save all schemas (metadata is generated automatically)
-    cmd.save_batch(&schemas).expect("Failed to save schemas");
+    cmd.save_many(&schemas).expect("Failed to save schemas");
 
     (db_dir, db, schema_ids)
 }
@@ -844,7 +846,7 @@ fn bench_staleness_batch(c: &mut Criterion) {
 
                 b.iter(|| {
                     let staleness = qry
-                        .batch_is_stale(&checks, BankVersion::initial())
+                        .are_many_stale(&checks, BankVersion::initial())
                         .expect("Batch staleness check failed");
                     let stale_count =
                         staleness.values().filter(|&&v| v).count();
@@ -918,7 +920,7 @@ fn bench_schema_lookup_batch(c: &mut Criterion) {
 
                 b.iter(|| {
                     let schemas = qry
-                        .batch_find_by_ids(&schema_ids)
+                        .find_many_by_ids(&schema_ids)
                         .expect("Batch lookup failed");
                     black_box(schemas.len())
                 });
@@ -968,7 +970,7 @@ fn bench_full_pipeline(c: &mut Criterion) {
                         .expect("Failed to scan schemas");
 
                     // Stage 2: PropertyBank Validation
-                    let bank = PropertyBank::from_raw(raw_bank, None)
+                    let bank = PropertyBank::try_from_raw(raw_bank, None)
                         .expect("Failed to validate bank");
 
                     // Convert to (SchemaId, RawSchema) pairs
