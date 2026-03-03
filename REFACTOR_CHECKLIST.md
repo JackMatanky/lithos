@@ -105,11 +105,11 @@
 - [x] VERIFY: `cargo test extract_section` (6+ tests pass)
 
 ### Task 3.2: Frontmatter Extractor (2 hours)
-- [ ] RED: Write YAML/TOML tests (30m)
-- [ ] GREEN: Implement metadata parsing (60m)
-- [ ] REFACTOR: Use FieldValue::from_yaml (30m)
+- [x] RED: Write YAML/TOML tests (30m)
+- [x] GREEN: Implement metadata parsing (60m)
+- [x] REFACTOR: Use FieldValue::from_yaml (30m)
 - [ ] COMMIT: "feat(adapter): add frontmatter extractor"
-- [ ] VERIFY: `cargo test extract_frontmatter` (8+ tests pass)
+- [x] VERIFY: `cargo test extract_frontmatter` (8+ tests pass)
 
 ### Task 3.3: Tag Extractor (2 hours)
 - [ ] RED: Write tag scanning tests (30m)
