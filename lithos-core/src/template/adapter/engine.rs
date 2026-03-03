@@ -158,7 +158,7 @@ mod tests {
 
             // 1. Grandparent
             let gp_name = TemplateName::try_from("grandparent").unwrap();
-            let grandparent = Template::new(
+            let grandparent = Template::try_new(
                 &gp_name,
                 None,
                 vec![TemplateBlock::new(
@@ -173,7 +173,7 @@ mod tests {
 
             // 2. Parent
             let p_name = TemplateName::try_from("parent").unwrap();
-            let parent = Template::new(
+            let parent = Template::try_new(
                 &p_name,
                 Some(TemplateName::try_from("grandparent").unwrap()),
                 vec![TemplateBlock::new(
@@ -188,7 +188,7 @@ mod tests {
 
             // 3. Child
             let c_name = TemplateName::try_from("child").unwrap();
-            let child = Template::new(
+            let child = Template::try_new(
                 &c_name,
                 Some(TemplateName::try_from("parent").unwrap()),
                 vec![TemplateBlock::new("inner", "C", BlockStrategy::Replace)],
@@ -210,7 +210,7 @@ mod tests {
 
             // Base
             let b_name = TemplateName::try_from("base").unwrap();
-            let base = Template::new(
+            let base = Template::try_new(
                 &b_name,
                 None,
                 vec![
@@ -225,7 +225,7 @@ mod tests {
 
             // Child
             let c_name = TemplateName::try_from("child").unwrap();
-            let child = Template::new(
+            let child = Template::try_new(
                 &c_name,
                 Some(TemplateName::try_from("base").unwrap()),
                 vec![

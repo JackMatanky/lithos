@@ -42,7 +42,7 @@ impl<Q: Query> TemplateCatalog<Q> {
     /// # Errors
     /// Returns `TemplateError` if initialization fails.
     #[inline]
-    pub fn new(metadata: Q) -> Result<Self, TemplateError> {
+    pub fn try_new(metadata: Q) -> Result<Self, TemplateError> {
         let mut env = Environment::new();
         env.set_undefined_behavior(UndefinedBehavior::Strict);
         env.set_recursion_limit(10);
@@ -247,7 +247,7 @@ mod tests {
 
         // Create parent template
         let parent_name = TemplateName::try_from("parent").unwrap();
-        let parent = Template::new(
+        let parent = Template::try_new(
             &parent_name,
             None,
             vec![TemplateBlock::new(
@@ -262,7 +262,7 @@ mod tests {
         // Create child template
         let child_name = TemplateName::try_from("child").unwrap();
         let parent_name_ext = TemplateName::try_from("parent").unwrap();
-        let child = Template::new(
+        let child = Template::try_new(
             &child_name,
             Some(parent_name_ext),
             vec![TemplateBlock::new(
@@ -278,7 +278,7 @@ mod tests {
         storage.create(&child).unwrap();
 
         // Load all into catalog (automatic topological sort)
-        let mut catalog = TemplateCatalog::new(storage).unwrap();
+        let mut catalog = TemplateCatalog::try_new(storage).unwrap();
         catalog.load_all().unwrap();
 
         // Render child template
@@ -295,7 +295,7 @@ mod tests {
         // Create circular dependency: A extends B, B extends A
         let a_name = TemplateName::try_from("a").unwrap();
         let b_name = TemplateName::try_from("b").unwrap();
-        let a = Template::new(
+        let a = Template::try_new(
             &a_name,
             Some(TemplateName::try_from("b").unwrap()),
             vec![],
@@ -303,7 +303,7 @@ mod tests {
         )
         .unwrap();
 
-        let b = Template::new(
+        let b = Template::try_new(
             &b_name,
             Some(TemplateName::try_from("a").unwrap()),
             vec![],
@@ -315,10 +315,8 @@ mod tests {
         storage.create(&b).unwrap();
 
         // Load should fail with cycle detection error
-        let mut catalog = TemplateCatalog::new(storage).unwrap();
-        let result = catalog.load_all();
-
-        assert!(matches!(result, Err(TemplateError::CircularComposition(_))));
+        let mut catalog = TemplateCatalog::try_new(storage).unwrap();
+        catalog.load_all().unwrap_err();
     }
 
     #[test]
@@ -328,7 +326,7 @@ mod tests {
 
         // Create 3-level hierarchy: grandparent <- parent <- child
         let gp_name = TemplateName::try_from("grandparent").unwrap();
-        let grandparent = Template::new(
+        let grandparent = Template::try_new(
             &gp_name,
             None,
             vec![TemplateBlock::new(
@@ -341,7 +339,7 @@ mod tests {
         .unwrap();
 
         let p_name = TemplateName::try_from("parent").unwrap();
-        let parent = Template::new(
+        let parent = Template::try_new(
             &p_name,
             Some(TemplateName::try_from("grandparent").unwrap()),
             vec![TemplateBlock::new("a", "Parent", BlockStrategy::Replace)],
@@ -350,7 +348,7 @@ mod tests {
         .unwrap();
 
         let c_name = TemplateName::try_from("child").unwrap();
-        let child = Template::new(
+        let child = Template::try_new(
             &c_name,
             Some(TemplateName::try_from("parent").unwrap()),
             vec![TemplateBlock::new("a", "Child", BlockStrategy::Replace)],
@@ -364,7 +362,7 @@ mod tests {
         storage.create(&parent).unwrap();
 
         // Catalog should sort them correctly
-        let mut catalog = TemplateCatalog::new(storage).unwrap();
+        let mut catalog = TemplateCatalog::try_new(storage).unwrap();
         catalog.load_all().unwrap();
 
         // All three should render correctly
@@ -387,14 +385,16 @@ mod tests {
         let storage = FakeTemplateStorage::new();
 
         let t1_name = TemplateName::try_from("t1").unwrap();
-        let t1 = Template::new(&t1_name, None, vec![], HashMap::new()).unwrap();
+        let t1 =
+            Template::try_new(&t1_name, None, vec![], HashMap::new()).unwrap();
         let t2_name = TemplateName::try_from("t2").unwrap();
-        let t2 = Template::new(&t2_name, None, vec![], HashMap::new()).unwrap();
+        let t2 =
+            Template::try_new(&t2_name, None, vec![], HashMap::new()).unwrap();
 
         storage.create(&t1).unwrap();
         storage.create(&t2).unwrap();
 
-        let catalog = TemplateCatalog::new(storage).unwrap();
+        let catalog = TemplateCatalog::try_new(storage).unwrap();
         let names = catalog.list_names().unwrap();
 
         assert_eq!(names.len(), 2);

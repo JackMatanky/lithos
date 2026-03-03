@@ -287,7 +287,7 @@ impl Template {
     /// # Errors
     /// Returns `TemplateError` if validation fails (duplicate blocks, etc).
     #[inline]
-    pub fn new(
+    pub fn try_new(
         name: &TemplateName,
         extends: Option<TemplateName>,
         blocks: Vec<TemplateBlock>,
@@ -460,7 +460,7 @@ mod tests {
         use super::*;
 
         pub fn base_note() -> Result<Template, TemplateError> {
-            Template::new(
+            Template::try_new(
                 &TemplateName::try_from("base")?,
                 None,
                 vec![],
@@ -570,7 +570,7 @@ mod tests {
 
         fn should_reject_duplicate_block_names() {
             let name = TemplateName::try_from("duplicate").unwrap();
-            let result = Template::new(
+            let result = Template::try_new(
                 &name,
                 None,
                 vec![
@@ -625,14 +625,14 @@ mod tests {
         let a_name = TemplateName::try_from("A").unwrap();
         let b_name = TemplateName::try_from("B").unwrap();
 
-        let a = Template::new(
+        let a = Template::try_new(
             &a_name,
             Some(b_name.clone()),
             vec![],
             HashMap::new(),
         )
         .expect("valid");
-        let b = Template::new(
+        let b = Template::try_new(
             &b_name,
             Some(a_name.clone()),
             vec![],
@@ -653,7 +653,7 @@ mod tests {
     fn validate_composition_detects_self_cycle() {
         // A -> A
         let a_name = TemplateName::try_from("A").unwrap();
-        let a = Template::new(
+        let a = Template::try_new(
             &a_name,
             Some(a_name.clone()),
             vec![],
@@ -676,16 +676,16 @@ mod tests {
         let b_name = TemplateName::try_from("B").unwrap();
         let c_name = TemplateName::try_from("C").unwrap();
 
-        let c = Template::new(&c_name, None, vec![], HashMap::new())
+        let c = Template::try_new(&c_name, None, vec![], HashMap::new())
             .expect("valid");
-        let b = Template::new(
+        let b = Template::try_new(
             &b_name,
             Some(c_name.clone()),
             vec![],
             HashMap::new(),
         )
         .expect("valid");
-        let a = Template::new(
+        let a = Template::try_new(
             &a_name,
             Some(b_name.clone()),
             vec![],
@@ -718,7 +718,7 @@ mod tests {
                 let next_str = (i + 1).to_string();
                 Some(TemplateName::try_from(next_str.as_str()).unwrap())
             };
-            let t = Template::new(&name, extends, vec![], HashMap::new())
+            let t = Template::try_new(&name, extends, vec![], HashMap::new())
                 .expect("valid");
             map_storage.insert(name, t);
         }

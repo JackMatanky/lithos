@@ -342,7 +342,7 @@ fn bench_constructor_apis(c: &mut Criterion) {
         b.iter(|| {
             let name = TemplateName::try_from(black_box("my-template"))
                 .expect("valid name");
-            Template::new(&name, None, vec![], HashMap::new())
+            Template::try_new(&name, None, vec![], HashMap::new())
                 .expect("valid template")
         });
     });
@@ -353,7 +353,7 @@ fn bench_constructor_apis(c: &mut Criterion) {
             let owned = black_box("my-template").to_owned();
             let name =
                 TemplateName::try_from(owned.as_str()).expect("valid name");
-            Template::new(&name, None, vec![], HashMap::new())
+            Template::try_new(&name, None, vec![], HashMap::new())
                 .expect("valid template")
         });
     });
@@ -414,8 +414,9 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
             let template_uuid = Uuid::now_v7();
             let name = TemplateName::try_from("workflow-template")
                 .expect("valid name");
-            let template = Template::new(&name, None, vec![], HashMap::new())
-                .expect("valid template");
+            let template =
+                Template::try_new(&name, None, vec![], HashMap::new())
+                    .expect("valid template");
 
             db.put_by_uuid(TEMPLATES_TABLE, template_uuid, &template)
                 .expect("put_by_uuid");
