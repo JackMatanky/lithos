@@ -3,19 +3,21 @@
 //! Property bank reads use `bank_metadata` plus versioned rows from
 //! `bank_property_by_name`.
 
+use std::collections::HashMap;
+
 use crate::{
     db::{BatchReader, Database, DbError},
     schema::{
         adapter::stored::{
-            StoredBankProperty, StoredMetadata, StoredPropertyBank,
-            StoredSchema,
+            StoredBankProperty, StoredChildSchema, StoredMetadata,
+            StoredPropertyBank, StoredSchema,
         },
         aggregate::{Schema, SchemaId, SchemaName, Timestamp},
         bank::{BankVersion, PropertyBank},
         db_table::{
             BANK_METADATA, BANK_PROPERTY_BY_ID, BANK_PROPERTY_BY_NAME,
-            PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
-            SCHEMA_METADATA,
+            PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_CHILDREN,
+            SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
         },
         ports::{NameIdPair, Query},
         property::{
@@ -450,5 +452,134 @@ impl Query for QueryAdapter<'_> {
         name: &SchemaName,
     ) -> Result<Option<SchemaId>, Self::Error> {
         self.db.get_owned(SCHEMA_ID_BY_NAME, name.as_str())
+    }
+
+    #[inline]
+    fn find_children(
+        &self,
+        parent_ids: &[SchemaId],
+    ) -> Result<crate::schema::ports::InheritanceMap, Self::Error> {
+        // Direct transaction access for multimap operations
+        let tx = self.db.begin_read()?;
+        let table = match tx.open_multimap_table(SCHEMA_CHILDREN) {
+            Ok(t) => t,
+            Err(redb::TableError::TableDoesNotExist(_)) => {
+                // Table doesn't exist yet - return empty map
+                return Ok(HashMap::new());
+            }
+            Err(e) => return Err(DbError::from(e)),
+        };
+
+        let mut result = HashMap::with_capacity(parent_ids.len());
+
+        for &parent_id in parent_ids {
+            let parent_key = parent_id.to_string();
+
+            // O(1) multimap lookup
+            let children_iter = table.get(parent_key.as_str())?;
+
+            let mut children = Vec::new();
+            for guard_result in children_iter {
+                let guard = guard_result?;
+                let bytes = guard.value();
+                let archived = rkyv::access::<
+                    rkyv::Archived<StoredChildSchema>,
+                    rkyv::rancor::Error,
+                >(bytes)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+
+                // Convert archived types to owned types
+                // Deserialize the full object to get native types
+                let stored: StoredChildSchema = rkyv::deserialize(archived)
+                    .map_err(|e: rkyv::rancor::Error| {
+                        DbError::Deserialization(e.to_string())
+                    })?;
+
+                children.push((stored.child_id, stored.excludes));
+            }
+
+            if !children.is_empty() {
+                result.insert(parent_id, children);
+            }
+        }
+
+        Ok(result)
+    }
+
+    #[inline]
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "HashMap values() iteration order doesn't affect BFS \
+                  correctness"
+    )]
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "Standard BFS pattern: while loop + iterate values + iterate \
+                  children - flattening would obscure algorithm structure"
+    )]
+    fn list_descendants(
+        &self,
+        parent_ids: &[SchemaId],
+    ) -> Result<std::collections::HashSet<SchemaId>, Self::Error> {
+        use std::collections::HashSet;
+
+        // Compute transitive closure via BFS over SCHEMA_CHILDREN multimap
+        // The multimap stores only direct parent→child edges, so we need
+        // iterative traversal to find all descendants (children, grandchildren,
+        // etc.)
+        let mut all_descendants: HashSet<SchemaId> =
+            parent_ids.iter().copied().collect();
+        let mut frontier: Vec<SchemaId> = parent_ids.to_vec();
+
+        while !frontier.is_empty() {
+            // Query direct children of current frontier from multimap
+            let children_map = self.find_children(&frontier)?;
+            if children_map.is_empty() {
+                break;
+            }
+
+            // Prepare next level: collect children not yet seen
+            frontier.clear();
+            for children in children_map.values() {
+                for &(child_id, _) in children {
+                    if all_descendants.insert(child_id) {
+                        frontier.push(child_id);
+                    }
+                }
+            }
+        }
+
+        Ok(all_descendants)
+    }
+
+    #[inline]
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "HashSet iteration order doesn't matter - all stale IDs must \
+                  be marked regardless of order"
+    )]
+    fn cascade_staleness(
+        &self,
+        staleness_map: &mut std::collections::HashMap<SchemaId, bool>,
+    ) -> Result<(), Self::Error> {
+        // Extract IDs of schemas currently marked as stale
+        let stale_parent_ids: Vec<SchemaId> = staleness_map
+            .iter()
+            .filter_map(|(&id, &is_stale)| is_stale.then_some(id))
+            .collect();
+
+        if stale_parent_ids.is_empty() {
+            return Ok(());
+        }
+
+        // Find all descendants of stale schemas
+        let all_stale = self.list_descendants(&stale_parent_ids)?;
+
+        // Mark all descendants as stale
+        for id in all_stale {
+            staleness_map.insert(id, true);
+        }
+
+        Ok(())
     }
 }

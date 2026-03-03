@@ -140,6 +140,75 @@ impl StoredMetadata {
     }
 }
 
+/// Child schema metadata stored in the `schema_children` multimap.
+///
+/// **Storage pattern:**
+/// - Table: `schema_children` (multimap)
+/// - Key: Parent `SchemaId` (as UUID string)
+/// - Values: Multiple `StoredChildSchema` entries (one per child)
+///
+/// Each parent can have many children. This structure stores each child's
+/// inheritance metadata including which properties it excludes from the parent.
+///
+/// **Cascade staleness:** When a parent schema changes, query this multimap
+/// to find all children that must be re-resolved.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+pub(crate) struct StoredChildSchema {
+    /// Child schema ID.
+    pub child_id: SchemaId,
+    /// Property names this child excludes from parent's properties.
+    pub excludes: Vec<Box<str>>,
+    /// Timestamp when this inheritance relationship was last resolved.
+    pub resolved_at: Timestamp,
+}
+
+impl StoredChildSchema {
+    /// Serialize to bytes for multimap storage.
+    ///
+    /// # Errors
+    /// Returns serialization error if rkyv encoding fails.
+    pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, crate::db::DbError> {
+        rkyv::to_bytes(self).map(|bytes| bytes.to_vec()).map_err(
+            |e: rkyv::rancor::Error| {
+                crate::db::DbError::Serialization(e.to_string())
+            },
+        )
+    }
+}
+
+/// Parent schema reference, stored in `schema_parent` table.
+///
+/// **Storage pattern:**
+/// - Table: `schema_parent` (regular table, not multimap)
+/// - Key: Child `SchemaId` (as UUID string)
+/// - Value: `StoredParentSchema`
+///
+/// This table tracks ALL schemas (both roots and children):
+/// - Root schemas: `parent_id = None`
+/// - Child schemas: `parent_id = Some(parent_id)`
+///
+/// **Update optimization:** When updating a child's parent, this table
+/// provides O(1) lookup of the old parent plus the old excludes/timestamp
+/// needed to reconstruct the exact bytes for removing the old entry from
+/// the `schema_children` multimap.
+///
+/// **Data redundancy:** `excludes` and `resolved_at` are stored in both
+/// `schema_parent` and `schema_children`. This trades ~10KB of storage
+/// (for typical 100-schema vaults) for simpler, faster update logic.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+pub(crate) struct StoredParentSchema {
+    /// Parent schema ID, or None for root schemas.
+    pub parent_id: Option<SchemaId>,
+    /// Property names excluded from parent (cached for multimap removal).
+    pub excludes: Vec<Box<str>>,
+    /// Timestamp when relationship was resolved (cached for multimap removal).
+    pub resolved_at: Timestamp,
+}
+
 /// Adapter storage representation of a single bank property snapshot.
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,

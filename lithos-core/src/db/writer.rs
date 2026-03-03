@@ -312,6 +312,43 @@ impl BatchWriter {
     ) -> Result<bool, DbError> {
         multimap_remove_tx(&mut self.tx, table, key, value)
     }
+
+    /// Insert a serialized value into a multimap with byte-slice values.
+    ///
+    /// For multimaps storing complex types via rkyv serialization.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb multimap table operation fails.
+    #[inline]
+    pub fn multimap_insert_bytes(
+        &mut self,
+        table: MultimapTableDefinition<&str, &[u8]>,
+        key: &str,
+        value: &[u8],
+    ) -> Result<(), DbError> {
+        let mut tbl = self.tx.open_multimap_table(table)?;
+        tbl.insert(key, value)?;
+        Ok(())
+    }
+
+    /// Remove a serialized value from a multimap with byte-slice values.
+    ///
+    /// For multimaps storing complex types via rkyv serialization.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb multimap table operation fails.
+    #[inline]
+    pub fn multimap_remove_bytes(
+        &mut self,
+        table: MultimapTableDefinition<&str, &[u8]>,
+        key: &str,
+        value: &[u8],
+    ) -> Result<bool, DbError> {
+        let mut tbl = self.tx.open_multimap_table(table)?;
+        Ok(tbl.remove(key, value)?)
+    }
 }
 
 /// A single read-write unit of work supporting both read and write operations.

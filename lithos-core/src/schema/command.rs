@@ -166,6 +166,38 @@ where
             SchemaCommandError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
+
+    /// Save inheritance relationships for schemas.
+    ///
+    /// # Errors
+    /// Returns `SchemaCommandError` if storage operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::command::Command;
+    /// # use lithos_core::schema::ports::InheritanceRelationship;
+    /// # let command = todo!("Provide a Command instance");
+    /// # let child_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// # let parent_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// let relationships: Vec<InheritanceRelationship> =
+    ///     vec![(child_id, Some(parent_id), vec!["prop".into()])];
+    /// command.save_inheritance_batch(&relationships)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn save_inheritance_batch(
+        &self,
+        relationships: &[super::ports::InheritanceRelationship],
+    ) -> Result<(), SchemaCommandError> {
+        self.command_port.save_inheritance_batch(relationships).map_err(
+            |error| {
+                SchemaCommandError::Storage(Into::<crate::db::DbError>::into(
+                    error,
+                ))
+            },
+        )
+    }
 }
 
 impl Command<crate::schema::adapter::command::CommandAdapter<'_>> {

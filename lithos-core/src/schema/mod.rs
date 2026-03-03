@@ -56,7 +56,7 @@ pub mod raw;
 pub mod resolver;
 
 pub(crate) mod db_table {
-    use redb::TableDefinition;
+    use redb::{MultimapTableDefinition, TableDefinition};
 
     pub(crate) const SCHEMA_BY_ID: TableDefinition<&str, &[u8]> =
         TableDefinition::new("schema_by_id");
@@ -71,6 +71,18 @@ pub(crate) mod db_table {
     pub(crate) const BANK_PROPERTY_BY_NAME: TableDefinition<&str, &[u8]> =
         TableDefinition::new("bank_property_by_name");
     pub(crate) const PROPERTY_BANK_KEY: &str = "singleton";
+
+    // Inheritance tracking tables
+    /// Multimap: parent `SchemaId` → multiple child schema records.
+    /// Enables O(1) cascade staleness queries: "find all children of parent P".
+    pub(crate) const SCHEMA_CHILDREN: MultimapTableDefinition<&str, &[u8]> =
+        MultimapTableDefinition::new("schema_children");
+
+    /// Regular table: child `SchemaId` → parent schema reference.
+    /// Enables O(1) updates (know old parent to remove from multimap).
+    /// Also tracks all schemas including roots (`parent_id` = None).
+    pub(crate) const SCHEMA_PARENT: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("schema_parent");
 }
 
 // --- Public API ---

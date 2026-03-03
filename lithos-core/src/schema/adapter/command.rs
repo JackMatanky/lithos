@@ -4,21 +4,24 @@
 //! - `bank_metadata` for version/timestamps
 //! - `bank_property_by_id` and `bank_property_by_name` for versioned rows
 
+use std::collections::HashMap;
+
 use tracing::instrument;
 
 use crate::{
     db::{Database, DbError},
     schema::{
         adapter::stored::{
-            StoredBankProperty, StoredMetadata, StoredProperty,
-            StoredPropertyBank, StoredSchema,
+            StoredBankProperty, StoredChildSchema, StoredMetadata,
+            StoredParentSchema, StoredProperty, StoredPropertyBank,
+            StoredSchema,
         },
         aggregate::{Schema, SchemaId, Timestamp},
         bank::{BankVersion, PropertyBank},
         db_table::{
             BANK_METADATA, BANK_PROPERTY_BY_ID, BANK_PROPERTY_BY_NAME,
-            PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_ID_BY_NAME,
-            SCHEMA_METADATA,
+            PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_CHILDREN,
+            SCHEMA_ID_BY_NAME, SCHEMA_METADATA, SCHEMA_PARENT,
         },
         ports::Command,
         property::{Multiplicity, Optionality},
@@ -344,5 +347,94 @@ impl Command for CommandAdapter<'_> {
 
             Ok(())
         })
+    }
+
+    #[inline]
+    fn save_inheritance_batch(
+        &self,
+        relationships: &[crate::schema::ports::InheritanceRelationship],
+    ) -> Result<(), Self::Error> {
+        let old_parents = self.load_old_parent_refs(relationships)?;
+
+        #[expect(
+            clippy::ref_patterns,
+            reason = "Destructuring with &(a, b, ref c) is clearest for mixed \
+                      Copy/non-Copy fields"
+        )]
+        self.db.batch_write(|writer| {
+            for &(child_id, parent_id, ref excludes) in relationships {
+                let child_key = child_id.to_string();
+                let timestamp = Timestamp::now();
+
+                // Remove old parent→child multimap entry if parent changed
+                if let Some(old_ref) = old_parents.get(&child_id)
+                    && let Some(old_parent_id) = old_ref.parent_id
+                {
+                    let old_schema = StoredChildSchema {
+                        child_id,
+                        excludes: old_ref.excludes.clone(),
+                        resolved_at: old_ref.resolved_at,
+                    };
+                    let old_bytes = old_schema.to_bytes()?;
+                    writer.multimap_remove_bytes(
+                        SCHEMA_CHILDREN,
+                        old_parent_id.to_string().as_str(),
+                        old_bytes.as_slice(),
+                    )?;
+                }
+
+                // Insert new parent→child multimap entry (if not root)
+                if let Some(pid) = parent_id {
+                    let child_schema = StoredChildSchema {
+                        child_id,
+                        excludes: excludes.clone(),
+                        resolved_at: timestamp,
+                    };
+                    let bytes = child_schema.to_bytes()?;
+                    writer.multimap_insert_bytes(
+                        SCHEMA_CHILDREN,
+                        pid.to_string().as_str(),
+                        bytes.as_slice(),
+                    )?;
+                }
+
+                // Update child→parent reference table
+                let parent_schema = StoredParentSchema {
+                    parent_id,
+                    excludes: excludes.clone(),
+                    resolved_at: timestamp,
+                };
+                writer.put(
+                    SCHEMA_PARENT,
+                    child_key.as_str(),
+                    &parent_schema,
+                )?;
+            }
+
+            Ok(())
+        })
+    }
+}
+
+// Private helper methods for inheritance tracking
+impl CommandAdapter<'_> {
+    /// Load existing parent references for all children in the batch.
+    fn load_old_parent_refs(
+        &self,
+        relationships: &[crate::schema::ports::InheritanceRelationship],
+    ) -> Result<HashMap<SchemaId, StoredParentSchema>, DbError> {
+        let mut old_parents = HashMap::with_capacity(relationships.len());
+
+        for &(child_id, _, _) in relationships {
+            let child_key = child_id.to_string();
+            if let Some(old_ref) = self.db.get_owned::<StoredParentSchema>(
+                SCHEMA_PARENT,
+                child_key.as_str(),
+            )? {
+                old_parents.insert(child_id, old_ref);
+            }
+        }
+
+        Ok(old_parents)
     }
 }

@@ -343,6 +343,81 @@ where
             SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
+
+    /// Find all children of the given parent schemas.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if storage operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # use lithos_core::schema::ports::InheritanceMap;
+    /// # let query = todo!("Provide a Query instance");
+    /// # let parent_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// let children_map: InheritanceMap = query.find_children(&[parent_id])?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn find_children(
+        &self,
+        parent_ids: &[SchemaId],
+    ) -> Result<super::ports::InheritanceMap, SchemaQueryError> {
+        self.query_port.find_children(parent_ids).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
+    }
+
+    /// List all descendants (transitive children) of the given parent schemas.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if storage operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # use std::collections::HashSet;
+    /// # let query = todo!("Provide a Query instance");
+    /// # let parent_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// let descendants: HashSet<_> = query.list_descendants(&[parent_id])?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn list_descendants(
+        &self,
+        parent_ids: &[SchemaId],
+    ) -> Result<std::collections::HashSet<SchemaId>, SchemaQueryError> {
+        self.query_port.list_descendants(parent_ids).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
+    }
+
+    /// Cascade staleness to descendants in the staleness map.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if storage operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::query::Query;
+    /// # use std::collections::HashMap;
+    /// # let query = todo!("Provide a Query instance");
+    /// # let mut staleness_map: HashMap<_, _> = HashMap::new();
+    /// query.cascade_staleness(&mut staleness_map)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn cascade_staleness(
+        &self,
+        staleness_map: &mut std::collections::HashMap<SchemaId, bool>,
+    ) -> Result<(), SchemaQueryError> {
+        self.query_port.cascade_staleness(staleness_map).map_err(|error| {
+            SchemaQueryError::Storage(Into::<crate::db::DbError>::into(error))
+        })
+    }
 }
 
 #[cfg(test)]

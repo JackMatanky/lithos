@@ -17,6 +17,17 @@ pub type NameIdPair = (SchemaName, SchemaId);
 /// Used by [`Query::batch_is_stale`] to check multiple schemas efficiently.
 pub type StalenessCheck = (SchemaId, Option<Timestamp>, Option<Timestamp>);
 
+/// Inheritance map returned by [`Query::find_children`].
+///
+/// Maps `parent_id` → Vec of (`child_id`, `excludes`).
+pub type InheritanceMap =
+    std::collections::HashMap<SchemaId, Vec<(SchemaId, Vec<Box<str>>)>>;
+
+/// Inheritance relationship tuple used by [`Command::save_inheritance_batch`].
+///
+/// Format: (`child_id`, `parent_id`, `excludes`).
+pub type InheritanceRelationship = (SchemaId, Option<SchemaId>, Vec<Box<str>>);
+
 /// Command port for Schema write operations.
 ///
 /// # Examples
@@ -90,6 +101,31 @@ pub trait Command: Send + Sync {
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     fn save_batch(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
+
+    /// Save inheritance relationships for a batch of schemas.
+    ///
+    /// Must be called AFTER `save_batch()` to maintain referential integrity.
+    /// Each tuple is (`child_id`, `parent_id`, excludes).
+    ///
+    /// # Errors
+    /// Returns storage-specific error if save fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::{Command, InheritanceRelationship};
+    /// # let command = todo!("Provide a Command implementation");
+    /// # let child_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// # let parent_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// let relationships: Vec<InheritanceRelationship> =
+    ///     vec![(child_id, Some(parent_id), vec!["prop".into()])];
+    /// command.save_inheritance_batch(&relationships)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    fn save_inheritance_batch(
+        &self,
+        relationships: &[InheritanceRelationship],
+    ) -> Result<(), Self::Error>;
 
     /// Save the `PropertyBank` to persistence.
     ///
@@ -311,6 +347,31 @@ pub trait Query: Send + Sync {
     where
         F: FnOnce(&BatchReader) -> Result<R, Self::Error>;
 
+    /// Cascade staleness to descendants in the staleness map.
+    ///
+    /// For each schema marked as stale in the map, finds all its descendants
+    /// (transitive children) and marks them as stale as well. This ensures
+    /// that when a parent schema changes, all children are re-resolved with
+    /// the updated parent properties.
+    ///
+    /// # Errors
+    /// Returns storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # use std::collections::HashMap;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let mut staleness_map: HashMap<_, _> = HashMap::new();
+    /// query.cascade_staleness(&mut staleness_map)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    fn cascade_staleness(
+        &self,
+        staleness_map: &mut std::collections::HashMap<SchemaId, bool>,
+    ) -> Result<(), Self::Error>;
+
     /// Find a schema by its ID.
     ///
     /// # Errors
@@ -326,6 +387,31 @@ pub trait Query: Send + Sync {
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error>;
+
+    /// Find all direct children of the given parent schemas.
+    ///
+    /// Returns a map: `parent_id` → Vec<(`child_id`, excludes)>.
+    ///
+    /// Used for cascade staleness detection: when a parent is stale,
+    /// all its children must be re-resolved.
+    ///
+    /// # Errors
+    /// Returns storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # use lithos_core::schema::ports::InheritanceMap;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let parent_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// let children_map: InheritanceMap = query.find_children(&[parent_id])?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    fn find_children(
+        &self,
+        parent_ids: &[SchemaId],
+    ) -> Result<super::ports::InheritanceMap, Self::Error>;
 
     /// Get the singleton `PropertyBank` registry.
     ///
@@ -425,6 +511,30 @@ pub trait Query: Send + Sync {
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     fn list(&self) -> Result<Vec<Schema>, Self::Error>;
+
+    /// List all descendants (transitive children) of the given parent schemas.
+    ///
+    /// Performs breadth-first traversal of the inheritance graph to collect
+    /// all direct and indirect children. Used for cascade staleness: when a
+    /// parent changes, all descendants must be re-resolved.
+    ///
+    /// # Errors
+    /// Returns storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # use std::collections::HashSet;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let parent_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// let descendants: HashSet<_> = query.list_descendants(&[parent_id])?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    fn list_descendants(
+        &self,
+        parent_ids: &[SchemaId],
+    ) -> Result<std::collections::HashSet<SchemaId>, Self::Error>;
 
     /// List all schema name-to-ID pairs.
     ///
