@@ -258,6 +258,8 @@ impl TryFrom<u64> for GlobalVersion {
 )]
 #[non_exhaustive]
 pub struct Global {
+    /// Version number for this global config.
+    version: GlobalVersion,
     /// Logging configuration for global defaults.
     logging: Logging,
     /// Paths configuration for global defaults (without cache).
@@ -274,6 +276,7 @@ impl Default for Global {
     #[inline]
     fn default() -> Self {
         Self {
+            version: GlobalVersion::initial(),
             logging: Logging::default(),
             paths: Paths::default(),
             trusted_vaults: None,
@@ -286,8 +289,14 @@ impl Default for Global {
 impl Global {
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Domain constructor with all required fields; builder \
+                  pattern adds complexity without benefit"
+    )]
     /// Create a global configuration.
     pub fn new(
+        version: GlobalVersion,
         logging: Logging,
         paths: Paths,
         trusted_vaults: Option<TrustedVaults>,
@@ -295,12 +304,20 @@ impl Global {
         task: Option<Task>,
     ) -> Self {
         Self {
+            version,
             logging,
             paths,
             trusted_vaults,
             frontmatter,
             task,
         }
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the version of this global config.
+    pub const fn version(&self) -> GlobalVersion {
+        self.version
     }
 
     #[inline]
@@ -379,7 +396,17 @@ impl TryFrom<&super::raw::RawConfig> for Global {
         let task =
             raw.task.as_ref().map(|t| Task::try_from(t.clone())).transpose()?;
 
-        Ok(Self::new(logging, paths, trusted_vaults, frontmatter, task))
+        // Version will be set by Command layer when recording
+        let version = GlobalVersion::initial();
+
+        Ok(Self::new(
+            version,
+            logging,
+            paths,
+            trusted_vaults,
+            frontmatter,
+            task,
+        ))
     }
 }
 

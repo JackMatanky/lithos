@@ -150,7 +150,6 @@ impl TryFrom<u64> for VaultVersion {
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    Default,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -158,6 +157,8 @@ impl TryFrom<u64> for VaultVersion {
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Vault {
+    /// Version number for this vault config.
+    version: VaultVersion,
     /// Overridden logging settings.
     logging: Option<Logging>,
     /// Overridden paths settings.
@@ -168,22 +169,44 @@ pub struct Vault {
     task: Option<Task>,
 }
 
+impl Default for Vault {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            version: VaultVersion::initial(),
+            logging: None,
+            paths: Paths::default(),
+            frontmatter: None,
+            task: None,
+        }
+    }
+}
+
 impl Vault {
     /// Create vault-specific configuration.
     #[inline]
     #[must_use]
     pub const fn new(
+        version: VaultVersion,
         logging: Option<Logging>,
         paths: Paths,
         frontmatter: Option<Frontmatter>,
         task: Option<Task>,
     ) -> Self {
         Self {
+            version,
             logging,
             paths,
             frontmatter,
             task,
         }
+    }
+
+    /// Return the version of this vault config.
+    #[inline]
+    #[must_use]
+    pub const fn version(&self) -> VaultVersion {
+        self.version
     }
 
     /// Return the overridden paths settings.
@@ -249,7 +272,10 @@ impl TryFrom<&super::raw::RawConfig> for Vault {
             .map(|t| super::task::Task::try_from(t.clone()))
             .transpose()?;
 
-        Ok(Self::new(logging, paths, frontmatter, task))
+        // Version will be set by Command layer when recording
+        let version = VaultVersion::initial();
+
+        Ok(Self::new(version, logging, paths, frontmatter, task))
     }
 }
 
@@ -867,11 +893,18 @@ mod tests {
 
         #[test]
         fn vault_new_constructs_with_given_values() {
+            let version = VaultVersion::initial();
             let paths = Paths::default();
             let logging = Logging::new(LogLevel::Debug);
-            let vault =
-                Vault::new(Some(logging.clone()), paths.clone(), None, None);
+            let vault = Vault::new(
+                version,
+                Some(logging.clone()),
+                paths.clone(),
+                None,
+                None,
+            );
 
+            assert_eq!(vault.version(), version);
             assert_eq!(vault.paths(), &paths);
             assert_eq!(vault.logging(), Some(&logging));
         }
