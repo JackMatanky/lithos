@@ -1,6 +1,7 @@
 //! Frontmatter extraction from markdown event streams.
 //!
-//! Extracts YAML/TOML frontmatter blocks and converts fields to `FieldValue`.
+//! Extracts YAML/TOML metadata blocks, preserves line breaks in block scalar
+//! content, and converts parsed values into domain `FieldValue` entries.
 
 use std::{collections::HashMap, ops::Range};
 

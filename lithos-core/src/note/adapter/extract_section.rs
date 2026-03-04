@@ -1,7 +1,7 @@
 //! Section extraction from markdown event streams.
 //!
-//! Extracts top-level sections based on block boundaries and associates
-//! headings with sections when present.
+//! Tracks block boundaries to build top-level sections with source ranges and
+//! associates the first heading in a block with the section when present.
 
 use std::ops::Range;
 

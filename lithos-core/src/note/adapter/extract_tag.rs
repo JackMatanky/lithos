@@ -1,15 +1,14 @@
 //! Tag extraction from markdown event streams.
 //!
-//! Extracts Obsidian-style tags and deduplicates them.
+//! Extracts Obsidian-style tags from text runs, ignores tags inside links and
+//! code blocks, and merges frontmatter tags with inline tags while
+//! de-duplicating by full path.
 
 use std::{collections::HashSet, ops::Range};
 
 use pulldown_cmark::{CowStr, Event};
 
-use super::{
-    reader::{ExtractionContext, ExtractionState, Extractor},
-    tag_scanner::TagScanner,
-};
+use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::{
     config::aggregate::Config,
     note::{frontmatter::Frontmatter, tag::Tag as NoteTag},
@@ -46,7 +45,7 @@ impl<'config> TagExtractor<'config> {
     }
 
     fn collect_from_text(&mut self, text: &str) {
-        for tag in TagScanner::new(text).collect_tags() {
+        for tag in scan_tags(text) {
             self.add_tag(tag);
         }
     }
@@ -83,6 +82,43 @@ impl<'config> TagExtractor<'config> {
             }
         }
     }
+}
+
+/// Scans raw text for Obsidian-style tags.
+///
+/// Tag tokens start with `#` and accept alphanumeric, `_`, `-`, and `/`
+/// characters until the first non-tag character.
+pub(super) fn scan_tags(text: &str) -> Vec<NoteTag> {
+    let mut tags = Vec::new();
+    let mut chars = text.chars().peekable();
+    let mut prev_is_alnum = false;
+
+    while let Some(ch) = chars.next() {
+        if ch != '#' || prev_is_alnum {
+            prev_is_alnum = ch.is_alphanumeric();
+            continue;
+        }
+
+        let mut raw = String::with_capacity(16);
+        raw.push('#');
+        while let Some(&next) = chars.peek() {
+            if !(next.is_alphanumeric() || matches!(next, '_' | '-' | '/')) {
+                break;
+            }
+            raw.push(next);
+            chars.next();
+        }
+
+        if raw.len() > 1
+            && let Ok(tag) = NoteTag::from_token(&raw)
+        {
+            tags.push(tag);
+        }
+
+        prev_is_alnum = raw.chars().last().is_some_and(char::is_alphanumeric);
+    }
+
+    tags
 }
 
 impl Extractor for TagExtractor<'_> {

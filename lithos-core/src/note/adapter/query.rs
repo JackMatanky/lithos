@@ -25,6 +25,26 @@ use crate::{
 };
 
 /// Query implementation for Note read operations.
+///
+/// Provides indexed lookups over the note database with zero-copy access to
+/// archived values where supported by the storage layer.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::sync::Arc;
+///
+/// use lithos_core::{db::Database, note::adapter::query::QueryAdapter};
+///
+/// let root = std::env::temp_dir()
+///     .join(format!("lithos_query_doc_{}", std::process::id()));
+/// std::fs::create_dir_all(&root)?;
+/// let db_path = root.join("notes.redb");
+/// let db = Arc::new(Database::open(&db_path)?);
+/// let adapter = QueryAdapter::new(Arc::clone(&db));
+/// # let _ = adapter;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct QueryAdapter {
     db: Arc<Database>,
 }

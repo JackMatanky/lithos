@@ -1,6 +1,8 @@
 //! Link extraction from markdown event streams.
 //!
-//! Extracts wiki-links, markdown links, embeds, and anchors.
+//! Extracts wiki-links, markdown links, embeds, and anchors while preserving
+//! alias text. Internal links are split into target path plus anchor, and
+//! external links are detected by scheme.
 
 use std::ops::Range;
 

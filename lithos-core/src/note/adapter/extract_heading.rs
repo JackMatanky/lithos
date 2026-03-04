@@ -1,6 +1,7 @@
 //! Heading extraction from markdown event streams.
 //!
-//! Extracts headings (H1-H6) and accumulates heading text across events.
+//! Extracts headings (H1-H6), captures their source offset, and accumulates
+//! text across nested events while normalizing soft/hard breaks to spaces.
 
 use std::ops::Range;
 

@@ -49,6 +49,37 @@ struct TaskIndexData {
 }
 
 /// Command implementation for Note write operations.
+///
+/// Persists notes and maintains secondary indexes (paths, tags, tasks, and
+/// frontmatter keys) so query adapters can execute fast lookups.
+///
+/// # Examples
+///
+/// ```no_run
+/// use lithos_core::{
+///     config::{
+///         aggregate::Config,
+///         raw::RawConfig,
+///         vault::{VaultId, VaultRoot},
+///     },
+///     db::Database,
+///     note::adapter::command::CommandAdapter,
+/// };
+///
+/// let root = std::env::temp_dir()
+///     .join(format!("lithos_cmd_doc_{}", std::process::id()));
+/// std::fs::create_dir_all(&root)?;
+/// let config = Config::build(
+///     &RawConfig::default(),
+///     VaultId::new(),
+///     VaultRoot::try_new(root.clone())?,
+/// )?;
+/// let db_path = root.join("notes.redb");
+/// let db = Database::open(&db_path)?;
+/// let adapter = CommandAdapter::new(&db, &config);
+/// # let _ = adapter;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct CommandAdapter<'db, 'config> {
     db: &'db Database,
     config: &'config Config,
