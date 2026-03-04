@@ -135,6 +135,16 @@ pub(crate) mod db_table {
         TableDefinition::new("vault_id_by_path");
     pub(crate) const VAULT_PATH_BY_ID: TableDefinition<&str, &[u8]> =
         TableDefinition::new("vault_path_by_id");
+
+    /// Stores metadata for config staleness checking.
+    ///
+    /// Keys:
+    /// - `"global"` → Global config metadata
+    /// - `vault_id.to_string()` → Vault config metadata
+    // Used in Phase 4 for metadata-based staleness detection
+    #[expect(dead_code, reason = "Table definition used in Phase 4 ingestion")]
+    pub(crate) const CONFIG_METADATA: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("config_metadata");
 }
 
 use self::adapter::{command::CommandAdapter, query::QueryAdapter};

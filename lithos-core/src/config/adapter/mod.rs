@@ -2,6 +2,7 @@
 
 pub mod command;
 pub mod query;
+pub(crate) mod stored;
 
 use crate::config::{aggregate::Version, vault::VaultId};
 
