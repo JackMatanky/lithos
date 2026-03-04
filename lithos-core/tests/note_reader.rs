@@ -78,7 +78,7 @@ mod tests {
 
         let outcome = reader.parse(&fs_reader, note_path)?;
         let mut note =
-            Note::new(NoteId::new(), note_path.to_string_lossy().as_ref())?;
+            Note::try_new(NoteId::new(), note_path.to_string_lossy().as_ref())?;
         reader.apply(&fs_reader, &mut note, note_path)?;
 
         Ok(Fixture {

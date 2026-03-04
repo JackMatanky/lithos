@@ -120,17 +120,17 @@ impl Frontmatter {
     #[inline]
     #[expect(
         private_bounds,
-        reason = "FromFieldValue is an internal adapter trait that should not \
-                  be public"
+        reason = "TryFromFieldValue is an internal adapter trait that should \
+                  not be public"
     )]
-    pub fn try_get<T: FromFieldValue>(
+    pub fn try_get<T: TryFromFieldValue>(
         &self,
         key: &FrontmatterKey,
     ) -> Result<Option<T>, FrontmatterError> {
         let Some(value) = self.get(key) else {
             return Ok(None);
         };
-        T::from_value(value)
+        T::try_from_value(value)
             .map(Some)
             .map_err(|err| Self::with_key_context(key.as_str(), err))
     }
@@ -143,10 +143,10 @@ impl Frontmatter {
     #[inline]
     #[expect(
         private_bounds,
-        reason = "FromFieldValue is an internal adapter trait that should not \
-                  be public"
+        reason = "TryFromFieldValue is an internal adapter trait that should \
+                  not be public"
     )]
-    pub fn try_get_required<T: FromFieldValue>(
+    pub fn try_get_required<T: TryFromFieldValue>(
         &self,
         key: &FrontmatterKey,
     ) -> Result<T, FrontmatterError> {
@@ -183,20 +183,20 @@ impl Frontmatter {
     #[inline]
     #[expect(
         private_bounds,
-        reason = "FromFieldValueRef is an internal adapter trait that should \
-                  not be public"
+        reason = "TryFromFieldValueRef is an internal adapter trait that \
+                  should not be public"
     )]
     pub fn try_get_ref<'frontmatter, T>(
         &'frontmatter self,
         key: &FrontmatterKey,
     ) -> Result<Option<T>, FrontmatterError>
     where
-        T: FromFieldValueRef<'frontmatter>,
+        T: TryFromFieldValueRef<'frontmatter>,
     {
         let Some(value) = self.get(key) else {
             return Ok(None);
         };
-        T::from_value_ref(value)
+        T::try_from_value_ref(value)
             .map(Some)
             .map_err(|err| Self::with_key_context(key.as_str(), err))
     }
@@ -209,15 +209,15 @@ impl Frontmatter {
     #[inline]
     #[expect(
         private_bounds,
-        reason = "FromFieldValueRef is an internal adapter trait that should \
-                  not be public"
+        reason = "TryFromFieldValueRef is an internal adapter trait that \
+                  should not be public"
     )]
     pub fn try_get_required_ref<'frontmatter, T>(
         &'frontmatter self,
         key: &FrontmatterKey,
     ) -> Result<T, FrontmatterError>
     where
-        T: FromFieldValueRef<'frontmatter>,
+        T: TryFromFieldValueRef<'frontmatter>,
     {
         self.try_get_ref(key)?.ok_or_else(|| FrontmatterError::Missing {
             key: key.as_str().into(),
@@ -308,47 +308,47 @@ impl Frontmatter {
 ///
 /// # Implementation Note
 ///
-/// This trait mirrors [`super::value::FromFieldValue`] but returns
+/// This trait mirrors [`super::value::TryFromFieldValue`] but returns
 /// [`FrontmatterError`] instead of [`super::value::FieldValueError`].
 /// The blanket implementation adapts all types implementing
-/// [`super::value::FromFieldValue`].
-pub(super) trait FromFieldValue: Sized {
+/// [`super::value::TryFromFieldValue`].
+pub(super) trait TryFromFieldValue: Sized {
     /// Attempts to extract a value of type `Self` from a [`FieldValue`].
     ///
     /// # Errors
     ///
     /// Returns a [`FrontmatterError`] describing why the conversion failed.
-    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
 }
 
 /// Adapter trait for frontmatter-specific borrowed conversions from
 /// [`FieldValue`].
 ///
-/// This trait mirrors [`super::value::FromFieldValueRef`] but returns
+/// This trait mirrors [`super::value::TryFromFieldValueRef`] but returns
 /// [`FrontmatterError`] instead of [`super::value::FieldValueError`].
 /// The blanket implementation adapts all types implementing
-/// [`super::value::FromFieldValueRef`].
-pub(super) trait FromFieldValueRef<'frontmatter>: Sized {
+/// [`super::value::TryFromFieldValueRef`].
+pub(super) trait TryFromFieldValueRef<'frontmatter>: Sized {
     /// Attempts to extract a value of type `Self` from a borrowed
     /// [`FieldValue`].
     ///
     /// # Errors
     ///
     /// Returns a [`FrontmatterError`] describing why the conversion failed.
-    fn from_value_ref(
+    fn try_from_value_ref(
         value: &'frontmatter FieldValue,
     ) -> Result<Self, FrontmatterError>;
 }
 
-// Blanket implementation that adapts value::FromFieldValue to
-// frontmatter::FromFieldValue
-impl<T> FromFieldValue for T
+// Blanket implementation that adapts value::TryFromFieldValue to
+// frontmatter::TryFromFieldValue
+impl<T> TryFromFieldValue for T
 where
-    T: super::value::FromFieldValue,
+    T: super::value::TryFromFieldValue,
 {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
-        T::from_value(value).map_err(|err| match err {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        T::try_from_value(value).map_err(|err| match err {
             super::value::FieldValueError::TypeMismatch {
                 expected,
                 actual,
@@ -377,17 +377,17 @@ where
     }
 }
 
-// Blanket implementation that adapts value::FromFieldValueRef to
-// frontmatter::FromFieldValueRef
-impl<'frontmatter, T> FromFieldValueRef<'frontmatter> for T
+// Blanket implementation that adapts value::TryFromFieldValueRef to
+// frontmatter::TryFromFieldValueRef
+impl<'frontmatter, T> TryFromFieldValueRef<'frontmatter> for T
 where
-    T: super::value::FromFieldValueRef<'frontmatter>,
+    T: super::value::TryFromFieldValueRef<'frontmatter>,
 {
     #[inline]
-    fn from_value_ref(
+    fn try_from_value_ref(
         value: &'frontmatter FieldValue,
     ) -> Result<Self, FrontmatterError> {
-        T::from_value_ref(value).map_err(|err| match err {
+        T::try_from_value_ref(value).map_err(|err| match err {
             super::value::FieldValueError::TypeMismatch {
                 expected,
                 actual,

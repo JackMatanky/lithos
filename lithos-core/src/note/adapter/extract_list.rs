@@ -183,7 +183,7 @@ impl<'config> ListExtractor<'config> {
         let parsed = Self::parse_inline_fields(task_config, raw_text)?;
         let attributes = parsed.into_attributes(tags);
 
-        Task::new(status, text, position, attributes).map(Some)
+        Task::try_new(status, text, position, attributes).map(Some)
     }
 
     fn should_promote_from_tags(
@@ -526,7 +526,7 @@ impl InlineFieldState {
                 })
             })?;
             let field_value =
-                FieldValue::from_json(&json_value).map_err(|_error| {
+                FieldValue::try_from_json(&json_value).map_err(|_error| {
                     NoteError::Task(TaskError::InvalidMetadataField {
                         keyword: keyword.into(),
                         reason: "failed conversion",

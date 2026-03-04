@@ -33,10 +33,10 @@
 //! let path = "projects/lithos.md";
 //!
 //! // Construct the aggregate root
-//! let mut note = Note::new(id, path)?;
+//! let mut note = Note::try_new(id, path)?;
 //!
 //! // Add domain components
-//! note.add_tag(Tag::new("#research")?);
+//! note.add_tag(Tag::try_new("#research")?);
 //! # Ok(())
 //! # }
 //! ```

@@ -97,7 +97,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
     }
 
     /// Helper: Extract index data from stored note for cleanup.
-    fn get_note_index_data(
+    fn find_note_index_data(
         &self,
         id_str: &str,
     ) -> Result<Option<IndexData>, DbError> {
@@ -416,7 +416,7 @@ impl Command for CommandAdapter<'_, '_> {
     /// Creates a new note with the given vault-relative path.
     #[inline]
     fn create(&self, path: &NotePath) -> Result<Note, Self::Error> {
-        let note = Note::new(NoteId::new(), path.as_str())
+        let note = Note::try_new(NoteId::new(), path.as_str())
             .map_err(|e| crate::db::DbError::Table(e.to_string()))?;
         self.ensure_unique_path(note.path(), None)?;
         let id = Uuid::from(note.id());
@@ -441,7 +441,7 @@ impl Command for CommandAdapter<'_, '_> {
         let mut id_buffer = Uuid::encode_buffer();
         let id_str = uuid.as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
-        let old_data = self.get_note_index_data(id_str)?;
+        let old_data = self.find_note_index_data(id_str)?;
 
         if let Some(index_data) = old_data {
             self.db.batch_write(|batch| {
@@ -461,7 +461,7 @@ impl Command for CommandAdapter<'_, '_> {
         let mut id_buffer = Uuid::encode_buffer();
         let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
-        let old_data = self.get_note_index_data(id_str)?;
+        let old_data = self.find_note_index_data(id_str)?;
         let current_id = Some(id_str);
         if old_data.as_ref().is_none_or(|index_data| {
             index_data.path.as_ref() != note.path().as_str()
@@ -549,11 +549,11 @@ mod tests {
         }
 
         pub fn parse_path(path: &str) -> Result<NotePath, String> {
-            NotePath::new(path).map_err(|e| e.to_string())
+            NotePath::try_new(path).map_err(|e| e.to_string())
         }
 
         pub fn parse_tag(tag: &str) -> Result<Tag, String> {
-            Tag::from_token(tag).map_err(|e| e.to_string())
+            Tag::try_from_token(tag).map_err(|e| e.to_string())
         }
 
         pub fn stored_note(

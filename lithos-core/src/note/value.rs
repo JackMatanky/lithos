@@ -246,7 +246,7 @@ impl FieldValue {
     /// - Numbers cannot be represented as `f64`
     /// - Null values are encountered
     #[inline]
-    pub fn from_json(
+    pub fn try_from_json(
         value: &serde_json::Value,
     ) -> Result<Self, FieldValueParseError> {
         match value {
@@ -265,7 +265,7 @@ impl FieldValue {
             serde_json::Value::Array(arr) => {
                 let mut values = Vec::with_capacity(arr.len());
                 for item in arr {
-                    values.push(Self::from_json(item)?);
+                    values.push(Self::try_from_json(item)?);
                 }
                 Ok(Self::Array(values))
             }
@@ -274,7 +274,7 @@ impl FieldValue {
                 for (key, json_value) in obj {
                     map.insert(
                         key.as_str().into(),
-                        Self::from_json(json_value)?,
+                        Self::try_from_json(json_value)?,
                     );
                 }
                 Ok(Self::Object(map))
@@ -294,7 +294,7 @@ impl FieldValue {
     /// - YAML map contains non-string keys
     /// - YAML contains tagged values
     #[inline]
-    pub fn from_yaml(
+    pub fn try_from_yaml(
         value: &serde_yaml::Value,
     ) -> Result<Self, FieldValueYamlError> {
         match value {
@@ -321,7 +321,7 @@ impl FieldValue {
             serde_yaml::Value::String(s) => Ok(Self::String(s.clone().into())),
             serde_yaml::Value::Sequence(seq) => {
                 let arr: Result<Vec<_>, _> =
-                    seq.iter().map(Self::from_yaml).collect();
+                    seq.iter().map(Self::try_from_yaml).collect();
                 Ok(Self::Array(arr?))
             }
             serde_yaml::Value::Mapping(map) => {
@@ -329,7 +329,7 @@ impl FieldValue {
                 for (k, v) in map {
                     let key =
                         k.as_str().ok_or(FieldValueYamlError::NonStringKey)?;
-                    obj.insert(key.into(), Self::from_yaml(v)?);
+                    obj.insert(key.into(), Self::try_from_yaml(v)?);
                 }
                 Ok(Self::Object(obj))
             }
@@ -766,12 +766,12 @@ impl std::error::Error for FieldValueError {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::value::{FieldValue, FromFieldValue, FieldValueError};
+/// # use lithos_core::note::value::{FieldValue, TryFromFieldValue, FieldValueError};
 /// let val = FieldValue::Boolean(true);
-/// let result = bool::from_value(&val).unwrap();
+/// let result = bool::try_from_value(&val).unwrap();
 /// assert!(result);
 /// ```
-pub trait FromFieldValue: Sized {
+pub trait TryFromFieldValue: Sized {
     /// Attempts to extract a value of type `Self` from a [`FieldValue`].
     ///
     /// Returns a structured error when the value is present but incompatible.
@@ -779,7 +779,7 @@ pub trait FromFieldValue: Sized {
     /// # Errors
     ///
     /// Returns a structured error describing why the conversion failed.
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError>;
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError>;
 }
 
 /// Fallible, strict conversions from a borrowed [`FieldValue`].
@@ -789,19 +789,19 @@ pub trait FromFieldValue: Sized {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::value::{FieldValue, FromFieldValueRef, FieldValueError};
+/// # use lithos_core::note::value::{FieldValue, TryFromFieldValueRef, FieldValueError};
 /// let val = FieldValue::String("borrowed".into());
-/// let result = <&str>::from_value_ref(&val).unwrap();
+/// let result = <&str>::try_from_value_ref(&val).unwrap();
 /// assert_eq!(result, "borrowed");
 /// ```
-pub trait FromFieldValueRef<'value>: Sized {
+pub trait TryFromFieldValueRef<'value>: Sized {
     /// Attempts to extract a value of type `Self` from a borrowed
     /// [`FieldValue`].
     ///
     /// # Errors
     ///
     /// Returns a structured error describing why the conversion failed.
-    fn from_value_ref(
+    fn try_from_value_ref(
         value: &'value FieldValue,
     ) -> Result<Self, FieldValueError>;
 }
@@ -810,9 +810,9 @@ pub trait FromFieldValueRef<'value>: Sized {
 //                    Trait Implementations                    //
 // ----------------------------------------------------------- //
 
-impl FromFieldValue for bool {
+impl TryFromFieldValue for bool {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         value.as_bool().ok_or_else(|| FieldValueError::TypeMismatch {
             expected: FieldValueType::Boolean,
             actual: value.value_type(),
@@ -820,9 +820,9 @@ impl FromFieldValue for bool {
     }
 }
 
-impl FromFieldValue for f64 {
+impl TryFromFieldValue for f64 {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         value.as_number().ok_or_else(|| FieldValueError::TypeMismatch {
             expected: FieldValueType::Number,
             actual: value.value_type(),
@@ -830,9 +830,9 @@ impl FromFieldValue for f64 {
     }
 }
 
-impl FromFieldValue for Box<str> {
+impl TryFromFieldValue for Box<str> {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         value.as_str().map(Into::into).ok_or_else(|| {
             FieldValueError::TypeMismatch {
                 expected: FieldValueType::String,
@@ -842,9 +842,9 @@ impl FromFieldValue for Box<str> {
     }
 }
 
-impl FromFieldValue for DateTime<Utc> {
+impl TryFromFieldValue for DateTime<Utc> {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         use chrono::TimeZone as _;
         let ts =
             value.as_date().ok_or_else(|| FieldValueError::TypeMismatch {
@@ -859,9 +859,9 @@ impl FromFieldValue for DateTime<Utc> {
     }
 }
 
-impl FromFieldValue for Vec<Box<str>> {
+impl TryFromFieldValue for Vec<Box<str>> {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         if let Some(arr) = value.as_array() {
             let mut out = Vec::with_capacity(arr.len());
             for (index, item) in arr.iter().enumerate() {
@@ -886,9 +886,9 @@ impl FromFieldValue for Vec<Box<str>> {
     }
 }
 
-impl<'value> FromFieldValueRef<'value> for &'value str {
+impl<'value> TryFromFieldValueRef<'value> for &'value str {
     #[inline]
-    fn from_value_ref(
+    fn try_from_value_ref(
         value: &'value FieldValue,
     ) -> Result<Self, FieldValueError> {
         value.as_str().ok_or_else(|| FieldValueError::TypeMismatch {
@@ -898,9 +898,9 @@ impl<'value> FromFieldValueRef<'value> for &'value str {
     }
 }
 
-impl<'value> FromFieldValueRef<'value> for &'value [FieldValue] {
+impl<'value> TryFromFieldValueRef<'value> for &'value [FieldValue] {
     #[inline]
-    fn from_value_ref(
+    fn try_from_value_ref(
         value: &'value FieldValue,
     ) -> Result<Self, FieldValueError> {
         value.as_array().ok_or_else(|| FieldValueError::TypeMismatch {
@@ -919,7 +919,7 @@ mod tests {
         fn yaml_round_trip_string() {
             let original = FieldValue::String("test".into());
             let yaml = original.to_yaml_value();
-            let round_trip = FieldValue::from_yaml(&yaml).unwrap();
+            let round_trip = FieldValue::try_from_yaml(&yaml).unwrap();
             assert_eq!(original, round_trip);
         }
 
@@ -927,7 +927,7 @@ mod tests {
         fn yaml_round_trip_number() {
             let original = FieldValue::Number(42.5);
             let yaml = original.to_yaml_value();
-            let round_trip = FieldValue::from_yaml(&yaml).unwrap();
+            let round_trip = FieldValue::try_from_yaml(&yaml).unwrap();
             assert_eq!(original, round_trip);
         }
 
@@ -935,7 +935,7 @@ mod tests {
         fn yaml_round_trip_boolean() {
             let original = FieldValue::Boolean(true);
             let yaml = original.to_yaml_value();
-            let round_trip = FieldValue::from_yaml(&yaml).unwrap();
+            let round_trip = FieldValue::try_from_yaml(&yaml).unwrap();
             assert_eq!(original, round_trip);
         }
 
@@ -947,7 +947,7 @@ mod tests {
                 FieldValue::Boolean(false),
             ]);
             let yaml = original.to_yaml_value();
-            let round_trip = FieldValue::from_yaml(&yaml).unwrap();
+            let round_trip = FieldValue::try_from_yaml(&yaml).unwrap();
             assert_eq!(original, round_trip);
         }
 
@@ -957,7 +957,7 @@ mod tests {
             map.insert("key".into(), FieldValue::String("value".into()));
             let original = FieldValue::Object(map);
             let yaml = original.to_yaml_value();
-            let round_trip = FieldValue::from_yaml(&yaml).unwrap();
+            let round_trip = FieldValue::try_from_yaml(&yaml).unwrap();
             assert_eq!(original, round_trip);
         }
 
@@ -967,7 +967,7 @@ mod tests {
             let toml = original.to_toml_value().unwrap();
             // TOML → JSON → FieldValue (existing path)
             let json = serde_json::to_value(&toml).unwrap();
-            let round_trip = FieldValue::from_json(&json).unwrap();
+            let round_trip = FieldValue::try_from_json(&json).unwrap();
             assert_eq!(original, round_trip);
         }
 
@@ -1006,7 +1006,7 @@ mod tests {
             }
         });
 
-        let val = FieldValue::from_json(&json)?;
+        let val = FieldValue::try_from_json(&json)?;
 
         let obj = val
             .as_object()
@@ -1049,7 +1049,7 @@ mod tests {
             "null": null
         });
 
-        let result = FieldValue::from_json(&json);
+        let result = FieldValue::try_from_json(&json);
         assert!(matches!(result, Err(FieldValueParseError::NullValue)));
     }
 

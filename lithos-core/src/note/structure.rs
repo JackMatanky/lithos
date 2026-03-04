@@ -23,7 +23,8 @@ use crate::note::position::{SourceByteOffset, SourceByteRange};
 /// # use lithos_core::note::{structure::{Heading, HeadingLevel}, position::SourceByteOffset};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let level = HeadingLevel::try_new(1)?;
-/// let heading = Heading::new(level, "Project Overview", SourceByteOffset::new(0))?;
+/// let heading =
+///     Heading::try_new(level, "Project Overview", SourceByteOffset::new(0))?;
 ///
 /// assert_eq!(heading.text(), "Project Overview");
 /// # Ok(())
@@ -56,7 +57,7 @@ impl Heading {
     /// # Errors
     /// Returns `NoteError::Metadata` if heading text is empty.
     #[inline]
-    pub fn new<T: Into<Box<str>>>(
+    pub fn try_new<T: Into<Box<str>>>(
         level: HeadingLevel,
         text: T,
         position: SourceByteOffset,
@@ -325,7 +326,7 @@ mod tests {
         use super::*;
 
         pub fn summary_heading() -> Result<Heading, NoteError> {
-            Heading::new(
+            Heading::try_new(
                 HeadingLevel::try_new(3)?,
                 "Summary",
                 SourceByteOffset::from(22u32),
@@ -333,7 +334,7 @@ mod tests {
         }
 
         pub fn implementation_heading() -> Result<Heading, NoteError> {
-            Heading::new(
+            Heading::try_new(
                 HeadingLevel::try_new(2)?,
                 "Implementation",
                 SourceByteOffset::from(10u32),
@@ -341,7 +342,7 @@ mod tests {
         }
 
         pub fn intro_heading() -> Result<Heading, NoteError> {
-            Heading::new(
+            Heading::try_new(
                 HeadingLevel::try_new(1)?,
                 "Intro",
                 SourceByteOffset::from(0u32),
@@ -365,7 +366,7 @@ mod tests {
         pub fn section_with_title()
         -> Result<(Section, Option<Heading>, SourceByteRange), NoteError>
         {
-            let heading = Some(Heading::new(
+            let heading = Some(Heading::try_new(
                 HeadingLevel::try_new(1)?,
                 "Title",
                 SourceByteOffset::from(0u32),
@@ -456,7 +457,7 @@ mod tests {
             let level = HeadingLevel::try_new(1)?;
             let text: String = "   ".into();
             let pos = SourceByteOffset::from(0u32);
-            let result = Heading::new(level, text, pos);
+            let result = Heading::try_new(level, text, pos);
             assert!(
                 matches!(
                     result,

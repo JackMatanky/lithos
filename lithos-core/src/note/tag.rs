@@ -28,7 +28,7 @@ use super::error::{NoteError, TagError};
 /// ```
 /// # use lithos_core::note::tag::Tag;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let tag = Tag::new("#work/project/urgent")?;
+/// let tag = Tag::try_new("#work/project/urgent")?;
 /// assert_eq!(tag.full_path(), "work/project/urgent");
 /// assert_eq!(tag.segments().count(), 3);
 /// # Ok(())
@@ -64,7 +64,7 @@ impl Tag {
     /// # Errors
     /// Returns [`NoteError::Tag`] if validation fails.
     #[inline]
-    pub fn new(input: &str) -> Result<Self, NoteError> {
+    pub fn try_new(input: &str) -> Result<Self, NoteError> {
         let tag_path_str = input
             .strip_prefix('#')
             .ok_or(NoteError::Tag(TagError::MissingHash))?;
@@ -82,7 +82,7 @@ impl Tag {
     ///
     /// Returns [`NoteError::Tag`] if validation fails.
     #[inline]
-    pub fn from_token(token: &str) -> Result<Self, NoteError> {
+    pub fn try_from_token(token: &str) -> Result<Self, NoteError> {
         let token = token.trim();
         if token.is_empty() {
             return Err(NoteError::Tag(TagError::EmptyTag));
@@ -189,7 +189,7 @@ mod tests {
         use super::*;
 
         fn tag_with_project_path() -> Result<Tag, NoteError> {
-            Tag::new("#work/project")
+            Tag::try_new("#work/project")
         }
 
         #[test]
@@ -236,7 +236,7 @@ mod tests {
             #[case] input: &str,
             #[case] expected: Vec<&str>,
         ) -> Result<(), NoteError> {
-            let tag = Tag::new(input)?;
+            let tag = Tag::try_new(input)?;
             let actual_segments: Vec<&str> = tag.segments().collect();
             assert_eq!(
                 actual_segments, expected,
@@ -262,7 +262,7 @@ mod tests {
             #[case] input: &str,
             #[case] expected: NoteError,
         ) {
-            let result = Tag::new(input);
+            let result = Tag::try_new(input);
             assert_eq!(
                 result,
                 Err(expected),
@@ -283,7 +283,7 @@ mod tests {
                 "#[a-zA-Z0-9_-]*/[ !@#$%^&*()]+/[a-zA-Z0-9_-]*".prop_map(|s| s);
 
             let run_result = runner.run(&strategy, |s| {
-                let result = Tag::new(&s);
+                let result = Tag::try_new(&s);
                 prop_assert!(
                     result.is_err(),
                     "Tag with invalid characters '{s}' should be rejected"
@@ -303,7 +303,7 @@ mod tests {
             let strategy = "#[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*".prop_map(|s| s);
 
             let run_result = runner.run(&strategy, |s| {
-                let result = Tag::new(&s);
+                let result = Tag::try_new(&s);
                 prop_assert!(
                     result.is_ok(),
                     "Valid tag '{s}' should be accepted"

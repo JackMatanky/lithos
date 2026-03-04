@@ -54,12 +54,12 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn find_by_file_class(
+    pub fn list_by_file_class(
         &self,
         class: &FileClassName,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
-            .find_by_file_class(class)
+            .list_by_file_class(class)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
@@ -68,12 +68,12 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn find_by_folder(
+    pub fn list_by_folder(
         &self,
         folder: &FolderPath,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
-            .find_by_folder(folder)
+            .list_by_folder(folder)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
@@ -110,12 +110,12 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn find_by_task_completed_date(
+    pub fn list_by_task_completed_date(
         &self,
         completed_date: TaskTimestamp,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
-            .find_by_task_completed_date(completed_date)
+            .list_by_task_completed_date(completed_date)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
@@ -124,12 +124,12 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn find_by_task_created_date(
+    pub fn list_by_task_created_date(
         &self,
         created_date: TaskTimestamp,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
-            .find_by_task_created_date(created_date)
+            .list_by_task_created_date(created_date)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
@@ -138,12 +138,12 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn find_by_task_due_date(
+    pub fn list_by_task_due_date(
         &self,
         due_date: TaskTimestamp,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
-            .find_by_task_due_date(due_date)
+            .list_by_task_due_date(due_date)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
@@ -152,12 +152,12 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn find_by_task_priority(
+    pub fn list_by_task_priority(
         &self,
         priority: TaskPriority,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
-            .find_by_task_priority(priority)
+            .list_by_task_priority(priority)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
@@ -166,12 +166,12 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn find_by_task_project(
+    pub fn list_by_task_project(
         &self,
         project: &str,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
-            .find_by_task_project(project)
+            .list_by_task_project(project)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
@@ -180,12 +180,12 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn find_by_task_reminder_date(
+    pub fn list_by_task_reminder_date(
         &self,
         reminder_date: TaskTimestamp,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
-            .find_by_task_reminder_date(reminder_date)
+            .list_by_task_reminder_date(reminder_date)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
@@ -194,12 +194,12 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn find_by_task_status(
+    pub fn list_by_task_status(
         &self,
         status: &StatusName,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
-            .find_by_task_status(status)
+            .list_by_task_status(status)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
@@ -219,13 +219,13 @@ where
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn query_frontmatter_kv(
+    pub fn list_by_frontmatter_kv(
         &self,
         key: &FrontmatterKey,
         value: &str,
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
-            .query_frontmatter_kv(key, value)
+            .list_by_frontmatter_kv(key, value)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 

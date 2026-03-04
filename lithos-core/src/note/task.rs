@@ -39,7 +39,7 @@ use crate::config::task::StatusName;
 /// # use lithos_core::note::task::TaskAttributes;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let status = StatusName::try_new("todo")?;
-/// let task = Task::new(
+/// let task = Task::try_new(
 ///     status,
 ///     "Urgent work",
 ///     SourceByteOffset::new(0),
@@ -313,7 +313,7 @@ impl Task {
     ///
     /// Returns [`NoteError::Task`] if the task text is empty.
     #[inline]
-    pub fn new<T: Into<Box<str>>>(
+    pub fn try_new<T: Into<Box<str>>>(
         status: StatusName,
         text: T,
         position: SourceByteOffset,

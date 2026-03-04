@@ -31,7 +31,12 @@ use super::{
 /// # use lithos_core::note::{link::{Link, Target}, position::SourceByteOffset};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let target = Target::Unresolved { raw: "Main Page".into() };
-/// let link = Link::new_wikilink(target, None, None, SourceByteOffset::new(0))?;
+/// let link = Link::try_new_wikilink(
+///     target,
+///     None,
+///     None,
+///     SourceByteOffset::new(0),
+/// )?;
 ///
 /// assert!(!link.is_embed());
 /// # Ok(())
@@ -378,7 +383,7 @@ impl Link {
     /// # Errors
     /// Returns `NoteError::Link` if the target is empty.
     #[inline]
-    pub fn new_embed(
+    pub fn try_new_embed(
         target: Target,
         embed_type: EmbedType,
         alias: Option<&str>,
@@ -403,7 +408,7 @@ impl Link {
     /// # Errors
     /// Returns `NoteError::Link` if validation fails.
     #[inline]
-    pub fn new_markdown_embed(
+    pub fn try_new_markdown_embed(
         target: Target,
         embed_type: EmbedType,
         alias: Option<&str>,
@@ -427,7 +432,7 @@ impl Link {
     /// # Errors
     /// Returns `NoteError::Link` if validation fails.
     #[inline]
-    pub fn new_markdown_link(
+    pub fn try_new_markdown_link(
         target: Target,
         alias: Option<&str>,
         anchor: Option<Anchor>,
@@ -451,7 +456,7 @@ impl Link {
     /// # Errors
     /// Returns `NoteError::Link` if validation fails.
     #[inline]
-    pub fn new_wikilink(
+    pub fn try_new_wikilink(
         target: Target,
         alias: Option<&str>,
         anchor: Option<Anchor>,
@@ -603,7 +608,7 @@ mod tests {
         }
 
         pub fn wikilink_with_anchor_and_alias() -> Result<Link, NoteError> {
-            Link::new_wikilink(
+            Link::try_new_wikilink(
                 unresolved_target("Target Note"),
                 Some("Display Text"),
                 Some(Anchor::heading("section")?),
@@ -612,7 +617,7 @@ mod tests {
         }
 
         pub fn embed_image() -> Result<Link, NoteError> {
-            Link::new_embed(
+            Link::try_new_embed(
                 unresolved_target("diagram.png"),
                 EmbedType::Image,
                 None,
@@ -655,7 +660,7 @@ mod tests {
         #[test]
         fn new_wikilink_rejects_empty_target() {
             let target = unresolved_target("");
-            let result = Link::new_wikilink(
+            let result = Link::try_new_wikilink(
                 target,
                 None,
                 None,
@@ -669,7 +674,7 @@ mod tests {
             let target = super::super::Target::External {
                 url: "https://example.com#frag".into(),
             };
-            let result = Link::new_markdown_link(
+            let result = Link::try_new_markdown_link(
                 target,
                 None,
                 Some(super::super::Anchor::heading("frag")?),

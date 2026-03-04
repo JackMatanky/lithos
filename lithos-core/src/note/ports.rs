@@ -75,26 +75,6 @@ pub trait Query: Send + Sync {
         alias: &AliasName,
     ) -> Result<Option<Note>, Self::Error>;
 
-    /// Finds all notes belonging to a specific file class.
-    ///
-    /// # Errors
-    ///
-    /// Returns a storage-specific error if query fails.
-    fn find_by_file_class(
-        &self,
-        class: &FileClassName,
-    ) -> Result<Vec<Note>, Self::Error>;
-
-    /// Finds all notes located within a specific vault folder.
-    ///
-    /// # Errors
-    ///
-    /// Returns a storage-specific error if query fails.
-    fn find_by_folder(
-        &self,
-        folder: &FolderPath,
-    ) -> Result<Vec<Note>, Self::Error>;
-
     /// Finds a note by its unique UUID v7 identifier (owned).
     ///
     /// # Errors
@@ -112,12 +92,50 @@ pub trait Query: Send + Sync {
         path: &NotePath,
     ) -> Result<Option<Note>, Self::Error>;
 
+    /// Lists all notes currently managed in the vault (owned).
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage-specific error if query fails.
+    fn list(&self) -> Result<Vec<Note>, Self::Error>;
+
+    /// Finds all notes belonging to a specific file class.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage-specific error if query fails.
+    fn list_by_file_class(
+        &self,
+        class: &FileClassName,
+    ) -> Result<Vec<Note>, Self::Error>;
+
+    /// Finds all notes located within a specific vault folder.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage-specific error if query fails.
+    fn list_by_folder(
+        &self,
+        folder: &FolderPath,
+    ) -> Result<Vec<Note>, Self::Error>;
+
+    /// Queries notes by a generic frontmatter key-value pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage-specific error if query fails.
+    fn list_by_frontmatter_kv(
+        &self,
+        key: &FrontmatterKey,
+        value: &str,
+    ) -> Result<Vec<Note>, Self::Error>;
+
     /// Finds all notes containing tasks completed on a specific date.
     ///
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_task_completed_date(
+    fn list_by_task_completed_date(
         &self,
         completed_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error>;
@@ -127,7 +145,7 @@ pub trait Query: Send + Sync {
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_task_created_date(
+    fn list_by_task_created_date(
         &self,
         created_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error>;
@@ -137,7 +155,7 @@ pub trait Query: Send + Sync {
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_task_due_date(
+    fn list_by_task_due_date(
         &self,
         due_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error>;
@@ -147,7 +165,7 @@ pub trait Query: Send + Sync {
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_task_priority(
+    fn list_by_task_priority(
         &self,
         priority: TaskPriority,
     ) -> Result<Vec<Note>, Self::Error>;
@@ -157,7 +175,7 @@ pub trait Query: Send + Sync {
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_task_project(
+    fn list_by_task_project(
         &self,
         project: &str,
     ) -> Result<Vec<Note>, Self::Error>;
@@ -167,7 +185,7 @@ pub trait Query: Send + Sync {
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_task_reminder_date(
+    fn list_by_task_reminder_date(
         &self,
         reminder_date: TaskTimestamp,
     ) -> Result<Vec<Note>, Self::Error>;
@@ -177,27 +195,9 @@ pub trait Query: Send + Sync {
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_task_status(
+    fn list_by_task_status(
         &self,
         status: &StatusName,
-    ) -> Result<Vec<Note>, Self::Error>;
-
-    /// Lists all notes currently managed in the vault (owned).
-    ///
-    /// # Errors
-    ///
-    /// Returns a storage-specific error if query fails.
-    fn list(&self) -> Result<Vec<Note>, Self::Error>;
-
-    /// Queries notes by a generic frontmatter key-value pair.
-    ///
-    /// # Errors
-    ///
-    /// Returns a storage-specific error if query fails.
-    fn query_frontmatter_kv(
-        &self,
-        key: &FrontmatterKey,
-        value: &str,
     ) -> Result<Vec<Note>, Self::Error>;
 
     /// Accesses a note by ID as archived data, enabling zero-copy reads.

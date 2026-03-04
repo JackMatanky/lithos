@@ -103,7 +103,7 @@ impl LinkBuilder {
         if self.is_embed {
             let embed_type = EmbedType::from_extension(target_path);
             if self.is_wikilink {
-                Link::new_embed(
+                Link::try_new_embed(
                     target,
                     embed_type,
                     self.alias.as_deref(),
@@ -111,7 +111,7 @@ impl LinkBuilder {
                     self.position,
                 )
             } else {
-                Link::new_markdown_embed(
+                Link::try_new_markdown_embed(
                     target,
                     embed_type,
                     self.alias.as_deref(),
@@ -119,14 +119,14 @@ impl LinkBuilder {
                 )
             }
         } else if self.is_wikilink {
-            Link::new_wikilink(
+            Link::try_new_wikilink(
                 target,
                 self.alias.as_deref(),
                 anchor,
                 self.position,
             )
         } else {
-            Link::new_markdown_link(
+            Link::try_new_markdown_link(
                 target,
                 self.alias.as_deref(),
                 anchor,

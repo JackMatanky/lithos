@@ -346,7 +346,7 @@ mod tests {
     #[case(NoteError::InvalidPath("test.md".into()))]
     #[case(NoteError::NotFound(NoteId::new()))]
     #[case(NoteError::AlreadyExists(
-        NotePath::new("test.md").expect("valid path")
+        NotePath::try_new("test.md").expect("valid path")
     ))]
     #[case(NoteError::Metadata(NoteMetadataError::HeadingTextEmpty))]
     #[case(NoteError::Config(

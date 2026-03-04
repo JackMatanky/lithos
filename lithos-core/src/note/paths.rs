@@ -39,7 +39,7 @@ use super::error::{NoteError, NoteMetadataError};
 /// ```
 /// # use lithos_core::note::paths::NotePath;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let path = NotePath::new("daily/2024-01-01.md")?;
+/// let path = NotePath::try_new("daily/2024-01-01.md")?;
 /// assert_eq!(path.as_str(), "daily/2024-01-01.md");
 /// # Ok(())
 /// # }
@@ -66,7 +66,7 @@ impl NotePath {
     ///
     /// Returns [`NoteError::InvalidPath`] if the path is invalid.
     #[inline]
-    pub fn new(path: &str) -> Result<Self, NoteError> {
+    pub fn try_new(path: &str) -> Result<Self, NoteError> {
         let relative = RelativePath::try_new(path)?;
         let normalized_path = std::path::Path::new(relative.as_str());
 
@@ -152,7 +152,7 @@ impl TryFrom<&str> for NotePath {
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new(value)
+        Self::try_new(value)
     }
 }
 
@@ -161,7 +161,7 @@ impl TryFrom<String> for NotePath {
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::new(&value)
+        Self::try_new(&value)
     }
 }
 
@@ -271,37 +271,37 @@ mod tests {
 
     #[test]
     fn rejects_absolute_path() {
-        let result = NotePath::new("/absolute.md");
+        let result = NotePath::try_new("/absolute.md");
         result.unwrap_err();
     }
 
     #[test]
     fn rejects_curdir_components() {
-        let result = NotePath::new("folder/./note.md");
+        let result = NotePath::try_new("folder/./note.md");
         result.unwrap_err();
     }
 
     #[test]
     fn rejects_wrong_extension() {
-        let result = NotePath::new("note.txt");
+        let result = NotePath::try_new("note.txt");
         result.unwrap_err();
     }
 
     #[test]
     fn rejects_windows_drive_prefix() {
-        let result = NotePath::new("C:notes/note.md");
+        let result = NotePath::try_new("C:notes/note.md");
         result.unwrap_err();
     }
 
     #[test]
     fn rejects_unc_prefix() {
-        let result = NotePath::new("//server/share/note.md");
+        let result = NotePath::try_new("//server/share/note.md");
         result.unwrap_err();
     }
 
     #[test]
     fn accepts_valid_vault_path() {
-        let path = NotePath::new("folder/note.md").unwrap();
+        let path = NotePath::try_new("folder/note.md").unwrap();
         assert_eq!(path.as_str(), "folder/note.md");
     }
 }

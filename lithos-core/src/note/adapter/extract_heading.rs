@@ -46,7 +46,7 @@ impl HeadingBuilder {
     }
 
     fn build(self) -> Result<Heading, NoteError> {
-        Heading::new(self.level, self.text, self.position)
+        Heading::try_new(self.level, self.text, self.position)
     }
 }
 

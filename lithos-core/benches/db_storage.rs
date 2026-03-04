@@ -246,10 +246,10 @@ fn create_test_note(index: usize) -> Note {
     let id = NoteId::new();
     let path = format!("notes/test-{index:04}.md");
 
-    let mut note = Note::new(id, &path).expect("valid path");
+    let mut note = Note::try_new(id, &path).expect("valid path");
 
     note.add_link(
-        Link::new_wikilink(
+        Link::try_new_wikilink(
             Target::Unresolved {
                 raw: "other-note.md".into(),
             },
@@ -260,7 +260,7 @@ fn create_test_note(index: usize) -> Note {
         .expect("valid link"),
     );
     note.add_link(
-        Link::new_markdown_link(
+        Link::try_new_markdown_link(
             Target::External {
                 url: "https://example.com".into(),
             },
@@ -271,12 +271,12 @@ fn create_test_note(index: usize) -> Note {
         .expect("valid link"),
     );
 
-    note.add_tag(Tag::new("#rust").expect("valid tag"));
-    note.add_tag(Tag::new("#performance").expect("valid tag"));
-    note.add_tag(Tag::new("#database/benchmarks").expect("valid tag"));
+    note.add_tag(Tag::try_new("#rust").expect("valid tag"));
+    note.add_tag(Tag::try_new("#performance").expect("valid tag"));
+    note.add_tag(Tag::try_new("#database/benchmarks").expect("valid tag"));
 
     note.add_heading(
-        Heading::new(
+        Heading::try_new(
             HeadingLevel::try_new(1).expect("valid level"),
             "Main Title",
             SourceByteOffset::new(0),
@@ -284,7 +284,7 @@ fn create_test_note(index: usize) -> Note {
         .expect("valid heading"),
     );
     note.add_heading(
-        Heading::new(
+        Heading::try_new(
             HeadingLevel::try_new(2).expect("valid level"),
             "Subsection",
             SourceByteOffset::new(10),
@@ -307,7 +307,7 @@ fn create_test_note(index: usize) -> Note {
         .expect("valid status")
         .clone();
     note.add_task(
-        Task::new(
+        Task::try_new(
             status_name.clone(),
             "Do something",
             SourceByteOffset::new(15),
@@ -316,7 +316,7 @@ fn create_test_note(index: usize) -> Note {
         .expect("valid task"),
     );
     note.add_task(
-        Task::new(
+        Task::try_new(
             config
                 .task()
                 .status()

@@ -108,7 +108,7 @@ impl FrontmatterExtractor {
             ))?;
 
             let field_value =
-                FieldValue::from_yaml(value_item).map_err(|_error| {
+                FieldValue::try_from_yaml(value_item).map_err(|_error| {
                     NoteError::Frontmatter(
                         FrontmatterParseError::InvalidYamlValue {
                             reason: "invalid yaml value",

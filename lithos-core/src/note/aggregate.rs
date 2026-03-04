@@ -50,7 +50,7 @@ use super::{
 /// let id = NoteId::new();
 /// let path = "inbox/meeting-notes.md";
 ///
-/// let note = Note::new(id, path)?;
+/// let note = Note::try_new(id, path)?;
 /// assert_eq!(note.path().as_str(), "inbox/meeting-notes.md");
 /// # Ok(())
 /// # }
@@ -309,10 +309,10 @@ impl Note {
     /// ```
     /// # use lithos_core::note::aggregate::{Note, NoteId};
     /// let id = NoteId::new();
-    /// let note = Note::new(id, "test.md").unwrap();
+    /// let note = Note::try_new(id, "test.md").unwrap();
     /// ```
     #[inline]
-    pub fn new(id: NoteId, path: &str) -> Result<Self, NoteError> {
+    pub fn try_new(id: NoteId, path: &str) -> Result<Self, NoteError> {
         Ok(Self {
             id,
             path: NotePath::try_from(path)?,
@@ -668,11 +668,11 @@ mod tests {
             Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0001);
 
         pub fn base_note() -> Result<Note, NoteError> {
-            Note::new(NoteId::from(TEST_NOTE_ID), "note.md")
+            Note::try_new(NoteId::from(TEST_NOTE_ID), "note.md")
         }
 
         pub fn wikilink(raw: &str, pos: u32) -> Result<Link, NoteError> {
-            Link::new_wikilink(
+            Link::try_new_wikilink(
                 Target::Unresolved {
                     raw: raw.into(),
                 },
@@ -683,7 +683,7 @@ mod tests {
         }
 
         pub fn embed(raw: &str, pos: u32) -> Result<Link, NoteError> {
-            Link::new_embed(
+            Link::try_new_embed(
                 Target::Unresolved {
                     raw: raw.into(),
                 },
@@ -699,7 +699,7 @@ mod tests {
 
             note.add_link(wikilink("wiki1.md", 0)?);
             note.add_link(wikilink("wiki2.md", 10)?);
-            let md = Link::new_markdown_link(
+            let md = Link::try_new_markdown_link(
                 Target::External {
                     url: "https://example.com".into(),
                 },
@@ -728,7 +728,7 @@ mod tests {
         #[test]
         fn tags_update_aggregate_state() -> Result<(), NoteError> {
             let mut note = fixtures::base_note()?;
-            let tag = Tag::new("#test")?;
+            let tag = Tag::try_new("#test")?;
             note.add_tag(tag);
 
             assert_eq!(note.tags().count(), 1, "Note should have 1 tag");
@@ -738,7 +738,7 @@ mod tests {
         #[test]
         fn headings_update_aggregate_state() -> Result<(), NoteError> {
             let mut note = fixtures::base_note()?;
-            let heading = Heading::new(
+            let heading = Heading::try_new(
                 HeadingLevel::try_new(1)?,
                 "H1",
                 SourceByteOffset::new(0),

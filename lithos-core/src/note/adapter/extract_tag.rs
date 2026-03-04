@@ -57,7 +57,7 @@ impl<'config> TagExtractor<'config> {
                 continue;
             }
 
-            if let Ok(tag) = NoteTag::from_token(token) {
+            if let Ok(tag) = NoteTag::try_from_token(token) {
                 self.add_tag(tag);
             }
         }
@@ -110,7 +110,7 @@ pub(super) fn scan_tags(text: &str) -> Vec<NoteTag> {
         }
 
         if raw.len() > 1
-            && let Ok(tag) = NoteTag::from_token(&raw)
+            && let Ok(tag) = NoteTag::try_from_token(&raw)
         {
             tags.push(tag);
         }

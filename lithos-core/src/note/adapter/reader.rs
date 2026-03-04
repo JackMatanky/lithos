@@ -437,7 +437,7 @@ impl<'config> NoteReader<'config> {
     /// # )?;
     /// let reader = FsReader::new(root.as_path());
     /// let note_reader = NoteReader::new(&config);
-    /// let mut note = Note::new(NoteId::new(), "test.md")?;
+    /// let mut note = Note::try_new(NoteId::new(), "test.md")?;
     ///
     /// note_reader.apply(&reader, &mut note, Path::new("test.md"))?;
     /// assert_eq!(note.tasks().count(), 1);
@@ -827,7 +827,7 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "- [ ] #task Review PR\n";
 
-        let mut note = Note::new(NoteId::new(), "notes/test.md")?;
+        let mut note = Note::try_new(NoteId::new(), "notes/test.md")?;
 
         reader.apply_str(&mut note, markdown)?;
 
@@ -846,7 +846,7 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "# Section 1\n\nContent\n\n## Section 2";
 
-        let mut note = Note::new(NoteId::new(), "notes/test.md")?;
+        let mut note = Note::try_new(NoteId::new(), "notes/test.md")?;
 
         reader.apply_str(&mut note, markdown)?;
 
@@ -1039,7 +1039,7 @@ mod tests {
         let reader = NoteReader::new(&config);
         let markdown = "[[link1]] and [[link2]]";
 
-        let mut note = Note::new(NoteId::new(), "notes/test.md")?;
+        let mut note = Note::try_new(NoteId::new(), "notes/test.md")?;
 
         reader.apply_str(&mut note, markdown)?;
 
@@ -1150,7 +1150,7 @@ title: My Note
 
 # Heading";
 
-        let mut note = Note::new(NoteId::new(), "notes/test.md")?;
+        let mut note = Note::try_new(NoteId::new(), "notes/test.md")?;
 
         reader.apply_str(&mut note, markdown)?;
 
