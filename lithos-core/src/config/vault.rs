@@ -23,6 +23,113 @@ use super::{
 //                     Public Domain Types                     //
 // ----------------------------------------------------------- //
 
+/// Version number for vault configuration staleness tracking.
+///
+/// Incremented each time the vault config file changes. Used to determine
+/// whether the cached merged config needs rebuilding.
+///
+/// # Version Sequence
+///
+/// - Starts at 1 (not 0)
+/// - Increments on each vault config file change
+/// - Independent of `GlobalVersion` and `Config::Version`
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(transparent)]
+pub struct VaultVersion(u64);
+
+impl VaultVersion {
+    /// Returns the initial version.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::config::vault::VaultVersion;
+    ///
+    /// let version = VaultVersion::initial();
+    /// assert_eq!(version.value(), 1);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn initial() -> Self {
+        Self(1)
+    }
+
+    /// Returns the numeric version value.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::config::vault::VaultVersion;
+    ///
+    /// let version = VaultVersion::initial();
+    /// assert_eq!(version.value(), 1);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+
+    /// Returns the next version, or an overflow error.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] if the version number
+    /// overflows.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::config::vault::VaultVersion;
+    ///
+    /// let version = VaultVersion::initial();
+    /// let next = version.next().expect("version increment succeeded");
+    /// assert_eq!(next.value(), 2);
+    /// ```
+    #[inline]
+    pub fn next(self) -> Result<Self, ConfigError> {
+        self.0.checked_add(1).map(Self).ok_or_else(|| {
+            ConfigError::ValidationFailed {
+                field: "vault_version".into(),
+                message: "vault version overflow".into(),
+            }
+        })
+    }
+}
+
+impl std::fmt::Display for VaultVersion {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<u64> for VaultVersion {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        if value == 0 {
+            return Err(ConfigError::ValidationFailed {
+                field: "vault_version".into(),
+                message: "vault version cannot be zero".into(),
+            });
+        }
+        Ok(Self(value))
+    }
+}
+
 /// Vault-specific configuration overrides.
 ///
 /// `Vault` contains settings that are specific to a single vault and
@@ -583,6 +690,40 @@ mod tests {
 
     use super::*;
     use crate::config::logging::{LogLevel, Logging};
+
+    mod version {
+        use super::*;
+
+        #[test]
+        fn initial_is_one() {
+            assert_eq!(VaultVersion::initial().value(), 1);
+        }
+
+        #[test]
+        fn next_increments_value() {
+            let v = VaultVersion::initial();
+            let next = v.next().expect("increment should succeed");
+            assert_eq!(next.value(), 2);
+        }
+
+        #[test]
+        fn try_from_accepts_positive() {
+            let v = VaultVersion::try_from(42).expect("valid version");
+            assert_eq!(v.value(), 42);
+        }
+
+        #[test]
+        fn try_from_rejects_zero() {
+            let result = VaultVersion::try_from(0);
+            assert!(result.is_err(), "VaultVersion should reject zero");
+        }
+
+        #[test]
+        fn display_shows_value() {
+            let v = VaultVersion::initial();
+            assert_eq!(v.to_string(), "1");
+        }
+    }
 
     mod fixtures {
         use std::path::PathBuf;
