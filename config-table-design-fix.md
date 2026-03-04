@@ -64,9 +64,9 @@ pub(crate) const VAULT_CONFIG: TableDefinition<&str, &[u8]> =
     // Keys: "{vault_id}:{version}" → Vault
     // Example: "abc123:1" → Vault { ... }
 
-// Versioned final config (merged result)
-pub(crate) const CONFIG: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("config");
+// Versioned final config (result of merging global + vault)
+pub(crate) const CONFIG_VERSIONS: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("config_versions");
     // Keys: "{vault_id}:{version}" → Config
     // Example: "abc123:1" → Config { ... }
 
@@ -92,7 +92,7 @@ Instead of a separate `MERGED_CONFIG_ACTIVE` table, track the active version in 
 fn get_active_version(&self, vault_id: VaultId) -> Result<Option<Version>, DbError> {
     let prefix = format!("{vault_id}:");
     let versions: Vec<Version> = self.db
-        .scan_range(CONFIG, &prefix..)
+        .scan_range(CONFIG_VERSIONS, &prefix..)
         .filter_map(|(key, _)| {
             key.strip_prefix(&prefix)
                 .and_then(|v| v.parse::<u64>().ok())
@@ -141,7 +141,7 @@ pub struct Config {
 - Verify correctness in tests
 
 ### Phase 3: Remove Old Tables (Breaking)
-- Remove `CONFIG`, `MERGED_CONFIG_VERSIONS`, `MERGED_CONFIG_ACTIVE`
+- Remove old `CONFIG` (mixed types), `MERGED_CONFIG_VERSIONS`, `MERGED_CONFIG_ACTIVE`
 - Update Command port to only write to new tables
 - Update all references
 
@@ -162,7 +162,8 @@ pub struct Config {
 ### New Tables
 - [ ] Add `GLOBAL_CONFIG` table definition
 - [ ] Add `VAULT_CONFIG` table definition
-- [ ] Rename `MERGED_CONFIG_VERSIONS` → `CONFIG`
+- [ ] Rename `MERGED_CONFIG_VERSIONS` → `CONFIG_VERSIONS`
+- [ ] Remove old `CONFIG` table (mixed types)
 - [ ] Remove `MERGED_CONFIG_ACTIVE` table
 - [ ] Update `CONFIG_METADATA` keys to include version
 
@@ -175,8 +176,8 @@ pub struct Config {
 ### Query Port
 - [ ] Update `get_global(version)` → returns Global at specific version
 - [ ] Update `get_vault(vault_id, version)` → returns Vault at specific version
-- [ ] Update `find_merged` → `find_config(vault_id, version)`
-- [ ] Add `get_active_version(vault_id)` → scans for max version
+- [ ] Rename `find_merged` → `find_config(vault_id, version)` (uses CONFIG_VERSIONS)
+- [ ] Add `get_active_version(vault_id)` → scans CONFIG_VERSIONS for max version
 - [ ] Update `with_archived` to use new key format
 
 ### Service Layer
@@ -199,18 +200,21 @@ pub struct Config {
 let global = Global::default();
 let version = GlobalVersion::initial(); // or compute next
 command.record_global(&global, version, created_at, modified_at)?;
+// Writes to: GLOBAL_CONFIG["{version}"]
 
 // Record a new vault config (version auto-increments per vault)
 let vault = Vault::default();
 let version = VaultVersion::initial(); // or compute next
 command.record_vault(vault_id, &vault, version, created_at, modified_at)?;
+// Writes to: VAULT_CONFIG["{vault_id}:{version}"]
 
 // Merge and record final config
 let config = Config::build(&global, &vault, vault_id, vault_root)?;
 let config_version = Version::initial(); // or compute next
 command.record_config(vault_id, &config, config_version)?;
+// Writes to: CONFIG_VERSIONS["{vault_id}:{version}"]
 
-// Query active config (scans for max version)
+// Query active config (scans CONFIG_VERSIONS for max version)
 let active_version = query.get_active_version(vault_id)?;
 let config = query.find_config(vault_id, active_version)?;
 
