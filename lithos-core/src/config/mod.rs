@@ -125,24 +125,64 @@ pub mod value;
 pub(crate) mod db_table {
     use redb::TableDefinition;
 
-    pub(crate) const CONFIG: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("config");
-    pub(crate) const MERGED_CONFIG_VERSIONS: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("merged_config_versions");
-    pub(crate) const MERGED_CONFIG_ACTIVE: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("merged_config_active");
+    /// Versioned global configuration.
+    ///
+    /// Keys: `"{version}"` → `Global`.
+    /// Example: `"1"` → `Global { ... }`.
+    pub(crate) const GLOBAL_CONFIG: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("global_config");
+
+    /// Versioned vault-specific configuration.
+    ///
+    /// Keys: `"{vault_id}:{version}"` → `Vault`.
+    /// Example: `"abc123:1"` → `Vault { ... }`.
+    pub(crate) const VAULT_CONFIG: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("vault_config");
+
+    /// Versioned final configuration (result of merging global + vault).
+    ///
+    /// Keys: `"{vault_id}:{version}"` → `Config`.
+    /// Example: `"abc123:1"` → `Config { ... }`.
+    pub(crate) const CONFIG_VERSIONS: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("config_versions");
+
+    /// Vault path bidirectional mapping.
+    ///
+    /// Keys: `vault_root.as_key()` → `VaultId`.
     pub(crate) const VAULT_ID_BY_PATH: TableDefinition<&str, &[u8]> =
         TableDefinition::new("vault_id_by_path");
+
+    /// Vault ID to path reverse mapping.
+    ///
+    /// Keys: `vault_id.to_string()` → `VaultRoot`.
     pub(crate) const VAULT_PATH_BY_ID: TableDefinition<&str, &[u8]> =
         TableDefinition::new("vault_path_by_id");
 
     /// Stores metadata for config staleness checking.
     ///
     /// Keys:
-    /// - `"global"` → Global config metadata
-    /// - `vault_id.to_string()` → Vault config metadata
+    /// - `"global:{version}"` → Global config metadata
+    /// - `"{vault_id}:{version}"` → Vault config metadata
     pub(crate) const CONFIG_METADATA: TableDefinition<&str, &[u8]> =
         TableDefinition::new("config_metadata");
+
+    // ────────────────────────────────────────────────────────────────
+    // Legacy tables (to be removed after migration)
+    // ────────────────────────────────────────────────────────────────
+
+    #[deprecated(note = "Use GLOBAL_CONFIG and VAULT_CONFIG instead")]
+    pub(crate) const CONFIG: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("config");
+
+    #[deprecated(note = "Use CONFIG_VERSIONS instead")]
+    pub(crate) const MERGED_CONFIG_VERSIONS: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("merged_config_versions");
+
+    #[deprecated(
+        note = "Active version is computed via scan of CONFIG_VERSIONS"
+    )]
+    pub(crate) const MERGED_CONFIG_ACTIVE: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("merged_config_active");
 }
 
 use self::adapter::{command::CommandAdapter, query::QueryAdapter};
