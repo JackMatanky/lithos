@@ -8,12 +8,22 @@
 
 ## Implementation Status Tracker
 
-### Phase 1: Add Metadata Storage (1 hour) - ⏳ NOT STARTED
+### Phase 1: Add Metadata Storage (1 hour) - ✅ COMPLETED
 
-- [ ] Create `config/adapter/stored.rs` with `ConfigMetadata` type
-- [ ] Add `CONFIG_METADATA` table to `config/mod.rs`
-- [ ] Add `GlobalVersion` type to `config/global.rs`
-- [ ] Add `VaultVersion` type to `config/vault.rs`
+- [x] Create `config/adapter/stored.rs` with `ConfigMetadata` type
+- [x] Add `CONFIG_METADATA` table to `config/mod.rs`
+- [x] Add `GlobalVersion` type to `config/global.rs`
+- [x] Add `VaultVersion` type to `config/vault.rs`
+
+**Commits:**
+- `d76384fc` - feat(config): add metadata storage for hybrid ingestion (Phase 1.1)
+- `c348c581` - feat(config): add GlobalVersion and VaultVersion types (Phase 1.2-1.3)
+
+**Summary:**
+- ConfigMetadata tracks `created_at`, `modified_at`, `recorded_at` timestamps
+- GlobalVersion and VaultVersion types start at 1, increment with `next()`
+- All types have proper rkyv serialization and comprehensive tests (18 tests total)
+- Module kept internal (`pub(crate)`) to maintain encapsulation
 
 ### Phase 2: Global Config Path Resolution (30 min) - ⏳ NOT STARTED
 
