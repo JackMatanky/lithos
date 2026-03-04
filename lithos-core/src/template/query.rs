@@ -107,7 +107,7 @@ mod tests {
 
         let tn = TemplateName::try_from("test").unwrap();
         let template =
-            Template::new(&tn, None, vec![], HashMap::new()).unwrap();
+            Template::try_new(&tn, None, vec![], HashMap::new()).unwrap();
         command.create(&template).unwrap();
 
         // Zero-copy read

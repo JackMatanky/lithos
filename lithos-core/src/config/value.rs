@@ -95,7 +95,7 @@ impl FieldSpec {
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if the spec is invalid.
-    pub fn from_raw(
+    pub fn try_from_raw(
         name: &str,
         raw: RawFieldSpec,
     ) -> Result<Self, ConfigError> {
@@ -480,7 +480,7 @@ impl DateSpec {
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if the spec is invalid.
-    pub fn from_raw(raw: RawDateFieldSpec) -> Result<Self, ConfigError> {
+    pub fn try_from_raw(raw: RawDateFieldSpec) -> Result<Self, ConfigError> {
         let keyword = FieldName::try_new(raw.keyword)?;
         validate_chrono_format(&raw.format, "task.dates.format")?;
         Ok(Self {

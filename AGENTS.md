@@ -93,6 +93,20 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 
 For deeper guidance on Rust style/module organization/tooling and crate-specific usage, start at [docs/refs/rust/README.md](docs/refs/rust/README.md).
 
+### Naming Conventions (CRITICAL - Read First)
+
+**All method and function names MUST follow our standardized taxonomy**: [docs/refs/rust/naming-taxonomy.md](docs/refs/rust/naming-taxonomy.md)
+
+**Quick Reference for CQRS Ports**:
+- **Query methods**: `find_*` (optional), `get_*` (singleton), `list_*` (multiple), `*_many` (bulk), `with_*` (zero-copy), `is_*` (boolean)
+- **Command methods**: `create`, `save`, `update`, `delete`, `record_*` (task-oriented), `activate_*` (state transitions), `*_many` (bulk)
+- **Conversions**: `as_*` (free), `to_*` (expensive), `into_*` (consumes)
+- **Constructors**: `new()` (infallible), `try_new()` (fallible), `from_*` (conversions), `with_*` (builders)
+- **NO `get_` prefix** on simple getters - use field name directly: `name()` not `get_name()`
+- **Events**: PascalCase, past tense (`NoteCreated` not `CreateNote`)
+
+See the full taxonomy document for comprehensive guidelines, examples, and anti-patterns.
+
 ### Repo-Specific Rust Notes (High Signal)
 
 - **Clippy suppressions**: Prefer local `#[expect(clippy::lint_name, reason = "...")]` over `#[allow(...)]`; avoid crate/module-wide suppressions unless it’s a deliberate policy.

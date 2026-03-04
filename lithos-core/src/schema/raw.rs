@@ -54,7 +54,12 @@ pub struct RawSchema {
     /// Schema format version (defaults to "1.0" if not specified).
     #[serde(rename = "$version", default = "default_schema_version")]
     pub version: Box<str>,
-    /// Unique schema name.
+    /// Schema name (always derived from filename by Ingestor).
+    ///
+    /// This field is NOT read from the file - it is always set by the Ingestor
+    /// based on the filename (without extension). The file format does not
+    /// include a `name` field.
+    #[serde(skip)]
     pub name: Box<str>,
     /// Optional parent schema name for inheritance.
     pub extends: Option<Box<str>>,
@@ -669,7 +674,16 @@ impl RawOptions {
                 let mut entries: Vec<_> = map
                     .into_iter()
                     .filter_map(|(key, value)| {
-                        key.parse::<u32>().ok().map(|order| (order, value))
+                        key.parse::<u32>()
+                            .inspect_err(|e| {
+                                tracing::debug!(
+                                    key = %key,
+                                    error = %e,
+                                    "Option map key is not a valid u32, entry will be skipped"
+                                );
+                            })
+                            .ok()
+                            .map(|order| (order, value))
                     })
                     .collect();
                 entries.sort_by_key(|&(order, _)| order);

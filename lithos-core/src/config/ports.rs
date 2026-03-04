@@ -118,16 +118,29 @@ pub(crate) trait CommandState: Send + Sync {
     ///
     /// # Errors
     /// Returns a storage-specific error if the read fails.
-    fn get_next_version(
-        &self,
-        vault_id: VaultId,
-    ) -> Result<Version, Self::Error>;
+    fn next_version(&self, vault_id: VaultId) -> Result<Version, Self::Error>;
 }
 
 /// Query port for configuration read operations.
 pub trait Query: Send + Sync {
     /// Storage error type for query operations.
     type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Find a merged configuration snapshot as owned data (COLD PATH).
+    ///
+    /// Use this for operations that need to move/store the config, or when
+    /// the closure pattern is inconvenient. For hot paths, prefer
+    /// [`with_archived`](Self::with_archived).
+    ///
+    /// Returns `None` if the specific version does not exist.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the lookup or deserialization fails.
+    fn find_merged(
+        &self,
+        vault_id: VaultId,
+        version: Version,
+    ) -> Result<Option<Config>, Self::Error>;
 
     /// Fetches the active merged configuration version for a vault.
     ///
@@ -143,20 +156,6 @@ pub trait Query: Send + Sync {
     /// # Errors
     /// Returns a storage-specific error if the lookup fails.
     fn get_global(&self) -> Result<Option<Global>, Self::Error>;
-
-    /// Fetches a merged configuration snapshot as owned data (COLD PATH).
-    ///
-    /// Use this for operations that need to move/store the config, or when
-    /// the closure pattern is inconvenient. For hot paths, prefer
-    /// [`with_archived`](Self::with_archived).
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the lookup or deserialization fails.
-    fn get_merged_owned(
-        &self,
-        vault_id: VaultId,
-        version: Version,
-    ) -> Result<Option<Config>, Self::Error>;
 
     /// Fetches the persisted vault configuration, if present.
     ///

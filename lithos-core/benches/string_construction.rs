@@ -294,21 +294,23 @@ fn bench_constructor_apis(c: &mut Criterion) {
 
     // Optimized: SchemaName with &str
     group.bench_function("schema_name_from_str", |b| {
-        b.iter(|| SchemaName::new(black_box("my-schema")).expect("valid name"));
+        b.iter(|| {
+            SchemaName::try_new(black_box("my-schema")).expect("valid name")
+        });
     });
 
     // Baseline: SchemaName from String (shows forced allocation cost)
     group.bench_function("schema_name_from_owned_string", |b| {
         b.iter(|| {
             let owned = black_box("my-schema").to_owned();
-            SchemaName::new(&owned).expect("valid name")
+            SchemaName::try_new(&owned).expect("valid name")
         });
     });
 
     // Optimized: PropertyName with &str
     group.bench_function("property_name_from_str", |b| {
         b.iter(|| {
-            PropertyName::new(black_box("my-property")).expect("valid name")
+            PropertyName::try_new(black_box("my-property")).expect("valid name")
         });
     });
 
@@ -316,7 +318,7 @@ fn bench_constructor_apis(c: &mut Criterion) {
     group.bench_function("property_name_from_owned_string", |b| {
         b.iter(|| {
             let owned = black_box("my-property").to_owned();
-            PropertyName::new(&owned).expect("valid name")
+            PropertyName::try_new(&owned).expect("valid name")
         });
     });
 
@@ -340,7 +342,7 @@ fn bench_constructor_apis(c: &mut Criterion) {
         b.iter(|| {
             let name = TemplateName::try_from(black_box("my-template"))
                 .expect("valid name");
-            Template::new(&name, None, vec![], HashMap::new())
+            Template::try_new(&name, None, vec![], HashMap::new())
                 .expect("valid template")
         });
     });
@@ -351,7 +353,7 @@ fn bench_constructor_apis(c: &mut Criterion) {
             let owned = black_box("my-template").to_owned();
             let name =
                 TemplateName::try_from(owned.as_str()).expect("valid name");
-            Template::new(&name, None, vec![], HashMap::new())
+            Template::try_new(&name, None, vec![], HashMap::new())
                 .expect("valid template")
         });
     });
@@ -393,9 +395,9 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
         b.iter(|| {
             // Task 6: Optimized constructors (&str)
             let schema_name =
-                SchemaName::new("workflow-schema").expect("valid name");
+                SchemaName::try_new("workflow-schema").expect("valid name");
             let prop_name =
-                PropertyName::new("priority").expect("valid property");
+                PropertyName::try_new("priority").expect("valid property");
             let date_spec =
                 DateSpec::try_new("%Y-%m-%d").expect("valid format");
 
@@ -412,8 +414,9 @@ fn bench_aggregate_workflow(c: &mut Criterion) {
             let template_uuid = Uuid::now_v7();
             let name = TemplateName::try_from("workflow-template")
                 .expect("valid name");
-            let template = Template::new(&name, None, vec![], HashMap::new())
-                .expect("valid template");
+            let template =
+                Template::try_new(&name, None, vec![], HashMap::new())
+                    .expect("valid template");
 
             db.put_by_uuid(TEMPLATES_TABLE, template_uuid, &template)
                 .expect("put_by_uuid");

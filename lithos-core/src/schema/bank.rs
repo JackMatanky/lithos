@@ -34,7 +34,7 @@ use super::{
 /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut bank = PropertyBank::new();
-/// let name = PropertyName::new("is_active")?;
+/// let name = PropertyName::try_new("is_active")?;
 /// let spec = PropertySpec::Bool(BoolSpec::default());
 /// let id = PropertyId::new();
 /// let property = Property::new(
@@ -46,7 +46,7 @@ use super::{
 /// );
 ///
 /// bank.register(property)?;
-/// assert!(bank.has_name(&name), "Bank should contain property name");
+/// assert!(bank.has(&name), "Bank should contain property name");
 /// # Ok(())
 /// # }
 /// ```
@@ -107,7 +107,7 @@ impl PropertyBank {
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn from_raw(
+    pub fn try_from_raw(
         raw: super::raw::RawPropertyBank,
         existing: Option<&Self>,
     ) -> Result<Self, SchemaError> {
@@ -127,7 +127,7 @@ impl PropertyBank {
 
             // Reuse ID from existing bank if name matches
             let id = existing
-                .and_then(|b| b.get_by_name(&prop_name))
+                .and_then(|b| b.get(&prop_name))
                 .map_or_else(PropertyId::new, super::property::Property::id);
 
             let property = Property::new(
@@ -141,13 +141,23 @@ impl PropertyBank {
             bank.register(property)?;
         }
 
+        // Emit PropertyBankLoaded event
+        let event = super::events::Events::PropertyBankLoaded(
+            super::events::PropertyBankLoaded::new(
+                bank.all().count(),
+                bank.version(),
+                super::aggregate::Timestamp::now(),
+            ),
+        );
+        bank.add_event(event);
+
         Ok(bank)
     }
 
     /// Reconstruct a `PropertyBank` from stored properties.
     ///
     /// This skips event emission and preserves the provided version.
-    pub(crate) fn reconstruct(
+    pub(crate) fn try_reconstruct(
         properties: Vec<Property>,
         version: BankVersion,
     ) -> Result<Self, SchemaError> {
@@ -204,7 +214,7 @@ impl PropertyBank {
     ///
     /// let mut bank = PropertyBank::new();
     ///
-    /// let name = PropertyName::new("is_active")?;
+    /// let name = PropertyName::try_new("is_active")?;
     /// let spec = PropertySpec::Bool(BoolSpec::default());
     /// let id = PropertyId::new();
     /// let property = Property::new(
@@ -262,39 +272,16 @@ impl PropertyBank {
     /// use lithos_core::schema::{bank::PropertyBank, property::PropertyName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let bank = PropertyBank::new();
-    /// let name = PropertyName::new("flag")?;
-    /// let missing = bank.get_by_name(&name);
+    /// let name = PropertyName::try_new("flag")?;
+    /// let missing = bank.get(&name);
     /// assert!(missing.is_none());
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn get_by_name(&self, name: &PropertyName) -> Option<&Property> {
+    pub fn get(&self, name: &PropertyName) -> Option<&Property> {
         self.properties.get(name)
-    }
-
-    /// Gets a property by name (string).
-    ///
-    /// # Errors
-    /// Returns `SchemaError::PropertyNotFound` if the property does not exist
-    /// or `SchemaError::InvalidPropertyName` if the name is invalid.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::schema::bank::PropertyBank;
-    ///
-    /// let bank = PropertyBank::new();
-    ///
-    /// assert!(bank.get("any").is_err(), "Missing property should error");
-    /// ```
-    #[inline]
-    pub fn get(&self, key: &str) -> Result<&Property, SchemaError> {
-        // Fall back to name lookup
-        let name = PropertyName::try_from(key)?;
-        self.get_by_name(&name)
-            .ok_or_else(|| SchemaError::PropertyNotFound(key.into()))
     }
 
     /// Checks if a property exists by name.
@@ -304,14 +291,14 @@ impl PropertyBank {
     /// use lithos_core::schema::{bank::PropertyBank, property::PropertyName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let bank = PropertyBank::new();
-    /// let name = PropertyName::new("flag")?;
-    /// assert!(!bank.has_name(&name));
+    /// let name = PropertyName::try_new("flag")?;
+    /// assert!(!bank.has(&name));
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn has_name(&self, name: &PropertyName) -> bool {
+    pub fn has(&self, name: &PropertyName) -> bool {
         self.properties.contains_key(name)
     }
 
@@ -451,6 +438,21 @@ impl BankVersion {
         self.0
     }
 
+    /// Constructs a version from a raw integer.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::bank::BankVersion;
+    ///
+    /// let version = BankVersion::from_u64(5);
+    /// assert_eq!(version.as_u64(), 5);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn from_u64(value: u64) -> Self {
+        Self(value)
+    }
+
     /// Returns true when this version is older than the other.
     ///
     /// # Examples
@@ -512,7 +514,7 @@ mod tests {
             let mut bank = PropertyBank::new();
             let property = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
-                PropertyName::new("flag")?,
+                PropertyName::try_new("flag")?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
@@ -544,7 +546,7 @@ mod tests {
             // GIVEN: a PropertyBank and an existing property
             let mut bank = PropertyBank::new();
             let spec = PropertySpec::String(StringSpec::default());
-            let name = PropertyName::new("test").expect("Valid name");
+            let name = PropertyName::try_new("test").expect("Valid name");
             let prop = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
                 name,
@@ -576,7 +578,7 @@ mod tests {
             let id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
 
             let spec1 = PropertySpec::String(StringSpec::default());
-            let name1 = PropertyName::new("status").expect("Valid name");
+            let name1 = PropertyName::try_new("status").expect("Valid name");
             let prop1 = Property::new(
                 id,
                 name1,
@@ -589,7 +591,7 @@ mod tests {
 
             // WHEN: attempting to register different content with same ID
             let spec2 = PropertySpec::Bool(BoolSpec::default());
-            let name2 = PropertyName::new("priority").expect("Valid name");
+            let name2 = PropertyName::try_new("priority").expect("Valid name");
             let prop2 = Property::new(
                 id,
                 name2,
@@ -623,10 +625,10 @@ mod tests {
             let (bank, _id) = fixtures::bank_with_property()
                 .expect("Valid property bank fixture");
 
-            let name = PropertyName::new("flag").expect("Valid name");
+            let name = PropertyName::try_new("flag").expect("Valid name");
 
             assert!(
-                bank.get_by_name(&name).is_some(),
+                bank.get(&name).is_some(),
                 "Registered property should be retrievable by name: 'flag'"
             );
         }
@@ -638,7 +640,7 @@ mod tests {
             // GIVEN: a PropertyBank with a registered property
             let mut bank = PropertyBank::new();
             let spec1 = PropertySpec::String(StringSpec::default());
-            let name = PropertyName::new("test").expect("Valid name");
+            let name = PropertyName::try_new("test").expect("Valid name");
             let prop1 = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
                 name.clone(),
@@ -672,7 +674,7 @@ mod tests {
         #[test]
         fn from_raw_reuses_ids_by_name() -> Result<(), SchemaError> {
             let mut bank = PropertyBank::new();
-            let name = PropertyName::new("status")?;
+            let name = PropertyName::try_new("status")?;
             let prop = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_A),
                 name.clone(),
@@ -692,9 +694,9 @@ mod tests {
                 version: "1.0".into(),
                 properties,
             };
-            let rebuilt = PropertyBank::from_raw(raw, Some(&bank))?;
+            let rebuilt = PropertyBank::try_from_raw(raw, Some(&bank))?;
             let rebuilt_prop =
-                rebuilt.get_by_name(&name).expect("Expected rebuilt property");
+                rebuilt.get(&name).expect("Expected rebuilt property");
 
             let expected_id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
             if rebuilt_prop.id() != expected_id {
@@ -710,14 +712,14 @@ mod tests {
         /// 3.2-UNIT-011: `property_bank_accessors_cover_names`.
         /// Priority: P1.
         #[test]
-        fn property_bank_has_name() {
+        fn property_bank_has() {
             let (bank, _id) = fixtures::bank_with_property()
                 .expect("Valid property bank fixture");
 
-            let name = PropertyName::new("flag").expect("Valid name");
+            let name = PropertyName::try_new("flag").expect("Valid name");
 
             assert!(
-                bank.has_name(&name),
+                bank.has(&name),
                 "PropertyBank should contain property by name 'flag'"
             );
         }
@@ -725,27 +727,14 @@ mod tests {
         /// 3.2-UNIT-011: `property_bank_accessors_cover_names`.
         /// Priority: P1.
         #[test]
-        fn property_bank_gets_by_name() {
+        fn property_bank_get() {
             let (bank, _id) = fixtures::bank_with_property()
                 .expect("Valid property bank fixture");
 
-            let name = PropertyName::new("flag").expect("Valid name");
+            let name = PropertyName::try_new("flag").expect("Valid name");
 
-            assert!(
-                bank.get_by_name(&name).is_some(),
-                "Should retrieve property by name: 'flag'"
-            );
-        }
-
-        /// 3.2-UNIT-011: `property_bank_accessors_cover_names`.
-        /// Priority: P1.
-        #[test]
-        fn property_bank_gets_by_name_string() {
-            let (bank, _id) = fixtures::bank_with_property()
-                .expect("Valid property bank fixture");
-
-            let result = bank.get("flag");
-            assert!(result.is_ok(), "Get should succeed: {result:?}");
+            let result = bank.get(&name);
+            assert!(result.is_some(), "Get should succeed: {result:?}");
         }
 
         /// 3.2-UNIT-011: `property_bank_events_emitted_on_registration`.

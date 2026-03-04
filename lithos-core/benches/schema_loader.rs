@@ -282,6 +282,9 @@
     clippy::arithmetic_side_effects,
     clippy::as_conversions,
     clippy::indexing_slicing,
+    clippy::type_complexity,
+    clippy::default_numeric_fallback,
+    clippy::excessive_nesting,
     dead_code,
     reason = "Benchmark code: simplified error handling, test-only functions"
 )]
@@ -298,10 +301,20 @@ use lithos_core::{
         raw::RawConfig,
         vault::{VaultId, VaultRoot},
     },
+    db::Database,
     fs::FsReader,
     schema::{
-        adapter::ingestor::Ingestor, aggregate::SchemaId, bank::PropertyBank,
-        dereferencer::Dereferencer, extender::Extender, raw::RawSchema,
+        adapter::{
+            command::CommandAdapter, ingestor::Ingestor, query::QueryAdapter,
+        },
+        aggregate::{Schema, SchemaId, Timestamp},
+        bank::{BankVersion, PropertyBank},
+        command::Command,
+        dereferencer::Dereferencer,
+        extender::Extender,
+        property::PropertyName,
+        query::Query,
+        raw::RawSchema,
         resolver::Resolver,
     },
 };
@@ -381,23 +394,23 @@ const PROPERTY_BANK_JSON: &str = r#"{
 const SCHEMAS: &[(&str, &str)] = &[
     (
         "task",
-        r#"{"name":"task","properties":{"date":{"$ref":"property_bank#/date_iso_8601"},"task_start":{"type":"date","format":"%Y-%m-%d"},"task_end":{"type":"date","format":"%Y-%m-%d"},"due_do":{"type":"string","options":["do","due"]},"pillar":{"$ref":"property_bank#/pillar"},"goal":{"$ref":"property_bank#/goal"},"context":{"$ref":"property_bank#/context"},"project":{"$ref":"property_bank#/project"},"parent_task":{"$ref":"property_bank#/parent_task"},"status":{"$ref":"property_bank#/task_status"},"type":{"type":"string","options":["action_item","habit","meeting","parent_task","project","ritual"]},"organization":{"$ref":"property_bank#/organization"},"contact":{"$ref":"property_bank#/contact"},"library":{"$ref":"property_bank#/library"}}}"#,
+        r#"{"properties":{"date":{"$ref":"property_bank#/date_iso_8601"},"task_start":{"type":"date","format":"%Y-%m-%d"},"task_end":{"type":"date","format":"%Y-%m-%d"},"due_do":{"type":"string","options":["do","due"]},"pillar":{"$ref":"property_bank#/pillar"},"goal":{"$ref":"property_bank#/goal"},"context":{"$ref":"property_bank#/context"},"project":{"$ref":"property_bank#/project"},"parent_task":{"$ref":"property_bank#/parent_task"},"status":{"$ref":"property_bank#/task_status"},"type":{"type":"string","options":["action_item","habit","meeting","parent_task","project","ritual"]},"organization":{"$ref":"property_bank#/organization"},"contact":{"$ref":"property_bank#/contact"},"library":{"$ref":"property_bank#/library"}}}"#,
     ),
     (
         "task_project",
-        r#"{"name":"task_project","extends":"task","properties":{"type":{"type":"string","options":["project"]}},"excludes":["date","project","parent_task"]}"#,
+        r#"{"extends":"task","properties":{"type":{"type":"string","options":["project"]}},"excludes":["date","project","parent_task"]}"#,
     ),
     (
         "task_meeting",
-        r#"{"name":"task_meeting","extends":"task","properties":{"type":{"type":"string","options":["meeting"]}}}"#,
+        r#"{"extends":"task","properties":{"type":{"type":"string","options":["meeting"]}}}"#,
     ),
     (
         "lib",
-        r#"{"name":"lib","properties":{"title":{"$ref":"property_bank#/title"},"url":{"$ref":"property_bank#/url"},"doi":{"$ref":"property_bank#/doi"}}}"#,
+        r#"{"properties":{"title":{"$ref":"property_bank#/title"},"url":{"$ref":"property_bank#/url"},"doi":{"$ref":"property_bank#/doi"}}}"#,
     ),
     (
         "lib_book",
-        r#"{"name":"lib_book","extends":"lib","properties":{"volume":{"$ref":"property_bank#/volume"}}}"#,
+        r#"{"extends":"lib","properties":{"volume":{"$ref":"property_bank#/volume"}}}"#,
     ),
 ];
 
@@ -418,7 +431,7 @@ fn generate_vault(size: &VaultSize) -> TempDir {
             if written >= size.schema_count {
                 break;
             }
-            // Generate unique filename and update schema name in content
+            // Generate unique filename (schema name is derived from filename)
             let unique_name = if written < SCHEMAS.len() {
                 (*name).to_owned()
             } else {
@@ -426,18 +439,9 @@ fn generate_vault(size: &VaultSize) -> TempDir {
             };
             let filename = format!("{unique_name}.json");
 
-            // Update schema name in JSON content to be unique
-            let updated_content = if written < SCHEMAS.len() {
-                content.to_string()
-            } else {
-                // Replace the "name" field with unique name
-                content.replace(
-                    &format!(r#""name":"{name}""#),
-                    &format!(r#""name":"{unique_name}""#),
-                )
-            };
-
-            fs::write(schemas_dir.join(filename), updated_content)
+            // Write schema file (name field is deprecated, derived from
+            // filename)
+            fs::write(schemas_dir.join(filename), content)
                 .expect("Failed to write schema");
             written += 1;
         }
@@ -510,7 +514,7 @@ fn bench_property_bank_validation(c: &mut Criterion) {
 
     group.bench_function("validate", |b| {
         b.iter(|| {
-            let bank = PropertyBank::from_raw(raw_bank.clone(), None)
+            let bank = PropertyBank::try_from_raw(raw_bank.clone(), None)
                 .expect("Failed to validate");
             black_box(bank.all().count())
         });
@@ -535,13 +539,14 @@ fn bench_property_bank_lookup(c: &mut Criterion) {
         Ingestor::new(FsReader::new(vault.path().to_path_buf()), &config);
     let raw_bank = ingestor.load_raw_property_bank().expect("Failed to load");
     let bank =
-        PropertyBank::from_raw(raw_bank, None).expect("Failed to validate");
+        PropertyBank::try_from_raw(raw_bank, None).expect("Failed to validate");
 
+    let pillar_name = PropertyName::try_new("pillar").expect("valid name");
     group.bench_function("get_by_name", |b| {
         b.iter(|| {
             // Lookup a frequently-used property ($ref'd in task schema)
-            let prop = bank.get("pillar");
-            black_box(prop.is_ok())
+            let prop = bank.get(&pillar_name);
+            black_box(prop.is_some())
         });
     });
 
@@ -579,7 +584,7 @@ fn bench_dereferencing(c: &mut Criterion) {
                 let raw_bank = ingestor
                     .load_raw_property_bank()
                     .expect("Failed to load bank");
-                let bank = PropertyBank::from_raw(raw_bank, None)
+                let bank = PropertyBank::try_from_raw(raw_bank, None)
                     .expect("Failed to validate");
                 let raw_schemas = ingestor
                     .scan_raw_schemas()
@@ -635,7 +640,7 @@ fn bench_dag_construction(c: &mut Criterion) {
                 let raw_bank = ingestor
                     .load_raw_property_bank()
                     .expect("Failed to load bank");
-                let bank = PropertyBank::from_raw(raw_bank, None)
+                let bank = PropertyBank::try_from_raw(raw_bank, None)
                     .expect("Failed to validate");
                 let raw_schemas = ingestor
                     .scan_raw_schemas()
@@ -695,7 +700,7 @@ fn bench_property_merging(c: &mut Criterion) {
                 let raw_bank = ingestor
                     .load_raw_property_bank()
                     .expect("Failed to load bank");
-                let bank = PropertyBank::from_raw(raw_bank, None)
+                let bank = PropertyBank::try_from_raw(raw_bank, None)
                     .expect("Failed to validate");
                 let raw_schemas = ingestor
                     .scan_raw_schemas()
@@ -717,6 +722,207 @@ fn bench_property_merging(c: &mut Criterion) {
                     let resolved = Resolver::resolve(&tree, &HashMap::new())
                         .expect("Failed to resolve");
                     black_box(resolved.len())
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Database Operations: Batch vs Serial
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Helper: Create and populate a test database with schemas.
+fn setup_db_with_schemas(
+    schema_count: usize,
+) -> (TempDir, Database, Vec<SchemaId>) {
+    let db_dir = TempDir::new().expect("Failed to create temp DB dir");
+    let db_path = db_dir.path().join("bench.db");
+    let db = Database::open(&db_path).expect("Failed to open DB");
+
+    let cmd = Command::new(CommandAdapter::new(&db));
+
+    // Create and save PropertyBank
+    let bank = PropertyBank::new();
+    cmd.save_property_bank(&bank).expect("Failed to save bank");
+
+    // Generate schemas
+    let mut schema_ids = Vec::with_capacity(schema_count);
+    let mut schemas = Vec::with_capacity(schema_count);
+
+    for i in 0..schema_count {
+        let id = SchemaId::new();
+        schema_ids.push(id);
+
+        // Create a simple schema (name is unique)
+        let name_str = format!("schema_{i}");
+        let name =
+            lithos_core::schema::aggregate::SchemaName::try_new(&name_str)
+                .expect("Failed to create schema name");
+        let schema =
+            Schema::try_new(id, name, None, Vec::new()).expect("valid schema");
+        schemas.push(schema);
+    }
+
+    cmd.save_many(&schemas).expect("Failed to save schemas");
+
+    (db_dir, db, schema_ids)
+}
+
+/// Benchmark: Serial staleness checks (O(N) transactions).
+///
+/// Measures the cost of calling `is_schema_stale` N times individually.
+/// Each call creates its own database transaction, representing the
+/// original implementation before batch operations.
+///
+/// **Bottleneck**: Transaction creation overhead (N transactions)
+fn bench_staleness_serial(c: &mut Criterion) {
+    let mut group = c.benchmark_group("staleness_checks/serial");
+
+    for size in VAULT_SIZES {
+        group.throughput(Throughput::Elements(size.schema_count as u64));
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size.name),
+            size,
+            |b, size| {
+                let (_db_dir, db, schema_ids) =
+                    setup_db_with_schemas(size.schema_count);
+                let qry = Query::new(QueryAdapter::new(&db));
+
+                b.iter(|| {
+                    let mut stale_count = 0;
+                    for &id in &schema_ids {
+                        let is_stale = qry
+                            .is_schema_stale(
+                                id,
+                                None,
+                                None,
+                                BankVersion::initial(),
+                            )
+                            .expect("Staleness check failed");
+                        if is_stale {
+                            stale_count += 1;
+                        }
+                    }
+                    black_box(stale_count)
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+/// Benchmark: Batch staleness checks (O(1) transaction).
+///
+/// Measures the cost of calling `batch_is_stale` once for all schemas.
+/// Single database transaction for all staleness checks, representing
+/// the optimized implementation.
+///
+/// **Bottleneck**: Schema count (linear within transaction)
+fn bench_staleness_batch(c: &mut Criterion) {
+    let mut group = c.benchmark_group("staleness_checks/batch");
+
+    for size in VAULT_SIZES {
+        group.throughput(Throughput::Elements(size.schema_count as u64));
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size.name),
+            size,
+            |b, size| {
+                let (_db_dir, db, schema_ids) =
+                    setup_db_with_schemas(size.schema_count);
+                let qry = Query::new(QueryAdapter::new(&db));
+
+                // Build staleness checks
+                let checks: Vec<(
+                    SchemaId,
+                    Option<Timestamp>,
+                    Option<Timestamp>,
+                )> = schema_ids.iter().map(|&id| (id, None, None)).collect();
+
+                b.iter(|| {
+                    let staleness = qry
+                        .are_many_stale(&checks, BankVersion::initial())
+                        .expect("Batch staleness check failed");
+                    let stale_count =
+                        staleness.values().filter(|&&v| v).count();
+                    black_box(stale_count)
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+/// Benchmark: Serial schema lookups (O(N) transactions).
+///
+/// Measures the cost of calling `find_by_id` N times individually.
+/// Each call creates its own database transaction, representing the
+/// original implementation before batch operations.
+///
+/// **Bottleneck**: Transaction creation overhead (N transactions)
+fn bench_schema_lookup_serial(c: &mut Criterion) {
+    let mut group = c.benchmark_group("schema_lookup/serial");
+
+    for size in VAULT_SIZES {
+        group.throughput(Throughput::Elements(size.schema_count as u64));
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size.name),
+            size,
+            |b, size| {
+                let (_db_dir, db, schema_ids) =
+                    setup_db_with_schemas(size.schema_count);
+                let qry = Query::new(QueryAdapter::new(&db));
+
+                b.iter(|| {
+                    let mut found_count = 0;
+                    for &id in &schema_ids {
+                        if qry.find_by_id(id).expect("Lookup failed").is_some()
+                        {
+                            found_count += 1;
+                        }
+                    }
+                    black_box(found_count)
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+/// Benchmark: Batch schema lookups (O(1) transaction).
+///
+/// Measures the cost of calling `batch_find_by_ids` once for all schemas.
+/// Single database transaction for all lookups, representing the
+/// optimized implementation.
+///
+/// **Bottleneck**: Schema count (linear within transaction)
+fn bench_schema_lookup_batch(c: &mut Criterion) {
+    let mut group = c.benchmark_group("schema_lookup/batch");
+
+    for size in VAULT_SIZES {
+        group.throughput(Throughput::Elements(size.schema_count as u64));
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size.name),
+            size,
+            |b, size| {
+                let (_db_dir, db, schema_ids) =
+                    setup_db_with_schemas(size.schema_count);
+                let qry = Query::new(QueryAdapter::new(&db));
+
+                b.iter(|| {
+                    let schemas = qry
+                        .find_many_by_ids(&schema_ids)
+                        .expect("Batch lookup failed");
+                    black_box(schemas.len())
                 });
             },
         );
@@ -764,7 +970,7 @@ fn bench_full_pipeline(c: &mut Criterion) {
                         .expect("Failed to scan schemas");
 
                     // Stage 2: PropertyBank Validation
-                    let bank = PropertyBank::from_raw(raw_bank, None)
+                    let bank = PropertyBank::try_from_raw(raw_bank, None)
                         .expect("Failed to validate bank");
 
                     // Convert to (SchemaId, RawSchema) pairs
@@ -805,6 +1011,10 @@ criterion_group!(
     bench_dereferencing,
     bench_dag_construction,
     bench_property_merging,
+    bench_staleness_serial,
+    bench_staleness_batch,
+    bench_schema_lookup_serial,
+    bench_schema_lookup_batch,
     bench_full_pipeline,
 );
 criterion_main!(benches);

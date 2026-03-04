@@ -43,8 +43,8 @@ use super::{
 /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// let name = SchemaName::new("project-note")?;
-/// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+/// let name = SchemaName::try_new("project-note")?;
+/// let schema = Schema::try_new(SchemaId::new(), name, None, vec![])?;
 /// assert_eq!(
 ///     schema.properties().count(),
 ///     0,
@@ -176,8 +176,8 @@ impl Schema {
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let name = SchemaName::new("project-note")?;
-    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let name = SchemaName::try_new("project-note")?;
+    /// let schema = Schema::try_new(SchemaId::new(), name, None, vec![])?;
     /// assert_eq!(
     ///     schema.name().as_str(),
     ///     "project-note",
@@ -190,7 +190,7 @@ impl Schema {
     /// # Errors
     /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub fn new(
+    pub fn try_new(
         id: SchemaId,
         name: SchemaName,
         parent_id: Option<SchemaId>,
@@ -234,7 +234,7 @@ impl Schema {
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("existing")?;
+    /// let name = SchemaName::try_new("existing")?;
     /// let schema = Schema::resolve_existing(SchemaId::new(), name, None, vec![])?;
     /// assert_eq!(schema.name().as_str(), "existing");
     /// # Ok(())
@@ -297,8 +297,8 @@ impl Schema {
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("test")?;
-    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let name = SchemaName::try_new("test")?;
+    /// let schema = Schema::try_new(SchemaId::new(), name, None, vec![])?;
     /// let _id = schema.id();
     /// # Ok(())
     /// # }
@@ -315,8 +315,8 @@ impl Schema {
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("test")?;
-    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let name = SchemaName::try_new("test")?;
+    /// let schema = Schema::try_new(SchemaId::new(), name, None, vec![])?;
     /// let _name = schema.name();
     /// # Ok(())
     /// # }
@@ -333,8 +333,8 @@ impl Schema {
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("test")?;
-    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let name = SchemaName::try_new("test")?;
+    /// let schema = Schema::try_new(SchemaId::new(), name, None, vec![])?;
     /// assert!(schema.parent_id().is_none());
     /// # Ok(())
     /// # }
@@ -351,8 +351,8 @@ impl Schema {
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("test")?;
-    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let name = SchemaName::try_new("test")?;
+    /// let schema = Schema::try_new(SchemaId::new(), name, None, vec![])?;
     /// assert_eq!(schema.properties().count(), 0);
     /// # Ok(())
     /// # }
@@ -373,9 +373,9 @@ impl Schema {
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///
-    /// let name = SchemaName::new("test")?;
-    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
-    /// let missing = PropertyName::new("missing")?;
+    /// let name = SchemaName::try_new("test")?;
+    /// let schema = Schema::try_new(SchemaId::new(), name, None, vec![])?;
+    /// let missing = PropertyName::try_new("missing")?;
     /// assert!(
     ///     schema.get(&missing).is_none(),
     ///     "Missing property should return None"
@@ -398,9 +398,9 @@ impl Schema {
     ///     property::PropertyName,
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("test")?;
-    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
-    /// let prop = PropertyName::new("missing")?;
+    /// let name = SchemaName::try_new("test")?;
+    /// let schema = Schema::try_new(SchemaId::new(), name, None, vec![])?;
+    /// let prop = PropertyName::try_new("missing")?;
     /// assert!(!schema.has(&prop));
     /// # Ok(())
     /// # }
@@ -421,8 +421,8 @@ impl Schema {
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("test")?;
-    /// let schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let name = SchemaName::try_new("test")?;
+    /// let schema = Schema::try_new(SchemaId::new(), name, None, vec![])?;
     /// let _events = schema.pending_events();
     /// # Ok(())
     /// # }
@@ -446,8 +446,8 @@ impl Schema {
     /// ```
     /// use lithos_core::schema::aggregate::{Schema, SchemaId, SchemaName};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("test")?;
-    /// let mut schema = Schema::new(SchemaId::new(), name, None, vec![])?;
+    /// let name = SchemaName::try_new("test")?;
+    /// let mut schema = Schema::try_new(SchemaId::new(), name, None, vec![])?;
     /// let events = schema.take_events();
     /// // Process events (e.g., publish to event stream)
     /// assert!(!events.is_empty());
@@ -596,16 +596,16 @@ impl Default for SchemaId {
 /// use lithos_core::schema::aggregate::SchemaName;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// let name = SchemaName::new("project-note")?;
+/// let name = SchemaName::try_new("project-note")?;
 /// assert_eq!(name.as_str(), "project-note", "Schema name should match");
 ///
-/// let name2 = SchemaName::new("daily_note")?;
+/// let name2 = SchemaName::try_new("daily_note")?;
 /// assert_eq!(name2.as_str(), "daily_note", "Schema name should match");
 ///
-/// let name3 = SchemaName::new("myschema")?;
+/// let name3 = SchemaName::try_new("myschema")?;
 /// assert_eq!(name3.as_str(), "myschema", "Schema name should match");
 ///
-/// let invalid = SchemaName::new("");
+/// let invalid = SchemaName::try_new("");
 /// assert!(invalid.is_err(), "Empty name should be rejected");
 /// # Ok(())
 /// # }
@@ -647,13 +647,13 @@ impl SchemaName {
     /// ```
     /// use lithos_core::schema::aggregate::SchemaName;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("project")?;
-    /// assert_eq!(name.as_str(), "project");
+    /// let name = SchemaName::try_new("test")?;
+    /// assert_eq!(name.as_str(), "test");
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    pub fn new(name: &str) -> Result<Self, SchemaError> {
+    pub fn try_new(name: &str) -> Result<Self, SchemaError> {
         Self::validate(name)?;
         Ok(Self(name.into()))
     }
@@ -688,7 +688,7 @@ impl SchemaName {
     /// ```
     /// use lithos_core::schema::aggregate::SchemaName;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let name = SchemaName::new("project")?;
+    /// let name = SchemaName::try_new("project")?;
     /// assert_eq!(name.as_str(), "project");
     /// # Ok(())
     /// # }
@@ -733,7 +733,7 @@ impl TryFrom<&str> for SchemaName {
 
     #[inline]
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::new(value)
+        Self::try_new(value)
     }
 }
 
@@ -742,7 +742,7 @@ impl TryFrom<String> for SchemaName {
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_from(value.into_boxed_str())
+        Self::try_new(&value)
     }
 }
 
@@ -861,129 +861,134 @@ mod tests {
         use super::*;
 
         pub fn sample_schema() -> Result<Schema, SchemaError> {
-            let name = SchemaName::new("status")?;
-            let property = Property::new(
+            let name = SchemaName::try_new("status")?;
+            let prop = Property::new(
                 PropertyId::from_uuid(TEST_PROPERTY_ID_C),
-                PropertyName::new("flag")?,
+                PropertyName::try_new("flag")?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
-            Schema::new(
+
+            Schema::try_new(
                 SchemaId::from_uuid(TEST_SCHEMA_ID_A),
                 name,
                 None,
-                vec![property],
+                vec![prop],
             )
         }
-    }
 
-    const TEST_PROPERTY_ID_C: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0703);
-    const TEST_SCHEMA_ID_A: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0704);
+        const TEST_PROPERTY_ID_C: Uuid =
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0703);
+        const TEST_SCHEMA_ID_A: Uuid =
+            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0704);
 
-    mod schema {
-        use super::*;
+        mod schema {
+            use super::*;
 
-        /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
-        /// Priority: P1.
-        #[test]
-        fn schema_name_accessors_return_inner_value() {
-            let schema =
-                fixtures::sample_schema().expect("Valid schema fixture");
+            /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
+            /// Priority: P1.
+            #[test]
+            fn schema_name_accessors_return_inner_value() {
+                let schema =
+                    fixtures::sample_schema().expect("Valid schema fixture");
 
-            assert_eq!(
-                schema.name().as_str(),
-                "status",
-                "Schema name should expose inner string"
-            );
-        }
+                assert_eq!(
+                    schema.name().as_str(),
+                    "status",
+                    "Schema name should expose inner string"
+                );
+            }
 
-        /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
-        /// Priority: P1.
-        #[test]
-        fn schema_name_as_ref_returns_expected_value() {
-            let schema =
-                fixtures::sample_schema().expect("Valid schema fixture");
+            /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
+            /// Priority: P1.
+            #[test]
+            fn schema_name_as_ref_returns_expected_value() {
+                let schema =
+                    fixtures::sample_schema().expect("Valid schema fixture");
 
-            assert_eq!(
-                schema.name().as_ref(),
-                "status",
-                "Schema name as_ref should match"
-            );
-        }
+                assert_eq!(
+                    schema.name().as_ref(),
+                    "status",
+                    "Schema name as_ref should match"
+                );
+            }
 
-        /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
-        /// Priority: P1.
-        #[test]
-        fn schema_name_to_string_returns_expected_value() {
-            let schema =
-                fixtures::sample_schema().expect("Valid schema fixture");
+            /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
+            /// Priority: P1.
+            #[test]
+            fn schema_name_to_string_returns_expected_value() {
+                let schema =
+                    fixtures::sample_schema().expect("Valid schema fixture");
 
-            assert_eq!(
-                schema.name().to_string(),
-                "status",
-                "Schema name should render to string"
-            );
-        }
+                assert_eq!(
+                    schema.name().to_string(),
+                    "status",
+                    "Schema name should render to string"
+                );
+            }
 
-        /// 3.2-UNIT-010: `schema_property_accessors_return_expected_values`.
-        /// Priority: P1.
-        #[test]
-        fn schema_has_property() {
-            let schema =
-                fixtures::sample_schema().expect("Valid schema fixture");
+            /// 3.2-UNIT-010:
+            /// `schema_property_accessors_return_expected_values`.
+            /// Priority: P1.
+            #[test]
+            fn schema_has_property() {
+                let schema =
+                    fixtures::sample_schema().expect("Valid schema fixture");
 
-            let name = PropertyName::new("flag").expect("Valid name");
+                let name = PropertyName::try_new("flag").expect("Valid name");
 
-            assert!(
-                schema.has(&name),
-                "Expected schema to have property 'flag'"
-            );
-        }
+                assert!(
+                    schema.has(&name),
+                    "Expected schema to have property 'flag'"
+                );
+            }
 
-        /// 3.2-UNIT-010: `schema_property_accessors_return_expected_values`.
-        /// Priority: P1.
-        #[test]
-        fn schema_gets_property() {
-            let schema =
-                fixtures::sample_schema().expect("Valid schema fixture");
+            /// 3.2-UNIT-010:
+            /// `schema_property_accessors_return_expected_values`.
+            /// Priority: P1.
+            #[test]
+            fn schema_gets_property() {
+                let schema =
+                    fixtures::sample_schema().expect("Valid schema fixture");
 
-            let name = PropertyName::new("flag").expect("Valid name");
+                let name = PropertyName::try_new("flag").expect("Valid name");
 
-            assert!(
-                schema.get(&name).is_some(),
-                "Expected schema.get('flag') to be Some"
-            );
-        }
+                assert!(
+                    schema.get(&name).is_some(),
+                    "Expected schema.get('flag') to be Some"
+                );
+            }
 
-        /// 3.2-UNIT-010: `schema_property_accessors_return_expected_values`.
-        /// Priority: P1.
-        #[test]
-        fn schema_properties_len_is_one() {
-            let schema =
-                fixtures::sample_schema().expect("Valid schema fixture");
+            /// 3.2-UNIT-010:
+            /// `schema_property_accessors_return_expected_values`.
+            /// Priority: P1.
+            #[test]
+            fn schema_properties_len_is_one() {
+                let schema =
+                    fixtures::sample_schema().expect("Valid schema fixture");
 
-            assert_eq!(
-                schema.properties().count(),
-                1,
-                "Expected exactly 1 property"
-            );
-        }
+                assert_eq!(
+                    schema.properties().count(),
+                    1,
+                    "Expected exactly 1 property"
+                );
+            }
 
-        /// 3.2-UNIT-010: `schema_pending_events_emitted_on_create`.
-        /// Priority: P1.
-        #[test]
-        fn schema_pending_events_emitted_on_create() {
-            let schema =
-                fixtures::sample_schema().expect("Valid schema fixture");
+            /// 3.2-UNIT-010: `schema_pending_events_emitted_on_create`.
+            /// Priority: P1.
+            #[test]
+            fn schema_pending_events_emitted_on_create() {
+                let schema =
+                    fixtures::sample_schema().expect("Valid schema fixture");
 
-            assert_eq!(
-                schema.pending_events().len(),
-                2,
-                "Expected 2 pending events: SchemaCreated and SchemaResolved"
-            );
+                assert_eq!(
+                    schema.pending_events().len(),
+                    2,
+                    "Expected 2 pending events: SchemaCreated and \
+                     SchemaResolved"
+                );
+            }
         }
     }
 }

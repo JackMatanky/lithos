@@ -667,7 +667,7 @@ mod tests {
 
             let parent_schema = Schema::reconstruct(
                 parent_id,
-                SchemaName::new("parent")?,
+                SchemaName::try_new("parent")?,
                 None,
                 Vec::new(),
             );

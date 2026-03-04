@@ -1,5 +1,4 @@
 {
-  "name": "pkm",
   "properties": {
     "title": {
       "$ref": "property_bank#/title"

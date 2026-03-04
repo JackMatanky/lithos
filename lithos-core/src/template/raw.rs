@@ -77,7 +77,7 @@ impl TryFrom<RawTemplate> for Template {
             inputs.insert(input_name, v);
         }
 
-        let mut template = Template::new(&name, extends, blocks, inputs)?;
+        let mut template = Template::try_new(&name, extends, blocks, inputs)?;
         if let Some(id) = raw.id {
             template.id = id;
         }

@@ -119,7 +119,7 @@ impl Config {
         let task = raw
             .task
             .as_ref()
-            .map(|x| Task::from_raw(x.clone()))
+            .map(|x| Task::try_from_raw(x.clone()))
             .transpose()?
             .unwrap_or_default();
 

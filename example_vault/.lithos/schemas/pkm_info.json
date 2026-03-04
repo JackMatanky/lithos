@@ -1,5 +1,4 @@
 {
-  "name": "pkm_info",
   "properties": {
     "type": {
       "type": "string",

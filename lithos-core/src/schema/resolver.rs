@@ -58,7 +58,7 @@ impl Resolver {
     ///    (a DB-fresh parent), or uses an empty slice for root schemas.
     /// 2. Calls private `merge_properties` to produce the final sorted property
     ///    list.
-    /// 3. Constructs a [`Schema`] via [`Schema::new`].
+    /// 3. Constructs a [`Schema`] via [`Schema::try_new`].
     /// 4. Caches the result for use by downstream children.
     ///
     /// # Errors
@@ -102,8 +102,23 @@ impl Resolver {
                     resolved_cache
                         .get(&parent_id)
                         .or_else(|| known_parents.get(&parent_id))
-                        .map(|schema| schema.properties().cloned().collect())
-                        .unwrap_or_default()
+                        .map_or_else(
+                            || {
+                                // This should not happen if Extender worked
+                                // correctly - all parents should be in
+                                // resolved_cache or known_parents
+                                tracing::warn!(
+                                    schema_id = %id,
+                                    parent_id = %parent_id,
+                                    "Parent schema not found in \
+                                     resolved_cache or known_parents, using \
+                                     empty properties. This may indicate a bug \
+                                     in Extender or missing parent in database."
+                                );
+                                Vec::new()
+                            },
+                            |schema| schema.properties().cloned().collect(),
+                        )
                 } else {
                     vec![]
                 };
@@ -122,8 +137,17 @@ impl Resolver {
                 &node.excludes,
             );
 
-            let name = SchemaName::new(&node.name)?;
-            let schema = Schema::new(id, name, node.parent_id, merged)?;
+            let name = SchemaName::try_new(&node.name)?;
+
+            // Use resolve_existing for schemas already in DB to avoid emitting
+            // SchemaCreated event for existing schemas (only emit
+            // SchemaResolved)
+            let is_new_schema = !known_parents.contains_key(&id);
+            let schema = if is_new_schema {
+                Schema::try_new(id, name, node.parent_id, merged)?
+            } else {
+                Schema::resolve_existing(id, name, node.parent_id, merged)?
+            };
 
             resolved_cache.insert(id, schema.clone());
             results.push(schema);
@@ -244,7 +268,7 @@ mod tests {
         pub fn bool_property(name: &str) -> Result<Property, SchemaError> {
             Ok(Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
-                PropertyName::new(name)?,
+                PropertyName::try_new(name)?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
@@ -371,14 +395,14 @@ mod tests {
             // Parent has "shared" as Required, child overrides as Optional.
             let parent_prop = Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
-                PropertyName::new("shared")?,
+                PropertyName::try_new("shared")?,
                 Optionality::Required,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
             );
             let child_prop = Property::new(
                 PropertyId::from_uuid(Uuid::now_v7()),
-                PropertyName::new("shared")?,
+                PropertyName::try_new("shared")?,
                 Optionality::Optional,
                 Multiplicity::Single,
                 PropertySpec::Bool(BoolSpec::default()),
@@ -402,7 +426,7 @@ mod tests {
                 .iter()
                 .find(|s| s.name().as_str() == "child")
                 .expect("child in result");
-            let prop_name = PropertyName::new("shared")?;
+            let prop_name = PropertyName::try_new("shared")?;
             let shared = child.get(&prop_name).expect("shared property");
             assert_eq!(
                 shared.optionality(),
@@ -437,7 +461,7 @@ mod tests {
                 .iter()
                 .find(|s| s.name().as_str() == "child")
                 .expect("child in result");
-            let excl_name = PropertyName::new("excluded")?;
+            let excl_name = PropertyName::try_new("excluded")?;
             assert!(
                 !child.has(&excl_name),
                 "Excluded property should be absent from child"
@@ -453,7 +477,7 @@ mod tests {
             let parent_prop = fixtures::bool_property("db-prop")?;
             let parent_schema = Schema::reconstruct(
                 parent_id,
-                SchemaName::new("parent")?,
+                SchemaName::try_new("parent")?,
                 None,
                 vec![parent_prop],
             );
@@ -473,7 +497,7 @@ mod tests {
                 .iter()
                 .find(|s| s.name().as_str() == "child")
                 .expect("child in result");
-            let prop_name = PropertyName::new("db-prop")?;
+            let prop_name = PropertyName::try_new("db-prop")?;
             assert!(
                 child.has(&prop_name),
                 "Child should inherit DB-fresh parent property"

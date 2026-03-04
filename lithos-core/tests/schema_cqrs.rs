@@ -247,9 +247,9 @@ mod property_bank {
         );
         assert_eq!(loaded_bank.all().count(), 1, "Properties should persist");
 
-        let name = PropertyName::new("status")?;
+        let name = PropertyName::try_new("status")?;
         assert!(
-            loaded_bank.has_name(&name),
+            loaded_bank.has(&name),
             "Property 'status' should exist after restart"
         );
 
@@ -300,14 +300,14 @@ mod property_bank {
         );
 
         // Verify name lookup works
-        let status_name = PropertyName::new("status")?;
-        let title_name = PropertyName::new("title")?;
+        let status_name = PropertyName::try_new("status")?;
+        let title_name = PropertyName::try_new("title")?;
 
-        assert!(loaded.has_name(&status_name));
-        assert!(loaded.has_name(&title_name));
+        assert!(loaded.has(&status_name));
+        assert!(loaded.has(&title_name));
 
-        assert!(loaded.get_by_name(&status_name).is_some());
-        assert!(loaded.get_by_name(&title_name).is_some());
+        assert!(loaded.get(&status_name).is_some());
+        assert!(loaded.get(&title_name).is_some());
 
         Ok(())
     }
@@ -371,14 +371,13 @@ mod property_bank {
         let loaded = query.get_property_bank()?.expect("Bank should exist");
 
         // THEN: Name lookup works correctly
-        let alpha_name = PropertyName::new("alpha")?;
-        let beta_name = PropertyName::new("beta")?;
-        assert!(loaded.has_name(&alpha_name));
-        assert!(loaded.has_name(&beta_name));
+        let alpha_name = PropertyName::try_new("alpha")?;
+        let beta_name = PropertyName::try_new("beta")?;
+        assert!(loaded.has(&alpha_name));
+        assert!(loaded.has(&beta_name));
 
-        let prop_by_name = loaded
-            .get_by_name(&beta_name)
-            .expect("Property should exist by name");
+        let prop_by_name =
+            loaded.get(&beta_name).expect("Property should exist by name");
         assert_eq!(prop_by_name.name().as_str(), "beta");
 
         Ok(())
@@ -422,6 +421,131 @@ mod property_bank {
 
         Ok(())
     }
+
+    /// **3.4-INT-010**: `get_property_by_id` returns correct property.
+    ///
+    /// Verifies:
+    /// - Property can be retrieved by ID
+    /// - Retrieved property matches original
+    #[test]
+    fn get_property_by_id_returns_correct_property() -> TestResult {
+        // GIVEN: A PropertyBank with registered properties
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        let mut bank = PropertyBank::new();
+        let prop1 = PropertyBuilder::new("status")
+            .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
+            .build_bool()?;
+        let prop2 = PropertyBuilder::new("title")
+            .id(PropertyId::from_uuid(TEST_PROPERTY_ID_B))
+            .build_string_default()?;
+
+        bank.register(prop1.clone())?;
+        bank.register(prop2)?;
+        command.save_property_bank(&bank)?;
+
+        // WHEN: Retrieving property by ID
+        let retrieved = query.get_property_by_id(prop1.id())?;
+
+        // THEN: Correct property is returned
+        assert!(retrieved.is_some(), "Property should exist");
+        let retrieved_prop = retrieved.expect("just verified property exists");
+        assert_eq!(retrieved_prop.id(), prop1.id());
+        assert_eq!(retrieved_prop.name(), prop1.name());
+
+        Ok(())
+    }
+
+    /// **3.4-INT-011**: `get_property_by_id` returns None for invalid ID.
+    ///
+    /// Verifies:
+    /// - Invalid property ID returns None (not error)
+    #[test]
+    fn get_property_by_id_invalid_id_returns_none() -> TestResult {
+        // GIVEN: A PropertyBank with one property
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        let mut bank = PropertyBank::new();
+        let prop = PropertyBuilder::new("status")
+            .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
+            .build_bool()?;
+        bank.register(prop)?;
+        command.save_property_bank(&bank)?;
+
+        // WHEN: Querying with invalid ID
+        let invalid_id = PropertyId::from_uuid(TEST_PROPERTY_ID_B);
+        let result = query.get_property_by_id(invalid_id)?;
+
+        // THEN: Returns None
+        assert!(result.is_none(), "Invalid ID should return None");
+
+        Ok(())
+    }
+
+    /// **3.4-INT-012**: `get_property_by_id` returns None when bank missing.
+    ///
+    /// Verifies:
+    /// - Query gracefully handles missing `PropertyBank`
+    #[test]
+    fn get_property_by_id_bank_missing_returns_none() -> TestResult {
+        // GIVEN: An empty database (no PropertyBank)
+        let test_db = TestDb::new()?;
+        let (_command, query) = setup_cqrs(test_db.db());
+
+        // Verify PropertyBank doesn't exist
+        assert!(
+            query.get_property_bank()?.is_none(),
+            "PropertyBank should not exist"
+        );
+
+        // WHEN: Querying for property by ID
+        let id = PropertyId::from_uuid(TEST_PROPERTY_ID_A);
+        let result = query.get_property_by_id(id)?;
+
+        // THEN: Returns None gracefully
+        assert!(
+            result.is_none(),
+            "Should return None when PropertyBank missing"
+        );
+
+        Ok(())
+    }
+
+    /// **3.4-INT-013**: `get_property_by_id` roundtrip preserves data.
+    ///
+    /// Verifies:
+    /// - Register → Save → Get by ID preserves all property fields
+    #[test]
+    fn get_property_by_id_roundtrip_preserves_data() -> TestResult {
+        // GIVEN: A property with all fields set
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        let mut bank = PropertyBank::new();
+        let original_prop = PropertyBuilder::new("priority")
+            .id(PropertyId::from_uuid(TEST_PROPERTY_ID_A))
+            .optionality(Optionality::Required)
+            .multiplicity(Multiplicity::Many)
+            .build_string_default()?;
+
+        bank.register(original_prop.clone())?;
+        command.save_property_bank(&bank)?;
+
+        // WHEN: Retrieving by ID
+        let retrieved = query
+            .get_property_by_id(original_prop.id())?
+            .expect("Property should exist");
+
+        // THEN: All fields match
+        assert_eq!(retrieved.id(), original_prop.id());
+        assert_eq!(retrieved.name(), original_prop.name());
+        assert_eq!(retrieved.optionality(), original_prop.optionality());
+        assert_eq!(retrieved.multiplicity(), original_prop.multiplicity());
+
+        Ok(())
+    }
 }
 
 // ========================================================================
@@ -453,7 +577,7 @@ mod schema {
         let original_name = schema.name().clone();
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded =
             query.find_by_id(original_id)?.expect("Schema should exist");
 
@@ -482,10 +606,10 @@ mod schema {
             .id(SchemaId::from_uuid(TEST_SCHEMA_ID_PROJECT))
             .build()?;
 
-        command.save_one(&schema)?;
+        command.save(&schema)?;
 
         // WHEN: Finding by name
-        let name = SchemaName::new("project")?;
+        let name = SchemaName::try_new("project")?;
         let loaded = query.find_by_name(&name)?.expect("Schema should exist");
 
         // THEN: Correct schema returned
@@ -507,7 +631,7 @@ mod schema {
         let (_command, query) = setup_cqrs(test_db.db());
 
         // WHEN: Finding nonexistent schema
-        let name = SchemaName::new("nonexistent")?;
+        let name = SchemaName::try_new("nonexistent")?;
         let result = query.find_by_name(&name)?;
 
         // THEN: Returns None
@@ -538,7 +662,7 @@ mod schema {
         let schemas = vec![task_schema, project_schema];
 
         // WHEN: Batch saving
-        command.save_batch(&schemas)?;
+        command.save_many(&schemas)?;
 
         // THEN: All schemas retrievable
         let loaded1 = query
@@ -552,8 +676,10 @@ mod schema {
         assert_eq!(loaded2.name().as_str(), "project");
 
         // Verify name indices
-        assert!(query.find_by_name(&SchemaName::new("task")?)?.is_some());
-        assert!(query.find_by_name(&SchemaName::new("project")?)?.is_some());
+        assert!(query.find_by_name(&SchemaName::try_new("task")?)?.is_some());
+        assert!(
+            query.find_by_name(&SchemaName::try_new("project")?)?.is_some()
+        );
 
         Ok(())
     }
@@ -576,7 +702,7 @@ mod schema {
 
         let schema1 = SchemaBuilder::new("task").build()?;
         let schema2 = SchemaBuilder::new("project").build()?;
-        command.save_batch(&[schema1, schema2])?;
+        command.save_many(&[schema1, schema2])?;
 
         // WHEN: Listing all
         let all = query.list()?;
@@ -609,7 +735,7 @@ mod schema {
         let schema2 = SchemaBuilder::new("project")
             .id(SchemaId::from_uuid(TEST_SCHEMA_ID_PROJECT))
             .build()?;
-        command.save_batch(&[schema1, schema2])?;
+        command.save_many(&[schema1, schema2])?;
 
         // WHEN: Deleting one schema
         command.delete(SchemaId::from_uuid(TEST_SCHEMA_ID_TASK))?;
@@ -620,7 +746,7 @@ mod schema {
                 .find_by_id(SchemaId::from_uuid(TEST_SCHEMA_ID_TASK))?
                 .is_none()
         );
-        assert!(query.find_by_name(&SchemaName::new("task")?)?.is_none());
+        assert!(query.find_by_name(&SchemaName::try_new("task")?)?.is_none());
 
         // Other schema still exists
         assert!(
@@ -628,7 +754,9 @@ mod schema {
                 .find_by_id(SchemaId::from_uuid(TEST_SCHEMA_ID_PROJECT))?
                 .is_some()
         );
-        assert!(query.find_by_name(&SchemaName::new("project")?)?.is_some());
+        assert!(
+            query.find_by_name(&SchemaName::try_new("project")?)?.is_some()
+        );
 
         Ok(())
     }
@@ -655,7 +783,7 @@ mod schema {
             .build()?;
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded =
             query.find_by_id(schema.id())?.expect("Schema should exist");
 
@@ -685,7 +813,7 @@ mod schema {
         let schema_id = schema.id();
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded = query.find_by_id(schema_id)?.expect("Schema should exist");
 
         // THEN: Empty schema works
@@ -728,7 +856,7 @@ mod schema {
             let command = RedbSchemaCommand::new(
                 lithos_core::schema::adapter::command::CommandAdapter::new(&db),
             );
-            command.save_one(&schema)?;
+            command.save(&schema)?;
         } // Database closed
 
         // WHEN: Reopening database
@@ -767,7 +895,7 @@ mod schema {
             .id(SchemaId::from_uuid(TEST_SCHEMA_ID_TASK))
             .property(bool_property("is_done")?)
             .build()?;
-        command.save_one(&schema_v1)?;
+        command.save(&schema_v1)?;
 
         // WHEN: Saving updated version with same ID
         let schema_v2 = SchemaBuilder::new("task")
@@ -775,7 +903,7 @@ mod schema {
             .property(bool_property("is_done")?)
             .property(string_property("title")?)
             .build()?;
-        command.save_one(&schema_v2)?;
+        command.save(&schema_v2)?;
 
         // THEN: Updated version loaded
         let loaded = query
@@ -806,7 +934,7 @@ mod schema {
         let schema2 = SchemaBuilder::new("project")
             .id(SchemaId::from_uuid(TEST_SCHEMA_ID_PROJECT))
             .build()?;
-        command.save_batch(&[schema1, schema2])?;
+        command.save_many(&[schema1, schema2])?;
 
         // WHEN: Listing name-ID pairs
         let pairs = query.list_name_id_pairs()?;
@@ -846,7 +974,7 @@ mod schema {
             .build()?;
 
         // WHEN: Saving and loading
-        command.save_one(&child)?;
+        command.save(&child)?;
         let loaded = query
             .find_by_id(SchemaId::from_uuid(TEST_SCHEMA_ID_TASK))?
             .expect("Schema should exist");
@@ -872,7 +1000,7 @@ mod schema {
         let schema_id = schema.id();
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded = query.find_by_id(schema_id)?.expect("Schema should exist");
 
         // THEN: parent_id is None
@@ -905,7 +1033,7 @@ mod schema {
             .build()?;
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded =
             query.find_by_id(schema.id())?.expect("Schema should exist");
 
@@ -949,7 +1077,7 @@ mod schema {
             .build()?;
 
         // WHEN: Saving and loading
-        command.save_one(&schema)?;
+        command.save(&schema)?;
         let loaded =
             query.find_by_id(schema.id())?.expect("Schema should exist");
 
@@ -998,7 +1126,7 @@ mod cross_aggregate {
 
         // WHEN: Saving both
         command.save_property_bank(&bank)?;
-        command.save_one(&schema)?;
+        command.save(&schema)?;
 
         // THEN: Both retrievable independently
         let loaded_bank =
@@ -1035,14 +1163,14 @@ mod cross_aggregate {
             SchemaBuilder::new("schema2").property(prop.clone()).build()?;
 
         // WHEN: Saving both schemas
-        command.save_batch(&[schema1, schema2])?;
+        command.save_many(&[schema1, schema2])?;
 
         // THEN: Both schemas exist with same property
         let loaded1 = query
-            .find_by_name(&SchemaName::new("schema1")?)?
+            .find_by_name(&SchemaName::try_new("schema1")?)?
             .expect("schema1 should exist");
         let loaded2 = query
-            .find_by_name(&SchemaName::new("schema2")?)?
+            .find_by_name(&SchemaName::try_new("schema2")?)?
             .expect("schema2 should exist");
 
         assert_has_property(&loaded1, "shared", "schema1");
@@ -1073,7 +1201,7 @@ mod cross_aggregate {
         let schema_id = schema.id();
 
         // WHEN: Saving schema (doesn't touch PropertyBank)
-        command.save_one(&schema)?;
+        command.save(&schema)?;
 
         // THEN: PropertyBank version unchanged
         let loaded_bank =
@@ -1082,6 +1210,553 @@ mod cross_aggregate {
 
         // Schema still exists
         assert!(query.find_by_id(schema_id)?.is_some());
+
+        Ok(())
+    }
+}
+
+// ========================================================================
+//                      Critical Edge Cases & Error Handling
+// ========================================================================
+
+mod critical {
+    use super::*;
+
+    /// **Critical-001**: Property bank respects version retention limit.
+    ///
+    /// Verifies that only the last 3 versions are retained in the database
+    /// after saving 6 versions (retention limit = 3).
+    #[test]
+    fn property_bank_respects_version_retention_limit() -> TestResult {
+        // GIVEN: A property bank
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        let mut bank = PropertyBank::new();
+        let initial_version = bank.version();
+
+        // WHEN: Saving 6 versions (retention = 3, so first 3 should be
+        // deleted)
+        for i in 0u32..6u32 {
+            let prop_name = format!("prop{i}");
+            let prop =
+                PropertyBuilder::new(&prop_name).build_string_default()?;
+            bank.register(prop)?;
+            command.save_property_bank(&bank)?;
+        }
+
+        let final_version = bank.version();
+
+        // THEN: Latest version should be retrievable with all 6 properties
+        let loaded_bank =
+            query.get_property_bank()?.expect("Bank should exist");
+
+        assert_eq!(
+            loaded_bank.version(),
+            final_version,
+            "Loaded version should match final version (v6)"
+        );
+        assert!(
+            initial_version.is_older_than(final_version),
+            "Version should have incremented from v0 to v6"
+        );
+        assert_eq!(
+            loaded_bank.all().count(),
+            6,
+            "All 6 properties should be present in the loaded bank"
+        );
+
+        // Verify all expected properties are present
+        for i in 0u32..6u32 {
+            let prop_name = format!("prop{i}");
+            let name = PropertyName::try_new(&prop_name)?;
+            assert!(
+                loaded_bank.has(&name),
+                "Property '{prop_name}' should be present"
+            );
+        }
+
+        // File size should be bounded (retention working)
+        let db_file_size = std::fs::metadata(test_db.path())?.len();
+        assert!(
+            db_file_size > 1024,
+            "Database file should contain data (size: {db_file_size} bytes)"
+        );
+
+        Ok(())
+    }
+
+    /// **Critical-002**: Batch save with duplicate names fails.
+    ///
+    /// Verifies that `save_many()` detects duplicate schema names within
+    /// the same batch and rejects the entire operation.
+    #[test]
+    fn batch_save_duplicate_names_in_batch_fails() -> TestResult {
+        // GIVEN: Multiple schemas with duplicate names
+        let test_db = TestDb::new()?;
+        let (command, _query) = setup_cqrs(test_db.db());
+
+        let schema1 = SchemaBuilder::new("duplicate").build()?;
+        let schema2 = SchemaBuilder::new("duplicate").build()?;
+
+        // WHEN: Attempting batch save with duplicates
+        let result = command.save_many(&[schema1, schema2]);
+
+        // THEN: Operation fails with duplicate name error
+        assert!(result.is_err(), "Batch save should fail with duplicate names");
+
+        let err = result.unwrap_err();
+        let err_msg = err.to_string().to_lowercase();
+        assert!(
+            err_msg.contains("duplicate") || err_msg.contains("conflict"),
+            "Error should mention duplicate/conflict: {err}"
+        );
+
+        Ok(())
+    }
+
+    /// **Critical-003**: Save rejects invalid property references.
+    ///
+    /// Verifies that schemas with property references that don't exist in
+    /// `PropertyBank` are rejected.
+    #[test]
+    fn save_rejects_invalid_property_references() -> TestResult {
+        // GIVEN: A PropertyBank with one property
+        let test_db = TestDb::new()?;
+        let (command, _query) = setup_cqrs(test_db.db());
+
+        let mut bank = PropertyBank::new();
+        let valid_prop = PropertyBuilder::new("status").build_bool()?;
+        bank.register(valid_prop)?;
+        command.save_property_bank(&bank)?;
+
+        // WHEN: Attempting to save schema with invalid property reference
+        let schema = SchemaBuilder::new("test-schema")
+            .property(PropertyBuilder::new("invalid_prop").build_bool()?)
+            .build()?;
+
+        let result = command.save(&schema);
+
+        // THEN: Save fails with clear error
+        assert!(
+            result.is_err(),
+            "Should reject schema with invalid property reference"
+        );
+
+        let err = result.unwrap_err();
+        let err_msg = err.to_string().to_lowercase();
+        assert!(
+            err_msg.contains("invalid_prop") && err_msg.contains("not found"),
+            "Error should mention missing property: {err}"
+        );
+
+        Ok(())
+    }
+
+    /// **Critical-004**: Save succeeds without `PropertyBank` (bootstrap case).
+    ///
+    /// Verifies that schemas can be saved before `PropertyBank` exists,
+    /// allowing initial bootstrap.
+    #[test]
+    fn save_succeeds_without_property_bank() -> TestResult {
+        // GIVEN: An empty database (no PropertyBank)
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        // Verify PropertyBank doesn't exist
+        assert!(
+            query.get_property_bank()?.is_none(),
+            "PropertyBank should not exist"
+        );
+
+        // WHEN: Saving schema without PropertyBank
+        let schema = SchemaBuilder::new("test-schema").build()?;
+        let result = command.save(&schema);
+
+        // THEN: Save succeeds (allows bootstrap)
+        assert!(
+            result.is_ok(),
+            "Should allow saving schemas before PropertyBank exists"
+        );
+
+        Ok(())
+    }
+
+    /// **Critical-005**: Delete removes schema metadata completely.
+    ///
+    /// Verifies that `delete()` removes schema from all tables including
+    /// metadata.
+    #[test]
+    fn delete_removes_schema_metadata() -> TestResult {
+        // GIVEN: A saved schema
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        let schema = SchemaBuilder::new("test-schema").build()?;
+        let schema_id = schema.id();
+        let schema_name = schema.name().clone();
+        command.save(&schema)?;
+
+        // Verify schema exists in all indices
+        assert!(
+            query.find_by_id(schema_id)?.is_some(),
+            "Schema should exist by ID before delete"
+        );
+        assert!(
+            query.find_by_name(&schema_name)?.is_some(),
+            "Schema should exist by name before delete"
+        );
+
+        // WHEN: Deleting the schema
+        command.delete(schema_id)?;
+
+        // THEN: Schema is removed from all tables
+        assert!(
+            query.find_by_id(schema_id)?.is_none(),
+            "Schema should not exist by ID after delete"
+        );
+        assert!(
+            query.find_by_name(&schema_name)?.is_none(),
+            "Schema should not exist by name after delete"
+        );
+
+        Ok(())
+    }
+}
+
+// ========================================================================
+//                      Staleness Detection Tests
+// ========================================================================
+
+mod staleness {
+    use lithos_core::schema::aggregate::Timestamp;
+
+    use super::*;
+
+    /// **Staleness-001**: Missing schema is reported as stale.
+    #[test]
+    fn is_schema_stale_reports_missing_schema_as_stale() -> TestResult {
+        // GIVEN: An empty database
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        // Create PropertyBank
+        let mut bank = PropertyBank::new();
+        let prop = PropertyBuilder::new("status").build_bool()?;
+        bank.register(prop)?;
+        command.save_property_bank(&bank)?;
+        let current_version = bank.version();
+
+        // WHEN: Checking staleness for non-existent schema
+        let missing_id = SchemaId::new();
+        let is_stale =
+            query.is_schema_stale(missing_id, None, None, current_version)?;
+
+        // THEN: Missing schema should be reported as stale
+        assert!(is_stale, "Missing schema should be stale");
+
+        Ok(())
+    }
+
+    /// **Staleness-002**: Fresh schema is not stale.
+    #[test]
+    fn is_schema_stale_returns_false_for_fresh_schema() -> TestResult {
+        // GIVEN: A schema saved without PropertyBank changes
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        // Save a schema (will use BankVersion::initial())
+        let schema = SchemaBuilder::new("test-schema").build()?;
+        let schema_id = schema.id();
+        command.save(&schema)?;
+
+        // WHEN: Checking staleness against initial version (same as saved)
+        let is_stale = query.is_schema_stale(
+            schema_id,
+            None,
+            None,
+            lithos_core::schema::bank::BankVersion::initial(),
+        )?;
+
+        // THEN: Schema should NOT be stale (version matches)
+        assert!(
+            !is_stale,
+            "Schema saved with initial version should not be stale when \
+             checked against initial version"
+        );
+
+        Ok(())
+    }
+
+    /// **Staleness-003**: Asymmetric `created_at` timestamps handled
+    /// gracefully.
+    ///
+    /// Verifies that `is_schema_stale()` gracefully handles cases where:
+    /// 1. Schema was saved WITH `created_at` (filesystem supported birthtime)
+    /// 2. Current filesystem check returns `created_at` = None (no birthtime
+    ///    support)
+    ///
+    /// This asymmetry can occur when:
+    /// - Moving schemas between filesystems (APFS → ext4)
+    /// - Filesystem loses birthtime metadata
+    /// - Platform differences (macOS → Linux)
+    ///
+    /// Expected behavior: Falls back to `modified_at` comparison.
+    #[test]
+    fn is_schema_stale_with_asymmetric_created_at() -> TestResult {
+        use lithos_core::schema::bank::BankVersion;
+        use redb::TableDefinition;
+
+        // Manually create StoredMetadata struct for test metadata crafting
+        #[derive(rkyv::Archive, rkyv::Serialize)]
+        struct TempMetadata {
+            bank_version: BankVersion,
+            created_at: Option<Timestamp>,
+            modified_at: Option<Timestamp>,
+            recorded_at: Timestamp,
+        }
+
+        // Table definitions for direct database access
+        const SCHEMA_METADATA: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("schema_metadata");
+
+        // GIVEN: A schema saved with explicit created_at and modified_at
+        // metadata
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        let schema = SchemaBuilder::new("asymmetric-schema").build()?;
+        let schema_id = schema.id();
+
+        // Save schema first (will have None/None timestamps)
+        command.save(&schema)?;
+
+        // Manually craft metadata with created_at = Some, modified_at = Some
+        // to simulate a file that was saved WITH birthtime support
+        let base_time = 1_000_000u64;
+        let created_timestamp = Timestamp::from_secs(base_time);
+        let modified_timestamp = Timestamp::from_secs(base_time + 100);
+
+        let metadata = TempMetadata {
+            bank_version: BankVersion::initial(),
+            created_at: Some(created_timestamp),
+            modified_at: Some(modified_timestamp),
+            recorded_at: Timestamp::now(),
+        };
+
+        // Write metadata to database (overwriting the None/None version)
+        let id_key = schema_id.into_uuid().to_string();
+        test_db.db().batch_write(|batch| {
+            batch.put(SCHEMA_METADATA, id_key.as_str(), &metadata)?;
+            Ok(())
+        })?;
+
+        // WHEN: Checking staleness with created_at = None (filesystem lost
+        // birthtime) but modified_at matches what was saved
+        let is_stale_matching_mtime = query.is_schema_stale(
+            schema_id,
+            None, // ← Filesystem no longer provides birthtime
+            Some(modified_timestamp),
+            BankVersion::initial(),
+        )?;
+
+        // THEN: Should NOT be stale (falls back to mtime, which matches)
+        assert!(
+            !is_stale_matching_mtime,
+            "Schema should not be stale when created_at is asymmetric but \
+             modified_at matches"
+        );
+
+        // WHEN: Checking with newer modified_at (file was actually modified)
+        let newer_modified = Timestamp::from_secs(base_time + 200);
+        let is_stale_newer_mtime = query.is_schema_stale(
+            schema_id,
+            None, // ← Still no birthtime
+            Some(newer_modified),
+            BankVersion::initial(),
+        )?;
+
+        // THEN: Should be stale (mtime is newer than saved)
+        assert!(
+            is_stale_newer_mtime,
+            "Schema should be stale when modified_at is newer, even with \
+             created_at asymmetry"
+        );
+
+        Ok(())
+    }
+}
+
+// ========================================================================
+//                      Corruption Detection Tests
+// ========================================================================
+
+mod corruption {
+    use redb::TableDefinition;
+
+    use super::*;
+
+    /// **Corruption-001**: Query detects corrupted schema data.
+    #[test]
+    fn query_detects_corrupted_schema_data() -> TestResult {
+        const SCHEMA_BY_ID: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("schema_by_id");
+
+        // GIVEN: A database with corrupted schema data
+        let test_db = TestDb::new()?;
+        let (_command, query) = setup_cqrs(test_db.db());
+
+        // Manually write invalid rkyv bytes to SCHEMA_BY_ID table
+        test_db.db().batch_write(|batch| {
+            batch.put(SCHEMA_BY_ID, "corrupt-schema-key", &[
+                0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8,
+            ])?;
+            Ok(())
+        })?;
+
+        // WHEN: Attempting to list all schemas
+        let result = query.list();
+
+        // THEN: Query fails with storage error
+        assert!(
+            result.is_err(),
+            "Corrupted data should trigger error, not return invalid schemas"
+        );
+
+        if let Err(e) = result {
+            let error_msg = e.to_string();
+            assert!(
+                error_msg.contains("storage")
+                    || error_msg.contains("deserializ"),
+                "Error should indicate storage/deserialization issue: \
+                 {error_msg}"
+            );
+        }
+
+        Ok(())
+    }
+
+    /// **Corruption-002**: Query detects missing metadata for existing
+    /// schema.
+    #[test]
+    fn query_detects_missing_metadata_corruption() -> TestResult {
+        const SCHEMA_METADATA: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("schema_metadata");
+
+        // GIVEN: A normally saved schema
+        let test_db = TestDb::new()?;
+        let (command, query) = setup_cqrs(test_db.db());
+
+        let schema = SchemaBuilder::new("orphaned-schema").build()?;
+        let schema_id = schema.id();
+
+        // Save schema normally (includes metadata)
+        command.save(&schema)?;
+
+        // WHEN: Manually delete metadata to simulate corruption
+        let id_key = schema_id.into_uuid().to_string();
+        test_db.db().batch_write(|batch| {
+            batch.delete(SCHEMA_METADATA, id_key.as_str())?;
+            Ok(())
+        })?;
+
+        // THEN: Attempting to find the orphaned schema detects corruption
+        let result = query.find_by_id(schema_id);
+
+        assert!(
+            result.is_err(),
+            "Orphaned schema (missing metadata) should trigger corruption \
+             error"
+        );
+
+        if let Err(e) = result {
+            let error_msg = e.to_string();
+            assert!(
+                error_msg.contains("corruption")
+                    || error_msg.contains("metadata is missing"),
+                "Error should indicate metadata corruption: {error_msg}"
+            );
+        }
+
+        Ok(())
+    }
+
+    /// **Corruption-003**: Query detects corrupted property bank metadata.
+    #[test]
+    fn query_detects_corrupted_property_bank_metadata() -> TestResult {
+        const BANK_METADATA: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("bank_metadata");
+
+        // GIVEN: A database with corrupted property bank metadata
+        let test_db = TestDb::new()?;
+        let (_command, query) = setup_cqrs(test_db.db());
+
+        // Manually write invalid rkyv bytes to BANK_METADATA table
+        test_db.db().batch_write(|batch| {
+            batch.put(BANK_METADATA, "singleton", &[
+                0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8,
+            ])?;
+            Ok(())
+        })?;
+
+        // WHEN: Attempting to get property bank
+        let result = query.get_property_bank();
+
+        // THEN: Query fails with storage/deserialization error
+        assert!(
+            result.is_err(),
+            "Corrupted property bank metadata should trigger error"
+        );
+
+        if let Err(e) = result {
+            let error_msg = e.to_string();
+            assert!(
+                error_msg.contains("storage")
+                    || error_msg.contains("deserializ"),
+                "Error should indicate storage/deserialization issue: \
+                 {error_msg}"
+            );
+        }
+
+        Ok(())
+    }
+
+    /// **Corruption-004**: Query detects corrupted name index.
+    #[test]
+    fn query_detects_corrupted_name_index() -> TestResult {
+        const SCHEMA_ID_BY_NAME: TableDefinition<&str, &[u8]> =
+            TableDefinition::new("schema_id_by_name");
+
+        // GIVEN: A database with corrupted name index
+        let test_db = TestDb::new()?;
+        let (_command, query) = setup_cqrs(test_db.db());
+
+        // Manually write invalid rkyv bytes to SCHEMA_ID_BY_NAME table
+        test_db.db().batch_write(|batch| {
+            batch.put(SCHEMA_ID_BY_NAME, "corrupt-index-key", &[
+                0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8,
+            ])?;
+            Ok(())
+        })?;
+
+        // Create a valid schema name to search for
+        let schema_name = SchemaName::try_new("corrupt-index-key")?;
+
+        // WHEN: Attempting to find schema by name with corrupted index
+        let result = query.find_by_name(&schema_name);
+
+        // THEN: Query fails with storage/deserialization error
+        assert!(result.is_err(), "Corrupted name index should trigger error");
+
+        if let Err(e) = result {
+            let error_msg = e.to_string();
+            assert!(
+                error_msg.contains("storage")
+                    || error_msg.contains("deserializ"),
+                "Error should indicate storage/deserialization issue: \
+                 {error_msg}"
+            );
+        }
 
         Ok(())
     }

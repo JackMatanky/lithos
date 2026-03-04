@@ -953,8 +953,13 @@ fn get_or_compile_pattern(pattern: &str) -> Arc<regex::Regex> {
 
     // Fast path: read lock
     {
-        let guard =
-            cache.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let guard = cache.read().unwrap_or_else(|e| {
+            tracing::warn!(
+                "Regex cache RwLock poisoned (recovered from panic), \
+                 proceeding with recovery"
+            );
+            e.into_inner()
+        });
         if let Some(re) = guard.get(pattern) {
             return Arc::clone(re);
         }
@@ -967,8 +972,13 @@ fn get_or_compile_pattern(pattern: &str) -> Arc<regex::Regex> {
             "Custom pattern should be valid (validated at construction)",
         ));
 
-    let mut guard =
-        cache.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut guard = cache.write().unwrap_or_else(|e| {
+        tracing::warn!(
+            "Regex cache RwLock poisoned during write (recovered from panic), \
+             proceeding with recovery"
+        );
+        e.into_inner()
+    });
     // Check again in case another thread inserted while we compiled
     if let Some(re) = guard.get(pattern) {
         return Arc::clone(re);

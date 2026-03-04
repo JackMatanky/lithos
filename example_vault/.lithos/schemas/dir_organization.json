@@ -1,5 +1,4 @@
 {
-  "name": "dir_organization",
   "properties": {
     "phone": {
       "type": "string"

@@ -39,6 +39,9 @@ impl Database {
 
     /// Insert or update a value with UUID key in a table definition.
     ///
+    /// Uses stack-allocated buffer to avoid heap allocation from UUID
+    /// formatting.
+    ///
     /// # Errors
     ///
     /// - `DbError::Serialization` - Serialization failed
@@ -60,8 +63,10 @@ impl Database {
                 >,
             >,
     {
-        let key = id.to_string();
-        serialize_and_put::<V>(&self.inner, table, &key, value)
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        serialize_and_put::<V>(&self.inner, table, key, value)
     }
 
     /// Delete a value by key in a table definition.
@@ -82,6 +87,9 @@ impl Database {
 
     /// Delete a value by UUID key in a table definition.
     ///
+    /// Uses stack-allocated buffer to avoid heap allocation from UUID
+    /// formatting.
+    ///
     /// Returns `true` if a value was deleted, `false` if key didn't exist.
     ///
     /// # Errors
@@ -93,8 +101,10 @@ impl Database {
         table: TableDefinition<&str, &[u8]>,
         id: uuid::Uuid,
     ) -> Result<bool, DbError> {
-        let key = id.to_string();
-        delete_key(&self.inner, table, &key)
+        // Stack-allocate a 36-byte buffer for UUID hyphenated format
+        let mut buf = [0u8; 36];
+        let key = id.hyphenated().encode_lower(&mut buf);
+        delete_key(&self.inner, table, key)
     }
 
     /// Execute multiple writes in a batch with a single commit.
@@ -301,6 +311,43 @@ impl BatchWriter {
         value: &str,
     ) -> Result<bool, DbError> {
         multimap_remove_tx(&mut self.tx, table, key, value)
+    }
+
+    /// Insert a serialized value into a multimap with byte-slice values.
+    ///
+    /// For multimaps storing complex types via rkyv serialization.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb multimap table operation fails.
+    #[inline]
+    pub fn multimap_insert_bytes(
+        &mut self,
+        table: MultimapTableDefinition<&str, &[u8]>,
+        key: &str,
+        value: &[u8],
+    ) -> Result<(), DbError> {
+        let mut tbl = self.tx.open_multimap_table(table)?;
+        tbl.insert(key, value)?;
+        Ok(())
+    }
+
+    /// Remove a serialized value from a multimap with byte-slice values.
+    ///
+    /// For multimaps storing complex types via rkyv serialization.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the underlying redb multimap table operation fails.
+    #[inline]
+    pub fn multimap_remove_bytes(
+        &mut self,
+        table: MultimapTableDefinition<&str, &[u8]>,
+        key: &str,
+        value: &[u8],
+    ) -> Result<bool, DbError> {
+        let mut tbl = self.tx.open_multimap_table(table)?;
+        Ok(tbl.remove(key, value)?)
     }
 }
 

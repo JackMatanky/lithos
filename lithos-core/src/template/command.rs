@@ -81,7 +81,7 @@ mod tests {
 
         pub fn template_fixture(name: &str) -> Result<Template, String> {
             let tn = TemplateName::try_from(name).map_err(|e| e.to_string())?;
-            Template::new(&tn, None, vec![], HashMap::new())
+            Template::try_new(&tn, None, vec![], HashMap::new())
                 .map_err(|e| e.to_string())
         }
     }

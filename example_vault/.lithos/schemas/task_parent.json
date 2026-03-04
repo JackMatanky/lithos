@@ -1,5 +1,4 @@
 {
-  "name": "task_parent",
   "properties": {
     "type": {
       "type": "string",

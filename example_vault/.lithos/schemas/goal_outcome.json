@@ -1,5 +1,4 @@
 {
-  "name": "goal_outcome",
   "properties": {
     "pillar": {
       "$ref": "property_bank#/pillar"

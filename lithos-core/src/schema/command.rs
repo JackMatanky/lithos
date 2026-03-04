@@ -98,7 +98,7 @@ where
 
     /// Save a single schema to persistence.
     ///
-    /// Convenience method that delegates to `save_batch`.
+    /// Convenience method that delegates to `save_many`.
     ///
     /// # Errors
     /// Returns `SchemaCommandError` if saving fails.
@@ -109,15 +109,15 @@ where
     /// # use lithos_core::schema::command::Command;
     /// # let command = todo!("Provide a Command instance");
     /// # let schema = todo!("Provide a Schema instance");
-    /// command.save_one(&schema)?;
+    /// command.save(&schema)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn save_one(&self, schema: &Schema) -> Result<(), SchemaCommandError> {
-        self.save_batch(std::slice::from_ref(schema))
+    pub fn save(&self, schema: &Schema) -> Result<(), SchemaCommandError> {
+        self.save_many(std::slice::from_ref(schema))
     }
 
-    /// Save multiple schemas as a batch.
+    /// Save many schemas atomically.
     ///
     /// All saves are atomic within a single write transaction.
     ///
@@ -130,15 +130,15 @@ where
     /// # use lithos_core::schema::command::Command;
     /// # let command = todo!("Provide a Command instance");
     /// # let schemas: Vec<lithos_core::schema::aggregate::Schema> = Vec::new();
-    /// command.save_batch(&schemas)?;
+    /// command.save_many(&schemas)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn save_batch(
+    pub fn save_many(
         &self,
         schemas: &[Schema],
     ) -> Result<(), SchemaCommandError> {
-        self.command_port.save_batch(schemas).map_err(|error| {
+        self.command_port.save_many(schemas).map_err(|error| {
             SchemaCommandError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
@@ -166,10 +166,42 @@ where
             SchemaCommandError::Storage(Into::<crate::db::DbError>::into(error))
         })
     }
+
+    /// Save many inheritance relationships atomically.
+    ///
+    /// # Errors
+    /// Returns `SchemaCommandError` if storage operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::command::Command;
+    /// # use lithos_core::schema::ports::InheritanceRelationship;
+    /// # let command = todo!("Provide a Command instance");
+    /// # let child_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// # let parent_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// let relationships: Vec<InheritanceRelationship> =
+    ///     vec![(child_id, Some(parent_id), vec!["prop".into()])];
+    /// command.save_inheritance_many(&relationships)?;
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn save_inheritance_many(
+        &self,
+        relationships: &[super::ports::InheritanceRelationship],
+    ) -> Result<(), SchemaCommandError> {
+        self.command_port.save_inheritance_many(relationships).map_err(
+            |error| {
+                SchemaCommandError::Storage(Into::<crate::db::DbError>::into(
+                    error,
+                ))
+            },
+        )
+    }
 }
 
 impl Command<crate::schema::adapter::command::CommandAdapter<'_>> {
-    /// Save multiple schemas with filesystem timestamps.
+    /// Save many schemas with filesystem timestamps.
     ///
     /// This method is only available when using the concrete `CommandAdapter`.
     /// It preserves filesystem metadata by calling the adapter's extended API.
@@ -187,16 +219,16 @@ impl Command<crate::schema::adapter::command::CommandAdapter<'_>> {
     /// # let command = todo!("Provide a CommandAdapter-backed Command");
     /// # let schemas: Vec<lithos_core::schema::aggregate::Schema> = Vec::new();
     /// # let metadata: Vec<lithos_core::schema::adapter::stored::StoredMetadata> = Vec::new();
-    /// command.save_batch_with_metadata(&schemas, &metadata)?;
+    /// command.save_many_with_metadata(&schemas, &metadata)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
     #[inline]
-    pub fn save_batch_with_metadata(
+    pub fn save_many_with_metadata(
         &self,
         schemas: &[Schema],
         metadata: &[crate::schema::adapter::stored::StoredMetadata],
     ) -> Result<(), SchemaCommandError> {
-        self.command_port.save_batch_with_metadata(schemas, metadata).map_err(
+        self.command_port.save_many_with_metadata(schemas, metadata).map_err(
             |error| {
                 SchemaCommandError::Storage(Into::<crate::db::DbError>::into(
                     error,
@@ -240,8 +272,8 @@ mod tests {
             name: &str,
         ) -> Result<Schema, String> {
             let schema_name =
-                SchemaName::new(name).map_err(|e| e.to_string())?;
-            Schema::new(id, schema_name, None, vec![])
+                SchemaName::try_new(name).map_err(|e| e.to_string())?;
+            Schema::try_new(id, schema_name, None, vec![])
                 .map_err(|e| e.to_string())
         }
     }
@@ -268,7 +300,7 @@ mod tests {
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")
                     .expect("Failed to create schema fixture");
 
-            cmd.save_one(&schema).expect("Save should succeed");
+            cmd.save(&schema).expect("Save should succeed");
 
             let stored = db
                 .get_owned_by_uuid::<StoredSchema>(
@@ -309,7 +341,7 @@ mod tests {
             .expect("Failed to create schema fixture");
             let schema_id = schema.id();
 
-            cmd.save_one(&schema).expect("Save should succeed");
+            cmd.save(&schema).expect("Save should succeed");
 
             cmd.delete(schema_id).expect("Delete should succeed");
 
@@ -321,7 +353,7 @@ mod tests {
                 .expect("Read after delete should succeed");
             assert!(stored.is_none(), "Deleted schema should not exist");
 
-            let name = SchemaName::new("project")
+            let name = SchemaName::try_new("project")
                 .expect("Failed to create schema name");
             let indexed = db
                 .get_owned::<SchemaId>(SCHEMA_ID_BY_NAME, name.as_str())
@@ -344,7 +376,7 @@ mod tests {
             )
             .expect("Failed to create schema fixture");
 
-            cmd.save_batch(&[schema_a.clone(), schema_b.clone()])
+            cmd.save_many(&[schema_a.clone(), schema_b.clone()])
                 .expect("Batch save should succeed");
 
             let stored_a = db

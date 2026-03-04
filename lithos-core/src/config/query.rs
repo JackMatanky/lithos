@@ -32,7 +32,7 @@ use super::{
 /// let dir = tempdir()?;
 /// let db = Database::open(&dir.path().join("config.redb"))?;
 /// let query = RedbConfigQuery::new(QueryAdapter::new(&db));
-/// let _config = query.get(VaultId::new())?;
+/// let _config = query.find(VaultId::new())?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct Query<Q> {
@@ -56,7 +56,7 @@ where
     Q: config_ports::Query,
     Q::Error: Into<crate::db::DbError>,
 {
-    /// Returns the active merged configuration for a vault.
+    /// Finds the active merged configuration for a vault.
     ///
     /// The returned [`Config`] is guaranteed to be in an "Always Valid" state.
     ///
@@ -67,9 +67,9 @@ where
     #[instrument(
         skip(self),
         level = "debug",
-        fields(operation = "get_config", vault_id = %vault_id)
+        fields(operation = "find_config", vault_id = %vault_id)
     )]
-    pub fn get(
+    pub fn find(
         &self,
         vault_id: VaultId,
     ) -> Result<Option<Config>, ConfigQueryError> {
@@ -83,7 +83,7 @@ where
         };
 
         self.query_port
-            .get_merged_owned(vault_id, version)
+            .find_merged(vault_id, version)
             .map_err(|error| ConfigQueryError::Storage(error.into()))
     }
 
@@ -312,7 +312,7 @@ mod tests {
             }
         }
 
-        fn get_merged_owned(
+        fn find_merged(
             &self,
             vault_id: VaultId,
             version: Version,
@@ -376,14 +376,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn get_returns_none_when_active_missing() {
+        fn find_returns_none_when_active_missing() {
             let (_dir, db) = fixtures::test_db();
             db.put(CONFIG, "global", &Global::default())
                 .expect("must put global config");
 
             let qry = Query::new(DbPort::new(&db));
 
-            let result = qry.get(VaultId::new()).expect("query must succeed");
+            let result = qry.find(VaultId::new()).expect("query must succeed");
 
             assert!(
                 result.is_none(),

@@ -85,7 +85,7 @@ impl Default for Task {
         reason = "Default config is guaranteed valid"
     )]
     fn default() -> Self {
-        Self::from_raw(RawTaskConfig::default()).unwrap()
+        Self::try_from_raw(RawTaskConfig::default()).unwrap()
     }
 }
 
@@ -97,7 +97,7 @@ impl Task {
     /// Returns [`ConfigError::ValidationFailed`] if the configuration
     /// invariants are violated (e.g., duplicate status symbols or unknown
     /// indexed fields).
-    pub fn from_raw(raw: RawTaskConfig) -> Result<Self, ConfigError> {
+    pub fn try_from_raw(raw: RawTaskConfig) -> Result<Self, ConfigError> {
         let enabled = raw.enabled.unwrap_or(true);
         let tags = match raw.task_tags {
             Some(tags) => tags
@@ -108,20 +108,20 @@ impl Task {
         };
 
         let status = if let Some(mapping) = raw.status {
-            CheckboxStatus::from_raw(mapping)?
+            CheckboxStatus::try_from_raw(mapping)?
         } else {
             let mut mapping = HashMap::new();
             mapping.insert("todo".to_owned(), ' ');
             mapping.insert("done".to_owned(), 'x');
-            CheckboxStatus::from_raw(mapping)?
+            CheckboxStatus::try_from_raw(mapping)?
         };
 
         let (due, completed, created, reminder) = match raw.dates {
             Some(dates) => (
-                dates.due.map(DateSpec::from_raw).transpose()?,
-                dates.completed.map(DateSpec::from_raw).transpose()?,
-                dates.created.map(DateSpec::from_raw).transpose()?,
-                dates.reminder.map(DateSpec::from_raw).transpose()?,
+                dates.due.map(DateSpec::try_from_raw).transpose()?,
+                dates.completed.map(DateSpec::try_from_raw).transpose()?,
+                dates.created.map(DateSpec::try_from_raw).transpose()?,
+                dates.reminder.map(DateSpec::try_from_raw).transpose()?,
             ),
             None => (None, None, None, None),
         };
@@ -133,7 +133,7 @@ impl Task {
             for (name, spec) in entries {
                 fields.insert(
                     name.clone().into_boxed_str(),
-                    FieldSpec::from_raw(&name, spec)?,
+                    FieldSpec::try_from_raw(&name, spec)?,
                 );
             }
         }
@@ -266,7 +266,9 @@ impl CheckboxStatus {
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if mappings are invalid.
-    pub fn from_raw(raw: HashMap<String, char>) -> Result<Self, ConfigError> {
+    pub fn try_from_raw(
+        raw: HashMap<String, char>,
+    ) -> Result<Self, ConfigError> {
         let mut by_name = HashMap::new();
         let mut by_symbol = HashMap::new();
 
@@ -562,7 +564,7 @@ impl TryFrom<RawTaskConfig> for Task {
 
     #[inline]
     fn try_from(raw: RawTaskConfig) -> Result<Self, Self::Error> {
-        Self::from_raw(raw)
+        Self::try_from_raw(raw)
     }
 }
 
@@ -655,7 +657,7 @@ mod tests {
         mapping.insert("todo".to_owned(), ' ');
         mapping.insert("other".to_owned(), ' '); // Duplicate symbol
 
-        let result = CheckboxStatus::from_raw(mapping);
+        let result = CheckboxStatus::try_from_raw(mapping);
         assert!(
             result.is_err(),
             "CheckboxStatus should reject duplicate symbols"
@@ -666,7 +668,7 @@ mod tests {
     fn task_config_from_raw_is_enabled_by_default() {
         let raw = fixtures::sample_raw_task_config();
         let config =
-            Task::from_raw(raw).expect("Task::from_raw should succeed");
+            Task::try_from_raw(raw).expect("Task::from_raw should succeed");
         assert!(config.enabled(), "Task processing should be enabled");
     }
 
@@ -674,7 +676,7 @@ mod tests {
     fn task_config_from_raw_parses_tags() {
         let raw = fixtures::sample_raw_task_config();
         let config =
-            Task::from_raw(raw).expect("Task::from_raw should succeed");
+            Task::try_from_raw(raw).expect("Task::from_raw should succeed");
         let tags_len = config.tags().len();
         assert_eq!(tags_len, 1, "Expected 1 task tag, got {tags_len}");
     }
@@ -683,7 +685,7 @@ mod tests {
     fn task_config_from_raw_parses_due_field() {
         let raw = fixtures::sample_raw_task_config();
         let config =
-            Task::from_raw(raw).expect("Task::from_raw should succeed");
+            Task::try_from_raw(raw).expect("Task::from_raw should succeed");
         assert_eq!(
             config.due().expect("due field should exist").keyword().as_str(),
             "due",
@@ -695,7 +697,7 @@ mod tests {
     fn task_config_from_raw_parses_fields() {
         let raw = fixtures::sample_raw_task_config();
         let config =
-            Task::from_raw(raw).expect("Task::from_raw should succeed");
+            Task::try_from_raw(raw).expect("Task::from_raw should succeed");
         let fields_len = config.fields().len();
         assert_eq!(fields_len, 1, "Expected 1 custom field, got {fields_len}");
     }
@@ -711,7 +713,7 @@ mod tests {
         });
         raw.fields = Some(fields);
 
-        let result = Task::from_raw(raw);
+        let result = Task::try_from_raw(raw);
         assert!(
             result.is_err(),
             "Expected validation error for invalid field bounds"
@@ -731,7 +733,7 @@ mod tests {
             }),
         };
 
-        let result = Task::from_raw(raw);
+        let result = Task::try_from_raw(raw);
         assert!(
             result.is_err(),
             "Expected validation error for unknown indexed field"

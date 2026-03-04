@@ -152,12 +152,9 @@ impl CommandState for CommandAdapter<'_> {
     #[inline]
     #[instrument(
         skip(self),
-        fields(operation = "get_next_version", vault_id = %vault_id)
+        fields(operation = "next_version", vault_id = %vault_id)
     )]
-    fn get_next_version(
-        &self,
-        vault_id: VaultId,
-    ) -> Result<Version, Self::Error> {
+    fn next_version(&self, vault_id: VaultId) -> Result<Version, Self::Error> {
         let current: Option<Version> =
             self.db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
 

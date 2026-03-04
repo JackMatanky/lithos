@@ -1,5 +1,4 @@
 {
-  "name": "pdev_journal",
   "properties": {
     "subtype": {
       "type": "string",

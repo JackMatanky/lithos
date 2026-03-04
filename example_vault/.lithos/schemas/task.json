@@ -1,5 +1,4 @@
 {
-  "name": "task",
   "properties": {
     "date": {
       "$ref": "property_bank#/date_iso_8601"

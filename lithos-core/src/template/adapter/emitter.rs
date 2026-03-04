@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn emits_base_template_with_blocks() {
         let name = TemplateName::try_from("base").unwrap();
-        let template = Template::new(
+        let template = Template::try_new(
             &name,
             None,
             vec![
