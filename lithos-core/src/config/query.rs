@@ -7,11 +7,11 @@
 use tracing::instrument;
 
 use super::{
-    aggregate::Config,
+    aggregate::{Config, Timestamp},
     error::ConfigQueryError,
     global::Global,
     ports::{self as config_ports},
-    vault::{Vault, VaultId},
+    vault::{Vault, VaultId, VaultRoot},
 };
 
 /// Query implementation for configuration read operations.
@@ -118,6 +118,76 @@ where
             .map_err(|error| ConfigQueryError::Storage(error.into()))
     }
 
+    /// Finds the vault ID associated with a vault root path.
+    ///
+    /// # Errors
+    /// Returns [`ConfigQueryError`] if storage access fails.
+    #[inline]
+    #[instrument(
+        skip(self),
+        level = "debug",
+        fields(operation = "find_vault_id_by_path")
+    )]
+    pub fn find_vault_id_by_path(
+        &self,
+        vault_root: &VaultRoot,
+    ) -> Result<Option<VaultId>, ConfigQueryError> {
+        self.query_port
+            .find_vault_id_by_path(vault_root)
+            .map_err(|error| ConfigQueryError::Storage(error.into()))
+    }
+
+    /// Check if the global config is stale.
+    ///
+    /// Returns `true` if:
+    /// - No stored metadata exists (never ingested)
+    /// - Stored `created_at` differs from provided (file replaced)
+    /// - Stored `modified_at` is older than provided (file changed)
+    ///
+    /// # Errors
+    /// Returns [`ConfigQueryError`] if metadata lookup fails.
+    #[inline]
+    #[instrument(
+        skip(self),
+        level = "debug",
+        fields(operation = "is_global_stale")
+    )]
+    pub fn is_global_stale(
+        &self,
+        created_at: Option<Timestamp>,
+        modified_at: Timestamp,
+    ) -> Result<bool, ConfigQueryError> {
+        self.query_port
+            .is_global_stale(created_at, modified_at)
+            .map_err(|error| ConfigQueryError::Storage(error.into()))
+    }
+
+    /// Check if a vault config is stale.
+    ///
+    /// Returns `true` if:
+    /// - No stored metadata exists for this vault (never ingested)
+    /// - Stored `created_at` differs from provided (file replaced)
+    /// - Stored `modified_at` is older than provided (file changed)
+    ///
+    /// # Errors
+    /// Returns [`ConfigQueryError`] if metadata lookup fails.
+    #[inline]
+    #[instrument(
+        skip(self),
+        level = "debug",
+        fields(operation = "is_vault_stale", vault_id = %vault_id)
+    )]
+    pub fn is_vault_stale(
+        &self,
+        vault_id: VaultId,
+        created_at: Option<Timestamp>,
+        modified_at: Timestamp,
+    ) -> Result<bool, ConfigQueryError> {
+        self.query_port
+            .is_vault_stale(vault_id, created_at, modified_at)
+            .map_err(|error| ConfigQueryError::Storage(error.into()))
+    }
+
     /// Zero-copy access to archived configuration via closure (HOT PATH).
     ///
     /// This is the recommended method for performance-critical operations
@@ -216,19 +286,19 @@ mod tests {
         }
     }
 
-    struct DbPort {
-        txn: redb::ReadTransaction,
+    struct DbPort<'db> {
+        adapter: crate::config::adapter::query::QueryAdapter<'db>,
     }
 
-    impl DbPort {
-        fn new(db: &Database) -> Self {
+    impl<'db> DbPort<'db> {
+        fn new(db: &'db Database) -> Self {
             Self {
-                txn: db.begin_read().expect("tx"),
+                adapter: crate::config::adapter::query::QueryAdapter::new(db),
             }
         }
     }
 
-    impl config_ports::Query for DbPort {
+    impl config_ports::Query for DbPort<'_> {
         type Error = DbError;
 
         fn find_merged(
@@ -236,143 +306,49 @@ mod tests {
             vault_id: VaultId,
             version: Version,
         ) -> Result<Option<Config>, DbError> {
-            let key = format!("{vault_id}:{}", version.value());
-            let table = match self.txn.open_table(MERGED_CONFIG_VERSIONS) {
-                Ok(t) => t,
-                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
-                Err(e) => return Err(DbError::Transaction(e.to_string())),
-            };
-            match table.get(key.as_str())? {
-                Some(guard) => {
-                    let bytes: &[u8] = guard.value();
-                    let archived = rkyv::access::<
-                        rkyv::Archived<Config>,
-                        rkyv::rancor::Error,
-                    >(bytes)
-                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
-                    Ok(Some(
-                        rkyv::deserialize::<Config, rkyv::rancor::Error>(
-                            archived,
-                        )
-                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
-                    ))
-                }
-                None => Ok(None),
-            }
+            self.adapter.find_merged(vault_id, version)
         }
 
         fn find_vault_id_by_path(
             &self,
-            _vault_root: &VaultRoot,
+            vault_root: &VaultRoot,
         ) -> Result<Option<VaultId>, DbError> {
-            // Schema module's query facade doesn't need vault path lookups
-            // (it's an application service concern). Return None to match
-            // that pattern.
-            Ok(None)
+            self.adapter.find_vault_id_by_path(vault_root)
         }
 
         fn get_active_version(
             &self,
             vault_id: VaultId,
         ) -> Result<Option<Version>, DbError> {
-            let table = match self.txn.open_table(MERGED_CONFIG_ACTIVE) {
-                Ok(t) => t,
-                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
-                Err(e) => return Err(DbError::Transaction(e.to_string())),
-            };
-            match table.get(vault_id.to_string().as_str())? {
-                Some(guard) => {
-                    let bytes: &[u8] = guard.value();
-                    let archived = rkyv::access::<
-                        rkyv::Archived<Version>,
-                        rkyv::rancor::Error,
-                    >(bytes)
-                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
-                    Ok(Some(
-                        rkyv::deserialize::<Version, rkyv::rancor::Error>(
-                            archived,
-                        )
-                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
-                    ))
-                }
-                None => Ok(None),
-            }
+            self.adapter.get_active_version(vault_id)
         }
 
         fn get_global(&self) -> Result<Option<Global>, DbError> {
-            let table = match self.txn.open_table(CONFIG) {
-                Ok(t) => t,
-                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
-                Err(e) => return Err(DbError::Transaction(e.to_string())),
-            };
-            match table.get("global")? {
-                Some(guard) => {
-                    let bytes: &[u8] = guard.value();
-                    let archived = rkyv::access::<
-                        rkyv::Archived<Global>,
-                        rkyv::rancor::Error,
-                    >(bytes)
-                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
-                    Ok(Some(
-                        rkyv::deserialize::<Global, rkyv::rancor::Error>(
-                            archived,
-                        )
-                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
-                    ))
-                }
-                None => Ok(None),
-            }
+            self.adapter.get_global()
         }
 
         fn get_vault(
             &self,
             vault_id: VaultId,
         ) -> Result<Option<Vault>, DbError> {
-            let table = match self.txn.open_table(CONFIG) {
-                Ok(t) => t,
-                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
-                Err(e) => return Err(DbError::Transaction(e.to_string())),
-            };
-            match table.get(vault_id.to_string().as_str())? {
-                Some(guard) => {
-                    let bytes: &[u8] = guard.value();
-                    let archived = rkyv::access::<
-                        rkyv::Archived<Vault>,
-                        rkyv::rancor::Error,
-                    >(bytes)
-                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
-                    Ok(Some(
-                        rkyv::deserialize::<Vault, rkyv::rancor::Error>(
-                            archived,
-                        )
-                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
-                    ))
-                }
-                None => Ok(None),
-            }
+            self.adapter.get_vault(vault_id)
         }
 
         fn is_global_stale(
             &self,
-            _created_at: Option<Timestamp>,
-            _modified_at: Timestamp,
+            created_at: Option<Timestamp>,
+            modified_at: Timestamp,
         ) -> Result<bool, DbError> {
-            // Schema module's query facade doesn't use staleness checking
-            // (it's an application service concern). Return false to match
-            // that pattern.
-            Ok(false)
+            self.adapter.is_global_stale(created_at, modified_at)
         }
 
         fn is_vault_stale(
             &self,
-            _vault_id: VaultId,
-            _created_at: Option<Timestamp>,
-            _modified_at: Timestamp,
+            vault_id: VaultId,
+            created_at: Option<Timestamp>,
+            modified_at: Timestamp,
         ) -> Result<bool, DbError> {
-            // Schema module's query facade doesn't use staleness checking
-            // (it's an application service concern). Return false to match
-            // that pattern.
-            Ok(false)
+            self.adapter.is_vault_stale(vault_id, created_at, modified_at)
         }
 
         fn with_archived<R, F>(
@@ -384,24 +360,7 @@ mod tests {
         where
             F: for<'archived> FnOnce(&'archived rkyv::Archived<Config>) -> R,
         {
-            let key = format!("{vault_id}:{}", version.value());
-            let table = match self.txn.open_table(MERGED_CONFIG_VERSIONS) {
-                Ok(t) => t,
-                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
-                Err(e) => return Err(DbError::Transaction(e.to_string())),
-            };
-            match table.get(key.as_str())? {
-                Some(guard) => {
-                    let bytes: &[u8] = guard.value();
-                    let archived = rkyv::access::<
-                        rkyv::Archived<Config>,
-                        rkyv::rancor::Error,
-                    >(bytes)
-                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
-                    Ok(Some(f(archived)))
-                }
-                None => Ok(None),
-            }
+            self.adapter.with_archived(vault_id, version, f)
         }
     }
 
