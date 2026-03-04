@@ -215,6 +215,44 @@ impl Vault {
     }
 }
 
+impl TryFrom<&super::raw::RawConfig> for Vault {
+    type Error = super::error::ConfigError;
+
+    /// Convert raw configuration into validated Vault config.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] if any field fails validation.
+    #[inline]
+    fn try_from(raw: &super::raw::RawConfig) -> Result<Self, Self::Error> {
+        // Convert logging (None if not present)
+        let logging = raw
+            .logging
+            .as_ref()
+            .map(|l| super::logging::Logging::try_from(l.clone()))
+            .transpose()?;
+
+        // Convert paths to vault::Paths (includes cache)
+        let paths = Paths::try_from(&raw.paths)?;
+
+        // Convert frontmatter (None if not present)
+        let frontmatter = raw
+            .frontmatter
+            .as_ref()
+            .map(|f| super::frontmatter::Frontmatter::try_from(f.clone()))
+            .transpose()?;
+
+        // Convert task (None if not present)
+        let task = raw
+            .task
+            .as_ref()
+            .map(|t| super::task::Task::try_from(t.clone()))
+            .transpose()?;
+
+        Ok(Self::new(logging, paths, frontmatter, task))
+    }
+}
+
 /// Metadata for a specific vault.
 ///
 /// This struct holds the identity, root path, and versioning information
@@ -373,6 +411,91 @@ impl Paths {
             schema,
             property_bank,
         }
+    }
+}
+
+impl TryFrom<&super::raw::RawPathsConfig> for Paths {
+    type Error = super::error::ConfigError;
+
+    /// Convert raw paths configuration into vault Paths.
+    ///
+    /// Vault paths include all path overrides (cache, template, schema,
+    /// `property_bank`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::ValidationFailed`] if any path is invalid.
+    #[inline]
+    fn try_from(raw: &super::raw::RawPathsConfig) -> Result<Self, Self::Error> {
+        use std::path::PathBuf;
+
+        use super::{
+            error::ConfigError,
+            paths::{Cache, PropertyBank, Schema, Template},
+        };
+
+        // Parse cache directory (if present)
+        let cache = raw
+            .cache_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Cache::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "cache_dir".into(),
+                        message: format!("invalid cache_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        // Parse template directory (if present)
+        let template = raw
+            .templates_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Template::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "templates_dir".into(),
+                        message: format!("invalid templates_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        // Parse schema directory (if present)
+        let schema = raw
+            .schemas_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Schema::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "schemas_dir".into(),
+                        message: format!("invalid schemas_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        // Parse property bank filename (if present)
+        let property_bank = raw
+            .property_bank_file
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                PropertyBank::try_new(s.clone()).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "property_bank_file".into(),
+                        message: format!("invalid property_bank_file: {e}")
+                            .into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        Ok(Self::new(cache, template, schema, property_bank))
     }
 }
 

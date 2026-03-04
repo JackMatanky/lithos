@@ -64,6 +64,68 @@ impl Paths {
     }
 }
 
+impl TryFrom<&super::raw::RawPathsConfig> for Paths {
+    type Error = ConfigError;
+
+    /// Convert raw paths configuration into global Paths.
+    ///
+    /// Global paths do not include cache (cache is vault-specific).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::ValidationFailed`] if any path is invalid.
+    #[inline]
+    fn try_from(raw: &super::raw::RawPathsConfig) -> Result<Self, Self::Error> {
+        // Parse template directory (if present)
+        let template = raw
+            .templates_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Template::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "templates_dir".into(),
+                        message: format!("invalid templates_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        // Parse schema directory (if present)
+        let schema = raw
+            .schemas_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Schema::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "schemas_dir".into(),
+                        message: format!("invalid schemas_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        // Parse property bank filename (if present)
+        let property_bank = raw
+            .property_bank_file
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                PropertyBank::try_new(s.clone()).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "property_bank_file".into(),
+                        message: format!("invalid property_bank_file: {e}")
+                            .into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        Ok(Self::new(template, schema, property_bank))
+    }
+}
+
 /// Version number for global configuration staleness tracking.
 ///
 /// Incremented each time the global config file changes. Used to determine
@@ -274,6 +336,50 @@ impl Global {
     /// Return global logging settings.
     pub fn logging(&self) -> &Logging {
         &self.logging
+    }
+}
+
+impl TryFrom<&super::raw::RawConfig> for Global {
+    type Error = ConfigError;
+
+    /// Convert raw configuration into validated Global config.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] if any field fails validation.
+    #[inline]
+    fn try_from(raw: &super::raw::RawConfig) -> Result<Self, Self::Error> {
+        // Convert logging (use default if not present)
+        let logging = raw
+            .logging
+            .as_ref()
+            .map(|l| Logging::try_from(l.clone()))
+            .transpose()?
+            .unwrap_or_default();
+
+        // Convert paths to global::Paths (without cache)
+        let paths = Paths::try_from(&raw.paths)?;
+
+        // Convert trusted vaults (None if not present)
+        let trusted_vaults = raw
+            .trusted_vaults
+            .as_ref()
+            .map(|tv| TrustedVaults::try_from(tv.clone()))
+            .transpose()?;
+
+        // Convert frontmatter (use default if not present)
+        let frontmatter = raw
+            .frontmatter
+            .as_ref()
+            .map(|f| Frontmatter::try_from(f.clone()))
+            .transpose()?
+            .unwrap_or_default();
+
+        // Convert task (None if not present)
+        let task =
+            raw.task.as_ref().map(|t| Task::try_from(t.clone())).transpose()?;
+
+        Ok(Self::new(logging, paths, trusted_vaults, frontmatter, task))
     }
 }
 

@@ -131,11 +131,11 @@ impl<'db> ConfigService<'db> {
             .unwrap_or_else(VaultId::new);
 
         // ── Step 2: Check global config staleness ───────────────────────────
-        let (_global_raw, global_created, global_modified, global_stale) =
+        let (global_raw, global_created, global_modified, global_stale) =
             self.load_global_with_staleness()?;
 
         // ── Step 3: Check vault config staleness ────────────────────────────
-        let (_vault_raw, vault_created, vault_modified, vault_stale) =
+        let (vault_raw, vault_created, vault_modified, vault_stale) =
             self.load_vault_with_staleness(vault_root, vault_id)?;
 
         // ── Step 4: Merge and persist if anything changed ───────────────────
@@ -144,7 +144,7 @@ impl<'db> ConfigService<'db> {
         if needs_rebuild {
             // Save global config + metadata (if stale)
             if global_stale {
-                let global = Global::default(); // TODO: Parse RawConfig into Global
+                let global = Global::try_from(&global_raw)?;
                 self.command.record_global(
                     &global,
                     global_created,
@@ -154,7 +154,7 @@ impl<'db> ConfigService<'db> {
 
             // Save vault config + metadata (if stale)
             if vault_stale {
-                let vault = Vault::default(); // TODO: Parse RawConfig into Vault
+                let vault = Vault::try_from(&vault_raw)?;
                 self.command.record_vault(
                     vault_id,
                     &vault,
