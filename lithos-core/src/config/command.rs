@@ -8,7 +8,7 @@
 use tracing::instrument;
 
 use super::{
-    aggregate::{Config, Version},
+    aggregate::{Config, Timestamp, Version},
     error::ConfigCommandError,
     global::Global,
     ingest,
@@ -43,7 +43,7 @@ impl<T> CommandPorts for T where
 /// # use tempfile::tempdir;
 /// # use lithos_core::{
 /// #     config::{
-/// #         global::Global, RedbConfigCommand,
+/// #         aggregate::Timestamp, global::Global, RedbConfigCommand,
 /// #         adapter::command::CommandAdapter,
 /// #     },
 /// #     db::Database,
@@ -51,7 +51,9 @@ impl<T> CommandPorts for T where
 /// let dir = tempdir()?;
 /// let db = Database::open(&dir.path().join("config.redb"))?;
 /// let command = RedbConfigCommand::new(CommandAdapter::new(&db));
-/// command.record_global(&Global::default())?;
+/// let created_at = Some(Timestamp::from_secs(1000));
+/// let modified_at = Timestamp::from_secs(2000);
+/// command.record_global(&Global::default(), created_at, modified_at)?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct Command<C> {
@@ -77,7 +79,11 @@ where
     <C as config_ports::Command>::Error: Into<crate::db::DbError>,
     <C as config_ports::CommandState>::Error: Into<crate::db::DbError>,
 {
-    /// Records the global configuration.
+    /// Records the global configuration with metadata.
+    ///
+    /// The metadata parameters enable staleness detection:
+    /// - `created_at`: File birthtime (detects replacement)
+    /// - `modified_at`: File mtime (detects edits)
     ///
     /// # Errors
     /// Returns [`ConfigCommandError::Storage`] if persistence fails.
@@ -86,13 +92,19 @@ where
     pub fn record_global(
         &self,
         config: &Global,
+        created_at: Option<Timestamp>,
+        modified_at: Timestamp,
     ) -> Result<(), ConfigCommandError> {
         self.command_port
-            .record_global(config)
+            .record_global(config, created_at, modified_at)
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
-    /// Records a vault-specific configuration.
+    /// Records a vault-specific configuration with metadata.
+    ///
+    /// The metadata parameters enable staleness detection:
+    /// - `created_at`: File birthtime (detects replacement)
+    /// - `modified_at`: File mtime (detects edits)
     ///
     /// # Errors
     /// Returns [`ConfigCommandError::Storage`] if persistence fails.
@@ -105,9 +117,11 @@ where
         &self,
         vault_id: VaultId,
         config: &Vault,
+        created_at: Option<Timestamp>,
+        modified_at: Timestamp,
     ) -> Result<(), ConfigCommandError> {
         self.command_port
-            .record_vault(vault_id, config)
+            .record_vault(vault_id, config, created_at, modified_at)
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
@@ -240,7 +254,13 @@ mod tests {
     impl config_ports::Command for DbCommandPort<'_> {
         type Error = DbError;
 
-        fn record_global(&self, config: &Global) -> Result<(), Self::Error> {
+        fn record_global(
+            &self,
+            config: &Global,
+            _created_at: Option<Timestamp>,
+            _modified_at: Timestamp,
+        ) -> Result<(), Self::Error> {
+            // Facade doesn't use metadata - it's for application service layer
             self.db.put(CONFIG, "global", config)
         }
 
@@ -248,7 +268,10 @@ mod tests {
             &self,
             vault_id: VaultId,
             config: &Vault,
+            _created_at: Option<Timestamp>,
+            _modified_at: Timestamp,
         ) -> Result<(), Self::Error> {
+            // Facade doesn't use metadata - it's for application service layer
             self.db.put(CONFIG, &vault_id.to_string(), config)
         }
 
@@ -357,7 +380,9 @@ mod tests {
             let cmd = Command::new(DbCommandPort::new(&db));
 
             let global = Global::default();
-            cmd.record_global(&global).unwrap();
+            let created_at = Some(Timestamp::from_secs(1000));
+            let modified_at = Timestamp::from_secs(2000);
+            cmd.record_global(&global, created_at, modified_at).unwrap();
 
             let stored = db.get_owned::<Global>(CONFIG, "global").unwrap();
             let stored_global =
@@ -375,7 +400,10 @@ mod tests {
 
             let vault = Vault::default();
             let vault_id = VaultId::new();
-            cmd.record_vault(vault_id, &vault).unwrap();
+            let created_at = Some(Timestamp::from_secs(1000));
+            let modified_at = Timestamp::from_secs(2000);
+            cmd.record_vault(vault_id, &vault, created_at, modified_at)
+                .unwrap();
 
             let stored =
                 db.get_owned::<Vault>(CONFIG, &vault_id.to_string()).unwrap();

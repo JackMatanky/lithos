@@ -54,11 +54,20 @@ pub trait Command: Send + Sync {
     /// Storage error type for command operations.
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// Records the global configuration.
+    /// Records the global configuration with metadata.
+    ///
+    /// The metadata parameters enable staleness detection:
+    /// - `created_at`: File birthtime (detects replacement)
+    /// - `modified_at`: File mtime (detects edits)
     ///
     /// # Errors
     /// Returns a storage-specific error if the operation fails.
-    fn record_global(&self, config: &Global) -> Result<(), Self::Error>;
+    fn record_global(
+        &self,
+        config: &Global,
+        created_at: Option<Timestamp>,
+        modified_at: Timestamp,
+    ) -> Result<(), Self::Error>;
 
     /// Records a merged configuration snapshot.
     ///
@@ -71,7 +80,11 @@ pub trait Command: Send + Sync {
         config: &Config,
     ) -> Result<(), Self::Error>;
 
-    /// Records vault-specific configuration.
+    /// Records vault-specific configuration with metadata.
+    ///
+    /// The metadata parameters enable staleness detection:
+    /// - `created_at`: File birthtime (detects replacement)
+    /// - `modified_at`: File mtime (detects edits)
     ///
     /// # Errors
     /// Returns a storage-specific error if the operation fails.
@@ -79,6 +92,8 @@ pub trait Command: Send + Sync {
         &self,
         vault_id: VaultId,
         config: &Vault,
+        created_at: Option<Timestamp>,
+        modified_at: Timestamp,
     ) -> Result<(), Self::Error>;
 
     /// Records the vault ID to root path mapping.
