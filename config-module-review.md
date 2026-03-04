@@ -25,43 +25,60 @@
 - All types have proper rkyv serialization and comprehensive tests (18 tests total)
 - Module kept internal (`pub(crate)`) to maintain encapsulation
 
-### Phase 2: Global Config Path Resolution (30 min) - ⏳ NOT STARTED
+### Phase 2: Global Config Path Resolution (30 min) - ✅ COMPLETED
 
-- [ ] Create `config/adapter/ingestor.rs`
-- [ ] Implement `resolve_global_config_path()` with priority order
+- [x] Create `config/adapter/ingestor.rs`
+- [x] Implement `resolve_global_config_path()` with priority order
 
-### Phase 3: Ingestor with Metadata (1 hour) - ⏳ NOT STARTED
+**Commit:** `4ee9203a` - feat(config): add global config path resolution (Phase 2)
 
-- [ ] Implement `load_vault_config()` with metadata extraction
-- [ ] Implement `load_global_config()` with metadata extraction
-- [ ] Implement `compute_metadata()` helper
+### Phase 3: Ingestor with Metadata (1 hour) - ✅ COMPLETED
 
-### Phase 4: Query Port Extensions (30 min) - ⏳ NOT STARTED
+- [x] Implement `load_vault_config()` with metadata extraction
+- [x] Implement `load_global_config()` with metadata extraction
+- [x] Implement `extract_timestamp()` helper
 
-- [ ] Add `is_global_stale()` to Query trait in `config/ports.rs`
-- [ ] Add `is_vault_stale()` to Query trait
-- [ ] Add `find_vault_id_by_path()` to Query trait
-- [ ] Implement staleness methods in `config/adapter/query.rs`
+**Commit:** `bb610230` - feat(config): implement ingestor with metadata extraction (Phase 3)
 
-### Phase 5: Command Updates (30 min) - ⏳ NOT STARTED
+### Phase 4: Query Port Extensions (30 min) - ✅ COMPLETED
 
-- [ ] Update `record_global()` to include metadata parameter
-- [ ] Update `record_vault()` to include metadata parameter
-- [ ] Implement batch writes for config + metadata
+- [x] Add `is_global_stale()` to Query trait in `config/ports.rs`
+- [x] Add `is_vault_stale()` to Query trait
+- [x] Add `find_vault_id_by_path()` to Query trait
+- [x] Implement staleness methods in `config/adapter/query.rs`
 
-### Phase 6: Service Orchestration (1 hour) - ⏳ NOT STARTED
+**Commit:** `8c10a62f` - feat(config): extend Query port with staleness detection (Phase 4)
 
-- [ ] Create `application/config.rs`
-- [ ] Implement `ConfigService::load()` with hybrid staleness detection
-- [ ] Implement `merge_configs()` helper
-- [ ] Update `config/command.rs` to accept pre-built Config
+### Phase 5: Command Updates (30 min) - ✅ COMPLETED
 
-### Phase 7: RawConfig Schema Alignment (30 min) - ⏳ NOT STARTED
+- [x] Update `record_global()` to include metadata parameter
+- [x] Update `record_vault()` to include metadata parameter
+- [x] Implement batch writes for config + metadata
 
-- [ ] Add `vault_path`, `name`, `version` fields to `RawConfig`
-- [ ] Flatten `RawLogging` with `#[serde(flatten)]`
-- [ ] Update `Config::build()` to use new fields
-- [ ] Add round-trip tests
+**Commit:** `85c8b2db` - feat(config): update Command port with metadata parameters (Phase 5)
+
+### Phase 6: Service Orchestration (1 hour) - ✅ COMPLETED
+
+- [x] Create `application/config.rs`
+- [x] Implement `ConfigService::load()` with hybrid staleness detection
+- [x] Implement staleness check helpers
+- [x] Use existing `rebuild_merged` for merge logic
+
+**Commits:**
+- `70468247` - feat(config): add ConfigService with placeholder load implementation
+- `0ff55913` - feat(config): expose staleness methods on Query facade
+- `ec33faa6` - feat(config): implement full staleness detection in ConfigService
+
+### Phase 7: RawConfig Schema Alignment (30 min) - ✅ COMPLETED
+
+- [x] Add TryFrom implementations for Global and Vault from RawConfig
+- [x] Add TryFrom implementations for global::Paths and vault::Paths
+- [x] Update ConfigService to use proper parsing instead of defaults
+
+**Commit:** `4db4606d` - feat(config): add TryFrom implementations for Global and Vault from RawConfig
+
+**Note:** Original plan to add vault_path/name/version fields to RawConfig was not needed.
+The existing RawConfig structure works correctly with the TryFrom approach.
 
 ### Phase 8: Multi-Format Support (1 hour) - ⏳ DEFERRED
 

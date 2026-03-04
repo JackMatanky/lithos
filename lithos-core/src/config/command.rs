@@ -363,7 +363,13 @@ mod tests {
                 .get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
 
             let candidate = match current {
-                Some(v) => v.next().unwrap_or_else(|_| Version::initial()),
+                Some(v) => v.next().map_err(|_err| {
+                    DbError::Serialization(
+                        "config version overflow - vault has exceeded maximum \
+                         rebuilds"
+                            .into(),
+                    )
+                })?,
                 None => Version::initial(),
             };
 
