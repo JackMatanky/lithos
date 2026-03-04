@@ -346,7 +346,30 @@ fn config_rebuild_is_idempotent_for_same_inputs() -> TestResult {
 
     assert_eq!(v1.value(), 1, "Expected first rebuild to be version 1");
     assert_eq!(v2.value(), 2, "Expected second rebuild to increment version");
-    assert_eq!(first, second, "Config should be stable for same inputs");
+
+    // Version should differ, but all other fields should be identical
+    assert_ne!(
+        first.version(),
+        second.version(),
+        "Version should increment on rebuild"
+    );
+    assert_eq!(
+        first.vault_metadata(),
+        second.vault_metadata(),
+        "Vault metadata should be stable"
+    );
+    assert_eq!(
+        first.logging(),
+        second.logging(),
+        "Logging config should be stable"
+    );
+    assert_eq!(first.paths(), second.paths(), "Paths config should be stable");
+    assert_eq!(
+        first.frontmatter(),
+        second.frontmatter(),
+        "Frontmatter config should be stable"
+    );
+    assert_eq!(first.task(), second.task(), "Task config should be stable");
 
     Ok(())
 }

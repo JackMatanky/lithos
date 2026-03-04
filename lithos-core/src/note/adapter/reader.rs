@@ -38,7 +38,7 @@ use crate::{
 /// ```
 /// # use std::path::Path;
 /// # use lithos_core::config::{
-/// #     aggregate::Config,
+/// #     aggregate::{Config, Version},
 /// #     raw::RawConfig,
 /// #     vault::{VaultId, VaultRoot},
 /// # };
@@ -58,6 +58,7 @@ use crate::{
 /// #     &RawConfig::default(),
 /// #     VaultId::new(),
 /// #     VaultRoot::try_new(root.clone())?,
+/// #     Version::initial(),
 /// # )?;
 /// let reader = FsReader::new(root.as_path());
 /// let note_reader = NoteReader::new(&config);
@@ -159,7 +160,7 @@ impl<'config> NoteReader<'config> {
     /// #     aggregate::{Note, NoteId},
     /// # };
     /// # use lithos_core::config::{
-    /// #     aggregate::Config,
+    /// #     aggregate::{Config, Version},
     /// #     raw::RawConfig,
     /// #     vault::{VaultId, VaultRoot},
     /// # };
@@ -177,6 +178,7 @@ impl<'config> NoteReader<'config> {
     /// #     &RawConfig::default(),
     /// #     VaultId::new(),
     /// #     VaultRoot::try_new(root.clone())?,
+    /// #     Version::initial(),
     /// # )?;
     /// let reader = FsReader::new(root.as_path());
     /// let note_reader = NoteReader::new(&config);

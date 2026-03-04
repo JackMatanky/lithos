@@ -246,17 +246,6 @@ where
     reason = "Tests use old constants for compatibility testing"
 )]
 mod tests {
-    use crate::{
-        config::{
-            aggregate::{Config, Timestamp, Version},
-            db_table::{CONFIG, MERGED_CONFIG_ACTIVE, MERGED_CONFIG_VERSIONS},
-            global::Global,
-            ports::{self as config_ports},
-            vault::{Vault, VaultId, VaultRoot},
-        },
-        db::{Database, DbError},
-    };
-
     mod fixtures {
         use tempfile::{TempDir, tempdir};
 
@@ -289,6 +278,88 @@ mod tests {
             .expect("test config must be valid")
         }
     }
+
+    mod load {
+        use super::{super::Query, *};
+
+        #[test]
+        fn find_returns_none_when_active_missing() {
+            let (_dir, db) = fixtures::test_db();
+            db.put(CONFIG, "global", &Global::default())
+                .expect("must put global config");
+
+            let qry = Query::new(DbPort::new(&db));
+
+            let result = qry.find(VaultId::new()).expect("query must succeed");
+
+            assert!(
+                result.is_none(),
+                "Expected None when active version missing"
+            );
+        }
+
+        #[test]
+        fn get_vault_returns_stored_config() {
+            let (_dir, db) = fixtures::test_db();
+            let vault_id = VaultId::new();
+            let vault = Vault::default();
+
+            // Use new versioned table format
+            let vault_key = format!("{}:{}", vault_id, vault.version().value());
+            db.put(crate::config::db_table::VAULT_CONFIG, &vault_key, &vault)
+                .expect("must put vault config");
+
+            let qry = Query::new(DbPort::new(&db));
+
+            let loaded = qry.get_vault(vault_id).expect("query must succeed");
+            assert_eq!(loaded, Some(vault));
+        }
+    }
+
+    mod borrowing {
+        use super::{super::Query, *};
+
+        #[test]
+        fn with_archived_returns_data_via_closure() {
+            let (_dir, db) = fixtures::test_db();
+            let vault_id = VaultId::new();
+            let config = fixtures::test_config();
+
+            // Use new versioned table format (no separate ACTIVE table)
+            db.put(
+                crate::config::db_table::CONFIG_VERSIONS,
+                &format!("{}:{}", vault_id, config.version().value()),
+                &config,
+            )
+            .expect("must put config version");
+
+            let qry = Query::new(DbPort::new(&db));
+
+            // Verify closure-based zero-copy access returns data
+            // Note: Config fields are private, so we test the pattern works
+            // by checking the closure is called and returns a value
+            let result: Option<bool> = qry
+                .with_archived(vault_id, |_archived| {
+                    // Config has private fields, but we can verify
+                    // the archived type is accessible within the closure
+                    true
+                })
+                .expect("query must succeed");
+
+            assert!(result.expect("archived config must exist"));
+        }
+    }
+
+    use crate::{
+        config::{
+            aggregate::{Config, Timestamp, Version},
+            db_table::CONFIG,
+            global::Global,
+            ports::{self as config_ports},
+            vault::{Vault, VaultId, VaultRoot},
+        },
+        db::{Database, DbError},
+    };
 
     struct DbPort<'db> {
         adapter: crate::config::adapter::query::QueryAdapter<'db>,
@@ -365,76 +436,6 @@ mod tests {
             F: for<'archived> FnOnce(&'archived rkyv::Archived<Config>) -> R,
         {
             self.adapter.with_archived(vault_id, version, f)
-        }
-    }
-
-    mod load {
-        use super::{super::Query, *};
-
-        #[test]
-        fn find_returns_none_when_active_missing() {
-            let (_dir, db) = fixtures::test_db();
-            db.put(CONFIG, "global", &Global::default())
-                .expect("must put global config");
-
-            let qry = Query::new(DbPort::new(&db));
-
-            let result = qry.find(VaultId::new()).expect("query must succeed");
-
-            assert!(
-                result.is_none(),
-                "Expected None when active version missing"
-            );
-        }
-
-        #[test]
-        fn get_vault_returns_stored_config() {
-            let (_dir, db) = fixtures::test_db();
-            let vault_id = VaultId::new();
-            let vault = Vault::default();
-
-            db.put(CONFIG, &vault_id.to_string(), &vault)
-                .expect("must put vault config");
-
-            let qry = Query::new(DbPort::new(&db));
-
-            let loaded = qry.get_vault(vault_id).expect("query must succeed");
-            assert_eq!(loaded, Some(vault));
-        }
-    }
-
-    mod borrowing {
-        use super::{super::Query, *};
-
-        #[test]
-        fn with_archived_returns_data_via_closure() {
-            let (_dir, db) = fixtures::test_db();
-            let vault_id = VaultId::new();
-            let config = fixtures::test_config();
-
-            db.put(MERGED_CONFIG_VERSIONS, &format!("{vault_id}:1"), &config)
-                .expect("must put config version");
-            db.put(
-                MERGED_CONFIG_ACTIVE,
-                &vault_id.to_string(),
-                &Version::initial(),
-            )
-            .expect("must set active version");
-
-            let qry = Query::new(DbPort::new(&db));
-
-            // Verify closure-based zero-copy access returns data
-            // Note: Config fields are private, so we test the pattern works
-            // by checking the closure is called and returns a value
-            let result: Option<bool> = qry
-                .with_archived(vault_id, |_archived| {
-                    // Config has private fields, but we can verify
-                    // the archived type is accessible within the closure
-                    true
-                })
-                .expect("query must succeed");
-
-            assert!(result.expect("archived config must exist"));
         }
     }
 }

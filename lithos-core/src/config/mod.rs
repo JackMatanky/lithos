@@ -23,7 +23,7 @@
 //! ```rust
 //! # use std::path::Path;
 //! # use lithos_core::config::{
-//! #     aggregate::Config,
+//! #     aggregate::{Config, Version},
 //! #     vault::{VaultId, VaultRoot},
 //! #     ingest
 //! # };
@@ -39,6 +39,7 @@
 //!     &raw,
 //!     vault_id,
 //!     VaultRoot::try_new(vault_root.to_path_buf())?,
+//!     Version::initial(),
 //! )?;
 //!
 //! // 3. Use the validated configuration
@@ -169,21 +170,33 @@ pub(crate) mod db_table {
     // ────────────────────────────────────────────────────────────────
     // Legacy tables (to be removed after migration)
     // ────────────────────────────────────────────────────────────────
+    // Note: These are still used in query.rs tests but will be removed in Phase
+    // 9.
 
+    #[cfg(test)]
     #[deprecated(note = "Use GLOBAL_CONFIG and VAULT_CONFIG instead")]
-    #[expect(dead_code, reason = "Deprecated, will be removed in Phase 9")]
     pub(crate) const CONFIG: TableDefinition<&str, &[u8]> =
         TableDefinition::new("config");
 
+    #[cfg(test)]
     #[deprecated(note = "Use CONFIG_VERSIONS instead")]
-    #[expect(dead_code, reason = "Deprecated, will be removed in Phase 9")]
+    #[expect(
+        dead_code,
+        reason = "Used in disabled command.rs tests - will be removed in \
+                  Phase 9"
+    )]
     pub(crate) const MERGED_CONFIG_VERSIONS: TableDefinition<&str, &[u8]> =
         TableDefinition::new("merged_config_versions");
 
+    #[cfg(test)]
     #[deprecated(
         note = "Active version is computed via scan of CONFIG_VERSIONS"
     )]
-    #[expect(dead_code, reason = "Deprecated, will be removed in Phase 9")]
+    #[expect(
+        dead_code,
+        reason = "Used in disabled command.rs tests - will be removed in \
+                  Phase 9"
+    )]
     pub(crate) const MERGED_CONFIG_ACTIVE: TableDefinition<&str, &[u8]> =
         TableDefinition::new("merged_config_active");
 }
