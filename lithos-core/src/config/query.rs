@@ -179,11 +179,11 @@ mod tests {
     use super::Query;
     use crate::{
         config::{
-            aggregate::{Config, Version},
+            aggregate::{Config, Timestamp, Version},
             db_table::{CONFIG, MERGED_CONFIG_ACTIVE, MERGED_CONFIG_VERSIONS},
             global::Global,
             ports::{self as config_ports},
-            vault::{Vault, VaultId},
+            vault::{Vault, VaultId, VaultRoot},
         },
         db::{Database, DbError},
     };
@@ -230,6 +230,46 @@ mod tests {
 
     impl config_ports::Query for DbPort {
         type Error = DbError;
+
+        fn find_merged(
+            &self,
+            vault_id: VaultId,
+            version: Version,
+        ) -> Result<Option<Config>, DbError> {
+            let key = format!("{vault_id}:{}", version.value());
+            let table = match self.txn.open_table(MERGED_CONFIG_VERSIONS) {
+                Ok(t) => t,
+                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
+                Err(e) => return Err(DbError::Transaction(e.to_string())),
+            };
+            match table.get(key.as_str())? {
+                Some(guard) => {
+                    let bytes: &[u8] = guard.value();
+                    let archived = rkyv::access::<
+                        rkyv::Archived<Config>,
+                        rkyv::rancor::Error,
+                    >(bytes)
+                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
+                    Ok(Some(
+                        rkyv::deserialize::<Config, rkyv::rancor::Error>(
+                            archived,
+                        )
+                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
+                    ))
+                }
+                None => Ok(None),
+            }
+        }
+
+        fn find_vault_id_by_path(
+            &self,
+            _vault_root: &VaultRoot,
+        ) -> Result<Option<VaultId>, DbError> {
+            // Schema module's query facade doesn't need vault path lookups
+            // (it's an application service concern). Return None to match
+            // that pattern.
+            Ok(None)
+        }
 
         fn get_active_version(
             &self,
@@ -312,34 +352,27 @@ mod tests {
             }
         }
 
-        fn find_merged(
+        fn is_global_stale(
             &self,
-            vault_id: VaultId,
-            version: Version,
-        ) -> Result<Option<Config>, DbError> {
-            let key = format!("{vault_id}:{}", version.value());
-            let table = match self.txn.open_table(MERGED_CONFIG_VERSIONS) {
-                Ok(t) => t,
-                Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
-                Err(e) => return Err(DbError::Transaction(e.to_string())),
-            };
-            match table.get(key.as_str())? {
-                Some(guard) => {
-                    let bytes: &[u8] = guard.value();
-                    let archived = rkyv::access::<
-                        rkyv::Archived<Config>,
-                        rkyv::rancor::Error,
-                    >(bytes)
-                    .map_err(|e| DbError::Deserialization(e.to_string()))?;
-                    Ok(Some(
-                        rkyv::deserialize::<Config, rkyv::rancor::Error>(
-                            archived,
-                        )
-                        .map_err(|e| DbError::Deserialization(e.to_string()))?,
-                    ))
-                }
-                None => Ok(None),
-            }
+            _created_at: Option<Timestamp>,
+            _modified_at: Timestamp,
+        ) -> Result<bool, DbError> {
+            // Schema module's query facade doesn't use staleness checking
+            // (it's an application service concern). Return false to match
+            // that pattern.
+            Ok(false)
+        }
+
+        fn is_vault_stale(
+            &self,
+            _vault_id: VaultId,
+            _created_at: Option<Timestamp>,
+            _modified_at: Timestamp,
+        ) -> Result<bool, DbError> {
+            // Schema module's query facade doesn't use staleness checking
+            // (it's an application service concern). Return false to match
+            // that pattern.
+            Ok(false)
         }
 
         fn with_archived<R, F>(

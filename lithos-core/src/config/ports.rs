@@ -5,7 +5,7 @@
 //! (like Redb).
 
 use super::{
-    aggregate::{Config, Version},
+    aggregate::{Config, Timestamp, Version},
     global::Global,
     vault::{Vault, VaultId, VaultRoot},
 };
@@ -142,6 +142,33 @@ pub trait Query: Send + Sync {
         version: Version,
     ) -> Result<Option<Config>, Self::Error>;
 
+    /// Find a vault ID by its root path.
+    ///
+    /// This is used during config loading to map a vault path to its
+    /// existing ID, enabling proper staleness detection for vault configs.
+    ///
+    /// Returns `None` if no vault with this path has been recorded.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the lookup fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::config::{ports::Query, vault::VaultRoot};
+    ///
+    /// let query: &dyn Query = todo!();
+    /// let vault_root = VaultRoot::try_new("/vault".into())?;
+    ///
+    /// if let Some(vault_id) = query.find_vault_id_by_path(&vault_root)? {
+    ///     println!("Found existing vault: {}", vault_id);
+    /// }
+    /// ```
+    fn find_vault_id_by_path(
+        &self,
+        vault_root: &VaultRoot,
+    ) -> Result<Option<VaultId>, Self::Error>;
+
     /// Fetches the active merged configuration version for a vault.
     ///
     /// # Errors
@@ -165,6 +192,70 @@ pub trait Query: Send + Sync {
         &self,
         vault_id: VaultId,
     ) -> Result<Option<Vault>, Self::Error>;
+
+    /// Check if the global config is stale.
+    ///
+    /// Returns `true` if:
+    /// - No stored metadata exists (never ingested)
+    /// - Stored `created_at` differs from provided (file replaced)
+    /// - Stored `modified_at` is older than provided (file changed)
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the metadata lookup fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::config::{ports::Query, aggregate::Timestamp};
+    ///
+    /// let query: &dyn Query = todo!();
+    /// let created = Some(Timestamp::from_secs(1000));
+    /// let modified = Timestamp::from_secs(2000);
+    ///
+    /// if query.is_global_stale(created, modified)? {
+    ///     println!("Global config needs reloading");
+    /// }
+    /// ```
+    fn is_global_stale(
+        &self,
+        created_at: Option<Timestamp>,
+        modified_at: Timestamp,
+    ) -> Result<bool, Self::Error>;
+
+    /// Check if a vault config is stale.
+    ///
+    /// Returns `true` if:
+    /// - No stored metadata exists for this vault (never ingested)
+    /// - Stored `created_at` differs from provided (file replaced)
+    /// - Stored `modified_at` is older than provided (file changed)
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if the metadata lookup fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use lithos_core::config::{
+    ///     ports::Query,
+    ///     aggregate::Timestamp,
+    ///     vault::VaultId,
+    /// };
+    ///
+    /// let query: &dyn Query = todo!();
+    /// let vault_id = VaultId::new();
+    /// let created = Some(Timestamp::from_secs(1000));
+    /// let modified = Timestamp::from_secs(2000);
+    ///
+    /// if query.is_vault_stale(vault_id, created, modified)? {
+    ///     println!("Vault config needs reloading");
+    /// }
+    /// ```
+    fn is_vault_stale(
+        &self,
+        vault_id: VaultId,
+        created_at: Option<Timestamp>,
+        modified_at: Timestamp,
+    ) -> Result<bool, Self::Error>;
 
     /// Zero-copy access to archived configuration via closure (HOT PATH).
     ///

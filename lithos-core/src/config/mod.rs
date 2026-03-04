@@ -141,8 +141,6 @@ pub(crate) mod db_table {
     /// Keys:
     /// - `"global"` → Global config metadata
     /// - `vault_id.to_string()` → Vault config metadata
-    // Used in Phase 4 for metadata-based staleness detection
-    #[expect(dead_code, reason = "Table definition used in Phase 4 ingestion")]
     pub(crate) const CONFIG_METADATA: TableDefinition<&str, &[u8]> =
         TableDefinition::new("config_metadata");
 }
