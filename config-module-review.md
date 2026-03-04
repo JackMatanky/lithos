@@ -86,13 +86,15 @@ The existing RawConfig structure works correctly with the TryFrom approach.
 - [ ] Update ConfigIngestor to probe multiple formats
 - [ ] Test JSON/YAML config files
 
-### Additional Critical Fixes - ⏳ NOT STARTED
+### Additional Critical Fixes
 
-- [ ] Fix version overflow (Section 3.1)
-- [ ] Add trusted_vaults to Config (Section 3.2)
-- [ ] VaultRoot wraps AbsolutePath (Section 3.3)
-- [ ] FrontmatterKey uses Box<str> (Section 5.2.1)
-- [ ] ConfigUpdated.source uses Box<str> (Section 5.2.2)
+- [x] Fix version overflow (Section 3.1) - ✅ COMPLETED
+- [x] Trusted vaults handled (Section 3.2) - ✅ N/A - Already in Global as optional
+- [ ] VaultRoot wraps AbsolutePath (Section 3.3) - ⏳ DEFERRED
+- [ ] FrontmatterKey uses Box<str> (Section 5.2.1) - ⏳ DEFERRED
+- [ ] ConfigUpdated.source uses Box<str> (Section 5.2.2) - ⏳ DEFERRED
+
+**Commit:** `60fbd32d` - fix(config): prevent version overflow from silently corrupting data
 
 **Total Estimated Effort:** ~6 hours (Phases 1-7)
 
