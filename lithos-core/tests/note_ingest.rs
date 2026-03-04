@@ -37,6 +37,7 @@ mod tests {
             &RawConfig::default(),
             VaultId::new(),
             VaultRoot::try_new(root.clone())?,
+            lithos_core::config::aggregate::Version::initial(),
         )?;
         let markdown = concat!(
             "# Title\n\n",

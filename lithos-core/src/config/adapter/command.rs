@@ -3,16 +3,16 @@
 
 use tracing::instrument;
 
-use super::{merged_version_key, stored::ConfigMetadata};
+use super::stored::ConfigMetadata;
 use crate::{
     config::{
         aggregate::{Config, Timestamp, Version},
         db_table::{
-            CONFIG, CONFIG_METADATA, MERGED_CONFIG_ACTIVE,
-            MERGED_CONFIG_VERSIONS, VAULT_ID_BY_PATH, VAULT_PATH_BY_ID,
+            CONFIG_METADATA, CONFIG_VERSIONS, GLOBAL_CONFIG, VAULT_CONFIG,
+            VAULT_ID_BY_PATH, VAULT_PATH_BY_ID,
         },
         global::Global,
-        ports::{ActivationTarget, Command, CommandState},
+        ports::{Command, CommandState},
         vault::{Vault, VaultId, VaultRoot},
     },
     db::{Database, DbError},
@@ -38,17 +38,23 @@ impl Command for CommandAdapter<'_> {
     type Error = DbError;
 
     #[inline]
-    #[instrument(skip(self, config), fields(operation = "record_global"))]
+    #[instrument(
+        skip(self, config),
+        fields(operation = "record_global", version = %config.version())
+    )]
     fn record_global(
         &self,
         config: &Global,
         created_at: Option<Timestamp>,
         modified_at: Timestamp,
     ) -> Result<(), Self::Error> {
+        let version_key = config.version().value().to_string();
+        let metadata_key = format!("global:{}", config.version().value());
         let metadata = ConfigMetadata::new(created_at, modified_at);
+
         self.db.batch_write(|tx| {
-            tx.put(CONFIG, "global", config)?;
-            tx.put(CONFIG_METADATA, "global", &metadata)
+            tx.put(GLOBAL_CONFIG, &version_key, config)?;
+            tx.put(CONFIG_METADATA, &metadata_key, &metadata)
         })
     }
 
@@ -56,25 +62,28 @@ impl Command for CommandAdapter<'_> {
     #[instrument(
         skip(self, config),
         fields(
-            operation = "record_merged",
+            operation = "record_config",
             vault_id = %vault_id,
-            version = %version
+            version = %config.version()
         )
     )]
-    fn record_merged(
+    fn record_config(
         &self,
         vault_id: VaultId,
-        version: Version,
         config: &Config,
     ) -> Result<(), Self::Error> {
-        let key = merged_version_key(vault_id, version);
-        self.db.put(MERGED_CONFIG_VERSIONS, &key, config)
+        let key = format!("{}:{}", vault_id, config.version().value());
+        self.db.put(CONFIG_VERSIONS, &key, config)
     }
 
     #[inline]
     #[instrument(
         skip(self, config),
-        fields(operation = "record_vault", vault_id = %vault_id)
+        fields(
+            operation = "record_vault",
+            vault_id = %vault_id,
+            version = %config.version()
+        )
     )]
     fn record_vault(
         &self,
@@ -83,11 +92,13 @@ impl Command for CommandAdapter<'_> {
         created_at: Option<Timestamp>,
         modified_at: Timestamp,
     ) -> Result<(), Self::Error> {
+        let version_key = format!("{}:{}", vault_id, config.version().value());
+        let metadata_key = format!("{}:{}", vault_id, config.version().value());
         let metadata = ConfigMetadata::new(created_at, modified_at);
-        let vault_key = vault_id.to_string();
+
         self.db.batch_write(|tx| {
-            tx.put(CONFIG, &vault_key, config)?;
-            tx.put(CONFIG_METADATA, &vault_key, &metadata)
+            tx.put(VAULT_CONFIG, &version_key, config)?;
+            tx.put(CONFIG_METADATA, &metadata_key, &metadata)
         })
     }
 
@@ -105,61 +116,6 @@ impl Command for CommandAdapter<'_> {
         self.db.put(VAULT_ID_BY_PATH, &path_key, &vault_id)?;
         self.db.put(VAULT_PATH_BY_ID, &vault_id.to_string(), vault_root)
     }
-
-    #[inline]
-    #[instrument(
-        skip(self),
-        fields(operation = "activate_version", vault_id = %vault_id)
-    )]
-    fn activate_version(
-        &self,
-        vault_id: VaultId,
-        target: ActivationTarget,
-    ) -> Result<Version, Self::Error> {
-        match target {
-            ActivationTarget::Exact(version) => {
-                self.db.put(
-                    MERGED_CONFIG_ACTIVE,
-                    &vault_id.to_string(),
-                    &version,
-                )?;
-                Ok(version)
-            }
-            ActivationTarget::Previous {
-                steps,
-            } => self.db.read_write_unit_of_work(|tx| {
-                let current: Option<Version> =
-                    tx.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
-
-                let current = current.ok_or_else(|| {
-                    DbError::Serialization("no active version".into())
-                })?;
-
-                let steps = u64::from(steps);
-                let current_val = current.value();
-                let target_version_val = current_val.saturating_sub(steps);
-
-                if target_version_val == 0 {
-                    return Err(DbError::Serialization(
-                        "activation underflow".into(),
-                    ));
-                }
-
-                let target_version = Version::try_from(target_version_val)
-                    .map_err(|_e| {
-                        DbError::Serialization("invalid version".into())
-                    })?;
-
-                tx.put(
-                    MERGED_CONFIG_ACTIVE,
-                    &vault_id.to_string(),
-                    &target_version,
-                )?;
-
-                Ok(target_version)
-            }),
-        }
-    }
 }
 
 impl CommandState for CommandAdapter<'_> {
@@ -171,21 +127,36 @@ impl CommandState for CommandAdapter<'_> {
         fields(operation = "next_version", vault_id = %vault_id)
     )]
     fn next_version(&self, vault_id: VaultId) -> Result<Version, Self::Error> {
-        let current: Option<Version> =
-            self.db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())?;
+        // Scan CONFIG_VERSIONS for max version with this vault_id prefix
+        let prefix = format!("{vault_id}:");
 
-        let candidate = match current {
+        #[expect(
+            clippy::return_and_then,
+            reason = "filter_map chain is more readable than nested match"
+        )]
+        let max_version = self
+            .db
+            .scan_range::<Config>(CONFIG_VERSIONS, &prefix)?
+            .into_iter()
+            .filter_map(|(key, _)| {
+                // Extract version from key format "{vault_id}:{version}"
+                key.strip_prefix(&prefix)
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .and_then(|v| Version::try_from(v).ok())
+            })
+            .max();
+
+        // If we have a max version, increment it; otherwise start at initial
+        match max_version {
             Some(v) => v.next().map_err(|_err| {
                 DbError::Serialization(
                     "config version overflow - vault has exceeded maximum \
                      rebuilds"
                         .into(),
                 )
-            })?,
-            None => Version::initial(),
-        };
-
-        Ok(candidate)
+            }),
+            None => Ok(Version::initial()),
+        }
     }
 }
 
@@ -214,13 +185,16 @@ mod tests {
             .expect("record should succeed");
 
         // Verify config persisted
-        let stored_config: Option<Global> =
-            db.get_owned(CONFIG, "global").expect("read should succeed");
+        let version_key = global.version().value().to_string();
+        let metadata_key = format!("global:{}", global.version().value());
+        let stored_config: Option<Global> = db
+            .get_owned(GLOBAL_CONFIG, &version_key)
+            .expect("read should succeed");
         assert_eq!(stored_config, Some(global), "config should be persisted");
 
         // Verify metadata persisted
         let stored_metadata: Option<ConfigMetadata> = db
-            .get_owned(CONFIG_METADATA, "global")
+            .get_owned(CONFIG_METADATA, &metadata_key)
             .expect("read should succeed");
         assert!(stored_metadata.is_some(), "metadata should be persisted");
 
@@ -244,14 +218,16 @@ mod tests {
             .expect("record should succeed");
 
         // Verify config persisted
-        let vault_key = vault_id.to_string();
-        let stored_config: Option<Vault> =
-            db.get_owned(CONFIG, &vault_key).expect("read should succeed");
+        let vault_key = format!("{}:{}", vault_id, vault.version().value());
+        let metadata_key = format!("{}:{}", vault_id, vault.version().value());
+        let stored_config: Option<Vault> = db
+            .get_owned(VAULT_CONFIG, &vault_key)
+            .expect("read should succeed");
         assert_eq!(stored_config, Some(vault), "config should be persisted");
 
         // Verify metadata persisted
         let stored_metadata: Option<ConfigMetadata> = db
-            .get_owned(CONFIG_METADATA, &vault_key)
+            .get_owned(CONFIG_METADATA, &metadata_key)
             .expect("read should succeed");
         assert!(stored_metadata.is_some(), "metadata should be persisted");
 
@@ -275,12 +251,14 @@ mod tests {
             .expect("first write should succeed");
 
         // Both config and metadata should exist
+        let version_key = global.version().value().to_string();
+        let metadata_key = format!("global:{}", global.version().value());
         let config_exists = db
-            .get_owned::<Global>(CONFIG, "global")
+            .get_owned::<Global>(GLOBAL_CONFIG, &version_key)
             .expect("read should succeed")
             .is_some();
         let metadata_exists = db
-            .get_owned::<ConfigMetadata>(CONFIG_METADATA, "global")
+            .get_owned::<ConfigMetadata>(CONFIG_METADATA, &metadata_key)
             .expect("read should succeed")
             .is_some();
 
@@ -302,11 +280,11 @@ mod tests {
             .record_vault(vault_id, &vault, created_at, modified_at)
             .expect("write should succeed");
 
-        let vault_key = vault_id.to_string();
+        let vault_key = format!("{}:{}", vault_id, vault.version().value());
 
         // Both config and metadata should exist
         let config_exists = db
-            .get_owned::<Vault>(CONFIG, &vault_key)
+            .get_owned::<Vault>(VAULT_CONFIG, &vault_key)
             .expect("read should succeed")
             .is_some();
         let metadata_exists = db

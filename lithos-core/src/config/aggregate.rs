@@ -31,6 +31,8 @@ use super::{
 #[rkyv(bytecheck(bounds()))]
 #[non_exhaustive]
 pub struct Config {
+    /// Version number for this merged config snapshot.
+    version: Version,
     /// Vault metadata with versioning and naming.
     vault_metadata: Metadata,
     /// Merged logging configuration.
@@ -53,6 +55,13 @@ impl Config {
     #[must_use]
     pub const fn vault_metadata(&self) -> &Metadata {
         &self.vault_metadata
+    }
+
+    /// Return the version of this configuration.
+    #[inline]
+    #[must_use]
+    pub const fn version(&self) -> Version {
+        self.version
     }
 
     /// Return the logging configuration.
@@ -91,12 +100,13 @@ impl Config {
     #[instrument(
         skip(raw, vault_root),
         level = "debug",
-        fields(operation = "build_config", vault_id = %vault_id)
+        fields(operation = "build_config", vault_id = %vault_id, version = %version)
     )]
     pub fn build(
         raw: &raw::RawConfig,
         vault_id: VaultId,
         vault_root: VaultRoot,
+        version: Version,
     ) -> Result<Self, ConfigError> {
         let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
 
@@ -124,6 +134,7 @@ impl Config {
             .unwrap_or_default();
 
         let mut config = Self {
+            version,
             frontmatter,
             paths,
             logging,
@@ -177,6 +188,8 @@ impl ArchivedConfig {
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     serde::Serialize,
     serde::Deserialize,
@@ -355,6 +368,7 @@ mod tests {
                 .expect("package version is non-empty");
 
             Config {
+                version: Version::initial(),
                 vault_metadata: Metadata::new(
                     VaultId::new(),
                     test_root,
@@ -391,14 +405,24 @@ mod tests {
                 task: None,
                 trusted_vaults: None,
             };
-            Config::build(&raw, vault_id(), vault_root("/vault"))
-                .expect("Config build should succeed with sample data")
+            Config::build(
+                &raw,
+                vault_id(),
+                vault_root("/vault"),
+                Version::initial(),
+            )
+            .expect("Config build should succeed with sample data")
         }
 
         pub fn merged_config_with_empty_inputs() -> Config {
             let raw = raw::RawConfig::default();
-            Config::build(&raw, vault_id(), vault_root("/vault"))
-                .expect("Merge with empty values should succeed")
+            Config::build(
+                &raw,
+                vault_id(),
+                vault_root("/vault"),
+                Version::initial(),
+            )
+            .expect("Merge with empty values should succeed")
         }
 
         pub fn config_with_cleared_events() -> Config {
@@ -444,6 +468,7 @@ mod tests {
                 &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
+                Version::initial(),
             )
             .unwrap();
             assert_eq!(
@@ -459,6 +484,7 @@ mod tests {
                 &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
+                Version::initial(),
             )
             .unwrap();
             assert_eq!(
@@ -528,6 +554,7 @@ mod tests {
                 &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
+                Version::initial(),
             )
             .unwrap();
             assert_eq!(
@@ -555,6 +582,7 @@ mod tests {
                 &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
+                Version::initial(),
             )
             .unwrap();
             assert_eq!(

@@ -63,7 +63,12 @@ fn test_config_with_bank(
     raw.paths.property_bank_file = property_bank_file.map(ToOwned::to_owned);
 
     let root = VaultRoot::try_new(root.to_path_buf())?;
-    let config = Config::build(&raw, VaultId::new(), root)?;
+    let config = Config::build(
+        &raw,
+        VaultId::new(),
+        root,
+        lithos_core::config::aggregate::Version::initial(),
+    )?;
 
     Ok(config)
 }

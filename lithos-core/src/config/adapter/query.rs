@@ -2,17 +2,17 @@
 
 use tracing::instrument;
 
-use super::{merged_version_key, stored::ConfigMetadata};
+use super::stored::ConfigMetadata;
 use crate::{
     config::{
         aggregate::{Config, Timestamp, Version},
         db_table::{
-            CONFIG, CONFIG_METADATA, MERGED_CONFIG_ACTIVE,
-            MERGED_CONFIG_VERSIONS, VAULT_ID_BY_PATH,
+            CONFIG_METADATA, CONFIG_VERSIONS, GLOBAL_CONFIG, VAULT_CONFIG,
+            VAULT_ID_BY_PATH,
         },
-        global::Global,
+        global::{Global, GlobalVersion},
         ports::Query,
-        vault::{Vault, VaultId, VaultRoot},
+        vault::{Vault, VaultId, VaultRoot, VaultVersion},
     },
     db::{Database, DbError},
 };
@@ -41,18 +41,18 @@ impl Query for QueryAdapter<'_> {
         skip(self),
         level = "debug",
         fields(
-            operation = "find_merged",
+            operation = "find_config",
             vault_id = %vault_id,
             version = %version
         )
     )]
-    fn find_merged(
+    fn find_config(
         &self,
         vault_id: VaultId,
         version: Version,
     ) -> Result<Option<Config>, Self::Error> {
-        let key = merged_version_key(vault_id, version);
-        self.db.get_owned(MERGED_CONFIG_VERSIONS, &key)
+        let key = format!("{}:{}", vault_id, version.value());
+        self.db.get_owned(CONFIG_VERSIONS, &key)
     }
 
     #[inline]
@@ -79,13 +79,54 @@ impl Query for QueryAdapter<'_> {
         &self,
         vault_id: VaultId,
     ) -> Result<Option<Version>, Self::Error> {
-        self.db.get_owned(MERGED_CONFIG_ACTIVE, &vault_id.to_string())
+        // Scan CONFIG_VERSIONS for max version with this vault_id prefix
+        let prefix = format!("{vault_id}:");
+
+        #[expect(
+            clippy::return_and_then,
+            reason = "filter_map chain is more readable than nested match"
+        )]
+        let max_version = self
+            .db
+            .scan_range::<Config>(CONFIG_VERSIONS, &prefix)?
+            .into_iter()
+            .filter_map(|(key, _)| {
+                // Extract version from key format "{vault_id}:{version}"
+                key.strip_prefix(&prefix)
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .and_then(|v| Version::try_from(v).ok())
+            })
+            .max();
+
+        Ok(max_version)
     }
 
     #[inline]
     #[instrument(skip(self), level = "debug", fields(operation = "get_global"))]
     fn get_global(&self) -> Result<Option<Global>, Self::Error> {
-        self.db.get_owned(CONFIG, "global")
+        // Get latest global config (scan for max version)
+        #[expect(
+            clippy::return_and_then,
+            reason = "filter_map chain is more readable than nested match"
+        )]
+        let max_version = self
+            .db
+            .scan_range::<Global>(GLOBAL_CONFIG, "")?
+            .into_iter()
+            .filter_map(|(key, _)| {
+                key.parse::<u64>()
+                    .ok()
+                    .and_then(|v| GlobalVersion::try_from(v).ok())
+            })
+            .max();
+
+        match max_version {
+            Some(version) => {
+                let key = version.value().to_string();
+                self.db.get_owned(GLOBAL_CONFIG, &key)
+            }
+            None => Ok(None),
+        }
     }
 
     #[inline]
@@ -98,7 +139,31 @@ impl Query for QueryAdapter<'_> {
         &self,
         vault_id: VaultId,
     ) -> Result<Option<Vault>, Self::Error> {
-        self.db.get_owned(CONFIG, &vault_id.to_string())
+        // Get latest vault config (scan for max version)
+        let prefix = format!("{vault_id}:");
+
+        #[expect(
+            clippy::return_and_then,
+            reason = "filter_map chain is more readable than nested match"
+        )]
+        let max_version = self
+            .db
+            .scan_range::<Vault>(VAULT_CONFIG, &prefix)?
+            .into_iter()
+            .filter_map(|(key, _)| {
+                key.strip_prefix(&prefix)
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .and_then(|v| VaultVersion::try_from(v).ok())
+            })
+            .max();
+
+        match max_version {
+            Some(version) => {
+                let key = format!("{}:{}", vault_id, version.value());
+                self.db.get_owned(VAULT_CONFIG, &key)
+            }
+            None => Ok(None),
+        }
     }
 
     #[inline]
@@ -112,8 +177,32 @@ impl Query for QueryAdapter<'_> {
         created_at: Option<Timestamp>,
         modified_at: Timestamp,
     ) -> Result<bool, Self::Error> {
-        let Some(stored) =
-            self.db.get_owned::<ConfigMetadata>(CONFIG_METADATA, "global")?
+        // Get latest global version
+        #[expect(
+            clippy::return_and_then,
+            reason = "filter_map chain is more readable than nested match"
+        )]
+        let max_version = self
+            .db
+            .scan_range::<Global>(GLOBAL_CONFIG, "")?
+            .into_iter()
+            .filter_map(|(key, _)| {
+                key.parse::<u64>()
+                    .ok()
+                    .and_then(|v| GlobalVersion::try_from(v).ok())
+            })
+            .max();
+
+        let Some(latest_version) = max_version else {
+            // No versions stored → config is stale
+            return Ok(true);
+        };
+
+        // Check metadata for latest version
+        let metadata_key = format!("global:{}", latest_version.value());
+        let Some(stored) = self
+            .db
+            .get_owned::<ConfigMetadata>(CONFIG_METADATA, &metadata_key)?
         else {
             // No metadata stored → config is stale
             return Ok(true);
@@ -147,9 +236,33 @@ impl Query for QueryAdapter<'_> {
         created_at: Option<Timestamp>,
         modified_at: Timestamp,
     ) -> Result<bool, Self::Error> {
-        let key = vault_id.to_string();
-        let Some(stored) =
-            self.db.get_owned::<ConfigMetadata>(CONFIG_METADATA, &key)?
+        // Get latest vault version
+        let prefix = format!("{vault_id}:");
+        #[expect(
+            clippy::return_and_then,
+            reason = "filter_map chain is more readable than nested match"
+        )]
+        let max_version = self
+            .db
+            .scan_range::<Vault>(VAULT_CONFIG, &prefix)?
+            .into_iter()
+            .filter_map(|(key, _)| {
+                key.strip_prefix(&prefix)
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .and_then(|v| VaultVersion::try_from(v).ok())
+            })
+            .max();
+
+        let Some(latest_version) = max_version else {
+            // No versions stored → config is stale
+            return Ok(true);
+        };
+
+        // Check metadata for latest version
+        let metadata_key = format!("{}:{}", vault_id, latest_version.value());
+        let Some(stored) = self
+            .db
+            .get_owned::<ConfigMetadata>(CONFIG_METADATA, &metadata_key)?
         else {
             // No metadata stored → config is stale
             return Ok(true);
@@ -190,8 +303,8 @@ impl Query for QueryAdapter<'_> {
     where
         F: for<'archived> FnOnce(&'archived rkyv::Archived<Config>) -> R,
     {
-        let key = merged_version_key(vault_id, version);
-        self.db.get::<Config, _, _>(MERGED_CONFIG_VERSIONS, &key, f)
+        let key = format!("{}:{}", vault_id, version.value());
+        self.db.get::<Config, _, _>(CONFIG_VERSIONS, &key, f)
     }
 }
 
@@ -229,12 +342,18 @@ mod tests {
     fn is_global_stale_returns_false_for_fresh_config() {
         let (db, _temp) = setup_db();
 
-        // Store metadata
+        // Store global config and metadata
+        let global = crate::config::global::Global::default();
         let created = Some(Timestamp::from_secs(1000));
         let modified = Timestamp::from_secs(2000);
         let metadata = ConfigMetadata::new(created, modified);
 
-        db.put(CONFIG_METADATA, "global", &metadata)
+        let version_key = global.version().value().to_string();
+        let metadata_key = format!("global:{}", global.version().value());
+
+        db.put(GLOBAL_CONFIG, &version_key, &global)
+            .expect("global write should succeed");
+        db.put(CONFIG_METADATA, &metadata_key, &metadata)
             .expect("metadata write should succeed");
 
         // Check staleness with same timestamps
@@ -250,12 +369,18 @@ mod tests {
     fn is_global_stale_returns_true_for_created_at_mismatch() {
         let (db, _temp) = setup_db();
 
-        // Store metadata
+        // Store global config and metadata
+        let global = crate::config::global::Global::default();
         let stored_created = Some(Timestamp::from_secs(1000));
         let modified = Timestamp::from_secs(2000);
         let metadata = ConfigMetadata::new(stored_created, modified);
 
-        db.put(CONFIG_METADATA, "global", &metadata)
+        let version_key = global.version().value().to_string();
+        let metadata_key = format!("global:{}", global.version().value());
+
+        db.put(GLOBAL_CONFIG, &version_key, &global)
+            .expect("global write should succeed");
+        db.put(CONFIG_METADATA, &metadata_key, &metadata)
             .expect("metadata write should succeed");
 
         // Check staleness with different created_at
@@ -272,12 +397,18 @@ mod tests {
     fn is_global_stale_returns_true_for_newer_modified_at() {
         let (db, _temp) = setup_db();
 
-        // Store metadata
+        // Store global config and metadata
+        let global = crate::config::global::Global::default();
         let created = Some(Timestamp::from_secs(1000));
         let stored_modified = Timestamp::from_secs(2000);
         let metadata = ConfigMetadata::new(created, stored_modified);
 
-        db.put(CONFIG_METADATA, "global", &metadata)
+        let version_key = global.version().value().to_string();
+        let metadata_key = format!("global:{}", global.version().value());
+
+        db.put(GLOBAL_CONFIG, &version_key, &global)
+            .expect("global write should succeed");
+        db.put(CONFIG_METADATA, &metadata_key, &metadata)
             .expect("metadata write should succeed");
 
         // Check staleness with newer modified_at
@@ -311,11 +442,16 @@ mod tests {
         let (db, _temp) = setup_db();
 
         let vault_id = VaultId::new();
+        let vault = crate::config::vault::Vault::default();
         let created = Some(Timestamp::from_secs(1000));
         let modified = Timestamp::from_secs(2000);
         let metadata = ConfigMetadata::new(created, modified);
 
-        db.put(CONFIG_METADATA, &vault_id.to_string(), &metadata)
+        let vault_key = format!("{}:{}", vault_id, vault.version().value());
+
+        db.put(VAULT_CONFIG, &vault_key, &vault)
+            .expect("vault write should succeed");
+        db.put(CONFIG_METADATA, &vault_key, &metadata)
             .expect("metadata write should succeed");
 
         let query = QueryAdapter::new(&db);
@@ -331,11 +467,16 @@ mod tests {
         let (db, _temp) = setup_db();
 
         let vault_id = VaultId::new();
+        let vault = crate::config::vault::Vault::default();
         let stored_created = Some(Timestamp::from_secs(1000));
         let modified = Timestamp::from_secs(2000);
         let metadata = ConfigMetadata::new(stored_created, modified);
 
-        db.put(CONFIG_METADATA, &vault_id.to_string(), &metadata)
+        let vault_key = format!("{}:{}", vault_id, vault.version().value());
+
+        db.put(VAULT_CONFIG, &vault_key, &vault)
+            .expect("vault write should succeed");
+        db.put(CONFIG_METADATA, &vault_key, &metadata)
             .expect("metadata write should succeed");
 
         let file_created = Some(Timestamp::from_secs(999));
@@ -352,11 +493,16 @@ mod tests {
         let (db, _temp) = setup_db();
 
         let vault_id = VaultId::new();
+        let vault = crate::config::vault::Vault::default();
         let created = Some(Timestamp::from_secs(1000));
         let stored_modified = Timestamp::from_secs(2000);
         let metadata = ConfigMetadata::new(created, stored_modified);
 
-        db.put(CONFIG_METADATA, &vault_id.to_string(), &metadata)
+        let vault_key = format!("{}:{}", vault_id, vault.version().value());
+
+        db.put(VAULT_CONFIG, &vault_key, &vault)
+            .expect("vault write should succeed");
+        db.put(CONFIG_METADATA, &vault_key, &metadata)
             .expect("metadata write should succeed");
 
         let file_modified = Timestamp::from_secs(2001);

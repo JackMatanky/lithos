@@ -380,6 +380,7 @@ fn bench_note_ingest(c: &mut Criterion) {
         &RawConfig::default(),
         VaultId::new(),
         VaultRoot::try_new(root.clone()).expect("valid vault root"),
+        lithos_core::config::aggregate::Version::initial(),
     )
     .expect("config");
 

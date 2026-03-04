@@ -83,7 +83,7 @@ where
         };
 
         self.query_port
-            .find_merged(vault_id, version)
+            .find_config(vault_id, version)
             .map_err(|error| ConfigQueryError::Storage(error.into()))
     }
 
@@ -242,11 +242,10 @@ where
 
 #[cfg(test)]
 #[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Test module requirements"
+    deprecated,
+    reason = "Tests use old constants for compatibility testing"
 )]
 mod tests {
-    use super::Query;
     use crate::{
         config::{
             aggregate::{Config, Timestamp, Version},
@@ -263,7 +262,7 @@ mod tests {
 
         use crate::{
             config::{
-                aggregate::Config,
+                aggregate::{Config, Version},
                 raw::RawConfig,
                 vault::{VaultId, VaultRoot},
             },
@@ -281,8 +280,13 @@ mod tests {
             let test_root = VaultRoot::try_new("/test-vault".into())
                 .expect("test vault root must be valid");
             let vault_id = VaultId::new();
-            Config::build(&RawConfig::default(), vault_id, test_root)
-                .expect("test config must be valid")
+            Config::build(
+                &RawConfig::default(),
+                vault_id,
+                test_root,
+                Version::initial(),
+            )
+            .expect("test config must be valid")
         }
     }
 
@@ -301,12 +305,12 @@ mod tests {
     impl config_ports::Query for DbPort<'_> {
         type Error = DbError;
 
-        fn find_merged(
+        fn find_config(
             &self,
             vault_id: VaultId,
             version: Version,
         ) -> Result<Option<Config>, DbError> {
-            self.adapter.find_merged(vault_id, version)
+            self.adapter.find_config(vault_id, version)
         }
 
         fn find_vault_id_by_path(
@@ -365,7 +369,7 @@ mod tests {
     }
 
     mod load {
-        use super::*;
+        use super::{super::Query, *};
 
         #[test]
         fn find_returns_none_when_active_missing() {
@@ -400,7 +404,7 @@ mod tests {
     }
 
     mod borrowing {
-        use super::*;
+        use super::{super::Query, *};
 
         #[test]
         fn with_archived_returns_data_via_closure() {

@@ -484,6 +484,7 @@ mod tests {
                 VaultId::new(),
                 VaultRoot::try_new(std::path::PathBuf::from("/v"))
                     .expect("vault_root"),
+                crate::config::aggregate::Version::initial(),
             )
             .expect("Config build should succeed")
         }

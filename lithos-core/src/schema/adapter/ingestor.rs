@@ -283,6 +283,7 @@ mod tests {
             },
             VaultId::new(),
             VaultRoot::try_new(root.to_path_buf()).expect("vault root"),
+            crate::config::aggregate::Version::initial(),
         )
         .expect("failed to build test config")
     }

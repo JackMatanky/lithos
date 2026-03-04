@@ -10,37 +10,6 @@ use super::{
     vault::{Vault, VaultId, VaultRoot},
 };
 
-/// Selection strategy for activating a config version.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ActivationTarget {
-    /// Activate a specific exact version.
-    Exact(Version),
-    /// Activate a version by stepping back from the current active version.
-    Previous {
-        /// Number of steps to go back from the current active version.
-        steps: u32,
-    },
-}
-
-impl ActivationTarget {
-    /// Creates an `ActivationTarget` for a specific exact version.
-    #[inline]
-    #[must_use]
-    pub const fn exact(version: Version) -> Self {
-        Self::Exact(version)
-    }
-
-    /// Creates an `ActivationTarget` for a previous version by steps.
-    #[inline]
-    #[must_use]
-    pub const fn previous(steps: u32) -> Self {
-        Self::Previous {
-            steps,
-        }
-    }
-}
-
 /// Command port for configuration write operations (task-oriented).
 ///
 /// This trait defines the public write API for configuration commands.
@@ -69,14 +38,16 @@ pub trait Command: Send + Sync {
         modified_at: Timestamp,
     ) -> Result<(), Self::Error>;
 
-    /// Records a merged configuration snapshot.
+    /// Records a final configuration snapshot (result of merging global +
+    /// vault).
+    ///
+    /// The version is extracted from `config.version()`.
     ///
     /// # Errors
     /// Returns a storage-specific error if the operation fails.
-    fn record_merged(
+    fn record_config(
         &self,
         vault_id: VaultId,
-        version: Version,
         config: &Config,
     ) -> Result<(), Self::Error>;
 
@@ -105,16 +76,6 @@ pub trait Command: Send + Sync {
         vault_id: VaultId,
         vault_root: &VaultRoot,
     ) -> Result<(), Self::Error>;
-
-    /// Activates a configuration version for a vault.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the operation fails.
-    fn activate_version(
-        &self,
-        vault_id: VaultId,
-        target: ActivationTarget,
-    ) -> Result<Version, Self::Error>;
 }
 
 /// Internal command-state port for read-for-write operations.
@@ -125,14 +86,14 @@ pub(crate) trait CommandState: Send + Sync {
     /// Storage error type for command operations.
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// Allocates the next version number for a vault atomically.
+    /// Allocates the next version number for a vault.
     ///
-    /// This method reads the current active version (if any), computes the next
-    /// version, and returns it without persisting. The caller is responsible
-    /// for recording the merged config and activating the version.
+    /// Scans `CONFIG_VERSIONS` for the maximum existing version, then
+    /// increments it. Returns `Version::initial()` if no versions exist
+    /// yet.
     ///
     /// # Errors
-    /// Returns a storage-specific error if the read fails.
+    /// Returns a storage-specific error if the scan fails or version overflows.
     fn next_version(&self, vault_id: VaultId) -> Result<Version, Self::Error>;
 }
 
@@ -141,7 +102,7 @@ pub trait Query: Send + Sync {
     /// Storage error type for query operations.
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// Find a merged configuration snapshot as owned data (COLD PATH).
+    /// Find a configuration snapshot as owned data (COLD PATH).
     ///
     /// Use this for operations that need to move/store the config, or when
     /// the closure pattern is inconvenient. For hot paths, prefer
@@ -151,7 +112,7 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns a storage-specific error if the lookup or deserialization fails.
-    fn find_merged(
+    fn find_config(
         &self,
         vault_id: VaultId,
         version: Version,
@@ -184,10 +145,15 @@ pub trait Query: Send + Sync {
         vault_root: &VaultRoot,
     ) -> Result<Option<VaultId>, Self::Error>;
 
-    /// Fetches the active merged configuration version for a vault.
+    /// Fetches the active configuration version for a vault.
+    ///
+    /// Scans the `CONFIG_VERSIONS` table for the maximum version number
+    /// with the given `vault_id` prefix.
+    ///
+    /// Returns `None` if no versions exist for this vault.
     ///
     /// # Errors
-    /// Returns a storage-specific error if the lookup fails.
+    /// Returns a storage-specific error if the scan fails.
     fn get_active_version(
         &self,
         vault_id: VaultId,
