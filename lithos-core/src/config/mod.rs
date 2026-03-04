@@ -166,39 +166,6 @@ pub(crate) mod db_table {
     /// - `"{vault_id}:{version}"` → Vault config metadata
     pub(crate) const CONFIG_METADATA: TableDefinition<&str, &[u8]> =
         TableDefinition::new("config_metadata");
-
-    // ────────────────────────────────────────────────────────────────
-    // Legacy tables (to be removed after migration)
-    // ────────────────────────────────────────────────────────────────
-    // Note: These are still used in query.rs tests but will be removed in Phase
-    // 9.
-
-    #[cfg(test)]
-    #[deprecated(note = "Use GLOBAL_CONFIG and VAULT_CONFIG instead")]
-    pub(crate) const CONFIG: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("config");
-
-    #[cfg(test)]
-    #[deprecated(note = "Use CONFIG_VERSIONS instead")]
-    #[expect(
-        dead_code,
-        reason = "Used in disabled command.rs tests - will be removed in \
-                  Phase 9"
-    )]
-    pub(crate) const MERGED_CONFIG_VERSIONS: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("merged_config_versions");
-
-    #[cfg(test)]
-    #[deprecated(
-        note = "Active version is computed via scan of CONFIG_VERSIONS"
-    )]
-    #[expect(
-        dead_code,
-        reason = "Used in disabled command.rs tests - will be removed in \
-                  Phase 9"
-    )]
-    pub(crate) const MERGED_CONFIG_ACTIVE: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("merged_config_active");
 }
 
 use self::adapter::{command::CommandAdapter, query::QueryAdapter};

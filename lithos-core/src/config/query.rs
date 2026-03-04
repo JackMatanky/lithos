@@ -241,10 +241,6 @@ where
 }
 
 #[cfg(test)]
-#[expect(
-    deprecated,
-    reason = "Tests use old constants for compatibility testing"
-)]
 mod tests {
     mod fixtures {
         use tempfile::{TempDir, tempdir};
@@ -285,16 +281,26 @@ mod tests {
         #[test]
         fn find_returns_none_when_active_missing() {
             let (_dir, db) = fixtures::test_db();
-            db.put(CONFIG, "global", &Global::default())
-                .expect("must put global config");
+            let vault_id = VaultId::new();
 
+            // Put global config in new table format
+            let global = Global::default();
+            let global_key = format!("{}", global.version().value());
+            db.put(
+                crate::config::db_table::GLOBAL_CONFIG,
+                &global_key,
+                &global,
+            )
+            .expect("must put global config");
+
+            // But don't put any CONFIG_VERSIONS, so there's no active version
             let qry = Query::new(DbPort::new(&db));
 
-            let result = qry.find(VaultId::new()).expect("query must succeed");
+            let result = qry.find(vault_id).expect("query must succeed");
 
             assert!(
                 result.is_none(),
-                "Expected None when active version missing"
+                "Expected None when no CONFIG_VERSIONS exists"
             );
         }
 
@@ -353,7 +359,6 @@ mod tests {
     use crate::{
         config::{
             aggregate::{Config, Timestamp, Version},
-            db_table::CONFIG,
             global::Global,
             ports::{self as config_ports},
             vault::{Vault, VaultId, VaultRoot},
