@@ -18,12 +18,12 @@ use super::{
 ///
 /// ```ignore
 /// use lithos_core::schema::{
-///     RedbSchemaCommand,
+///     SchemaCommand,
 ///     adapter::command::CommandAdapter,
 /// };
 ///
 /// let db = todo!("Provide a Database instance");
-/// let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
+/// let command = SchemaCommand::new(CommandAdapter::new(&db));
 /// ```
 pub struct Command<C> {
     command_port: C,
@@ -36,12 +36,12 @@ impl<C> Command<C> {
     ///
     /// ```ignore
     /// use lithos_core::schema::{
-    ///     RedbSchemaCommand,
+    ///     SchemaCommand,
     ///     adapter::command::CommandAdapter,
     /// };
     ///
     /// let db = todo!("Provide a Database instance");
-    /// let command = RedbSchemaCommand::new(CommandAdapter::new(&db));
+    /// let command = SchemaCommand::new(CommandAdapter::new(&db));
     /// ```
     #[inline]
     #[must_use]
@@ -281,7 +281,7 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use crate::schema::{
-        RedbSchemaCommand,
+        SchemaCommand,
         adapter::{command::CommandAdapter, stored::StoredSchema},
         aggregate::{SchemaId, SchemaName},
         db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
@@ -294,7 +294,7 @@ mod tests {
         fn save_persists_schema_by_id_and_name_index() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")
@@ -332,7 +332,7 @@ mod tests {
         fn delete_removes_schema_by_id() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
 
             let schema = fixtures::schema_fixture(
                 fixtures::TEST_SCHEMA_ID_PROJECT,
@@ -365,7 +365,7 @@ mod tests {
         fn save_batch_persists_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
 
             let schema_a =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")

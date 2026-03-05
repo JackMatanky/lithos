@@ -29,7 +29,7 @@ use common::*;
 use lithos_core::{
     db::Database,
     schema::{
-        RedbSchemaCommand, RedbSchemaQuery,
+        SchemaCommand, SchemaQuery,
         aggregate::{SchemaId, SchemaName},
         bank::PropertyBank,
         property::{Multiplicity, Optionality, PropertyId, PropertyName},
@@ -220,7 +220,7 @@ mod property_bank {
         // Save with first database connection
         {
             let db = Database::open(&db_path)?;
-            let command = RedbSchemaCommand::new(
+            let command = SchemaCommand::new(
                 lithos_core::schema::adapter::command::CommandAdapter::new(&db),
             );
             command.save_property_bank(&bank)?;
@@ -228,7 +228,7 @@ mod property_bank {
 
         // WHEN: Reopening database
         let db = Database::open(&db_path)?;
-        let query = RedbSchemaQuery::new(
+        let query = SchemaQuery::new(
             lithos_core::schema::adapter::query::QueryAdapter::new(&db),
         );
 
@@ -853,7 +853,7 @@ mod schema {
         // Save with first connection
         {
             let db = Database::open(&db_path)?;
-            let command = RedbSchemaCommand::new(
+            let command = SchemaCommand::new(
                 lithos_core::schema::adapter::command::CommandAdapter::new(&db),
             );
             command.save(&schema)?;
@@ -861,7 +861,7 @@ mod schema {
 
         // WHEN: Reopening database
         let db = Database::open(&db_path)?;
-        let query = RedbSchemaQuery::new(
+        let query = SchemaQuery::new(
             lithos_core::schema::adapter::query::QueryAdapter::new(&db),
         );
 

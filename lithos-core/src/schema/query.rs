@@ -18,12 +18,12 @@ use super::{
 ///
 /// ```ignore
 /// use lithos_core::schema::{
-///     RedbSchemaQuery,
+///     SchemaQuery,
 ///     adapter::query::QueryAdapter,
 /// };
 ///
 /// let db = todo!("Provide a Database instance");
-/// let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
+/// let query = SchemaQuery::new(QueryAdapter::new(&db));
 /// ```
 pub struct Query<Q> {
     query_port: Q,
@@ -36,12 +36,12 @@ impl<Q> Query<Q> {
     ///
     /// ```ignore
     /// use lithos_core::schema::{
-    ///     RedbSchemaQuery,
+    ///     SchemaQuery,
     ///     adapter::query::QueryAdapter,
     /// };
     ///
     /// let db = todo!("Provide a Database instance");
-    /// let query = RedbSchemaQuery::new(QueryAdapter::new(&db));
+    /// let query = SchemaQuery::new(QueryAdapter::new(&db));
     /// ```
     #[inline]
     #[must_use]
@@ -514,7 +514,7 @@ mod tests {
 
     use super::*;
     use crate::schema::{
-        RedbSchemaCommand, RedbSchemaQuery,
+        SchemaCommand, SchemaQuery,
         adapter::{
             command::CommandAdapter, query::QueryAdapter,
             stored::StoredMetadata,
@@ -529,8 +529,8 @@ mod tests {
         fn find_by_id_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -548,8 +548,8 @@ mod tests {
         fn find_by_name_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -572,8 +572,8 @@ mod tests {
         fn list_returns_all_saved_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             let schema_a =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -598,7 +598,7 @@ mod tests {
         fn is_schema_stale_returns_true_for_missing_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             let missing_id = fixtures::TEST_SCHEMA_ID_A;
             let stale = qry
@@ -611,8 +611,8 @@ mod tests {
         fn is_schema_stale_returns_false_for_fresh_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -636,8 +636,8 @@ mod tests {
         fn is_schema_stale_returns_true_for_created_at_mismatch() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -667,7 +667,7 @@ mod tests {
         fn require_property_bank_returns_error_when_missing() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             let result = qry.require_property_bank();
 
@@ -681,14 +681,14 @@ mod tests {
         #[test]
         fn require_property_bank_returns_bank_when_present() {
             use crate::schema::{
-                RedbSchemaCommand, adapter::command::CommandAdapter,
+                SchemaCommand, adapter::command::CommandAdapter,
                 bank::PropertyBank,
             };
 
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             // Save PropertyBank
             let bank = PropertyBank::new();
@@ -707,8 +707,8 @@ mod tests {
         fn find_many_by_ids_returns_multiple_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             // Save multiple schemas
             let schema1 =
@@ -737,8 +737,8 @@ mod tests {
         fn find_many_by_ids_skips_missing_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -761,8 +761,8 @@ mod tests {
         fn are_many_stale_checks_multiple_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = RedbSchemaCommand::new(CommandAdapter::new(&db));
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             let ts_old = Timestamp::from_secs(100);
             let ts_new = Timestamp::from_secs(200);
@@ -802,7 +802,7 @@ mod tests {
         fn are_many_stale_reports_missing_as_stale() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let qry = RedbSchemaQuery::new(QueryAdapter::new(&db));
+            let qry = SchemaQuery::new(QueryAdapter::new(&db));
 
             // WHEN: Checking staleness for a schema that doesn't exist
             let schemas = vec![(fixtures::TEST_SCHEMA_ID_A, None, None)];

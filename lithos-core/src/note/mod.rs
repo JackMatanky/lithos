@@ -126,8 +126,8 @@ use self::{
     query::Query,
 };
 
-/// Redb-backed note command alias.
-pub type RedbNoteCommand<'db> = Command<CommandAdapter<'db>>;
+/// Note command type alias (storage-agnostic).
+pub type NoteCommand<'db> = Command<CommandAdapter<'db>>;
 
-/// Redb-backed note query alias.
-pub type RedbNoteQuery<'db> = Query<QueryAdapter<'db>>;
+/// Note query type alias (storage-agnostic).
+pub type NoteQuery<'db> = Query<QueryAdapter<'db>>;

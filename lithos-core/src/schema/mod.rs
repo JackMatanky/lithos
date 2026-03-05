@@ -89,8 +89,8 @@ pub(crate) mod db_table {
 
 use self::adapter::{command::CommandAdapter, query::QueryAdapter};
 
-/// Redb-backed schema command alias.
-pub type RedbSchemaCommand<'db> = command::Command<CommandAdapter<'db>>;
+/// Schema command type alias (storage-agnostic).
+pub type SchemaCommand<'db> = command::Command<CommandAdapter<'db>>;
 
-/// Redb-backed schema query alias.
-pub type RedbSchemaQuery<'db> = query::Query<QueryAdapter<'db>>;
+/// Schema query type alias (storage-agnostic).
+pub type SchemaQuery<'db> = query::Query<QueryAdapter<'db>>;

@@ -13,7 +13,7 @@ use std::{error::Error, path::PathBuf};
 use lithos_core::{
     db::Database,
     schema::{
-        RedbSchemaCommand, RedbSchemaQuery,
+        SchemaCommand, SchemaQuery,
         adapter::{command::CommandAdapter, query::QueryAdapter},
         aggregate::{Schema, SchemaId, SchemaName},
         property::{
@@ -102,11 +102,9 @@ impl TestDb {
 /// ```
 #[track_caller]
 #[must_use]
-pub fn setup_cqrs(
-    db: &Database,
-) -> (RedbSchemaCommand<'_>, RedbSchemaQuery<'_>) {
-    let command = RedbSchemaCommand::new(CommandAdapter::new(db));
-    let query = RedbSchemaQuery::new(QueryAdapter::new(db));
+pub fn setup_cqrs(db: &Database) -> (SchemaCommand<'_>, SchemaQuery<'_>) {
+    let command = SchemaCommand::new(CommandAdapter::new(db));
+    let query = SchemaQuery::new(QueryAdapter::new(db));
     (command, query)
 }
 

@@ -174,8 +174,8 @@ pub struct UpdateSchema { ... }
 | **`CommandState`**     | `config::ports::CommandState` | Internal read-for-write encapsulation                 |
 | **Query Adapter**      | `QueryAdapter<'db>`           | ✅ Context-scoped implementation                      |
 | **Command Adapter**    | `CommandAdapter<'db>`         | ✅ Context-scoped implementation                      |
-| **Type Alias (Query)** | `RedbSchemaQuery<'db>`        | ✅ Ergonomic alias hiding generics                    |
-| **Type Alias (Cmd)**   | `RedbSchemaCommand<'db>`      | ✅ Ergonomic alias hiding generics                    |
+| **Type Alias (Query)** | `SchemaQuery<'db>`            | ✅ Storage-agnostic alias hiding generics             |
+| **Type Alias (Cmd)**   | `SchemaCommand<'db>`          | ✅ Storage-agnostic alias hiding generics             |
 
 ```rust
 // ✅ GOOD: Context-scoped port traits
@@ -196,9 +196,9 @@ impl<'db> schema::ports::Query for QueryAdapter<'db> { ... }
 pub struct CommandAdapter<'db> { /* redb write transaction */ }
 impl<'db> schema::ports::Command for CommandAdapter<'db> { ... }
 
-// ✅ GOOD: Type aliases for ergonomics
-pub type RedbSchemaQuery<'db> = Query<QueryAdapter<'db>>;
-pub type RedbSchemaCommand<'db> = Command<CommandAdapter<'db>>;
+// ✅ GOOD: Storage-agnostic type aliases for ergonomics
+pub type SchemaQuery<'db> = Query<QueryAdapter<'db>>;
+pub type SchemaCommand<'db> = Command<CommandAdapter<'db>>;
 ```
 
 ---
