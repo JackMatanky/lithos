@@ -189,7 +189,7 @@ impl Reader {
         T: serde::de::DeserializeOwned,
     {
         let content = self.read_to_string(path)?;
-        match classify_path(path, Some(&content)) {
+        match Self::classify_path(path, Some(&content)) {
             FormatKind::Json => Json::parse(path, &content),
             FormatKind::Toml => Toml::parse(path, &content),
             FormatKind::Yaml => Yaml::parse(path, &content),
@@ -363,6 +363,42 @@ impl Reader {
     ) -> Result<(), PathValidationError> {
         self.validator.validate(path)
     }
+
+    /// Detects the file format based on path extension and optional content
+    /// hint.
+    #[must_use]
+    fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
+        if Json::is_supported(path) {
+            return FormatKind::Json;
+        }
+        if Toml::is_supported(path) {
+            return FormatKind::Toml;
+        }
+        if Yaml::is_supported(path) {
+            return FormatKind::Yaml;
+        }
+        if Markdown::is_supported(path) {
+            return FormatKind::Markdown;
+        }
+        if Binary::is_supported(path) {
+            return FormatKind::Binary;
+        }
+
+        if let Some(content) = content {
+            let trimmed = content.trim_start();
+            if Json::detect(trimmed) {
+                return FormatKind::Json;
+            }
+            if Yaml::detect(trimmed) {
+                return FormatKind::Yaml;
+            }
+            if Toml::detect(trimmed) {
+                return FormatKind::Toml;
+            }
+        }
+
+        FormatKind::Unknown
+    }
 }
 
 /// File system timestamp representing seconds since Unix epoch.
@@ -450,41 +486,6 @@ impl FileTimestamp {
     }
 }
 
-/// Detects the file format based on path extension and optional content hint.
-#[must_use]
-fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
-    if Json::is_supported(path) {
-        return FormatKind::Json;
-    }
-    if Toml::is_supported(path) {
-        return FormatKind::Toml;
-    }
-    if Yaml::is_supported(path) {
-        return FormatKind::Yaml;
-    }
-    if Markdown::is_supported(path) {
-        return FormatKind::Markdown;
-    }
-    if Binary::is_supported(path) {
-        return FormatKind::Binary;
-    }
-
-    if let Some(content) = content {
-        let trimmed = content.trim_start();
-        if Json::detect(trimmed) {
-            return FormatKind::Json;
-        }
-        if Yaml::detect(trimmed) {
-            return FormatKind::Yaml;
-        }
-        if Toml::detect(trimmed) {
-            return FormatKind::Toml;
-        }
-    }
-
-    FormatKind::Unknown
-}
-
 /// Helper to check if a file extension matches binary formats.
 #[must_use]
 pub(crate) fn is_binary_extension(path: &Path) -> bool {
@@ -526,7 +527,7 @@ mod tests {
             #[case] expected: FormatKind,
         ) {
             assert_eq!(
-                classify_path(Path::new("data"), Some(content)),
+                Reader::classify_path(Path::new("data"), Some(content)),
                 expected
             );
         }
@@ -543,13 +544,13 @@ mod tests {
             #[case] path: &str,
             #[case] expected: FormatKind,
         ) {
-            assert_eq!(classify_path(Path::new(path), None), expected);
+            assert_eq!(Reader::classify_path(Path::new(path), None), expected);
         }
 
         #[test]
         fn favors_extension_over_content_sniffing() {
             assert_eq!(
-                classify_path(
+                Reader::classify_path(
                     Path::new("config.json"),
                     Some("name = \"toml\"")
                 ),
@@ -560,7 +561,7 @@ mod tests {
         #[test]
         fn returns_unknown_without_content() {
             assert_eq!(
-                classify_path(Path::new("data"), None),
+                Reader::classify_path(Path::new("data"), None),
                 FormatKind::Unknown
             );
         }
