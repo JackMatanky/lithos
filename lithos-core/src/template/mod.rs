@@ -38,13 +38,12 @@ pub(crate) mod db_table {
 pub use aggregate::{InputName, Metadata, Template, TemplateName};
 pub use block::{BlockStrategy, TemplateBlock};
 pub use catalog::TemplateCatalog;
-pub use command::Command;
-pub use query::Query;
 pub use value::InputSpec;
 
-use self::adapter::{CommandAdapter, QueryAdapter};
+/// Generic command type alias to remove path stuttering: `template::Command` vs
+/// `template::command::Command`.
+pub type Command<C> = command::Command<C>;
 
-/// Template query type alias (storage-agnostic).
-pub type TemplateQuery<'db> = Query<QueryAdapter<'db>>;
-/// Template command type alias (storage-agnostic).
-pub type TemplateCommand<'db> = Command<CommandAdapter<'db>>;
+/// Generic query type alias to remove path stuttering: `template::Query` vs
+/// `template::query::Query`.
+pub type Query<Q> = query::Query<Q>;

@@ -91,7 +91,7 @@ mod tests {
     use super::*;
     use crate::{
         db::Database,
-        template::{adapter::command::CommandAdapter, aggregate::Template},
+        template::{adapter, aggregate::Template},
     };
 
     mod persistence {
@@ -100,8 +100,8 @@ mod tests {
         fn created_template() -> (TempDir, Database, Template, String) {
             let (dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let adapter = CommandAdapter::new(&db);
-            let cmd = Command::new(adapter);
+            let cmd_adapter = adapter::Command::new(&db);
+            let cmd = Command::new(cmd_adapter);
             let template = fixtures::template_fixture("daily")
                 .expect("Failed to create template fixture");
             cmd.create(&template).expect("Create should succeed");

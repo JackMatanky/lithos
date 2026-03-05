@@ -87,11 +87,7 @@ mod tests {
     use super::*;
     use crate::{
         db::Database,
-        template::{
-            adapter::{command::CommandAdapter, query::QueryAdapter},
-            aggregate::TemplateName,
-            ports::Command as _,
-        },
+        template::{adapter, aggregate::TemplateName, ports::Command as _},
     };
 
     #[test]
@@ -101,9 +97,9 @@ mod tests {
         let db_path = temp.path().join("test.db");
         let db = Database::open(&db_path).unwrap();
 
-        let adapter = QueryAdapter::new(&db);
-        let query = Query::new(adapter);
-        let command = CommandAdapter::new(&db);
+        let query_adapter = adapter::Query::new(&db);
+        let query = Query::new(query_adapter);
+        let command = adapter::Command::new(&db);
 
         let tn = TemplateName::try_from("test").unwrap();
         let template =

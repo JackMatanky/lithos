@@ -8,16 +8,16 @@ use crate::{
         aggregate::Template,
         db_table::{NAME_TO_ID, TEMPLATES},
         error::TemplateError,
-        ports::Query,
+        ports::Query as QueryPort,
     },
 };
 
 /// Redb implementation of the template query port.
-pub struct QueryAdapter<'db> {
+pub struct Query<'db> {
     db: &'db Database,
 }
 
-impl<'db> QueryAdapter<'db> {
+impl<'db> Query<'db> {
     /// Creates a new `QueryAdapter` with a database reference.
     #[inline]
     #[must_use]
@@ -28,7 +28,7 @@ impl<'db> QueryAdapter<'db> {
     }
 }
 
-impl Query for QueryAdapter<'_> {
+impl QueryPort for Query<'_> {
     type Archived<'archived> = &'archived rkyv::Archived<Template>;
 
     #[inline]

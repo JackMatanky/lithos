@@ -8,16 +8,16 @@ use crate::{
         aggregate::Template,
         db_table::{NAME_TO_ID, TEMPLATES},
         error::TemplateError,
-        ports::Command,
+        ports::Command as CommandPort,
     },
 };
 
 /// Redb implementation of the template command port.
-pub struct CommandAdapter<'db> {
+pub struct Command<'db> {
     db: &'db Database,
 }
 
-impl<'db> CommandAdapter<'db> {
+impl<'db> Command<'db> {
     /// Creates a new `CommandAdapter` with a database reference.
     #[inline]
     #[must_use]
@@ -28,7 +28,7 @@ impl<'db> CommandAdapter<'db> {
     }
 }
 
-impl Command for CommandAdapter<'_> {
+impl CommandPort for Command<'_> {
     #[inline]
     fn create(&self, template: &Template) -> Result<(), TemplateError> {
         let id_str = template.id().to_string();
