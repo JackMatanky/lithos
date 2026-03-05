@@ -12,10 +12,7 @@
 //! This is a pure adapter - it performs file I/O and parsing but no validation
 //! or database access.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use figment::{
     Figment,
@@ -23,9 +20,12 @@ use figment::{
 };
 use tracing::instrument;
 
-use crate::config::{
-    aggregate::Timestamp, error::ConfigIngestError, raw::RawConfig,
-    vault::VaultRoot,
+use crate::{
+    config::{
+        aggregate::Timestamp, error::ConfigIngestError, raw::RawConfig,
+        vault::VaultRoot,
+    },
+    fs::FsReader,
 };
 
 /// Configuration ingestion adapter.
@@ -33,16 +33,42 @@ use crate::config::{
 /// Handles loading raw configuration from the filesystem with metadata
 /// extraction. Supports both individual file loading (with timestamps) and
 /// Figment-based layered merging.
-#[derive(Debug, Clone, Copy)]
-#[non_exhaustive]
-pub struct Ingestor;
+///
+/// Uses separate `FsReader` instances for global (system-wide) and vault
+/// (project-scoped) config resolution:
+/// - Global: `FsReader::from_system_root()` for absolute system paths
+/// - Vault: `FsReader::new(vault_root)` for vault-relative paths
+pub struct Ingestor {
+    /// Reader for vault-scoped file operations (relative to vault root).
+    vault_source: FsReader,
+    /// Reader for system-wide file operations (absolute paths).
+    global_source: FsReader,
+}
 
 impl Ingestor {
-    /// Create a new ingestor instance.
+    /// Create a new ingestor for the given vault root.
+    ///
+    /// Automatically creates:
+    /// - Vault-scoped reader (for `.lithos/lithos.toml` within vault)
+    /// - System-wide reader (for global config resolution)
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use std::path::PathBuf;
+    ///
+    /// use lithos_core::config::adapter::ingest::Ingestor;
+    ///
+    /// let vault_root = PathBuf::from("/vault");
+    /// let ingestor = Ingestor::new(vault_root);
+    /// ```
     #[inline]
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub fn new<P: Into<PathBuf>>(vault_root: P) -> Self {
+        Self {
+            vault_source: FsReader::new(vault_root),
+            global_source: FsReader::from_system_root(),
+        }
     }
 
     /// Resolve the global config file path using priority order.
@@ -57,11 +83,11 @@ impl Ingestor {
     /// Returns `None` if no config file exists at any location.
     #[inline]
     #[must_use]
-    pub fn resolve_global_config_path(self) -> Option<PathBuf> {
+    pub fn resolve_global_config_path(&self) -> Option<PathBuf> {
         // Priority 1: Environment variable override
         if let Ok(env_path) = std::env::var("LITHOS_GLOBAL_CONFIG") {
             let path = PathBuf::from(env_path);
-            if path.exists() {
+            if self.global_source.exists(&path) {
                 return Some(path);
             }
         }
@@ -69,7 +95,7 @@ impl Ingestor {
         // Priority 2: XDG_CONFIG_HOME
         if let Ok(xdg_home) = std::env::var("XDG_CONFIG_HOME") {
             let path = Path::new(&xdg_home).join("lithos/lithos.toml");
-            if path.exists() {
+            if self.global_source.exists(&path) {
                 return Some(path);
             }
         }
@@ -77,7 +103,7 @@ impl Ingestor {
         // Priority 3: HOME/.config (XDG default)
         if let Ok(home) = std::env::var("HOME") {
             let path = Path::new(&home).join(".config/lithos/lithos.toml");
-            if path.exists() {
+            if self.global_source.exists(&path) {
                 return Some(path);
             }
         }
@@ -85,14 +111,14 @@ impl Ingestor {
         // Priority 4: HOME/.lithos (legacy)
         if let Ok(home) = std::env::var("HOME") {
             let path = Path::new(&home).join(".lithos/lithos.toml");
-            if path.exists() {
+            if self.global_source.exists(&path) {
                 return Some(path);
             }
         }
 
         // Priority 5: System-wide /etc
         let system_path = PathBuf::from("/etc/lithos/lithos.toml");
-        if system_path.exists() {
+        if self.global_source.exists(&system_path) {
             return Some(system_path);
         }
 
@@ -116,7 +142,7 @@ impl Ingestor {
     /// - TOML parsing fails (syntax error)
     #[inline]
     pub fn load_global_config(
-        self,
+        &self,
     ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
         let Some(path) = self.resolve_global_config_path() else {
             return Ok(None);
@@ -140,16 +166,16 @@ impl Ingestor {
     /// - TOML parsing fails (syntax error)
     #[inline]
     pub fn load_vault_config(
-        self,
-        vault_root: &VaultRoot,
+        &self,
+        _vault_root: &VaultRoot,
     ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
-        let path = vault_root.as_path().join(".lithos/lithos.toml");
+        let relative_path = Path::new(".lithos/lithos.toml");
 
-        if !path.exists() {
+        if !self.vault_source.exists(relative_path) {
             return Ok(None);
         }
 
-        self.load_config_from_path(&path)
+        self.load_config_from_vault_path(relative_path)
     }
 
     /// Build merged raw configuration using Figment layering.
@@ -174,7 +200,7 @@ impl Ingestor {
         fields(operation = "build_merged_raw", vault_root = %vault_root.display())
     )]
     pub fn build_merged_raw(
-        self,
+        &self,
         vault_root: &Path,
     ) -> Result<RawConfig, ConfigIngestError> {
         self.build_merged_raw_impl(
@@ -187,17 +213,13 @@ impl Ingestor {
     ///
     /// Exposed for testing with custom global config locations.
     #[inline]
-    #[expect(
-        clippy::unused_self,
-        reason = "Zero-sized type for API consistency"
-    )]
     #[instrument(
         skip(self, vault_root, global_config_path),
         level = "debug",
         fields(operation = "build_merged_raw_impl", vault_root = %vault_root.display())
     )]
     fn build_merged_raw_impl(
-        self,
+        &self,
         vault_root: &Path,
         global_config_path: Option<&Path>,
     ) -> Result<RawConfig, ConfigIngestError> {
@@ -207,67 +229,109 @@ impl Ingestor {
 
         // Layer 2: Global config (if exists)
         if let Some(path) = global_config_path
-            && path.exists()
+            && self.global_source.exists(path)
         {
             figment = figment.merge(Toml::file(path));
         }
 
         // Layer 3: Vault config (if exists)
-        let vault_config_path = vault_root.join(".lithos").join("lithos.toml");
-        if vault_config_path.exists() {
-            figment = figment.merge(Toml::file(&vault_config_path));
+        let vault_config_relative = Path::new(".lithos/lithos.toml");
+        if self.vault_source.exists(vault_config_relative) {
+            let vault_config_absolute = vault_root.join(vault_config_relative);
+            figment = figment.merge(Toml::file(&vault_config_absolute));
         }
 
         // Extract merged config
         figment.extract().map_err(ConfigIngestError::from)
     }
 
-    /// Internal helper to load and parse a config file with metadata.
-    #[expect(
-        clippy::unused_self,
-        reason = "Zero-sized type for API consistency"
-    )]
+    /// Internal helper to load and parse a global config file with metadata.
+    ///
+    /// Uses `global_source` for absolute system paths.
     fn load_config_from_path(
-        self,
+        &self,
         path: &Path,
     ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
+        Self::load_config_impl(&self.global_source, path)
+    }
+
+    /// Internal helper to load and parse a vault config file with metadata.
+    ///
+    /// Uses `vault_source` for vault-relative paths.
+    fn load_config_from_vault_path(
+        &self,
+        path: &Path,
+    ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
+        Self::load_config_impl(&self.vault_source, path)
+    }
+
+    /// Shared implementation for loading config from a specific source.
+    fn load_config_impl(
+        fs_reader: &FsReader,
+        file_path: &Path,
+    ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
         // Extract metadata before reading file content
-        let metadata = fs::metadata(path).ok();
+        let metadata = fs_reader.metadata(file_path).ok();
         let created_at = extract_timestamp(
-            path,
+            file_path,
             metadata.as_ref(),
-            fs::Metadata::created,
+            std::fs::Metadata::created,
             "created_at",
         );
         let modified_at = extract_timestamp(
-            path,
+            file_path,
             metadata.as_ref(),
-            fs::Metadata::modified,
+            std::fs::Metadata::modified,
             "modified_at",
         );
 
-        // Read and parse TOML content
-        let content =
-            fs::read_to_string(path).map_err(|e| ConfigIngestError::Io {
-                path: path.to_path_buf(),
-                source: e,
+        // Parse TOML content using FsReader
+        let config: RawConfig =
+            fs_reader.parse_structured(file_path).map_err(|e| match e {
+                crate::fs::ParseError::Io {
+                    path: err_path,
+                    source: io_source,
+                } => ConfigIngestError::Io {
+                    path: err_path,
+                    source: io_source,
+                },
+                crate::fs::ParseError::Toml {
+                    path: err_path,
+                    ..
+                } => {
+                    // Convert fs::ParseError::Toml to
+                    // ConfigIngestError::TomlParse
+                    // Create a dummy TOML error by parsing invalid TOML
+                    // (We can't construct toml::de::Error directly)
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "We intentionally create an error by parsing \
+                                  invalid TOML - this is a workaround for \
+                                  toml::de::Error not having a public \
+                                  constructor"
+                    )]
+                    let toml_error = toml::from_str::<toml::Value>("[")
+                        .expect_err("Invalid TOML should always error");
+                    ConfigIngestError::TomlParse {
+                        path: err_path,
+                        source: toml_error,
+                    }
+                }
+                crate::fs::ParseError::Json {
+                    ..
+                }
+                | crate::fs::ParseError::Yaml {
+                    ..
+                }
+                | crate::fs::ParseError::UnsupportedFormat {
+                    ..
+                } => ConfigIngestError::Io {
+                    path: file_path.to_path_buf(),
+                    source: std::io::Error::other(e.to_string()),
+                },
             })?;
 
-        let config: RawConfig = toml::from_str(&content).map_err(|e| {
-            ConfigIngestError::TomlParse {
-                path: path.to_path_buf(),
-                source: e,
-            }
-        })?;
-
         Ok(Some((config, created_at, modified_at)))
-    }
-}
-
-impl Default for Ingestor {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -282,8 +346,8 @@ pub type RawConfigWithMetadata =
 /// Returns `None` if metadata is unavailable or timestamp extraction fails.
 fn extract_timestamp(
     path: &Path,
-    metadata: Option<&fs::Metadata>,
-    time_fn: fn(&fs::Metadata) -> std::io::Result<std::time::SystemTime>,
+    metadata: Option<&std::fs::Metadata>,
+    time_fn: fn(&std::fs::Metadata) -> std::io::Result<std::time::SystemTime>,
     time_type: &str,
 ) -> Option<Timestamp> {
     let meta = metadata?;
@@ -373,14 +437,14 @@ mod tests {
 
         #[test]
         fn returns_option_pathbuf() {
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(std::env::temp_dir());
             let result = ingestor.resolve_global_config_path();
             assert!(result.is_some() || result.is_none());
         }
 
         #[test]
         fn returns_absolute_path_when_found() {
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(std::env::temp_dir());
             if let Some(path) = ingestor.resolve_global_config_path() {
                 assert!(
                     path.is_absolute(),
@@ -399,7 +463,7 @@ mod tests {
             // Test that the function can be called and returns a valid result
             // We can't guarantee the environment state, but we can verify the
             // signature
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(std::env::temp_dir());
             let result = ingestor.load_global_config();
             assert!(result.is_ok(), "Function should not error");
         }
@@ -418,7 +482,7 @@ mod tests {
             let vault_root = VaultRoot::try_new(temp.path().to_path_buf())
                 .expect("valid vault root");
 
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(temp.path());
             let result = ingestor
                 .load_vault_config(&vault_root)
                 .expect("should not error");
@@ -441,7 +505,7 @@ mod tests {
             let vault_root = VaultRoot::try_new(temp.path().to_path_buf())
                 .expect("valid vault root");
 
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(temp.path());
             let result = ingestor
                 .load_vault_config(&vault_root)
                 .expect("should parse config")
@@ -463,7 +527,7 @@ mod tests {
             let vault_root = VaultRoot::try_new(temp.path().to_path_buf())
                 .expect("valid vault root");
 
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(temp.path());
             let result = ingestor
                 .load_vault_config(&vault_root)
                 .expect("should parse config")
@@ -489,7 +553,7 @@ mod tests {
             let vault_root = VaultRoot::try_new(temp.path().to_path_buf())
                 .expect("valid vault root");
 
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(temp.path());
             let result = ingestor.load_vault_config(&vault_root);
             assert!(result.is_err(), "Should return error for invalid TOML");
         }
@@ -501,7 +565,7 @@ mod tests {
         #[test]
         fn uses_defaults_when_file_missing() {
             let dir = tempdir().expect("tempdir");
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(dir.path());
             let result = ingestor.build_merged_raw(dir.path());
             assert!(result.is_ok(), "Expected default ingest to succeed");
         }
@@ -513,7 +577,7 @@ mod tests {
             )
             .expect("setup vault");
 
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(dir.path());
             let raw = ingestor
                 .build_merged_raw(dir.path())
                 .expect("build merged raw");
@@ -535,7 +599,7 @@ mod tests {
             )
             .expect("setup configs");
 
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(vault_dir.path());
             let raw = ingestor
                 .build_merged_raw_impl(vault_dir.path(), Some(&global_path))
                 .expect("build merged raw");
@@ -554,7 +618,7 @@ mod tests {
                 setup_layered_configs("[logging]\nlog_level = \"warn\"\n", "")
                     .expect("setup configs");
 
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(vault_dir.path());
             let raw = ingestor
                 .build_merged_raw_impl(vault_dir.path(), Some(&global_path))
                 .expect("build merged raw");
@@ -570,7 +634,7 @@ mod tests {
         #[test]
         fn defaults_used_when_both_missing() {
             let dir = tempdir().expect("tempdir");
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(dir.path());
             let raw = ingestor
                 .build_merged_raw_impl(dir.path(), None)
                 .expect("build merged raw");
@@ -589,7 +653,7 @@ mod tests {
             )
             .expect("setup configs");
 
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(vault_dir.path());
             let raw = ingestor
                 .build_merged_raw_impl(vault_dir.path(), Some(&global_path))
                 .expect("build merged raw");
@@ -615,7 +679,7 @@ mod tests {
             )
             .expect("setup configs");
 
-            let ingestor = Ingestor::new();
+            let ingestor = Ingestor::new(vault_dir.path());
             let raw = ingestor
                 .build_merged_raw_impl(vault_dir.path(), Some(&global_path))
                 .expect("build merged raw");

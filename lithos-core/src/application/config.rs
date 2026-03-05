@@ -183,7 +183,10 @@ impl<'db> ConfigService<'db> {
     fn load_global_with_staleness(
         &self,
     ) -> Result<ConfigWithStaleness, ConfigServiceError> {
-        let ingestor = Ingestor::new();
+        // Ingestor creates both vault-scoped and system-wide readers internally
+        // We pass a dummy vault root since global config uses system-wide
+        // reader
+        let ingestor = Ingestor::new(std::env::temp_dir());
         if let Some((raw, created_at, modified_at)) =
             ingestor.load_global_config()?
         {
@@ -209,7 +212,7 @@ impl<'db> ConfigService<'db> {
         vault_root: &VaultRoot,
         vault_id: VaultId,
     ) -> Result<ConfigWithStaleness, ConfigServiceError> {
-        let ingestor = Ingestor::new();
+        let ingestor = Ingestor::new(vault_root.as_path());
         if let Some((raw, created_at, modified_at)) =
             ingestor.load_vault_config(vault_root)?
         {

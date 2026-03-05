@@ -68,6 +68,46 @@ impl Reader {
         })
     }
 
+    /// Creates a reader with the filesystem root as base.
+    ///
+    /// # Warning
+    ///
+    /// This method grants access to the **entire filesystem** and should
+    /// **only be used for global/system-wide configuration resolution**.
+    ///
+    /// For vault-scoped operations (schemas, templates, notes), use
+    /// [`Reader::new(vault_root)`](Reader::new) instead to ensure
+    /// file access is properly sandboxed to the vault directory.
+    ///
+    /// # Use Cases
+    ///
+    /// - Loading global config from system directories (`/etc`, `~/.config`)
+    /// - Resolving config paths from environment variables
+    /// - Any operation that legitimately needs to traverse outside a vault
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::path::Path;
+    ///
+    /// use lithos_core::fs::reader::Reader;
+    ///
+    /// let fs = Reader::from_system_root();
+    ///
+    /// // Can now check absolute system paths
+    /// if fs.exists(Path::new("/etc/lithos/lithos.toml")) {
+    ///     // Global config exists
+    /// }
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn from_system_root() -> Self {
+        Self {
+            root: PathBuf::from("/"),
+            validator: Validator::new_flexible(),
+        }
+    }
+
     /// Returns the root directory of this reader.
     #[inline]
     #[must_use]

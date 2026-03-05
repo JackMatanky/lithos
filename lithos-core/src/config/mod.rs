@@ -32,7 +32,7 @@
 //! let vault_id = VaultId::new();
 //!
 //! // 1. Ingest raw configuration from files
-//! let ingestor = Ingestor::new();
+//! let ingestor = Ingestor::new(vault_root);
 //! let raw = ingestor.build_merged_raw(vault_root)?;
 //!
 //! // 2. Transform into a validated domain aggregate

@@ -7,7 +7,6 @@
 use tracing::instrument;
 
 use super::{
-    adapter::ingest::Ingestor,
     aggregate::{Config, Timestamp, Version},
     error::ConfigCommandError,
     global::Global,
@@ -103,6 +102,12 @@ where
 
     /// Rebuilds the configuration read model for a vault.
     ///
+    /// **ARCHITECTURAL NOTE**: This is a temporary implementation that violates
+    /// separation of concerns. File ingestion logic should be moved to the
+    /// application service layer with proper hybrid loading (load from DB if
+    /// fresh, rebuild from files if stale). This method exists to support the
+    /// current API until the application service layer is implemented.
+    ///
     /// This method performs the full configuration lifecycle:
     /// 1. **Ingestion**: Loads raw configuration from files using Figment.
     /// 2. **Merging**: Layers vault overrides on top of global settings and
@@ -125,9 +130,13 @@ where
         vault_id: VaultId,
         vault_root: &VaultRoot,
     ) -> Result<Version, ConfigCommandError> {
+        // TODO: Move this to application service layer
+        // The command facade should not perform file ingestion directly
+        use crate::config::adapter::ingest::Ingestor;
+
         // Build merged config with placeholder version
         // The actual version is allocated atomically inside record_config
-        let ingestor = Ingestor::new();
+        let ingestor = Ingestor::new(vault_root.as_path());
         let raw_merged = ingestor.build_merged_raw(vault_root.as_path())?;
         let temp_config = Config::build(
             &raw_merged,
