@@ -9,7 +9,6 @@ use lithos_core::{
     fs::FsReader,
     note::{
         adapter::reader::NoteReader,
-        aggregate::{Note, NoteId},
         list::{List, ListItem, ListType},
     },
 };
@@ -49,15 +48,11 @@ mod tests {
 
         std::fs::write(root.join("notes/ingest.md"), markdown)?;
 
-        let mut note = Note::try_new(NoteId::new(), "notes/ingest.md")?;
         let reader = FsReader::new(root.as_path());
-        NoteReader::new(&config).apply(
-            &reader,
-            &mut note,
-            std::path::Path::new("notes/ingest.md"),
-        )?;
+        let parsed = NoteReader::new(&config)
+            .parse(&reader, std::path::Path::new("notes/ingest.md"))?;
 
-        let lists: Vec<&List> = note.lists().collect();
+        let lists: Vec<&List> = parsed.lists().iter().collect();
         assert_eq!(lists.len(), 2, "expected unordered + ordered lists");
 
         let unordered = lists
@@ -79,7 +74,7 @@ mod tests {
 
         assert_eq!(status.value(), ' ', "expected unchecked status");
         assert!(task_id.is_some(), "expected promoted task id");
-        assert_eq!(note.tasks().count(), 1, "expected one promoted task");
+        assert_eq!(parsed.tasks().len(), 1, "expected one promoted task");
 
         Ok(())
     }

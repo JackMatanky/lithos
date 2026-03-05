@@ -18,7 +18,6 @@ use crate::{
     config::aggregate::Config,
     fs::FsReader,
     note::{
-        aggregate::Note,
         error::NoteError,
         frontmatter::Frontmatter,
         link::Link,
@@ -185,7 +184,7 @@ impl<'config> NoteReader<'config> {
         &self,
         reader: &FsReader,
         path: &Path,
-    ) -> Result<ParseOutcome, NoteError> {
+    ) -> Result<ParsedNote, NoteError> {
         let markdown = reader
             .read_with::<String, crate::fs::ParseError, _>(
                 path,
@@ -213,7 +212,7 @@ impl<'config> NoteReader<'config> {
         clippy::pattern_type_mismatch,
         reason = "Match ergonomics on &Event preferred for clarity"
     )]
-    pub fn parse_str(&self, markdown: &str) -> Result<ParseOutcome, NoteError> {
+    pub fn parse_str(&self, markdown: &str) -> Result<ParsedNote, NoteError> {
         let mut link_ext = super::extract_link::LinkExtractor::new(self.config);
         let mut list_ext = super::extract_list::ListExtractor::new(self.config);
         let mut heading_ext = super::extract_heading::HeadingExtractor::new();
@@ -330,7 +329,7 @@ impl<'config> NoteReader<'config> {
         sections.extend(section_ext.finish()?);
         tags.extend(tag_ext.finish()?);
 
-        Ok(ParseOutcome {
+        Ok(ParsedNote {
             lists,
             tasks,
             headings,
@@ -396,87 +395,6 @@ impl<'config> NoteReader<'config> {
             | Event::TaskListMarker(_) => {}
         }
     }
-
-    /// Parses markdown and applies extracted elements to a note.
-    ///
-    /// This is the primary entry point for populating a [`Note`] aggregate
-    /// from markdown source. Extracts lists, tasks, headings, links, and
-    /// frontmatter.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] when file I/O or parsing fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::path::Path;
-    /// # use lithos_core::fs::FsReader;
-    /// # use lithos_core::note::{
-    /// #     adapter::reader::NoteReader,
-    /// #     aggregate::{Note, NoteId},
-    /// # };
-    /// # use lithos_core::config::{
-    /// #     aggregate::{Config, Version},
-    /// #     raw::RawConfig,
-    /// #     vault::{VaultId, VaultRoot},
-    /// # };
-    /// # let unique = format!(
-    /// #     "lithos_note_reader_apply_example_{}",
-    /// #     std::process::id()
-    /// # );
-    /// # let root = std::env::temp_dir().join(unique);
-    /// # std::fs::create_dir_all(&root)?;
-    /// # std::fs::write(
-    /// #     root.join("test.md"),
-    /// #     "# Heading\n- [ ] #task Review PR",
-    /// # )?;
-    /// # let config = Config::build(
-    /// #     &RawConfig::default(),
-    /// #     VaultId::new(),
-    /// #     VaultRoot::try_new(root.clone())?,
-    /// #     Version::initial(),
-    /// # )?;
-    /// let reader = FsReader::new(root.as_path());
-    /// let note_reader = NoteReader::new(&config);
-    /// let mut note = Note::try_new(NoteId::new(), "test.md")?;
-    ///
-    /// note_reader.apply(&reader, &mut note, Path::new("test.md"))?;
-    /// assert_eq!(note.tasks().count(), 1);
-    /// assert_eq!(note.headings().count(), 1);
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
-    /// ```
-    #[inline]
-    pub fn apply(
-        &self,
-        reader: &FsReader,
-        note: &mut Note,
-        path: &Path,
-    ) -> Result<(), NoteError> {
-        let parsed = self.parse(reader, path)?;
-        parsed.apply_to(note);
-        Ok(())
-    }
-
-    /// Parses markdown from a string slice and applies extracted elements to a
-    /// note.
-    ///
-    /// This is test-only to keep the public API centered on file ingestion.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError`] when parsing fails.
-    #[cfg(test)]
-    #[inline]
-    pub(crate) fn apply_str(
-        &self,
-        note: &mut Note,
-        markdown: &str,
-    ) -> Result<(), NoteError> {
-        let parsed = self.parse_str(markdown)?;
-        parsed.apply_to(note);
-        Ok(())
-    }
 }
 
 /// Build the pulldown-cmark option set used for Obsidian-compatible parsing.
@@ -536,7 +454,7 @@ const fn obsidian_options() -> Options {
 /// ```
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct ParseOutcome {
+pub struct ParsedNote {
     lists: Vec<List>,
     tasks: Vec<Task>,
     headings: Vec<Heading>,
@@ -546,7 +464,7 @@ pub struct ParseOutcome {
     frontmatter: Option<Frontmatter>,
 }
 
-impl ParseOutcome {
+impl ParsedNote {
     /// Lists parsed from the markdown body.
     #[inline]
     #[must_use]
@@ -594,31 +512,6 @@ impl ParseOutcome {
     #[must_use]
     pub fn frontmatter(&self) -> Option<&Frontmatter> {
         self.frontmatter.as_ref()
-    }
-
-    #[inline]
-    fn apply_to(self, note: &mut Note) {
-        for list in self.lists {
-            note.add_list(list);
-        }
-        for task in self.tasks {
-            note.add_task(task);
-        }
-        for heading in self.headings {
-            note.add_heading(heading);
-        }
-        for section in self.sections {
-            note.add_section(section);
-        }
-        for link in self.links {
-            note.add_link(link);
-        }
-        for tag in self.tags {
-            note.add_tag(tag);
-        }
-        if let Some(fm) = self.frontmatter {
-            note.set_frontmatter(Some(fm));
-        }
     }
 }
 
@@ -726,12 +619,14 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         note::{
-            aggregate::NoteId,
             link::{Anchor, EmbedType, Style, Target},
             list::{ListDepth, ListItem, ListType},
             value::FieldValue,
         },
     };
+
+    /// Test alias for historical parse outcome name.
+    type ParseOutcome = ParsedNote;
 
     fn test_config() -> Config {
         let raw = RawConfig::default();
@@ -826,17 +721,15 @@ mod tests {
     }
 
     #[test]
-    fn apply_appends_lists_and_tasks() -> Result<(), NoteError> {
+    fn parses_lists_and_tasks() -> Result<(), NoteError> {
         let config = test_config();
         let reader = NoteReader::new(&config);
         let markdown = "- [ ] #task Review PR\n";
 
-        let mut note = Note::try_new(NoteId::new(), "notes/test.md")?;
+        let parsed = reader.parse_str(markdown)?;
 
-        reader.apply_str(&mut note, markdown)?;
-
-        assert_eq!(note.lists().count(), 1, "note should have 1 list");
-        assert_eq!(note.tasks().count(), 1, "note should have 1 task");
+        assert_eq!(parsed.lists().len(), 1, "note should have 1 list");
+        assert_eq!(parsed.tasks().len(), 1, "note should have 1 task");
         Ok(())
     }
 
@@ -845,17 +738,15 @@ mod tests {
         clippy::indexing_slicing,
         reason = "Test asserts exact count before indexing"
     )]
-    fn apply_appends_headings() -> Result<(), NoteError> {
+    fn parses_headings() -> Result<(), NoteError> {
         let config = test_config();
         let reader = NoteReader::new(&config);
         let markdown = "# Section 1\n\nContent\n\n## Section 2";
 
-        let mut note = Note::try_new(NoteId::new(), "notes/test.md")?;
+        let parsed = reader.parse_str(markdown)?;
 
-        reader.apply_str(&mut note, markdown)?;
-
-        assert_eq!(note.headings().count(), 2, "note should have 2 headings");
-        let headings: Vec<_> = note.headings().collect();
+        assert_eq!(parsed.headings().len(), 2, "note should have 2 headings");
+        let headings: Vec<_> = parsed.headings().iter().collect();
         assert_eq!(headings[0].text(), "Section 1");
         assert_eq!(headings[1].text(), "Section 2");
         Ok(())
@@ -1038,16 +929,14 @@ mod tests {
     }
 
     #[test]
-    fn apply_appends_links() -> Result<(), NoteError> {
+    fn parses_links() -> Result<(), NoteError> {
         let config = test_config();
         let reader = NoteReader::new(&config);
         let markdown = "[[link1]] and [[link2]]";
 
-        let mut note = Note::try_new(NoteId::new(), "notes/test.md")?;
+        let parsed = reader.parse_str(markdown)?;
 
-        reader.apply_str(&mut note, markdown)?;
-
-        assert_eq!(note.links().count(), 2, "note should have 2 links");
+        assert_eq!(parsed.links().len(), 2, "note should have 2 links");
         Ok(())
     }
 
@@ -1145,7 +1034,7 @@ Content";
     }
 
     #[test]
-    fn apply_sets_frontmatter() -> Result<(), NoteError> {
+    fn parses_frontmatter_into_outcome() -> Result<(), NoteError> {
         let config = test_config();
         let reader = NoteReader::new(&config);
         let markdown = "---
@@ -1154,12 +1043,9 @@ title: My Note
 
 # Heading";
 
-        let mut note = Note::try_new(NoteId::new(), "notes/test.md")?;
-
-        reader.apply_str(&mut note, markdown)?;
-
+        let parsed = reader.parse_str(markdown)?;
         let frontmatter =
-            note.frontmatter().expect("note should have frontmatter");
+            parsed.frontmatter().expect("note should have frontmatter");
         assert_eq!(
             frontmatter.get_raw("title").and_then(FieldValue::as_str),
             Some("My Note")

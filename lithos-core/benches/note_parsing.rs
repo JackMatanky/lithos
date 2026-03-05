@@ -123,7 +123,7 @@
 //!
 //! **If simple throughput drops below 5 MiB/s**:
 //! - Fixed overhead increased (file I/O, Config/Note construction)
-//! - Check for new validation in `Note::try_new()` or `NoteReader::new()`
+//! - Check for new validation in `NoteReader::new()` or parse routines
 //!
 //! **If medium/complex throughput drops below 20 MiB/s**:
 //! - Parsing logic changed (pulldown-cmark, regex matching)
@@ -227,10 +227,7 @@ use lithos_core::{
         vault::{VaultId, VaultRoot},
     },
     fs::FsReader,
-    note::{
-        adapter::reader::NoteReader,
-        aggregate::{Note, NoteId},
-    },
+    note::adapter::reader::NoteReader,
 };
 
 /// Simple markdown sample: minimal note structure (~100 bytes).
@@ -406,16 +403,10 @@ fn bench_ingest_group(
     ingest_group.throughput(Throughput::Bytes(samples.simple.len() as u64));
     ingest_group.bench_function("ingest_markdown/simple", |b| {
         b.iter(|| {
-            let mut note = Note::try_new(NoteId::new(), "notes/simple.md")
-                .expect("valid note");
-            note_reader
-                .apply(
-                    reader,
-                    &mut note,
-                    std::path::Path::new("notes/simple.md"),
-                )
+            let parsed = note_reader
+                .parse(reader, std::path::Path::new("notes/simple.md"))
                 .expect("ingest markdown");
-            black_box(note);
+            black_box(parsed);
         });
     });
 
@@ -425,16 +416,10 @@ fn bench_ingest_group(
     ingest_group.throughput(Throughput::Bytes(samples.medium.len() as u64));
     ingest_group.bench_function("ingest_markdown/medium", |b| {
         b.iter(|| {
-            let mut note = Note::try_new(NoteId::new(), "notes/medium.md")
-                .expect("valid note");
-            note_reader
-                .apply(
-                    reader,
-                    &mut note,
-                    std::path::Path::new("notes/medium.md"),
-                )
+            let parsed = note_reader
+                .parse(reader, std::path::Path::new("notes/medium.md"))
                 .expect("ingest markdown");
-            black_box(note);
+            black_box(parsed);
         });
     });
 
@@ -444,16 +429,10 @@ fn bench_ingest_group(
     ingest_group.throughput(Throughput::Bytes(samples.complex.len() as u64));
     ingest_group.bench_function("ingest_markdown/complex", |b| {
         b.iter(|| {
-            let mut note = Note::try_new(NoteId::new(), "notes/complex.md")
-                .expect("valid note");
-            note_reader
-                .apply(
-                    reader,
-                    &mut note,
-                    std::path::Path::new("notes/complex.md"),
-                )
+            let parsed = note_reader
+                .parse(reader, std::path::Path::new("notes/complex.md"))
                 .expect("ingest markdown");
-            black_box(note);
+            black_box(parsed);
         });
     });
 

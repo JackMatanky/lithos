@@ -39,8 +39,7 @@ mod tests {
         },
         fs::FsReader,
         note::{
-            adapter::reader::{NoteReader, ParseOutcome},
-            aggregate::{Note, NoteId},
+            adapter::reader::{NoteReader, ParsedNote},
             list::{ListDepth, ListItem, ListType},
             tag::Tag as NoteTag,
         },
@@ -51,8 +50,7 @@ mod tests {
 
     struct Fixture {
         _dir: TempDir,
-        outcome: ParseOutcome,
-        note: Note,
+        outcome: ParsedNote,
     }
 
     fn test_config(root: PathBuf) -> TestResult<Config> {
@@ -82,18 +80,13 @@ mod tests {
         let fs_reader = FsReader::new(dir.path());
 
         let outcome = reader.parse(&fs_reader, note_path)?;
-        let mut note =
-            Note::try_new(NoteId::new(), note_path.to_string_lossy().as_ref())?;
-        reader.apply(&fs_reader, &mut note, note_path)?;
-
         Ok(Fixture {
             _dir: dir,
             outcome,
-            note,
         })
     }
 
-    fn sorted_tag_paths_from_outcome(outcome: &ParseOutcome) -> Vec<Box<str>> {
+    fn sorted_tag_paths_from_outcome(outcome: &ParsedNote) -> Vec<Box<str>> {
         let mut tags: Vec<Box<str>> = outcome
             .tags()
             .iter()
@@ -104,18 +97,11 @@ mod tests {
         tags
     }
 
-    fn sorted_tag_paths_from_note(note: &Note) -> Vec<Box<str>> {
-        let mut tags: Vec<Box<str>> =
-            note.tags().map(|tag| tag.full_path().into()).collect();
-        tags.sort();
-        tags
-    }
-
     /// Validates end-to-end parsing and application across all core entities.
     ///
     /// This test covers the full pipeline (file -> parse -> apply) using a
     /// complex markdown fixture to ensure counts and frontmatter presence are
-    /// preserved in both the `ParseOutcome` and the `Note` aggregate.
+    /// preserved in the parsed output.
     #[test]
     fn note_reader_full_pipeline_preserves_counts() -> TestResult {
         let markdown = concat!(
@@ -150,23 +136,13 @@ mod tests {
             fixture.outcome.frontmatter().expect("frontmatter should exist");
         assert!(outcome_frontmatter.has_raw("title"));
 
-        assert_eq!(fixture.note.headings().count(), 3);
-        assert_eq!(fixture.note.tasks().count(), 3);
-        assert_eq!(fixture.note.links().count(), 4);
-        assert_eq!(fixture.note.lists().count(), 3);
-        assert_eq!(fixture.note.tags().count(), 7);
-
-        let note_frontmatter =
-            fixture.note.frontmatter().expect("note frontmatter exists");
-        assert!(note_frontmatter.has_raw("title"));
-
         Ok(())
     }
 
     /// Ensures task promotion retains linkage between tasks and list items.
     ///
     /// This verifies that a promoted checkbox becomes a task and the list item
-    /// retains the correct `task_id` in both the parse output and applied note.
+    /// retains the correct `task_id` in the parse output.
     #[test]
     fn note_reader_applies_task_linkage_to_list_items() -> TestResult {
         let markdown = "- [ ] #task Link me\n";
@@ -180,12 +156,6 @@ mod tests {
         let outcome_item = outcome_list.items().next().expect("item exists");
         assert_eq!(outcome_item.task_id(), Some(outcome_task.id()));
         assert!(matches!(outcome_item, ListItem::Checkbox { .. }));
-
-        let note_task = fixture.note.tasks().next().expect("note task exists");
-        let note_list = fixture.note.lists().next().expect("note list exists");
-        let note_item = note_list.items().next().expect("note item exists");
-        assert_eq!(note_item.task_id(), Some(note_task.id()));
-        assert!(matches!(note_item, ListItem::Checkbox { .. }));
 
         Ok(())
     }
@@ -206,7 +176,7 @@ mod tests {
 
         let fixture = build_fixture(markdown)?;
 
-        let lists: Vec<_> = fixture.note.lists().collect();
+        let lists = fixture.outcome.lists();
         assert_eq!(lists.len(), 2, "expected unordered + ordered lists");
 
         let unordered = lists
@@ -227,15 +197,12 @@ mod tests {
 
         assert_eq!(status.value(), ' ', "expected unchecked status");
         assert!(task_id.is_some(), "expected promoted task id");
-        assert_eq!(fixture.note.tasks().count(), 1, "expected one task");
-
         Ok(())
     }
 
-    /// Verifies frontmatter tag extraction is visible in the applied note.
+    /// Verifies frontmatter tag extraction is visible in the parse outcome.
     ///
-    /// This asserts that frontmatter tags are extracted, de-duplicated, and
-    /// surfaced through both the parse outcome and the note aggregate.
+    /// This asserts that frontmatter tags are extracted and de-duplicated.
     #[test]
     fn note_reader_frontmatter_tags_surface_in_note() -> TestResult {
         let markdown = "---\ntags: [alpha, beta]\n---\n\nBody text\n";
@@ -243,12 +210,8 @@ mod tests {
         let fixture = build_fixture(markdown)?;
 
         let outcome_tags = sorted_tag_paths_from_outcome(&fixture.outcome);
-        let note_tags = sorted_tag_paths_from_note(&fixture.note);
-
         assert!(outcome_tags.contains(&"alpha".into()));
         assert!(outcome_tags.contains(&"beta".into()));
-        assert!(note_tags.contains(&"alpha".into()));
-        assert!(note_tags.contains(&"beta".into()));
 
         Ok(())
     }
@@ -275,10 +238,7 @@ mod tests {
         );
 
         let outcome_tags = sorted_tag_paths_from_outcome(&fixture.outcome);
-        let note_tags = sorted_tag_paths_from_note(&fixture.note);
-
         assert!(outcome_tags.contains(&"\u{30bf}\u{30b0}".into()));
-        assert!(note_tags.contains(&"\u{30bf}\u{30b0}".into()));
 
         Ok(())
     }

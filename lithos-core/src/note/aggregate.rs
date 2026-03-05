@@ -1,8 +1,8 @@
-//! Note aggregate root and primary domain entity.
+//! Note ingest artifact and legacy aggregate root.
 //!
-//! This module defines the [`crate::note::aggregate::Note`] aggregate, which
-//! serves as the central coordination point for all note-related data including
-//! links, tags, and tasks.
+//! This module defines the legacy [`crate::note::aggregate::Note`] type.
+//! It is slated to become a transient ingest artifact rather than a
+//! persisted aggregate. New code should prefer ParsedNote from the adapter.
 
 //! Note aggregate root and core domain entities.
 //!
