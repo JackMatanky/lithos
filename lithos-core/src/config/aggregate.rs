@@ -92,6 +92,18 @@ impl Config {
         &self.task
     }
 
+    /// Create a new Config with the specified version, keeping all other fields
+    /// unchanged.
+    ///
+    /// This is used when atomically allocating a version number during
+    /// persistence.
+    #[inline]
+    #[must_use]
+    pub fn with_version(mut self, version: Version) -> Self {
+        self.version = version;
+        self
+    }
+
     /// Build validated Config from Figment-merged raw configuration.
     ///
     /// # Errors

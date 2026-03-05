@@ -441,6 +441,56 @@ impl ReadWriteUnitOfWork {
     ) -> Result<bool, DbError> {
         delete_key_tx(&mut self.tx, table, key)
     }
+
+    /// Scan entries matching a key prefix within the transaction.
+    ///
+    /// This enables atomic read-scan-compute-write patterns, such as finding
+    /// the maximum version and incrementing it atomically.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the scan or deserialization fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use lithos_core::db::Database;
+    /// # use std::path::Path;
+    /// # use redb::TableDefinition;
+    /// # fn main() -> Result<(), lithos_core::db::DbError> {
+    /// # let db = Database::open(Path::new("/tmp/test.db"))?;
+    /// # let table = TableDefinition::new("configs");
+    /// # let vault_id = "vault-123";
+    /// // Atomically find max version and write next version
+    /// db.read_write_unit_of_work(|tx| {
+    ///     let prefix = format!("{}:", vault_id);
+    ///     let versions: Vec<(String, u64)> = tx.scan_range(table, &prefix)?;
+    ///     let max = versions.iter().map(|(_, v)| v).max();
+    ///     let next = max.map_or(1, |v| v + 1);
+    ///     tx.put(table, &format!("{}:{}", vault_id, next), &next)?;
+    ///     Ok(next)
+    /// })?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn scan_range<V>(
+        &self,
+        table: TableDefinition<&str, &[u8]>,
+        key_prefix: &str,
+    ) -> Result<Vec<(String, V)>, DbError>
+    where
+        V: rkyv::Archive,
+        V::Archived: rkyv::Portable
+            + for<'archived> rkyv::bytecheck::CheckBytes<
+                rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+            > + rkyv::Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+    {
+        scan_range_write_tx::<V>(&self.tx, table, key_prefix)
+    }
 }
 
 // Private helper functions for internal use
@@ -642,6 +692,90 @@ where
         }
         None => Ok(None),
     }
+}
+
+/// Scan entries in a table matching a key prefix within a write transaction.
+///
+/// This is similar to `scan_range_tx` in reader.rs but works with
+/// `WriteTransaction` instead of `ReadTransaction`. Both transaction types
+/// support the same table read operations.
+fn scan_range_write_tx<V>(
+    tx: &redb::WriteTransaction,
+    table: TableDefinition<&str, &[u8]>,
+    key_prefix: &str,
+) -> Result<Vec<(String, V)>, DbError>
+where
+    V: rkyv::Archive,
+    V::Archived: rkyv::Portable
+        + for<'archived> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'archived, rkyv::rancor::Error>,
+        > + rkyv::Deserialize<
+            V,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+{
+    use redb::TableError;
+
+    let table_ref = match tx.open_table(table) {
+        Ok(table_ref) => table_ref,
+        Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
+        Err(err) => return Err(DbError::Transaction(err.to_string())),
+    };
+
+    // Compute the exclusive end bound for the range scan.
+    // For prefix "abc", we want to scan ["abc", "abd"), which captures all keys
+    // starting with "abc".
+    let end_bound = next_prefix(key_prefix);
+
+    let mut results = Vec::new();
+    let range = table_ref.range(key_prefix..end_bound.as_str())?;
+    for result in range {
+        let (key, value): (redb::AccessGuard<&str>, redb::AccessGuard<&[u8]>) =
+            result?;
+        let key_str = key.value().to_owned();
+        let bytes: &[u8] = value.value();
+
+        let mut aligned = rkyv::util::AlignedVec::<16>::new();
+        aligned.extend_from_slice(bytes);
+
+        let archived =
+            rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(&aligned)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+        let deserialized =
+            rkyv::deserialize::<V, rkyv::rancor::Error>(archived)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+        results.push((key_str, deserialized));
+    }
+
+    Ok(results)
+}
+
+/// Compute the next string in lexicographic order for range queries.
+///
+/// This is used to create exclusive upper bounds for prefix scans.
+/// For example, `next_prefix("user:")` returns `"user;"` which allows
+/// scanning all keys starting with `"user:"`.
+fn next_prefix(prefix: &str) -> String {
+    let bytes = prefix.as_bytes();
+
+    // Find the last byte that can be incremented (not 0xFF)
+    for i in (0..bytes.len()).rev() {
+        if let Some(&byte) = bytes.get(i)
+            && byte < 255
+        {
+            let mut next =
+                bytes.get(..=i).map_or_else(|| bytes.to_vec(), <[u8]>::to_vec);
+            if let Some(last) = next.get_mut(i) {
+                *last = last.saturating_add(1);
+            }
+            // Safe because we're only incrementing valid UTF-8 bytes
+            return String::from_utf8(next)
+                .unwrap_or_else(|_| format!("{prefix}\u{FFFF}"));
+        }
+    }
+
+    // All bytes are 0xFF or empty string, append a high Unicode character
+    format!("{prefix}\u{FFFF}")
 }
 
 #[cfg(test)]

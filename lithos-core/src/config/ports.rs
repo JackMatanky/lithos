@@ -38,18 +38,21 @@ pub trait Command: Send + Sync {
         modified_at: Timestamp,
     ) -> Result<(), Self::Error>;
 
-    /// Records a final configuration snapshot (result of merging global +
-    /// vault).
+    /// Records a final configuration snapshot with atomic version allocation.
     ///
-    /// The version is extracted from `config.version()`.
+    /// The version is computed atomically by scanning existing versions and
+    /// incrementing. This prevents race conditions when multiple concurrent
+    /// rebuilds occur on the same vault.
+    ///
+    /// Returns the allocated version number.
     ///
     /// # Errors
-    /// Returns a storage-specific error if the operation fails.
+    /// Returns a storage-specific error if version overflow or storage fails.
     fn record_config(
         &self,
         vault_id: VaultId,
         config: &Config,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<Version, Self::Error>;
 
     /// Records vault-specific configuration with metadata.
     ///
@@ -76,25 +79,6 @@ pub trait Command: Send + Sync {
         vault_id: VaultId,
         vault_root: &VaultRoot,
     ) -> Result<(), Self::Error>;
-}
-
-/// Internal command-state port for read-for-write operations.
-///
-/// This port is crate-private and encapsulates atomic read-modify-write
-/// operations needed by command handlers. It is not exposed in the public API.
-pub(crate) trait CommandState: Send + Sync {
-    /// Storage error type for command operations.
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    /// Allocates the next version number for a vault.
-    ///
-    /// Scans `CONFIG_VERSIONS` for the maximum existing version, then
-    /// increments it. Returns `Version::initial()` if no versions exist
-    /// yet.
-    ///
-    /// # Errors
-    /// Returns a storage-specific error if the scan fails or version overflows.
-    fn next_version(&self, vault_id: VaultId) -> Result<Version, Self::Error>;
 }
 
 /// Query port for configuration read operations.

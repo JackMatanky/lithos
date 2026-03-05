@@ -2,8 +2,7 @@
 //!
 //! This module provides the [`Command`] type, which handles configuration
 //! mutations (recording settings, rebuilding snapshots). Version allocation is
-//! handled atomically within the command adapter via [`CommandState`] to
-//! maintain CQRS boundaries.
+//! handled atomically within the command port to prevent race conditions.
 
 use tracing::instrument;
 
@@ -16,27 +15,6 @@ use super::{
     vault::{Vault, VaultId, VaultRoot},
 };
 
-/// Helper trait that combines Command and `CommandState` for convenience.
-/// This avoids ambiguous Error type bounds when both are needed.
-///
-/// This trait is pub(crate) because `CommandState` is crate-private.
-pub(crate) trait CommandPorts:
-    config_ports::Command + config_ports::CommandState
-{
-}
-
-impl<T> CommandPorts for T where
-    T: config_ports::Command + config_ports::CommandState
-{
-}
-
-/// # Examples
-///
-/// This struct handles configuration mutations (recording, rebuilding, version
-/// activation) using both the Command port (for writes) and `CommandState` port
-/// (for read-for-write operations). The `CommandState` port is internal and not
-/// exposed in the public API.
-///
 /// # Examples
 ///
 /// ```rust,no_run
@@ -72,12 +50,10 @@ impl<C> Command<C> {
     }
 }
 
-#[expect(private_bounds, reason = "CommandState is crate-private")]
 impl<C> Command<C>
 where
-    C: CommandPorts,
+    C: config_ports::Command,
     <C as config_ports::Command>::Error: Into<crate::db::DbError>,
-    <C as config_ports::CommandState>::Error: Into<crate::db::DbError>,
 {
     /// Records the global configuration with metadata.
     ///
@@ -149,35 +125,31 @@ where
         vault_id: VaultId,
         vault_root: &VaultRoot,
     ) -> Result<Version, ConfigCommandError> {
-        // Allocate next version
-        let version = self.next_version(vault_id)?;
-
-        // Build merged config with version
+        // Build merged config with placeholder version
+        // The actual version is allocated atomically inside record_config
         let raw_merged = ingest::build_merged_raw(vault_root.as_path())?;
-        let merged =
-            Config::build(&raw_merged, vault_id, vault_root.clone(), version)
-                .map_err(ConfigCommandError::Domain)?;
+        let temp_config = Config::build(
+            &raw_merged,
+            vault_id,
+            vault_root.clone(),
+            Version::initial(), /* Placeholder - real version assigned
+                                 * atomically */
+        )
+        .map_err(ConfigCommandError::Domain)?;
 
         // Record vault path mapping
         self.command_port
             .record_vault_path_mapping(vault_id, vault_root)
             .map_err(|error| ConfigCommandError::Storage(error.into()))?;
 
-        // Record merged config
-        self.command_port
-            .record_config(vault_id, &merged)
-            .map_err(|error| ConfigCommandError::Storage(error.into()))?;
+        // Atomically allocate version and record config
+        // Returns the allocated version number
+        let version =
+            self.command_port
+                .record_config(vault_id, &temp_config)
+                .map_err(|error| ConfigCommandError::Storage(error.into()))?;
 
         Ok(version)
-    }
-
-    fn next_version(
-        &self,
-        vault_id: VaultId,
-    ) -> Result<Version, ConfigCommandError> {
-        self.command_port
-            .next_version(vault_id)
-            .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 }
 

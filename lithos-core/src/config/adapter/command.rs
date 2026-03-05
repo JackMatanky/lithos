@@ -1,5 +1,4 @@
-//! Concrete implementation of the [`crate::config::ports::Command`] and
-//! [`crate::config::ports::CommandState`] traits.
+//! Concrete implementation of the [`crate::config::ports::Command`] trait.
 
 use tracing::instrument;
 
@@ -12,7 +11,7 @@ use crate::{
             VAULT_ID_BY_PATH, VAULT_PATH_BY_ID,
         },
         global::Global,
-        ports::{Command, CommandState},
+        ports::Command,
         vault::{Vault, VaultId, VaultRoot},
     },
     db::{Database, DbError},
@@ -61,19 +60,52 @@ impl Command for CommandAdapter<'_> {
     #[inline]
     #[instrument(
         skip(self, config),
-        fields(
-            operation = "record_config",
-            vault_id = %vault_id,
-            version = %config.version()
-        )
+        fields(operation = "record_config", vault_id = %vault_id)
     )]
     fn record_config(
         &self,
         vault_id: VaultId,
         config: &Config,
-    ) -> Result<(), Self::Error> {
-        let key = format!("{}:{}", vault_id, config.version().value());
-        self.db.put(CONFIG_VERSIONS, &key, config)
+    ) -> Result<Version, Self::Error> {
+        // Atomically allocate version and record config
+        self.db.read_write_unit_of_work(|tx| {
+            // Scan CONFIG_VERSIONS for max version with this vault_id prefix
+            let prefix = format!("{vault_id}:");
+
+            #[expect(
+                clippy::return_and_then,
+                reason = "filter_map chain is more readable than nested match"
+            )]
+            let max_version = tx
+                .scan_range::<Config>(CONFIG_VERSIONS, &prefix)?
+                .into_iter()
+                .filter_map(|(key, _)| {
+                    // Extract version from key format "{vault_id}:{version}"
+                    key.strip_prefix(&prefix)
+                        .and_then(|v| v.parse::<u64>().ok())
+                        .and_then(|v| Version::try_from(v).ok())
+                })
+                .max();
+
+            // Compute next version
+            let next = match max_version {
+                Some(v) => v.next().map_err(|_err| {
+                    DbError::Serialization(
+                        "config version overflow - vault has exceeded maximum \
+                         rebuilds"
+                            .into(),
+                    )
+                })?,
+                None => Version::initial(),
+            };
+
+            // Update config with allocated version and write
+            let versioned_config = config.clone().with_version(next);
+            let key = format!("{}:{}", vault_id, next.value());
+            tx.put(CONFIG_VERSIONS, &key, &versioned_config)?;
+
+            Ok(next)
+        })
     }
 
     #[inline]
@@ -115,48 +147,6 @@ impl Command for CommandAdapter<'_> {
         let path_key = vault_root.as_key();
         self.db.put(VAULT_ID_BY_PATH, &path_key, &vault_id)?;
         self.db.put(VAULT_PATH_BY_ID, &vault_id.to_string(), vault_root)
-    }
-}
-
-impl CommandState for CommandAdapter<'_> {
-    type Error = DbError;
-
-    #[inline]
-    #[instrument(
-        skip(self),
-        fields(operation = "next_version", vault_id = %vault_id)
-    )]
-    fn next_version(&self, vault_id: VaultId) -> Result<Version, Self::Error> {
-        // Scan CONFIG_VERSIONS for max version with this vault_id prefix
-        let prefix = format!("{vault_id}:");
-
-        #[expect(
-            clippy::return_and_then,
-            reason = "filter_map chain is more readable than nested match"
-        )]
-        let max_version = self
-            .db
-            .scan_range::<Config>(CONFIG_VERSIONS, &prefix)?
-            .into_iter()
-            .filter_map(|(key, _)| {
-                // Extract version from key format "{vault_id}:{version}"
-                key.strip_prefix(&prefix)
-                    .and_then(|v| v.parse::<u64>().ok())
-                    .and_then(|v| Version::try_from(v).ok())
-            })
-            .max();
-
-        // If we have a max version, increment it; otherwise start at initial
-        match max_version {
-            Some(v) => v.next().map_err(|_err| {
-                DbError::Serialization(
-                    "config version overflow - vault has exceeded maximum \
-                     rebuilds"
-                        .into(),
-                )
-            }),
-            None => Ok(Version::initial()),
-        }
     }
 }
 
