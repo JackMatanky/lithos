@@ -254,6 +254,94 @@ impl Reader {
         })
     }
 
+    /// Returns the file's creation timestamp as seconds since UNIX epoch.
+    ///
+    /// Returns `None` if the metadata cannot be read, the timestamp is not
+    /// available on this platform, or the timestamp is before UNIX epoch.
+    /// Failures are logged at debug level.
+    #[inline]
+    pub fn created_at(&self, path: &Path) -> Option<u64> {
+        let metadata = match self.metadata(path) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to read metadata for created_at"
+                );
+                return None;
+            }
+        };
+
+        let system_time = match metadata.created() {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to read created timestamp from metadata"
+                );
+                return None;
+            }
+        };
+
+        match system_time.duration_since(std::time::SystemTime::UNIX_EPOCH) {
+            Ok(duration) => Some(duration.as_secs()),
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "Created timestamp before UNIX_EPOCH"
+                );
+                None
+            }
+        }
+    }
+
+    /// Returns the file's modification timestamp as seconds since UNIX epoch.
+    ///
+    /// Returns `None` if the metadata cannot be read, the timestamp is not
+    /// available on this platform, or the timestamp is before UNIX epoch.
+    /// Failures are logged at debug level.
+    #[inline]
+    pub fn modified_at(&self, path: &Path) -> Option<u64> {
+        let metadata = match self.metadata(path) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to read metadata for modified_at"
+                );
+                return None;
+            }
+        };
+
+        let system_time = match metadata.modified() {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to read modified timestamp from metadata"
+                );
+                return None;
+            }
+        };
+
+        match system_time.duration_since(std::time::SystemTime::UNIX_EPOCH) {
+            Ok(duration) => Some(duration.as_secs()),
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "Modified timestamp before UNIX_EPOCH"
+                );
+                None
+            }
+        }
+    }
+
     /// Reads a file's content as raw bytes.
     ///
     /// # Errors

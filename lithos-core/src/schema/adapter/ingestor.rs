@@ -15,42 +15,6 @@ use crate::{
 /// Supported schema file extensions.
 const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
 
-/// Extract a timestamp from file metadata, logging any errors at debug level.
-fn extract_timestamp(
-    path: &std::path::Path,
-    metadata: Option<&std::fs::Metadata>,
-    time_fn: fn(&std::fs::Metadata) -> std::io::Result<std::time::SystemTime>,
-    time_type: &str,
-) -> Option<Timestamp> {
-    let meta = metadata?;
-
-    let system_time = match time_fn(meta) {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::debug!(
-                path = %path.display(),
-                error = %e,
-                time_type,
-                "Failed to read timestamp from metadata"
-            );
-            return None;
-        }
-    };
-
-    match system_time.duration_since(std::time::SystemTime::UNIX_EPOCH) {
-        Ok(duration) => Some(Timestamp::from_secs(duration.as_secs())),
-        Err(e) => {
-            tracing::debug!(
-                path = %path.display(),
-                error = %e,
-                time_type,
-                "Timestamp before UNIX_EPOCH"
-            );
-            None
-        }
-    }
-}
-
 /// A raw schema with optional filesystem timestamps (modified, created).
 ///
 /// # Examples
@@ -213,30 +177,11 @@ impl Ingestor<'_> {
                 // Set name from filename (always, not from file content)
                 raw.name = filename_stem.into();
 
-                let metadata = match self.source.metadata(&path) {
-                    Ok(m) => Some(m),
-                    Err(e) => {
-                        tracing::debug!(
-                            path = %path.display(),
-                            error = %e,
-                            "Failed to read file metadata, timestamps will be unavailable"
-                        );
-                        None
-                    }
-                };
-
-                let modified = extract_timestamp(
-                    &path,
-                    metadata.as_ref(),
-                    std::fs::Metadata::modified,
-                    "modified",
-                );
-                let created = extract_timestamp(
-                    &path,
-                    metadata.as_ref(),
-                    std::fs::Metadata::created,
-                    "created",
-                );
+                // Extract timestamps using FsReader methods
+                let modified =
+                    self.source.modified_at(&path).map(Timestamp::from_secs);
+                let created =
+                    self.source.created_at(&path).map(Timestamp::from_secs);
 
                 results.push((raw, modified, created));
             }
