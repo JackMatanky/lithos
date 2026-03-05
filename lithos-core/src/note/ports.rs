@@ -45,6 +45,15 @@ pub trait Command: Send + Sync {
     /// Returns a storage-specific error if deletion fails.
     fn delete(&self, id: NoteId) -> Result<(), Self::Error>;
 
+    /// Rebuilds all task projections and related indexes from stored notes.
+    ///
+    /// Returns the number of tasks rebuilt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage-specific error if rebuild fails.
+    fn record_task_projection_rebuild(&self) -> Result<usize, Self::Error>;
+
     /// Updates an existing note aggregate.
     ///
     /// # Errors

@@ -210,12 +210,22 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         note: &Note,
         config: &Config,
     ) -> Result<TaskIndexData, DbError> {
-        let mut data = TaskIndexData {
-            tasks: Vec::new(),
+        let tasks = Self::task_index_entries(note, config)?;
+
+        Ok(TaskIndexData {
+            tasks,
             dependencies_enabled: config.task().dependencies_enabled(),
-        };
+        })
+    }
+
+    fn task_index_entries(
+        note: &Note,
+        config: &Config,
+    ) -> Result<Vec<TaskIndexEntry>, DbError> {
+        let mut entries = Vec::new();
         let status_config = config.task().status();
         let index_all_fields = config.task().indexed().is_empty();
+        let dependencies_enabled = config.task().dependencies_enabled();
 
         for task in note.tasks() {
             let status_symbol = status_config
@@ -230,7 +240,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             let metadata_keys =
                 Self::task_metadata_keys(&metadata, config, index_all_fields);
             let depends_on =
-                Self::task_depends_on(&metadata, data.dependencies_enabled);
+                Self::task_depends_on(&metadata, dependencies_enabled);
 
             let text = TaskText::try_new(task.text())
                 .map_err(|err| DbError::Table(err.to_string()))?;
@@ -253,13 +263,13 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
                 depends_on,
             );
 
-            data.tasks.push(TaskIndexEntry {
+            entries.push(TaskIndexEntry {
                 stored,
                 metadata_keys,
             });
         }
 
-        Ok(data)
+        Ok(entries)
     }
 
     fn insert_task_indexes(
@@ -605,6 +615,50 @@ impl Command for CommandAdapter<'_, '_> {
         })?;
 
         Ok(note)
+    }
+
+    #[inline]
+    fn record_task_projection_rebuild(&self) -> Result<usize, Self::Error> {
+        let stored_tasks = self.db.list_owned::<StoredTask>(TASKS)?;
+        let notes = self.db.list_owned::<Note>(NOTES)?;
+
+        let index_all_fields = self.config.task().indexed().is_empty();
+        let dependencies_enabled = self.config.task().dependencies_enabled();
+
+        let mut existing = TaskIndexData {
+            tasks: Vec::with_capacity(stored_tasks.len()),
+            dependencies_enabled,
+        };
+        for stored in stored_tasks {
+            let metadata_keys = Self::task_metadata_keys(
+                stored.metadata(),
+                self.config,
+                index_all_fields,
+            );
+            existing.tasks.push(TaskIndexEntry {
+                stored,
+                metadata_keys,
+            });
+        }
+
+        let mut rebuilt_entries = Vec::new();
+        for note in &notes {
+            rebuilt_entries
+                .extend(Self::task_index_entries(note, self.config)?);
+        }
+        let total = rebuilt_entries.len();
+        let rebuilt = TaskIndexData {
+            tasks: rebuilt_entries,
+            dependencies_enabled,
+        };
+
+        self.db.batch_write(|batch| {
+            Self::remove_task_indexes(batch, &existing)?;
+            Self::insert_task_indexes(batch, &rebuilt)?;
+            Ok(())
+        })?;
+
+        Ok(total)
     }
 }
 
