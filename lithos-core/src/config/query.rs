@@ -26,12 +26,12 @@ use super::{
 /// ```rust,no_run
 /// # use tempfile::tempdir;
 /// # use lithos_core::{
-/// #     config::{ConfigQuery, vault::VaultId, adapter::query::QueryAdapter},
+/// #     config::{self, adapter, vault::VaultId},
 /// #     db::Database,
 /// # };
 /// # let dir = tempfile::tempdir()?;
 /// # let db = Database::open(&dir.path().join("config.redb"))?;
-/// let query = ConfigQuery::new(QueryAdapter::new(&db));
+/// let query = config::Query::new(adapter::Query::new(&db));
 /// let _config = query.find(VaultId::new())?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
@@ -367,13 +367,13 @@ mod tests {
     };
 
     struct DbPort<'db> {
-        adapter: crate::config::adapter::query::QueryAdapter<'db>,
+        adapter: crate::config::adapter::Query<'db>,
     }
 
     impl<'db> DbPort<'db> {
         fn new(db: &'db Database) -> Self {
             Self {
-                adapter: crate::config::adapter::query::QueryAdapter::new(db),
+                adapter: crate::config::adapter::Query::new(db),
             }
         }
     }

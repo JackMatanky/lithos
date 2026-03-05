@@ -89,8 +89,8 @@ pub enum ConfigServiceError {
 ///
 /// Uses concrete redb adapters for production use.
 pub struct ConfigService<'db> {
-    query: Query<crate::config::adapter::query::QueryAdapter<'db>>,
-    command: Command<crate::config::adapter::command::CommandAdapter<'db>>,
+    query: Query<crate::config::adapter::Query<'db>>,
+    command: Command<crate::config::adapter::Command<'db>>,
 }
 
 impl<'db> ConfigService<'db> {
@@ -98,8 +98,8 @@ impl<'db> ConfigService<'db> {
     #[inline]
     #[must_use]
     pub const fn new(
-        query: Query<crate::config::adapter::query::QueryAdapter<'db>>,
-        command: Command<crate::config::adapter::command::CommandAdapter<'db>>,
+        query: Query<crate::config::adapter::Query<'db>>,
+        command: Command<crate::config::adapter::Command<'db>>,
     ) -> Self {
         Self {
             query,

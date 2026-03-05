@@ -19,16 +19,12 @@ use super::{
 /// ```rust,no_run
 /// # use tempfile::tempdir;
 /// # use lithos_core::{
-/// #     config::{
-/// #         ConfigCommand,
-/// #         aggregate::Timestamp, global::Global,
-/// #         adapter::command::CommandAdapter,
-/// #     },
+/// #     config::{self, adapter, aggregate::Timestamp, global::Global},
 /// #     db::Database,
 /// # };
 /// let dir = tempdir()?;
 /// let db = Database::open(&dir.path().join("config.redb"))?;
-/// let command = ConfigCommand::new(CommandAdapter::new(&db));
+/// let command = config::Command::new(adapter::Command::new(&db));
 /// let created_at = Some(Timestamp::from_secs(1000));
 /// let modified_at = Timestamp::from_secs(2000);
 /// command.record_global(&Global::default(), created_at, modified_at)?;

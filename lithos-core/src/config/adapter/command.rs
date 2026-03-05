@@ -11,18 +11,18 @@ use crate::{
             VAULT_ID_BY_PATH, VAULT_PATH_BY_ID,
         },
         global::Global,
-        ports::Command,
+        ports::Command as CommandPort,
         vault::{Vault, VaultId, VaultRoot},
     },
     db::{Database, DbError},
 };
 
 /// Redb-backed config command adapter.
-pub struct CommandAdapter<'db> {
+pub struct Command<'db> {
     db: &'db Database,
 }
 
-impl<'db> CommandAdapter<'db> {
+impl<'db> Command<'db> {
     #[inline]
     #[must_use]
     /// Create a command adapter for a database.
@@ -33,7 +33,7 @@ impl<'db> CommandAdapter<'db> {
     }
 }
 
-impl Command for CommandAdapter<'_> {
+impl CommandPort for Command<'_> {
     type Error = DbError;
 
     #[inline]
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn record_global_persists_config_and_metadata() {
         let (db, _temp) = setup_db();
-        let command = CommandAdapter::new(&db);
+        let command = Command::new(&db);
 
         let global = Global::default();
         let created_at = Some(Timestamp::from_secs(1000));
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn record_vault_persists_config_and_metadata() {
         let (db, _temp) = setup_db();
-        let command = CommandAdapter::new(&db);
+        let command = Command::new(&db);
 
         let vault_id = VaultId::new();
         let vault = Vault::default();
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn record_global_batch_write_is_atomic() {
         let (db, _temp) = setup_db();
-        let command = CommandAdapter::new(&db);
+        let command = Command::new(&db);
 
         let global = Global::default();
         let created_at = Some(Timestamp::from_secs(1000));
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn record_vault_batch_write_is_atomic() {
         let (db, _temp) = setup_db();
-        let command = CommandAdapter::new(&db);
+        let command = Command::new(&db);
 
         let vault_id = VaultId::new();
         let vault = Vault::default();

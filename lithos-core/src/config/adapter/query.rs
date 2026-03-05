@@ -11,18 +11,18 @@ use crate::{
             VAULT_ID_BY_PATH,
         },
         global::{Global, GlobalVersion},
-        ports::Query,
+        ports::Query as QueryPort,
         vault::{Vault, VaultId, VaultRoot, VaultVersion},
     },
     db::{Database, DbError},
 };
 
 /// Redb-backed config query adapter.
-pub struct QueryAdapter<'db> {
+pub struct Query<'db> {
     db: &'db Database,
 }
 
-impl<'db> QueryAdapter<'db> {
+impl<'db> Query<'db> {
     #[inline]
     #[must_use]
     /// Create a query adapter for a database.
@@ -33,7 +33,7 @@ impl<'db> QueryAdapter<'db> {
     }
 }
 
-impl Query for QueryAdapter<'_> {
+impl QueryPort for Query<'_> {
     type Error = DbError;
 
     #[inline]
@@ -312,7 +312,7 @@ impl Query for QueryAdapter<'_> {
 mod tests {
     use super::*;
     use crate::config::{
-        adapter::{command::CommandAdapter, stored::ConfigMetadata},
+        adapter::{command::Command as CommandAdapter, stored::ConfigMetadata},
         ports::Command as _,
     };
 
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn is_global_stale_returns_true_when_metadata_missing() {
         let (db, _temp) = setup_db();
-        let query = QueryAdapter::new(&db);
+        let query = Query::new(&db);
 
         let created = Some(Timestamp::from_secs(1000));
         let modified = Timestamp::from_secs(2000);
@@ -357,7 +357,7 @@ mod tests {
             .expect("metadata write should succeed");
 
         // Check staleness with same timestamps
-        let query = QueryAdapter::new(&db);
+        let query = Query::new(&db);
         let result = query
             .is_global_stale(created, modified)
             .expect("staleness check should succeed");
@@ -385,7 +385,7 @@ mod tests {
 
         // Check staleness with different created_at
         let file_created = Some(Timestamp::from_secs(999));
-        let query = QueryAdapter::new(&db);
+        let query = Query::new(&db);
         let result = query
             .is_global_stale(file_created, modified)
             .expect("staleness check should succeed");
@@ -413,7 +413,7 @@ mod tests {
 
         // Check staleness with newer modified_at
         let file_modified = Timestamp::from_secs(2001);
-        let query = QueryAdapter::new(&db);
+        let query = Query::new(&db);
         let result = query
             .is_global_stale(created, file_modified)
             .expect("staleness check should succeed");
@@ -424,7 +424,7 @@ mod tests {
     #[test]
     fn is_vault_stale_returns_true_when_metadata_missing() {
         let (db, _temp) = setup_db();
-        let query = QueryAdapter::new(&db);
+        let query = Query::new(&db);
 
         let vault_id = VaultId::new();
         let created = Some(Timestamp::from_secs(1000));
@@ -454,7 +454,7 @@ mod tests {
         db.put(CONFIG_METADATA, &vault_key, &metadata)
             .expect("metadata write should succeed");
 
-        let query = QueryAdapter::new(&db);
+        let query = Query::new(&db);
         let result = query
             .is_vault_stale(vault_id, created, modified)
             .expect("staleness check should succeed");
@@ -480,7 +480,7 @@ mod tests {
             .expect("metadata write should succeed");
 
         let file_created = Some(Timestamp::from_secs(999));
-        let query = QueryAdapter::new(&db);
+        let query = Query::new(&db);
         let result = query
             .is_vault_stale(vault_id, file_created, modified)
             .expect("staleness check should succeed");
@@ -506,7 +506,7 @@ mod tests {
             .expect("metadata write should succeed");
 
         let file_modified = Timestamp::from_secs(2001);
-        let query = QueryAdapter::new(&db);
+        let query = Query::new(&db);
         let result = query
             .is_vault_stale(vault_id, created, file_modified)
             .expect("staleness check should succeed");
@@ -517,7 +517,7 @@ mod tests {
     #[test]
     fn find_vault_id_by_path_returns_none_when_not_found() {
         let (db, _temp) = setup_db();
-        let query = QueryAdapter::new(&db);
+        let query = Query::new(&db);
 
         let vault_root =
             VaultRoot::try_new("/test/vault".into()).expect("valid vault root");
@@ -544,7 +544,7 @@ mod tests {
             .expect("path mapping should succeed");
 
         // Look it up
-        let query = QueryAdapter::new(&db);
+        let query = Query::new(&db);
         let result = query
             .find_vault_id_by_path(&vault_root)
             .expect("lookup should succeed");

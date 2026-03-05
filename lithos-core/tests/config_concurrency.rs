@@ -30,8 +30,7 @@ use std::{
 
 use lithos_core::{
     config::{
-        ConfigCommand, ConfigQuery,
-        adapter::{command::CommandAdapter, query::QueryAdapter},
+        self as config_mod, adapter,
         vault::{VaultId, VaultRoot},
     },
     db::Database,
@@ -91,7 +90,7 @@ fn concurrent_rebuilds_dont_cause_version_collision() -> TestResult {
         let barrier = Arc::clone(&barrier);
 
         let handle = thread::spawn(move || {
-            let command = ConfigCommand::new(CommandAdapter::new(&db));
+            let command = config_mod::Command::new(adapter::Command::new(&db));
 
             // Wait for both threads to be ready
             barrier.wait();
@@ -125,7 +124,7 @@ fn concurrent_rebuilds_dont_cause_version_collision() -> TestResult {
     );
 
     // Verify both versions exist in database
-    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let query = config_mod::Query::new(adapter::Query::new(&db));
 
     for (thread_id, version) in results {
         let config = query.find(vault_id)?;
@@ -155,7 +154,7 @@ fn concurrent_reads_during_rebuild() -> TestResult {
     let vault_root = VaultRoot::try_new(temp_dir.path().join("vault"))?;
 
     // Create initial version
-    let command = ConfigCommand::new(CommandAdapter::new(&db));
+    let command = config_mod::Command::new(adapter::Command::new(&db));
     command.rebuild_config(vault_id, &vault_root)?;
 
     let barrier = Arc::new(Barrier::new(11)); // 1 writer + 10 readers
@@ -168,7 +167,7 @@ fn concurrent_reads_during_rebuild() -> TestResult {
         let barrier = Arc::clone(&barrier);
 
         let handle = thread::spawn(move || {
-            let command = ConfigCommand::new(CommandAdapter::new(&db));
+            let command = config_mod::Command::new(adapter::Command::new(&db));
             barrier.wait();
 
             // Write new version
@@ -186,7 +185,7 @@ fn concurrent_reads_during_rebuild() -> TestResult {
         let barrier = Arc::clone(&barrier);
 
         let handle = thread::spawn(move || {
-            let query = ConfigQuery::new(QueryAdapter::new(&db));
+            let query = config_mod::Query::new(adapter::Query::new(&db));
             barrier.wait();
 
             // Read active config (may be old or new version)
@@ -223,8 +222,8 @@ fn many_versions_performance() -> TestResult {
     let vault_id = VaultId::new();
     let vault_root = VaultRoot::try_new(temp_dir.path().join("vault"))?;
 
-    let command = ConfigCommand::new(CommandAdapter::new(&db));
-    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let command = config_mod::Command::new(adapter::Command::new(&db));
+    let query = config_mod::Query::new(adapter::Query::new(&db));
 
     // Create 1000 versions
     println!("Creating 1000 versions...");

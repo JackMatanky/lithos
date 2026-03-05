@@ -15,10 +15,7 @@ use lithos_core::{
     application::ConfigService,
     bounds::Bounds,
     config::{
-        ConfigCommand, ConfigQuery,
-        adapter::{command::CommandAdapter, query::QueryAdapter},
-        error::ConfigError,
-        value::FieldSpec,
+        self as config_mod, adapter, error::ConfigError, value::FieldSpec,
         vault::VaultRoot,
     },
     db::Database,
@@ -193,8 +190,8 @@ fn config_cqrs_integration_flow() -> TestResult {
     let db = Database::open(&db_path)?;
 
     // 2. Setup Services using convenience wrappers
-    let command = ConfigCommand::new(CommandAdapter::new(&db));
-    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let command = config_mod::Command::new(adapter::Command::new(&db));
+    let query = config_mod::Query::new(adapter::Query::new(&db));
     let service = ConfigService::new(query, command);
 
     // 3. Define Inputs
@@ -226,8 +223,8 @@ fn config_cqrs_integration_flow() -> TestResult {
 fn config_ingestion_parsing_and_merge_from_vault_file() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = ConfigCommand::new(CommandAdapter::new(&db));
-    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let command = config_mod::Command::new(adapter::Command::new(&db));
+    let query = config_mod::Query::new(adapter::Query::new(&db));
     let service = ConfigService::new(query, command);
 
     let vault_root = write_vault_config(&dir, VAULT_CONFIG_TOML)?;
@@ -241,8 +238,8 @@ fn config_ingestion_parsing_and_merge_from_vault_file() -> TestResult {
 fn config_ingestion_rejects_invalid_toml() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = ConfigCommand::new(CommandAdapter::new(&db));
-    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let command = config_mod::Command::new(adapter::Command::new(&db));
+    let query = config_mod::Query::new(adapter::Query::new(&db));
     let service = ConfigService::new(query, command);
 
     let vault_root =
@@ -265,8 +262,8 @@ fn config_ingestion_rejects_invalid_toml() -> TestResult {
 fn config_ingestion_rejects_unknown_indexed_field() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = ConfigCommand::new(CommandAdapter::new(&db));
-    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let command = config_mod::Command::new(adapter::Command::new(&db));
+    let query = config_mod::Query::new(adapter::Query::new(&db));
     let service = ConfigService::new(query, command);
 
     let vault_root = write_vault_config(
@@ -296,8 +293,8 @@ fn config_ingestion_rejects_unknown_indexed_field() -> TestResult {
 fn config_ingestion_rejects_invalid_field_name() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = ConfigCommand::new(CommandAdapter::new(&db));
-    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let command = config_mod::Command::new(adapter::Command::new(&db));
+    let query = config_mod::Query::new(adapter::Query::new(&db));
     let service = ConfigService::new(query, command);
 
     let vault_root = write_vault_config(
@@ -326,8 +323,8 @@ fn config_ingestion_rejects_invalid_field_name() -> TestResult {
 fn config_rebuild_is_idempotent_for_same_inputs() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = ConfigCommand::new(CommandAdapter::new(&db));
-    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let command = config_mod::Command::new(adapter::Command::new(&db));
+    let query = config_mod::Query::new(adapter::Query::new(&db));
     let service = ConfigService::new(query, command);
 
     let vault_root = write_vault_config(&dir, VAULT_CONFIG_TOML)?;

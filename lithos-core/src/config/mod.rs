@@ -167,16 +167,10 @@ pub(crate) mod db_table {
         TableDefinition::new("config_metadata");
 }
 
-use self::adapter::{command::CommandAdapter, query::QueryAdapter};
+/// Generic command type alias to remove path stuttering: `config::Command` vs
+/// `config::command::Command`.
+pub type Command<C> = command::Command<C>;
 
-/// Config command type alias using redb adapters.
-///
-/// This is a convenience alias for `command::Command<CommandAdapter>`.
-/// For the public-facing API, prefer the storage-agnostic name.
-pub type ConfigCommand<'db> = command::Command<CommandAdapter<'db>>;
-
-/// Config query type alias using redb adapters.
-///
-/// This is a convenience alias for `query::Query<QueryAdapter>`.
-/// For the public-facing API, prefer the storage-agnostic name.
-pub type ConfigQuery<'db> = query::Query<QueryAdapter<'db>>;
+/// Generic query type alias to remove path stuttering: `config::Query` vs
+/// `config::query::Query`.
+pub type Query<Q> = query::Query<Q>;
