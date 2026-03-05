@@ -51,7 +51,7 @@ pub struct StoredTask {
     tags: Vec<Tag>,
     metadata: TaskMetadata,
     schedule: TaskSchedule,
-    parent_task_id: Option<TaskId>,
+    parent_id: Option<TaskId>,
     block_id: Option<Box<str>>,
     depends_on: Vec<Box<str>>,
 }
@@ -77,7 +77,7 @@ impl StoredTask {
         tags: Vec<Tag>,
         metadata: TaskMetadata,
         schedule: TaskSchedule,
-        parent_task_id: Option<TaskId>,
+        parent_id: Option<TaskId>,
         block_id: Option<Box<str>>,
         depends_on: Vec<Box<str>>,
     ) -> Self {
@@ -95,7 +95,7 @@ impl StoredTask {
             tags,
             metadata,
             schedule,
-            parent_task_id,
+            parent_id,
             block_id,
             depends_on,
         }
@@ -181,8 +181,8 @@ impl StoredTask {
 
     #[inline]
     #[must_use]
-    pub const fn parent_task_id(&self) -> Option<TaskId> {
-        self.parent_task_id
+    pub const fn parent_id(&self) -> Option<TaskId> {
+        self.parent_id
     }
 
     #[inline]

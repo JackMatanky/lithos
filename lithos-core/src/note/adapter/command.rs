@@ -25,7 +25,7 @@ use crate::{
         ports::Command,
         position::SourceByteOffset,
         structure::Heading,
-        task::{TaskMetadata, TaskText},
+        task::{TaskId, TaskMetadata, TaskText},
         value::FieldValue,
     },
 };
@@ -242,6 +242,8 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
                 Self::task_metadata_keys(&metadata, config, index_all_fields);
             let depends_on =
                 Self::task_depends_on(&metadata, dependencies_enabled);
+            let block_id = Self::task_block_id(&metadata);
+            let parent_id = Self::task_parent_id(&metadata);
 
             let text = TaskText::try_new(task.text())
                 .map_err(|err| DbError::Table(err.to_string()))?;
@@ -259,8 +261,8 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
                 task.tags().cloned().collect(),
                 metadata,
                 task.schedule().clone(),
-                None,
-                None,
+                parent_id,
+                block_id,
                 depends_on,
             );
 
@@ -463,6 +465,23 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         }
 
         Vec::new()
+    }
+
+    fn task_block_id(metadata: &TaskMetadata) -> Option<Box<str>> {
+        metadata
+            .get_string("block_id")
+            .or_else(|| metadata.get_string("blockId"))
+            .or_else(|| metadata.get_string("block"))
+            .map(Into::into)
+    }
+
+    fn task_parent_id(metadata: &TaskMetadata) -> Option<TaskId> {
+        let raw = metadata
+            .get_string("parent_id")
+            .or_else(|| metadata.get_string("parentId"))
+            .or_else(|| metadata.get_string("parent"))?;
+        let parsed = Uuid::parse_str(raw).ok()?;
+        Some(TaskId::from(parsed))
     }
 
     fn task_heading(
