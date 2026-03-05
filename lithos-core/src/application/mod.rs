@@ -40,3 +40,16 @@
 
 pub mod config;
 pub mod schema;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Public Type Aliases
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Config service type alias.
+///
+/// This is the recommended entry point for config operations. It provides
+/// staleness detection and automatic reloading when configs change.
+///
+/// The service is storage-agnostic and accepts Command/Query implementations
+/// via dependency injection.
+pub type ConfigService<'db> = config::ConfigService<'db>;

@@ -12,13 +12,12 @@
 use std::path::{Path, PathBuf};
 
 use lithos_core::{
+    application::ConfigService,
     bounds::Bounds,
     config::{
-        RedbConfigService,
+        ConfigCommand, ConfigQuery,
         adapter::{command::CommandAdapter, query::QueryAdapter},
-        command::Command,
         error::ConfigError,
-        query::Query,
         value::FieldSpec,
         vault::VaultRoot,
     },
@@ -87,7 +86,7 @@ fn write_vault_config(
 }
 
 fn load_config(
-    service: &RedbConfigService,
+    service: &ConfigService,
     vault_root: &VaultRoot,
 ) -> TestResult<lithos_core::config::aggregate::Config> {
     let config = service.load(vault_root)?;
@@ -194,9 +193,9 @@ fn config_cqrs_integration_flow() -> TestResult {
     let db = Database::open(&db_path)?;
 
     // 2. Setup Services using convenience wrappers
-    let command = Command::new(CommandAdapter::new(&db));
-    let query = Query::new(QueryAdapter::new(&db));
-    let service = RedbConfigService::new(query, command);
+    let command = ConfigCommand::new(CommandAdapter::new(&db));
+    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let service = ConfigService::new(query, command);
 
     // 3. Define Inputs
     let vault_root = VaultRoot::try_new(dir.path().join("my_vault"))?;
@@ -227,9 +226,9 @@ fn config_cqrs_integration_flow() -> TestResult {
 fn config_ingestion_parsing_and_merge_from_vault_file() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = Command::new(CommandAdapter::new(&db));
-    let query = Query::new(QueryAdapter::new(&db));
-    let service = RedbConfigService::new(query, command);
+    let command = ConfigCommand::new(CommandAdapter::new(&db));
+    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let service = ConfigService::new(query, command);
 
     let vault_root = write_vault_config(&dir, VAULT_CONFIG_TOML)?;
     let config = load_config(&service, &vault_root)?;
@@ -242,9 +241,9 @@ fn config_ingestion_parsing_and_merge_from_vault_file() -> TestResult {
 fn config_ingestion_rejects_invalid_toml() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = Command::new(CommandAdapter::new(&db));
-    let query = Query::new(QueryAdapter::new(&db));
-    let service = RedbConfigService::new(query, command);
+    let command = ConfigCommand::new(CommandAdapter::new(&db));
+    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let service = ConfigService::new(query, command);
 
     let vault_root =
         write_vault_config(&dir, "[logging]\nlog_level = \"debug\n")?;
@@ -266,9 +265,9 @@ fn config_ingestion_rejects_invalid_toml() -> TestResult {
 fn config_ingestion_rejects_unknown_indexed_field() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = Command::new(CommandAdapter::new(&db));
-    let query = Query::new(QueryAdapter::new(&db));
-    let service = RedbConfigService::new(query, command);
+    let command = ConfigCommand::new(CommandAdapter::new(&db));
+    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let service = ConfigService::new(query, command);
 
     let vault_root = write_vault_config(
         &dir,
@@ -297,9 +296,9 @@ fn config_ingestion_rejects_unknown_indexed_field() -> TestResult {
 fn config_ingestion_rejects_invalid_field_name() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = Command::new(CommandAdapter::new(&db));
-    let query = Query::new(QueryAdapter::new(&db));
-    let service = RedbConfigService::new(query, command);
+    let command = ConfigCommand::new(CommandAdapter::new(&db));
+    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let service = ConfigService::new(query, command);
 
     let vault_root = write_vault_config(
         &dir,
@@ -327,9 +326,9 @@ fn config_ingestion_rejects_invalid_field_name() -> TestResult {
 fn config_rebuild_is_idempotent_for_same_inputs() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = Command::new(CommandAdapter::new(&db));
-    let query = Query::new(QueryAdapter::new(&db));
-    let service = RedbConfigService::new(query, command);
+    let command = ConfigCommand::new(CommandAdapter::new(&db));
+    let query = ConfigQuery::new(QueryAdapter::new(&db));
+    let service = ConfigService::new(query, command);
 
     let vault_root = write_vault_config(&dir, VAULT_CONFIG_TOML)?;
 

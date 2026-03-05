@@ -169,15 +169,14 @@ pub(crate) mod db_table {
 
 use self::adapter::{command::CommandAdapter, query::QueryAdapter};
 
-/// Redb-backed config command alias.
-pub type RedbConfigCommand<'db> = command::Command<CommandAdapter<'db>>;
-
-/// Redb-backed config query alias.
-pub type RedbConfigQuery<'db> = query::Query<QueryAdapter<'db>>;
-
-/// Redb-backed config service alias.
+/// Config command type alias using redb adapters.
 ///
-/// This is the recommended entry point for config operations. It provides
-/// staleness detection and automatic reloading when configs change.
-pub type RedbConfigService<'db> =
-    crate::application::config::ConfigService<'db>;
+/// This is a convenience alias for `command::Command<CommandAdapter>`.
+/// For the public-facing API, prefer the storage-agnostic name.
+pub type ConfigCommand<'db> = command::Command<CommandAdapter<'db>>;
+
+/// Config query type alias using redb adapters.
+///
+/// This is a convenience alias for `query::Query<QueryAdapter>`.
+/// For the public-facing API, prefer the storage-agnostic name.
+pub type ConfigQuery<'db> = query::Query<QueryAdapter<'db>>;

@@ -20,14 +20,15 @@ use super::{
 /// # use tempfile::tempdir;
 /// # use lithos_core::{
 /// #     config::{
-/// #         aggregate::Timestamp, global::Global, RedbConfigCommand,
+/// #         ConfigCommand,
+/// #         aggregate::Timestamp, global::Global,
 /// #         adapter::command::CommandAdapter,
 /// #     },
 /// #     db::Database,
 /// # };
 /// let dir = tempdir()?;
 /// let db = Database::open(&dir.path().join("config.redb"))?;
-/// let command = RedbConfigCommand::new(CommandAdapter::new(&db));
+/// let command = ConfigCommand::new(CommandAdapter::new(&db));
 /// let created_at = Some(Timestamp::from_secs(1000));
 /// let modified_at = Timestamp::from_secs(2000);
 /// command.record_global(&Global::default(), created_at, modified_at)?;

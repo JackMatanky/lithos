@@ -26,12 +26,12 @@ use super::{
 /// ```rust,no_run
 /// # use tempfile::tempdir;
 /// # use lithos_core::{
-/// #     config::{RedbConfigQuery, vault::VaultId, adapter::query::QueryAdapter},
+/// #     config::{ConfigQuery, vault::VaultId, adapter::query::QueryAdapter},
 /// #     db::Database,
 /// # };
-/// let dir = tempdir()?;
-/// let db = Database::open(&dir.path().join("config.redb"))?;
-/// let query = RedbConfigQuery::new(QueryAdapter::new(&db));
+/// # let dir = tempfile::tempdir()?;
+/// # let db = Database::open(&dir.path().join("config.redb"))?;
+/// let query = ConfigQuery::new(QueryAdapter::new(&db));
 /// let _config = query.find(VaultId::new())?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
