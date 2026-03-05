@@ -25,14 +25,15 @@
 //! # use lithos_core::config::{
 //! #     aggregate::{Config, Version},
 //! #     vault::{VaultId, VaultRoot},
-//! #     ingest
+//! #     adapter::ingest::Ingestor
 //! # };
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let vault_root = Path::new("/path/to/vault");
 //! let vault_id = VaultId::new();
 //!
 //! // 1. Ingest raw configuration from files
-//! let raw = ingest::build_merged_raw(vault_root)?;
+//! let ingestor = Ingestor::new();
+//! let raw = ingestor.build_merged_raw(vault_root)?;
 //!
 //! // 2. Transform into a validated domain aggregate
 //! let config = Config::build(
@@ -93,8 +94,6 @@ pub mod vault;
 
 /// Configuration command implementations (CQRS write operations).
 pub mod command;
-/// Figment ingestion boundary for raw config.
-pub mod ingest;
 /// Configuration ports for CQRS.
 pub mod ports;
 /// Configuration query implementations (CQRS read operations).

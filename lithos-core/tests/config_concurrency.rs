@@ -100,7 +100,7 @@ fn concurrent_rebuilds_cause_version_collision() -> TestResult {
 
             // Both threads execute rebuild simultaneously
             let version = command
-                .rebuild_merged(vault_id, &vault_root)
+                .rebuild_config(vault_id, &vault_root)
                 .expect("rebuild should succeed");
 
             (i, version)
@@ -158,7 +158,7 @@ fn concurrent_reads_during_rebuild() -> TestResult {
 
     // Create initial version
     let command = RedbConfigCommand::new(CommandAdapter::new(&db));
-    command.rebuild_merged(vault_id, &vault_root)?;
+    command.rebuild_config(vault_id, &vault_root)?;
 
     let barrier = Arc::new(Barrier::new(11)); // 1 writer + 10 readers
     let mut handles = vec![];
@@ -175,7 +175,7 @@ fn concurrent_reads_during_rebuild() -> TestResult {
 
             // Write new version
             command
-                .rebuild_merged(vault_id, &vault_root)
+                .rebuild_config(vault_id, &vault_root)
                 .expect("rebuild should succeed");
         });
 
@@ -233,7 +233,7 @@ fn many_versions_performance() -> TestResult {
     let start = std::time::Instant::now();
 
     for i in 1..=1000 {
-        command.rebuild_merged(vault_id, &vault_root)?;
+        command.rebuild_config(vault_id, &vault_root)?;
 
         if i % 100 == 0 {
             println!("  Created {i} versions");

@@ -90,7 +90,7 @@ fn rebuild_and_load(
     vault_id: VaultId,
     vault_root: &VaultRoot,
 ) -> TestResult<lithos_core::config::aggregate::Config> {
-    command.rebuild_merged(vault_id, vault_root)?;
+    command.rebuild_config(vault_id, vault_root)?;
     let config = query.find(vault_id)?;
     let config = config.ok_or_else(|| {
         std::io::Error::other("Expected active config to be available")
@@ -209,7 +209,7 @@ fn config_cqrs_integration_flow() -> TestResult {
     std::fs::create_dir_all(vault_root.as_path())?;
 
     // 4. Execute Command: Rebuild Merged Config
-    let version = command.rebuild_merged(vault_id, &vault_root)?;
+    let version = command.rebuild_config(vault_id, &vault_root)?;
 
     assert_eq!(version.value(), 1, "First version should be 1");
 
@@ -259,7 +259,7 @@ fn config_ingestion_rejects_invalid_toml() -> TestResult {
     let vault_root =
         write_vault_config(&dir, "[logging]\nlog_level = \"debug\n")?;
 
-    let result = command.rebuild_merged(vault_id, &vault_root);
+    let result = command.rebuild_config(vault_id, &vault_root);
     let error = result.expect_err("Expected invalid TOML to error");
     if matches!(error, ConfigCommandError::Ingest(_)) {
         Ok(())
@@ -281,7 +281,7 @@ fn config_ingestion_rejects_unknown_indexed_field() -> TestResult {
          [\"priority\"]\n",
     )?;
 
-    let result = command.rebuild_merged(vault_id, &vault_root);
+    let result = command.rebuild_config(vault_id, &vault_root);
     let error = result.expect_err("Expected invalid task indexing to error");
     if matches!(
         error,
@@ -307,7 +307,7 @@ fn config_ingestion_rejects_invalid_field_name() -> TestResult {
         "[task.fields.\"bad name\"]\ntype = \"string\"\n",
     )?;
 
-    let result = command.rebuild_merged(vault_id, &vault_root);
+    let result = command.rebuild_config(vault_id, &vault_root);
     let error = result.expect_err("Expected invalid field name to error");
     if matches!(
         error,
@@ -332,13 +332,13 @@ fn config_rebuild_is_idempotent_for_same_inputs() -> TestResult {
     let vault_id = VaultId::new();
     let vault_root = write_vault_config(&dir, VAULT_CONFIG_TOML)?;
 
-    let v1 = command.rebuild_merged(vault_id, &vault_root)?;
+    let v1 = command.rebuild_config(vault_id, &vault_root)?;
     let first = query.find(vault_id)?;
     let first = first.ok_or_else(|| {
         std::io::Error::other("Expected config after first rebuild")
     })?;
 
-    let v2 = command.rebuild_merged(vault_id, &vault_root)?;
+    let v2 = command.rebuild_config(vault_id, &vault_root)?;
     let second = query.find(vault_id)?;
     let second = second.ok_or_else(|| {
         std::io::Error::other("Expected config after second rebuild")

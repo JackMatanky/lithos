@@ -7,10 +7,10 @@
 use tracing::instrument;
 
 use super::{
+    adapter::ingest::Ingestor,
     aggregate::{Config, Timestamp, Version},
     error::ConfigCommandError,
     global::Global,
-    ingest,
     ports::{self as config_ports},
     vault::{Vault, VaultId, VaultRoot},
 };
@@ -101,7 +101,7 @@ where
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
-    /// Rebuilds the merged configuration read model for a vault.
+    /// Rebuilds the configuration read model for a vault.
     ///
     /// This method performs the full configuration lifecycle:
     /// 1. **Ingestion**: Loads raw configuration from files using Figment.
@@ -118,16 +118,17 @@ where
     #[inline]
     #[instrument(
         skip(self, vault_root),
-        fields(operation = "rebuild_merged", vault_id = %vault_id)
+        fields(operation = "rebuild_config", vault_id = %vault_id)
     )]
-    pub fn rebuild_merged(
+    pub fn rebuild_config(
         &self,
         vault_id: VaultId,
         vault_root: &VaultRoot,
     ) -> Result<Version, ConfigCommandError> {
         // Build merged config with placeholder version
         // The actual version is allocated atomically inside record_config
-        let raw_merged = ingest::build_merged_raw(vault_root.as_path())?;
+        let ingestor = Ingestor::new();
+        let raw_merged = ingestor.build_merged_raw(vault_root.as_path())?;
         let temp_config = Config::build(
             &raw_merged,
             vault_id,

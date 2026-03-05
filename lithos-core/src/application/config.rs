@@ -37,7 +37,7 @@
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
 use crate::config::{
-    adapter::ingestor,
+    adapter::ingest::Ingestor,
     aggregate::{Config, Timestamp},
     command::Command,
     error::ConfigCommandError,
@@ -164,7 +164,7 @@ impl<'db> ConfigService<'db> {
             }
 
             // Rebuild merged config using existing logic
-            let _version = self.command.rebuild_merged(vault_id, vault_root)?;
+            let _version = self.command.rebuild_config(vault_id, vault_root)?;
         }
 
         // Return active merged config (either newly built or cached)
@@ -183,8 +183,9 @@ impl<'db> ConfigService<'db> {
     fn load_global_with_staleness(
         &self,
     ) -> Result<ConfigWithStaleness, ConfigServiceError> {
+        let ingestor = Ingestor::new();
         if let Some((raw, created_at, modified_at)) =
-            ingestor::load_global_config()?
+            ingestor.load_global_config()?
         {
             // File exists - check if stale
             // If modified_at is None, use current time (file system doesn't
@@ -208,8 +209,9 @@ impl<'db> ConfigService<'db> {
         vault_root: &VaultRoot,
         vault_id: VaultId,
     ) -> Result<ConfigWithStaleness, ConfigServiceError> {
+        let ingestor = Ingestor::new();
         if let Some((raw, created_at, modified_at)) =
-            ingestor::load_vault_config(vault_root)?
+            ingestor.load_vault_config(vault_root)?
         {
             // File exists - check if stale
             // If modified_at is None, use current time (file system doesn't
@@ -228,12 +230,12 @@ impl<'db> ConfigService<'db> {
 
     /// Merge global and vault configs into a single raw config.
     ///
-    /// This is unnecessary since `rebuild_merged` handles merging via Figment.
+    /// This is unnecessary since `rebuild_config` handles merging via Figment.
     /// Keeping as placeholder for future enhancement.
     #[expect(
         dead_code,
         reason = "Reserved for future manual merge control - currently \
-                  rebuild_merged handles merging via Figment"
+                  rebuild_config handles merging via Figment"
     )]
     #[expect(
         clippy::unused_self,
@@ -244,7 +246,7 @@ impl<'db> ConfigService<'db> {
         _global_raw: &RawConfig,
         _vault_raw: &RawConfig,
     ) -> RawConfig {
-        // NOTE: This method is not currently used because rebuild_merged
+        // NOTE: This method is not currently used because rebuild_config
         // handles the merging via Figment. If we want manual control over
         // merging in the future, we can implement shallow field-level merging
         // here.
