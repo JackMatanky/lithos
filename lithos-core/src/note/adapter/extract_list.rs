@@ -239,6 +239,7 @@ impl<'config> ListExtractor<'config> {
         })?;
 
         state.fill_emoji_dates(task_config, text)?;
+        state.fill_default_emoji_dates(text)?;
 
         Ok(state.finish())
     }
@@ -247,17 +248,28 @@ impl<'config> ListExtractor<'config> {
         text: &str,
         mut f: impl FnMut(&str, &str) -> Result<(), NoteError>,
     ) -> Result<(), NoteError> {
+        Self::for_each_inline_field_delim(text, b'[', b']', &mut f)?;
+        Self::for_each_inline_field_delim(text, b'(', b')', &mut f)?;
+        Ok(())
+    }
+
+    fn for_each_inline_field_delim(
+        text: &str,
+        open_delim: u8,
+        close_delim: u8,
+        f: &mut impl FnMut(&str, &str) -> Result<(), NoteError>,
+    ) -> Result<(), NoteError> {
         let bytes = text.as_bytes();
         let mut cursor = 0;
         while let Some(open_rel) = bytes
             .get(cursor..)
-            .and_then(|slice| slice.iter().position(|&b| b == b'['))
+            .and_then(|slice| slice.iter().position(|&b| b == open_delim))
         {
             let open = cursor.saturating_add(open_rel);
             let after_open = open.saturating_add(1);
             let Some(close_rel) = bytes
                 .get(after_open..)
-                .and_then(|slice| slice.iter().position(|&b| b == b']'))
+                .and_then(|slice| slice.iter().position(|&b| b == close_delim))
             else {
                 break;
             };
@@ -278,24 +290,40 @@ impl<'config> ListExtractor<'config> {
     }
 
     fn strip_inline_fields(text: &str) -> Option<&str> {
+        let bracket = Self::inline_field_start(text, b'[', b']');
+        let paren = Self::inline_field_start(text, b'(', b')');
+        let start = match (bracket, paren) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }?;
+        text.get(..start)
+    }
+
+    fn inline_field_start(
+        text: &str,
+        open_delim: u8,
+        close_delim: u8,
+    ) -> Option<usize> {
         let bytes = text.as_bytes();
         let mut cursor = 0;
         while let Some(open_rel) = bytes
             .get(cursor..)
-            .and_then(|slice| slice.iter().position(|&b| b == b'['))
+            .and_then(|slice| slice.iter().position(|&b| b == open_delim))
         {
             let open = cursor.saturating_add(open_rel);
             let after_open = open.saturating_add(1);
-            let close_rel = bytes
-                .get(after_open..)
-                .and_then(|slice| slice.iter().position(|&b| b == b']'))?;
+            let close_rel = bytes.get(after_open..).and_then(|slice| {
+                slice.iter().position(|&b| b == close_delim)
+            })?;
             let close = after_open.saturating_add(close_rel);
             let inner = text.get(after_open..close)?;
             if let Some((key, value)) = inner.split_once("::")
                 && !key.trim().is_empty()
                 && !value.trim().is_empty()
             {
-                return text.get(..open);
+                return Some(open);
             }
             cursor = close.saturating_add(1);
         }
@@ -431,6 +459,31 @@ impl InlineFieldState {
             text,
             &mut self.slots,
         )?;
+
+        Ok(())
+    }
+
+    fn fill_default_emoji_dates(
+        &mut self,
+        text: &str,
+    ) -> Result<(), NoteError> {
+        self.fill_default_emoji_slot(
+            DateSlot::Created,
+            '\u{2795}',
+            "created",
+            text,
+        )?;
+        self.fill_default_emoji_slot(DateSlot::Due, '\u{1f4c5}', "due", text)?;
+        self.fill_default_emoji_slot(
+            DateSlot::Completed,
+            '\u{2705}',
+            "completed",
+            text,
+        )?;
+
+        self.fill_default_emoji_metadata("scheduled", '\u{23f3}', text)?;
+        self.fill_default_emoji_metadata("start", '\u{1f6eb}', text)?;
+        self.fill_default_emoji_metadata("cancelled", '\u{274c}', text)?;
 
         Ok(())
     }
@@ -596,6 +649,34 @@ impl InlineFieldState {
         Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
     }
 
+    fn parse_default_date(
+        value: &str,
+        keyword: &str,
+    ) -> Result<TaskTimestamp, NoteError> {
+        let formats = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"];
+        for format in formats {
+            if let Ok(naive) =
+                chrono::NaiveDateTime::parse_from_str(value, format)
+            {
+                return Ok(TaskTimestamp::new(naive.and_utc().timestamp()));
+            }
+        }
+
+        let date = chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .map_err(|_error| {
+                NoteError::Task(TaskError::InvalidDate {
+                    keyword: keyword.into(),
+                    reason: "failed to parse date string",
+                })
+            })?;
+        let naive = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
+            NoteError::Task(TaskError::InvalidDateTime {
+                keyword: keyword.into(),
+            })
+        })?;
+        Ok(TaskTimestamp::new(naive.and_utc().timestamp()))
+    }
+
     #[expect(
         clippy::arithmetic_side_effects,
         reason = "Offset addition is safe after successful find."
@@ -610,6 +691,42 @@ impl InlineFieldState {
         } else {
             Some(value)
         }
+    }
+
+    fn fill_default_emoji_slot(
+        &mut self,
+        slot: DateSlot,
+        emoji: char,
+        keyword: &str,
+        text: &str,
+    ) -> Result<(), NoteError> {
+        if self.slots.get(slot).is_some() {
+            return Ok(());
+        }
+        let Some(value) = Self::find_emoji_field(text, emoji) else {
+            return Ok(());
+        };
+        let parsed = Self::parse_default_date(value, keyword)?;
+        self.slots.set(slot, parsed);
+        Ok(())
+    }
+
+    fn fill_default_emoji_metadata(
+        &mut self,
+        keyword: &str,
+        emoji: char,
+        text: &str,
+    ) -> Result<(), NoteError> {
+        if self.metadata.get(keyword).is_some() {
+            return Ok(());
+        }
+        let Some(value) = Self::find_emoji_field(text, emoji) else {
+            return Ok(());
+        };
+        let parsed = Self::parse_default_date(value, keyword)?;
+        let key = TaskFieldKey::try_new(keyword)?;
+        self.metadata.insert(key, FieldValue::Date(parsed.as_i64()));
+        Ok(())
     }
 }
 
@@ -1365,6 +1482,54 @@ mod tests {
                 assert!(due_at.is_future(Some(created_at)));
             }
         }
+    }
+
+    #[test]
+    fn promoted_checkbox_parses_paren_inline_fields() {
+        let config = config_with_fields();
+        let extractor = ListExtractor::new(&config);
+        let task = extractor
+            .parse_promoted_checkbox_with_tags(
+                "#task Review PR (priority:: 2) (project:: lithos)",
+                scan_tags("#task Review PR (priority:: 2) (project:: lithos)"),
+                StatusSymbol::try_new(' ').expect("valid status"),
+                SourceByteOffset::new(12),
+            )
+            .expect("task should parse")
+            .expect("task should be promoted");
+
+        assert_eq!(task.text(), "Review PR");
+        assert_eq!(task.metadata().get_number("priority"), Some(2.0f64));
+        assert_eq!(task.metadata().get_string("project"), Some("lithos"));
+    }
+
+    #[test]
+    fn promoted_checkbox_parses_default_emoji_dates() {
+        let config = test_config_with_task_tag();
+        let extractor = ListExtractor::new(&config);
+        let task = extractor
+            .parse_promoted_checkbox_with_tags(
+                "#task Do work \u{2795}2024-01-01 \u{1f4c5}2024-12-31 \
+                 \u{2705}2025-01-01",
+                scan_tags(
+                    "#task Do work \u{2795}2024-01-01 \u{1f4c5}2024-12-31 \
+                     \u{2705}2025-01-01",
+                ),
+                StatusSymbol::try_new(' ').expect("valid status"),
+                SourceByteOffset::new(0),
+            )
+            .expect("task should parse")
+            .expect("task should be promoted");
+
+        assert_eq!(
+            task.created_at().map(|ts| ts.as_i64()),
+            Some(1_704_067_200)
+        );
+        assert_eq!(task.due_at().map(|ts| ts.as_i64()), Some(1_735_603_200));
+        assert_eq!(
+            task.completed_at().map(|ts| ts.as_i64()),
+            Some(1_735_689_600)
+        );
     }
 
     fn test_config() -> Config {
