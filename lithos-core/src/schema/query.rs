@@ -4,7 +4,7 @@
 //! through the schema query port.
 
 use super::{
-    aggregate::{Schema, SchemaId, SchemaName, Timestamp},
+    aggregate::{Schema, SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
     error::SchemaQueryError,
     ports as schema_ports,
@@ -326,8 +326,8 @@ where
     pub fn is_schema_stale(
         &self,
         id: SchemaId,
-        created_at: Option<Timestamp>,
-        modified_at: Option<Timestamp>,
+        created_at: Option<u64>,
+        modified_at: Option<u64>,
         bank_version: BankVersion,
     ) -> Result<bool, SchemaQueryError> {
         self.query_port
@@ -608,7 +608,17 @@ mod tests {
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
-            let ts = Timestamp::from_secs(1_000_000);
+            #[expect(
+                clippy::cast_sign_loss,
+                reason = "Unix timestamps are non-negative; clamped to 0 for \
+                          pre-1970 times"
+            )]
+            #[expect(
+                clippy::as_conversions,
+                reason = "Epoch seconds conversion is standard for Unix \
+                          timestamps"
+            )]
+            let ts = chrono::Utc::now().timestamp().max(0) as u64;
 
             cmd.save(&schema).expect("Save should succeed");
 
@@ -633,8 +643,19 @@ mod tests {
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
-            let stored_created = Timestamp::from_secs(1_000_000);
-            let file_created = Timestamp::from_secs(2_000_000);
+            #[expect(
+                clippy::cast_sign_loss,
+                reason = "Unix timestamps are non-negative; clamped to 0 for \
+                          pre-1970 times"
+            )]
+            #[expect(
+                clippy::as_conversions,
+                reason = "Epoch seconds conversion is standard for Unix \
+                          timestamps"
+            )]
+            let stored_created = chrono::Utc::now().timestamp().max(0) as u64;
+            // Use a different timestamp to simulate mismatch
+            let file_created = stored_created + 1;
 
             cmd.save_many_with_metadata(&[schema], &[StoredMetadata::new(
                 BankVersion::initial(),
@@ -752,8 +773,18 @@ mod tests {
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
             let qry = schema_mod::Query::new(adapter::Query::new(&db));
 
-            let ts_old = Timestamp::from_secs(100);
-            let ts_new = Timestamp::from_secs(200);
+            #[expect(
+                clippy::cast_sign_loss,
+                reason = "Unix timestamps are non-negative; clamped to 0 for \
+                          pre-1970 times"
+            )]
+            #[expect(
+                clippy::as_conversions,
+                reason = "Epoch seconds conversion is standard for Unix \
+                          timestamps"
+            )]
+            let ts_old = chrono::Utc::now().timestamp().max(0) as u64;
+            let ts_new = ts_old + 1;
 
             // Save two schemas
             let schema1 =

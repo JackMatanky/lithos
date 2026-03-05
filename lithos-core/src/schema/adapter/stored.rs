@@ -10,7 +10,7 @@
 //! - `bank_property_by_name` for name-keyed snapshots
 
 use super::super::{
-    aggregate::{Schema, SchemaId, SchemaName, Timestamp},
+    aggregate::{Schema, SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
     error::SchemaError,
     property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},
@@ -103,7 +103,7 @@ pub(crate) struct StoredPropertyBank {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
     /// Wall-clock timestamp when this record was written.
-    pub recorded_at: Timestamp,
+    pub recorded_at: u64,
     /// Flattened properties in the bank.
     pub properties: Vec<StoredProperty>,
 }
@@ -116,11 +116,11 @@ pub struct StoredMetadata {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
     /// Filesystem birthtime (from `Metadata::created()`), if available.
-    pub created_at: Option<Timestamp>,
+    pub created_at: Option<u64>,
     /// Filesystem mtime (from `Metadata::modified()`), if available.
-    pub modified_at: Option<Timestamp>,
+    pub modified_at: Option<u64>,
     /// Wall-clock timestamp when this record was written.
-    pub recorded_at: Timestamp,
+    pub recorded_at: u64,
 }
 
 impl StoredMetadata {
@@ -128,14 +128,20 @@ impl StoredMetadata {
     #[inline]
     pub(crate) fn new(
         bank_version: BankVersion,
-        created_at: Option<Timestamp>,
-        modified_at: Option<Timestamp>,
+        created_at: Option<u64>,
+        modified_at: Option<u64>,
     ) -> Self {
+        #[expect(clippy::cast_sign_loss, reason = "Audit timestamp")]
+        #[expect(
+            clippy::as_conversions,
+            reason = "Epoch seconds conversion is standard for Unix timestamps"
+        )]
+        let recorded_at = chrono::Utc::now().timestamp().max(0) as u64;
         Self {
             bank_version,
             created_at,
             modified_at,
-            recorded_at: Timestamp::now(),
+            recorded_at,
         }
     }
 }
@@ -161,7 +167,7 @@ pub(crate) struct StoredChildSchema {
     /// Property names this child excludes from parent's properties.
     pub excludes: Vec<Box<str>>,
     /// Timestamp when this inheritance relationship was last resolved.
-    pub resolved_at: Timestamp,
+    pub resolved_at: u64,
 }
 
 impl StoredChildSchema {
@@ -206,7 +212,7 @@ pub(crate) struct StoredParentSchema {
     /// Property names excluded from parent (cached for multimap removal).
     pub excludes: Vec<Box<str>>,
     /// Timestamp when relationship was resolved (cached for multimap removal).
-    pub resolved_at: Timestamp,
+    pub resolved_at: u64,
 }
 
 /// Adapter storage representation of a single bank property snapshot.
@@ -217,7 +223,7 @@ pub(crate) struct StoredBankProperty {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
     /// Wall-clock timestamp when this record was written.
-    pub recorded_at: Timestamp,
+    pub recorded_at: u64,
     /// Flattened property payload.
     pub property: StoredProperty,
 }

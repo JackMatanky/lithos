@@ -142,11 +142,20 @@ impl PropertyBank {
         }
 
         // Emit PropertyBankLoaded event
+        #[expect(
+            clippy::cast_sign_loss,
+            reason = "Unix timestamps are non-negative; clamped to 0 for \
+                      pre-1970 times"
+        )]
+        #[expect(
+            clippy::as_conversions,
+            reason = "Epoch seconds conversion is standard for Unix timestamps"
+        )]
         let event = super::events::Events::PropertyBankLoaded(
             super::events::PropertyBankLoaded::new(
                 bank.all().count(),
                 bank.version(),
-                super::aggregate::Timestamp::now(),
+                chrono::Utc::now().timestamp().max(0) as u64,
             ),
         );
         bank.add_event(event);
@@ -256,10 +265,19 @@ impl PropertyBank {
         self.properties.insert(name.clone(), property);
         self.version = self.version.increment();
 
+        #[expect(
+            clippy::cast_sign_loss,
+            reason = "Unix timestamps are non-negative; clamped to 0 for \
+                      pre-1970 times"
+        )]
+        #[expect(
+            clippy::as_conversions,
+            reason = "Epoch seconds conversion is standard for Unix timestamps"
+        )]
         let event = Events::PropertyRegistered(PropertyRegistered::new(
             id,
             &name,
-            super::aggregate::Timestamp::now(),
+            chrono::Utc::now().timestamp().max(0) as u64,
         ));
         self.add_event(event);
         Ok(())

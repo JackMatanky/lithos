@@ -4,7 +4,7 @@
 //! aggregate and PropertyBank registry.
 
 use super::{
-    aggregate::{Schema, SchemaId, SchemaName, Timestamp},
+    aggregate::{Schema, SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
 };
 use crate::db::BatchReader;
@@ -15,7 +15,7 @@ pub type NameIdPair = (SchemaName, SchemaId);
 /// A staleness check tuple: (`SchemaId`, `created_at`, `modified_at`).
 ///
 /// Used by [`Query::are_many_stale`] to check multiple schemas efficiently.
-pub type StalenessCheck = (SchemaId, Option<Timestamp>, Option<Timestamp>);
+pub type StalenessCheck = (SchemaId, Option<u64>, Option<u64>);
 
 /// Inheritance map returned by [`Query::list_children`].
 ///
@@ -201,8 +201,8 @@ pub trait Command: Send + Sync {
 ///     fn is_schema_stale(
 ///         &self,
 ///         _id: lithos_core::schema::aggregate::SchemaId,
-///         _created_at: Option<lithos_core::schema::aggregate::Timestamp>,
-///         _modified_at: Option<lithos_core::schema::aggregate::Timestamp>,
+///         _created_at: Option<lithos_core::schema::u64>,
+///         _modified_at: Option<lithos_core::schema::u64>,
 ///         _bank_version: lithos_core::schema::bank::BankVersion,
 ///     ) -> Result<bool, Self::Error> {
 ///         Ok(false)
@@ -464,8 +464,8 @@ pub trait Query: Send + Sync {
     fn is_schema_stale(
         &self,
         id: SchemaId,
-        created_at: Option<Timestamp>,
-        modified_at: Option<Timestamp>,
+        created_at: Option<u64>,
+        modified_at: Option<u64>,
         bank_version: BankVersion,
     ) -> Result<bool, Self::Error>;
 

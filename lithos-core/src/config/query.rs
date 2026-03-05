@@ -7,7 +7,7 @@
 use tracing::instrument;
 
 use super::{
-    aggregate::{Config, Timestamp},
+    aggregate::Config,
     error::ConfigQueryError,
     global::Global,
     ports::{self as config_ports},
@@ -154,8 +154,8 @@ where
     )]
     pub fn is_global_stale(
         &self,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<u64>,
+        modified_at: u64,
     ) -> Result<bool, ConfigQueryError> {
         self.query_port
             .is_global_stale(created_at, modified_at)
@@ -180,8 +180,8 @@ where
     pub fn is_vault_stale(
         &self,
         vault_id: VaultId,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<u64>,
+        modified_at: u64,
     ) -> Result<bool, ConfigQueryError> {
         self.query_port
             .is_vault_stale(vault_id, created_at, modified_at)
@@ -358,7 +358,7 @@ mod tests {
 
     use crate::{
         config::{
-            aggregate::{Config, Timestamp, Version},
+            aggregate::{Config, Version},
             global::Global,
             ports::{self as config_ports},
             vault::{Vault, VaultId, VaultRoot},
@@ -416,8 +416,8 @@ mod tests {
 
         fn is_global_stale(
             &self,
-            created_at: Option<Timestamp>,
-            modified_at: Timestamp,
+            created_at: Option<u64>,
+            modified_at: u64,
         ) -> Result<bool, DbError> {
             self.adapter.is_global_stale(created_at, modified_at)
         }
@@ -425,8 +425,8 @@ mod tests {
         fn is_vault_stale(
             &self,
             vault_id: VaultId,
-            created_at: Option<Timestamp>,
-            modified_at: Timestamp,
+            created_at: Option<u64>,
+            modified_at: u64,
         ) -> Result<bool, DbError> {
             self.adapter.is_vault_stale(vault_id, created_at, modified_at)
         }

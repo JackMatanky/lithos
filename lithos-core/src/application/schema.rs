@@ -49,7 +49,7 @@ use std::collections::HashMap;
 
 use crate::schema::{
     adapter::{ingestor::Ingestor, stored::StoredMetadata},
-    aggregate::{Schema, SchemaId, SchemaName, Timestamp},
+    aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
     command::Command,
     dereferencer::Dereferencer,
@@ -101,9 +101,8 @@ pub struct SchemaService<'db> {
 }
 
 // Type aliases for complex tuples used in service methods
-type RawSchemaWithTimes = (RawSchema, Option<Timestamp>, Option<Timestamp>);
-type SchemaWithTimes =
-    (SchemaId, RawSchema, Option<Timestamp>, Option<Timestamp>);
+type RawSchemaWithTimes = (RawSchema, Option<u64>, Option<u64>);
+type SchemaWithTimes = (SchemaId, RawSchema, Option<u64>, Option<u64>);
 type PartitionResult = (Vec<SchemaWithTimes>, Vec<SchemaId>);
 
 impl<'db> SchemaService<'db> {
@@ -242,7 +241,7 @@ impl<'db> SchemaService<'db> {
         current_bank_version: crate::schema::bank::BankVersion,
         bank_stale: bool,
     ) -> Result<PartitionResult, SchemaServiceError> {
-        type StalenessCheck = (SchemaId, Option<Timestamp>, Option<Timestamp>);
+        type StalenessCheck = (SchemaId, Option<u64>, Option<u64>);
 
         // Build schema IDs and staleness checks
         let mut schema_ids: Vec<SchemaId> =
@@ -299,7 +298,7 @@ impl<'db> SchemaService<'db> {
         current_bank_version: crate::schema::bank::BankVersion,
     ) -> Result<(), SchemaServiceError> {
         use crate::schema::ports::InheritanceRelationship;
-        type TimestampPair = (Option<Timestamp>, Option<Timestamp>);
+        type TimestampPair = (Option<u64>, Option<u64>);
 
         // Build metadata and inheritance maps
         let mut time_map: HashMap<SchemaId, TimestampPair> =

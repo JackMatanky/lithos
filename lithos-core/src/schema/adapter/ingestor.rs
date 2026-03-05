@@ -178,10 +178,14 @@ impl Ingestor<'_> {
                 raw.name = filename_stem.into();
 
                 // Extract timestamps using FsReader methods and convert to u64
-                let modified =
-                    self.source.modified_at(&path).map(|ts| ts.as_secs());
-                let created =
-                    self.source.created_at(&path).map(|ts| ts.as_secs());
+                let modified = self
+                    .source
+                    .modified_at(&path)
+                    .map(crate::fs::reader::FileTimestamp::as_secs);
+                let created = self
+                    .source
+                    .created_at(&path)
+                    .map(crate::fs::reader::FileTimestamp::as_secs);
 
                 results.push((raw, modified, created));
             }

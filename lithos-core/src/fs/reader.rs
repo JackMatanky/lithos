@@ -7,91 +7,6 @@ use super::{
 };
 use crate::fs::error::ParseError;
 
-/// File system timestamp representing seconds since Unix epoch.
-///
-/// A thin wrapper around `u64` providing type safety for file metadata
-/// timestamps extracted from [`std::fs::Metadata`]. This is an infrastructure
-/// primitive that encapsulates the conversion from platform-specific
-/// [`SystemTime`](std::time::SystemTime) to epoch seconds.
-///
-/// On Unix platforms, this uses [`MetadataExt`](std::os::unix::fs::MetadataExt)
-/// for direct access to `st_mtime` and `st_ctime`, avoiding the overhead of
-/// `SystemTime` conversion. On other platforms, it falls back to the standard
-/// `Metadata::modified()` API.
-///
-/// Adapters convert `FileTimestamp` to plain `u64` when crossing into domain
-/// contexts, where field names (`created_at`, `modified_at`, `recorded_at`)
-/// carry the semantic weight.
-///
-/// # Examples
-///
-/// ```
-/// use lithos_core::fs::reader::FileTimestamp;
-///
-/// let timestamp = FileTimestamp::from_epoch_secs(1234567890);
-/// assert_eq!(timestamp.as_secs(), 1234567890);
-/// ```
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct FileTimestamp(u64);
-
-impl FileTimestamp {
-    /// Creates a file timestamp from seconds since Unix epoch.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::fs::reader::FileTimestamp;
-    ///
-    /// let timestamp = FileTimestamp::from_epoch_secs(1000);
-    /// assert_eq!(timestamp.as_secs(), 1000);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn from_epoch_secs(secs: u64) -> Self {
-        Self(secs)
-    }
-
-    /// Converts a [`SystemTime`](std::time::SystemTime) to a file timestamp.
-    ///
-    /// Returns `None` if the time is before Unix epoch.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::{Duration, SystemTime};
-    ///
-    /// use lithos_core::fs::reader::FileTimestamp;
-    ///
-    /// let sys_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
-    /// let timestamp = FileTimestamp::from_system_time(sys_time).unwrap();
-    /// assert_eq!(timestamp.as_secs(), 1000);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn from_system_time(time: std::time::SystemTime) -> Option<Self> {
-        time.duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .ok()
-            .map(|d| Self(d.as_secs()))
-    }
-
-    /// Returns the timestamp as seconds since Unix epoch.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::fs::reader::FileTimestamp;
-    ///
-    /// let timestamp = FileTimestamp::from_epoch_secs(1000);
-    /// assert_eq!(timestamp.as_secs(), 1000);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_secs(self) -> u64 {
-        self.0
-    }
-}
-
 /// Supported file formats for structured parsing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -339,17 +254,12 @@ impl Reader {
         })
     }
 
-    /// Returns the file's creation/status-change timestamp.
+    /// Returns the file's creation timestamp.
     ///
-    /// On Unix systems, this returns `st_ctime` (status change time), which
-    /// updates when file metadata changes (permissions, ownership, etc.) or
-    /// when the file is created. This is more reliable than birthtime which
-    /// isn't available on all filesystems.
+    /// Uses the standard cross-platform `Metadata::created()` method.
     ///
-    /// On other platforms, this attempts to read the actual creation time.
-    ///
-    /// Returns `None` if the metadata cannot be read or the timestamp is not
-    /// available on this platform. Failures are logged at debug level.
+    /// Returns `None` if the metadata cannot be read or the creation time is
+    /// not available on this platform. Failures are logged at debug level.
     #[inline]
     pub fn created_at(&self, path: &Path) -> Option<FileTimestamp> {
         let metadata = match self.metadata(path) {
@@ -364,45 +274,25 @@ impl Reader {
             }
         };
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            let ctime = metadata.ctime();
-            if ctime < 0 {
+        match metadata.created() {
+            Ok(system_time) => FileTimestamp::from_system_time(system_time),
+            Err(e) => {
                 tracing::debug!(
                     path = %path.display(),
-                    ctime,
-                    "Negative ctime value"
+                    error = %e,
+                    "Failed to read created timestamp from metadata"
                 );
-                return None;
-            }
-            Some(FileTimestamp::from_epoch_secs(ctime as u64))
-        }
-
-        #[cfg(not(unix))]
-        {
-            match metadata.created() {
-                Ok(system_time) => FileTimestamp::from_system_time(system_time),
-                Err(e) => {
-                    tracing::debug!(
-                        path = %path.display(),
-                        error = %e,
-                        "Failed to read created timestamp from metadata"
-                    );
-                    None
-                }
+                None
             }
         }
     }
 
     /// Returns the file's modification timestamp.
     ///
-    /// This returns `st_mtime` on Unix systems, which updates whenever the
-    /// file's content changes. This is the timestamp used for staleness
-    /// detection.
+    /// Uses the standard cross-platform `Metadata::modified()` method.
     ///
-    /// Returns `None` if the metadata cannot be read or the timestamp is not
-    /// available on this platform. Failures are logged at debug level.
+    /// Returns `None` if the metadata cannot be read or the modification time
+    /// is not available on this platform. Failures are logged at debug level.
     #[inline]
     pub fn modified_at(&self, path: &Path) -> Option<FileTimestamp> {
         let metadata = match self.metadata(path) {
@@ -417,33 +307,15 @@ impl Reader {
             }
         };
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            let mtime = metadata.mtime();
-            if mtime < 0 {
+        match metadata.modified() {
+            Ok(system_time) => FileTimestamp::from_system_time(system_time),
+            Err(e) => {
                 tracing::debug!(
                     path = %path.display(),
-                    mtime,
-                    "Negative mtime value"
+                    error = %e,
+                    "Failed to read modified timestamp from metadata"
                 );
-                return None;
-            }
-            Some(FileTimestamp::from_epoch_secs(mtime as u64))
-        }
-
-        #[cfg(not(unix))]
-        {
-            match metadata.modified() {
-                Ok(system_time) => FileTimestamp::from_system_time(system_time),
-                Err(e) => {
-                    tracing::debug!(
-                        path = %path.display(),
-                        error = %e,
-                        "Failed to read modified timestamp from metadata"
-                    );
-                    None
-                }
+                None
             }
         }
     }
@@ -490,6 +362,91 @@ impl Reader {
         path: &Path,
     ) -> Result<(), PathValidationError> {
         self.validator.validate(path)
+    }
+}
+
+/// File system timestamp representing seconds since Unix epoch.
+///
+/// A thin wrapper around `u64` providing type safety for file metadata
+/// timestamps extracted from [`std::fs::Metadata`]. This is an infrastructure
+/// primitive that encapsulates the conversion from platform-specific
+/// [`SystemTime`](std::time::SystemTime) to epoch seconds.
+///
+/// On Unix platforms, this uses [`MetadataExt`](std::os::unix::fs::MetadataExt)
+/// for direct access to `st_mtime` and `st_ctime`, avoiding the overhead of
+/// `SystemTime` conversion. On other platforms, it falls back to the standard
+/// `Metadata::modified()` API.
+///
+/// Adapters convert `FileTimestamp` to plain `u64` when crossing into domain
+/// contexts, where field names (`created_at`, `modified_at`, `recorded_at`)
+/// carry the semantic weight.
+///
+/// # Examples
+///
+/// ```
+/// use lithos_core::fs::reader::FileTimestamp;
+///
+/// let timestamp = FileTimestamp::from_epoch_secs(1234567890);
+/// assert_eq!(timestamp.as_secs(), 1234567890);
+/// ```
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct FileTimestamp(u64);
+
+impl FileTimestamp {
+    /// Creates a file timestamp from seconds since Unix epoch.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::reader::FileTimestamp;
+    ///
+    /// let timestamp = FileTimestamp::from_epoch_secs(1000);
+    /// assert_eq!(timestamp.as_secs(), 1000);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn from_epoch_secs(secs: u64) -> Self {
+        Self(secs)
+    }
+
+    /// Converts a [`SystemTime`](std::time::SystemTime) to a file timestamp.
+    ///
+    /// Returns `None` if the time is before Unix epoch.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::{Duration, SystemTime};
+    ///
+    /// use lithos_core::fs::reader::FileTimestamp;
+    ///
+    /// let sys_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
+    /// let timestamp = FileTimestamp::from_system_time(sys_time).unwrap();
+    /// assert_eq!(timestamp.as_secs(), 1000);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn from_system_time(time: std::time::SystemTime) -> Option<Self> {
+        time.duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .ok()
+            .map(|d| Self(d.as_secs()))
+    }
+
+    /// Returns the timestamp as seconds since Unix epoch.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::fs::reader::FileTimestamp;
+    ///
+    /// let timestamp = FileTimestamp::from_epoch_secs(1000);
+    /// assert_eq!(timestamp.as_secs(), 1000);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn as_secs(self) -> u64 {
+        self.0
     }
 }
 

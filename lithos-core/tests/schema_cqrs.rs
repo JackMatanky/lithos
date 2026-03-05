@@ -1421,7 +1421,6 @@ mod critical {
 // ========================================================================
 
 mod staleness {
-    use lithos_core::schema::aggregate::Timestamp;
 
     use super::*;
 
@@ -1503,9 +1502,9 @@ mod staleness {
         #[derive(rkyv::Archive, rkyv::Serialize)]
         struct TempMetadata {
             bank_version: BankVersion,
-            created_at: Option<Timestamp>,
-            modified_at: Option<Timestamp>,
-            recorded_at: Timestamp,
+            created_at: Option<u64>,
+            modified_at: Option<u64>,
+            recorded_at: u64,
         }
 
         // Table definitions for direct database access
@@ -1526,14 +1525,23 @@ mod staleness {
         // Manually craft metadata with created_at = Some, modified_at = Some
         // to simulate a file that was saved WITH birthtime support
         let base_time = 1_000_000u64;
-        let created_timestamp = Timestamp::from_secs(base_time);
-        let modified_timestamp = Timestamp::from_secs(base_time + 100);
+        let created_timestamp = base_time;
+        let modified_timestamp = base_time + 100;
 
+        #[expect(
+            clippy::cast_sign_loss,
+            reason = "Unix timestamps are non-negative; clamped to 0 for \
+                      pre-1970 times"
+        )]
+        #[expect(
+            clippy::as_conversions,
+            reason = "Epoch seconds conversion is standard for Unix timestamps"
+        )]
         let metadata = TempMetadata {
             bank_version: BankVersion::initial(),
             created_at: Some(created_timestamp),
             modified_at: Some(modified_timestamp),
-            recorded_at: Timestamp::now(),
+            recorded_at: chrono::Utc::now().timestamp().max(0) as u64,
         };
 
         // Write metadata to database (overwriting the None/None version)
@@ -1560,7 +1568,7 @@ mod staleness {
         );
 
         // WHEN: Checking with newer modified_at (file was actually modified)
-        let newer_modified = Timestamp::from_secs(base_time + 200);
+        let newer_modified = base_time + 200;
         let is_stale_newer_mtime = query.is_schema_stale(
             schema_id,
             None, // ← Still no birthtime

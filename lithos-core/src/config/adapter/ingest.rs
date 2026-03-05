@@ -21,7 +21,7 @@ use figment::{
 use tracing::instrument;
 
 use crate::{
-    config::{error::ConfigIngestError, raw::RawConfig},
+    config::{error::ConfigIngestError, raw::RawConfig, vault::VaultRoot},
     fs::FsReader,
 };
 
@@ -268,9 +268,12 @@ impl Ingestor {
         file_path: &Path,
     ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
         // Extract timestamps using FsReader methods and convert to u64
-        let created_at = fs_reader.created_at(file_path).map(|ts| ts.as_secs());
-        let modified_at =
-            fs_reader.modified_at(file_path).map(|ts| ts.as_secs());
+        let created_at = fs_reader
+            .created_at(file_path)
+            .map(crate::fs::reader::FileTimestamp::as_secs);
+        let modified_at = fs_reader
+            .modified_at(file_path)
+            .map(crate::fs::reader::FileTimestamp::as_secs);
 
         // Parse TOML content using FsReader
         let config: RawConfig =

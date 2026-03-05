@@ -207,7 +207,12 @@ impl Schema {
             pending_events: vec![],
         };
 
-        let now = Timestamp::now();
+        #[expect(clippy::cast_sign_loss, reason = "Event timestamp")]
+        #[expect(
+            clippy::as_conversions,
+            reason = "Epoch seconds conversion is standard for Unix timestamps"
+        )]
+        let now = chrono::Utc::now().timestamp().max(0) as u64;
         schema.add_event(Events::SchemaCreated(SchemaCreated::new(
             id,
             &schema.name,
@@ -258,10 +263,16 @@ impl Schema {
             pending_events: vec![],
         };
 
+        #[expect(clippy::cast_sign_loss, reason = "Event timestamp")]
+        #[expect(
+            clippy::as_conversions,
+            reason = "Epoch seconds conversion is standard for Unix timestamps"
+        )]
+        let now = chrono::Utc::now().timestamp().max(0) as u64;
         schema.add_event(Events::SchemaResolved(SchemaResolved::new(
             id,
             &schema.name,
-            Timestamp::now(),
+            now,
         )));
 
         Ok(schema)
@@ -759,81 +770,6 @@ impl TryFrom<Box<str>> for SchemaName {
 // ----------------------------------------------------------- //
 //                  Supporting Value Objects                   //
 // ----------------------------------------------------------- //
-
-/// Unix timestamp (seconds since epoch).
-///
-/// Uses `u64` to prevent negative timestamps, which are invalid for
-/// timestamps since the Unix epoch (1970-01-01).
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct Timestamp(u64);
-
-impl Timestamp {
-    /// Returns the current UTC timestamp.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::aggregate::Timestamp;
-    ///
-    /// let _now = Timestamp::now();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn now() -> Self {
-        #[expect(
-            clippy::cast_sign_loss,
-            clippy::as_conversions,
-            reason = "Timestamp is clamped to 0, so cast to u64 is safe"
-        )]
-        let secs = chrono::Utc::now().timestamp().max(0) as u64;
-        Self(secs)
-    }
-
-    /// Wraps a timestamp in seconds.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::aggregate::Timestamp;
-    ///
-    /// let ts = Timestamp::from_secs(10);
-    /// assert_eq!(ts.as_secs(), 10);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn from_secs(secs: u64) -> Self {
-        Self(secs)
-    }
-
-    /// Returns the timestamp in seconds.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::aggregate::Timestamp;
-    ///
-    /// let ts = Timestamp::from_secs(10);
-    /// assert_eq!(ts.as_secs(), 10);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_secs(self) -> u64 {
-        self.0
-    }
-}
 
 // ----------------------------------------------------------- //
 //                            Tests                            //

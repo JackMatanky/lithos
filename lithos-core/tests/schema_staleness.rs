@@ -27,7 +27,7 @@ use lithos_core::{
     fs::FsReader,
     schema::{
         adapter::ingestor::Ingestor,
-        aggregate::{SchemaId, SchemaName, Timestamp},
+        aggregate::{SchemaId, SchemaName},
         bank::{BankVersion, PropertyBank},
     },
 };
@@ -56,8 +56,8 @@ fn test_config(root: &Path) -> TestResult<Config> {
     Ok(config)
 }
 
-/// Read file timestamps into `Timestamp` values.
-fn file_times(path: &Path) -> (Option<Timestamp>, Option<Timestamp>) {
+/// Read file timestamps as epoch seconds (`u64`).
+fn file_times(path: &Path) -> (Option<u64>, Option<u64>) {
     let metadata = std::fs::metadata(path).ok();
     let modified = metadata
         .as_ref()
@@ -65,14 +65,14 @@ fn file_times(path: &Path) -> (Option<Timestamp>, Option<Timestamp>) {
         .and_then(|time| {
             time.duration_since(std::time::SystemTime::UNIX_EPOCH).ok()
         })
-        .map(|duration| Timestamp::from_secs(duration.as_secs()));
+        .map(|duration| duration.as_secs());
     let created = metadata
         .as_ref()
         .and_then(|meta| meta.created().ok())
         .and_then(|time| {
             time.duration_since(std::time::SystemTime::UNIX_EPOCH).ok()
         })
-        .map(|duration| Timestamp::from_secs(duration.as_secs()));
+        .map(|duration| duration.as_secs());
     (modified, created)
 }
 
@@ -244,7 +244,7 @@ fn schema_stale_when_modified_differs() -> TestResult {
     let stale = query2.is_schema_stale(
         schema_id,
         created_at,
-        Some(Timestamp::from_secs(modified_at.as_secs() + 1)),
+        Some(modified_at + 1),
         bank_version,
     )?;
     assert!(stale, "Modified time mismatch should be stale");

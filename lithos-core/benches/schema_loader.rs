@@ -305,7 +305,7 @@ use lithos_core::{
     fs::FsReader,
     schema::{
         adapter::{self, ingestor::Ingestor},
-        aggregate::{Schema, SchemaId, Timestamp},
+        aggregate::{Schema, SchemaId},
         bank::{BankVersion, PropertyBank},
         command::Command,
         dereferencer::Dereferencer,
@@ -842,11 +842,8 @@ fn bench_staleness_batch(c: &mut Criterion) {
                 let qry = Query::new(adapter::Query::new(&db));
 
                 // Build staleness checks
-                let checks: Vec<(
-                    SchemaId,
-                    Option<Timestamp>,
-                    Option<Timestamp>,
-                )> = schema_ids.iter().map(|&id| (id, None, None)).collect();
+                let checks: Vec<(SchemaId, Option<u64>, Option<u64>)> =
+                    schema_ids.iter().map(|&id| (id, None, None)).collect();
 
                 b.iter(|| {
                     let staleness = qry

@@ -5,7 +5,7 @@ use tracing::instrument;
 use super::stored::ConfigMetadata;
 use crate::{
     config::{
-        aggregate::{Config, Timestamp, Version},
+        aggregate::{Config, Version},
         db_table::{
             CONFIG_METADATA, CONFIG_VERSIONS, GLOBAL_CONFIG, VAULT_CONFIG,
             VAULT_ID_BY_PATH, VAULT_PATH_BY_ID,
@@ -44,8 +44,8 @@ impl CommandPort for Command<'_> {
     fn record_global(
         &self,
         config: &Global,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<u64>,
+        modified_at: u64,
     ) -> Result<(), Self::Error> {
         let version_key = config.version().value().to_string();
         let metadata_key = format!("global:{}", config.version().value());
@@ -121,8 +121,8 @@ impl CommandPort for Command<'_> {
         &self,
         vault_id: VaultId,
         config: &Vault,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<u64>,
+        modified_at: u64,
     ) -> Result<(), Self::Error> {
         let version_key = format!("{}:{}", vault_id, config.version().value());
         let metadata_key = format!("{}:{}", vault_id, config.version().value());
@@ -167,8 +167,8 @@ mod tests {
         let command = Command::new(&db);
 
         let global = Global::default();
-        let created_at = Some(Timestamp::from_secs(1000));
-        let modified_at = Timestamp::from_secs(2000);
+        let created_at = Some(1000);
+        let modified_at = 2000;
 
         command
             .record_global(&global, created_at, modified_at)
@@ -200,8 +200,8 @@ mod tests {
 
         let vault_id = VaultId::new();
         let vault = Vault::default();
-        let created_at = Some(Timestamp::from_secs(1000));
-        let modified_at = Timestamp::from_secs(2000);
+        let created_at = Some(1000);
+        let modified_at = 2000;
 
         command
             .record_vault(vault_id, &vault, created_at, modified_at)
@@ -232,8 +232,8 @@ mod tests {
         let command = Command::new(&db);
 
         let global = Global::default();
-        let created_at = Some(Timestamp::from_secs(1000));
-        let modified_at = Timestamp::from_secs(2000);
+        let created_at = Some(1000);
+        let modified_at = 2000;
 
         // First write should succeed
         command
@@ -263,8 +263,8 @@ mod tests {
 
         let vault_id = VaultId::new();
         let vault = Vault::default();
-        let created_at = Some(Timestamp::from_secs(1000));
-        let modified_at = Timestamp::from_secs(2000);
+        let created_at = Some(1000);
+        let modified_at = 2000;
 
         command
             .record_vault(vault_id, &vault, created_at, modified_at)
