@@ -11,6 +11,7 @@ use crate::{
     config::aggregate::Config,
     db::{BatchWriter, Database, DbError},
     note::{
+        adapter::stored::{StoredTask, metadata_index_keys},
         aggregate::{Note, NoteId},
         db_table::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
@@ -23,7 +24,6 @@ use crate::{
         paths::NotePath,
         ports::Command,
         position::SourceByteOffset,
-        stored::{StoredTask, metadata_index_keys},
         structure::Heading,
         task::{TaskMetadata, TaskText},
         value::FieldValue,
@@ -618,7 +618,7 @@ impl Command for CommandAdapter<'_, '_> {
     }
 
     #[inline]
-    fn record_task_projection_rebuild(&self) -> Result<usize, Self::Error> {
+    fn rebuild_task_indexes(&self) -> Result<usize, Self::Error> {
         let stored_tasks = self.db.list_owned::<StoredTask>(TASKS)?;
         let notes = self.db.list_owned::<Note>(NOTES)?;
 

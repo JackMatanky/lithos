@@ -66,18 +66,16 @@ where
             .map_err(|error| NoteCommandError::Storage(error.into()))
     }
 
-    /// Rebuilds all task projections and related indexes from stored notes.
+    /// Rebuilds all task indexes from stored notes.
     ///
     /// Returns the number of tasks rebuilt.
     ///
     /// # Errors
     /// Returns `NoteCommandError` if rebuild fails.
     #[inline]
-    pub fn record_task_projection_rebuild(
-        &self,
-    ) -> Result<usize, NoteCommandError> {
+    pub fn rebuild_task_indexes(&self) -> Result<usize, NoteCommandError> {
         self.command_port
-            .record_task_projection_rebuild()
+            .rebuild_task_indexes()
             .map_err(|error| NoteCommandError::Storage(error.into()))
     }
 }

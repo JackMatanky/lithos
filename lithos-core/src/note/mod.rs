@@ -71,8 +71,6 @@ pub mod frontmatter;
 pub mod link;
 /// List subentities for Note aggregate.
 pub mod list;
-/// Stored projection types for Note context.
-pub mod stored;
 /// Document structure subentities (Heading and Section) for Note aggregate.
 pub mod structure;
 /// Tag subentity for Note aggregate.

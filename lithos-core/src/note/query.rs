@@ -4,11 +4,11 @@
 //! through the note query port.
 
 use super::{
+    adapter::stored::StoredTask,
     aggregate::{AliasName, FileClassName, Note, NoteId},
     error::NoteQueryError,
     paths::{FolderPath, NotePath},
     ports as note_ports,
-    stored::StoredTask,
     task::{TaskDateKind, TaskPriority, TaskTimestamp},
     value::FieldValue,
 };

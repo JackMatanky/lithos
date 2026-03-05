@@ -8,6 +8,7 @@
 pub mod command;
 pub mod query;
 pub mod reader;
+pub mod stored;
 
 // Extractors (Phase 2+)
 pub(super) mod extract_frontmatter;

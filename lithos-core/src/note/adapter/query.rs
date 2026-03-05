@@ -11,6 +11,7 @@ use crate::{
     config::{frontmatter::FrontmatterKey, task::StatusName},
     db::Database,
     note::{
+        adapter::stored::{StoredTask, metadata_index_keys},
         aggregate::{AliasName, FileClassName, Note, NoteId},
         db_table::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
@@ -20,7 +21,6 @@ use crate::{
         },
         paths::{FolderPath, NotePath},
         ports::Query,
-        stored::{StoredTask, metadata_index_keys},
         task::{TaskDateKind, TaskPriority, TaskTimestamp},
         value::FieldValue,
     },

@@ -14,9 +14,9 @@
 //! Async wrappers should be added at the CLI/LSP boundary if needed.
 
 use super::{
+    adapter::stored::StoredTask,
     aggregate::{AliasName, FileClassName, Note, NoteId},
     paths::{FolderPath, NotePath},
-    stored::StoredTask,
     task::{TaskDateKind, TaskPriority, TaskTimestamp},
     value::FieldValue,
 };
@@ -45,14 +45,14 @@ pub trait Command: Send + Sync {
     /// Returns a storage-specific error if deletion fails.
     fn delete(&self, id: NoteId) -> Result<(), Self::Error>;
 
-    /// Rebuilds all task projections and related indexes from stored notes.
+    /// Rebuilds all task indexes from stored notes.
     ///
     /// Returns the number of tasks rebuilt.
     ///
     /// # Errors
     ///
     /// Returns a storage-specific error if rebuild fails.
-    fn record_task_projection_rebuild(&self) -> Result<usize, Self::Error>;
+    fn rebuild_task_indexes(&self) -> Result<usize, Self::Error>;
 
     /// Updates an existing note aggregate.
     ///
