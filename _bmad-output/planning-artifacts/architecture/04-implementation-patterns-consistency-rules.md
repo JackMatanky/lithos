@@ -843,7 +843,8 @@ When implementing port-based CQRS, verify:
 - **Commands:** `save`, `delete`, `update`, `create`.
 - **Port Traits:** `<Context>QueryPort`, `<Context>CommandPort`.
 - **CQRS Types:** `Query<Q>`, `Command<C>` generic over port traits.
-- **Type Aliases:** `Redb<Context>Query<'db>` for ergonomic use.
+- **Type Aliases:** `<Context>Query<'db>` and `<Context>Command<'db>` for ergonomic use (storage-agnostic names).
+- **Adapter Naming:** Adapters use implementation prefix: `RedbSchemaQueryAdapter`, `RedbSchemaCommandAdapter`.
 - **Legacy (deprecated):** Port traits named `<Context>Store` (e.g., `NoteStore`, `SchemaStore`).
 
 ### Database Access Rules
@@ -851,7 +852,8 @@ When implementing port-based CQRS, verify:
 - **Port-Based Access:** Contexts define split storage port traits (e.g., `SchemaQueryPort`, `SchemaCommandPort`).
 - **Generic CQRS:** Command/Query types are generic over ports: `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`.
 - **Zero-Copy Reads:** Ports use GATs to enable closure-based archived access.
-- **Default Backend:** Type aliases hide generics: `RedbSchemaQuery<'db>`.
+- **Type Aliases:** Use storage-agnostic names for public API: `SchemaQuery<'db>`, `SchemaCommand<'db>`.
+- **Adapter Implementation:** Adapters include implementation prefix: `CommandAdapter`, `QueryAdapter` (internal), or `RedbSchemaQueryAdapter` (if multiple backends).
 - **Test Substitution:** Use `FakeSchemaQueryPort` or `FakeSchemaCommandPort` implementing the respective port.
 - **Legacy Note:** Single-store `SchemaStore` traits are deprecated; see Anti-Patterns.
 
