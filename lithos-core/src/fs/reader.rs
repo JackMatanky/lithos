@@ -486,19 +486,6 @@ impl FileTimestamp {
     }
 }
 
-/// Helper to check if a file extension matches binary formats.
-#[must_use]
-pub(crate) fn is_binary_extension(path: &Path) -> bool {
-    path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
-        ext.eq_ignore_ascii_case("png")
-            || ext.eq_ignore_ascii_case("jpg")
-            || ext.eq_ignore_ascii_case("jpeg")
-            || ext.eq_ignore_ascii_case("pdf")
-            || ext.eq_ignore_ascii_case("zip")
-            || ext.eq_ignore_ascii_case("wasm")
-    })
-}
-
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,

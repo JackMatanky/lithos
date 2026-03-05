@@ -203,7 +203,14 @@ impl Binary {
     #[inline]
     #[must_use]
     pub(crate) fn is_supported(path: &Path) -> bool {
-        super::reader::is_binary_extension(path)
+        path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("png")
+                || ext.eq_ignore_ascii_case("jpg")
+                || ext.eq_ignore_ascii_case("jpeg")
+                || ext.eq_ignore_ascii_case("pdf")
+                || ext.eq_ignore_ascii_case("zip")
+                || ext.eq_ignore_ascii_case("wasm")
+        })
     }
 }
 
