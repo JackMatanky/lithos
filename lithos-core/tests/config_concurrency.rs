@@ -21,6 +21,7 @@
     reason = "Concurrency tests use assert!, println!, and other patterns \
               that are acceptable in tests"
 )]
+#![allow(deprecated, reason = "Tests use deprecated rebuild_config for now")]
 
 use std::{
     sync::{Arc, Barrier},
@@ -56,23 +57,20 @@ log_level = "debug"
 /// **CRITICAL TEST**: Verifies that concurrent rebuilds don't cause version
 /// collisions.
 ///
-/// This test attempts to trigger the race condition where two threads:
+/// This test verifies the fix for a race condition where two threads could:
 /// 1. Both scan and find max version N
 /// 2. Both compute next version N+1
 /// 3. Both write version N+1 (second overwrites first!)
 ///
-/// **Expected behavior** (after fix):
+/// **Expected behavior** (now fixed via atomic version allocation):
 /// - Thread A writes version N+1
 /// - Thread B writes version N+2
 /// - Both versions exist in database
 ///
-/// **Current behavior** (bug):
-/// - Thread A writes version N+1
-/// - Thread B writes version N+1 (overwrites!)
-/// - Only one version N+1 exists in database
+/// The fix uses `ReadWriteUnitOfWork::scan_range()` for atomic
+/// read-modify-write operations when allocating version numbers.
 #[test]
-#[ignore = "Demonstrates critical race condition - will fail until fixed"]
-fn concurrent_rebuilds_cause_version_collision() -> TestResult {
+fn concurrent_rebuilds_dont_cause_version_collision() -> TestResult {
     let temp_dir = tempfile::tempdir()?;
     setup_vault(&temp_dir)?;
 

@@ -100,22 +100,63 @@ where
             .map_err(|error| ConfigCommandError::Storage(error.into()))
     }
 
+    /// Records a final configuration snapshot with atomic version allocation.
+    ///
+    /// The version is computed atomically by scanning existing versions and
+    /// incrementing. This prevents race conditions when multiple concurrent
+    /// rebuilds occur on the same vault.
+    ///
+    /// Returns the allocated version number.
+    ///
+    /// # Errors
+    /// Returns [`ConfigCommandError::Storage`] if version overflow or storage
+    /// fails.
+    #[inline]
+    #[instrument(
+        skip(self, config),
+        fields(operation = "record_config", vault_id = %vault_id)
+    )]
+    pub fn record_config(
+        &self,
+        vault_id: VaultId,
+        config: &Config,
+    ) -> Result<Version, ConfigCommandError> {
+        self.command_port
+            .record_config(vault_id, config)
+            .map_err(|error| ConfigCommandError::Storage(error.into()))
+    }
+
+    /// Records the vault ID to root path mapping.
+    ///
+    /// # Errors
+    /// Returns [`ConfigCommandError::Storage`] if persistence fails.
+    #[inline]
+    #[instrument(
+        skip(self, vault_root),
+        fields(operation = "record_vault_path_mapping", vault_id = %vault_id)
+    )]
+    pub fn record_vault_path_mapping(
+        &self,
+        vault_id: VaultId,
+        vault_root: &VaultRoot,
+    ) -> Result<(), ConfigCommandError> {
+        self.command_port
+            .record_vault_path_mapping(vault_id, vault_root)
+            .map_err(|error| ConfigCommandError::Storage(error.into()))
+    }
+
     /// Rebuilds the configuration read model for a vault.
     ///
-    /// **ARCHITECTURAL NOTE**: This is a temporary implementation that violates
-    /// separation of concerns. File ingestion logic should be moved to the
-    /// application service layer with proper hybrid loading (load from DB if
-    /// fresh, rebuild from files if stale). This method exists to support the
-    /// current API until the application service layer is implemented.
+    /// **DEPRECATED**: This method exists for backward compatibility with
+    /// integration tests. New code should use the `ConfigService` from the
+    /// application layer instead, which provides proper staleness detection
+    /// and hybrid loading.
     ///
-    /// This method performs the full configuration lifecycle:
-    /// 1. **Ingestion**: Loads raw configuration from files using Figment.
-    /// 2. **Merging**: Layers vault overrides on top of global settings and
-    ///    defaults.
-    /// 3. **Validation**: Transforms merged raw data into an "Always Valid"
-    ///    [`Config`].
-    /// 4. **Versioning**: Generates a new [`Version`].
-    /// 5. **Persistence**: Records the new snapshot.
+    /// This is a simplified version that:
+    /// 1. Loads raw configuration from files using Figment
+    /// 2. Merges vault overrides on top of global settings and defaults
+    /// 3. Validates and transforms into an "Always Valid" [`Config`]
+    /// 4. Atomically allocates a version and persists the snapshot
     ///
     /// # Errors
     /// Returns [`ConfigCommandError`] if ingestion, validation, or persistence
@@ -125,20 +166,22 @@ where
         skip(self, vault_root),
         fields(operation = "rebuild_config", vault_id = %vault_id)
     )]
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use ConfigService::load() instead for proper staleness \
+                detection"
+    )]
     pub fn rebuild_config(
         &self,
         vault_id: VaultId,
         vault_root: &VaultRoot,
     ) -> Result<Version, ConfigCommandError> {
-        // TODO: Move this to application service layer
-        // The command facade should not perform file ingestion directly
         use crate::config::adapter::ingest::Ingestor;
 
         // Build merged config with placeholder version
-        // The actual version is allocated atomically inside record_config
         let ingestor = Ingestor::new(vault_root.as_path());
         let raw_merged = ingestor.build_merged_raw(vault_root.as_path())?;
-        let temp_config = Config::build(
+        let merged_config = Config::build(
             &raw_merged,
             vault_id,
             vault_root.clone(),
@@ -148,18 +191,10 @@ where
         .map_err(ConfigCommandError::Domain)?;
 
         // Record vault path mapping
-        self.command_port
-            .record_vault_path_mapping(vault_id, vault_root)
-            .map_err(|error| ConfigCommandError::Storage(error.into()))?;
+        self.record_vault_path_mapping(vault_id, vault_root)?;
 
         // Atomically allocate version and record config
-        // Returns the allocated version number
-        let version =
-            self.command_port
-                .record_config(vault_id, &temp_config)
-                .map_err(|error| ConfigCommandError::Storage(error.into()))?;
-
-        Ok(version)
+        self.record_config(vault_id, &merged_config)
     }
 }
 

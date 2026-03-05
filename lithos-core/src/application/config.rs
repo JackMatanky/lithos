@@ -163,8 +163,24 @@ impl<'db> ConfigService<'db> {
                 )?;
             }
 
-            // Rebuild merged config using existing logic
-            let _version = self.command.rebuild_config(vault_id, vault_root)?;
+            // Build merged config from files
+            let ingestor = Ingestor::new(vault_root.as_path());
+            let raw_merged = ingestor.build_merged_raw(vault_root.as_path())?;
+            let merged_config = Config::build(
+                &raw_merged,
+                vault_id,
+                vault_root.clone(),
+                crate::config::aggregate::Version::initial(), /* Placeholder
+                                                               * -
+                                                               * real version
+                                                               * assigned
+                                                               * atomically */
+            )?;
+
+            // Record vault path mapping and merged config
+            self.command.record_vault_path_mapping(vault_id, vault_root)?;
+            let _version =
+                self.command.record_config(vault_id, &merged_config)?;
         }
 
         // Return active merged config (either newly built or cached)

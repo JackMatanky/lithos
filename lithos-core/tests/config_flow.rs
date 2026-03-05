@@ -8,6 +8,7 @@
     clippy::tests_outside_test_module,
     reason = "Integration tests are top-level by default."
 )]
+#![allow(deprecated, reason = "Tests use deprecated rebuild_config for now")]
 
 use std::path::{Path, PathBuf};
 
