@@ -12,18 +12,6 @@ use serde::de::DeserializeOwned;
 
 use super::error::ParseError;
 
-/// JSON parser strategy.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Json;
-
-/// TOML parser strategy.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Toml;
-
-/// YAML parser strategy.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Yaml;
-
 /// Markdown file type marker.
 ///
 /// Markdown does not use `detect`/`parse` here because parsing is delegated to
@@ -31,9 +19,21 @@ pub(crate) struct Yaml;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Markdown;
 
-/// Binary file type marker.
+impl Markdown {
+    /// Check if this marker can handle the given file path by extension.
+    #[inline]
+    #[must_use]
+    pub(crate) fn is_supported(path: &Path) -> bool {
+        path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("md")
+                || ext.eq_ignore_ascii_case("markdown")
+        })
+    }
+}
+
+/// JSON parser strategy.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Binary;
+pub(crate) struct Json;
 
 impl Json {
     /// Detect if content looks like JSON format.
@@ -77,6 +77,10 @@ impl Json {
         })
     }
 }
+
+/// TOML parser strategy.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct Toml;
 
 impl Toml {
     /// Detect if content looks like TOML format.
@@ -134,6 +138,10 @@ impl Toml {
     }
 }
 
+/// YAML parser strategy.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct Yaml;
+
 impl Yaml {
     /// Detect if content looks like YAML format.
     #[inline]
@@ -186,17 +194,9 @@ impl Yaml {
     }
 }
 
-impl Markdown {
-    /// Check if this marker can handle the given file path by extension.
-    #[inline]
-    #[must_use]
-    pub(crate) fn is_supported(path: &Path) -> bool {
-        path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
-            ext.eq_ignore_ascii_case("md")
-                || ext.eq_ignore_ascii_case("markdown")
-        })
-    }
-}
+/// Binary file type marker.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct Binary;
 
 impl Binary {
     /// Check if this marker can handle the given file path by extension.
