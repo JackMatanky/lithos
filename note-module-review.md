@@ -102,7 +102,7 @@ out-of-scope for refactoring in this review.
 - N-AR-01 Duplicate parsing in `TaskParser::should_promote` vs `parse_checkbox`
 - N-AR-02 Link alias text does not insert whitespace on soft/hard breaks
 - N-AR-03 TOML integer parsing uses string round-trip (precision/alloc)
-- N-AR-04 `SourceByteOffset::line_column` is O(n) per call (consider caching)
+- N-AR-04 `SourceLocation::try_from_byte_offset` is O(n) per call (consider caching)
 - N-AR-05 Frontmatter tags indexing decision still undefined
 - N-AR-06 Query adapters lack direct tests for alias/file class/folder/task/frontmatter indexes
 

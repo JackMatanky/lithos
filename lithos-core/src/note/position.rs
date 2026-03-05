@@ -59,55 +59,81 @@ impl SourceByteOffset {
             NoteError::Structure("source offset out of range")
         })
     }
+}
 
-    /// Converts this byte offset into a line/column pair for the given source.
-    ///
-    /// Line and column numbers are 1-based. Column counts Unicode scalar
-    /// values, not bytes.
+/// 1-based line number derived from a byte offset.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct SourceLine(u32);
+
+impl SourceLine {
+    /// Creates a new 1-based line number.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the offset exceeds the source
-    /// length or is not on a UTF-8 character boundary.
+    /// Returns [`NoteError::Structure`] if the value is zero.
     #[inline]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Line/column counters are bounded by source length"
-    )]
-    pub fn line_column(
-        self,
-        source: &str,
-    ) -> Result<SourceLineColumn, NoteError> {
-        let offset = usize::from(self);
-        if offset > source.len() {
-            return Err(NoteError::Structure(
-                "source offset exceeds input length",
-            ));
+    pub fn try_new(value: u32) -> Result<Self, NoteError> {
+        if value == 0 {
+            return Err(NoteError::Structure("line number must be >= 1"));
         }
-        if !source.is_char_boundary(offset) {
-            return Err(NoteError::Structure(
-                "source offset is not on a character boundary",
-            ));
-        }
+        Ok(Self(value))
+    }
 
-        let mut line = 1u32;
-        let mut column = 1u32;
-        for (idx, ch) in source.char_indices() {
-            if idx >= offset {
-                break;
-            }
-            if ch == '\n' {
-                line += 1;
-                column = 1;
-            } else {
-                column += 1;
-            }
-        }
+    /// Returns the 1-based line number.
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> u32 {
+        self.0
+    }
+}
 
-        Ok(SourceLineColumn {
-            line,
-            column,
-        })
+/// 1-based column number derived from a byte offset.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct SourceColumn(u32);
+
+impl SourceColumn {
+    /// Creates a new 1-based column number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if the value is zero.
+    #[inline]
+    pub fn try_new(value: u32) -> Result<Self, NoteError> {
+        if value == 0 {
+            return Err(NoteError::Structure("column number must be >= 1"));
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the 1-based column number.
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> u32 {
+        self.0
     }
 }
 
@@ -126,24 +152,98 @@ impl SourceByteOffset {
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub struct SourceLineColumn {
-    line: u32,
-    column: u32,
+pub struct SourceLocation {
+    offset: SourceByteOffset,
+    line: SourceLine,
+    column: SourceColumn,
 }
 
-impl SourceLineColumn {
-    /// Returns the 1-based line number.
+impl SourceLocation {
+    /// Creates a new source location from offset and line/column values.
+    #[must_use]
+    #[inline]
+    pub const fn new(
+        offset: SourceByteOffset,
+        line: SourceLine,
+        column: SourceColumn,
+    ) -> Self {
+        Self {
+            offset,
+            line,
+            column,
+        }
+    }
+
+    /// Returns the byte offset for this location.
     #[inline]
     #[must_use]
-    pub const fn line(&self) -> u32 {
+    pub const fn offset(&self) -> SourceByteOffset {
+        self.offset
+    }
+
+    /// Returns the 1-based line number for this location.
+    #[inline]
+    #[must_use]
+    pub const fn line(&self) -> SourceLine {
         self.line
     }
 
-    /// Returns the 1-based column number.
+    /// Returns the 1-based column number for this location.
     #[inline]
     #[must_use]
-    pub const fn column(&self) -> u32 {
+    pub const fn column(&self) -> SourceColumn {
         self.column
+    }
+
+    /// Builds a source location from a byte offset and source text.
+    ///
+    /// Line and column numbers are 1-based. Column counts Unicode scalar
+    /// values, not bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if the offset exceeds the source
+    /// length or is not on a UTF-8 character boundary.
+    #[inline]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Line/column counters are bounded by source length"
+    )]
+    pub fn try_from_byte_offset(
+        offset: SourceByteOffset,
+        source: &str,
+    ) -> Result<Self, NoteError> {
+        let raw_offset = usize::from(offset);
+        if raw_offset > source.len() {
+            return Err(NoteError::Structure(
+                "source offset exceeds input length",
+            ));
+        }
+        if !source.is_char_boundary(raw_offset) {
+            return Err(NoteError::Structure(
+                "source offset is not on a character boundary",
+            ));
+        }
+
+        let mut line = 1u32;
+        let mut column = 1u32;
+        for (idx, ch) in source.char_indices() {
+            if idx >= raw_offset {
+                break;
+            }
+            if ch == '\n' {
+                line += 1;
+                column = 1;
+            } else {
+                column += 1;
+            }
+        }
+
+        Ok(Self::new(
+            offset,
+            SourceLine::try_new(line)?,
+            SourceColumn::try_new(column)?,
+        ))
     }
 }
 
@@ -184,14 +284,14 @@ impl SourceLineIndex {
         &self,
         offset: SourceByteOffset,
         source: &str,
-    ) -> Result<SourceLineColumn, NoteError> {
-        let offset = usize::from(offset);
-        if offset > source.len() {
+    ) -> Result<SourceLocation, NoteError> {
+        let raw_offset = usize::from(offset);
+        if raw_offset > source.len() {
             return Err(NoteError::Structure(
                 "source offset exceeds input length",
             ));
         }
-        if !source.is_char_boundary(offset) {
+        if !source.is_char_boundary(raw_offset) {
             return Err(NoteError::Structure(
                 "source offset is not on a character boundary",
             ));
@@ -199,10 +299,10 @@ impl SourceLineIndex {
 
         let line_index = self
             .line_starts
-            .partition_point(|&start| start <= offset)
+            .partition_point(|&start| start <= raw_offset)
             .saturating_sub(1);
         let line_start = self.line_starts.get(line_index).copied().unwrap_or(0);
-        let slice = source.get(line_start..offset).ok_or({
+        let slice = source.get(line_start..raw_offset).ok_or({
             NoteError::Structure("source offset is not on a boundary")
         })?;
         let column_count = slice.chars().count().saturating_add(1);
@@ -214,10 +314,11 @@ impl SourceLineIndex {
             NoteError::Structure("column index out of range")
         })?;
 
-        Ok(SourceLineColumn {
-            line,
-            column,
-        })
+        Ok(SourceLocation::new(
+            offset,
+            SourceLine::try_new(line)?,
+            SourceColumn::try_new(column)?,
+        ))
     }
 }
 
@@ -351,9 +452,9 @@ mod tests {
     fn line_column_starts_at_one() -> Result<(), NoteError> {
         let source = "abc";
         let offset = SourceByteOffset::new(0);
-        let line_column = offset.line_column(source)?;
-        assert_eq!(line_column.line(), 1);
-        assert_eq!(line_column.column(), 1);
+        let location = SourceLocation::try_from_byte_offset(offset, source)?;
+        assert_eq!(location.line().value(), 1);
+        assert_eq!(location.column().value(), 1);
         Ok(())
     }
 
@@ -366,15 +467,16 @@ mod tests {
         let source = "a\u{00E9}\nb";
         let offset = SourceByteOffset::try_from("a".len())
             .map_err(|_error| NoteError::Structure("test error"))?;
-        let line_column = offset.line_column(source)?;
-        assert_eq!(line_column.line(), 1);
-        assert_eq!(line_column.column(), 2);
+        let location = SourceLocation::try_from_byte_offset(offset, source)?;
+        assert_eq!(location.line().value(), 1);
+        assert_eq!(location.column().value(), 2);
 
         let newline_offset = SourceByteOffset::try_from("a\u{00E9}\n".len())
             .map_err(|_error| NoteError::Structure("test error"))?;
-        let line_column_after_newline = newline_offset.line_column(source)?;
-        assert_eq!(line_column_after_newline.line(), 2);
-        assert_eq!(line_column_after_newline.column(), 1);
+        let location_after_newline =
+            SourceLocation::try_from_byte_offset(newline_offset, source)?;
+        assert_eq!(location_after_newline.line().value(), 2);
+        assert_eq!(location_after_newline.column().value(), 1);
         Ok(())
     }
 
@@ -382,7 +484,7 @@ mod tests {
     fn line_column_rejects_out_of_bounds() {
         let source = "abc";
         let offset = SourceByteOffset::new(10);
-        let result = offset.line_column(source);
+        let result = SourceLocation::try_from_byte_offset(offset, source);
         assert!(matches!(result, Err(NoteError::Structure(_))));
     }
 
@@ -390,7 +492,7 @@ mod tests {
     fn line_column_rejects_non_boundary() {
         let source = "a\u{00E9}";
         let offset = SourceByteOffset::new(2);
-        let result = offset.line_column(source);
+        let result = SourceLocation::try_from_byte_offset(offset, source);
         assert!(matches!(result, Err(NoteError::Structure(_))));
     }
 
@@ -404,9 +506,9 @@ mod tests {
         let index = SourceLineIndex::new(source);
         let offset = SourceByteOffset::try_from("first\nsecond".len())
             .map_err(|_error| NoteError::Structure("test error"))?;
-        let line_column = index.line_column(offset, source)?;
-        assert_eq!(line_column.line(), 2);
-        assert_eq!(line_column.column(), 7);
+        let location = index.line_column(offset, source)?;
+        assert_eq!(location.line().value(), 2);
+        assert_eq!(location.column().value(), 7);
         Ok(())
     }
 }
