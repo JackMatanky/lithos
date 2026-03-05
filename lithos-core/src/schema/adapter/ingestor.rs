@@ -6,7 +6,6 @@ use crate::{
     config::aggregate::Config,
     fs::FsReader,
     schema::{
-        aggregate::Timestamp,
         error::SchemaIngestionError,
         raw::{RawPropertyBank, RawSchema},
     },
@@ -17,14 +16,15 @@ const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
 
 /// A raw schema with optional filesystem timestamps (modified, created).
 ///
+/// Timestamps are epoch seconds as `u64`.
+///
 /// # Examples
 /// ```ignore
 /// use lithos_core::schema::adapter::ingestor::RawSchemaWithFileTimes;
 ///
 /// let _tuple: RawSchemaWithFileTimes = todo!("Provide raw schema data");
 /// ```
-pub type RawSchemaWithFileTimes =
-    (RawSchema, Option<Timestamp>, Option<Timestamp>);
+pub type RawSchemaWithFileTimes = (RawSchema, Option<u64>, Option<u64>);
 
 /// Ingestor for loading raw schema files from a file source.
 ///
@@ -177,11 +177,11 @@ impl Ingestor<'_> {
                 // Set name from filename (always, not from file content)
                 raw.name = filename_stem.into();
 
-                // Extract timestamps using FsReader methods
+                // Extract timestamps using FsReader methods and convert to u64
                 let modified =
-                    self.source.modified_at(&path).map(Timestamp::from_secs);
+                    self.source.modified_at(&path).map(|ts| ts.as_secs());
                 let created =
-                    self.source.created_at(&path).map(Timestamp::from_secs);
+                    self.source.created_at(&path).map(|ts| ts.as_secs());
 
                 results.push((raw, modified, created));
             }

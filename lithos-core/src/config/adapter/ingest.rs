@@ -21,10 +21,7 @@ use figment::{
 use tracing::instrument;
 
 use crate::{
-    config::{
-        aggregate::Timestamp, error::ConfigIngestError, raw::RawConfig,
-        vault::VaultRoot,
-    },
+    config::{error::ConfigIngestError, raw::RawConfig},
     fs::FsReader,
 };
 
@@ -270,11 +267,10 @@ impl Ingestor {
         fs_reader: &FsReader,
         file_path: &Path,
     ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
-        // Extract timestamps using FsReader methods
-        let created_at =
-            fs_reader.created_at(file_path).map(Timestamp::from_secs);
+        // Extract timestamps using FsReader methods and convert to u64
+        let created_at = fs_reader.created_at(file_path).map(|ts| ts.as_secs());
         let modified_at =
-            fs_reader.modified_at(file_path).map(Timestamp::from_secs);
+            fs_reader.modified_at(file_path).map(|ts| ts.as_secs());
 
         // Parse TOML content using FsReader
         let config: RawConfig =
@@ -329,8 +325,8 @@ impl Ingestor {
 /// Result tuple containing parsed config and filesystem timestamps.
 ///
 /// Format: `(RawConfig, created_at, modified_at)`.
-pub type RawConfigWithMetadata =
-    (RawConfig, Option<Timestamp>, Option<Timestamp>);
+/// Timestamps are epoch seconds as `u64`.
+pub type RawConfigWithMetadata = (RawConfig, Option<u64>, Option<u64>);
 
 // ----------------------------------------------------------- //
 //                            Tests                            //
