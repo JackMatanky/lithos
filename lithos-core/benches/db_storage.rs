@@ -297,6 +297,7 @@ fn create_test_note(index: usize) -> Note {
         VaultId::new(),
         VaultRoot::try_new(std::path::PathBuf::from("/vault"))
             .expect("valid vault root"),
+        lithos_core::config::aggregate::Version::initial(),
     )
     .expect("config");
     let status = StatusSymbol::try_new(' ').expect("valid status");

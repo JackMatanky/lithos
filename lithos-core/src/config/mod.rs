@@ -23,22 +23,24 @@
 //! ```rust
 //! # use std::path::Path;
 //! # use lithos_core::config::{
-//! #     aggregate::Config,
+//! #     aggregate::{Config, Version},
 //! #     vault::{VaultId, VaultRoot},
-//! #     ingest
+//! #     adapter::ingest::Ingestor
 //! # };
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let vault_root = Path::new("/path/to/vault");
 //! let vault_id = VaultId::new();
 //!
 //! // 1. Ingest raw configuration from files
-//! let raw = ingest::build_merged_raw(vault_root)?;
+//! let ingestor = Ingestor::new(vault_root);
+//! let raw = ingestor.build_merged_raw(vault_root)?;
 //!
 //! // 2. Transform into a validated domain aggregate
 //! let config = Config::build(
 //!     &raw,
 //!     vault_id,
 //!     VaultRoot::try_new(vault_root.to_path_buf())?,
+//!     Version::initial(),
 //! )?;
 //!
 //! // 3. Use the validated configuration
@@ -92,8 +94,6 @@ pub mod vault;
 
 /// Configuration command implementations (CQRS write operations).
 pub mod command;
-/// Figment ingestion boundary for raw config.
-pub mod ingest;
 /// Configuration ports for CQRS.
 pub mod ports;
 /// Configuration query implementations (CQRS read operations).
@@ -125,22 +125,52 @@ pub mod value;
 pub(crate) mod db_table {
     use redb::TableDefinition;
 
-    pub(crate) const CONFIG: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("config");
-    pub(crate) const MERGED_CONFIG_VERSIONS: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("merged_config_versions");
-    pub(crate) const MERGED_CONFIG_ACTIVE: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("merged_config_active");
+    /// Versioned global configuration.
+    ///
+    /// Keys: `"{version}"` → `Global`.
+    /// Example: `"1"` → `Global { ... }`.
+    pub(crate) const GLOBAL_CONFIG: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("global_config");
+
+    /// Versioned vault-specific configuration.
+    ///
+    /// Keys: `"{vault_id}:{version}"` → `Vault`.
+    /// Example: `"abc123:1"` → `Vault { ... }`.
+    pub(crate) const VAULT_CONFIG: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("vault_config");
+
+    /// Versioned final configuration (result of merging global + vault).
+    ///
+    /// Keys: `"{vault_id}:{version}"` → `Config`.
+    /// Example: `"abc123:1"` → `Config { ... }`.
+    pub(crate) const CONFIG_VERSIONS: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("config_versions");
+
+    /// Vault path bidirectional mapping.
+    ///
+    /// Keys: `vault_root.as_key()` → `VaultId`.
     pub(crate) const VAULT_ID_BY_PATH: TableDefinition<&str, &[u8]> =
         TableDefinition::new("vault_id_by_path");
+
+    /// Vault ID to path reverse mapping.
+    ///
+    /// Keys: `vault_id.to_string()` → `VaultRoot`.
     pub(crate) const VAULT_PATH_BY_ID: TableDefinition<&str, &[u8]> =
         TableDefinition::new("vault_path_by_id");
+
+    /// Stores metadata for config staleness checking.
+    ///
+    /// Keys:
+    /// - `"global:{version}"` → Global config metadata
+    /// - `"{vault_id}:{version}"` → Vault config metadata
+    pub(crate) const CONFIG_METADATA: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("config_metadata");
 }
 
-use self::adapter::{command::CommandAdapter, query::QueryAdapter};
+/// Generic command type alias to remove path stuttering: `config::Command` vs
+/// `config::command::Command`.
+pub type Command<C> = command::Command<C>;
 
-/// Redb-backed config command alias.
-pub type RedbConfigCommand<'db> = command::Command<CommandAdapter<'db>>;
-
-/// Redb-backed config query alias.
-pub type RedbConfigQuery<'db> = query::Query<QueryAdapter<'db>>;
+/// Generic query type alias to remove path stuttering: `config::Query` vs
+/// `config::query::Query`.
+pub type Query<Q> = query::Query<Q>;

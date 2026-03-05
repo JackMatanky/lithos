@@ -35,18 +35,15 @@ pub(crate) mod db_table {
         MultimapTableDefinition::new("name_to_id");
 }
 
-pub use adapter::{
-    CommandAdapter as RedbTemplateCommandAdapter,
-    QueryAdapter as RedbTemplateQueryAdapter,
-};
 pub use aggregate::{InputName, Metadata, Template, TemplateName};
 pub use block::{BlockStrategy, TemplateBlock};
 pub use catalog::TemplateCatalog;
-pub use command::Command;
-pub use query::Query;
 pub use value::InputSpec;
 
-/// Convenience type alias for Redb-backed template query.
-pub type RedbTemplateQuery<'db> = Query<RedbTemplateQueryAdapter<'db>>;
-/// Convenience type alias for Redb-backed template command.
-pub type RedbTemplateCommand<'db> = Command<RedbTemplateCommandAdapter<'db>>;
+/// Generic command type alias to remove path stuttering: `template::Command` vs
+/// `template::command::Command`.
+pub type Command<C> = command::Command<C>;
+
+/// Generic query type alias to remove path stuttering: `template::Query` vs
+/// `template::query::Query`.
+pub type Query<Q> = query::Query<Q>;

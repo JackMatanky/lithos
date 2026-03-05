@@ -512,10 +512,130 @@ impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
 #[cfg(test)]
 mod tests {
     /// Test fixtures and builders for Frontmatter tests.
+    #[expect(
+        dead_code,
+        reason = "Fixture helpers are used by multiple test modules"
+    )]
     mod fixtures {
         use chrono::{DateTime, TimeZone as _, Utc};
 
-        use super::super::*;
+        use super::{super::*, TEST_TIMESTAMP};
+        use crate::{config::aggregate::Config, note::error::NoteError};
+
+        /// Builder for creating test Frontmatter instances.
+        pub struct FrontmatterBuilder {
+            fields: HashMap<Box<str>, FieldValue>,
+        }
+
+        impl FrontmatterBuilder {
+            pub fn new() -> Self {
+                Self {
+                    fields: HashMap::new(),
+                }
+            }
+
+            pub fn with_string(mut self, key: &str, value: &str) -> Self {
+                self.fields
+                    .insert(key.into(), FieldValue::String(value.into()));
+                self
+            }
+
+            pub fn with_boolean(mut self, key: &str, value: bool) -> Self {
+                self.fields.insert(key.into(), FieldValue::Boolean(value));
+                self
+            }
+
+            pub fn with_number(mut self, key: &str, value: f64) -> Self {
+                self.fields.insert(key.into(), FieldValue::Number(value));
+                self
+            }
+
+            pub fn with_date(mut self, key: &str, timestamp: i64) -> Self {
+                self.fields.insert(key.into(), FieldValue::Date(timestamp));
+                self
+            }
+
+            pub fn with_array(
+                mut self,
+                key: &str,
+                values: Vec<FieldValue>,
+            ) -> Self {
+                self.fields.insert(key.into(), FieldValue::Array(values));
+                self
+            }
+
+            #[expect(
+                clippy::unnecessary_wraps,
+                reason = "Fixture builder keeps Result parity with fallible \
+                          builders"
+            )]
+            pub fn build(self) -> Result<Frontmatter, NoteError> {
+                Ok(Frontmatter::new(self.fields))
+            }
+        }
+
+        pub fn config_with_custom_frontmatter_keys() -> Config {
+            use crate::config::{
+                frontmatter::RawFrontmatter,
+                raw::RawConfig,
+                vault::{VaultId, VaultRoot},
+            };
+
+            let raw = RawConfig {
+                frontmatter: Some(RawFrontmatter {
+                    alias_key: Some("names".to_owned()),
+                    date_created_key: Some("date_created".to_owned()),
+                    date_modified_key: Some("date_modified".to_owned()),
+                    file_class_key: Some("kind".to_owned()),
+                    tags_key: Some("labels".to_owned()),
+                    title_key: Some("subject".to_owned()),
+                }),
+                ..Default::default()
+            };
+
+            crate::config::aggregate::Config::build(
+                &raw,
+                VaultId::new(),
+                VaultRoot::try_new(std::path::PathBuf::from("/v"))
+                    .expect("vault_root"),
+                crate::config::aggregate::Version::initial(),
+            )
+            .expect("Config build should succeed")
+        }
+
+        pub fn frontmatter_with_custom_keys() -> Frontmatter {
+            FrontmatterBuilder::new()
+                .with_string("subject", "Subj")
+                .with_string("kind", "Note")
+                .with_string("names", "Alias")
+                .build()
+                .expect("Frontmatter build should succeed")
+        }
+
+        pub fn frontmatter_with_title() -> Frontmatter {
+            FrontmatterBuilder::new()
+                .with_string("title", "Test")
+                .build()
+                .expect("Frontmatter build should succeed")
+        }
+
+        pub fn frontmatter_with_string_arrays() -> Frontmatter {
+            FrontmatterBuilder::new()
+                .with_string("single", "a")
+                .with_array("multi", vec![FieldValue::String("b".into())])
+                .build()
+                .expect("Frontmatter build should succeed")
+        }
+
+        pub fn frontmatter_with_scalar_values() -> Frontmatter {
+            FrontmatterBuilder::new()
+                .with_boolean("b", true)
+                .with_number("n", 1.0)
+                .with_string("s", "s")
+                .with_date("d", TEST_TIMESTAMP)
+                .build()
+                .expect("Frontmatter build should succeed")
+        }
 
         pub fn frontmatter_for_try_get() -> Frontmatter {
             let mut fields = HashMap::new();

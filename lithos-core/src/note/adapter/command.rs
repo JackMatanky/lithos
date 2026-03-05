@@ -78,6 +78,7 @@ struct TaskIndexEntry {
 ///     &RawConfig::default(),
 ///     VaultId::new(),
 ///     VaultRoot::try_new(root.clone())?,
+///     lithos_core::config::aggregate::Version::initial(),
 /// )?;
 /// let db_path = root.join("notes.redb");
 /// let db = Database::open(&db_path)?;
@@ -701,6 +702,7 @@ mod tests {
                 VaultId::new(),
                 VaultRoot::try_new(std::path::PathBuf::from("/vault"))
                     .map_err(|e| e.to_string())?,
+                crate::config::aggregate::Version::initial(),
             )
             .map_err(|e| e.to_string())
         }

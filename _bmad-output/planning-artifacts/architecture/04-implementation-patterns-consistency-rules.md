@@ -731,24 +731,17 @@ impl SchemaStore for RedbSchemaStore {
 ✅ **Prefer:**
 
 ```rust
-// <context>/mod.rs - Public API with convenient aliases
-pub type RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>;
-pub type RedbSchemaCommand<'db> = Command<RedbSchemaCommandAdapter<'db>>;
+// <context>/mod.rs - Generic type aliases (no adapter imports, no architecture violation)
+pub type Command<C> = command::Command<C>;
+pub type Query<Q> = query::Query<Q>;
 
-impl<'db> RedbSchemaQuery<'db> {
-    pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(RedbSchemaQueryAdapter::new(db))
-    }
-}
+// <context>/adapter/mod.rs - Type aliases for path stuttering
+pub type Command<'db> = command::Command<'db>;
+pub type Query<'db> = query::Query<'db>;
 
-impl<'db> RedbSchemaCommand<'db> {
-    pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(RedbSchemaCommandAdapter::new(db))
-    }
-}
-
-// CLI code never sees generics:
-let query = RedbSchemaQuery::new_redb(&db);
+// Usage - caller provides concrete adapter:
+use schema::{self, adapter};
+let query = schema::Query::new(adapter::Query::new(&db));
 let schema = query.find_owned_by_name(name)?;
 ```
 
@@ -843,7 +836,8 @@ When implementing port-based CQRS, verify:
 - **Commands:** `save`, `delete`, `update`, `create`.
 - **Port Traits:** `<Context>QueryPort`, `<Context>CommandPort`.
 - **CQRS Types:** `Query<Q>`, `Command<C>` generic over port traits.
-- **Type Aliases:** `Redb<Context>Query<'db>` for ergonomic use.
+- **Type Aliases:** `<Context>Query<'db>` and `<Context>Command<'db>` for ergonomic use (storage-agnostic names).
+- **Adapter Naming:** Adapters use implementation prefix: `RedbSchemaQueryAdapter`, `RedbSchemaCommandAdapter`.
 - **Legacy (deprecated):** Port traits named `<Context>Store` (e.g., `NoteStore`, `SchemaStore`).
 
 ### Database Access Rules
@@ -851,7 +845,8 @@ When implementing port-based CQRS, verify:
 - **Port-Based Access:** Contexts define split storage port traits (e.g., `SchemaQueryPort`, `SchemaCommandPort`).
 - **Generic CQRS:** Command/Query types are generic over ports: `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`.
 - **Zero-Copy Reads:** Ports use GATs to enable closure-based archived access.
-- **Default Backend:** Type aliases hide generics: `RedbSchemaQuery<'db>`.
+- **Type Aliases:** Use storage-agnostic names for public API: `SchemaQuery<'db>`, `SchemaCommand<'db>`.
+- **Adapter Implementation:** Adapters include implementation prefix: `CommandAdapter`, `QueryAdapter` (internal), or `RedbSchemaQueryAdapter` (if multiple backends).
 - **Test Substitution:** Use `FakeSchemaQueryPort` or `FakeSchemaCommandPort` implementing the respective port.
 - **Legacy Note:** Single-store `SchemaStore` traits are deprecated; see Anti-Patterns.
 

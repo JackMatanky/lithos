@@ -58,7 +58,12 @@ mod tests {
     fn test_config(root: PathBuf) -> TestResult<Config> {
         let raw = RawConfig::default();
         let root = VaultRoot::try_new(root)?;
-        Ok(Config::build(&raw, VaultId::new(), root)?)
+        Ok(Config::build(
+            &raw,
+            VaultId::new(),
+            root,
+            lithos_core::config::aggregate::Version::initial(),
+        )?)
     }
 
     fn build_fixture(markdown: &str) -> TestResult<Fixture> {

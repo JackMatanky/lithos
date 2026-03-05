@@ -19,7 +19,7 @@ use crate::{
             PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_CHILDREN,
             SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
         },
-        ports::{NameIdPair, Query},
+        ports::{NameIdPair, Query as QueryPort},
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
@@ -30,27 +30,27 @@ use crate::{
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::adapter::query::QueryAdapter;
+/// use lithos_core::schema::adapter::query::Query;
 ///
 /// let db = todo!("Provide a Database instance");
-/// let adapter = QueryAdapter::new(&db);
+/// let adapter = Query::new(&db);
 /// let _ = adapter;
 /// ```
-pub struct QueryAdapter<'db> {
+pub struct Query<'db> {
     db: &'db Database,
 }
 
-impl<'db> QueryAdapter<'db> {
+impl<'db> Query<'db> {
     #[inline]
     #[must_use]
     /// Create a query adapter for a database.
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::adapter::query::QueryAdapter;
+    /// use lithos_core::schema::adapter::query::Query;
     ///
     /// let db = todo!("Provide a Database instance");
-    /// let adapter = QueryAdapter::new(&db);
+    /// let adapter = Query::new(&db);
     /// let _ = adapter;
     /// ```
     pub const fn new(db: &'db Database) -> Self {
@@ -60,7 +60,7 @@ impl<'db> QueryAdapter<'db> {
     }
 }
 
-impl QueryAdapter<'_> {
+impl Query<'_> {
     /// Check if a stored schema is fresh based on version and timestamps.
     ///
     /// Returns `Ok(true)` if fresh, `Ok(false)` if stale.
@@ -123,7 +123,7 @@ impl QueryAdapter<'_> {
     }
 }
 
-impl Query for QueryAdapter<'_> {
+impl QueryPort for Query<'_> {
     type Error = DbError;
 
     #[inline]

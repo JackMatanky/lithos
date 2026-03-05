@@ -23,6 +23,113 @@ use super::{
 //                     Public Domain Types                     //
 // ----------------------------------------------------------- //
 
+/// Version number for vault configuration staleness tracking.
+///
+/// Incremented each time the vault config file changes. Used to determine
+/// whether the cached merged config needs rebuilding.
+///
+/// # Version Sequence
+///
+/// - Starts at 1 (not 0)
+/// - Increments on each vault config file change
+/// - Independent of `GlobalVersion` and `Config::Version`
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(transparent)]
+pub struct VaultVersion(u64);
+
+impl VaultVersion {
+    /// Returns the initial version.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::config::vault::VaultVersion;
+    ///
+    /// let version = VaultVersion::initial();
+    /// assert_eq!(version.value(), 1);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn initial() -> Self {
+        Self(1)
+    }
+
+    /// Returns the numeric version value.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::config::vault::VaultVersion;
+    ///
+    /// let version = VaultVersion::initial();
+    /// assert_eq!(version.value(), 1);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+
+    /// Returns the next version, or an overflow error.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::ValidationFailed`] if the version number
+    /// overflows.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::config::vault::VaultVersion;
+    ///
+    /// let version = VaultVersion::initial();
+    /// let next = version.next().expect("version increment succeeded");
+    /// assert_eq!(next.value(), 2);
+    /// ```
+    #[inline]
+    pub fn next(self) -> Result<Self, ConfigError> {
+        self.0.checked_add(1).map(Self).ok_or_else(|| {
+            ConfigError::ValidationFailed {
+                field: "vault_version".into(),
+                message: "vault version overflow".into(),
+            }
+        })
+    }
+}
+
+impl std::fmt::Display for VaultVersion {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<u64> for VaultVersion {
+    type Error = ConfigError;
+
+    #[inline]
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        if value == 0 {
+            return Err(ConfigError::ValidationFailed {
+                field: "vault_version".into(),
+                message: "vault version cannot be zero".into(),
+            });
+        }
+        Ok(Self(value))
+    }
+}
+
 /// Vault-specific configuration overrides.
 ///
 /// `Vault` contains settings that are specific to a single vault and
@@ -43,7 +150,6 @@ use super::{
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    Default,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -51,6 +157,8 @@ use super::{
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Vault {
+    /// Version number for this vault config.
+    version: VaultVersion,
     /// Overridden logging settings.
     logging: Option<Logging>,
     /// Overridden paths settings.
@@ -61,22 +169,44 @@ pub struct Vault {
     task: Option<Task>,
 }
 
+impl Default for Vault {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            version: VaultVersion::initial(),
+            logging: None,
+            paths: Paths::default(),
+            frontmatter: None,
+            task: None,
+        }
+    }
+}
+
 impl Vault {
     /// Create vault-specific configuration.
     #[inline]
     #[must_use]
     pub const fn new(
+        version: VaultVersion,
         logging: Option<Logging>,
         paths: Paths,
         frontmatter: Option<Frontmatter>,
         task: Option<Task>,
     ) -> Self {
         Self {
+            version,
             logging,
             paths,
             frontmatter,
             task,
         }
+    }
+
+    /// Return the version of this vault config.
+    #[inline]
+    #[must_use]
+    pub const fn version(&self) -> VaultVersion {
+        self.version
     }
 
     /// Return the overridden paths settings.
@@ -105,6 +235,47 @@ impl Vault {
     #[must_use]
     pub fn logging(&self) -> Option<&Logging> {
         self.logging.as_ref()
+    }
+}
+
+impl TryFrom<&super::raw::RawConfig> for Vault {
+    type Error = super::error::ConfigError;
+
+    /// Convert raw configuration into validated Vault config.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] if any field fails validation.
+    #[inline]
+    fn try_from(raw: &super::raw::RawConfig) -> Result<Self, Self::Error> {
+        // Convert logging (None if not present)
+        let logging = raw
+            .logging
+            .as_ref()
+            .map(|l| super::logging::Logging::try_from(l.clone()))
+            .transpose()?;
+
+        // Convert paths to vault::Paths (includes cache)
+        let paths = Paths::try_from(&raw.paths)?;
+
+        // Convert frontmatter (None if not present)
+        let frontmatter = raw
+            .frontmatter
+            .as_ref()
+            .map(|f| super::frontmatter::Frontmatter::try_from(f.clone()))
+            .transpose()?;
+
+        // Convert task (None if not present)
+        let task = raw
+            .task
+            .as_ref()
+            .map(|t| super::task::Task::try_from(t.clone()))
+            .transpose()?;
+
+        // Version will be set by Command layer when recording
+        let version = VaultVersion::initial();
+
+        Ok(Self::new(version, logging, paths, frontmatter, task))
     }
 }
 
@@ -266,6 +437,91 @@ impl Paths {
             schema,
             property_bank,
         }
+    }
+}
+
+impl TryFrom<&super::raw::RawPathsConfig> for Paths {
+    type Error = super::error::ConfigError;
+
+    /// Convert raw paths configuration into vault Paths.
+    ///
+    /// Vault paths include all path overrides (cache, template, schema,
+    /// `property_bank`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::ValidationFailed`] if any path is invalid.
+    #[inline]
+    fn try_from(raw: &super::raw::RawPathsConfig) -> Result<Self, Self::Error> {
+        use std::path::PathBuf;
+
+        use super::{
+            error::ConfigError,
+            paths::{Cache, PropertyBank, Schema, Template},
+        };
+
+        // Parse cache directory (if present)
+        let cache = raw
+            .cache_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Cache::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "cache_dir".into(),
+                        message: format!("invalid cache_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        // Parse template directory (if present)
+        let template = raw
+            .templates_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Template::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "templates_dir".into(),
+                        message: format!("invalid templates_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        // Parse schema directory (if present)
+        let schema = raw
+            .schemas_dir
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                Schema::try_new(PathBuf::from(s)).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "schemas_dir".into(),
+                        message: format!("invalid schemas_dir: {e}").into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        // Parse property bank filename (if present)
+        let property_bank = raw
+            .property_bank_file
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                PropertyBank::try_new(s.clone()).map_err(|e| {
+                    ConfigError::ValidationFailed {
+                        field: "property_bank_file".into(),
+                        message: format!("invalid property_bank_file: {e}")
+                            .into(),
+                    }
+                })
+            })
+            .transpose()?;
+
+        Ok(Self::new(cache, template, schema, property_bank))
     }
 }
 
@@ -584,6 +840,40 @@ mod tests {
     use super::*;
     use crate::config::logging::{LogLevel, Logging};
 
+    mod version {
+        use super::*;
+
+        #[test]
+        fn initial_is_one() {
+            assert_eq!(VaultVersion::initial().value(), 1);
+        }
+
+        #[test]
+        fn next_increments_value() {
+            let v = VaultVersion::initial();
+            let next = v.next().expect("increment should succeed");
+            assert_eq!(next.value(), 2);
+        }
+
+        #[test]
+        fn try_from_accepts_positive() {
+            let v = VaultVersion::try_from(42).expect("valid version");
+            assert_eq!(v.value(), 42);
+        }
+
+        #[test]
+        fn try_from_rejects_zero() {
+            let result = VaultVersion::try_from(0);
+            assert!(result.is_err(), "VaultVersion should reject zero");
+        }
+
+        #[test]
+        fn display_shows_value() {
+            let v = VaultVersion::initial();
+            assert_eq!(v.to_string(), "1");
+        }
+    }
+
     mod fixtures {
         use std::path::PathBuf;
 
@@ -603,11 +893,18 @@ mod tests {
 
         #[test]
         fn vault_new_constructs_with_given_values() {
+            let version = VaultVersion::initial();
             let paths = Paths::default();
             let logging = Logging::new(LogLevel::Debug);
-            let vault =
-                Vault::new(Some(logging.clone()), paths.clone(), None, None);
+            let vault = Vault::new(
+                version,
+                Some(logging.clone()),
+                paths.clone(),
+                None,
+                None,
+            );
 
+            assert_eq!(vault.version(), version);
             assert_eq!(vault.paths(), &paths);
             assert_eq!(vault.logging(), Some(&logging));
         }

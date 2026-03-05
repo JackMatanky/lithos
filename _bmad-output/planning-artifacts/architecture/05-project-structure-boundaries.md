@@ -50,7 +50,7 @@ lithos/
 │       │   ├── reader.rs       # Zero-copy read helpers
 │       │   └── writer.rs       # Batch write helpers
 │       ├── note/               # NOTE CONTEXT (Knowledge Graph) - BUSINESS
-│       │   ├── mod.rs          # Public API, re-exports, type aliases (RedbNoteQuery)
+│       │   ├── mod.rs          # Public API, re-exports, type aliases (NoteQuery, NoteCommand)
 │       │   ├── aggregate.rs    # Note aggregate root (domain, has rkyv derives)
 │       │   ├── raw.rs          # RawNote (serde only, pre-validation, optional)
 │       │   ├── command.rs      # Command<C: NoteCommandPort> write operations
@@ -69,7 +69,7 @@ lithos/
 │       │   ├── error.rs        # Context-specific errors
 │       │   └── events.rs       # Domain events
 │       ├── schema/             # SCHEMA CONTEXT (Validation) - BUSINESS
-│       │   ├── mod.rs          # Public API, re-exports, type aliases (RedbSchemaQuery)
+│       │   ├── mod.rs          # Public API, re-exports, type aliases (SchemaQuery, SchemaCommand)
 │       │   ├── aggregate.rs    # Schema aggregate root (domain, has rkyv derives)
 │       │   ├── raw.rs          # RawSchema (serde only, pre-validation)
 │       │   ├── command.rs      # Command<C: SchemaCommandPort> lifecycle management
@@ -167,7 +167,7 @@ lithos/
   - Each context defines **split storage ports** with GATs (e.g., `schema::ports::Query`, `schema::ports::Command`)
   - CQRS types generic over respective ports: `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`
   - Context-scoped adapters: `schema::adapters::QueryAdapter<'db>` and `schema::adapters::CommandAdapter<'db>` implement ports
-  - Type aliases hide complexity: `RedbSchemaQuery<'db> = Query<QueryAdapter<'db>>`
+  - Type aliases hide complexity: `SchemaQuery<'db> = Query<QueryAdapter<'db>>` (storage-agnostic names)
   - Port split prevents interface bloat and enables read-only test fakes
   - Adapters scoped to context (not in generic `db/`) for cohesion and independence
 

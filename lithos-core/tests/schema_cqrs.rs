@@ -29,7 +29,7 @@ use common::*;
 use lithos_core::{
     db::Database,
     schema::{
-        RedbSchemaCommand, RedbSchemaQuery,
+        self as schema_mod, adapter,
         aggregate::{SchemaId, SchemaName},
         bank::PropertyBank,
         property::{Multiplicity, Optionality, PropertyId, PropertyName},
@@ -220,17 +220,13 @@ mod property_bank {
         // Save with first database connection
         {
             let db = Database::open(&db_path)?;
-            let command = RedbSchemaCommand::new(
-                lithos_core::schema::adapter::command::CommandAdapter::new(&db),
-            );
+            let command = schema_mod::Command::new(adapter::Command::new(&db));
             command.save_property_bank(&bank)?;
         } // Database closed
 
         // WHEN: Reopening database
         let db = Database::open(&db_path)?;
-        let query = RedbSchemaQuery::new(
-            lithos_core::schema::adapter::query::QueryAdapter::new(&db),
-        );
+        let query = schema_mod::Query::new(adapter::Query::new(&db));
 
         // THEN: PropertyBank is intact
         let loaded = query.get_property_bank()?;
@@ -853,17 +849,13 @@ mod schema {
         // Save with first connection
         {
             let db = Database::open(&db_path)?;
-            let command = RedbSchemaCommand::new(
-                lithos_core::schema::adapter::command::CommandAdapter::new(&db),
-            );
+            let command = schema_mod::Command::new(adapter::Command::new(&db));
             command.save(&schema)?;
         } // Database closed
 
         // WHEN: Reopening database
         let db = Database::open(&db_path)?;
-        let query = RedbSchemaQuery::new(
-            lithos_core::schema::adapter::query::QueryAdapter::new(&db),
-        );
+        let query = schema_mod::Query::new(adapter::Query::new(&db));
 
         // THEN: Schema intact
         let loaded = query

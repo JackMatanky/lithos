@@ -31,6 +31,8 @@ use super::{
 #[rkyv(bytecheck(bounds()))]
 #[non_exhaustive]
 pub struct Config {
+    /// Version number for this merged config snapshot.
+    version: Version,
     /// Vault metadata with versioning and naming.
     vault_metadata: Metadata,
     /// Merged logging configuration.
@@ -53,6 +55,13 @@ impl Config {
     #[must_use]
     pub const fn vault_metadata(&self) -> &Metadata {
         &self.vault_metadata
+    }
+
+    /// Return the version of this configuration.
+    #[inline]
+    #[must_use]
+    pub const fn version(&self) -> Version {
+        self.version
     }
 
     /// Return the logging configuration.
@@ -83,6 +92,18 @@ impl Config {
         &self.task
     }
 
+    /// Create a new Config with the specified version, keeping all other fields
+    /// unchanged.
+    ///
+    /// This is used when atomically allocating a version number during
+    /// persistence.
+    #[inline]
+    #[must_use]
+    pub fn with_version(mut self, version: Version) -> Self {
+        self.version = version;
+        self
+    }
+
     /// Build validated Config from Figment-merged raw configuration.
     ///
     /// # Errors
@@ -91,12 +112,13 @@ impl Config {
     #[instrument(
         skip(raw, vault_root),
         level = "debug",
-        fields(operation = "build_config", vault_id = %vault_id)
+        fields(operation = "build_config", vault_id = %vault_id, version = %version)
     )]
     pub fn build(
         raw: &raw::RawConfig,
         vault_id: VaultId,
         vault_root: VaultRoot,
+        version: Version,
     ) -> Result<Self, ConfigError> {
         let vault_metadata = Metadata::new(vault_id, vault_root, None, None)?;
 
@@ -124,6 +146,7 @@ impl Config {
             .unwrap_or_default();
 
         let mut config = Self {
+            version,
             frontmatter,
             paths,
             logging,
@@ -177,6 +200,8 @@ impl ArchivedConfig {
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     serde::Serialize,
     serde::Deserialize,
@@ -242,6 +267,89 @@ impl TryFrom<u64> for Version {
     }
 }
 
+/// Unix timestamp in seconds since epoch.
+///
+/// Used for tracking file modification times and metadata recording times.
+/// Supports config staleness detection by comparing file timestamps.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct Timestamp(u64);
+
+impl Timestamp {
+    /// Returns the current UTC timestamp in seconds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::config::aggregate::Timestamp;
+    ///
+    /// let now = Timestamp::now();
+    /// assert!(now.as_secs() > 0);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn now() -> Self {
+        let secs =
+            chrono::Utc::now().timestamp().max(0).try_into().unwrap_or(0);
+        Self(secs)
+    }
+
+    /// Creates a timestamp from seconds since epoch.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::config::aggregate::Timestamp;
+    ///
+    /// let ts = Timestamp::from_secs(1000);
+    /// assert_eq!(ts.as_secs(), 1000);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn from_secs(secs: u64) -> Self {
+        Self(secs)
+    }
+
+    /// Returns the timestamp as seconds since epoch.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_core::config::aggregate::Timestamp;
+    ///
+    /// let ts = Timestamp::from_secs(1000);
+    /// assert_eq!(ts.as_secs(), 1000);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn as_secs(self) -> u64 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for Timestamp {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -272,6 +380,7 @@ mod tests {
                 .expect("package version is non-empty");
 
             Config {
+                version: Version::initial(),
                 vault_metadata: Metadata::new(
                     VaultId::new(),
                     test_root,
@@ -309,14 +418,24 @@ mod tests {
                 task: None,
                 trusted_vaults: None,
             };
-            Config::build(&raw, vault_id(), vault_root("/vault"))
-                .expect("Config build should succeed with sample data")
+            Config::build(
+                &raw,
+                vault_id(),
+                vault_root("/vault"),
+                Version::initial(),
+            )
+            .expect("Config build should succeed with sample data")
         }
 
         pub fn merged_config_with_empty_inputs() -> Config {
             let raw = raw::RawConfig::default();
-            Config::build(&raw, vault_id(), vault_root("/vault"))
-                .expect("Merge with empty values should succeed")
+            Config::build(
+                &raw,
+                vault_id(),
+                vault_root("/vault"),
+                Version::initial(),
+            )
+            .expect("Merge with empty values should succeed")
         }
 
         pub fn config_with_cleared_events() -> Config {
@@ -362,6 +481,7 @@ mod tests {
                 &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
+                Version::initial(),
             )
             .unwrap();
             assert_eq!(
@@ -377,6 +497,7 @@ mod tests {
                 &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
+                Version::initial(),
             )
             .unwrap();
             assert_eq!(
@@ -446,6 +567,7 @@ mod tests {
                 &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
+                Version::initial(),
             )
             .unwrap();
             assert_eq!(
@@ -473,6 +595,7 @@ mod tests {
                 &raw,
                 fixtures::vault_id(),
                 fixtures::vault_root("/vault"),
+                Version::initial(),
             )
             .unwrap();
             assert_eq!(

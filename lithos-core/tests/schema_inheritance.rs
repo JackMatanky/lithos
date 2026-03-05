@@ -48,7 +48,12 @@ fn write_file(root: &Path, relative: &str, content: &str) -> TestResult {
 fn test_config(root: &Path) -> TestResult<Config> {
     let raw = RawConfig::default();
     let root = VaultRoot::try_new(root.to_path_buf())?;
-    let config = Config::build(&raw, VaultId::new(), root)?;
+    let config = Config::build(
+        &raw,
+        VaultId::new(),
+        root,
+        lithos_core::config::aggregate::Version::initial(),
+    )?;
     Ok(config)
 }
 

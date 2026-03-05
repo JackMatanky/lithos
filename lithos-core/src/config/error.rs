@@ -137,12 +137,32 @@ pub enum ConfigQueryError {
 }
 
 /// Errors returned while ingesting raw configuration sources.
-#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ConfigIngestError {
     /// Figment provider or extraction error.
     #[error("Config ingestion failed: {0}")]
     Figment(Box<figment::Error>),
+
+    /// I/O error reading config file.
+    #[error("Failed to read config file {path}: {source}")]
+    Io {
+        /// Path to the config file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// TOML parsing error.
+    #[error("Failed to parse TOML config file {path}: {source}")]
+    TomlParse {
+        /// Path to the config file.
+        path: std::path::PathBuf,
+        /// Underlying TOML error.
+        #[source]
+        source: toml::de::Error,
+    },
 }
 
 impl From<ConfigIngestError> for ConfigCommandError {
