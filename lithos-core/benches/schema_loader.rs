@@ -304,9 +304,7 @@ use lithos_core::{
     db::Database,
     fs::FsReader,
     schema::{
-        adapter::{
-            command::CommandAdapter, ingestor::Ingestor, query::QueryAdapter,
-        },
+        adapter::{self, ingestor::Ingestor},
         aggregate::{Schema, SchemaId, Timestamp},
         bank::{BankVersion, PropertyBank},
         command::Command,
@@ -748,7 +746,7 @@ fn setup_db_with_schemas(
     let db_path = db_dir.path().join("bench.db");
     let db = Database::open(&db_path).expect("Failed to open DB");
 
-    let cmd = Command::new(CommandAdapter::new(&db));
+    let cmd = Command::new(adapter::Command::new(&db));
 
     // Create and save PropertyBank
     let bank = PropertyBank::new();
@@ -796,7 +794,7 @@ fn bench_staleness_serial(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(QueryAdapter::new(&db));
+                let qry = Query::new(adapter::Query::new(&db));
 
                 b.iter(|| {
                     let mut stale_count = 0;
@@ -841,7 +839,7 @@ fn bench_staleness_batch(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(QueryAdapter::new(&db));
+                let qry = Query::new(adapter::Query::new(&db));
 
                 // Build staleness checks
                 let checks: Vec<(
@@ -884,7 +882,7 @@ fn bench_schema_lookup_serial(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(QueryAdapter::new(&db));
+                let qry = Query::new(adapter::Query::new(&db));
 
                 b.iter(|| {
                     let mut found_count = 0;
@@ -922,7 +920,7 @@ fn bench_schema_lookup_batch(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(QueryAdapter::new(&db));
+                let qry = Query::new(adapter::Query::new(&db));
 
                 b.iter(|| {
                     let schemas = qry

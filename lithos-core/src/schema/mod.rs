@@ -87,10 +87,10 @@ pub(crate) mod db_table {
 
 // --- Public API ---
 
-use self::adapter::{command::CommandAdapter, query::QueryAdapter};
+/// Generic command type alias to remove path stuttering: `schema::Command` vs
+/// `schema::command::Command`.
+pub type Command<C> = command::Command<C>;
 
-/// Schema command type alias (storage-agnostic).
-pub type SchemaCommand<'db> = command::Command<CommandAdapter<'db>>;
-
-/// Schema query type alias (storage-agnostic).
-pub type SchemaQuery<'db> = query::Query<QueryAdapter<'db>>;
+/// Generic query type alias to remove path stuttering: `schema::Query` vs
+/// `schema::query::Query`.
+pub type Query<Q> = query::Query<Q>;

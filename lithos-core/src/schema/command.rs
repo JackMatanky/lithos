@@ -17,13 +17,10 @@ use super::{
 /// # Examples
 ///
 /// ```ignore
-/// use lithos_core::schema::{
-///     SchemaCommand,
-///     adapter::command::CommandAdapter,
-/// };
+/// use lithos_core::schema::{self, adapter};
 ///
 /// let db = todo!("Provide a Database instance");
-/// let command = SchemaCommand::new(CommandAdapter::new(&db));
+/// let command = schema::Command::new(adapter::Command::new(&db));
 /// ```
 pub struct Command<C> {
     command_port: C,
@@ -35,13 +32,10 @@ impl<C> Command<C> {
     /// # Examples
     ///
     /// ```ignore
-    /// use lithos_core::schema::{
-    ///     SchemaCommand,
-    ///     adapter::command::CommandAdapter,
-    /// };
+    /// use lithos_core::schema::{self, adapter};
     ///
     /// let db = todo!("Provide a Database instance");
-    /// let command = SchemaCommand::new(CommandAdapter::new(&db));
+    /// let command = schema::Command::new(adapter::Command::new(&db));
     /// ```
     #[inline]
     #[must_use]
@@ -200,10 +194,10 @@ where
     }
 }
 
-impl Command<crate::schema::adapter::command::CommandAdapter<'_>> {
+impl Command<crate::schema::adapter::command::Command<'_>> {
     /// Save many schemas with filesystem timestamps.
     ///
-    /// This method is only available when using the concrete `CommandAdapter`.
+    /// This method is only available when using the concrete redb adapter.
     /// It preserves filesystem metadata by calling the adapter's extended API.
     ///
     /// # Errors
@@ -215,8 +209,9 @@ impl Command<crate::schema::adapter::command::CommandAdapter<'_>> {
     /// # Examples
     ///
     /// ```ignore
-    /// # use lithos_core::schema::command::Command;
-    /// # let command = todo!("Provide a CommandAdapter-backed Command");
+    /// # use lithos_core::schema::{self, adapter};
+    /// # let db = todo!("Provide database");
+    /// # let command = schema::Command::new(adapter::Command::new(&db));
     /// # let schemas: Vec<lithos_core::schema::aggregate::Schema> = Vec::new();
     /// # let metadata: Vec<lithos_core::schema::adapter::stored::StoredMetadata> = Vec::new();
     /// command.save_many_with_metadata(&schemas, &metadata)?;
@@ -281,8 +276,8 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use crate::schema::{
-        SchemaCommand,
-        adapter::{command::CommandAdapter, stored::StoredSchema},
+        self as schema_mod,
+        adapter::{self, stored::StoredSchema},
         aggregate::{SchemaId, SchemaName},
         db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
     };
@@ -294,7 +289,7 @@ mod tests {
         fn save_persists_schema_by_id_and_name_index() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")
@@ -332,7 +327,7 @@ mod tests {
         fn delete_removes_schema_by_id() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
 
             let schema = fixtures::schema_fixture(
                 fixtures::TEST_SCHEMA_ID_PROJECT,
@@ -365,7 +360,7 @@ mod tests {
         fn save_batch_persists_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = SchemaCommand::new(CommandAdapter::new(&db));
+            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
 
             let schema_a =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")

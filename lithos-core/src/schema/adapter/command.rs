@@ -23,7 +23,7 @@ use crate::{
             PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_CHILDREN,
             SCHEMA_ID_BY_NAME, SCHEMA_METADATA, SCHEMA_PARENT,
         },
-        ports::Command,
+        ports::Command as CommandPort,
         property::{Multiplicity, Optionality},
     },
 };
@@ -32,27 +32,27 @@ use crate::{
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::adapter::command::CommandAdapter;
+/// use lithos_core::schema::adapter::command::Command;
 ///
 /// let db = todo!("Provide a Database instance");
-/// let adapter = CommandAdapter::new(&db);
+/// let adapter = Command::new(&db);
 /// let _ = adapter;
 /// ```
-pub struct CommandAdapter<'db> {
+pub struct Command<'db> {
     db: &'db Database,
 }
 
-impl<'db> CommandAdapter<'db> {
+impl<'db> Command<'db> {
     #[inline]
     #[must_use]
     /// Create a command adapter for a database.
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::adapter::command::CommandAdapter;
+    /// use lithos_core::schema::adapter::command::Command;
     ///
     /// let db = todo!("Provide a Database instance");
-    /// let adapter = CommandAdapter::new(&db);
+    /// let adapter = Command::new(&db);
     /// let _ = adapter;
     /// ```
     pub const fn new(db: &'db Database) -> Self {
@@ -187,7 +187,7 @@ impl<'db> CommandAdapter<'db> {
     }
 }
 
-impl Command for CommandAdapter<'_> {
+impl CommandPort for Command<'_> {
     type Error = DbError;
 
     #[inline]
@@ -462,7 +462,7 @@ impl Command for CommandAdapter<'_> {
 }
 
 // Private helper methods for inheritance tracking
-impl CommandAdapter<'_> {
+impl Command<'_> {
     /// Load existing parent references for all children in the batch.
     fn load_old_parent_refs(
         &self,
