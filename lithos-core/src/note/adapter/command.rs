@@ -14,14 +14,18 @@ use crate::{
         aggregate::{Note, NoteId},
         db_table::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
-            PATH_TO_ID, TAGS_TO_NOTES, TASKS_BY_COMPLETED_DATE,
-            TASKS_BY_CREATED_DATE, TASKS_BY_DUE_DATE, TASKS_BY_PRIORITY,
-            TASKS_BY_PROJECT, TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
+            PATH_TO_ID, TAGS_TO_NOTES, TASKS, TASKS_BY_COMPLETED_DATE,
+            TASKS_BY_CREATED_DATE, TASKS_BY_DEPENDS_ON, TASKS_BY_DUE_DATE,
+            TASKS_BY_METADATA, TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
         },
         error::NoteError,
         frontmatter::Frontmatter,
         paths::NotePath,
         ports::Command,
+        position::SourceByteOffset,
+        stored::{StoredTask, metadata_index_keys},
+        structure::Heading,
+        task::{TaskMetadata, TaskText},
         value::FieldValue,
     },
 };
@@ -39,13 +43,14 @@ struct IndexData {
 
 #[derive(Debug, Default)]
 struct TaskIndexData {
-    completed_dates: Vec<i64>,
-    created_dates: Vec<i64>,
-    due_dates: Vec<i64>,
-    reminder_dates: Vec<i64>,
-    statuses: Vec<Box<str>>,
-    priorities: Vec<f64>,
-    projects: Vec<Box<str>>,
+    tasks: Vec<TaskIndexEntry>,
+    dependencies_enabled: bool,
+}
+
+#[derive(Debug)]
+struct TaskIndexEntry {
+    stored: StoredTask,
+    metadata_keys: Vec<Box<str>>,
 }
 
 /// Command implementation for Note write operations.
@@ -102,7 +107,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         id_str: &str,
     ) -> Result<Option<IndexData>, DbError> {
         let note = self.db.get_owned::<Note>(NOTES, id_str)?;
-        Ok(note.as_ref().map(|note| self.collect_index_data(note)))
+        note.as_ref().map(|note| self.collect_index_data(note)).transpose()
     }
 
     fn ensure_unique_path(
@@ -119,7 +124,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         Ok(())
     }
 
-    fn collect_index_data(&self, note: &Note) -> IndexData {
+    fn collect_index_data(&self, note: &Note) -> Result<IndexData, DbError> {
         let frontmatter = note.frontmatter();
         let aliases = frontmatter
             .map(|fm| fm.aliases(self.config).map(Into::into).collect())
@@ -130,15 +135,15 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         let frontmatter_entries =
             frontmatter.map(Self::frontmatter_entries).unwrap_or_default();
 
-        IndexData {
+        Ok(IndexData {
             path: note.path().as_str().into(),
             folder: Self::note_folder(note.path().as_str()),
             tags: note.tags().map(|tag| tag.full_path().into()).collect(),
             aliases,
             file_class,
-            task_indexes: Self::task_indexes(note),
+            task_indexes: Self::task_indexes(note, self.config)?,
             frontmatter_entries,
-        }
+        })
     }
 
     fn insert_indexes(
@@ -168,7 +173,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             batch.multimap_insert(FRONTMATTER_KV, entry.as_ref(), id_str)?;
         }
 
-        Self::insert_task_indexes(batch, &index_data.task_indexes, id_str)
+        Self::insert_task_indexes(batch, &index_data.task_indexes)
     }
 
     fn remove_indexes(
@@ -198,91 +203,130 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             batch.multimap_remove(FRONTMATTER_KV, entry.as_ref(), id_str)?;
         }
 
-        Self::remove_task_indexes(batch, &index_data.task_indexes, id_str)
+        Self::remove_task_indexes(batch, &index_data.task_indexes)
     }
 
-    fn task_indexes(note: &Note) -> TaskIndexData {
-        let mut data = TaskIndexData::default();
+    fn task_indexes(
+        note: &Note,
+        config: &Config,
+    ) -> Result<TaskIndexData, DbError> {
+        let mut data = TaskIndexData {
+            tasks: Vec::new(),
+            dependencies_enabled: config.task().dependencies_enabled(),
+        };
+        let status_config = config.task().status();
+        let index_all_fields = config.task().indexed().is_empty();
 
         for task in note.tasks() {
-            data.statuses.push(task.status().as_str().into());
+            let status_symbol = status_config
+                .symbol_for_name(task.status())
+                .ok_or_else(|| {
+                    DbError::Table(
+                        "task status should have a symbol mapping".into(),
+                    )
+                })?;
+            let heading = Self::task_heading(note, task.position());
+            let metadata = task.metadata().clone();
+            let metadata_keys =
+                Self::task_metadata_keys(&metadata, config, index_all_fields);
+            let depends_on =
+                Self::task_depends_on(&metadata, data.dependencies_enabled);
 
-            if let Some(timestamp) = task.created_at() {
-                data.created_dates.push(timestamp.as_i64());
-            }
-            if let Some(timestamp) = task.due_at() {
-                data.due_dates.push(timestamp.as_i64());
-            }
-            if let Some(timestamp) = task.reminder_at() {
-                data.reminder_dates.push(timestamp.as_i64());
-            }
-            if let Some(timestamp) = task.completed_at() {
-                data.completed_dates.push(timestamp.as_i64());
-            }
+            let text = TaskText::try_new(task.text())
+                .map_err(|err| DbError::Table(err.to_string()))?;
+            let stored = StoredTask::new(
+                task.id(),
+                note.id(),
+                note.path().clone(),
+                heading,
+                task.position(),
+                None,
+                task.status().clone(),
+                status_symbol,
+                "unknown".into(),
+                text,
+                task.tags().cloned().collect(),
+                metadata,
+                task.schedule().clone(),
+                None,
+                None,
+                depends_on,
+            );
 
-            if let Some(priority) = task.metadata().get_number("priority") {
-                data.priorities.push(priority);
-            }
-            if let Some(project) = task.metadata().get_string("project") {
-                data.projects.push(project.into());
-            }
+            data.tasks.push(TaskIndexEntry {
+                stored,
+                metadata_keys,
+            });
         }
 
-        data
+        Ok(data)
     }
 
     fn insert_task_indexes(
         batch: &mut BatchWriter,
         index_data: &TaskIndexData,
-        id_str: &str,
     ) -> Result<(), DbError> {
         let mut itoa_buffer = itoa::Buffer::new();
-        let mut ryu_buffer = ryu::Buffer::new();
 
-        for status in &index_data.statuses {
-            batch.multimap_insert(TASKS_BY_STATUS, status.as_ref(), id_str)?;
-        }
-        for date in &index_data.created_dates {
+        for entry in &index_data.tasks {
+            let stored = &entry.stored;
+            let task_id = Uuid::from(stored.id());
+            let mut id_buffer = Uuid::encode_buffer();
+            let id_str = task_id.as_hyphenated().encode_lower(&mut id_buffer);
+
+            batch.put(TASKS, id_str, stored)?;
             batch.multimap_insert(
-                TASKS_BY_CREATED_DATE,
-                itoa_buffer.format(*date),
+                TASKS_BY_STATUS,
+                stored.status_name().as_str(),
                 id_str,
             )?;
-        }
-        for date in &index_data.due_dates {
-            batch.multimap_insert(
-                TASKS_BY_DUE_DATE,
-                itoa_buffer.format(*date),
-                id_str,
-            )?;
-        }
-        for date in &index_data.reminder_dates {
-            batch.multimap_insert(
-                TASKS_BY_REMINDER_DATE,
-                itoa_buffer.format(*date),
-                id_str,
-            )?;
-        }
-        for date in &index_data.completed_dates {
-            batch.multimap_insert(
-                TASKS_BY_COMPLETED_DATE,
-                itoa_buffer.format(*date),
-                id_str,
-            )?;
-        }
-        for priority in &index_data.priorities {
-            batch.multimap_insert(
-                TASKS_BY_PRIORITY,
-                ryu_buffer.format(*priority),
-                id_str,
-            )?;
-        }
-        for project in &index_data.projects {
-            batch.multimap_insert(
-                TASKS_BY_PROJECT,
-                project.as_ref(),
-                id_str,
-            )?;
+
+            if let Some(timestamp) = stored.created_at() {
+                batch.multimap_insert(
+                    TASKS_BY_CREATED_DATE,
+                    itoa_buffer.format(timestamp.as_i64()),
+                    id_str,
+                )?;
+            }
+            if let Some(timestamp) = stored.due_at() {
+                batch.multimap_insert(
+                    TASKS_BY_DUE_DATE,
+                    itoa_buffer.format(timestamp.as_i64()),
+                    id_str,
+                )?;
+            }
+            if let Some(timestamp) = stored.reminder_at() {
+                batch.multimap_insert(
+                    TASKS_BY_REMINDER_DATE,
+                    itoa_buffer.format(timestamp.as_i64()),
+                    id_str,
+                )?;
+            }
+            if let Some(timestamp) = stored.completed_at() {
+                batch.multimap_insert(
+                    TASKS_BY_COMPLETED_DATE,
+                    itoa_buffer.format(timestamp.as_i64()),
+                    id_str,
+                )?;
+            }
+
+            for key in &entry.metadata_keys {
+                batch.multimap_insert(
+                    TASKS_BY_METADATA,
+                    key.as_ref(),
+                    id_str,
+                )?;
+            }
+
+            if index_data.dependencies_enabled {
+                for depends_on in stored.depends_on() {
+                    batch.multimap_insert(
+                        TASKS_BY_DEPENDS_ON,
+                        depends_on.as_ref(),
+                        id_str,
+                    )?;
+                }
+            }
         }
         Ok(())
     }
@@ -290,57 +334,137 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
     fn remove_task_indexes(
         batch: &mut BatchWriter,
         index_data: &TaskIndexData,
-        id_str: &str,
     ) -> Result<(), DbError> {
         let mut itoa_buffer = itoa::Buffer::new();
-        let mut ryu_buffer = ryu::Buffer::new();
 
-        for status in &index_data.statuses {
-            batch.multimap_remove(TASKS_BY_STATUS, status.as_ref(), id_str)?;
-        }
-        for date in &index_data.created_dates {
+        for entry in &index_data.tasks {
+            let stored = &entry.stored;
+            let task_id = Uuid::from(stored.id());
+            let mut id_buffer = Uuid::encode_buffer();
+            let id_str = task_id.as_hyphenated().encode_lower(&mut id_buffer);
+
+            batch.delete(TASKS, id_str)?;
             batch.multimap_remove(
-                TASKS_BY_CREATED_DATE,
-                itoa_buffer.format(*date),
+                TASKS_BY_STATUS,
+                stored.status_name().as_str(),
                 id_str,
             )?;
-        }
-        for date in &index_data.due_dates {
-            batch.multimap_remove(
-                TASKS_BY_DUE_DATE,
-                itoa_buffer.format(*date),
-                id_str,
-            )?;
-        }
-        for date in &index_data.reminder_dates {
-            batch.multimap_remove(
-                TASKS_BY_REMINDER_DATE,
-                itoa_buffer.format(*date),
-                id_str,
-            )?;
-        }
-        for date in &index_data.completed_dates {
-            batch.multimap_remove(
-                TASKS_BY_COMPLETED_DATE,
-                itoa_buffer.format(*date),
-                id_str,
-            )?;
-        }
-        for priority in &index_data.priorities {
-            batch.multimap_remove(
-                TASKS_BY_PRIORITY,
-                ryu_buffer.format(*priority),
-                id_str,
-            )?;
-        }
-        for project in &index_data.projects {
-            batch.multimap_remove(
-                TASKS_BY_PROJECT,
-                project.as_ref(),
-                id_str,
-            )?;
+
+            if let Some(timestamp) = stored.created_at() {
+                batch.multimap_remove(
+                    TASKS_BY_CREATED_DATE,
+                    itoa_buffer.format(timestamp.as_i64()),
+                    id_str,
+                )?;
+            }
+            if let Some(timestamp) = stored.due_at() {
+                batch.multimap_remove(
+                    TASKS_BY_DUE_DATE,
+                    itoa_buffer.format(timestamp.as_i64()),
+                    id_str,
+                )?;
+            }
+            if let Some(timestamp) = stored.reminder_at() {
+                batch.multimap_remove(
+                    TASKS_BY_REMINDER_DATE,
+                    itoa_buffer.format(timestamp.as_i64()),
+                    id_str,
+                )?;
+            }
+            if let Some(timestamp) = stored.completed_at() {
+                batch.multimap_remove(
+                    TASKS_BY_COMPLETED_DATE,
+                    itoa_buffer.format(timestamp.as_i64()),
+                    id_str,
+                )?;
+            }
+
+            for key in &entry.metadata_keys {
+                batch.multimap_remove(
+                    TASKS_BY_METADATA,
+                    key.as_ref(),
+                    id_str,
+                )?;
+            }
+
+            if index_data.dependencies_enabled {
+                for depends_on in stored.depends_on() {
+                    batch.multimap_remove(
+                        TASKS_BY_DEPENDS_ON,
+                        depends_on.as_ref(),
+                        id_str,
+                    )?;
+                }
+            }
         }
         Ok(())
+    }
+
+    fn task_metadata_keys(
+        metadata: &TaskMetadata,
+        config: &Config,
+        index_all: bool,
+    ) -> Vec<Box<str>> {
+        let indexed = config.task().indexed();
+        let mut keys = Vec::new();
+
+        for (field, value) in metadata.fields() {
+            let field_name = field.as_str();
+            if index_all
+                || indexed.iter().any(|name| name.as_ref() == field_name)
+            {
+                keys.extend(metadata_index_keys(field_name, value));
+            }
+        }
+
+        keys
+    }
+
+    fn task_depends_on(
+        metadata: &TaskMetadata,
+        enabled: bool,
+    ) -> Vec<Box<str>> {
+        if !enabled {
+            return Vec::new();
+        }
+
+        let Some(value) = metadata.get("dependsOn") else {
+            return Vec::new();
+        };
+
+        if let Some(text) = value.as_str() {
+            return text
+                .split(',')
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(Into::into)
+                .collect();
+        }
+
+        if let Some(arr) = value.as_array() {
+            return arr
+                .iter()
+                .filter_map(|item| item.as_str())
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(Into::into)
+                .collect();
+        }
+
+        Vec::new()
+    }
+
+    fn task_heading(
+        note: &Note,
+        position: SourceByteOffset,
+    ) -> Option<Heading> {
+        for section in note.sections() {
+            let range = section.range();
+            if position >= range.start() && position < range.end() {
+                return section.heading().cloned();
+            }
+        }
+        None
     }
 
     fn frontmatter_entries(frontmatter: &Frontmatter) -> Vec<Box<str>> {
@@ -423,7 +547,7 @@ impl Command for CommandAdapter<'_, '_> {
         let mut id_buffer = Uuid::encode_buffer();
         let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
-        let index_data = self.collect_index_data(&note);
+        let index_data = self.collect_index_data(&note)?;
 
         self.db.batch_write(|batch| {
             batch.put(NOTES, id_str, &note)?;
@@ -468,7 +592,7 @@ impl Command for CommandAdapter<'_, '_> {
         }) {
             self.ensure_unique_path(note.path(), current_id)?;
         }
-        let index_data = self.collect_index_data(&note);
+        let index_data = self.collect_index_data(&note)?;
 
         self.db.batch_write(|batch| {
             if let Some(old_index_data) = old_data {

@@ -14,13 +14,15 @@ use crate::{
         aggregate::{AliasName, FileClassName, Note, NoteId},
         db_table::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
-            PATH_TO_ID, TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
-            TASKS_BY_DUE_DATE, TASKS_BY_PRIORITY, TASKS_BY_PROJECT,
-            TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
+            PATH_TO_ID, TASKS, TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
+            TASKS_BY_DUE_DATE, TASKS_BY_METADATA, TASKS_BY_REMINDER_DATE,
+            TASKS_BY_STATUS,
         },
         paths::{FolderPath, NotePath},
         ports::Query,
-        task::{TaskPriority, TaskTimestamp},
+        stored::{StoredTask, metadata_index_keys},
+        task::{TaskDateKind, TaskPriority, TaskTimestamp},
+        value::FieldValue,
     },
 };
 
@@ -65,8 +67,38 @@ impl QueryAdapter {
         index_table: redb::MultimapTableDefinition<&str, &str>,
         index_key: &str,
     ) -> Result<Vec<Note>, crate::db::DbError> {
-        let note_refs = self.db.multimap_get(index_table, index_key)?;
+        use std::collections::BTreeSet;
 
+        let task_refs = self.db.multimap_get(index_table, index_key)?;
+        let mut note_ids = BTreeSet::new();
+
+        for task_id_str in task_refs {
+            if let Some(stored) =
+                self.db.get_owned::<StoredTask>(TASKS, &task_id_str)?
+            {
+                note_ids.insert(stored.note_id());
+            }
+        }
+
+        let mut notes = Vec::with_capacity(note_ids.len());
+        for note_id in note_ids {
+            let mut id_buffer = Uuid::encode_buffer();
+            let id_str = Uuid::from(note_id)
+                .as_hyphenated()
+                .encode_lower(&mut id_buffer);
+            if let Some(note) = self.db.get_owned::<Note>(NOTES, id_str)? {
+                notes.push(note);
+            }
+        }
+        Ok(notes)
+    }
+
+    fn list_notes_by_index(
+        &self,
+        index_table: redb::MultimapTableDefinition<&str, &str>,
+        index_key: &str,
+    ) -> Result<Vec<Note>, crate::db::DbError> {
+        let note_refs = self.db.multimap_get(index_table, index_key)?;
         let mut notes = Vec::with_capacity(note_refs.len());
         for note_id_str in note_refs {
             if let Some(note) =
@@ -76,6 +108,39 @@ impl QueryAdapter {
             }
         }
         Ok(notes)
+    }
+
+    fn list_tasks_by_index(
+        &self,
+        index_table: redb::MultimapTableDefinition<&str, &str>,
+        index_key: &str,
+    ) -> Result<Vec<StoredTask>, crate::db::DbError> {
+        let task_refs = self.db.multimap_get(index_table, index_key)?;
+        let mut tasks = Vec::with_capacity(task_refs.len());
+
+        for task_id_str in task_refs {
+            if let Some(task) =
+                self.db.get_owned::<StoredTask>(TASKS, &task_id_str)?
+            {
+                tasks.push(task);
+            }
+        }
+        Ok(tasks)
+    }
+
+    fn list_tasks_by_metadata_index(
+        &self,
+        field: &str,
+        value: &FieldValue,
+    ) -> Result<Vec<StoredTask>, crate::db::DbError> {
+        let keys = metadata_index_keys(field, value);
+        let mut tasks = Vec::new();
+        for key in keys {
+            tasks.extend(
+                self.list_tasks_by_index(TASKS_BY_METADATA, key.as_ref())?,
+            );
+        }
+        Ok(tasks)
     }
 }
 
@@ -190,9 +255,13 @@ impl Query for QueryAdapter {
         &self,
         priority: TaskPriority,
     ) -> Result<Vec<Note>, Self::Error> {
-        let mut buffer = ryu::Buffer::new();
-        let priority_str = buffer.format(priority.as_f64());
-        self.list_notes_by_task_index(TASKS_BY_PRIORITY, priority_str)
+        let value = FieldValue::Number(priority.as_f64());
+        let mut keys = metadata_index_keys("priority", &value);
+        if let Some(key) = keys.pop() {
+            self.list_notes_by_task_index(TASKS_BY_METADATA, key.as_ref())
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     #[inline]
@@ -200,7 +269,13 @@ impl Query for QueryAdapter {
         &self,
         project: &str,
     ) -> Result<Vec<Note>, Self::Error> {
-        self.list_notes_by_task_index(TASKS_BY_PROJECT, project)
+        let value = FieldValue::String(project.into());
+        let mut keys = metadata_index_keys("project", &value);
+        if let Some(key) = keys.pop() {
+            self.list_notes_by_task_index(TASKS_BY_METADATA, key.as_ref())
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     #[inline]
@@ -219,6 +294,40 @@ impl Query for QueryAdapter {
         status: &StatusName,
     ) -> Result<Vec<Note>, Self::Error> {
         self.list_notes_by_task_index(TASKS_BY_STATUS, status.as_str())
+    }
+
+    #[inline]
+    fn list_tasks_by_status(
+        &self,
+        status: &StatusName,
+    ) -> Result<Vec<StoredTask>, Self::Error> {
+        self.list_tasks_by_index(TASKS_BY_STATUS, status.as_str())
+    }
+
+    #[inline]
+    fn list_tasks_by_date(
+        &self,
+        kind: TaskDateKind,
+        date: TaskTimestamp,
+    ) -> Result<Vec<StoredTask>, Self::Error> {
+        let mut buffer = itoa::Buffer::new();
+        let date_str = buffer.format(date.as_i64());
+        let table = match kind {
+            TaskDateKind::Created => TASKS_BY_CREATED_DATE,
+            TaskDateKind::Due => TASKS_BY_DUE_DATE,
+            TaskDateKind::Reminder => TASKS_BY_REMINDER_DATE,
+            TaskDateKind::Completed => TASKS_BY_COMPLETED_DATE,
+        };
+        self.list_tasks_by_index(table, date_str)
+    }
+
+    #[inline]
+    fn list_tasks_by_metadata(
+        &self,
+        field: &str,
+        value: &FieldValue,
+    ) -> Result<Vec<StoredTask>, Self::Error> {
+        self.list_tasks_by_metadata_index(field, value)
     }
 
     #[inline]
@@ -244,7 +353,7 @@ impl Query for QueryAdapter {
             reason = "Writing to String is infallible"
         )]
         let _ = write!(&mut combined_key, "{}:{value}", key.as_str());
-        self.list_notes_by_task_index(FRONTMATTER_KV, &combined_key)
+        self.list_notes_by_index(FRONTMATTER_KV, &combined_key)
     }
 
     #[inline]

@@ -16,7 +16,9 @@
 use super::{
     aggregate::{AliasName, FileClassName, Note, NoteId},
     paths::{FolderPath, NotePath},
-    task::{TaskPriority, TaskTimestamp},
+    stored::StoredTask,
+    task::{TaskDateKind, TaskPriority, TaskTimestamp},
+    value::FieldValue,
 };
 use crate::config::{frontmatter::FrontmatterKey, task::StatusName};
 
@@ -199,6 +201,38 @@ pub trait Query: Send + Sync {
         &self,
         status: &StatusName,
     ) -> Result<Vec<Note>, Self::Error>;
+
+    /// Lists tasks by a specific task date field.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage-specific error if query fails.
+    fn list_tasks_by_date(
+        &self,
+        kind: TaskDateKind,
+        date: TaskTimestamp,
+    ) -> Result<Vec<StoredTask>, Self::Error>;
+
+    /// Lists tasks by a metadata field/value pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage-specific error if query fails.
+    fn list_tasks_by_metadata(
+        &self,
+        field: &str,
+        value: &FieldValue,
+    ) -> Result<Vec<StoredTask>, Self::Error>;
+
+    /// Lists tasks with a specific status name.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage-specific error if query fails.
+    fn list_tasks_by_status(
+        &self,
+        status: &StatusName,
+    ) -> Result<Vec<StoredTask>, Self::Error>;
 
     /// Accesses a note by ID as archived data, enabling zero-copy reads.
     ///

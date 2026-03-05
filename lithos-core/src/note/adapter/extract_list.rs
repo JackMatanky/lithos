@@ -1416,6 +1416,7 @@ mod tests {
                 dates: None,
                 fields: Some(fields),
                 indexing: None,
+                dependencies: None,
             }),
             ..Default::default()
         };

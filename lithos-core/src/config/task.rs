@@ -76,6 +76,8 @@ pub struct Task {
     fields: HashMap<Box<str>, FieldSpec>,
     /// List of field names to be indexed.
     indexed: Vec<Box<str>>,
+    /// Whether task dependency indexing is enabled.
+    dependencies_enabled: bool,
 }
 
 impl Default for Task {
@@ -163,6 +165,10 @@ impl Task {
             completed,
             fields,
             indexed,
+            dependencies_enabled: raw
+                .dependencies
+                .and_then(|deps| deps.enabled)
+                .unwrap_or(false),
         })
     }
 
@@ -227,6 +233,13 @@ impl Task {
     /// Return the list of indexed field names.
     pub fn indexed(&self) -> &[Box<str>] {
         &self.indexed
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return whether task dependency indexing is enabled.
+    pub fn dependencies_enabled(&self) -> bool {
+        self.dependencies_enabled
     }
 
     #[inline]
@@ -607,6 +620,7 @@ mod tests {
                 }),
                 fields: Some(fields),
                 indexing: None,
+                dependencies: None,
             }
         }
     }
@@ -731,6 +745,7 @@ mod tests {
             indexing: Some(RawIndexingConfig {
                 indexed_fields: Some(vec!["unknown".to_owned()]),
             }),
+            dependencies: None,
         };
 
         let result = Task::try_from_raw(raw);

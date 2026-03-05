@@ -171,6 +171,32 @@ pub struct TaskSchedule {
     completed: Option<TaskTimestamp>,
 }
 
+impl TaskSchedule {
+    #[inline]
+    #[must_use]
+    pub const fn created(&self) -> Option<TaskTimestamp> {
+        self.created
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn due(&self) -> Option<TaskTimestamp> {
+        self.due
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn reminder(&self) -> Option<TaskTimestamp> {
+        self.reminder
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn completed(&self) -> Option<TaskTimestamp> {
+        self.completed
+    }
+}
+
 /// Validated task text content.
 #[derive(
     Debug,
@@ -566,6 +592,19 @@ impl From<TaskTimestamp> for std::time::SystemTime {
             .checked_add(std::time::Duration::from_secs(secs))
             .unwrap_or(std::time::UNIX_EPOCH)
     }
+}
+
+/// Task date fields used for date-based queries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskDateKind {
+    /// Created timestamp.
+    Created,
+    /// Due timestamp.
+    Due,
+    /// Reminder timestamp.
+    Reminder,
+    /// Completed timestamp.
+    Completed,
 }
 
 /// Validated task priority.

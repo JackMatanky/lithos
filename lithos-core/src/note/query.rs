@@ -8,7 +8,9 @@ use super::{
     error::NoteQueryError,
     paths::{FolderPath, NotePath},
     ports as note_ports,
-    task::{TaskPriority, TaskTimestamp},
+    stored::StoredTask,
+    task::{TaskDateKind, TaskPriority, TaskTimestamp},
+    value::FieldValue,
 };
 use crate::config::{frontmatter::FrontmatterKey, task::StatusName};
 
@@ -200,6 +202,50 @@ where
     ) -> Result<Vec<Note>, NoteQueryError> {
         self.query_port
             .list_by_task_status(status)
+            .map_err(|error| NoteQueryError::Storage(error.into()))
+    }
+
+    /// Lists tasks with a specific status name.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query fails.
+    #[inline]
+    pub fn list_tasks_by_status(
+        &self,
+        status: &StatusName,
+    ) -> Result<Vec<StoredTask>, NoteQueryError> {
+        self.query_port
+            .list_tasks_by_status(status)
+            .map_err(|error| NoteQueryError::Storage(error.into()))
+    }
+
+    /// Lists tasks by a specific task date field.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query fails.
+    #[inline]
+    pub fn list_tasks_by_date(
+        &self,
+        kind: TaskDateKind,
+        date: TaskTimestamp,
+    ) -> Result<Vec<StoredTask>, NoteQueryError> {
+        self.query_port
+            .list_tasks_by_date(kind, date)
+            .map_err(|error| NoteQueryError::Storage(error.into()))
+    }
+
+    /// Lists tasks by a metadata field/value pair.
+    ///
+    /// # Errors
+    /// Returns `NoteQueryError` if query fails.
+    #[inline]
+    pub fn list_tasks_by_metadata(
+        &self,
+        field: &str,
+        value: &FieldValue,
+    ) -> Result<Vec<StoredTask>, NoteQueryError> {
+        self.query_port
+            .list_tasks_by_metadata(field, value)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
