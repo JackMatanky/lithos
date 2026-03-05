@@ -174,3 +174,10 @@ pub type RedbConfigCommand<'db> = command::Command<CommandAdapter<'db>>;
 
 /// Redb-backed config query alias.
 pub type RedbConfigQuery<'db> = query::Query<QueryAdapter<'db>>;
+
+/// Redb-backed config service alias.
+///
+/// This is the recommended entry point for config operations. It provides
+/// staleness detection and automatic reloading when configs change.
+pub type RedbConfigService<'db> =
+    crate::application::config::ConfigService<'db>;

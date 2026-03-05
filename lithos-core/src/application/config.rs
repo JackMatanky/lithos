@@ -213,10 +213,13 @@ impl<'db> ConfigService<'db> {
             let is_stale = self.query.is_global_stale(created_at, modified)?;
             Ok((raw, created_at, modified, is_stale))
         } else {
-            // No file - use default, mark as stale to ensure DB is
-            // initialized
-            let now = Timestamp::now();
-            Ok((RawConfig::default(), None, now, true))
+            // No file - use defaults
+            // Only mark as stale if we haven't saved defaults yet
+            // (no metadata with created_at = None exists)
+            // Use a fixed timestamp (epoch) to check if defaults were saved
+            let is_stale =
+                self.query.is_global_stale(None, Timestamp::from_secs(0))?;
+            Ok((RawConfig::default(), None, Timestamp::from_secs(0), is_stale))
         }
     }
 
@@ -240,10 +243,16 @@ impl<'db> ConfigService<'db> {
                 self.query.is_vault_stale(vault_id, created_at, modified)?;
             Ok((raw, created_at, modified, is_stale))
         } else {
-            // No file - use default, mark as stale to ensure DB is
-            // initialized
-            let now = Timestamp::now();
-            Ok((RawConfig::default(), None, now, true))
+            // No file - use defaults
+            // Only mark as stale if we haven't saved defaults yet
+            // (no metadata with created_at = None exists)
+            // Use a fixed timestamp (epoch) to check if defaults were saved
+            let is_stale = self.query.is_vault_stale(
+                vault_id,
+                None,
+                Timestamp::from_secs(0),
+            )?;
+            Ok((RawConfig::default(), None, Timestamp::from_secs(0), is_stale))
         }
     }
 

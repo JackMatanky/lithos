@@ -8,18 +8,19 @@
     clippy::tests_outside_test_module,
     reason = "Integration tests are top-level by default."
 )]
-#![allow(deprecated, reason = "Tests use deprecated rebuild_config for now")]
 
 use std::path::{Path, PathBuf};
 
 use lithos_core::{
     bounds::Bounds,
     config::{
-        RedbConfigCommand, RedbConfigQuery,
+        RedbConfigService,
         adapter::{command::CommandAdapter, query::QueryAdapter},
-        error::{ConfigCommandError, ConfigError},
+        command::Command,
+        error::ConfigError,
+        query::Query,
         value::FieldSpec,
-        vault::{VaultId, VaultRoot},
+        vault::VaultRoot,
     },
     db::Database,
 };
@@ -85,17 +86,11 @@ fn write_vault_config(
     Ok(vault_root)
 }
 
-fn rebuild_and_load(
-    command: &RedbConfigCommand,
-    query: &RedbConfigQuery,
-    vault_id: VaultId,
+fn load_config(
+    service: &RedbConfigService,
     vault_root: &VaultRoot,
 ) -> TestResult<lithos_core::config::aggregate::Config> {
-    command.rebuild_config(vault_id, vault_root)?;
-    let config = query.find(vault_id)?;
-    let config = config.ok_or_else(|| {
-        std::io::Error::other("Expected active config to be available")
-    })?;
+    let config = service.load(vault_root)?;
     Ok(config)
 }
 
@@ -199,31 +194,23 @@ fn config_cqrs_integration_flow() -> TestResult {
     let db = Database::open(&db_path)?;
 
     // 2. Setup Services using convenience wrappers
-    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
-    let query = RedbConfigQuery::new(QueryAdapter::new(&db));
+    let command = Command::new(CommandAdapter::new(&db));
+    let query = Query::new(QueryAdapter::new(&db));
+    let service = RedbConfigService::new(query, command);
 
     // 3. Define Inputs
-    let vault_id = VaultId::new();
     let vault_root = VaultRoot::try_new(dir.path().join("my_vault"))?;
 
     // Create dummy vault directory so ingestion doesn't fail
     std::fs::create_dir_all(vault_root.as_path())?;
 
-    // 4. Execute Command: Rebuild Merged Config
-    let version = command.rebuild_config(vault_id, &vault_root)?;
+    // 4. Load Config (with staleness detection)
+    let config = service.load(&vault_root)?;
 
-    assert_eq!(version.value(), 1, "First version should be 1");
-
-    // 5. Execute Query: Get Active Config
-    let config = query.find(vault_id)?;
-
-    assert!(config.is_some(), "Should return active config");
-    let config = config.unwrap();
-
-    // 6. Verify Content
+    // 5. Verify Content
     assert_eq!(
-        config.vault_metadata().id(),
-        vault_id,
+        config.vault_metadata().root(),
+        &vault_root,
         "Config should belong to the requested vault"
     );
     // Default log level is Info
@@ -240,12 +227,12 @@ fn config_cqrs_integration_flow() -> TestResult {
 fn config_ingestion_parsing_and_merge_from_vault_file() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
-    let query = RedbConfigQuery::new(QueryAdapter::new(&db));
+    let command = Command::new(CommandAdapter::new(&db));
+    let query = Query::new(QueryAdapter::new(&db));
+    let service = RedbConfigService::new(query, command);
 
-    let vault_id = VaultId::new();
     let vault_root = write_vault_config(&dir, VAULT_CONFIG_TOML)?;
-    let config = rebuild_and_load(&command, &query, vault_id, &vault_root)?;
+    let config = load_config(&service, &vault_root)?;
     assert_merged_config(&config)?;
 
     Ok(())
@@ -255,14 +242,19 @@ fn config_ingestion_parsing_and_merge_from_vault_file() -> TestResult {
 fn config_ingestion_rejects_invalid_toml() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
-    let vault_id = VaultId::new();
+    let command = Command::new(CommandAdapter::new(&db));
+    let query = Query::new(QueryAdapter::new(&db));
+    let service = RedbConfigService::new(query, command);
+
     let vault_root =
         write_vault_config(&dir, "[logging]\nlog_level = \"debug\n")?;
 
-    let result = command.rebuild_config(vault_id, &vault_root);
+    let result = service.load(&vault_root);
     let error = result.expect_err("Expected invalid TOML to error");
-    if matches!(error, ConfigCommandError::Ingest(_)) {
+    if matches!(
+        error,
+        lithos_core::application::config::ConfigServiceError::Ingestion(_)
+    ) {
         Ok(())
     } else {
         Err(std::io::Error::other("Expected ingest error for invalid TOML")
@@ -274,19 +266,23 @@ fn config_ingestion_rejects_invalid_toml() -> TestResult {
 fn config_ingestion_rejects_unknown_indexed_field() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
-    let vault_id = VaultId::new();
+    let command = Command::new(CommandAdapter::new(&db));
+    let query = Query::new(QueryAdapter::new(&db));
+    let service = RedbConfigService::new(query, command);
+
     let vault_root = write_vault_config(
         &dir,
         "[task]\nenabled = true\n\n[task.indexing]\nindexed_fields = \
          [\"priority\"]\n",
     )?;
 
-    let result = command.rebuild_config(vault_id, &vault_root);
+    let result = service.load(&vault_root);
     let error = result.expect_err("Expected invalid task indexing to error");
     if matches!(
         error,
-        ConfigCommandError::Domain(ConfigError::ValidationFailed { .. })
+        lithos_core::application::config::ConfigServiceError::Domain(
+            ConfigError::ValidationFailed { .. }
+        )
     ) {
         Ok(())
     } else {
@@ -301,18 +297,22 @@ fn config_ingestion_rejects_unknown_indexed_field() -> TestResult {
 fn config_ingestion_rejects_invalid_field_name() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
-    let vault_id = VaultId::new();
+    let command = Command::new(CommandAdapter::new(&db));
+    let query = Query::new(QueryAdapter::new(&db));
+    let service = RedbConfigService::new(query, command);
+
     let vault_root = write_vault_config(
         &dir,
         "[task.fields.\"bad name\"]\ntype = \"string\"\n",
     )?;
 
-    let result = command.rebuild_config(vault_id, &vault_root);
+    let result = service.load(&vault_root);
     let error = result.expect_err("Expected invalid field name to error");
     if matches!(
         error,
-        ConfigCommandError::Domain(ConfigError::ValidationFailed { .. })
+        lithos_core::application::config::ConfigServiceError::Domain(
+            ConfigError::ValidationFailed { .. }
+        )
     ) {
         Ok(())
     } else {
@@ -327,32 +327,23 @@ fn config_ingestion_rejects_invalid_field_name() -> TestResult {
 fn config_rebuild_is_idempotent_for_same_inputs() -> TestResult {
     let (dir, db) = setup_db()?;
 
-    let command = RedbConfigCommand::new(CommandAdapter::new(&db));
-    let query = RedbConfigQuery::new(QueryAdapter::new(&db));
+    let command = Command::new(CommandAdapter::new(&db));
+    let query = Query::new(QueryAdapter::new(&db));
+    let service = RedbConfigService::new(query, command);
 
-    let vault_id = VaultId::new();
     let vault_root = write_vault_config(&dir, VAULT_CONFIG_TOML)?;
 
-    let v1 = command.rebuild_config(vault_id, &vault_root)?;
-    let first = query.find(vault_id)?;
-    let first = first.ok_or_else(|| {
-        std::io::Error::other("Expected config after first rebuild")
-    })?;
+    // First load - should rebuild from files
+    let first = service.load(&vault_root)?;
 
-    let v2 = command.rebuild_config(vault_id, &vault_root)?;
-    let second = query.find(vault_id)?;
-    let second = second.ok_or_else(|| {
-        std::io::Error::other("Expected config after second rebuild")
-    })?;
+    // Second load - should use cached config (no staleness)
+    let second = service.load(&vault_root)?;
 
-    assert_eq!(v1.value(), 1, "Expected first rebuild to be version 1");
-    assert_eq!(v2.value(), 2, "Expected second rebuild to increment version");
-
-    // Version should differ, but all other fields should be identical
-    assert_ne!(
+    // Both loads should return identical configs (same version since cached)
+    assert_eq!(
         first.version(),
         second.version(),
-        "Version should increment on rebuild"
+        "Version should be same when loading cached config"
     );
     assert_eq!(
         first.vault_metadata(),
