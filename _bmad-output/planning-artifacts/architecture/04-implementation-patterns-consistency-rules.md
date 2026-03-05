@@ -731,24 +731,17 @@ impl SchemaStore for RedbSchemaStore {
 ✅ **Prefer:**
 
 ```rust
-// <context>/mod.rs - Public API with convenient aliases
-pub type RedbSchemaQuery<'db> = Query<RedbSchemaQueryAdapter<'db>>;
-pub type RedbSchemaCommand<'db> = Command<RedbSchemaCommandAdapter<'db>>;
+// <context>/mod.rs - Generic type aliases (no adapter imports, no architecture violation)
+pub type Command<C> = command::Command<C>;
+pub type Query<Q> = query::Query<Q>;
 
-impl<'db> RedbSchemaQuery<'db> {
-    pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(RedbSchemaQueryAdapter::new(db))
-    }
-}
+// <context>/adapter/mod.rs - Type aliases for path stuttering
+pub type Command<'db> = command::Command<'db>;
+pub type Query<'db> = query::Query<'db>;
 
-impl<'db> RedbSchemaCommand<'db> {
-    pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(RedbSchemaCommandAdapter::new(db))
-    }
-}
-
-// CLI code never sees generics:
-let query = RedbSchemaQuery::new_redb(&db);
+// Usage - caller provides concrete adapter:
+use schema::{self, adapter};
+let query = schema::Query::new(adapter::Query::new(&db));
 let schema = query.find_owned_by_name(name)?;
 ```
 

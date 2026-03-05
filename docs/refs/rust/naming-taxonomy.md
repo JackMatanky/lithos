@@ -189,16 +189,24 @@ pub trait Command {
     fn save_many(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
 }
 
-// ✅ GOOD: Context-scoped adapters
-pub struct QueryAdapter<'db> { /* redb transaction */ }
-impl<'db> schema::ports::Query for QueryAdapter<'db> { ... }
+// ✅ GOOD: Adapters without suffix (use module namespacing)
+// In schema/adapter/command.rs:
+pub struct Command<'db> { /* redb transaction */ }
+impl<'db> schema::ports::Command for Command<'db> { ... }
 
-pub struct CommandAdapter<'db> { /* redb write transaction */ }
-impl<'db> schema::ports::Command for CommandAdapter<'db> { ... }
+// In schema/adapter/query.rs:
+pub struct Query<'db> { /* redb transaction */ }
+impl<'db> schema::ports::Query for Query<'db> { ... }
 
-// ✅ GOOD: Storage-agnostic type aliases for ergonomics
-pub type SchemaQuery<'db> = Query<QueryAdapter<'db>>;
-pub type SchemaCommand<'db> = Command<CommandAdapter<'db>>;
+// ✅ GOOD: Generic type aliases in domain (no adapter imports)
+// In schema/mod.rs:
+pub type Command<C> = command::Command<C>;
+pub type Query<Q> = query::Query<Q>;
+
+// ✅ GOOD: Type aliases in adapter mod to remove stuttering
+// In schema/adapter/mod.rs:
+pub type Command<'db> = command::Command<'db>;
+pub type Query<'db> = query::Query<'db>;
 ```
 
 ---

@@ -99,17 +99,17 @@ impl schema::ports::Query for QueryAdapter<'_> {
 Defined in `<context>/mod.rs` to hide generic complexity from application code:
 
 ```rust
-// schema/mod.rs
-use crate::schema::adapters::{QueryAdapter, CommandAdapter};
+// schema/mod.rs - Generic type aliases (no adapter imports)
+pub type Command<C> = command::Command<C>;
+pub type Query<Q> = query::Query<Q>;
 
-pub type RedbSchemaQuery<'db> = Query<QueryAdapter<'db>>;
-pub type RedbSchemaCommand<'db> = Command<CommandAdapter<'db>>;
+// schema/adapter/mod.rs - Remove path stuttering
+pub type Command<'db> = command::Command<'db>;
+pub type Query<'db> = query::Query<'db>;
 
-impl<'db> RedbSchemaQuery<'db> {
-    pub fn new_redb(db: &'db Database) -> Self {
-        Self::new(QueryAdapter::new(db))
-    }
-}
+// Usage:
+use schema::{self, adapter};
+let query = schema::Query::new(adapter::Query::new(&db));
 ```
 
 ### 4. Application Layer for Orchestration
@@ -119,9 +119,9 @@ Cross-context workflows are coordinated in the **application layer** within `lit
 ```rust
 // application/services/note_creation.rs
 pub struct NoteCreationService<'db> {
-    note_cmd: note::RedbCommand<'db>,
-    template_query: template::RedbQuery<'db>,
-    schema_query: schema::RedbQuery<'db>,
+    note_cmd: note::Command<note::adapter::Command<'db>>,
+    template_query: template::Query<template::adapter::Query<'db>>,
+    schema_query: schema::Query<schema::adapter::Query<'db>>,
 }
 
 impl NoteCreationService<'_> {
@@ -234,7 +234,7 @@ Initial benchmarks of this pattern (vs direct DB usage) show negligible overhead
 | Risk | Mitigation |
 | :--- | :--- |
 | **Port Bloat** | Keep ports capability-driven; only add methods for validated query shapes. |
-| **Generic Proliferation** | Use type aliases (`RedbSchemaQuery`) to hide generics from 99% of call sites. |
+| **Generic Proliferation** | Use type aliases (`schema::Query`, `schema::adapter::Query`) to hide generics from most call sites. |
 | **Object Safety** | If `dyn` is truly needed, provide a separate `ObjectSafeStore` trait for the cold tier only. |
 
 ## Command-Side Read-for-Write
