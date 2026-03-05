@@ -36,6 +36,11 @@ To activate specialized agents, use: `"As [agent-name], ..."` (e.g., `"As dev, i
 ### Critical Coding Standards
 - **Zero-copy patterns** for performance-critical paths via GAT-based port traits
 - **Port-based CQRS**: CQRS types generic over split storage ports (`Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`)
+- **Three-tier type alias pattern**:
+  - Domain: `pub type Command<C> = command::Command<C>` (generic, no adapter import)
+  - Adapter: `pub type Command<'db> = command::Command<'db>` (removes stuttering)
+  - Usage: `schema::Command::new(adapter::Command::new(&db))`
+- **Adapter naming**: No suffix - use module disambiguation (`adapter::Command` not `CommandAdapter`)
 - **Context isolation**: Business contexts (note, schema, template) don't import each other
 - **Type-driven design**: Private fields by default, validation at construction, newtype wrappers
 - **Test-first development**: Red-green-refactor cycle required

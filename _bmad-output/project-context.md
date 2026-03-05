@@ -70,10 +70,13 @@ _This file contains critical rules and patterns that AI agents must follow when 
     - Business contexts MAY depend on config context (user-configurable rules) and pure infrastructure (generic utilities).
   - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `lithos-cli`).
 - **Port-Based CQRS:**
-  - **Port Traits:** Each context defines split storage capabilities via `<Context>::ports::Query` and `<Context>::ports::Command` traits (e.g., `schema::ports::QueryPort`, `schema::ports::CommandPort`) with GATs for zero-copy reads.
+  - **Port Traits:** Each context defines split storage capabilities via `<Context>::ports::Query` and `<Context>::ports::Command` traits (e.g., `schema::ports::Query`, `schema::ports::Command`) with GATs for zero-copy reads.
   - **Generic CQRS:** Command/Query types are generic over respective ports (e.g., `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`).
-  - **Concrete Adapters:** Infrastructure provides concrete implementations (adapters are internal: `QueryAdapter`, `CommandAdapter`).
-  - **Type Aliases:** Use storage-agnostic names for public API (e.g., `SchemaQuery<'db>`, `SchemaCommand<'db>`). Do NOT prefix with implementation details like `Redb` - that's the adapter's concern.
+  - **Concrete Adapters:** Infrastructure provides concrete implementations without suffix - use module disambiguation (e.g., `adapter::Command`, `adapter::Query`).
+  - **Type Aliases (Three-Tier Pattern):**
+    - Domain `mod.rs`: Generic aliases, no adapter imports: `pub type Command<C> = command::Command<C>`
+    - Adapter `mod.rs`: Remove path stuttering: `pub type Command<'db> = command::Command<'db>`
+    - Usage: `schema::Command::new(adapter::Command::new(&db))`
   - **Port Split Benefits:** Read-only test fakes don't implement writes, prevents interface bloat, enables future backend flexibility.
 - **File Ingestion Rules:**
   - **CQRS ports MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
@@ -196,9 +199,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 #### Naming & Mechanical Sympathy
 - **Transparency:** Prohibit hiding expensive clones or allocations behind getter methods. If a method clones, it MUST be named `clone_x()` or `to_x_owned()`.
 - **Port/Adapter Naming:**
-  - **Ports:** Prefer short, qualified names: `<Context>::ports::Query` and `<Context>::ports::Command` (e.g., `schema::ports::Query`, `schema::ports::Command`).
-  - **Adapters (internal):** `QueryAdapter`, `CommandAdapter` (implementation detail, not exposed in public API).
-  - **Type Aliases (public):** Storage-agnostic names: `<Context>Query<'db>`, `<Context>Command<'db>` (e.g., `SchemaQuery`, `ConfigCommand`).
+  - **Ports:** Short, qualified names: `<Context>::ports::Query` and `<Context>::ports::Command` (e.g., `schema::ports::Query`, `schema::ports::Command`).
+  - **Adapters:** No suffix, use module disambiguation: `adapter::Command`, `adapter::Query` (not `CommandAdapter`, `QueryAdapter`).
+  - **Type Aliases (Three-Tier):**
+    - Domain: Generic, no adapter import: `pub type Command<C> = command::Command<C>`
+    - Adapter: Path stuttering removal: `pub type Command<'db> = command::Command<'db>`
+    - Public API: Module-qualified usage: `schema::Command`, `adapter::Command`
 - **DTO Isolation:** Use `Stored*` prefix for persistence DTOs (e.g., `StoredNote`). These live in the storage layer and never leak into the public domain API.
 
 #### Documentation as "Agent Glue"
