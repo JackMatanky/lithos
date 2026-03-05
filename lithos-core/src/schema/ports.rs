@@ -3,6 +3,8 @@
 //! This module defines the command and query trait interfaces for the Schema
 //! aggregate and PropertyBank registry.
 
+use std::time::SystemTime;
+
 use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
@@ -15,7 +17,7 @@ pub type NameIdPair = (SchemaName, SchemaId);
 /// A staleness check tuple: (`SchemaId`, `created_at`, `modified_at`).
 ///
 /// Used by [`Query::are_many_stale`] to check multiple schemas efficiently.
-pub type StalenessCheck = (SchemaId, Option<u64>, Option<u64>);
+pub type StalenessCheck = (SchemaId, Option<SystemTime>, Option<SystemTime>);
 
 /// Inheritance map returned by [`Query::list_children`].
 ///
@@ -464,8 +466,8 @@ pub trait Query: Send + Sync {
     fn is_schema_stale(
         &self,
         id: SchemaId,
-        created_at: Option<u64>,
-        modified_at: Option<u64>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
         bank_version: BankVersion,
     ) -> Result<bool, Self::Error>;
 

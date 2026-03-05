@@ -13,6 +13,7 @@ use std::{
     collections::BTreeMap,
     fmt::{Debug, Display},
     sync::{Arc, LazyLock},
+    time::SystemTime,
 };
 
 use regex::Regex;
@@ -207,12 +208,7 @@ impl Schema {
             pending_events: vec![],
         };
 
-        #[expect(clippy::cast_sign_loss, reason = "Event timestamp")]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let now = chrono::Utc::now().timestamp().max(0) as u64;
+        let now = SystemTime::now();
         schema.add_event(Events::SchemaCreated(SchemaCreated::new(
             id,
             &schema.name,
@@ -263,12 +259,7 @@ impl Schema {
             pending_events: vec![],
         };
 
-        #[expect(clippy::cast_sign_loss, reason = "Event timestamp")]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let now = chrono::Utc::now().timestamp().max(0) as u64;
+        let now = SystemTime::now();
         schema.add_event(Events::SchemaResolved(SchemaResolved::new(
             id,
             &schema.name,

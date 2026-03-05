@@ -12,7 +12,10 @@
 //! This is a pure adapter - it performs file I/O and parsing but no validation
 //! or database access.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 use figment::{
     Figment,
@@ -267,13 +270,9 @@ impl Ingestor {
         fs_reader: &FsReader,
         file_path: &Path,
     ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
-        // Extract timestamps using FsReader methods and convert to u64
-        let created_at = fs_reader
-            .created_at(file_path)
-            .map(crate::fs::reader::FileTimestamp::as_secs);
-        let modified_at = fs_reader
-            .modified_at(file_path)
-            .map(crate::fs::reader::FileTimestamp::as_secs);
+        // Extract timestamps using FsReader methods (returns SystemTime)
+        let created_at = fs_reader.created_at(file_path);
+        let modified_at = fs_reader.modified_at(file_path);
 
         // Parse TOML content using FsReader
         let config: RawConfig =
@@ -328,8 +327,8 @@ impl Ingestor {
 /// Result tuple containing parsed config and filesystem timestamps.
 ///
 /// Format: `(RawConfig, created_at, modified_at)`.
-/// Timestamps are epoch seconds as `u64`.
-pub type RawConfigWithMetadata = (RawConfig, Option<u64>, Option<u64>);
+pub type RawConfigWithMetadata =
+    (RawConfig, Option<SystemTime>, Option<SystemTime>);
 
 // ----------------------------------------------------------- //
 //                            Tests                            //

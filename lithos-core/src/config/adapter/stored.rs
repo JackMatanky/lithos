@@ -11,6 +11,8 @@
               match schema module pattern"
 )]
 
+use std::time::SystemTime;
+
 /// Metadata for config staleness checking.
 ///
 /// Stores file timestamps to detect when config files have changed.
@@ -27,6 +29,12 @@
 /// A config is considered stale when:
 /// - `created_at` differs (file replaced)
 /// - `modified_at` is newer (file edited)
+///
+/// # Timestamps
+///
+/// Uses `SystemTime` with rkyv's `AsUnixTime` wrapper for safe serialization.
+/// This stores timestamps as Unix epoch seconds internally while preserving
+/// `SystemTime`'s type safety.
 #[derive(
     Debug,
     Clone,
@@ -42,17 +50,20 @@ pub struct ConfigMetadata {
     ///
     /// When a config file is deleted and recreated, the `created_at`
     /// timestamp will differ, indicating a new file.
-    pub created_at: Option<u64>,
+    #[rkyv(with = rkyv::with::Map<rkyv::with::AsUnixTime>)]
+    pub created_at: Option<SystemTime>,
 
     /// Filesystem mtime (change detection - detects manual edits).
     ///
     /// Updated whenever the file content changes.
-    pub modified_at: u64,
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    pub modified_at: SystemTime,
 
     /// Wall-clock timestamp when this metadata was persisted to DB.
     ///
     /// Used for debugging and audit trails.
-    pub recorded_at: u64,
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    pub recorded_at: SystemTime,
 }
 
 impl ConfigMetadata {
@@ -62,24 +73,20 @@ impl ConfigMetadata {
     ///
     /// ```ignore
     /// use lithos_core::config::adapter::stored::ConfigMetadata;
+    /// use std::time::SystemTime;
     ///
     /// let metadata = ConfigMetadata::new(
-    ///     Some(1000),
-    ///     2000,
+    ///     Some(SystemTime::now()),
+    ///     SystemTime::now(),
     /// );
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(created_at: Option<u64>, modified_at: u64) -> Self {
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "Timestamp is clamped to 0, so cast to u64 is safe"
-        )]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let recorded_at = chrono::Utc::now().timestamp().max(0) as u64;
+    pub fn new(
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
+    ) -> Self {
+        let recorded_at = SystemTime::now();
         Self {
             created_at,
             modified_at,
@@ -94,19 +101,14 @@ mod tests {
 
     #[test]
     fn new_sets_recorded_at_to_current_time() {
-        #[expect(clippy::cast_sign_loss, reason = "Test timestamp")]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let before = chrono::Utc::now().timestamp().max(0) as u64;
-        let metadata = ConfigMetadata::new(None, 1000);
-        #[expect(clippy::cast_sign_loss, reason = "Test timestamp")]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let after = chrono::Utc::now().timestamp().max(0) as u64;
+        use std::time::Duration;
+
+        let before = SystemTime::now();
+        let metadata = ConfigMetadata::new(
+            None,
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
+        );
+        let after = SystemTime::now();
 
         assert!(metadata.recorded_at >= before);
         assert!(metadata.recorded_at <= after);
@@ -114,8 +116,10 @@ mod tests {
 
     #[test]
     fn new_preserves_created_at_and_modified_at() {
-        let created = 500;
-        let modified = 1000;
+        use std::time::Duration;
+
+        let created = SystemTime::UNIX_EPOCH + Duration::from_secs(500);
+        let modified = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
         let metadata = ConfigMetadata::new(Some(created), modified);
 
         assert_eq!(metadata.created_at, Some(created));
@@ -124,7 +128,12 @@ mod tests {
 
     #[test]
     fn metadata_round_trips_through_rkyv() {
-        let original = ConfigMetadata::new(Some(500), 1000);
+        use std::time::Duration;
+
+        let original = ConfigMetadata::new(
+            Some(SystemTime::UNIX_EPOCH + Duration::from_secs(500)),
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
+        );
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
             .expect("serialization should succeed");

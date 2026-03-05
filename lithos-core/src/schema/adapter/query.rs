@@ -3,7 +3,7 @@
 //! Property bank reads use `bank_metadata` plus versioned rows from
 //! `bank_property_by_name`.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
 use crate::{
     db::{BatchReader, Database, DbError},
@@ -67,8 +67,8 @@ impl Query<'_> {
     fn check_schema_freshness(
         stored: &rkyv::Archived<StoredMetadata>,
         id: SchemaId,
-        created_at: Option<u64>,
-        modified_at: Option<u64>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
         bank_version: BankVersion,
     ) -> Result<bool, DbError> {
         // Deserialize only the fields we need
@@ -86,13 +86,24 @@ impl Query<'_> {
         if let (Some(file_created), Some(archived_created)) =
             (created_at, stored.created_at.as_ref())
         {
-            let stored_created: u64 =
-                rkyv::deserialize::<u64, rkyv::rancor::Error>(archived_created)
-                    .map_err(|e: rkyv::rancor::Error| {
-                        DbError::Deserialization(e.to_string())
-                    })?;
+            // AsUnixTime wraps SystemTime as Duration; convert file_created to
+            // Duration
+            let file_duration = file_created
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| {
+                    DbError::Deserialization(format!("Invalid timestamp: {e}"))
+                })?;
 
-            if file_created != stored_created {
+            // Deserialize the archived Duration
+            let stored_duration: std::time::Duration =
+                rkyv::deserialize::<std::time::Duration, rkyv::rancor::Error>(
+                    archived_created,
+                )
+                .map_err(|e: rkyv::rancor::Error| {
+                    DbError::Deserialization(e.to_string())
+                })?;
+
+            if file_duration != stored_duration {
                 return Ok(false); // Not fresh: created_at mismatch
             }
         } else if created_at.is_some() != stored.created_at.is_some() {
@@ -108,13 +119,24 @@ impl Query<'_> {
         if let (Some(file_mtime), Some(archived_mtime)) =
             (modified_at, stored.modified_at.as_ref())
         {
-            let stored_mtime: u64 =
-                rkyv::deserialize::<u64, rkyv::rancor::Error>(archived_mtime)
-                    .map_err(|e: rkyv::rancor::Error| {
+            // AsUnixTime wraps SystemTime as Duration; convert file_mtime to
+            // Duration
+            let file_duration = file_mtime
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| {
+                    DbError::Deserialization(format!("Invalid timestamp: {e}"))
+                })?;
+
+            // Deserialize the archived Duration
+            let stored_duration: std::time::Duration =
+                rkyv::deserialize::<std::time::Duration, rkyv::rancor::Error>(
+                    archived_mtime,
+                )
+                .map_err(|e: rkyv::rancor::Error| {
                     DbError::Deserialization(e.to_string())
                 })?;
 
-            if stored_mtime < file_mtime {
+            if stored_duration < file_duration {
                 return Ok(false); // Not fresh: file modified
             }
         }
@@ -333,8 +355,8 @@ impl QueryPort for Query<'_> {
     fn is_schema_stale(
         &self,
         id: SchemaId,
-        created_at: Option<u64>,
-        modified_at: Option<u64>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
         bank_version: BankVersion,
     ) -> Result<bool, Self::Error> {
         // Zero-copy metadata check using closure-based API.
@@ -362,13 +384,25 @@ impl QueryPort for Query<'_> {
                 if let (Some(file_created), Some(archived_created)) =
                     (created_at, stored.created_at.as_ref())
                 {
-                    let stored_created: u64 =
-                        rkyv::deserialize::<u64, rkyv::rancor::Error>(
-                            archived_created,
-                        )
+                    // AsUnixTime wraps SystemTime as Duration; convert
+                    // file_created to Duration
+                    let file_duration = file_created
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_err(|e| {
+                            DbError::Deserialization(format!(
+                                "Invalid timestamp: {e}"
+                            ))
+                        })?;
+
+                    // Deserialize the archived Duration
+                    let stored_duration: std::time::Duration =
+                        rkyv::deserialize::<
+                            std::time::Duration,
+                            rkyv::rancor::Error,
+                        >(archived_created)
                         .map_err(|e| DbError::Deserialization(e.to_string()))?;
 
-                    if file_created != stored_created {
+                    if file_duration != stored_duration {
                         return Ok(false); // Not fresh: created_at mismatch
                     }
                 } else if created_at.is_some() != stored.created_at.is_some() {
@@ -384,13 +418,25 @@ impl QueryPort for Query<'_> {
                 if let (Some(file_mtime), Some(archived_mtime)) =
                     (modified_at, stored.modified_at.as_ref())
                 {
-                    let stored_mtime: u64 =
-                        rkyv::deserialize::<u64, rkyv::rancor::Error>(
-                            archived_mtime,
-                        )
+                    // AsUnixTime wraps SystemTime as Duration; convert
+                    // file_mtime to Duration
+                    let file_duration = file_mtime
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_err(|e| {
+                            DbError::Deserialization(format!(
+                                "Invalid timestamp: {e}"
+                            ))
+                        })?;
+
+                    // Deserialize the archived Duration
+                    let stored_duration: std::time::Duration =
+                        rkyv::deserialize::<
+                            std::time::Duration,
+                            rkyv::rancor::Error,
+                        >(archived_mtime)
                         .map_err(|e| DbError::Deserialization(e.to_string()))?;
 
-                    if stored_mtime < file_mtime {
+                    if stored_duration < file_duration {
                         return Ok(false); // Not fresh: file modified after storage
                     }
                 }

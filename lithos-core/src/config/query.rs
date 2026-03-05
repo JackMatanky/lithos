@@ -4,6 +4,8 @@
 //! configuration (merged snapshots, global settings, vault overrides),
 //! supporting both owned and zero-copy access patterns.
 
+use std::time::SystemTime;
+
 use tracing::instrument;
 
 use super::{
@@ -154,8 +156,8 @@ where
     )]
     pub fn is_global_stale(
         &self,
-        created_at: Option<u64>,
-        modified_at: u64,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<bool, ConfigQueryError> {
         self.query_port
             .is_global_stale(created_at, modified_at)
@@ -180,8 +182,8 @@ where
     pub fn is_vault_stale(
         &self,
         vault_id: VaultId,
-        created_at: Option<u64>,
-        modified_at: u64,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<bool, ConfigQueryError> {
         self.query_port
             .is_vault_stale(vault_id, created_at, modified_at)
@@ -356,6 +358,8 @@ mod tests {
         }
     }
 
+    use std::time::SystemTime;
+
     use crate::{
         config::{
             aggregate::{Config, Version},
@@ -416,8 +420,8 @@ mod tests {
 
         fn is_global_stale(
             &self,
-            created_at: Option<u64>,
-            modified_at: u64,
+            created_at: Option<SystemTime>,
+            modified_at: SystemTime,
         ) -> Result<bool, DbError> {
             self.adapter.is_global_stale(created_at, modified_at)
         }
@@ -425,8 +429,8 @@ mod tests {
         fn is_vault_stale(
             &self,
             vault_id: VaultId,
-            created_at: Option<u64>,
-            modified_at: u64,
+            created_at: Option<SystemTime>,
+            modified_at: SystemTime,
         ) -> Result<bool, DbError> {
             self.adapter.is_vault_stale(vault_id, created_at, modified_at)
         }

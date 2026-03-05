@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 use super::{
     error::PathValidationError,
@@ -261,7 +264,7 @@ impl Reader {
     /// Returns `None` if the metadata cannot be read or the creation time is
     /// not available on this platform. Failures are logged at debug level.
     #[inline]
-    pub fn created_at(&self, path: &Path) -> Option<FileTimestamp> {
+    pub fn created_at(&self, path: &Path) -> Option<SystemTime> {
         let metadata = match self.metadata(path) {
             Ok(m) => m,
             Err(e) => {
@@ -275,7 +278,7 @@ impl Reader {
         };
 
         match metadata.created() {
-            Ok(system_time) => FileTimestamp::from_system_time(system_time),
+            Ok(system_time) => Some(system_time),
             Err(e) => {
                 tracing::debug!(
                     path = %path.display(),
@@ -294,7 +297,7 @@ impl Reader {
     /// Returns `None` if the metadata cannot be read or the modification time
     /// is not available on this platform. Failures are logged at debug level.
     #[inline]
-    pub fn modified_at(&self, path: &Path) -> Option<FileTimestamp> {
+    pub fn modified_at(&self, path: &Path) -> Option<SystemTime> {
         let metadata = match self.metadata(path) {
             Ok(m) => m,
             Err(e) => {
@@ -308,7 +311,7 @@ impl Reader {
         };
 
         match metadata.modified() {
-            Ok(system_time) => FileTimestamp::from_system_time(system_time),
+            Ok(system_time) => Some(system_time),
             Err(e) => {
                 tracing::debug!(
                     path = %path.display(),
@@ -401,90 +404,14 @@ impl Reader {
     }
 }
 
-/// File system timestamp representing seconds since Unix epoch.
+/// File system timestamp type alias.
 ///
-/// A thin wrapper around `u64` providing type safety for file metadata
-/// timestamps extracted from [`std::fs::Metadata`]. This is an infrastructure
-/// primitive that encapsulates the conversion from platform-specific
-/// [`SystemTime`](std::time::SystemTime) to epoch seconds.
+/// This is now a direct alias to [`SystemTime`] since we use rkyv's
+/// `AsUnixTime` wrapper for serialization instead of manual conversion.
 ///
-/// On Unix platforms, this uses [`MetadataExt`](std::os::unix::fs::MetadataExt)
-/// for direct access to `st_mtime` and `st_ctime`, avoiding the overhead of
-/// `SystemTime` conversion. On other platforms, it falls back to the standard
-/// `Metadata::modified()` API.
-///
-/// Adapters convert `FileTimestamp` to plain `u64` when crossing into domain
-/// contexts, where field names (`created_at`, `modified_at`, `recorded_at`)
-/// carry the semantic weight.
-///
-/// # Examples
-///
-/// ```
-/// use lithos_core::fs::reader::FileTimestamp;
-///
-/// let timestamp = FileTimestamp::from_epoch_secs(1234567890);
-/// assert_eq!(timestamp.as_secs(), 1234567890);
-/// ```
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct FileTimestamp(u64);
-
-impl FileTimestamp {
-    /// Creates a file timestamp from seconds since Unix epoch.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::fs::reader::FileTimestamp;
-    ///
-    /// let timestamp = FileTimestamp::from_epoch_secs(1000);
-    /// assert_eq!(timestamp.as_secs(), 1000);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn from_epoch_secs(secs: u64) -> Self {
-        Self(secs)
-    }
-
-    /// Converts a [`SystemTime`](std::time::SystemTime) to a file timestamp.
-    ///
-    /// Returns `None` if the time is before Unix epoch.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::{Duration, SystemTime};
-    ///
-    /// use lithos_core::fs::reader::FileTimestamp;
-    ///
-    /// let sys_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
-    /// let timestamp = FileTimestamp::from_system_time(sys_time).unwrap();
-    /// assert_eq!(timestamp.as_secs(), 1000);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn from_system_time(time: std::time::SystemTime) -> Option<Self> {
-        time.duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .ok()
-            .map(|d| Self(d.as_secs()))
-    }
-
-    /// Returns the timestamp as seconds since Unix epoch.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::fs::reader::FileTimestamp;
-    ///
-    /// let timestamp = FileTimestamp::from_epoch_secs(1000);
-    /// assert_eq!(timestamp.as_secs(), 1000);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_secs(self) -> u64 {
-        self.0
-    }
-}
+/// The filesystem methods [`Reader::created_at`] and [`Reader::modified_at`]
+/// return `Option<SystemTime>` directly.
+pub type FileTimestamp = SystemTime;
 
 #[cfg(test)]
 #[expect(

@@ -4,7 +4,7 @@
 //! - `bank_metadata` for version/timestamps
 //! - `bank_property_by_id` and `bank_property_by_name` for versioned rows
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
 use tracing::instrument;
 
@@ -239,13 +239,7 @@ impl CommandPort for Command<'_> {
 
                 // TODO(EVENT-001): Persist event to SCHEMA_EVENTS table once
                 // event store is implemented (Phase 2)
-                #[expect(clippy::cast_sign_loss, reason = "Event timestamp")]
-                #[expect(
-                    clippy::as_conversions,
-                    reason = "Epoch seconds conversion is standard for Unix \
-                              timestamps"
-                )]
-                let timestamp = chrono::Utc::now().timestamp().max(0) as u64;
+                let timestamp = SystemTime::now();
                 let _event = Events::SchemaDeleted(SchemaDeleted::new(
                     id,
                     &schema_name,
@@ -276,12 +270,7 @@ impl CommandPort for Command<'_> {
         const VERSION_RETENTION_COUNT: u64 = 3;
 
         let bank_version = bank.version();
-        #[expect(clippy::cast_sign_loss, reason = "Audit timestamp")]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let recorded_at = chrono::Utc::now().timestamp().max(0) as u64;
+        let recorded_at = SystemTime::now();
 
         // Read current metadata to determine old versions to delete
         let previous_metadata = self
@@ -421,16 +410,7 @@ impl CommandPort for Command<'_> {
         self.db.batch_write(|writer| {
             for &(child_id, parent_id, ref excludes) in relationships {
                 let child_key = child_id.to_string();
-                #[expect(
-                    clippy::cast_sign_loss,
-                    reason = "Relationship timestamp"
-                )]
-                #[expect(
-                    clippy::as_conversions,
-                    reason = "Epoch seconds conversion is standard for Unix \
-                              timestamps"
-                )]
-                let timestamp = chrono::Utc::now().timestamp().max(0) as u64;
+                let timestamp = SystemTime::now();
 
                 // Remove old parent→child multimap entry if parent changed
                 if let Some(old_ref) = old_parents.get(&child_id)

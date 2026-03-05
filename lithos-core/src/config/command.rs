@@ -4,6 +4,8 @@
 //! mutations (recording settings, rebuilding snapshots). Version allocation is
 //! handled atomically within the command port to prevent race conditions.
 
+use std::time::SystemTime;
+
 use tracing::instrument;
 
 use super::{
@@ -17,6 +19,7 @@ use super::{
 /// # Examples
 ///
 /// ```rust,no_run
+/// # use std::time::SystemTime;
 /// # use tempfile::tempdir;
 /// # use lithos_core::{
 /// #     config::{self, adapter, global::Global},
@@ -25,8 +28,8 @@ use super::{
 /// let dir = tempdir()?;
 /// let db = Database::open(&dir.path().join("config.redb"))?;
 /// let command = config::Command::new(adapter::Command::new(&db));
-/// let created_at = Some(1000);
-/// let modified_at = 2000;
+/// let created_at = Some(SystemTime::now());
+/// let modified_at = SystemTime::now();
 /// command.record_global(&Global::default(), created_at, modified_at)?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
@@ -64,8 +67,8 @@ where
     pub fn record_global(
         &self,
         config: &Global,
-        created_at: Option<u64>,
-        modified_at: u64,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<(), ConfigCommandError> {
         self.command_port
             .record_global(config, created_at, modified_at)
@@ -89,8 +92,8 @@ where
         &self,
         vault_id: VaultId,
         config: &Vault,
-        created_at: Option<u64>,
-        modified_at: u64,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<(), ConfigCommandError> {
         self.command_port
             .record_vault(vault_id, config, created_at, modified_at)

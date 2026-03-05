@@ -56,23 +56,13 @@ fn test_config(root: &Path) -> TestResult<Config> {
     Ok(config)
 }
 
-/// Read file timestamps as epoch seconds (`u64`).
-fn file_times(path: &Path) -> (Option<u64>, Option<u64>) {
+/// Read file timestamps as `SystemTime`.
+fn file_times(
+    path: &Path,
+) -> (Option<std::time::SystemTime>, Option<std::time::SystemTime>) {
     let metadata = std::fs::metadata(path).ok();
-    let modified = metadata
-        .as_ref()
-        .and_then(|meta| meta.modified().ok())
-        .and_then(|time| {
-            time.duration_since(std::time::SystemTime::UNIX_EPOCH).ok()
-        })
-        .map(|duration| duration.as_secs());
-    let created = metadata
-        .as_ref()
-        .and_then(|meta| meta.created().ok())
-        .and_then(|time| {
-            time.duration_since(std::time::SystemTime::UNIX_EPOCH).ok()
-        })
-        .map(|duration| duration.as_secs());
+    let modified = metadata.as_ref().and_then(|meta| meta.modified().ok());
+    let created = metadata.as_ref().and_then(|meta| meta.created().ok());
     (modified, created)
 }
 
@@ -241,10 +231,13 @@ fn schema_stale_when_modified_differs() -> TestResult {
         return Err("modified timestamp unavailable".into());
     };
 
+    // Add 1 second to create a newer modified time
+    let newer_modified = modified_at + std::time::Duration::from_secs(1);
+
     let stale = query2.is_schema_stale(
         schema_id,
         created_at,
-        Some(modified_at + 1),
+        Some(newer_modified),
         bank_version,
     )?;
     assert!(stale, "Modified time mismatch should be stale");

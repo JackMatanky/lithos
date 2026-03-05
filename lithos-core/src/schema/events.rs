@@ -6,6 +6,8 @@
               #[non_exhaustive] on source types"
 )]
 
+use std::time::SystemTime;
+
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -20,6 +22,8 @@ use super::{
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{
 ///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaCreated,
@@ -28,7 +32,7 @@ use super::{
 ///
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("schema")?;
-/// let event = SchemaCreated::new(id, &name, 1234567890);
+/// let event = SchemaCreated::new(id, &name, SystemTime::now());
 /// assert_eq!(event.id, id, "Schema id should match");
 /// assert_eq!(event.name, name, "Schema name should match");
 /// # Ok(())
@@ -52,8 +56,9 @@ pub struct SchemaCreated {
     pub id: SchemaId,
     /// Name of the schema.
     pub name: SchemaName,
-    /// Unix timestamp when the schema was created.
-    pub timestamp: u64,
+    /// Timestamp when the schema was created.
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    pub timestamp: SystemTime,
 }
 
 impl SchemaCreated {
@@ -61,6 +66,8 @@ impl SchemaCreated {
     ///
     /// # Examples
     /// ```
+    /// use std::time::SystemTime;
+    ///
     /// use lithos_core::schema::{
     ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaCreated,
@@ -68,13 +75,13 @@ impl SchemaCreated {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
     /// let name = SchemaName::try_new("schema")?;
-    /// let _event = SchemaCreated::new(id, &name, 1234567890);
+    /// let _event = SchemaCreated::new(id, &name, SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(id: SchemaId, name: &SchemaName, timestamp: u64) -> Self {
+    pub fn new(id: SchemaId, name: &SchemaName, timestamp: SystemTime) -> Self {
         Self {
             id,
             name: name.clone(),
@@ -89,6 +96,8 @@ impl SchemaCreated {
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{
 ///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaResolved,
@@ -96,7 +105,7 @@ impl SchemaCreated {
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("schema")?;
-/// let event = SchemaResolved::new(id, &name, 1234567890);
+/// let event = SchemaResolved::new(id, &name, SystemTime::now());
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.name, name);
 /// # Ok(())
@@ -120,8 +129,9 @@ pub struct SchemaResolved {
     pub id: SchemaId,
     /// Name of the schema.
     pub name: SchemaName,
-    /// Unix timestamp when the schema was resolved.
-    pub timestamp: u64,
+    /// Timestamp when the schema was resolved.
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    pub timestamp: SystemTime,
 }
 
 impl SchemaResolved {
@@ -129,6 +139,8 @@ impl SchemaResolved {
     ///
     /// # Examples
     /// ```
+    /// use std::time::SystemTime;
+    ///
     /// use lithos_core::schema::{
     ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaResolved,
@@ -136,13 +148,13 @@ impl SchemaResolved {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
     /// let name = SchemaName::try_new("schema")?;
-    /// let _event = SchemaResolved::new(id, &name, 1234567890);
+    /// let _event = SchemaResolved::new(id, &name, SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(id: SchemaId, name: &SchemaName, timestamp: u64) -> Self {
+    pub fn new(id: SchemaId, name: &SchemaName, timestamp: SystemTime) -> Self {
         Self {
             id,
             name: name.clone(),
@@ -157,6 +169,8 @@ impl SchemaResolved {
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{
 ///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaDeleted,
@@ -164,7 +178,7 @@ impl SchemaResolved {
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("schema")?;
-/// let event = SchemaDeleted::new(id, &name, 1234567890);
+/// let event = SchemaDeleted::new(id, &name, SystemTime::now());
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.name, name);
 /// # Ok(())
@@ -188,8 +202,9 @@ pub struct SchemaDeleted {
     pub id: SchemaId,
     /// Name of the deleted schema.
     pub name: SchemaName,
-    /// Unix timestamp when the schema was deleted.
-    pub timestamp: u64,
+    /// Timestamp when the schema was deleted.
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    pub timestamp: SystemTime,
 }
 
 impl SchemaDeleted {
@@ -197,6 +212,8 @@ impl SchemaDeleted {
     ///
     /// # Examples
     /// ```
+    /// use std::time::SystemTime;
+    ///
     /// use lithos_core::schema::{
     ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaDeleted,
@@ -204,13 +221,13 @@ impl SchemaDeleted {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
     /// let name = SchemaName::try_new("schema")?;
-    /// let _event = SchemaDeleted::new(id, &name, 1234567890);
+    /// let _event = SchemaDeleted::new(id, &name, SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(id: SchemaId, name: &SchemaName, timestamp: u64) -> Self {
+    pub fn new(id: SchemaId, name: &SchemaName, timestamp: SystemTime) -> Self {
         Self {
             id,
             name: name.clone(),
@@ -225,6 +242,8 @@ impl SchemaDeleted {
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{
 ///     events::PropertyRegistered,
 ///     property::{PropertyId, PropertyName},
@@ -232,7 +251,7 @@ impl SchemaDeleted {
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = PropertyId::new();
 /// let name = PropertyName::try_new("flag")?;
-/// let event = PropertyRegistered::new(id, &name, 1234567890);
+/// let event = PropertyRegistered::new(id, &name, SystemTime::now());
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.name, name);
 /// # Ok(())
@@ -256,8 +275,9 @@ pub struct PropertyRegistered {
     pub id: PropertyId,
     /// Name of the property.
     pub name: PropertyName,
-    /// Unix timestamp when the property was registered.
-    pub timestamp: u64,
+    /// Timestamp when the property was registered.
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    pub timestamp: SystemTime,
 }
 
 impl PropertyRegistered {
@@ -265,6 +285,8 @@ impl PropertyRegistered {
     ///
     /// # Examples
     /// ```
+    /// use std::time::SystemTime;
+    ///
     /// use lithos_core::schema::{
     ///     events::PropertyRegistered,
     ///     property::{PropertyId, PropertyName},
@@ -272,13 +294,17 @@ impl PropertyRegistered {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = PropertyId::new();
     /// let name = PropertyName::try_new("flag")?;
-    /// let _event = PropertyRegistered::new(id, &name, 1234567890);
+    /// let _event = PropertyRegistered::new(id, &name, SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(id: PropertyId, name: &PropertyName, timestamp: u64) -> Self {
+    pub fn new(
+        id: PropertyId,
+        name: &PropertyName,
+        timestamp: SystemTime,
+    ) -> Self {
         Self {
             id,
             name: name.clone(),
@@ -293,9 +319,12 @@ impl PropertyRegistered {
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{bank::BankVersion, events::PropertyBankLoaded};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let event = PropertyBankLoaded::new(3, BankVersion::initial(), 1234567890);
+/// let event =
+///     PropertyBankLoaded::new(3, BankVersion::initial(), SystemTime::now());
 /// assert_eq!(event.property_count, 3);
 /// # Ok(())
 /// # }
@@ -318,8 +347,9 @@ pub struct PropertyBankLoaded {
     pub property_count: usize,
     /// Version of the property bank.
     pub bank_version: BankVersion,
-    /// Unix timestamp when the bank was loaded.
-    pub timestamp: u64,
+    /// Timestamp when the bank was loaded.
+    #[rkyv(with = rkyv::with::AsUnixTime)]
+    pub timestamp: SystemTime,
 }
 
 impl PropertyBankLoaded {
@@ -327,9 +357,12 @@ impl PropertyBankLoaded {
     ///
     /// # Examples
     /// ```
+    /// use std::time::SystemTime;
+    ///
     /// use lithos_core::schema::{bank::BankVersion, events::PropertyBankLoaded};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let _event = PropertyBankLoaded::new(1, BankVersion::initial(), 1234567890);
+    /// let _event =
+    ///     PropertyBankLoaded::new(1, BankVersion::initial(), SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
@@ -338,7 +371,7 @@ impl PropertyBankLoaded {
     pub fn new(
         property_count: usize,
         bank_version: BankVersion,
-        timestamp: u64,
+        timestamp: SystemTime,
     ) -> Self {
         Self {
             property_count,
@@ -352,6 +385,8 @@ impl PropertyBankLoaded {
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{
 ///     aggregate::{SchemaId, SchemaName},
 ///     events::{Events, SchemaCreated},
@@ -359,7 +394,7 @@ impl PropertyBankLoaded {
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("schema")?;
-/// let created = SchemaCreated::new(id, &name, 1234567890);
+/// let created = SchemaCreated::new(id, &name, SystemTime::now());
 /// let event = Events::SchemaCreated(created);
 /// match event {
 ///     Events::SchemaCreated(_) => {}
@@ -394,16 +429,7 @@ mod tests {
     fn schema_created_captures_payload() {
         let id = SchemaId::new();
         let name = SchemaName::try_new("schema").expect("Valid schema name");
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "Unix timestamps are non-negative; clamped to 0 for \
-                      pre-1970 times"
-        )]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let timestamp = chrono::Utc::now().timestamp().max(0) as u64;
+        let timestamp = SystemTime::now();
         let event = SchemaCreated::new(id, &name, timestamp);
 
         assert_eq!(event.id, id);
@@ -415,16 +441,7 @@ mod tests {
     fn schema_resolved_captures_payload() {
         let id = SchemaId::new();
         let name = SchemaName::try_new("schema").expect("Valid schema name");
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "Unix timestamps are non-negative; clamped to 0 for \
-                      pre-1970 times"
-        )]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let timestamp = chrono::Utc::now().timestamp().max(0) as u64;
+        let timestamp = SystemTime::now();
         let event = SchemaResolved::new(id, &name, timestamp);
 
         assert_eq!(event.id, id);
@@ -436,16 +453,7 @@ mod tests {
     fn schema_deleted_captures_payload() {
         let id = SchemaId::new();
         let name = SchemaName::try_new("schema").expect("Valid schema name");
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "Unix timestamps are non-negative; clamped to 0 for \
-                      pre-1970 times"
-        )]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let timestamp = chrono::Utc::now().timestamp().max(0) as u64;
+        let timestamp = SystemTime::now();
         let event = SchemaDeleted::new(id, &name, timestamp);
 
         assert_eq!(event.id, id);
@@ -458,16 +466,7 @@ mod tests {
         let id = PropertyId::new();
         let name =
             PropertyName::try_new("status").expect("Valid property name");
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "Unix timestamps are non-negative; clamped to 0 for \
-                      pre-1970 times"
-        )]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let timestamp = chrono::Utc::now().timestamp().max(0) as u64;
+        let timestamp = SystemTime::now();
         let event = PropertyRegistered::new(id, &name, timestamp);
 
         assert_eq!(event.id, id);
@@ -478,16 +477,7 @@ mod tests {
     #[test]
     fn property_bank_loaded_captures_payload() {
         let version = BankVersion::initial();
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "Unix timestamps are non-negative; clamped to 0 for \
-                      pre-1970 times"
-        )]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
-        let timestamp = chrono::Utc::now().timestamp().max(0) as u64;
+        let timestamp = SystemTime::now();
         let event = PropertyBankLoaded::new(42, version, timestamp);
 
         assert_eq!(event.property_count, 42);

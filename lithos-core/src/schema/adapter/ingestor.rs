@@ -2,6 +2,8 @@
 //!
 //! Pure file-to-raw translation. No DB access. No ID assignment.
 
+use std::time::SystemTime;
+
 use crate::{
     config::aggregate::Config,
     fs::FsReader,
@@ -16,15 +18,14 @@ const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
 
 /// A raw schema with optional filesystem timestamps (modified, created).
 ///
-/// Timestamps are epoch seconds as `u64`.
-///
 /// # Examples
 /// ```ignore
 /// use lithos_core::schema::adapter::ingestor::RawSchemaWithFileTimes;
 ///
 /// let _tuple: RawSchemaWithFileTimes = todo!("Provide raw schema data");
 /// ```
-pub type RawSchemaWithFileTimes = (RawSchema, Option<u64>, Option<u64>);
+pub type RawSchemaWithFileTimes =
+    (RawSchema, Option<SystemTime>, Option<SystemTime>);
 
 /// Ingestor for loading raw schema files from a file source.
 ///
@@ -177,15 +178,10 @@ impl Ingestor<'_> {
                 // Set name from filename (always, not from file content)
                 raw.name = filename_stem.into();
 
-                // Extract timestamps using FsReader methods and convert to u64
-                let modified = self
-                    .source
-                    .modified_at(&path)
-                    .map(crate::fs::reader::FileTimestamp::as_secs);
-                let created = self
-                    .source
-                    .created_at(&path)
-                    .map(crate::fs::reader::FileTimestamp::as_secs);
+                // Extract timestamps using FsReader methods (returns
+                // SystemTime)
+                let modified = self.source.modified_at(&path);
+                let created = self.source.created_at(&path);
 
                 results.push((raw, modified, created));
             }

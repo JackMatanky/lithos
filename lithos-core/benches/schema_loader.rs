@@ -842,8 +842,11 @@ fn bench_staleness_batch(c: &mut Criterion) {
                 let qry = Query::new(adapter::Query::new(&db));
 
                 // Build staleness checks
-                let checks: Vec<(SchemaId, Option<u64>, Option<u64>)> =
-                    schema_ids.iter().map(|&id| (id, None, None)).collect();
+                let checks: Vec<(
+                    SchemaId,
+                    Option<std::time::SystemTime>,
+                    Option<std::time::SystemTime>,
+                )> = schema_ids.iter().map(|&id| (id, None, None)).collect();
 
                 b.iter(|| {
                     let staleness = qry

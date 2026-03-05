@@ -3,7 +3,7 @@
 //! Provides name-indexed property lookup with singleton persistence and
 //! versioning for incremental resolution.
 
-use std::{collections::BTreeMap, fmt::Display};
+use std::{collections::BTreeMap, fmt::Display, time::SystemTime};
 
 use super::{
     error::SchemaError,
@@ -142,20 +142,11 @@ impl PropertyBank {
         }
 
         // Emit PropertyBankLoaded event
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "Unix timestamps are non-negative; clamped to 0 for \
-                      pre-1970 times"
-        )]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
         let event = super::events::Events::PropertyBankLoaded(
             super::events::PropertyBankLoaded::new(
                 bank.all().count(),
                 bank.version(),
-                chrono::Utc::now().timestamp().max(0) as u64,
+                SystemTime::now(),
             ),
         );
         bank.add_event(event);
@@ -265,19 +256,10 @@ impl PropertyBank {
         self.properties.insert(name.clone(), property);
         self.version = self.version.increment();
 
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "Unix timestamps are non-negative; clamped to 0 for \
-                      pre-1970 times"
-        )]
-        #[expect(
-            clippy::as_conversions,
-            reason = "Epoch seconds conversion is standard for Unix timestamps"
-        )]
         let event = Events::PropertyRegistered(PropertyRegistered::new(
             id,
             &name,
-            chrono::Utc::now().timestamp().max(0) as u64,
+            SystemTime::now(),
         ));
         self.add_event(event);
         Ok(())
