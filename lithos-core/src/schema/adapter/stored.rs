@@ -11,6 +11,8 @@
 
 use std::time::SystemTime;
 
+use rkyv::with::{AsUnixTime, Map};
+
 use super::super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
@@ -105,7 +107,7 @@ pub(crate) struct StoredPropertyBank {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
     /// Wall-clock timestamp when this record was written.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub recorded_at: SystemTime,
     /// Flattened properties in the bank.
     pub properties: Vec<StoredProperty>,
@@ -125,13 +127,13 @@ pub struct StoredMetadata {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
     /// Filesystem birthtime (from `Metadata::created()`), if available.
-    #[rkyv(with = rkyv::with::Map<rkyv::with::AsUnixTime>)]
+    #[rkyv(with = Map<AsUnixTime>)]
     pub created_at: Option<SystemTime>,
     /// Filesystem mtime (from `Metadata::modified()`), if available.
-    #[rkyv(with = rkyv::with::Map<rkyv::with::AsUnixTime>)]
+    #[rkyv(with = Map<AsUnixTime>)]
     pub modified_at: Option<SystemTime>,
     /// Wall-clock timestamp when this record was written.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub recorded_at: SystemTime,
 }
 
@@ -174,7 +176,7 @@ pub(crate) struct StoredChildSchema {
     /// Property names this child excludes from parent's properties.
     pub excludes: Vec<Box<str>>,
     /// Timestamp when this inheritance relationship was last resolved.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub resolved_at: SystemTime,
 }
 
@@ -220,7 +222,7 @@ pub(crate) struct StoredParentSchema {
     /// Property names excluded from parent (cached for multimap removal).
     pub excludes: Vec<Box<str>>,
     /// Timestamp when relationship was resolved (cached for multimap removal).
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub resolved_at: SystemTime,
 }
 
@@ -232,7 +234,7 @@ pub(crate) struct StoredBankProperty {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
     /// Wall-clock timestamp when this record was written.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub recorded_at: SystemTime,
     /// Flattened property payload.
     pub property: StoredProperty,

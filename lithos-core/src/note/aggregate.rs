@@ -16,7 +16,7 @@
               docs"
 )]
 
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize, with::Skip};
 use uuid::Uuid;
 
 use super::{
@@ -84,7 +84,7 @@ pub struct Note {
     /// YAML metadata.
     frontmatter: Option<Frontmatter>,
     /// Domain events pending emission (not serialized).
-    #[rkyv(with = rkyv::with::Skip)]
+    #[rkyv(with = Skip)]
     #[serde(skip)]
     pending_events: Vec<NoteEvents>,
 }

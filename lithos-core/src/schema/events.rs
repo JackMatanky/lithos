@@ -8,6 +8,7 @@
 
 use std::time::SystemTime;
 
+use rkyv::with::AsUnixTime;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -57,7 +58,7 @@ pub struct SchemaCreated {
     /// Name of the schema.
     pub name: SchemaName,
     /// Timestamp when the schema was created.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub timestamp: SystemTime,
 }
 
@@ -130,7 +131,7 @@ pub struct SchemaResolved {
     /// Name of the schema.
     pub name: SchemaName,
     /// Timestamp when the schema was resolved.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub timestamp: SystemTime,
 }
 
@@ -203,7 +204,7 @@ pub struct SchemaDeleted {
     /// Name of the deleted schema.
     pub name: SchemaName,
     /// Timestamp when the schema was deleted.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub timestamp: SystemTime,
 }
 
@@ -276,7 +277,7 @@ pub struct PropertyRegistered {
     /// Name of the property.
     pub name: PropertyName,
     /// Timestamp when the property was registered.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub timestamp: SystemTime,
 }
 
@@ -348,7 +349,7 @@ pub struct PropertyBankLoaded {
     /// Version of the property bank.
     pub bank_version: BankVersion,
     /// Timestamp when the bank was loaded.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub timestamp: SystemTime,
 }
 

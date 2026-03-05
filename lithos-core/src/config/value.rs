@@ -22,6 +22,7 @@
 use std::sync::Arc;
 
 use regex::Regex;
+use rkyv::with::Skip;
 
 use super::{
     error::ConfigError,
@@ -69,7 +70,7 @@ pub enum FieldSpec {
         /// Optional validation pattern.
         pattern: Option<String>,
         /// Pre-compiled regex pattern for validation.
-        #[rkyv(with = rkyv::with::Skip)]
+        #[rkyv(with = Skip)]
         #[serde(skip)]
         compiled: Option<Arc<Regex>>,
     },

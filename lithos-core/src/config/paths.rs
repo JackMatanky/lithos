@@ -18,6 +18,8 @@
 
 use std::path::{Path, PathBuf};
 
+use rkyv::with::AsString;
+
 use super::error::ConfigError;
 
 // ----------------------------------------------------------- //
@@ -456,7 +458,7 @@ impl PropertyBank {
 #[non_exhaustive]
 pub struct RelativePath(
     /// Internal path storage.
-    #[rkyv(with = rkyv::with::AsString)]
+    #[rkyv(with = AsString)]
     PathBuf,
 );
 
@@ -556,7 +558,7 @@ impl ArchivedRelativePath {
 #[non_exhaustive]
 pub struct AbsolutePath(
     /// Internal path storage.
-    #[rkyv(with = rkyv::with::AsString)]
+    #[rkyv(with = AsString)]
     PathBuf,
 );
 

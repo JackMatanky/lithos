@@ -11,6 +11,8 @@
 
 use std::path::{Path, PathBuf};
 
+use rkyv::with::AsString;
+
 use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
@@ -605,7 +607,7 @@ impl std::fmt::Display for VaultId {
 #[rkyv(derive(Debug))]
 #[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
-pub struct VaultRoot(#[rkyv(with = rkyv::with::AsString)] PathBuf);
+pub struct VaultRoot(#[rkyv(with = AsString)] PathBuf);
 
 impl VaultRoot {
     /// Creates a validated vault root path.

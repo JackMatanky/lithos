@@ -1497,16 +1497,17 @@ mod staleness {
     fn is_schema_stale_with_asymmetric_created_at() -> TestResult {
         use lithos_core::schema::bank::BankVersion;
         use redb::TableDefinition;
-
         // Manually create StoredMetadata struct for test metadata crafting
+        use rkyv::with::{AsUnixTime, Map};
+
         #[derive(rkyv::Archive, rkyv::Serialize)]
         struct TempMetadata {
             bank_version: BankVersion,
-            #[rkyv(with = rkyv::with::Map<rkyv::with::AsUnixTime>)]
+            #[rkyv(with = Map<AsUnixTime>)]
             created_at: Option<std::time::SystemTime>,
-            #[rkyv(with = rkyv::with::Map<rkyv::with::AsUnixTime>)]
+            #[rkyv(with = Map<AsUnixTime>)]
             modified_at: Option<std::time::SystemTime>,
-            #[rkyv(with = rkyv::with::AsUnixTime)]
+            #[rkyv(with = AsUnixTime)]
             recorded_at: std::time::SystemTime,
         }
 

@@ -13,6 +13,8 @@
 
 use std::time::SystemTime;
 
+use rkyv::with::{AsUnixTime, Map};
+
 /// Metadata for config staleness checking.
 ///
 /// Stores file timestamps to detect when config files have changed.
@@ -50,19 +52,19 @@ pub struct ConfigMetadata {
     ///
     /// When a config file is deleted and recreated, the `created_at`
     /// timestamp will differ, indicating a new file.
-    #[rkyv(with = rkyv::with::Map<rkyv::with::AsUnixTime>)]
+    #[rkyv(with = Map<AsUnixTime>)]
     pub created_at: Option<SystemTime>,
 
     /// Filesystem mtime (change detection - detects manual edits).
     ///
     /// Updated whenever the file content changes.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub modified_at: SystemTime,
 
     /// Wall-clock timestamp when this metadata was persisted to DB.
     ///
     /// Used for debugging and audit trails.
-    #[rkyv(with = rkyv::with::AsUnixTime)]
+    #[rkyv(with = AsUnixTime)]
     pub recorded_at: SystemTime,
 }
 

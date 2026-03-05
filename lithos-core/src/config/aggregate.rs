@@ -4,6 +4,7 @@
 //! fully-merged and validated configuration state for a vault. It also
 //! defines [`Version`] for tracking configuration history.
 
+use rkyv::with::Skip;
 use tracing::instrument;
 
 use super::{
@@ -45,7 +46,7 @@ pub struct Config {
     task: Task,
     /// Domain events pending emission (not persisted).
     #[serde(skip)]
-    #[rkyv(with = rkyv::with::Skip)]
+    #[rkyv(with = Skip)]
     pending_events: Vec<Events>,
 }
 
