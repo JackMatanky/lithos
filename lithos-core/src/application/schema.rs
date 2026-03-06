@@ -50,14 +50,14 @@ use std::{collections::HashMap, time::SystemTime};
 use crate::schema::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
-    command::Command,
+    db_command, db_query,
     dereferencer::Dereferencer,
     error::{
         SchemaCommandError, SchemaError, SchemaIngestionError, SchemaQueryError,
     },
     extender::Extender,
     ingestor::Ingestor,
-    query::Query,
+    ports::{Command as _, Query as _},
     raw::RawSchema,
     resolver::Resolver,
     stored::StoredMetadata,
@@ -97,8 +97,8 @@ pub enum SchemaServiceError {
 /// Uses concrete redb adapters for production use. If testing with mocks
 /// is needed in the future, this can be made generic again.
 pub struct SchemaService<'db> {
-    query: Query<crate::schema::db_query::Query<'db>>,
-    command: Command<crate::schema::db_command::Command<'db>>,
+    query: db_query::Query<'db>,
+    command: db_command::Command<'db>,
 }
 
 // Type aliases for complex tuples used in service methods
@@ -122,8 +122,8 @@ impl<'db> SchemaService<'db> {
     #[inline]
     #[must_use]
     pub fn new(
-        query: Query<crate::schema::db_query::Query<'db>>,
-        command: Command<crate::schema::db_command::Command<'db>>,
+        query: db_query::Query<'db>,
+        command: db_command::Command<'db>,
     ) -> Self {
         Self {
             query,
@@ -170,7 +170,10 @@ impl<'db> SchemaService<'db> {
 
         // ── Step 5: load fresh schemas as known_parents ─────────────────────
         // Batch load: O(1) transaction for all fresh schemas
-        let known_parents = self.query.find_many_by_ids(&fresh_ids)?;
+        let known_parents = self
+            .query
+            .find_many_by_ids(&fresh_ids)
+            .map_err(SchemaQueryError::from)?;
 
         // ── Step 6: pipeline (Dereferencer → Extender → Resolver) ──────────
         // Extract just (id, raw_schema) for dereferencer, keep timestamps
@@ -199,7 +202,9 @@ impl<'db> SchemaService<'db> {
             )?;
         }
 
-        self.command.save_property_bank(&bank)?;
+        self.command
+            .save_property_bank(&bank)
+            .map_err(SchemaCommandError::from)?;
 
         Ok(resolved)
     }
@@ -208,7 +213,8 @@ impl<'db> SchemaService<'db> {
     fn load_name_to_id_map(
         &self,
     ) -> Result<HashMap<SchemaName, SchemaId>, SchemaServiceError> {
-        let existing_pairs = self.query.list_name_id_pairs()?;
+        let existing_pairs =
+            self.query.list_name_id_pairs().map_err(SchemaQueryError::from)?;
         let mut name_to_id: HashMap<SchemaName, SchemaId> =
             HashMap::with_capacity(existing_pairs.len());
         for (name, id) in existing_pairs {
@@ -222,11 +228,15 @@ impl<'db> SchemaService<'db> {
         &self,
         ingestor: &Ingestor<'_>,
     ) -> Result<(PropertyBank, bool), SchemaServiceError> {
-        let stored_bank = self.query.get_property_bank()?;
+        let stored_bank =
+            self.query.get_property_bank().map_err(SchemaQueryError::from)?;
 
         let (bank, bank_stale) = if let Some(stored) = stored_bank {
             let stored_version = stored.version();
-            let is_stale = self.query.is_bank_stale(stored_version)?;
+            let is_stale = self
+                .query
+                .is_bank_stale(stored_version)
+                .map_err(SchemaQueryError::from)?;
 
             if is_stale {
                 let raw_bank = ingestor.load_raw_property_bank()?;
@@ -282,8 +292,11 @@ impl<'db> SchemaService<'db> {
         // Step 1: Check staleness with cascade (timestamp-based fast path)
         let mut staleness_map = self
             .query
-            .are_many_stale(&staleness_checks, current_bank_version)?;
-        self.query.cascade_staleness(&mut staleness_map)?;
+            .are_many_stale(&staleness_checks, current_bank_version)
+            .map_err(SchemaQueryError::from)?;
+        self.query
+            .cascade_staleness(&mut staleness_map)
+            .map_err(SchemaQueryError::from)?;
 
         // Step 2: Two-tier staleness detection - for schemas marked stale by
         // timestamp, check if hash actually changed (slow path)
@@ -318,7 +331,11 @@ impl<'db> SchemaService<'db> {
             let Some(&current_hash) = hash_map.get(&id) else {
                 continue;
             };
-            let Some(stored_hash) = self.query.get_schema_hash(id)? else {
+            let Some(stored_hash) = self
+                .query
+                .get_schema_hash(id)
+                .map_err(SchemaQueryError::from)?
+            else {
                 continue;
             };
 
@@ -393,7 +410,9 @@ impl<'db> SchemaService<'db> {
             .collect();
 
         // Save schemas with metadata
-        self.command.save_many_with_metadata(resolved, &metadata)?;
+        self.command
+            .save_many_with_metadata(resolved, &metadata)
+            .map_err(SchemaCommandError::from)?;
 
         // Build and save inheritance relationships
         let inheritance_data: Vec<InheritanceRelationship> = resolved
@@ -405,7 +424,9 @@ impl<'db> SchemaService<'db> {
             })
             .collect();
 
-        self.command.save_inheritance_many(&inheritance_data)?;
+        self.command
+            .save_inheritance_many(&inheritance_data)
+            .map_err(SchemaCommandError::from)?;
 
         Ok(())
     }

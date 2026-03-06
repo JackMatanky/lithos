@@ -7,22 +7,71 @@
     dead_code,
     reason = "Test utilities - not all helpers used in every test file"
 )]
+#![allow(
+    clippy::pub_use,
+    reason = "Test module re-exports port traits for test convenience"
+)]
 
 use std::{error::Error, path::PathBuf};
 
 use lithos_core::{
     db::Database,
     schema::{
-        self as schema_mod,
         aggregate::{Schema, SchemaId, SchemaName},
         db_command, db_query,
+        ports::{self, Command as _, Query as _},
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec, StringSpec},
     },
 };
+// Re-export port traits - tests using wildcard import need these in scope
+pub use ports::{Command as CommandPort, Query as QueryPort};
 use tempfile::TempDir;
+
+/// Extension trait providing convenience methods for Query operations in tests.
+///
+/// Provides `find_by_name` as a convenience that combines `find_id_by_name` +
+/// `find_by_id`.
+pub trait QueryExt {
+    /// Find a schema by name (convenience wrapper for `find_id_by_name` +
+    /// `find_by_id`).
+    fn find_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<Schema>, Box<dyn std::error::Error>>;
+}
+
+impl QueryExt for db_query::Query<'_> {
+    fn find_by_name(
+        &self,
+        name: &SchemaName,
+    ) -> Result<Option<Schema>, Box<dyn std::error::Error>> {
+        use ports::Query as _;
+        let Some(id) = self.find_id_by_name(name)? else {
+            return Ok(None);
+        };
+        Ok(self.find_by_id(id)?)
+    }
+}
+
+/// Extension trait providing convenience methods for Command operations in
+/// tests.
+///
+/// Provides `save` as a convenience that calls `save_many` with a single
+/// schema.
+pub trait CommandExt {
+    /// Save a single schema (convenience wrapper for `save_many`).
+    fn save(&self, schema: &Schema) -> Result<(), Box<dyn std::error::Error>>;
+}
+
+impl CommandExt for db_command::Command<'_> {
+    fn save(&self, schema: &Schema) -> Result<(), Box<dyn std::error::Error>> {
+        use ports::Command as _;
+        Ok(self.save_many(std::slice::from_ref(schema))?)
+    }
+}
 
 /// Standard test result type for integration tests.
 pub type TestResult<T = ()> = Result<T, Box<dyn Error>>;
@@ -104,12 +153,9 @@ impl TestDb {
 #[must_use]
 pub fn setup_cqrs(
     db: &Database,
-) -> (
-    schema_mod::Command<db_command::Command<'_>>,
-    schema_mod::Query<db_query::Query<'_>>,
-) {
-    let command = schema_mod::Command::new(db_command::Command::new(db));
-    let query = schema_mod::Query::new(db_query::Query::new(db));
+) -> (db_command::Command<'_>, db_query::Query<'_>) {
+    let command = db_command::Command::new(db);
+    let query = db_query::Query::new(db);
     (command, query)
 }
 

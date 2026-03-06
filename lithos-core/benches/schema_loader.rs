@@ -306,13 +306,12 @@ use lithos_core::{
     schema::{
         aggregate::{Schema, SchemaId},
         bank::{BankVersion, PropertyBank},
-        command::Command,
         db_command, db_query,
         dereferencer::Dereferencer,
         extender::Extender,
         ingestor::Ingestor,
+        ports::{Command as _, Query as _},
         property::PropertyName,
-        query::Query,
         raw::RawSchema,
         resolver::Resolver,
     },
@@ -747,7 +746,7 @@ fn setup_db_with_schemas(
     let db_path = db_dir.path().join("bench.db");
     let db = Database::open(&db_path).expect("Failed to open DB");
 
-    let cmd = Command::new(db_command::Command::new(&db));
+    let cmd = db_command::Command::new(&db);
 
     // Create and save PropertyBank
     let bank = PropertyBank::new();
@@ -795,7 +794,7 @@ fn bench_staleness_serial(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(db_query::Query::new(&db));
+                let qry = db_query::Query::new(&db);
 
                 b.iter(|| {
                     let mut stale_count = 0;
@@ -840,7 +839,7 @@ fn bench_staleness_batch(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(db_query::Query::new(&db));
+                let qry = db_query::Query::new(&db);
 
                 // Build staleness checks
                 let checks: Vec<(
@@ -883,7 +882,7 @@ fn bench_schema_lookup_serial(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(db_query::Query::new(&db));
+                let qry = db_query::Query::new(&db);
 
                 b.iter(|| {
                     let mut found_count = 0;
@@ -921,7 +920,7 @@ fn bench_schema_lookup_batch(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(db_query::Query::new(&db));
+                let qry = db_query::Query::new(&db);
 
                 b.iter(|| {
                     let schemas = qry

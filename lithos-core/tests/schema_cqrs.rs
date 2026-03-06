@@ -29,7 +29,6 @@ use common::*;
 use lithos_core::{
     db::Database,
     schema::{
-        self as schema_mod,
         aggregate::{SchemaId, SchemaName},
         bank::PropertyBank,
         db_command, db_query,
@@ -221,14 +220,13 @@ mod property_bank {
         // Save with first database connection
         {
             let db = Database::open(&db_path)?;
-            let command =
-                schema_mod::Command::new(db_command::Command::new(&db));
+            let command = db_command::Command::new(&db);
             command.save_property_bank(&bank)?;
         } // Database closed
 
         // WHEN: Reopening database
         let db = Database::open(&db_path)?;
-        let query = schema_mod::Query::new(db_query::Query::new(&db));
+        let query = db_query::Query::new(&db);
 
         // THEN: PropertyBank is intact
         let loaded = query.get_property_bank()?;
@@ -851,14 +849,13 @@ mod schema {
         // Save with first connection
         {
             let db = Database::open(&db_path)?;
-            let command =
-                schema_mod::Command::new(db_command::Command::new(&db));
+            let command = db_command::Command::new(&db);
             command.save(&schema)?;
         } // Database closed
 
         // WHEN: Reopening database
         let db = Database::open(&db_path)?;
-        let query = schema_mod::Query::new(db_query::Query::new(&db));
+        let query = db_query::Query::new(&db);
 
         // THEN: Schema intact
         let loaded = query

@@ -9,8 +9,6 @@
 pub mod aggregate;
 /// PropertyBank domain aggregate for centralized property registration.
 pub mod bank;
-/// Schema command implementations (CQRS write operations).
-pub mod command;
 /// Property-bank dereferencer pipeline stage.
 ///
 /// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
@@ -69,8 +67,6 @@ pub mod ports;
 pub mod property;
 /// Property specification variants.
 pub mod property_spec;
-/// Schema query implementations (CQRS read operations).
-pub mod query;
 /// Raw schema input definitions.
 pub mod raw;
 /// Fixed-size ring buffer for versioned storage.
@@ -128,11 +124,6 @@ pub(crate) mod db_table {
 }
 
 // --- Public API ---
-
-/// Generic command type alias to remove path stuttering: `schema::Command` vs
-/// `schema::command::Command`.
-pub type Command<C> = command::Command<C>;
-
-/// Generic query type alias to remove path stuttering: `schema::Query` vs
-/// `schema::query::Query`.
-pub type Query<Q> = query::Query<Q>;
+// Note: Generic wrapper boilerplate removed in Phase 6 Part B.
+// Applications now use concrete types (db_command::Command, db_query::Query)
+// directly.
