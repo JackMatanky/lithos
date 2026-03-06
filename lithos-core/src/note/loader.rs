@@ -11,7 +11,7 @@ use crate::{
     db::DbError,
     fs::FsReader,
     note::{
-        aggregate::NoteId, db_command::CommandAdapter, error::NoteIngestError,
+        db_command::CommandAdapter, error::NoteIngestError, identity::NoteId,
         ingestor::Ingestor, ports::Command as _, reader::NoteReader,
     },
 };

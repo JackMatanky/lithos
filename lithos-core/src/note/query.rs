@@ -4,8 +4,8 @@
 //! through the note query port.
 
 use super::{
-    aggregate::{AliasName, FileClassName, NoteId},
     error::NoteQueryError,
+    identity::{AliasName, FileClassName, NoteId},
     paths::{FolderPath, NotePath},
     ports as note_ports,
     stored::{StoredNote, StoredTask},

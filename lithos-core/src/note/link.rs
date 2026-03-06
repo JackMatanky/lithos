@@ -11,8 +11,8 @@
 )]
 
 use super::{
-    aggregate::NoteId,
     error::{LinkError, NoteError},
+    identity::NoteId,
     paths::NotePath,
     position::SourceByteOffset,
     structure::{BlockRefId, HeadingText},

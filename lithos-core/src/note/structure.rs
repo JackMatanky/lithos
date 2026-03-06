@@ -4,7 +4,7 @@
 //! [`crate::note::structure::Section`] types to model the hierarchical
 //! and sequential structure of a markdown document.
 
-//! Document structure subentities for Note aggregate.
+//! Document structure values for notes.
 //!
 //! Provides heading-based organization and section content management for
 //! notes. Headings (H1-H6) mark structural points in the document, while

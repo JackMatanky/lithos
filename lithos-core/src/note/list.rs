@@ -1,4 +1,4 @@
-//! List subentities for the Note aggregate.
+//! List value objects for notes.
 #![allow(
     missing_docs,
     clippy::exhaustive_structs,

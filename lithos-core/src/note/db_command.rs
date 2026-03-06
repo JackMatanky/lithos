@@ -12,7 +12,6 @@ use crate::{
     db::{BatchWriter, Database, DbError},
     note::{
         ParsedNote,
-        aggregate::NoteId,
         db_tables::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV,
             NOTE_EVENTS, PATH_TO_ID, STORED_NOTES, TAGS_TO_NOTES, TASKS,
@@ -26,6 +25,7 @@ use crate::{
             NoteEventPayloadV1,
         },
         frontmatter::Frontmatter,
+        identity::NoteId,
         paths::NotePath,
         ports::Command,
         position::SourceByteOffset,
@@ -1025,7 +1025,7 @@ mod tests {
                 raw::RawConfig,
                 vault::{VaultId, VaultRoot},
             },
-            note::{aggregate::NoteId, paths::NotePath, tag::Tag},
+            note::{identity::NoteId, paths::NotePath, tag::Tag},
         };
 
         // pub const TEST_MISSING_ID: Uuid =

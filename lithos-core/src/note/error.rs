@@ -5,12 +5,12 @@
 //! This module defines note-specific errors using thiserror for
 //! structured error handling.
 
-use super::{aggregate::NoteId, paths::NotePath, value::FieldValueType};
+use super::{identity::NoteId, paths::NotePath, value::FieldValueType};
 
 /// Note-related errors.
 ///
 /// This enum covers domain-level errors related to parsing, validation,
-/// and consistency of the [`crate::note::aggregate::Note`] aggregate.
+/// and consistency of note ingest artifacts and projections.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum NoteError {

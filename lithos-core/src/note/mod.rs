@@ -23,34 +23,15 @@
 //! - Markdown task list markers only expose checked/unchecked states, so custom
 //!   status symbols are not currently representable by the parser.
 //!
-//! # Usage
-//!
-//! ```
-//! # use lithos_core::note::{aggregate::{Note, NoteId}, tag::Tag};
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create a new note identity and path
-//! let id = NoteId::new();
-//! let path = "projects/lithos.md";
-//!
-//! // Construct the aggregate root
-//! let mut note = Note::try_new(id, path)?;
-//!
-//! // Add domain components
-//! note.add_tag(Tag::try_new("#research")?);
-//! # Ok(())
-//! # }
-//! ```
-//!
 //! # Layout
 //!
-//! The Note context is organized around the [`aggregate`] root:
+//! The Note context is organized around ingest artifacts and projections:
 //!
-//! - [`aggregate`] - Legacy ingest artifact (`aggregate::Note`) used during
-//!   parsing; projections are the source of truth.
-//! - [`ports`] - Command and Query trait definitions for CQRS.
-//! - [`command`] & [`query`] - CQRS facades for application use.
+//! - [`identity`] - Stable note identifiers and validated names.
 //! - [`reader`] - Markdown ingestion parser for note parsing.
 //! - [`stored`] - Projection read models (`StoredNote`, `StoredTask`).
+//! - [`ports`] - Command and Query trait definitions for CQRS.
+//! - [`command`] & [`query`] - CQRS facades for application use.
 //! - [`task`], [`tag`], [`link`], [`list`] - Sub-entities extracted during
 //!   ingestion and stored in projections.
 
@@ -59,8 +40,6 @@
     reason = "Public API names include module prefix for clarity"
 )]
 
-/// Core Note aggregate root and main entities.
-pub mod aggregate;
 /// Note command implementations (CQRS write operations).
 pub mod command;
 /// Note storage adapters.
@@ -75,6 +54,8 @@ mod extract_link;
 mod extract_list;
 mod extract_section;
 mod extract_tag;
+/// Note identity and validated names.
+pub mod identity;
 /// Note file ingestor.
 pub mod ingestor;
 /// Note loader orchestration.
@@ -90,15 +71,15 @@ pub mod stored;
 
 /// Frontmatter value objects and logic.
 pub mod frontmatter;
-/// Link subentity for Note aggregate.
+/// Link value object.
 pub mod link;
-/// List subentities for Note aggregate.
+/// List value objects.
 pub mod list;
-/// Document structure subentities (Heading and Section) for Note aggregate.
+/// Document structure values (Heading and Section).
 pub mod structure;
-/// Tag subentity for Note aggregate.
+/// Tag value object.
 pub mod tag;
-/// Task subentity for Note aggregate.
+/// Task value object.
 pub mod task;
 
 /// Note errors.

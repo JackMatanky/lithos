@@ -15,7 +15,7 @@
 
 use super::{
     ParsedNote,
-    aggregate::{AliasName, FileClassName, NoteId},
+    identity::{AliasName, FileClassName, NoteId},
     paths::{FolderPath, NotePath},
     stored::{StoredNote, StoredTask},
     task::{TaskDateKind, TaskPriority, TaskTimestamp},

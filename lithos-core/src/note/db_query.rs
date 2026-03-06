@@ -11,13 +11,13 @@ use crate::{
     config::{frontmatter::FrontmatterKey, task::StatusName},
     db::Database,
     note::{
-        aggregate::{AliasName, FileClassName, NoteId},
         db_tables::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV,
             PATH_TO_ID, STORED_NOTES, TASKS, TASKS_BY_COMPLETED_DATE,
             TASKS_BY_CREATED_DATE, TASKS_BY_DUE_DATE, TASKS_BY_METADATA,
             TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
         },
+        identity::{AliasName, FileClassName, NoteId},
         paths::{FolderPath, NotePath},
         ports::Query,
         stored::{StoredNote, StoredTask, metadata_index_keys},
@@ -407,8 +407,8 @@ mod tests {
                 vault::{VaultId, VaultRoot},
             },
             note::{
-                aggregate::NoteId, db_command::CommandAdapter,
-                frontmatter::Frontmatter, paths::NotePath, ports::Command,
+                db_command::CommandAdapter, frontmatter::Frontmatter,
+                identity::NoteId, paths::NotePath, ports::Command,
                 reader::NoteReader,
             },
         };

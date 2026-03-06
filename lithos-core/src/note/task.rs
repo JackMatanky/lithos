@@ -3,7 +3,7 @@
 //! Defines the [`crate::note::task::Task`] entity and its specialized
 //! components, including semantic timestamp handling and metadata extraction.
 
-//! Task subentity for Note aggregate.
+//! Task value object for notes.
 #![allow(
     missing_docs,
     clippy::exhaustive_structs,

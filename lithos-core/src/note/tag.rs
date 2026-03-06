@@ -3,7 +3,7 @@
 //! Supports multi-segment tags (e.g., `#work/project`) with validated
 //! path segments and efficient string representations.
 
-//! Tag subentity for Note aggregate.
+//! Tag value object for notes.
 //!
 //! Represents hierarchical tags used for note organization.
 #![allow(

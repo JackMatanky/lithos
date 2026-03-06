@@ -17,8 +17,8 @@ use rkyv::{
 use crate::{
     config::task::{StatusName, StatusSymbol},
     note::{
-        aggregate::NoteId,
         frontmatter::Frontmatter,
+        identity::NoteId,
         link::Link,
         paths::NotePath,
         position::{SourceByteOffset, SourceLocation},
