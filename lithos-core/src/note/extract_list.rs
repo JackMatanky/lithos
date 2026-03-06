@@ -62,7 +62,6 @@ pub struct ListExtractor<'config> {
 struct ItemBuilder {
     position: SourceByteOffset,
     text: String,
-    tag_scan_text: String,
     is_checkbox: bool,
     status_symbol: Option<char>,
 }
@@ -72,7 +71,6 @@ impl ItemBuilder {
         Self {
             position,
             text: String::new(),
-            tag_scan_text: String::new(),
             is_checkbox: false,
             status_symbol: None,
         }
@@ -89,7 +87,6 @@ impl ItemBuilder {
 
     fn add_text(&mut self, text: &str) {
         self.text.push_str(text);
-        self.tag_scan_text.push_str(text);
     }
 }
 
@@ -128,7 +125,7 @@ impl<'config> ListExtractor<'config> {
             // Check for task promotion
             let checkbox_status =
                 StatusSymbol::try_new(item.status_symbol.unwrap_or(' '))?;
-            let tags = scan_tags(&item.tag_scan_text);
+            let tags = scan_tags(&item.text);
             promoted_task = self.parse_promoted_checkbox_with_tags(
                 &item.text,
                 tags,
