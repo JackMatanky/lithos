@@ -98,7 +98,7 @@ pub enum SchemaServiceError {
 /// is needed in the future, this can be made generic again.
 pub struct SchemaService<'db> {
     query: Query<crate::schema::db_query::Query<'db>>,
-    command: Command<crate::schema::adapter::Command<'db>>,
+    command: Command<crate::schema::db_command::Command<'db>>,
 }
 
 // Type aliases for complex tuples used in service methods
@@ -123,7 +123,7 @@ impl<'db> SchemaService<'db> {
     #[must_use]
     pub fn new(
         query: Query<crate::schema::db_query::Query<'db>>,
-        command: Command<crate::schema::adapter::Command<'db>>,
+        command: Command<crate::schema::db_command::Command<'db>>,
     ) -> Self {
         Self {
             query,

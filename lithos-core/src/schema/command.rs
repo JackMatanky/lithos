@@ -17,10 +17,10 @@ use super::{
 /// # Examples
 ///
 /// ```ignore
-/// use lithos_core::schema::{self, adapter};
+/// use lithos_core::schema::{self, db_command};
 ///
 /// let db = todo!("Provide a Database instance");
-/// let command = schema::Command::new(adapter::Command::new(&db));
+/// let command = schema::Command::new(db_command::Command::new(&db));
 /// ```
 pub struct Command<C> {
     command_port: C,
@@ -32,10 +32,10 @@ impl<C> Command<C> {
     /// # Examples
     ///
     /// ```ignore
-    /// use lithos_core::schema::{self, adapter};
+    /// use lithos_core::schema::{self, db_command};
     ///
     /// let db = todo!("Provide a Database instance");
-    /// let command = schema::Command::new(adapter::Command::new(&db));
+    /// let command = schema::Command::new(db_command::Command::new(&db));
     /// ```
     #[inline]
     #[must_use]
@@ -194,7 +194,7 @@ where
     }
 }
 
-impl Command<crate::schema::adapter::command::Command<'_>> {
+impl Command<crate::schema::db_command::Command<'_>> {
     /// Save many schemas with filesystem timestamps.
     ///
     /// This method is only available when using the concrete redb adapter.
@@ -211,7 +211,7 @@ impl Command<crate::schema::adapter::command::Command<'_>> {
     /// ```ignore
     /// # use lithos_core::schema::{self, adapter};
     /// # let db = todo!("Provide database");
-    /// # let command = schema::Command::new(adapter::Command::new(&db));
+    /// # let command = schema::Command::new(db_command::Command::new(&db));
     /// # let schemas: Vec<lithos_core::schema::aggregate::Schema> = Vec::new();
     /// # let metadata: Vec<lithos_core::schema::stored::StoredMetadata> = Vec::new();
     /// command.save_many_with_metadata(&schemas, &metadata)?;
@@ -276,8 +276,9 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use crate::schema::{
-        self as schema_mod, adapter,
+        self as schema_mod,
         aggregate::{SchemaId, SchemaName},
+        db_command,
         db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
         stored::StoredSchema,
     };
@@ -289,7 +290,7 @@ mod tests {
         fn save_persists_schema_by_id_and_name_index() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")
@@ -327,7 +328,7 @@ mod tests {
         fn delete_removes_schema_by_id() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
 
             let schema = fixtures::schema_fixture(
                 fixtures::TEST_SCHEMA_ID_PROJECT,
@@ -360,7 +361,7 @@ mod tests {
         fn save_batch_persists_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test db");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
 
             let schema_a =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_NOTE, "note")

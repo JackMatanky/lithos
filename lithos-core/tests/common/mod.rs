@@ -13,9 +13,9 @@ use std::{error::Error, path::PathBuf};
 use lithos_core::{
     db::Database,
     schema::{
-        self as schema_mod, adapter,
+        self as schema_mod,
         aggregate::{Schema, SchemaId, SchemaName},
-        db_query,
+        db_command, db_query,
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
@@ -105,10 +105,10 @@ impl TestDb {
 pub fn setup_cqrs(
     db: &Database,
 ) -> (
-    schema_mod::Command<adapter::Command<'_>>,
+    schema_mod::Command<db_command::Command<'_>>,
     schema_mod::Query<db_query::Query<'_>>,
 ) {
-    let command = schema_mod::Command::new(adapter::Command::new(db));
+    let command = schema_mod::Command::new(db_command::Command::new(db));
     let query = schema_mod::Query::new(db_query::Query::new(db));
     (command, query)
 }

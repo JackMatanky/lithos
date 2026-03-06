@@ -304,11 +304,11 @@ use lithos_core::{
     db::Database,
     fs::FsReader,
     schema::{
-        adapter::{self, ingestor::Ingestor},
+        adapter::ingestor::Ingestor,
         aggregate::{Schema, SchemaId},
         bank::{BankVersion, PropertyBank},
         command::Command,
-        db_query,
+        db_command, db_query,
         dereferencer::Dereferencer,
         extender::Extender,
         property::PropertyName,
@@ -747,7 +747,7 @@ fn setup_db_with_schemas(
     let db_path = db_dir.path().join("bench.db");
     let db = Database::open(&db_path).expect("Failed to open DB");
 
-    let cmd = Command::new(adapter::Command::new(&db));
+    let cmd = Command::new(db_command::Command::new(&db));
 
     // Create and save PropertyBank
     let bank = PropertyBank::new();

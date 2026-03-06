@@ -23,6 +23,13 @@ pub mod dereferencer;
 
 /// Zstd compression utilities for raw file storage.
 pub mod compression;
+/// Database command adapter for schema CQRS write operations.
+///
+/// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow
+/// benchmarks and tests to access the command adapter while hiding from public
+/// documentation.
+#[doc(hidden)]
+pub mod db_command;
 /// Database query adapter for schema CQRS read operations.
 ///
 /// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow

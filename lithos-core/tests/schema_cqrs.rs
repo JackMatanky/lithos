@@ -29,10 +29,10 @@ use common::*;
 use lithos_core::{
     db::Database,
     schema::{
-        self as schema_mod, adapter,
+        self as schema_mod,
         aggregate::{SchemaId, SchemaName},
         bank::PropertyBank,
-        db_query,
+        db_command, db_query,
         property::{Multiplicity, Optionality, PropertyId, PropertyName},
     },
 };
@@ -221,7 +221,8 @@ mod property_bank {
         // Save with first database connection
         {
             let db = Database::open(&db_path)?;
-            let command = schema_mod::Command::new(adapter::Command::new(&db));
+            let command =
+                schema_mod::Command::new(db_command::Command::new(&db));
             command.save_property_bank(&bank)?;
         } // Database closed
 
@@ -850,7 +851,8 @@ mod schema {
         // Save with first connection
         {
             let db = Database::open(&db_path)?;
-            let command = schema_mod::Command::new(adapter::Command::new(&db));
+            let command =
+                schema_mod::Command::new(db_command::Command::new(&db));
             command.save(&schema)?;
         } // Database closed
 

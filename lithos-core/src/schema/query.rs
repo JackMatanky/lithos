@@ -531,9 +531,9 @@ mod tests {
 
     use super::*;
     use crate::schema::{
-        self as schema_mod, adapter,
+        self as schema_mod,
         aggregate::{SchemaId, SchemaName},
-        db_query,
+        db_command, db_query,
         stored::StoredMetadata,
     };
 
@@ -546,7 +546,7 @@ mod tests {
         fn find_by_id_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
             let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema =
@@ -565,7 +565,7 @@ mod tests {
         fn find_by_name_returns_saved_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
             let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema =
@@ -589,7 +589,7 @@ mod tests {
         fn list_returns_all_saved_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
             let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema_a =
@@ -628,7 +628,7 @@ mod tests {
         fn is_schema_stale_returns_false_for_fresh_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
             let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema =
@@ -653,7 +653,7 @@ mod tests {
         fn is_schema_stale_returns_true_for_created_at_mismatch() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
             let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema =
@@ -703,7 +703,7 @@ mod tests {
 
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
             let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             // Save PropertyBank
@@ -723,7 +723,7 @@ mod tests {
         fn find_many_by_ids_returns_multiple_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
             let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             // Save multiple schemas
@@ -753,7 +753,7 @@ mod tests {
         fn find_many_by_ids_skips_missing_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
             let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema =
@@ -777,7 +777,7 @@ mod tests {
         fn are_many_stale_checks_multiple_schemas() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let cmd = schema_mod::Command::new(adapter::Command::new(&db));
+            let cmd = schema_mod::Command::new(db_command::Command::new(&db));
             let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let ts_old = SystemTime::now();
