@@ -10,8 +10,7 @@
 use std::{ops::Range, path::Path, time::SystemTime};
 
 use pulldown_cmark::{
-    CowStr, Event, Options, Parser, Tag as CmarkTag, TagEnd,
-    utils::TextMergeWithOffset,
+    Event, Options, Parser, Tag as CmarkTag, TagEnd, utils::TextMergeWithOffset,
 };
 
 use crate::{
@@ -96,8 +95,8 @@ pub(super) trait Extractor {
     fn process(
         &mut self,
         event: &Event<'_>,
-        text: pulldown_cmark::CowStr<'_>,
-        range: Range<usize>,
+        text: &str,
+        range: &Range<usize>,
         ctx: &ExtractionContext,
     ) -> Result<ExtractionState<Self::Output>, Self::Error>;
 }
@@ -306,7 +305,7 @@ impl<'config> NoteReader<'config> {
             );
 
             let text = match &event {
-                Event::Text(text) | Event::Code(text) => text.clone(),
+                Event::Text(text) | Event::Code(text) => text.as_ref(),
                 Event::Start(_)
                 | Event::End(_)
                 | Event::InlineMath(_)
@@ -317,11 +316,12 @@ impl<'config> NoteReader<'config> {
                 | Event::SoftBreak
                 | Event::HardBreak
                 | Event::Rule
-                | Event::TaskListMarker(_) => CowStr::Borrowed(""),
+                | Event::TaskListMarker(_) => "",
             };
+            let range = &range;
 
             if let ExtractionState::Emit(output) =
-                list_ext.process(&event, text.clone(), range.clone(), &ctx)?
+                list_ext.process(&event, text, range, &ctx)?
             {
                 match output {
                     super::extract_list::ExtractionOutput::List(list) => {
@@ -334,35 +334,26 @@ impl<'config> NoteReader<'config> {
             }
 
             if let ExtractionState::Emit(link) =
-                link_ext.process(&event, text.clone(), range.clone(), &ctx)?
+                link_ext.process(&event, text, range, &ctx)?
             {
                 links.push(link);
             }
 
-            if let ExtractionState::Emit(heading) = heading_ext.process(
-                &event,
-                text.clone(),
-                range.clone(),
-                &ctx,
-            )? {
+            if let ExtractionState::Emit(heading) =
+                heading_ext.process(&event, text, range, &ctx)?
+            {
                 headings.push(heading);
             }
 
-            if let ExtractionState::Emit(section) = section_ext.process(
-                &event,
-                text.clone(),
-                range.clone(),
-                &ctx,
-            )? {
+            if let ExtractionState::Emit(section) =
+                section_ext.process(&event, text, range, &ctx)?
+            {
                 sections.push(section);
             }
 
-            if let ExtractionState::Emit(fm) = frontmatter_ext.process(
-                &event,
-                text.clone(),
-                range.clone(),
-                &ctx,
-            )? && frontmatter.is_none()
+            if let ExtractionState::Emit(fm) =
+                frontmatter_ext.process(&event, text, range, &ctx)?
+                && frontmatter.is_none()
             {
                 tag_ext.set_frontmatter(fm.clone());
                 frontmatter = Some(fm);
@@ -654,8 +645,6 @@ fn extract_timestamp(
 )]
 mod tests {
     mod protocol_tests {
-        use pulldown_cmark::CowStr;
-
         use super::*;
 
         #[test]
@@ -694,8 +683,8 @@ mod tests {
             fn process(
                 &mut self,
                 _event: &Event<'_>,
-                _text: CowStr<'_>,
-                _range: Range<usize>,
+                _text: &str,
+                _range: &Range<usize>,
                 _ctx: &ExtractionContext,
             ) -> Result<ExtractionState<String>, NoteError> {
                 self.calls += 1;
@@ -717,24 +706,21 @@ mod tests {
                 calls: 0,
             };
             let ctx = ExtractionContext::default();
-            let event = Event::Text(CowStr::Borrowed("test"));
+            let event = Event::Text("test".into());
 
             // First call
-            let result1 = extractor
-                .process(&event, CowStr::Borrowed("test"), 0..4, &ctx)
-                .unwrap();
+            let result1 =
+                extractor.process(&event, "test", &(0..4), &ctx).unwrap();
             assert!(matches!(result1, ExtractionState::Continue));
 
             // Second call
-            let result2 = extractor
-                .process(&event, CowStr::Borrowed("test"), 4..8, &ctx)
-                .unwrap();
+            let result2 =
+                extractor.process(&event, "test", &(4..8), &ctx).unwrap();
             assert!(matches!(result2, ExtractionState::Continue));
 
             // Third call - should emit
-            let result3 = extractor
-                .process(&event, CowStr::Borrowed("test"), 8..12, &ctx)
-                .unwrap();
+            let result3 =
+                extractor.process(&event, "test", &(8..12), &ctx).unwrap();
             #[expect(clippy::panic, reason = "Test assertion")]
             let ExtractionState::Emit(value) = result3 else {
                 panic!("Expected Emit, got Continue");

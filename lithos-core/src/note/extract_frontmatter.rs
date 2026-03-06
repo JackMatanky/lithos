@@ -5,9 +5,7 @@
 
 use std::{collections::HashMap, ops::Range};
 
-use pulldown_cmark::{
-    CowStr, Event, MetadataBlockKind, Tag as CmarkTag, TagEnd,
-};
+use pulldown_cmark::{Event, MetadataBlockKind, Tag as CmarkTag, TagEnd};
 
 use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::note::{
@@ -218,8 +216,8 @@ impl Extractor for FrontmatterExtractor {
     fn process(
         &mut self,
         event: &Event<'_>,
-        text: CowStr<'_>,
-        _range: Range<usize>,
+        text: &str,
+        _range: &Range<usize>,
         _ctx: &ExtractionContext,
     ) -> Result<ExtractionState<Frontmatter>, NoteError> {
         match event {
@@ -235,7 +233,7 @@ impl Extractor for FrontmatterExtractor {
             }
             Event::Text(_) => {
                 if self.kind.is_some() {
-                    self.push_text(&text);
+                    self.push_text(text);
                 }
                 Ok(ExtractionState::Continue)
             }
@@ -261,9 +259,7 @@ impl Extractor for FrontmatterExtractor {
 
 #[cfg(test)]
 mod tests {
-    use pulldown_cmark::{
-        CowStr, Event, MetadataBlockKind, Tag as CmarkTag, TagEnd,
-    };
+    use pulldown_cmark::{Event, MetadataBlockKind, Tag as CmarkTag, TagEnd};
 
     use super::*;
 
@@ -277,17 +273,17 @@ mod tests {
                 &Event::Start(CmarkTag::MetadataBlock(
                     MetadataBlockKind::YamlStyle,
                 )),
-                CowStr::Borrowed(""),
-                0..3,
+                "",
+                &(0..3),
                 &ctx,
             )
             .unwrap();
 
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("title: Test\ncount: 2")),
-                CowStr::Borrowed("title: Test\ncount: 2"),
-                3..24,
+                &Event::Text("title: Test\ncount: 2".into()),
+                "title: Test\ncount: 2",
+                &(3..24),
                 &ctx,
             )
             .unwrap();
@@ -297,8 +293,8 @@ mod tests {
                 &Event::End(TagEnd::MetadataBlock(
                     MetadataBlockKind::YamlStyle,
                 )),
-                CowStr::Borrowed(""),
-                24..27,
+                "",
+                &(24..27),
                 &ctx,
             )
             .unwrap();
@@ -322,17 +318,17 @@ mod tests {
                 &Event::Start(CmarkTag::MetadataBlock(
                     MetadataBlockKind::PlusesStyle,
                 )),
-                CowStr::Borrowed(""),
-                0..3,
+                "",
+                &(0..3),
                 &ctx,
             )
             .unwrap();
 
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("title = \"Test\"\ncount = 2")),
-                CowStr::Borrowed("title = \"Test\"\ncount = 2"),
-                3..30,
+                &Event::Text("title = \"Test\"\ncount = 2".into()),
+                "title = \"Test\"\ncount = 2",
+                &(3..30),
                 &ctx,
             )
             .unwrap();
@@ -342,8 +338,8 @@ mod tests {
                 &Event::End(TagEnd::MetadataBlock(
                     MetadataBlockKind::PlusesStyle,
                 )),
-                CowStr::Borrowed(""),
-                30..33,
+                "",
+                &(30..33),
                 &ctx,
             )
             .unwrap();
@@ -367,25 +363,20 @@ mod tests {
                 &Event::Start(CmarkTag::MetadataBlock(
                     MetadataBlockKind::YamlStyle,
                 )),
-                CowStr::Borrowed(""),
-                0..3,
+                "",
+                &(0..3),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("- item")),
-                CowStr::Borrowed("- item"),
-                3..9,
-                &ctx,
-            )
+            .process(&Event::Text("- item".into()), "- item", &(3..9), &ctx)
             .unwrap();
 
         let result = extractor.process(
             &Event::End(TagEnd::MetadataBlock(MetadataBlockKind::YamlStyle)),
-            CowStr::Borrowed(""),
-            9..12,
+            "",
+            &(9..12),
             &ctx,
         );
 
@@ -402,25 +393,20 @@ mod tests {
                 &Event::Start(CmarkTag::MetadataBlock(
                     MetadataBlockKind::PlusesStyle,
                 )),
-                CowStr::Borrowed(""),
-                0..3,
+                "",
+                &(0..3),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("[[]]")),
-                CowStr::Borrowed("[[]]"),
-                3..7,
-                &ctx,
-            )
+            .process(&Event::Text("[[]]".into()), "[[]]", &(3..7), &ctx)
             .unwrap();
 
         let result = extractor.process(
             &Event::End(TagEnd::MetadataBlock(MetadataBlockKind::PlusesStyle)),
-            CowStr::Borrowed(""),
-            7..10,
+            "",
+            &(7..10),
             &ctx,
         );
 

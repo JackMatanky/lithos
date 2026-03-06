@@ -6,7 +6,7 @@
 use std::ops::Range;
 
 use pulldown_cmark::{
-    CowStr, Event, HeadingLevel as CmarkHeadingLevel, Tag as CmarkTag, TagEnd,
+    Event, HeadingLevel as CmarkHeadingLevel, Tag as CmarkTag, TagEnd,
 };
 
 use super::reader::{ExtractionContext, ExtractionState, Extractor};
@@ -222,8 +222,8 @@ impl Extractor for SectionExtractor<'_> {
     fn process(
         &mut self,
         event: &Event<'_>,
-        text: CowStr<'_>,
-        range: Range<usize>,
+        text: &str,
+        range: &Range<usize>,
         _ctx: &ExtractionContext,
     ) -> Result<ExtractionState<Section>, NoteError> {
         self.update_last_offset(range.end);
@@ -287,7 +287,7 @@ impl Extractor for SectionExtractor<'_> {
 
             Event::Text(_) | Event::Code(_) => {
                 if let Some(builder) = self.current_heading.as_mut() {
-                    builder.push_text(&text);
+                    builder.push_text(text);
                 }
                 Ok(ExtractionState::Continue)
             }
@@ -317,7 +317,7 @@ impl Extractor for SectionExtractor<'_> {
 
 #[cfg(test)]
 mod tests {
-    use pulldown_cmark::{CowStr, Event, Tag as CmarkTag, TagEnd};
+    use pulldown_cmark::{Event, Tag as CmarkTag, TagEnd};
 
     use super::*;
 
@@ -328,31 +328,21 @@ mod tests {
         let ctx = ExtractionContext::default();
 
         extractor
-            .process(
-                &Event::Start(CmarkTag::Paragraph),
-                CowStr::Borrowed(""),
-                0..1,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Paragraph), "", &(0..1), &ctx)
             .unwrap();
 
         let end = source.len();
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("Paragraph text")),
-                CowStr::Borrowed("Paragraph text"),
-                1..end,
+                &Event::Text("Paragraph text".into()),
+                "Paragraph text",
+                &(1..end),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::End(TagEnd::Paragraph),
-                CowStr::Borrowed(""),
-                end..end,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Paragraph), "", &(end..end), &ctx)
             .unwrap();
 
         let sections = extractor.finish().unwrap();
@@ -378,27 +368,22 @@ mod tests {
                     classes: Vec::new(),
                     attrs: Vec::new(),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("Heading")),
-                CowStr::Borrowed("Heading"),
-                2..9,
-                &ctx,
-            )
+            .process(&Event::Text("Heading".into()), "Heading", &(2..9), &ctx)
             .unwrap();
 
         let end = source.len();
         extractor
             .process(
                 &Event::End(TagEnd::Heading(CmarkHeadingLevel::H1)),
-                CowStr::Borrowed(""),
-                end..end,
+                "",
+                &(end..end),
                 &ctx,
             )
             .unwrap();
@@ -415,9 +400,7 @@ mod tests {
         let mut extractor = SectionExtractor::new(source);
         let ctx = ExtractionContext::default();
 
-        extractor
-            .process(&Event::Rule, CowStr::Borrowed(""), 0..3, &ctx)
-            .unwrap();
+        extractor.process(&Event::Rule, "", &(0..3), &ctx).unwrap();
 
         let sections = extractor.finish().unwrap();
         let section = sections.first().expect("section should exist");
@@ -432,28 +415,18 @@ mod tests {
         let ctx = ExtractionContext::default();
 
         extractor
-            .process(
-                &Event::Start(CmarkTag::Paragraph),
-                CowStr::Borrowed(""),
-                0..1,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Paragraph), "", &(0..1), &ctx)
             .unwrap();
 
         // Set last_offset to an invalid UTF-8 boundary (1 byte into 'é')
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("h\u{e9}")),
-                CowStr::Borrowed("h\u{e9}"),
-                0..2,
-                &ctx,
-            )
+            .process(&Event::Text("h\u{e9}".into()), "h\u{e9}", &(0..2), &ctx)
             .unwrap();
 
         let result = extractor.process(
             &Event::End(TagEnd::Paragraph),
-            CowStr::Borrowed(""),
-            2..2,
+            "",
+            &(2..2),
             &ctx,
         );
 
@@ -467,19 +440,14 @@ mod tests {
         let ctx = ExtractionContext::default();
 
         extractor
-            .process(
-                &Event::Start(CmarkTag::Paragraph),
-                CowStr::Borrowed(""),
-                0..1,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Paragraph), "", &(0..1), &ctx)
             .unwrap();
 
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("Trailing")),
-                CowStr::Borrowed("Trailing"),
-                1..source.len(),
+                &Event::Text("Trailing".into()),
+                "Trailing",
+                &(1..source.len()),
                 &ctx,
             )
             .unwrap();
@@ -499,49 +467,24 @@ mod tests {
         let ctx = ExtractionContext::default();
 
         extractor
-            .process(
-                &Event::Start(CmarkTag::List(None)),
-                CowStr::Borrowed(""),
-                0..1,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::List(None)), "", &(0..1), &ctx)
             .unwrap();
 
         extractor
-            .process(
-                &Event::Start(CmarkTag::Item),
-                CowStr::Borrowed(""),
-                1..2,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Item), "", &(1..2), &ctx)
             .unwrap();
 
         let end = source.len();
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("item")),
-                CowStr::Borrowed("item"),
-                2..end,
-                &ctx,
-            )
+            .process(&Event::Text("item".into()), "item", &(2..end), &ctx)
             .unwrap();
 
         extractor
-            .process(
-                &Event::End(TagEnd::Item),
-                CowStr::Borrowed(""),
-                end..end,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Item), "", &(end..end), &ctx)
             .unwrap();
 
         extractor
-            .process(
-                &Event::End(TagEnd::List(false)),
-                CowStr::Borrowed(""),
-                end..end,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::List(false)), "", &(end..end), &ctx)
             .unwrap();
 
         let sections = extractor.finish().unwrap();

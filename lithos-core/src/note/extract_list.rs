@@ -7,7 +7,7 @@
 
 use std::ops::Range;
 
-use pulldown_cmark::{CowStr, Event, Tag as CmarkTag, TagEnd};
+use pulldown_cmark::{Event, Tag as CmarkTag, TagEnd};
 
 use super::{
     extract_tag::scan_tags,
@@ -746,8 +746,8 @@ impl Extractor for ListExtractor<'_> {
     fn process(
         &mut self,
         event: &Event<'_>,
-        text: CowStr<'_>,
-        range: Range<usize>,
+        text: &str,
+        range: &Range<usize>,
         _ctx: &ExtractionContext,
     ) -> Result<ExtractionState<ExtractionOutput>, NoteError> {
         match event {
@@ -782,7 +782,7 @@ impl Extractor for ListExtractor<'_> {
             Event::Text(_) => {
                 // Accumulate text in current item
                 if let Some(item) = self.current_item.as_mut() {
-                    item.add_text(&text);
+                    item.add_text(text);
                 }
                 Ok(ExtractionState::Continue)
             }
@@ -831,7 +831,7 @@ impl Extractor for ListExtractor<'_> {
 mod tests {
     use std::collections::HashMap;
 
-    use pulldown_cmark::{CowStr, Event, Tag as CmarkTag, TagEnd};
+    use pulldown_cmark::{Event, Tag as CmarkTag, TagEnd};
 
     use super::*;
     use crate::{
@@ -855,53 +855,33 @@ mod tests {
 
         // Start list
         let result1 = extractor
-            .process(
-                &Event::Start(CmarkTag::List(None)),
-                CowStr::Borrowed(""),
-                0..2,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::List(None)), "", &(0..2), &ctx)
             .unwrap();
         assert!(matches!(result1, ExtractionState::Continue));
 
         // Start item
         extractor
-            .process(
-                &Event::Start(CmarkTag::Item),
-                CowStr::Borrowed(""),
-                2..4,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Item), "", &(2..4), &ctx)
             .unwrap();
 
         // Item text
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("Buy milk")),
-                CowStr::Borrowed("Buy milk"),
-                4..12,
+                &Event::Text("Buy milk".into()),
+                "Buy milk",
+                &(4..12),
                 &ctx,
             )
             .unwrap();
 
         // End item
         extractor
-            .process(
-                &Event::End(TagEnd::Item),
-                CowStr::Borrowed(""),
-                12..13,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Item), "", &(12..13), &ctx)
             .unwrap();
 
         // End list - should emit
         let result = extractor
-            .process(
-                &Event::End(TagEnd::List(false)),
-                CowStr::Borrowed(""),
-                13..14,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::List(false)), "", &(13..14), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -920,52 +900,32 @@ mod tests {
 
         // Start list with start number
         extractor
-            .process(
-                &Event::Start(CmarkTag::List(Some(1))),
-                CowStr::Borrowed(""),
-                0..2,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::List(Some(1))), "", &(0..2), &ctx)
             .unwrap();
 
         // Start item
         extractor
-            .process(
-                &Event::Start(CmarkTag::Item),
-                CowStr::Borrowed(""),
-                2..4,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Item), "", &(2..4), &ctx)
             .unwrap();
 
         // Item text
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("First item")),
-                CowStr::Borrowed("First item"),
-                4..14,
+                &Event::Text("First item".into()),
+                "First item",
+                &(4..14),
                 &ctx,
             )
             .unwrap();
 
         // End item
         extractor
-            .process(
-                &Event::End(TagEnd::Item),
-                CowStr::Borrowed(""),
-                14..15,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Item), "", &(14..15), &ctx)
             .unwrap();
 
         // End list - should emit
         let result = extractor
-            .process(
-                &Event::End(TagEnd::List(true)),
-                CowStr::Borrowed(""),
-                20..21,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::List(true)), "", &(20..21), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -986,62 +946,37 @@ mod tests {
 
         // Start list
         extractor
-            .process(
-                &Event::Start(CmarkTag::List(None)),
-                CowStr::Borrowed(""),
-                0..2,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::List(None)), "", &(0..2), &ctx)
             .unwrap();
 
         // Start item
         extractor
-            .process(
-                &Event::Start(CmarkTag::Item),
-                CowStr::Borrowed(""),
-                2..4,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Item), "", &(2..4), &ctx)
             .unwrap();
 
         // Checkbox marker (unchecked)
         extractor
-            .process(
-                &Event::TaskListMarker(false),
-                CowStr::Borrowed(""),
-                4..7,
-                &ctx,
-            )
+            .process(&Event::TaskListMarker(false), "", &(4..7), &ctx)
             .unwrap();
 
         // Text
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("Buy milk")),
-                CowStr::Borrowed("Buy milk"),
-                7..15,
+                &Event::Text("Buy milk".into()),
+                "Buy milk",
+                &(7..15),
                 &ctx,
             )
             .unwrap();
 
         // End item
         extractor
-            .process(
-                &Event::End(TagEnd::Item),
-                CowStr::Borrowed(""),
-                15..16,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Item), "", &(15..16), &ctx)
             .unwrap();
 
         // End list
         let result = extractor
-            .process(
-                &Event::End(TagEnd::List(false)),
-                CowStr::Borrowed(""),
-                16..17,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::List(false)), "", &(16..17), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -1061,62 +996,37 @@ mod tests {
 
         // Start list
         extractor
-            .process(
-                &Event::Start(CmarkTag::List(None)),
-                CowStr::Borrowed(""),
-                0..2,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::List(None)), "", &(0..2), &ctx)
             .unwrap();
 
         // Start item
         extractor
-            .process(
-                &Event::Start(CmarkTag::Item),
-                CowStr::Borrowed(""),
-                2..4,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Item), "", &(2..4), &ctx)
             .unwrap();
 
         // Checkbox marker (checked)
         extractor
-            .process(
-                &Event::TaskListMarker(true),
-                CowStr::Borrowed(""),
-                4..7,
-                &ctx,
-            )
+            .process(&Event::TaskListMarker(true), "", &(4..7), &ctx)
             .unwrap();
 
         // Text
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("Done task")),
-                CowStr::Borrowed("Done task"),
-                7..16,
+                &Event::Text("Done task".into()),
+                "Done task",
+                &(7..16),
                 &ctx,
             )
             .unwrap();
 
         // End item
         extractor
-            .process(
-                &Event::End(TagEnd::Item),
-                CowStr::Borrowed(""),
-                16..17,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Item), "", &(16..17), &ctx)
             .unwrap();
 
         // End list
         let result = extractor
-            .process(
-                &Event::End(TagEnd::List(false)),
-                CowStr::Borrowed(""),
-                17..18,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::List(false)), "", &(17..18), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -1135,62 +1045,37 @@ mod tests {
 
         // Start list
         extractor
-            .process(
-                &Event::Start(CmarkTag::List(None)),
-                CowStr::Borrowed(""),
-                0..2,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::List(None)), "", &(0..2), &ctx)
             .unwrap();
 
         // Start item
         extractor
-            .process(
-                &Event::Start(CmarkTag::Item),
-                CowStr::Borrowed(""),
-                2..4,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Item), "", &(2..4), &ctx)
             .unwrap();
 
         // Checkbox marker (unchecked)
         extractor
-            .process(
-                &Event::TaskListMarker(false),
-                CowStr::Borrowed(""),
-                4..5,
-                &ctx,
-            )
+            .process(&Event::TaskListMarker(false), "", &(4..5), &ctx)
             .unwrap();
 
         // Text without promotion tag
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("Buy milk")),
-                CowStr::Borrowed("Buy milk"),
-                5..13,
+                &Event::Text("Buy milk".into()),
+                "Buy milk",
+                &(5..13),
                 &ctx,
             )
             .unwrap();
 
         // End item
         extractor
-            .process(
-                &Event::End(TagEnd::Item),
-                CowStr::Borrowed(""),
-                13..14,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Item), "", &(13..14), &ctx)
             .unwrap();
 
         // End list - should emit List (not Task)
         let result = extractor
-            .process(
-                &Event::End(TagEnd::List(false)),
-                CowStr::Borrowed(""),
-                14..15,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::List(false)), "", &(14..15), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -1211,52 +1096,32 @@ mod tests {
 
         // Start list
         extractor
-            .process(
-                &Event::Start(CmarkTag::List(None)),
-                CowStr::Borrowed(""),
-                0..2,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::List(None)), "", &(0..2), &ctx)
             .unwrap();
 
         // Start item
         extractor
-            .process(
-                &Event::Start(CmarkTag::Item),
-                CowStr::Borrowed(""),
-                2..4,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Item), "", &(2..4), &ctx)
             .unwrap();
 
         // Checkbox marker (unchecked)
         extractor
-            .process(
-                &Event::TaskListMarker(false),
-                CowStr::Borrowed(""),
-                4..5,
-                &ctx,
-            )
+            .process(&Event::TaskListMarker(false), "", &(4..5), &ctx)
             .unwrap();
 
         // Text with promotion tag
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("#task Review PR")),
-                CowStr::Borrowed("#task Review PR"),
-                5..20,
+                &Event::Text("#task Review PR".into()),
+                "#task Review PR",
+                &(5..20),
                 &ctx,
             )
             .unwrap();
 
         // End item - should emit Task immediately
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Item),
-                CowStr::Borrowed(""),
-                20..21,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Item), "", &(20..21), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -1276,52 +1141,32 @@ mod tests {
 
         // Start list
         extractor
-            .process(
-                &Event::Start(CmarkTag::List(None)),
-                CowStr::Borrowed(""),
-                0..2,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::List(None)), "", &(0..2), &ctx)
             .unwrap();
 
         // Start item
         extractor
-            .process(
-                &Event::Start(CmarkTag::Item),
-                CowStr::Borrowed(""),
-                2..4,
-                &ctx,
-            )
+            .process(&Event::Start(CmarkTag::Item), "", &(2..4), &ctx)
             .unwrap();
 
         // Checkbox marker
         extractor
-            .process(
-                &Event::TaskListMarker(false),
-                CowStr::Borrowed(""),
-                4..5,
-                &ctx,
-            )
+            .process(&Event::TaskListMarker(false), "", &(4..5), &ctx)
             .unwrap();
 
         // Text with promotion tag
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("#task Deploy")),
-                CowStr::Borrowed("#task Deploy"),
-                5..17,
+                &Event::Text("#task Deploy".into()),
+                "#task Deploy",
+                &(5..17),
                 &ctx,
             )
             .unwrap();
 
         // End item - emit task
         let task_result = extractor
-            .process(
-                &Event::End(TagEnd::Item),
-                CowStr::Borrowed(""),
-                17..18,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Item), "", &(17..18), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -1333,12 +1178,7 @@ mod tests {
 
         // End list - emit list
         let list_result = extractor
-            .process(
-                &Event::End(TagEnd::List(false)),
-                CowStr::Borrowed(""),
-                18..19,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::List(false)), "", &(18..19), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]

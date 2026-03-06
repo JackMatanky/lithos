@@ -6,7 +6,7 @@
 use std::ops::Range;
 
 use pulldown_cmark::{
-    CowStr, Event, HeadingLevel as CmarkHeadingLevel, Tag as CmarkTag, TagEnd,
+    Event, HeadingLevel as CmarkHeadingLevel, Tag as CmarkTag, TagEnd,
 };
 
 use super::reader::{ExtractionContext, ExtractionState, Extractor};
@@ -93,8 +93,8 @@ impl Extractor for HeadingExtractor {
     fn process(
         &mut self,
         event: &Event<'_>,
-        text: CowStr<'_>,
-        range: Range<usize>,
+        text: &str,
+        range: &Range<usize>,
         _ctx: &ExtractionContext,
     ) -> Result<ExtractionState<Heading>, NoteError> {
         match event {
@@ -109,7 +109,7 @@ impl Extractor for HeadingExtractor {
 
             Event::Text(_) | Event::Code(_) => {
                 if let Some(builder) = self.current.as_mut() {
-                    builder.push_text(&text);
+                    builder.push_text(text);
                 }
                 Ok(ExtractionState::Continue)
             }
@@ -189,8 +189,8 @@ mod tests {
                             classes: Vec::new(),
                             attrs: Vec::new(),
                         }),
-                        CowStr::Borrowed(""),
-                        0..1,
+                        "",
+                        &(0..1),
                         &ctx,
                     )
                     .unwrap();
@@ -199,9 +199,9 @@ mod tests {
                 let end = start + text.len();
                 extractor
                     .process(
-                        &Event::Text(CowStr::Borrowed(text)),
-                        CowStr::Borrowed(text),
-                        start..end,
+                        &Event::Text(text.into()),
+                        text,
+                        &(start..end),
                         &ctx,
                     )
                     .unwrap();
@@ -209,8 +209,8 @@ mod tests {
                 let result = extractor
                     .process(
                         &Event::End(TagEnd::Heading(heading_level)),
-                        CowStr::Borrowed(""),
-                        end..(end + 1),
+                        "",
+                        &(end..(end + 1)),
                         &ctx,
                     )
                     .unwrap();
@@ -254,8 +254,8 @@ mod tests {
                                 classes: Vec::new(),
                                 attrs: Vec::new(),
                             }),
-                            CowStr::Borrowed(""),
-                            0..1,
+                            "",
+                            &(0..1),
                             &ctx,
                         )
                         .unwrap();
@@ -264,9 +264,9 @@ mod tests {
                     let left_end = left_start + left.len();
                     extractor
                         .process(
-                            &Event::Text(CowStr::Borrowed(&left)),
-                            CowStr::Borrowed(&left),
-                            left_start..left_end,
+                            &Event::Text(left.as_str().into()),
+                            left.as_str(),
+                            &(left_start..left_end),
                             &ctx,
                         )
                         .unwrap();
@@ -276,8 +276,8 @@ mod tests {
                     extractor
                         .process(
                             &Event::SoftBreak,
-                            CowStr::Borrowed(""),
-                            break_start..break_end,
+                            "",
+                            &(break_start..break_end),
                             &ctx,
                         )
                         .unwrap();
@@ -286,9 +286,9 @@ mod tests {
                     let right_end = right_start + right.len();
                     extractor
                         .process(
-                            &Event::Text(CowStr::Borrowed(&right)),
-                            CowStr::Borrowed(&right),
-                            right_start..right_end,
+                            &Event::Text(right.as_str().into()),
+                            right.as_str(),
+                            &(right_start..right_end),
                             &ctx,
                         )
                         .unwrap();
@@ -296,8 +296,8 @@ mod tests {
                     let result = extractor
                         .process(
                             &Event::End(TagEnd::Heading(heading_level)),
-                            CowStr::Borrowed(""),
-                            right_end..(right_end + 1),
+                            "",
+                            &(right_end..(right_end + 1)),
                             &ctx,
                         )
                         .unwrap();
@@ -337,28 +337,18 @@ mod tests {
                         classes: Vec::new(),
                         attrs: Vec::new(),
                     }),
-                    CowStr::Borrowed(""),
-                    0..1,
+                    "",
+                    &(0..1),
                     &ctx,
                 )
                 .unwrap();
 
             extractor
-                .process(
-                    &Event::Text(CowStr::Borrowed("Title")),
-                    CowStr::Borrowed("Title"),
-                    1..6,
-                    &ctx,
-                )
+                .process(&Event::Text("Title".into()), "Title", &(1..6), &ctx)
                 .unwrap();
 
             let result = extractor
-                .process(
-                    &Event::End(TagEnd::Heading(level)),
-                    CowStr::Borrowed(""),
-                    6..7,
-                    &ctx,
-                )
+                .process(&Event::End(TagEnd::Heading(level)), "", &(6..7), &ctx)
                 .unwrap();
 
             #[expect(clippy::panic, reason = "Test assertion")]
@@ -384,35 +374,25 @@ mod tests {
                     classes: Vec::new(),
                     attrs: Vec::new(),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("Hello ")),
-                CowStr::Borrowed("Hello "),
-                1..7,
-                &ctx,
-            )
+            .process(&Event::Text("Hello ".into()), "Hello ", &(1..7), &ctx)
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("World")),
-                CowStr::Borrowed("World"),
-                7..12,
-                &ctx,
-            )
+            .process(&Event::Text("World".into()), "World", &(7..12), &ctx)
             .unwrap();
 
         let result = extractor
             .process(
                 &Event::End(TagEnd::Heading(CmarkHeadingLevel::H2)),
-                CowStr::Borrowed(""),
-                12..13,
+                "",
+                &(12..13),
                 &ctx,
             )
             .unwrap();
@@ -438,39 +418,27 @@ mod tests {
                     classes: Vec::new(),
                     attrs: Vec::new(),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("Hello")),
-                CowStr::Borrowed("Hello"),
-                1..6,
-                &ctx,
-            )
+            .process(&Event::Text("Hello".into()), "Hello", &(1..6), &ctx)
             .unwrap();
 
-        extractor
-            .process(&Event::SoftBreak, CowStr::Borrowed(""), 6..7, &ctx)
-            .unwrap();
+        extractor.process(&Event::SoftBreak, "", &(6..7), &ctx).unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("World")),
-                CowStr::Borrowed("World"),
-                7..12,
-                &ctx,
-            )
+            .process(&Event::Text("World".into()), "World", &(7..12), &ctx)
             .unwrap();
 
         let result = extractor
             .process(
                 &Event::End(TagEnd::Heading(CmarkHeadingLevel::H3)),
-                CowStr::Borrowed(""),
-                12..13,
+                "",
+                &(12..13),
                 &ctx,
             )
             .unwrap();
@@ -496,16 +464,16 @@ mod tests {
                     classes: Vec::new(),
                     attrs: Vec::new(),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
 
         let result = extractor.process(
             &Event::End(TagEnd::Heading(CmarkHeadingLevel::H1)),
-            CowStr::Borrowed(""),
-            1..2,
+            "",
+            &(1..2),
             &ctx,
         );
 
@@ -525,26 +493,21 @@ mod tests {
                     classes: Vec::new(),
                     attrs: Vec::new(),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Code(CowStr::Borrowed("code")),
-                CowStr::Borrowed("code"),
-                1..7,
-                &ctx,
-            )
+            .process(&Event::Code("code".into()), "code", &(1..7), &ctx)
             .unwrap();
 
         let result = extractor
             .process(
                 &Event::End(TagEnd::Heading(CmarkHeadingLevel::H2)),
-                CowStr::Borrowed(""),
-                7..8,
+                "",
+                &(7..8),
                 &ctx,
             )
             .unwrap();
@@ -570,8 +533,8 @@ mod tests {
                     classes: Vec::new(),
                     attrs: Vec::new(),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
@@ -584,35 +547,25 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                1..2,
+                "",
+                &(1..2),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("Link")),
-                CowStr::Borrowed("Link"),
-                2..6,
-                &ctx,
-            )
+            .process(&Event::Text("Link".into()), "Link", &(2..6), &ctx)
             .unwrap();
 
         extractor
-            .process(
-                &Event::End(TagEnd::Link),
-                CowStr::Borrowed(""),
-                6..7,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Link), "", &(6..7), &ctx)
             .unwrap();
 
         let result = extractor
             .process(
                 &Event::End(TagEnd::Heading(CmarkHeadingLevel::H2)),
-                CowStr::Borrowed(""),
-                7..8,
+                "",
+                &(7..8),
                 &ctx,
             )
             .unwrap();
@@ -638,8 +591,8 @@ mod tests {
                     classes: Vec::new(),
                     attrs: Vec::new(),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();

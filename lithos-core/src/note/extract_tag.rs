@@ -6,7 +6,7 @@
 
 use std::{collections::HashSet, ops::Range};
 
-use pulldown_cmark::{CowStr, Event};
+use pulldown_cmark::Event;
 
 use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::{
@@ -139,15 +139,15 @@ impl Extractor for TagExtractor<'_> {
     fn process(
         &mut self,
         event: &Event<'_>,
-        text: CowStr<'_>,
-        _range: Range<usize>,
+        text: &str,
+        _range: &Range<usize>,
         ctx: &ExtractionContext,
     ) -> Result<ExtractionState<NoteTag>, crate::note::error::NoteError> {
         let _tags_key = self.config.frontmatter().tags();
         match event {
             Event::Text(_) => {
                 if !ctx.inside_code_block && !ctx.inside_link {
-                    self.collect_from_text(&text);
+                    self.collect_from_text(text);
                 }
                 Ok(ExtractionState::Continue)
             }
@@ -175,7 +175,7 @@ impl Extractor for TagExtractor<'_> {
 mod tests {
     use std::collections::HashMap;
 
-    use pulldown_cmark::{CowStr, Event};
+    use pulldown_cmark::Event;
 
     use super::*;
     use crate::{
@@ -194,12 +194,7 @@ mod tests {
         let ctx = ExtractionContext::default();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("#tag")),
-                CowStr::Borrowed("#tag"),
-                0..4,
-                &ctx,
-            )
+            .process(&Event::Text("#tag".into()), "#tag", &(0..4), &ctx)
             .unwrap();
 
         let tags = extractor.finish().unwrap();
@@ -215,9 +210,9 @@ mod tests {
 
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("#parent/child")),
-                CowStr::Borrowed("#parent/child"),
-                0..13,
+                &Event::Text("#parent/child".into()),
+                "#parent/child",
+                &(0..13),
                 &ctx,
             )
             .unwrap();
@@ -234,12 +229,7 @@ mod tests {
         let ctx = ExtractionContext::default();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("#tag123")),
-                CowStr::Borrowed("#tag123"),
-                0..7,
-                &ctx,
-            )
+            .process(&Event::Text("#tag123".into()), "#tag123", &(0..7), &ctx)
             .unwrap();
 
         let tags = extractor.finish().unwrap();
@@ -254,12 +244,7 @@ mod tests {
         let ctx = ExtractionContext::default();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("#my-tag")),
-                CowStr::Borrowed("#my-tag"),
-                0..7,
-                &ctx,
-            )
+            .process(&Event::Text("#my-tag".into()), "#my-tag", &(0..7), &ctx)
             .unwrap();
 
         let tags = extractor.finish().unwrap();
@@ -274,12 +259,7 @@ mod tests {
         let ctx = ExtractionContext::default();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("#my_tag")),
-                CowStr::Borrowed("#my_tag"),
-                0..7,
-                &ctx,
-            )
+            .process(&Event::Text("#my_tag".into()), "#my_tag", &(0..7), &ctx)
             .unwrap();
 
         let tags = extractor.finish().unwrap();
@@ -297,12 +277,7 @@ mod tests {
         };
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("#tag")),
-                CowStr::Borrowed("#tag"),
-                0..4,
-                &ctx,
-            )
+            .process(&Event::Text("#tag".into()), "#tag", &(0..4), &ctx)
             .unwrap();
 
         let tags = extractor.finish().unwrap();
@@ -319,12 +294,7 @@ mod tests {
         };
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("#tag")),
-                CowStr::Borrowed("#tag"),
-                0..4,
-                &ctx,
-            )
+            .process(&Event::Text("#tag".into()), "#tag", &(0..4), &ctx)
             .unwrap();
 
         let tags = extractor.finish().unwrap();
@@ -339,9 +309,9 @@ mod tests {
 
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("#tag #tag")),
-                CowStr::Borrowed("#tag #tag"),
-                0..9,
+                &Event::Text("#tag #tag".into()),
+                "#tag #tag",
+                &(0..9),
                 &ctx,
             )
             .unwrap();
@@ -362,9 +332,9 @@ mod tests {
 
             extractor
                 .process(
-                    &Event::Text(CowStr::Borrowed(text)),
-                    CowStr::Borrowed(text),
-                    0..text.len(),
+                    &Event::Text(text.into()),
+                    text,
+                    &(0..text.len()),
                     &ctx,
                 )
                 .unwrap();
@@ -419,12 +389,7 @@ mod tests {
         let ctx = ExtractionContext::default();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("#/bad")),
-                CowStr::Borrowed("#/bad"),
-                0..5,
-                &ctx,
-            )
+            .process(&Event::Text("#/bad".into()), "#/bad", &(0..5), &ctx)
             .unwrap();
 
         let tags = extractor.finish().unwrap();

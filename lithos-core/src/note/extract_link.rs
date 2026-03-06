@@ -242,8 +242,8 @@ impl Extractor for LinkExtractor<'_> {
     fn process(
         &mut self,
         event: &Event<'_>,
-        text: CowStr<'_>,
-        range: Range<usize>,
+        text: &str,
+        range: &Range<usize>,
         _ctx: &ExtractionContext,
     ) -> Result<ExtractionState<Link>, NoteError> {
         match event {
@@ -270,7 +270,7 @@ impl Extractor for LinkExtractor<'_> {
             Event::Text(_) => {
                 // Collect alias text if needed
                 if let Some(builder) = self.current.as_mut() {
-                    builder.add_alias_text(&text);
+                    builder.add_alias_text(text);
                 }
                 Ok(ExtractionState::Continue)
             }
@@ -334,8 +334,8 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..2,
+                "",
+                &(0..2),
                 &ctx,
             )
             .unwrap();
@@ -343,21 +343,16 @@ mod tests {
         // Text event (can be ignored for simple wikilink without alias)
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("Main Page")),
-                CowStr::Borrowed("Main Page"),
-                2..11,
+                &Event::Text("Main Page".into()),
+                "Main Page",
+                &(2..11),
                 &ctx,
             )
             .unwrap();
 
         // End link - should emit
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Link),
-                CowStr::Borrowed(""),
-                11..13,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Link), "", &(11..13), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -388,30 +383,20 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..2,
+                "",
+                &(0..2),
                 &ctx,
             )
             .unwrap();
 
         // Alias text
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("Home")),
-                CowStr::Borrowed("Home"),
-                14..18,
-                &ctx,
-            )
+            .process(&Event::Text("Home".into()), "Home", &(14..18), &ctx)
             .unwrap();
 
         // End link
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Link),
-                CowStr::Borrowed(""),
-                18..20,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Link), "", &(18..20), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -440,28 +425,23 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..2,
+                "",
+                &(0..2),
                 &ctx,
             )
             .unwrap();
 
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("Note#Heading")),
-                CowStr::Borrowed("Note#Heading"),
-                2..14,
+                &Event::Text("Note#Heading".into()),
+                "Note#Heading",
+                &(2..14),
                 &ctx,
             )
             .unwrap();
 
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Link),
-                CowStr::Borrowed(""),
-                14..16,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Link), "", &(14..16), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -492,28 +472,23 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..2,
+                "",
+                &(0..2),
                 &ctx,
             )
             .unwrap();
 
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("Note#^abc123")),
-                CowStr::Borrowed("Note#^abc123"),
-                2..14,
+                &Event::Text("Note#^abc123".into()),
+                "Note#^abc123",
+                &(2..14),
                 &ctx,
             )
             .unwrap();
 
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Link),
-                CowStr::Borrowed(""),
-                14..16,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Link), "", &(14..16), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -542,29 +517,19 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
 
         // Link text (becomes alias)
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("Example")),
-                CowStr::Borrowed("Example"),
-                1..8,
-                &ctx,
-            )
+            .process(&Event::Text("Example".into()), "Example", &(1..8), &ctx)
             .unwrap();
 
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Link),
-                CowStr::Borrowed(""),
-                29..30,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Link), "", &(29..30), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -593,28 +558,23 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..3,
+                "",
+                &(0..3),
                 &ctx,
             )
             .unwrap();
 
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("image.png")),
-                CowStr::Borrowed("image.png"),
-                3..12,
+                &Event::Text("image.png".into()),
+                "image.png",
+                &(3..12),
                 &ctx,
             )
             .unwrap();
 
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Image),
-                CowStr::Borrowed(""),
-                12..14,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Image), "", &(12..14), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -642,28 +602,18 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..2,
+                "",
+                &(0..2),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("alt")),
-                CowStr::Borrowed("alt"),
-                2..5,
-                &ctx,
-            )
+            .process(&Event::Text("alt".into()), "alt", &(2..5), &ctx)
             .unwrap();
 
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Image),
-                CowStr::Borrowed(""),
-                5..6,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Image), "", &(5..6), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -693,28 +643,23 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..3,
+                "",
+                &(0..3),
                 &ctx,
             )
             .unwrap();
 
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("clip.mp4")),
-                CowStr::Borrowed("clip.mp4"),
-                3..11,
+                &Event::Text("clip.mp4".into()),
+                "clip.mp4",
+                &(3..11),
                 &ctx,
             )
             .unwrap();
 
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Image),
-                CowStr::Borrowed(""),
-                11..13,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Image), "", &(11..13), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -744,28 +689,23 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..3,
+                "",
+                &(0..3),
                 &ctx,
             )
             .unwrap();
 
         extractor
             .process(
-                &Event::Text(CowStr::Borrowed("song.mp3")),
-                CowStr::Borrowed("song.mp3"),
-                3..11,
+                &Event::Text("song.mp3".into()),
+                "song.mp3",
+                &(3..11),
                 &ctx,
             )
             .unwrap();
 
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Image),
-                CowStr::Borrowed(""),
-                11..13,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Image), "", &(11..13), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -793,28 +733,18 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("site")),
-                CowStr::Borrowed("site"),
-                1..5,
-                &ctx,
-            )
+            .process(&Event::Text("site".into()), "site", &(1..5), &ctx)
             .unwrap();
 
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Link),
-                CowStr::Borrowed(""),
-                5..6,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Link), "", &(5..6), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -840,8 +770,8 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
@@ -865,18 +795,14 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
 
-        let result = extractor.process(
-            &Event::End(TagEnd::Link),
-            CowStr::Borrowed(""),
-            1..2,
-            &ctx,
-        );
+        let result =
+            extractor.process(&Event::End(TagEnd::Link), "", &(1..2), &ctx);
 
         let _err: NoteError = result.unwrap_err();
     }
@@ -896,37 +822,22 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("Hello ")),
-                CowStr::Borrowed("Hello "),
-                1..7,
-                &ctx,
-            )
+            .process(&Event::Text("Hello ".into()), "Hello ", &(1..7), &ctx)
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("World")),
-                CowStr::Borrowed("World"),
-                7..12,
-                &ctx,
-            )
+            .process(&Event::Text("World".into()), "World", &(7..12), &ctx)
             .unwrap();
 
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Link),
-                CowStr::Borrowed(""),
-                12..13,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Link), "", &(12..13), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
@@ -952,28 +863,18 @@ mod tests {
                     title: CowStr::Borrowed(""),
                     id: CowStr::Borrowed(""),
                 }),
-                CowStr::Borrowed(""),
-                0..1,
+                "",
+                &(0..1),
                 &ctx,
             )
             .unwrap();
 
         extractor
-            .process(
-                &Event::Text(CowStr::Borrowed("Email")),
-                CowStr::Borrowed("Email"),
-                1..6,
-                &ctx,
-            )
+            .process(&Event::Text("Email".into()), "Email", &(1..6), &ctx)
             .unwrap();
 
         let result = extractor
-            .process(
-                &Event::End(TagEnd::Link),
-                CowStr::Borrowed(""),
-                6..7,
-                &ctx,
-            )
+            .process(&Event::End(TagEnd::Link), "", &(6..7), &ctx)
             .unwrap();
 
         #[expect(clippy::panic, reason = "Test assertion")]
