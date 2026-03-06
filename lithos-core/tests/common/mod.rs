@@ -15,6 +15,7 @@ use lithos_core::{
     schema::{
         self as schema_mod, adapter,
         aggregate::{Schema, SchemaId, SchemaName},
+        db_query,
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
@@ -105,10 +106,10 @@ pub fn setup_cqrs(
     db: &Database,
 ) -> (
     schema_mod::Command<adapter::Command<'_>>,
-    schema_mod::Query<adapter::Query<'_>>,
+    schema_mod::Query<db_query::Query<'_>>,
 ) {
     let command = schema_mod::Command::new(adapter::Command::new(db));
-    let query = schema_mod::Query::new(adapter::Query::new(db));
+    let query = schema_mod::Query::new(db_query::Query::new(db));
     (command, query)
 }
 

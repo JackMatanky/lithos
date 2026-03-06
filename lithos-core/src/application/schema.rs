@@ -97,7 +97,7 @@ pub enum SchemaServiceError {
 /// Uses concrete redb adapters for production use. If testing with mocks
 /// is needed in the future, this can be made generic again.
 pub struct SchemaService<'db> {
-    query: Query<crate::schema::adapter::Query<'db>>,
+    query: Query<crate::schema::db_query::Query<'db>>,
     command: Command<crate::schema::adapter::Command<'db>>,
 }
 
@@ -122,7 +122,7 @@ impl<'db> SchemaService<'db> {
     #[inline]
     #[must_use]
     pub fn new(
-        query: Query<crate::schema::adapter::Query<'db>>,
+        query: Query<crate::schema::db_query::Query<'db>>,
         command: Command<crate::schema::adapter::Command<'db>>,
     ) -> Self {
         Self {

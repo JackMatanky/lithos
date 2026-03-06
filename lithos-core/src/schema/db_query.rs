@@ -31,7 +31,7 @@ use crate::{
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::adapter::query::Query;
+/// use lithos_core::schema::db_query::Query;
 ///
 /// let db = todo!("Provide a Database instance");
 /// let adapter = Query::new(&db);
@@ -48,7 +48,7 @@ impl<'db> Query<'db> {
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::adapter::query::Query;
+    /// use lithos_core::schema::db_query::Query;
     ///
     /// let db = todo!("Provide a Database instance");
     /// let adapter = Query::new(&db);
@@ -218,7 +218,7 @@ impl QueryPort for Query<'_> {
                 }
 
                 let schema = Schema::try_from(stored).map_err(
-                    |e: super::super::error::SchemaError| {
+                    |e: super::error::SchemaError| {
                         DbError::Deserialization(e.to_string())
                     },
                 )?;
@@ -232,7 +232,7 @@ impl QueryPort for Query<'_> {
     #[inline]
     fn are_many_stale(
         &self,
-        schemas: &[super::super::ports::StalenessCheck],
+        schemas: &[super::ports::StalenessCheck],
         bank_version: BankVersion,
     ) -> Result<std::collections::HashMap<SchemaId, bool>, Self::Error> {
         use std::collections::HashMap;

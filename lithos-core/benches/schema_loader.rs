@@ -308,6 +308,7 @@ use lithos_core::{
         aggregate::{Schema, SchemaId},
         bank::{BankVersion, PropertyBank},
         command::Command,
+        db_query,
         dereferencer::Dereferencer,
         extender::Extender,
         property::PropertyName,
@@ -794,7 +795,7 @@ fn bench_staleness_serial(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(adapter::Query::new(&db));
+                let qry = Query::new(db_query::Query::new(&db));
 
                 b.iter(|| {
                     let mut stale_count = 0;
@@ -839,7 +840,7 @@ fn bench_staleness_batch(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(adapter::Query::new(&db));
+                let qry = Query::new(db_query::Query::new(&db));
 
                 // Build staleness checks
                 let checks: Vec<(
@@ -882,7 +883,7 @@ fn bench_schema_lookup_serial(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(adapter::Query::new(&db));
+                let qry = Query::new(db_query::Query::new(&db));
 
                 b.iter(|| {
                     let mut found_count = 0;
@@ -920,7 +921,7 @@ fn bench_schema_lookup_batch(c: &mut Criterion) {
             |b, size| {
                 let (_db_dir, db, schema_ids) =
                     setup_db_with_schemas(size.schema_count);
-                let qry = Query::new(adapter::Query::new(&db));
+                let qry = Query::new(db_query::Query::new(&db));
 
                 b.iter(|| {
                     let schemas = qry

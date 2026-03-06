@@ -32,6 +32,7 @@ use lithos_core::{
         self as schema_mod, adapter,
         aggregate::{SchemaId, SchemaName},
         bank::PropertyBank,
+        db_query,
         property::{Multiplicity, Optionality, PropertyId, PropertyName},
     },
 };
@@ -226,7 +227,7 @@ mod property_bank {
 
         // WHEN: Reopening database
         let db = Database::open(&db_path)?;
-        let query = schema_mod::Query::new(adapter::Query::new(&db));
+        let query = schema_mod::Query::new(db_query::Query::new(&db));
 
         // THEN: PropertyBank is intact
         let loaded = query.get_property_bank()?;
@@ -855,7 +856,7 @@ mod schema {
 
         // WHEN: Reopening database
         let db = Database::open(&db_path)?;
-        let query = schema_mod::Query::new(adapter::Query::new(&db));
+        let query = schema_mod::Query::new(db_query::Query::new(&db));
 
         // THEN: Schema intact
         let loaded = query

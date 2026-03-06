@@ -19,10 +19,10 @@ use super::{
 /// # Examples
 ///
 /// ```ignore
-/// use lithos_core::schema::{self, adapter};
+/// use lithos_core::schema::{self, db_query};
 ///
 /// let db = todo!("Provide a Database instance");
-/// let query = schema::Query::new(adapter::Query::new(&db));
+/// let query = schema::Query::new(db_query::Query::new(&db));
 /// ```
 pub struct Query<Q> {
     query_port: Q,
@@ -34,10 +34,10 @@ impl<Q> Query<Q> {
     /// # Examples
     ///
     /// ```ignore
-    /// use lithos_core::schema::{self, adapter};
+    /// use lithos_core::schema::{self, db_query};
     ///
     /// let db = todo!("Provide a Database instance");
-    /// let query = schema::Query::new(adapter::Query::new(&db));
+    /// let query = schema::Query::new(db_query::Query::new(&db));
     /// ```
     #[inline]
     #[must_use]
@@ -470,7 +470,7 @@ where
 }
 
 // Methods specific to the adapter implementation
-impl Query<crate::schema::adapter::Query<'_>> {
+impl Query<crate::schema::db_query::Query<'_>> {
     /// Get the source file hash for a schema (adapter-specific method).
     ///
     /// Returns `None` if the schema metadata is not found.
@@ -533,6 +533,7 @@ mod tests {
     use crate::schema::{
         self as schema_mod, adapter,
         aggregate::{SchemaId, SchemaName},
+        db_query,
         stored::StoredMetadata,
     };
 
@@ -546,7 +547,7 @@ mod tests {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -565,7 +566,7 @@ mod tests {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -589,7 +590,7 @@ mod tests {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema_a =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -614,7 +615,7 @@ mod tests {
         fn is_schema_stale_returns_true_for_missing_schema() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let missing_id = fixtures::TEST_SCHEMA_ID_A;
             let stale = qry
@@ -628,7 +629,7 @@ mod tests {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -653,7 +654,7 @@ mod tests {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -685,7 +686,7 @@ mod tests {
         fn require_property_bank_returns_error_when_missing() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let result = qry.require_property_bank();
 
@@ -703,7 +704,7 @@ mod tests {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             // Save PropertyBank
             let bank = PropertyBank::new();
@@ -723,7 +724,7 @@ mod tests {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             // Save multiple schemas
             let schema1 =
@@ -753,7 +754,7 @@ mod tests {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
@@ -777,7 +778,7 @@ mod tests {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             let ts_old = SystemTime::now();
             let ts_new = ts_old + Duration::from_secs(1);
@@ -827,7 +828,7 @@ mod tests {
         fn are_many_stale_reports_missing_as_stale() {
             let (_dir, db) =
                 fixtures::test_db().expect("Failed to create test DB");
-            let qry = schema_mod::Query::new(adapter::Query::new(&db));
+            let qry = schema_mod::Query::new(db_query::Query::new(&db));
 
             // WHEN: Checking staleness for a schema that doesn't exist
             let schemas = vec![(fixtures::TEST_SCHEMA_ID_A, None, None)];
