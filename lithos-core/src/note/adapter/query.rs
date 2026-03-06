@@ -395,25 +395,23 @@ mod tests {
     use crate::note::error::{NoteError, NoteQueryError};
 
     mod fixtures {
-        use std::collections::HashMap;
-
         use super::*;
         use crate::{
             config::{
                 aggregate::Config,
-                raw::RawConfig,
+                raw::{
+                    RawConfig, RawDateFieldSpec, RawFieldSpec,
+                    RawIndexingConfig, RawTaskConfig, RawTaskDates,
+                },
                 task::{StatusName, StatusSymbol},
                 vault::{VaultId, VaultRoot},
             },
             note::{
-                adapter::command::CommandAdapter,
+                adapter::{command::CommandAdapter, reader::NoteReader},
                 aggregate::NoteId,
                 frontmatter::Frontmatter,
                 paths::NotePath,
                 ports::Command,
-                position::SourceByteOffset,
-                task::{Task, TaskAttributes, TaskMetadata, TaskTimestamp},
-                value::FieldValue,
             },
         };
         type QuerySetupResult =
@@ -432,8 +430,51 @@ mod tests {
         }
 
         pub fn test_config() -> Result<Config, String> {
+            let raw = RawConfig {
+                task: Some(RawTaskConfig {
+                    dates: Some(RawTaskDates {
+                        created: Some(RawDateFieldSpec {
+                            keyword: String::from("created"),
+                            emoji: None,
+                            format: String::from("%Y-%m-%d"),
+                        }),
+                        due: Some(RawDateFieldSpec {
+                            keyword: String::from("due"),
+                            emoji: None,
+                            format: String::from("%Y-%m-%d"),
+                        }),
+                        reminder: Some(RawDateFieldSpec {
+                            keyword: String::from("reminder"),
+                            emoji: None,
+                            format: String::from("%Y-%m-%d"),
+                        }),
+                        completed: Some(RawDateFieldSpec {
+                            keyword: String::from("completed"),
+                            emoji: None,
+                            format: String::from("%Y-%m-%d"),
+                        }),
+                    }),
+                    fields: Some(std::collections::HashMap::from([
+                        (String::from("priority"), RawFieldSpec::Float {
+                            min: None,
+                            max: None,
+                        }),
+                        (String::from("project"), RawFieldSpec::String {
+                            pattern: None,
+                        }),
+                    ])),
+                    indexing: Some(RawIndexingConfig {
+                        indexed_fields: Some(vec![
+                            String::from("priority"),
+                            String::from("project"),
+                        ]),
+                    }),
+                    ..RawTaskConfig::default()
+                }),
+                ..RawConfig::default()
+            };
             Config::build(
-                &RawConfig::default(),
+                &raw,
                 VaultId::new(),
                 VaultRoot::try_new(std::path::PathBuf::from("/vault"))
                     .map_err(|e| e.to_string())?,
@@ -442,32 +483,24 @@ mod tests {
             .map_err(|e| e.to_string())
         }
 
-        pub fn complex_frontmatter() -> Frontmatter {
-            Frontmatter::new(HashMap::from([(
-                "root".into(),
-                FieldValue::Object(HashMap::from([(
-                    "nested".into(),
-                    FieldValue::Array(vec![
-                        FieldValue::String("x".into()),
-                        FieldValue::Boolean(true),
-                    ]),
-                )])),
-            )]))
-        }
-
         pub fn note_with_frontmatter() -> QuerySetupResult {
             let (dir, db) = test_db()?;
             let config = test_config()?;
-            let fm = complex_frontmatter();
             let cmd = CommandAdapter::new(&db, &config);
 
             let path =
                 NotePath::try_new("notes/a.md").map_err(|e| e.to_string())?;
-            let mut note =
-                Command::create(&cmd, &path).map_err(|e| e.to_string())?;
-            note.set_frontmatter(Some(fm.clone()));
-            let id = note.id();
-            Command::update(&cmd, note).map_err(|e| e.to_string())?;
+            let markdown =
+                "---\nroot:\n  nested:\n    - x\n    - true\n---\n\n# Title";
+            let parsed = NoteReader::new(&config)
+                .parse_str(markdown)
+                .map_err(|e| e.to_string())?;
+            let fm = parsed
+                .frontmatter()
+                .cloned()
+                .ok_or_else(|| String::from("missing frontmatter"))?;
+            let id = Command::record_parsed_note(&cmd, &path, &parsed)
+                .map_err(|e| e.to_string())?;
             Ok((dir, db, id, fm))
         }
 
@@ -478,19 +511,6 @@ mod tests {
 
             let path =
                 NotePath::try_new("notes/a.md").map_err(|e| e.to_string())?;
-            let mut note =
-                Command::create(&cmd, &path).map_err(|e| e.to_string())?;
-
-            let frontmatter = Frontmatter::new(HashMap::from([
-                (
-                    "aliases".into(),
-                    FieldValue::Array(vec![FieldValue::String("Alias".into())]),
-                ),
-                ("file_class".into(), FieldValue::String("Class".into())),
-                ("category".into(), FieldValue::String("docs".into())),
-            ]));
-            note.set_frontmatter(Some(frontmatter));
-
             let status = config
                 .task()
                 .status()
@@ -500,31 +520,16 @@ mod tests {
                 .ok_or_else(|| String::from("missing default status"))?
                 .clone();
             let status_name = status.clone();
-            let mut metadata = TaskMetadata::new();
-            metadata
-                .insert_raw("priority", FieldValue::Number(2.0))
+            let markdown = "---\naliases:\n  - Alias\nfile_class: \
+                            Class\ncategory: docs\n---\n\n# Title\n- [ ] \
+                            #task Do work [priority:: 2] [project:: lithos] \
+                            [created:: 2024-01-01] [due:: 2024-01-02] \
+                            [reminder:: 2024-01-03] [completed:: 2024-01-04]";
+            let parsed = NoteReader::new(&config)
+                .parse_str(markdown)
                 .map_err(|e| e.to_string())?;
-            metadata
-                .insert_raw("project", FieldValue::String("lithos".into()))
+            let id = Command::record_parsed_note(&cmd, &path, &parsed)
                 .map_err(|e| e.to_string())?;
-            let attributes = TaskAttributes::builder()
-                .metadata(metadata)
-                .created_at(Some(TaskTimestamp::new(1_700_000_000)))
-                .due_at(Some(TaskTimestamp::new(1_700_000_100)))
-                .reminder_at(Some(TaskTimestamp::new(1_700_000_200)))
-                .completed_at(Some(TaskTimestamp::new(1_700_000_300)))
-                .build();
-            let task = Task::try_new(
-                status,
-                "Do work",
-                SourceByteOffset::new(0),
-                attributes,
-            )
-            .map_err(|e| e.to_string())?;
-            note.add_task(task);
-
-            let id = note.id();
-            Command::update(&cmd, note).map_err(|e| e.to_string())?;
             Ok((dir, db, id, status_name))
         }
     }
@@ -616,20 +621,20 @@ mod tests {
             assert!(by_project.iter().any(|note| note.id() == id));
 
             let by_created = qry
-                .list_by_task_created_date(TaskTimestamp::new(1_700_000_000))?;
+                .list_by_task_created_date(TaskTimestamp::new(1_704_067_200))?;
             assert!(by_created.iter().any(|note| note.id() == id));
 
             let by_due =
-                qry.list_by_task_due_date(TaskTimestamp::new(1_700_000_100))?;
+                qry.list_by_task_due_date(TaskTimestamp::new(1_704_153_600))?;
             assert!(by_due.iter().any(|note| note.id() == id));
 
             let by_reminder = qry.list_by_task_reminder_date(
-                TaskTimestamp::new(1_700_000_200),
+                TaskTimestamp::new(1_704_240_000),
             )?;
             assert!(by_reminder.iter().any(|note| note.id() == id));
 
             let by_completed = qry.list_by_task_completed_date(
-                TaskTimestamp::new(1_700_000_300),
+                TaskTimestamp::new(1_704_326_400),
             )?;
             assert!(by_completed.iter().any(|note| note.id() == id));
 

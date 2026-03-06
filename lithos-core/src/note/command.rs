@@ -4,10 +4,8 @@
 //! through the note command port.
 
 use super::{
-    aggregate::{Note, NoteId},
-    error::NoteCommandError,
-    paths::NotePath,
-    ports as note_ports,
+    adapter::reader::ParsedNote, aggregate::NoteId, error::NoteCommandError,
+    paths::NotePath, ports as note_ports,
 };
 
 /// Command implementation for note write operations.
@@ -33,36 +31,32 @@ where
     C: note_ports::Command,
     C::Error: Into<crate::db::DbError>,
 {
-    /// Creates a new note with the given vault-relative path.
+    /// Records a parsed note projection.
     ///
     /// # Errors
-    /// Returns `NoteCommandError` if creation fails.
+    /// Returns `NoteCommandError` if persistence fails.
     #[inline]
-    pub fn create(&self, path: &NotePath) -> Result<Note, NoteCommandError> {
+    pub fn record_parsed_note(
+        &self,
+        path: &NotePath,
+        parsed: &ParsedNote,
+    ) -> Result<NoteId, NoteCommandError> {
         self.command_port
-            .create(path)
+            .record_parsed_note(path, parsed)
             .map_err(|error| NoteCommandError::Storage(error.into()))
     }
 
-    /// Deletes a note by its unique identifier.
+    /// Records deletion of a note projection.
     ///
     /// # Errors
     /// Returns `NoteCommandError` if deletion fails.
     #[inline]
-    pub fn delete(&self, id: NoteId) -> Result<(), NoteCommandError> {
+    pub fn record_deleted_note(
+        &self,
+        id: NoteId,
+    ) -> Result<(), NoteCommandError> {
         self.command_port
-            .delete(id)
-            .map_err(|error| NoteCommandError::Storage(error.into()))
-    }
-
-    /// Updates an existing note aggregate.
-    ///
-    /// # Errors
-    /// Returns `NoteCommandError` if update fails.
-    #[inline]
-    pub fn update(&self, note: Note) -> Result<Note, NoteCommandError> {
-        self.command_port
-            .update(note)
+            .record_deleted_note(id)
             .map_err(|error| NoteCommandError::Storage(error.into()))
     }
 
@@ -76,6 +70,19 @@ where
     pub fn rebuild_task_indexes(&self) -> Result<usize, NoteCommandError> {
         self.command_port
             .rebuild_task_indexes()
+            .map_err(|error| NoteCommandError::Storage(error.into()))
+    }
+
+    /// Rebuilds all note indexes from stored projections.
+    ///
+    /// Returns the number of notes rebuilt.
+    ///
+    /// # Errors
+    /// Returns `NoteCommandError` if rebuild fails.
+    #[inline]
+    pub fn rebuild_note_indexes(&self) -> Result<usize, NoteCommandError> {
+        self.command_port
+            .rebuild_note_indexes()
             .map_err(|error| NoteCommandError::Storage(error.into()))
     }
 }

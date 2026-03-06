@@ -72,6 +72,29 @@ pub enum NoteError {
     Structure(&'static str),
 }
 
+/// Errors surfaced during note ingestion (file + parse + validation).
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum NoteIngestError {
+    /// Source I/O or parsing error.
+    #[error("source error: {0}")]
+    Source(Box<str>),
+
+    /// Domain validation error.
+    #[error(transparent)]
+    Domain(#[from] NoteError),
+}
+
+impl From<NoteIngestError> for NoteError {
+    #[inline]
+    fn from(error: NoteIngestError) -> Self {
+        match error {
+            NoteIngestError::Source(message) => NoteError::Storage(message),
+            NoteIngestError::Domain(error) => error,
+        }
+    }
+}
+
 /// Errors surfaced when validating or parsing tags.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]

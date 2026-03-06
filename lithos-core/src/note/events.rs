@@ -1,6 +1,4 @@
-//! Domain events emitted by the Note aggregate.
-
-//! Note domain events.
+//! Note events emitted during ingestion and indexing.
 #![allow(
     missing_docs,
     clippy::exhaustive_structs,
@@ -8,7 +6,267 @@
     reason = "rkyv generates Archived types with public fields/variants"
 )]
 
+use std::time::SystemTime;
+
+use rkyv::{
+    Archive, Deserialize, Serialize,
+    with::{AsUnixTime, Map},
+};
 use uuid::Uuid;
+
+use super::{aggregate::NoteId, paths::NotePath};
+
+/// Event kinds recorded in the note event log.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum NoteEventKind {
+    /// Parsed a note from source.
+    Parsed,
+    /// Persisted note projections.
+    Indexed,
+    /// Detected a note change or removal.
+    Changed,
+    /// Failed to ingest or project a note.
+    Failed,
+}
+
+/// Change classification for note events.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum NoteChangeKind {
+    /// Note was created.
+    Created,
+    /// Note was updated.
+    Updated,
+    /// Note was deleted.
+    Deleted,
+}
+
+/// Versioned event payloads stored for note auditability.
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub enum NoteEventPayload {
+    /// Version 1 payload.
+    V1(NoteEventPayloadV1),
+}
+
+/// Version 1 note event payload.
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct NoteEventPayloadV1 {
+    change: Option<NoteChangeKind>,
+    task_count: u32,
+    tag_count: u32,
+    source_hash: Option<Box<str>>,
+    source_bytes: Option<u64>,
+    #[rkyv(with = Map<AsUnixTime>)]
+    source_modified_at: Option<SystemTime>,
+    error_code: Option<Box<str>>,
+}
+
+impl NoteEventPayloadV1 {
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Payload captures indexing metadata explicitly"
+    )]
+    pub fn indexed(
+        change: NoteChangeKind,
+        task_count: u32,
+        tag_count: u32,
+        source_hash: Option<Box<str>>,
+        source_bytes: Option<u64>,
+        source_modified_at: Option<SystemTime>,
+    ) -> Self {
+        Self {
+            change: Some(change),
+            task_count,
+            tag_count,
+            source_hash,
+            source_bytes,
+            source_modified_at,
+            error_code: None,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Payload captures indexing metadata explicitly"
+    )]
+    pub fn changed(
+        change: NoteChangeKind,
+        task_count: u32,
+        tag_count: u32,
+        source_hash: Option<Box<str>>,
+        source_bytes: Option<u64>,
+        source_modified_at: Option<SystemTime>,
+    ) -> Self {
+        Self {
+            change: Some(change),
+            task_count,
+            tag_count,
+            source_hash,
+            source_bytes,
+            source_modified_at,
+            error_code: None,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn failed(error_code: Box<str>) -> Self {
+        Self {
+            change: None,
+            task_count: 0,
+            tag_count: 0,
+            source_hash: None,
+            source_bytes: None,
+            source_modified_at: None,
+            error_code: Some(error_code),
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn change(&self) -> Option<NoteChangeKind> {
+        self.change
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn task_count(&self) -> u32 {
+        self.task_count
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn tag_count(&self) -> u32 {
+        self.tag_count
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn source_hash(&self) -> Option<&str> {
+        self.source_hash.as_deref()
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn source_bytes(&self) -> Option<u64> {
+        self.source_bytes
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn source_modified_at(&self) -> Option<SystemTime> {
+        self.source_modified_at
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn error_code(&self) -> Option<&str> {
+        self.error_code.as_deref()
+    }
+}
+
+/// Stored event record for audit and incremental indexing.
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct NoteEvent {
+    id: Uuid,
+    note_id: NoteId,
+    path: NotePath,
+    kind: NoteEventKind,
+    #[rkyv(with = AsUnixTime)]
+    timestamp: SystemTime,
+    payload: NoteEventPayload,
+}
+
+impl NoteEvent {
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "NoteEvent construction needs explicit field values"
+    )]
+    pub fn new(
+        id: Uuid,
+        note_id: NoteId,
+        path: NotePath,
+        kind: NoteEventKind,
+        timestamp: SystemTime,
+        payload: NoteEventPayload,
+    ) -> Self {
+        Self {
+            id,
+            note_id,
+            path,
+            kind,
+            timestamp,
+            payload,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> Uuid {
+        self.id
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn note_id(&self) -> NoteId {
+        self.note_id
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn path(&self) -> &NotePath {
+        &self.path
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn kind(&self) -> NoteEventKind {
+        self.kind
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn timestamp(&self) -> SystemTime {
+        self.timestamp
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn payload(&self) -> &NoteEventPayload {
+        &self.payload
+    }
+
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on reference payload"
+    )]
+    pub fn payload_v1(&self) -> Option<&NoteEventPayloadV1> {
+        match self.payload() {
+            NoteEventPayload::V1(payload) => Some(payload),
+        }
+    }
+}
 
 /// Note created domain event.
 ///

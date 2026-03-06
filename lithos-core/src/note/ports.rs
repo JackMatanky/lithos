@@ -14,8 +14,11 @@
 //! Async wrappers should be added at the CLI/LSP boundary if needed.
 
 use super::{
-    adapter::stored::{StoredNote, StoredTask},
-    aggregate::{AliasName, FileClassName, Note, NoteId},
+    adapter::{
+        reader::ParsedNote,
+        stored::{StoredNote, StoredTask},
+    },
+    aggregate::{AliasName, FileClassName, NoteId},
     paths::{FolderPath, NotePath},
     task::{TaskDateKind, TaskPriority, TaskTimestamp},
     value::FieldValue,
@@ -31,19 +34,14 @@ pub trait Command: Send + Sync {
     /// Storage error type for command operations.
     type Error: std::error::Error;
 
-    /// Creates a new note with the given vault-relative path.
+    /// Rebuilds all note indexes from stored projections.
+    ///
+    /// Returns the number of notes rebuilt.
     ///
     /// # Errors
     ///
-    /// Returns a storage-specific error if creation fails.
-    fn create(&self, path: &NotePath) -> Result<Note, Self::Error>;
-
-    /// Deletes a note by its unique identifier.
-    ///
-    /// # Errors
-    ///
-    /// Returns a storage-specific error if deletion fails.
-    fn delete(&self, id: NoteId) -> Result<(), Self::Error>;
+    /// Returns a storage-specific error if rebuild fails.
+    fn rebuild_note_indexes(&self) -> Result<usize, Self::Error>;
 
     /// Rebuilds all task indexes from stored notes.
     ///
@@ -54,12 +52,23 @@ pub trait Command: Send + Sync {
     /// Returns a storage-specific error if rebuild fails.
     fn rebuild_task_indexes(&self) -> Result<usize, Self::Error>;
 
-    /// Updates an existing note aggregate.
+    /// Records deletion of a note projection by id.
     ///
     /// # Errors
     ///
-    /// Returns a storage-specific error if update fails.
-    fn update(&self, note: Note) -> Result<Note, Self::Error>;
+    /// Returns a storage-specific error if deletion fails.
+    fn record_deleted_note(&self, id: NoteId) -> Result<(), Self::Error>;
+
+    /// Records a parsed note projection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage-specific error if persistence fails.
+    fn record_parsed_note(
+        &self,
+        path: &NotePath,
+        parsed: &ParsedNote,
+    ) -> Result<NoteId, Self::Error>;
 }
 
 /// Query port for Note read operations.

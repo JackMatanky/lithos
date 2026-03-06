@@ -7,13 +7,6 @@
               hand-authored. HOW: acknowledge the generated code at module \
               scope to keep signals focused."
 )]
-#![expect(
-    clippy::exhaustive_enums,
-    reason = "WHAT: rkyv derives generate archived enums that are exhaustive. \
-              WHY: storage enums are internal and evolve with migrations. \
-              HOW: set module-level expectation for generated enums."
-)]
-
 use std::{fmt::Write as _, time::SystemTime};
 
 use rkyv::{
@@ -47,14 +40,18 @@ pub struct StoredNote {
     frontmatter: Option<Frontmatter>,
     tags: Vec<Tag>,
     headings: Vec<Heading>,
+    heading_locations: Option<Vec<SourceLocation>>,
     sections: Vec<Section>,
+    section_locations: Option<Vec<StoredLocationRange>>,
     links: Vec<Link>,
+    source_hash: Box<str>,
+    source_bytes: u64,
     #[rkyv(with = Map<AsUnixTime>)]
     created_at: Option<SystemTime>,
     #[rkyv(with = Map<AsUnixTime>)]
     modified_at: Option<SystemTime>,
     #[rkyv(with = AsUnixTime)]
-    recorded_at: SystemTime,
+    last_indexed_at: SystemTime,
 }
 
 impl StoredNote {
@@ -71,11 +68,15 @@ impl StoredNote {
         frontmatter: Option<Frontmatter>,
         tags: Vec<Tag>,
         headings: Vec<Heading>,
+        heading_locations: Option<Vec<SourceLocation>>,
         sections: Vec<Section>,
+        section_locations: Option<Vec<StoredLocationRange>>,
         links: Vec<Link>,
+        source_hash: Box<str>,
+        source_bytes: u64,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
-        recorded_at: SystemTime,
+        last_indexed_at: SystemTime,
     ) -> Self {
         Self {
             id,
@@ -84,11 +85,15 @@ impl StoredNote {
             frontmatter,
             tags,
             headings,
+            heading_locations,
             sections,
+            section_locations,
             links,
+            source_hash,
+            source_bytes,
             created_at,
             modified_at,
-            recorded_at,
+            last_indexed_at,
         }
     }
 
@@ -130,14 +135,38 @@ impl StoredNote {
 
     #[inline]
     #[must_use]
+    pub fn heading_locations(&self) -> Option<&[SourceLocation]> {
+        self.heading_locations.as_deref()
+    }
+
+    #[inline]
+    #[must_use]
     pub fn sections(&self) -> &[Section] {
         &self.sections
     }
 
     #[inline]
     #[must_use]
+    pub fn section_locations(&self) -> Option<&[StoredLocationRange]> {
+        self.section_locations.as_deref()
+    }
+
+    #[inline]
+    #[must_use]
     pub fn links(&self) -> &[Link] {
         &self.links
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn source_hash(&self) -> &str {
+        &self.source_hash
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn source_bytes(&self) -> u64 {
+        self.source_bytes
     }
 
     #[inline]
@@ -154,108 +183,40 @@ impl StoredNote {
 
     #[inline]
     #[must_use]
-    pub fn recorded_at(&self) -> SystemTime {
-        self.recorded_at
+    pub fn last_indexed_at(&self) -> SystemTime {
+        self.last_indexed_at
     }
 }
 
-/// Event types recorded in the note event log.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
-)]
+/// Stored start/end locations for a source range.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub enum NoteEventKind {
-    /// A note was created or first indexed.
-    Created,
-    /// A note was updated and re-indexed.
-    Updated,
-    /// A note was removed from the vault.
-    Deleted,
+pub struct StoredLocationRange {
+    start: SourceLocation,
+    end: SourceLocation,
 }
 
-/// Stored event record for audit and incremental indexing.
-#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct StoredNoteEvent {
-    id: uuid::Uuid,
-    note_id: NoteId,
-    path: NotePath,
-    kind: NoteEventKind,
-    #[rkyv(with = AsUnixTime)]
-    timestamp: SystemTime,
-    task_count: u32,
-    tag_count: u32,
-}
-
-impl StoredNoteEvent {
+impl StoredLocationRange {
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "StoredNoteEvent construction needs explicit field values"
-    )]
-    pub fn new(
-        id: uuid::Uuid,
-        note_id: NoteId,
-        path: NotePath,
-        kind: NoteEventKind,
-        timestamp: SystemTime,
-        task_count: u32,
-        tag_count: u32,
-    ) -> Self {
+    pub const fn new(start: SourceLocation, end: SourceLocation) -> Self {
         Self {
-            id,
-            note_id,
-            path,
-            kind,
-            timestamp,
-            task_count,
-            tag_count,
+            start,
+            end,
         }
     }
 
     #[inline]
     #[must_use]
-    pub const fn id(&self) -> uuid::Uuid {
-        self.id
+    pub const fn start(&self) -> SourceLocation {
+        self.start
     }
 
     #[inline]
     #[must_use]
-    pub const fn note_id(&self) -> NoteId {
-        self.note_id
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn path(&self) -> &NotePath {
-        &self.path
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn kind(&self) -> NoteEventKind {
-        self.kind
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn timestamp(&self) -> SystemTime {
-        self.timestamp
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn task_count(&self) -> u32 {
-        self.task_count
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn tag_count(&self) -> u32 {
-        self.tag_count
+    pub const fn end(&self) -> SourceLocation {
+        self.end
     }
 }
 
@@ -527,7 +488,10 @@ mod tests {
 
     use super::*;
     use crate::note::{
-        error::NoteError, structure::HeadingLevel, value::FieldValue,
+        error::NoteError,
+        position::{SourceColumn, SourceLine, SourceLocation},
+        structure::HeadingLevel,
+        value::FieldValue,
     };
 
     fn system_time_after(seconds: u64) -> Result<SystemTime, NoteError> {
@@ -553,6 +517,11 @@ mod tests {
             "Heading",
             SourceByteOffset::new(0),
         )?];
+        let heading_locations = Some(vec![SourceLocation::new(
+            SourceByteOffset::new(0),
+            SourceLine::try_new(1)?,
+            SourceColumn::try_new(1)?,
+        )]);
         let sections = vec![Section::new(
             headings.first().cloned(),
             crate::note::position::SourceByteRange::new(
@@ -560,10 +529,24 @@ mod tests {
                 SourceByteOffset::new(10),
             )?,
         )];
+        let section_locations = Some(vec![StoredLocationRange::new(
+            SourceLocation::new(
+                SourceByteOffset::new(0),
+                SourceLine::try_new(1)?,
+                SourceColumn::try_new(1)?,
+            ),
+            SourceLocation::new(
+                SourceByteOffset::new(10),
+                SourceLine::try_new(1)?,
+                SourceColumn::try_new(11)?,
+            ),
+        )]);
         let links = Vec::new();
+        let source_hash = "hash".into();
+        let source_bytes = 10u64;
         let created_at = Some(system_time_after(10)?);
         let modified_at = Some(system_time_after(20)?);
-        let recorded_at = system_time_after(30)?;
+        let last_indexed_at = system_time_after(30)?;
 
         Ok(StoredNote::new(
             id,
@@ -572,11 +555,15 @@ mod tests {
             Some(frontmatter),
             tags,
             headings,
+            heading_locations,
             sections,
+            section_locations,
             links,
+            source_hash,
+            source_bytes,
             created_at,
             modified_at,
-            recorded_at,
+            last_indexed_at,
         ))
     }
 
@@ -588,12 +575,16 @@ mod tests {
         assert_eq!(note.title(), Some("Example"));
         assert_eq!(note.tags().len(), 1);
         assert_eq!(note.headings().len(), 1);
+        assert!(note.heading_locations().is_some());
         assert_eq!(note.sections().len(), 1);
+        assert!(note.section_locations().is_some());
         assert_eq!(note.links().len(), 0);
+        assert_eq!(note.source_hash(), "hash");
+        assert_eq!(note.source_bytes(), 10);
         assert!(note.frontmatter().is_some());
         assert_eq!(note.created_at(), Some(system_time_after(10)?));
         assert_eq!(note.modified_at(), Some(system_time_after(20)?));
-        assert_eq!(note.recorded_at(), system_time_after(30)?);
+        assert_eq!(note.last_indexed_at(), system_time_after(30)?);
         Ok(())
     }
 
@@ -615,69 +606,6 @@ mod tests {
         .map_err(|error| NoteError::Storage(error.to_string().into()))?;
 
         assert_eq!(deserialized, original);
-        Ok(())
-    }
-
-    #[test]
-    fn stored_note_event_accessors_expose_fields() -> Result<(), NoteError> {
-        let id = Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0501);
-        let note_id = NoteId::from(Uuid::from_u128(
-            0x018C_0000_0000_7000_8000_0000_0000_0502,
-        ));
-        let path = NotePath::try_new("notes/event.md")?;
-        let event = StoredNoteEvent::new(
-            id,
-            note_id,
-            path,
-            NoteEventKind::Created,
-            system_time_after(123)?,
-            2,
-            3,
-        );
-
-        assert_eq!(event.id(), id);
-        assert_eq!(event.note_id(), note_id);
-        assert_eq!(event.path().as_str(), "notes/event.md");
-        assert_eq!(event.kind(), NoteEventKind::Created);
-        let event_secs = event
-            .timestamp()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(|error| NoteError::Storage(error.to_string().into()))?
-            .as_secs();
-        assert_eq!(event_secs, 123);
-        assert_eq!(event.task_count(), 2);
-        assert_eq!(event.tag_count(), 3);
-        Ok(())
-    }
-
-    #[test]
-    fn stored_note_event_round_trips_through_rkyv() -> Result<(), NoteError> {
-        let event = StoredNoteEvent::new(
-            Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0503),
-            NoteId::from(Uuid::from_u128(
-                0x018C_0000_0000_7000_8000_0000_0000_0504,
-            )),
-            NotePath::try_new("notes/event.md")?,
-            NoteEventKind::Updated,
-            system_time_after(456)?,
-            1,
-            0,
-        );
-
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&event)
-            .map_err(|error| NoteError::Storage(error.to_string().into()))?;
-        let archived = rkyv::access::<
-            rkyv::Archived<StoredNoteEvent>,
-            rkyv::rancor::Error,
-        >(&bytes)
-        .map_err(|error| NoteError::Storage(error.to_string().into()))?;
-        let deserialized: StoredNoteEvent = rkyv::deserialize::<
-            StoredNoteEvent,
-            rkyv::rancor::Error,
-        >(archived)
-        .map_err(|error| NoteError::Storage(error.to_string().into()))?;
-
-        assert_eq!(deserialized, event);
         Ok(())
     }
 }

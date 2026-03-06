@@ -473,4 +473,20 @@ mod tests {
         assert_eq!(location.column().value(), 7);
         Ok(())
     }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn line_index_handles_crlf() -> Result<(), NoteError> {
+        let source = "first\r\nsecond";
+        let index = SourceLineIndex::new(source);
+        let offset = SourceByteOffset::try_from("first\r\n".len())
+            .map_err(|_error| NoteError::Structure("test error"))?;
+        let location = index.line_column(offset, source)?;
+        assert_eq!(location.line().value(), 2);
+        assert_eq!(location.column().value(), 1);
+        Ok(())
+    }
 }

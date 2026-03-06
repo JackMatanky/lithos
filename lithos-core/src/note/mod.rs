@@ -45,12 +45,14 @@
 //!
 //! The Note context is organized around the [`aggregate`] root:
 //!
-//! - [`aggregate`] - The [`aggregate::Note`] root and primary domain entities.
+//! - [`aggregate`] - Legacy ingest artifact (`aggregate::Note`) used during
+//!   parsing; projections are the source of truth.
 //! - [`ports`] - Command and Query trait definitions for CQRS.
 //! - [`command`] & [`query`] - Concrete implementations of the CQRS ports.
 //! - [`adapter::reader`] - Markdown ingestion adapter for note parsing.
-//! - [`task`], [`tag`], [`link`], [`list`] - Sub-entities owned by the
-//!   [`aggregate::Note`].
+//! - [`adapter::stored`] - Projection DTOs (`StoredNote`, `StoredTask`).
+//! - [`task`], [`tag`], [`link`], [`list`] - Sub-entities extracted during
+//!   ingestion and stored in projections.
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
@@ -92,8 +94,6 @@ pub mod value;
 pub(crate) mod db_table {
     use redb::{MultimapTableDefinition, TableDefinition};
 
-    pub(crate) const NOTES: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("notes");
     pub(crate) const STORED_NOTES: TableDefinition<&str, &[u8]> =
         TableDefinition::new("stored_notes");
     pub(crate) const NOTE_EVENTS: TableDefinition<&str, &[u8]> =

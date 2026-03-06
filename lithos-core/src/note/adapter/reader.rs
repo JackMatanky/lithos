@@ -18,11 +18,11 @@ use crate::{
     config::aggregate::Config,
     fs::FsReader,
     note::{
-        error::NoteError,
+        error::{NoteError, NoteIngestError},
         frontmatter::Frontmatter,
         link::Link,
         list::List,
-        position::SourceLineIndex,
+        position::{SourceByteOffset, SourceLineIndex, SourceLocation},
         structure::{Heading, Section},
         tag::Tag as NoteTag,
         task::Task,
@@ -179,19 +179,22 @@ impl<'config> NoteReader<'config> {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError`] when file I/O or parsing fails.
+    /// Returns [`NoteIngestError`] when file I/O or parsing fails.
     #[inline]
     pub fn parse(
         &self,
         reader: &FsReader,
         path: &Path,
-    ) -> Result<ParsedNote, NoteError> {
+    ) -> Result<ParsedNote, NoteIngestError> {
         let markdown = reader
             .read_with::<String, crate::fs::ParseError, _>(
                 path,
                 |_, content| Ok(content.into()),
             )
-            .map_err(|error| NoteError::Storage(format!("{error}").into()))?;
+            .map_err(|error| {
+                NoteIngestError::Source(format!("{error}").into())
+            })?;
+        let markdown = markdown.into_boxed_str();
         let metadata = match reader.metadata(path) {
             Ok(meta) => Some(meta),
             Err(error) => {
@@ -216,7 +219,7 @@ impl<'config> NoteReader<'config> {
             "created",
         );
 
-        self.parse_with_timestamps(&markdown, created_at, modified_at)
+        self.parse_with_timestamps(markdown, created_at, modified_at)
     }
 
     /// Parses markdown into lists, tasks, headings, and links.
@@ -226,11 +229,31 @@ impl<'config> NoteReader<'config> {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError`] when parsing fails.
+    /// Returns [`NoteIngestError`] when parsing fails.
     #[inline]
     #[doc(hidden)]
-    pub fn parse_str(&self, markdown: &str) -> Result<ParsedNote, NoteError> {
-        self.parse_with_timestamps(markdown, None, None)
+    pub fn parse_str(
+        &self,
+        markdown: &str,
+    ) -> Result<ParsedNote, NoteIngestError> {
+        self.parse_with_timestamps(markdown.into(), None, None)
+    }
+
+    /// Parses owned markdown content with explicit timestamps.
+    ///
+    /// Intended for application services that already loaded the file content
+    /// and want to avoid re-reading the filesystem.
+    ///
+    /// # Errors
+    /// Returns [`NoteIngestError`] when parsing fails.
+    #[inline]
+    pub fn parse_content(
+        &self,
+        markdown: Box<str>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> Result<ParsedNote, NoteIngestError> {
+        self.parse_with_timestamps(markdown, created_at, modified_at)
     }
 
     #[inline]
@@ -244,19 +267,20 @@ impl<'config> NoteReader<'config> {
     )]
     fn parse_with_timestamps(
         &self,
-        markdown: &str,
+        markdown: Box<str>,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
-    ) -> Result<ParsedNote, NoteError> {
+    ) -> Result<ParsedNote, NoteIngestError> {
+        let markdown_ref = markdown.as_ref();
         let mut link_ext = super::extract_link::LinkExtractor::new(self.config);
         let mut list_ext = super::extract_list::ListExtractor::new(self.config);
         let mut heading_ext = super::extract_heading::HeadingExtractor::new();
         let mut section_ext =
-            super::extract_section::SectionExtractor::new(markdown);
+            super::extract_section::SectionExtractor::new(markdown_ref);
         let mut frontmatter_ext =
             super::extract_frontmatter::FrontmatterExtractor::new();
         let mut tag_ext = super::extract_tag::TagExtractor::new(self.config);
-        let line_index = SourceLineIndex::new(markdown);
+        let line_index = SourceLineIndex::new(markdown_ref);
 
         let mut links = Vec::new();
         let mut lists = Vec::new();
@@ -270,7 +294,8 @@ impl<'config> NoteReader<'config> {
         let mut code_block_depth = 0u32;
         let mut list_depth = 0usize;
 
-        let events = Parser::new_ext(markdown, self.options).into_offset_iter();
+        let events =
+            Parser::new_ext(markdown_ref, self.options).into_offset_iter();
         let merged = TextMergeWithOffset::new(events);
         for (event, range) in merged {
             Self::update_context(
@@ -366,6 +391,7 @@ impl<'config> NoteReader<'config> {
         tags.extend(tag_ext.finish()?);
 
         Ok(ParsedNote {
+            source: markdown,
             lists,
             tasks,
             headings,
@@ -494,6 +520,7 @@ const fn obsidian_options() -> Options {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct ParsedNote {
+    source: Box<str>,
     lists: Vec<List>,
     tasks: Vec<Task>,
     headings: Vec<Heading>,
@@ -512,6 +539,13 @@ impl ParsedNote {
     #[must_use]
     pub fn lists(&self) -> &[List] {
         &self.lists
+    }
+
+    /// Raw markdown source used for parsing.
+    #[inline]
+    #[must_use]
+    pub fn source(&self) -> &str {
+        &self.source
     }
 
     /// Tasks parsed from task list items.
@@ -561,6 +595,19 @@ impl ParsedNote {
     #[must_use]
     pub fn line_index(&self) -> &SourceLineIndex {
         &self.line_index
+    }
+
+    /// Converts a byte offset into a line/column location.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError`] if the offset is out of bounds or invalid.
+    #[inline]
+    pub fn location_for_offset(
+        &self,
+        offset: SourceByteOffset,
+    ) -> Result<SourceLocation, NoteError> {
+        self.line_index.line_column(offset, &self.source)
     }
 
     /// Filesystem created timestamp at ingestion time, if available.

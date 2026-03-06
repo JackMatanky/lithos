@@ -107,6 +107,25 @@ mod tests {
         })
     }
 
+    fn build_environment(
+        markdown: &str,
+    ) -> TestResult<(TempDir, Config, Arc<Database>)> {
+        let dir = TempDir::new()?;
+        let note_path = Path::new("notes/note.md");
+        let absolute_path = dir.path().join(note_path);
+
+        let parent = absolute_path.parent().ok_or_else(|| {
+            std::io::Error::other("note path should have parent")
+        })?;
+        std::fs::create_dir_all(parent)?;
+        std::fs::write(&absolute_path, markdown)?;
+
+        let config = test_config(dir.path().to_path_buf())?;
+        let db_path = dir.path().join("notes.redb");
+        let db = Arc::new(Database::open(&db_path)?);
+        Ok((dir, config, db))
+    }
+
     fn sorted_tag_paths_from_note(
         note: &lithos_core::note::adapter::stored::StoredNote,
     ) -> Vec<Box<str>> {
@@ -280,6 +299,53 @@ mod tests {
         let task = tasks.first().expect("task exists");
         assert_eq!(task.path().as_str(), "notes/note.md");
         assert!(!task.status_name().as_str().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn load_skips_unchanged_notes() -> TestResult {
+        let (dir, config, db) =
+            build_environment("# Title\n- [ ] #task Review PR")?;
+        let command = CommandAdapter::new(db.as_ref(), &config);
+        let service = NoteService::new(command);
+        let ingestor = Ingestor::new(&config);
+        let query = Query::new(QueryAdapter::new(Arc::clone(&db)));
+
+        let first = service.load(&ingestor)?;
+        assert_eq!(first.len(), 1, "first load should index one note");
+        let mut first_notes = query.list()?;
+        let first_note = first_notes
+            .pop()
+            .ok_or_else(|| std::io::Error::other("expected stored note"))?;
+        let first_indexed = first_note.last_indexed_at();
+
+        let second = service.load(&ingestor)?;
+        assert!(second.is_empty(), "second load should skip unchanged note");
+        let mut second_notes = query.list()?;
+        let second_note = second_notes
+            .pop()
+            .ok_or_else(|| std::io::Error::other("expected stored note"))?;
+        assert_eq!(second_note.last_indexed_at(), first_indexed);
+        drop(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn load_removes_missing_notes() -> TestResult {
+        let (dir, config, db) =
+            build_environment("# Title\n- [ ] #task Review PR")?;
+        let command = CommandAdapter::new(db.as_ref(), &config);
+        let service = NoteService::new(command);
+        let ingestor = Ingestor::new(&config);
+        let query = Query::new(QueryAdapter::new(Arc::clone(&db)));
+
+        let _second_note_ids = service.load(&ingestor)?;
+        let note_path = dir.path().join("notes/note.md");
+        std::fs::remove_file(note_path)?;
+
+        let _note_ids = service.load(&ingestor)?;
+        let notes = query.list()?;
+        assert!(notes.is_empty(), "expected note to be removed");
         Ok(())
     }
 }
