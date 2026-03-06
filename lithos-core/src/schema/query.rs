@@ -475,6 +475,8 @@ where
     reason = "Test module groups fixtures and submodules for readability."
 )]
 mod tests {
+    use crate::schema::hash::Blake3Hash;
+
     mod fixtures {
         use uuid::Uuid;
 
@@ -643,6 +645,7 @@ mod tests {
 
             cmd.save_many_with_metadata(&[schema], &[StoredMetadata::new(
                 BankVersion::initial(),
+                Blake3Hash::zero(),
                 Some(stored_created),
                 None,
             )])
@@ -769,8 +772,18 @@ mod tests {
                     .expect("Failed to create schema fixture");
 
             cmd.save_many_with_metadata(&[schema1, schema2], &[
-                StoredMetadata::new(BankVersion::initial(), None, Some(ts_old)),
-                StoredMetadata::new(BankVersion::initial(), None, Some(ts_new)),
+                StoredMetadata::new(
+                    BankVersion::initial(),
+                    Blake3Hash::zero(),
+                    None,
+                    Some(ts_old),
+                ),
+                StoredMetadata::new(
+                    BankVersion::initial(),
+                    Blake3Hash::zero(),
+                    None,
+                    Some(ts_new),
+                ),
             ])
             .expect("Save should succeed");
 

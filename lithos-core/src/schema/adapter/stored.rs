@@ -20,6 +20,7 @@ use super::super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
     error::SchemaError,
+    hash::Blake3Hash,
     property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},
     property_spec::PropertySpec,
 };
@@ -123,6 +124,8 @@ pub(crate) struct StoredPropertyBank {
 pub struct StoredMetadata {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
+    /// Blake3 hash of source file content (for accurate staleness detection).
+    pub source_file_hash: Blake3Hash,
     /// Filesystem birthtime (from `Metadata::created()`), if available.
     #[rkyv(with = Map<AsUnixTime>)]
     pub created_at: Option<SystemTime>,
@@ -139,12 +142,14 @@ impl StoredMetadata {
     #[inline]
     pub(crate) fn new(
         bank_version: BankVersion,
+        source_file_hash: Blake3Hash,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> Self {
         let recorded_at = SystemTime::now();
         Self {
             bank_version,
+            source_file_hash,
             created_at,
             modified_at,
             recorded_at,

@@ -19,6 +19,16 @@ impl Blake3Hash {
         Self(*hash.as_bytes())
     }
 
+    /// Create a zero hash (all bytes are zero).
+    ///
+    /// Useful for tests and placeholder values when the actual hash is not
+    /// available.
+    #[inline]
+    #[must_use]
+    pub const fn zero() -> Self {
+        Self([0u8; 32])
+    }
+
     /// Get hash as byte slice.
     #[inline]
     #[must_use]

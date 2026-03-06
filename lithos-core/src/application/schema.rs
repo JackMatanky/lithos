@@ -311,17 +311,18 @@ impl<'db> SchemaService<'db> {
         stale_with_times: Vec<SchemaWithTimes>,
         current_bank_version: crate::schema::bank::BankVersion,
     ) -> Result<(), SchemaServiceError> {
-        use crate::schema::ports::InheritanceRelationship;
-        type TimestampPair = (Option<SystemTime>, Option<SystemTime>);
+        use crate::schema::{hash::Blake3Hash, ports::InheritanceRelationship};
+        type MetadataTriple =
+            (Blake3Hash, Option<SystemTime>, Option<SystemTime>);
 
         // Build metadata and inheritance maps
-        let mut time_map: HashMap<SchemaId, TimestampPair> =
+        let mut metadata_map: HashMap<SchemaId, MetadataTriple> =
             HashMap::with_capacity(stale_with_times.len());
         let mut raw_map: HashMap<SchemaId, Vec<Box<str>>> =
             HashMap::with_capacity(stale_with_times.len());
 
-        for (id, raw, _hash, modified, created) in stale_with_times {
-            time_map.insert(id, (modified, created));
+        for (id, raw, hash, modified, created) in stale_with_times {
+            metadata_map.insert(id, (hash, modified, created));
             raw_map.insert(id, raw.excludes);
         }
 
@@ -329,9 +330,16 @@ impl<'db> SchemaService<'db> {
         let metadata: Vec<StoredMetadata> = resolved
             .iter()
             .map(|schema| {
-                let (modified, created) =
-                    time_map.get(&schema.id()).copied().unwrap_or((None, None));
-                StoredMetadata::new(current_bank_version, created, modified)
+                let (hash, modified, created) = metadata_map
+                    .get(&schema.id())
+                    .copied()
+                    .unwrap_or((Blake3Hash::zero(), None, None));
+                StoredMetadata::new(
+                    current_bank_version,
+                    hash,
+                    created,
+                    modified,
+                )
             })
             .collect();
 

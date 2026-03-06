@@ -24,6 +24,7 @@ use crate::{
             RAW_SCHEMA_FILES, SCHEMA_BY_ID, SCHEMA_CHILDREN, SCHEMA_ID_BY_NAME,
             SCHEMA_METADATA, SCHEMA_PARENT,
         },
+        hash::Blake3Hash,
         ports::Command as CommandPort,
         property::{Multiplicity, Optionality},
         raw_file::{RawPropertyBankFile, RawSchemaFile},
@@ -238,7 +239,14 @@ impl CommandPort for Command<'_> {
         // (tests and simple use cases don't need file timestamps)
         let metadata: Vec<StoredMetadata> = schemas
             .iter()
-            .map(|_| StoredMetadata::new(BankVersion::initial(), None, None))
+            .map(|_| {
+                StoredMetadata::new(
+                    BankVersion::initial(),
+                    Blake3Hash::zero(),
+                    None,
+                    None,
+                )
+            })
             .collect();
 
         self.save_many_with_metadata(schemas, &metadata)
@@ -381,6 +389,7 @@ impl CommandPort for Command<'_> {
 
         let metadata = StoredMetadata {
             bank_version,
+            source_file_hash: Blake3Hash::zero(),
             created_at: None,
             modified_at: None,
             recorded_at,
