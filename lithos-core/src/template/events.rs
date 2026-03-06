@@ -1,6 +1,11 @@
 //! Template domain events.
-
-use serde::{Deserialize, Serialize};
+#![expect(
+    clippy::exhaustive_structs,
+    clippy::exhaustive_enums,
+    reason = "rkyv generates exhaustive Archived types despite \
+              #[non_exhaustive] on source types"
+)]
+use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Template created domain event.
@@ -18,7 +23,8 @@ use uuid::Uuid;
 /// assert_eq!(event.id, id, "Template id should match");
 /// assert_eq!(event.name, "daily-note", "Template name should match");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct TemplateCreated {
     /// UUID of the template.
@@ -30,7 +36,8 @@ pub struct TemplateCreated {
 }
 
 /// Domain events that can be emitted by the Template aggregate.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum Events {
     /// Template was created.

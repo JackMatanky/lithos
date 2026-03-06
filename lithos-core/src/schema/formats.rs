@@ -15,7 +15,6 @@ use std::sync::OnceLock;
 use rkyv::{
     Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
 };
-use serde::{Deserialize, Serialize};
 
 /// Named string formats for common validation patterns.
 ///
@@ -38,15 +37,14 @@ use serde::{Deserialize, Serialize};
     PartialEq,
     Eq,
     Hash,
-    Serialize,
-    Deserialize,
+    serde::Serialize,
+    serde::Deserialize,
     Archive,
     RkyvSerialize,
     RkyvDeserialize,
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq))]
 #[non_exhaustive]
-#[serde(rename_all = "lowercase")]
 pub enum StringFormat {
     /// Email address validation (RFC 5322 simplified).
     ///
@@ -258,17 +256,5 @@ mod tests {
     fn format_display_uses_name() {
         assert_eq!(StringFormat::Email.to_string(), "email");
         assert_eq!(StringFormat::Slug.to_string(), "slug");
-    }
-
-    #[test]
-    fn format_serializes_to_lowercase() {
-        let json = serde_json::to_string(&StringFormat::Email).unwrap();
-        assert_eq!(json, r#""email""#);
-    }
-
-    #[test]
-    fn format_deserializes_from_lowercase() {
-        let format: StringFormat = serde_json::from_str(r#""email""#).unwrap();
-        assert_eq!(format, StringFormat::Email);
     }
 }

@@ -52,16 +52,7 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Note {
@@ -85,7 +76,6 @@ pub struct Note {
     frontmatter: Option<Frontmatter>,
     /// Domain events pending emission (not serialized).
     #[rkyv(with = Skip)]
-    #[serde(skip)]
     pending_events: Vec<NoteEvents>,
 }
 
@@ -265,8 +255,6 @@ impl Note {
     Hash,
     PartialOrd,
     Ord,
-    serde::Serialize,
-    serde::Deserialize,
     Archive,
     Serialize,
     Deserialize,
@@ -336,16 +324,7 @@ impl From<NoteId> for uuid::Uuid {
 /// # }
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 pub struct NotePath(Box<str>);

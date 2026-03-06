@@ -20,14 +20,7 @@ use super::{
 
 /// Fully-resolved and validated configuration for a vault.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(bytecheck(bounds()))]
 #[non_exhaustive]
@@ -45,7 +38,6 @@ pub struct Config {
     /// Merged task configuration.
     task: Task,
     /// Domain events pending emission (not persisted).
-    #[serde(skip)]
     #[rkyv(with = Skip)]
     pending_events: Vec<Events>,
 }
@@ -204,8 +196,6 @@ impl ArchivedConfig {
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,

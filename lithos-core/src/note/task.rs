@@ -51,16 +51,7 @@ use crate::config::{
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 pub struct Task {
     id: TaskId,
@@ -422,8 +413,6 @@ impl Task {
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     Archive,
     Serialize,
     Deserialize,
@@ -481,8 +470,6 @@ impl From<TaskId> for Uuid {
     Eq,
     PartialOrd,
     Ord,
-    serde::Serialize,
-    serde::Deserialize,
     Archive,
     Serialize,
     Deserialize,
@@ -657,16 +644,7 @@ impl From<TaskTimestamp> for std::time::SystemTime {
 /// meta.insert("priority".into(), FieldValue::Number(1.0));
 /// assert_eq!(meta.priority(), Some(1.0));
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 pub struct TaskMetadata {
     fields: HashMap<Box<str>, FieldValue>,

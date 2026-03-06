@@ -5,6 +5,8 @@
 
 use std::{collections::BTreeMap, fmt::Display, time::SystemTime};
 
+use rkyv::{Archive, Deserialize, Serialize};
+
 use super::{
     error::SchemaError,
     events::{Events, PropertyRegistered},
@@ -380,14 +382,11 @@ impl Default for PropertyBank {
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(transparent)]
 #[non_exhaustive]
 pub struct BankVersion(u64);
 

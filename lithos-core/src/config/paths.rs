@@ -18,7 +18,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rkyv::with::AsString;
+use rkyv::{Archive, Deserialize, Serialize, with::AsString};
 
 use super::error::ConfigError;
 
@@ -40,17 +40,7 @@ use super::error::ConfigError;
 /// let paths = Paths::default();
 /// assert_eq!(paths.property_bank.as_str(), "property_bank.json");
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Default,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Default, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Paths {
@@ -183,16 +173,7 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
 /// Schema storage configuration.
 ///
 /// This type manages the location where Lithos looks for note schemas.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Schema {
@@ -242,16 +223,7 @@ impl Schema {
 /// Template storage configuration.
 ///
 /// This type manages the location where Lithos looks for note templates.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Template {
@@ -301,16 +273,7 @@ impl Template {
 /// Cache storage configuration.
 ///
 /// This type manages the location where Lithos stores its performance cache.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Cache {
@@ -371,19 +334,9 @@ impl ArchivedCache {
 /// The property bank is a central registry of all properties used across
 /// a vault's notes.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
 pub struct PropertyBank(FileName);
 
 impl Default for PropertyBank {
@@ -442,19 +395,9 @@ impl PropertyBank {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct RelativePath(
     /// Internal path storage.
@@ -542,19 +485,9 @@ impl ArchivedRelativePath {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct AbsolutePath(
     /// Internal path storage.
@@ -607,19 +540,9 @@ impl AbsolutePath {
 /// - Must not be empty.
 /// - Must not contain `/` or `\`.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct FileName(
     /// Internal filename storage.

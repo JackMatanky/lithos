@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rkyv::with::AsString;
+use rkyv::{Archive, Deserialize, Serialize, with::AsString};
 
 use super::{
     error::ConfigError,
@@ -44,14 +44,11 @@ use super::{
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(transparent)]
 pub struct VaultVersion(u64);
 
 impl VaultVersion {
@@ -146,16 +143,7 @@ impl TryFrom<u64> for VaultVersion {
 /// let vault = Vault::default();
 /// assert!(vault.logging().is_none());
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Vault {
@@ -310,16 +298,7 @@ impl TryFrom<&super::raw::RawConfig> for Vault {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Metadata {
@@ -399,17 +378,7 @@ impl Metadata {
 /// Unlike the resolved [`crate::config::paths::Paths`], this struct uses
 /// [`Option`] for all fields to represent partial overrides of global path
 /// settings.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Default,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Default, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Paths {
@@ -536,17 +505,7 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
 /// UUID v7 is used for its time-ordered properties, which helps with
 /// database indexing and debugging.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -593,19 +552,9 @@ impl std::fmt::Display for VaultId {
 ///
 /// Returns [`ConfigError::ValidationFailed`] if the path is empty.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct VaultRoot(#[rkyv(with = AsString)] PathBuf);
 
@@ -669,19 +618,9 @@ impl Default for VaultRoot {
 /// This type ensures that version strings are not empty and represent
 /// a valid application version.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct AppVersion(Box<str>);
 
@@ -743,19 +682,9 @@ impl std::fmt::Display for AppVersion {
 ///
 /// - Must not be empty.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct VaultName(Box<str>);
 

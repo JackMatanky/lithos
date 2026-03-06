@@ -9,15 +9,13 @@
     reason = "rkyv generates exhaustive archived structs and enums"
 )]
 
-use serde::{Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize};
 
 /// Domain events that can be emitted by the Config aggregate.
 ///
 /// These events represent significant changes in the configuration state
 /// and are used to synchronize other bounded contexts.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum Events {
@@ -42,17 +40,7 @@ pub enum Events {
 /// assert_eq!(event.timestamp, 1234567890);
 /// assert_eq!(event.source, "vault");
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct ConfigUpdated {
@@ -82,42 +70,6 @@ impl ConfigUpdated {
 mod tests {
     use super::*;
 
-    mod fixtures {
-        use super::*;
-
-        pub fn deserialized_event() -> ConfigUpdated {
-            let json = r#"{"source":"vault","timestamp":1234567890}"#;
-            serde_json::from_str(json)
-                .expect("ConfigUpdated should deserialize successfully")
-        }
-
-        pub fn serialized_event() -> String {
-            let event = ConfigUpdated {
-                source: "vault".to_owned(),
-                timestamp: 1_234_567_890,
-            };
-            serde_json::to_string(&event)
-                .expect("ConfigUpdated should serialize successfully")
-        }
-    }
-
-    #[test]
-    fn config_updated_event_deserializes_timestamp() {
-        let event = fixtures::deserialized_event();
-
-        assert_eq!(
-            event.timestamp, 1_234_567_890,
-            "Expected deserialized timestamp to match"
-        );
-    }
-
-    #[test]
-    fn config_updated_event_deserializes_source() {
-        let event = fixtures::deserialized_event();
-
-        assert_eq!(event.source, "vault", "Expected source to be 'vault'");
-    }
-
     #[test]
     fn config_updated_event_is_send_and_sync() {
         // GIVEN: the ConfigUpdated event type
@@ -130,19 +82,10 @@ mod tests {
     }
 
     #[test]
-    fn config_updated_event_serializes_source() {
-        let json = fixtures::serialized_event();
+    fn config_updated_event_captures_payload() {
+        let event = ConfigUpdated::new("vault", 1_234_567_890);
 
-        assert!(json.contains("vault"), "JSON should contain vault_path field");
-    }
-
-    #[test]
-    fn config_updated_event_serializes_timestamp() {
-        let json = fixtures::serialized_event();
-
-        assert!(
-            json.contains("1234567890"),
-            "JSON should contain timestamp value"
-        );
+        assert_eq!(event.source, "vault");
+        assert_eq!(event.timestamp, 1_234_567_890);
     }
 }

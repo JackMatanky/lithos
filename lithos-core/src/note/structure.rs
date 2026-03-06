@@ -30,14 +30,7 @@ use crate::note::types::{SourceByteOffset, SourceByteRange};
 /// # }
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -112,14 +105,7 @@ impl Heading {
 /// assert!(section.heading().is_none());
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -194,8 +180,6 @@ impl Section {
     Eq,
     PartialOrd,
     Ord,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,

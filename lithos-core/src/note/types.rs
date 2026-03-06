@@ -29,8 +29,6 @@ use rkyv::{Archive, Deserialize, Serialize};
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     Archive,
     Serialize,
     Deserialize,
@@ -100,16 +98,7 @@ impl From<SourceByteOffset> for usize {
 /// assert_eq!(range.len(), 10);
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]

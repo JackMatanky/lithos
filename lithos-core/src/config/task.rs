@@ -12,6 +12,8 @@
 
 use std::collections::HashMap;
 
+use rkyv::{Archive, Deserialize, Serialize};
+
 use super::{
     error::ConfigError,
     raw::RawTaskConfig,
@@ -45,17 +47,9 @@ use super::{
 /// assert!(config.enabled());
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
-#[serde(try_from = "RawTaskConfig")]
 #[non_exhaustive]
 pub struct Task {
     /// Whether task processing is enabled.
@@ -242,16 +236,7 @@ impl Task {
 // ----------------------------------------------------------- //
 
 /// Bi-directional mapping between status names and checkbox symbols.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 pub struct CheckboxStatus {
     /// Forward mapping (name -> symbol).
@@ -350,16 +335,7 @@ impl<'status> IntoIterator for &'status CheckboxStatus {
 /// - Must be 1-32 characters long.
 /// - Must be ASCII alphanumeric or `_`.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
 pub struct StatusName(Box<str>);
@@ -413,17 +389,7 @@ impl From<StatusName> for String {
 ///
 /// - Must be a printable ASCII character.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
 pub struct StatusSymbol(u8);
@@ -467,16 +433,7 @@ impl StatusSymbol {
 /// - Must be at least 2 characters long.
 /// - Remaining characters must be ASCII alphanumeric, `_`, or `-`.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
 pub struct TaskTag(Box<str>);

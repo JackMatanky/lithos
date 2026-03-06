@@ -8,8 +8,7 @@
 
 use std::time::SystemTime;
 
-use rkyv::with::AsUnixTime;
-use serde::{Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
 use super::{
     aggregate::{SchemaId, SchemaName},
@@ -39,17 +38,7 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct SchemaCreated {
@@ -112,17 +101,7 @@ impl SchemaCreated {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct SchemaResolved {
@@ -185,17 +164,7 @@ impl SchemaResolved {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct SchemaDeleted {
@@ -258,17 +227,7 @@ impl SchemaDeleted {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct PropertyRegistered {
@@ -330,17 +289,7 @@ impl PropertyRegistered {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct PropertyBankLoaded {
@@ -404,9 +353,7 @@ impl PropertyBankLoaded {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum Events {

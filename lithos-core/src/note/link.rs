@@ -30,14 +30,7 @@ use super::{error::NoteError, types::SourceByteOffset};
 /// assert_eq!(block.text(), "abc123");
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -58,8 +51,6 @@ pub enum Anchor {
     Copy,
     PartialEq,
     Eq,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -97,14 +88,7 @@ pub enum EmbedType {
 /// # }
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -124,8 +108,6 @@ pub struct Link {
     Copy,
     PartialEq,
     Eq,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -156,14 +138,7 @@ pub enum Style {
 /// assert_eq!(unresolved.vault_path(), Some("New Note"));
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]

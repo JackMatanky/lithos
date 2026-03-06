@@ -11,7 +11,10 @@
 
 use std::time::SystemTime;
 
-use rkyv::with::{AsUnixTime, Map};
+use rkyv::{
+    Archive, Deserialize, Serialize,
+    with::{AsUnixTime, Map},
+};
 
 use super::super::{
     aggregate::{Schema, SchemaId, SchemaName},
@@ -29,9 +32,7 @@ use super::super::{
 /// This type lives in the adapter layer and is never exposed to the domain.
 /// Conversions between `Schema` and `StoredSchema` are the responsibility
 /// of the command and query adapters.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub(crate) struct StoredSchema {
     /// Schema identity.
     pub id: SchemaId,
@@ -100,9 +101,7 @@ impl TryFrom<StoredSchema> for Schema {
 }
 
 /// Adapter storage representation of a property bank snapshot.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub(crate) struct StoredPropertyBank {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
@@ -120,9 +119,7 @@ pub(crate) struct StoredPropertyBank {
 /// Uses `SystemTime` with rkyv's `AsUnixTime` wrapper for safe serialization.
 /// This stores timestamps as Unix epoch seconds internally while preserving
 /// `SystemTime`'s type safety.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub struct StoredMetadata {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
@@ -167,9 +164,7 @@ impl StoredMetadata {
 ///
 /// **Cascade staleness:** When a parent schema changes, query this multimap
 /// to find all children that must be re-resolved.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub(crate) struct StoredChildSchema {
     /// Child schema ID.
     pub child_id: SchemaId,
@@ -213,9 +208,7 @@ impl StoredChildSchema {
 /// **Data redundancy:** `excludes` and `resolved_at` are stored in both
 /// `schema_parent` and `schema_children`. This trades ~10KB of storage
 /// (for typical 100-schema vaults) for simpler, faster update logic.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub(crate) struct StoredParentSchema {
     /// Parent schema ID, or None for root schemas.
     pub parent_id: Option<SchemaId>,
@@ -227,9 +220,7 @@ pub(crate) struct StoredParentSchema {
 }
 
 /// Adapter storage representation of a single bank property snapshot.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub(crate) struct StoredBankProperty {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
@@ -280,9 +271,7 @@ impl TryFrom<StoredPropertyBank> for PropertyBank {
 }
 
 /// Flat storage representation of a single property.
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 pub(crate) struct StoredProperty {
     /// Property identity.
     pub id: PropertyId,
