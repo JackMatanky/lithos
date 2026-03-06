@@ -2,7 +2,10 @@
 
 use std::time::SystemTime;
 
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{
+    Archive, Deserialize, Serialize,
+    with::{AsUnixTime, Map},
+};
 
 use super::{compression, hash::Blake3Hash, ring_buffer::RingBuffer};
 
@@ -14,10 +17,13 @@ pub struct RawFileVersion {
     /// Blake3 hash of uncompressed content.
     content_hash: Blake3Hash,
     /// File creation timestamp (from filesystem).
+    #[rkyv(with = Map<AsUnixTime>)]
     created_at: Option<SystemTime>,
     /// File modification timestamp (from filesystem).
+    #[rkyv(with = Map<AsUnixTime>)]
     modified_at: Option<SystemTime>,
     /// When this version was recorded in the database.
+    #[rkyv(with = AsUnixTime)]
     recorded_at: SystemTime,
 }
 

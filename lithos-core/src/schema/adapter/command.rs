@@ -20,11 +20,13 @@ use crate::{
         bank::{BankVersion, PropertyBank},
         db_table::{
             BANK_METADATA, BANK_PROPERTY_BY_ID, BANK_PROPERTY_BY_NAME,
-            PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_CHILDREN,
-            SCHEMA_ID_BY_NAME, SCHEMA_METADATA, SCHEMA_PARENT,
+            PROPERTY_BANK_KEY, RAW_PROPERTY_BANK_FILE, RAW_PROPERTY_BANK_KEY,
+            RAW_SCHEMA_FILES, SCHEMA_BY_ID, SCHEMA_CHILDREN, SCHEMA_ID_BY_NAME,
+            SCHEMA_METADATA, SCHEMA_PARENT,
         },
         ports::Command as CommandPort,
         property::{Multiplicity, Optionality},
+        raw_file::{RawPropertyBankFile, RawSchemaFile},
     },
 };
 
@@ -182,6 +184,42 @@ impl<'db> Command<'db> {
                 )?;
                 batch.put(SCHEMA_METADATA, id_key.as_str(), meta)?;
             }
+            Ok(())
+        })
+    }
+
+    /// Save a raw schema file to the database.
+    ///
+    /// Stores the file with its version history in the raw storage table.
+    ///
+    /// # Errors
+    /// Returns `DbError` if the database operation fails.
+    #[inline]
+    #[instrument(skip(self, file), fields(file_path = file.file_path()))]
+    pub fn save_raw_schema_file(
+        &self,
+        file: &RawSchemaFile,
+    ) -> Result<(), DbError> {
+        self.db.read_write_unit_of_work(|tx| {
+            tx.put(RAW_SCHEMA_FILES, file.file_path(), file)?;
+            Ok(())
+        })
+    }
+
+    /// Save the raw property bank file to the database.
+    ///
+    /// Stores the singleton property bank file with its version history.
+    ///
+    /// # Errors
+    /// Returns `DbError` if the database operation fails.
+    #[inline]
+    #[instrument(skip(self, file))]
+    pub fn save_raw_property_bank_file(
+        &self,
+        file: &RawPropertyBankFile,
+    ) -> Result<(), DbError> {
+        self.db.read_write_unit_of_work(|tx| {
+            tx.put(RAW_PROPERTY_BANK_FILE, RAW_PROPERTY_BANK_KEY, file)?;
             Ok(())
         })
     }
