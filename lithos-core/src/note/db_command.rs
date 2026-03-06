@@ -11,6 +11,7 @@ use crate::{
     config::aggregate::Config,
     db::{BatchWriter, Database, DbError},
     note::{
+        ParsedNote,
         aggregate::NoteId,
         db_tables::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV,
@@ -28,7 +29,6 @@ use crate::{
         paths::NotePath,
         ports::Command,
         position::SourceByteOffset,
-        reader::ParsedNote,
         stored::{
             StoredLocationRange, StoredNote, StoredTask, metadata_index_keys,
         },

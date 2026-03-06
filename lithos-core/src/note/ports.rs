@@ -14,9 +14,9 @@
 //! Async wrappers should be added at the CLI/LSP boundary if needed.
 
 use super::{
+    ParsedNote,
     aggregate::{AliasName, FileClassName, NoteId},
     paths::{FolderPath, NotePath},
-    reader::ParsedNote,
     stored::{StoredNote, StoredTask},
     task::{TaskDateKind, TaskPriority, TaskTimestamp},
     value::FieldValue,

@@ -4,8 +4,8 @@
 //! through the note command port.
 
 use super::{
-    aggregate::NoteId, error::NoteCommandError, paths::NotePath,
-    ports as note_ports, reader::ParsedNote,
+    ParsedNote, aggregate::NoteId, error::NoteCommandError, paths::NotePath,
+    ports as note_ports,
 };
 
 /// Command implementation for note write operations.
