@@ -14,7 +14,7 @@
 //! Async wrappers should be added at the CLI/LSP boundary if needed.
 
 use super::{
-    adapter::stored::StoredTask,
+    adapter::stored::{StoredNote, StoredTask},
     aggregate::{AliasName, FileClassName, Note, NoteId},
     paths::{FolderPath, NotePath},
     task::{TaskDateKind, TaskPriority, TaskTimestamp},
@@ -76,7 +76,7 @@ pub trait Query: Send + Sync {
     where
         Self: 'archived;
 
-    /// Finds a single note by its configured alias.
+    /// Finds a single stored note projection by its configured alias.
     ///
     /// # Errors
     ///
@@ -84,16 +84,17 @@ pub trait Query: Send + Sync {
     fn find_by_alias(
         &self,
         alias: &AliasName,
-    ) -> Result<Option<Note>, Self::Error>;
+    ) -> Result<Option<StoredNote>, Self::Error>;
 
-    /// Finds a note by its unique UUID v7 identifier (owned).
+    /// Finds a stored note projection by its unique UUID v7 identifier.
     ///
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn find_by_id(&self, id: NoteId) -> Result<Option<Note>, Self::Error>;
+    fn find_by_id(&self, id: NoteId)
+    -> Result<Option<StoredNote>, Self::Error>;
 
-    /// Finds a note by its vault-relative path (owned).
+    /// Finds a stored note projection by its vault-relative path.
     ///
     /// # Errors
     ///
@@ -101,16 +102,16 @@ pub trait Query: Send + Sync {
     fn find_by_path(
         &self,
         path: &NotePath,
-    ) -> Result<Option<Note>, Self::Error>;
+    ) -> Result<Option<StoredNote>, Self::Error>;
 
-    /// Lists all notes currently managed in the vault (owned).
+    /// Lists all stored note projections currently managed in the vault.
     ///
     /// # Errors
     ///
     /// Returns a storage-specific error if query fails.
-    fn list(&self) -> Result<Vec<Note>, Self::Error>;
+    fn list(&self) -> Result<Vec<StoredNote>, Self::Error>;
 
-    /// Finds all notes belonging to a specific file class.
+    /// Finds all stored note projections belonging to a specific file class.
     ///
     /// # Errors
     ///
@@ -118,9 +119,10 @@ pub trait Query: Send + Sync {
     fn list_by_file_class(
         &self,
         class: &FileClassName,
-    ) -> Result<Vec<Note>, Self::Error>;
+    ) -> Result<Vec<StoredNote>, Self::Error>;
 
-    /// Finds all notes located within a specific vault folder.
+    /// Finds all stored note projections located within a specific vault
+    /// folder.
     ///
     /// # Errors
     ///
@@ -128,9 +130,9 @@ pub trait Query: Send + Sync {
     fn list_by_folder(
         &self,
         folder: &FolderPath,
-    ) -> Result<Vec<Note>, Self::Error>;
+    ) -> Result<Vec<StoredNote>, Self::Error>;
 
-    /// Queries notes by a generic frontmatter key-value pair.
+    /// Queries stored notes by a generic frontmatter key-value pair.
     ///
     /// # Errors
     ///
@@ -139,9 +141,9 @@ pub trait Query: Send + Sync {
         &self,
         key: &FrontmatterKey,
         value: &str,
-    ) -> Result<Vec<Note>, Self::Error>;
+    ) -> Result<Vec<StoredNote>, Self::Error>;
 
-    /// Finds all notes containing tasks completed on a specific date.
+    /// Finds all stored notes containing tasks completed on a specific date.
     ///
     /// # Errors
     ///
@@ -149,9 +151,9 @@ pub trait Query: Send + Sync {
     fn list_by_task_completed_date(
         &self,
         completed_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, Self::Error>;
+    ) -> Result<Vec<StoredNote>, Self::Error>;
 
-    /// Finds all notes containing tasks created on a specific date.
+    /// Finds all stored notes containing tasks created on a specific date.
     ///
     /// # Errors
     ///
@@ -159,9 +161,9 @@ pub trait Query: Send + Sync {
     fn list_by_task_created_date(
         &self,
         created_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, Self::Error>;
+    ) -> Result<Vec<StoredNote>, Self::Error>;
 
-    /// Finds all notes containing tasks due on a specific date.
+    /// Finds all stored notes containing tasks due on a specific date.
     ///
     /// # Errors
     ///
@@ -169,9 +171,9 @@ pub trait Query: Send + Sync {
     fn list_by_task_due_date(
         &self,
         due_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, Self::Error>;
+    ) -> Result<Vec<StoredNote>, Self::Error>;
 
-    /// Finds all notes containing tasks with a specific priority level.
+    /// Finds all stored notes containing tasks with a specific priority level.
     ///
     /// # Errors
     ///
@@ -179,9 +181,9 @@ pub trait Query: Send + Sync {
     fn list_by_task_priority(
         &self,
         priority: TaskPriority,
-    ) -> Result<Vec<Note>, Self::Error>;
+    ) -> Result<Vec<StoredNote>, Self::Error>;
 
-    /// Finds all notes containing tasks assigned to a specific project.
+    /// Finds all stored notes containing tasks assigned to a specific project.
     ///
     /// # Errors
     ///
@@ -189,9 +191,9 @@ pub trait Query: Send + Sync {
     fn list_by_task_project(
         &self,
         project: &str,
-    ) -> Result<Vec<Note>, Self::Error>;
+    ) -> Result<Vec<StoredNote>, Self::Error>;
 
-    /// Finds all notes containing tasks with a specific reminder date.
+    /// Finds all stored notes containing tasks with a specific reminder date.
     ///
     /// # Errors
     ///
@@ -199,9 +201,9 @@ pub trait Query: Send + Sync {
     fn list_by_task_reminder_date(
         &self,
         reminder_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, Self::Error>;
+    ) -> Result<Vec<StoredNote>, Self::Error>;
 
-    /// Finds all notes containing tasks with a specific status name.
+    /// Finds all stored notes containing tasks with a specific status name.
     ///
     /// # Errors
     ///
@@ -209,7 +211,7 @@ pub trait Query: Send + Sync {
     fn list_by_task_status(
         &self,
         status: &StatusName,
-    ) -> Result<Vec<Note>, Self::Error>;
+    ) -> Result<Vec<StoredNote>, Self::Error>;
 
     /// Lists tasks by a specific task date field.
     ///

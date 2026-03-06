@@ -51,6 +51,7 @@ mod tests {
         let reader = FsReader::new(root.as_path());
         let parsed = NoteReader::new(&config)
             .parse(&reader, std::path::Path::new("notes/ingest.md"))?;
+        assert!(parsed.modified_at().is_some(), "expected modified_at");
 
         let lists: Vec<&List> = parsed.lists().iter().collect();
         assert_eq!(lists.len(), 2, "expected unordered + ordered lists");

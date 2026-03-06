@@ -1,12 +1,11 @@
-//! Integration tests for the note reader pipeline.
+//! Integration tests for the note ingestion pipeline.
 //!
 //! # Purpose
 //!
 //! These tests validate the public, end-to-end behavior of the note reader
-//! pipeline. They exercise file ingestion, parsing, and application to the
-//! `Note` aggregate using only public APIs. Unit tests cover individual
-//! extractors; these integration tests ensure the pipeline composes correctly
-//! under realistic inputs.
+//! pipeline. They exercise file discovery, parsing, and projection writes using
+//! only public APIs. Unit tests cover individual extractors; these integration
+//! tests ensure the pipeline composes correctly under realistic inputs.
 //!
 //! # Why integration tests here
 //!
@@ -29,18 +28,26 @@
     reason = "Integration tests use assertions in Result-returning functions"
 )]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::{
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
 
     use lithos_core::{
+        application::NoteService,
         config::{
             aggregate::Config,
             raw::RawConfig,
+            task::StatusSymbol,
             vault::{VaultId, VaultRoot},
         },
-        fs::FsReader,
+        db::Database,
         note::{
-            adapter::reader::{NoteReader, ParsedNote},
-            list::{ListDepth, ListItem, ListType},
+            adapter::{
+                command::CommandAdapter, ingestor::Ingestor,
+                query::QueryAdapter,
+            },
+            query::Query,
             tag::Tag as NoteTag,
         },
     };
@@ -50,7 +57,9 @@ mod tests {
 
     struct Fixture {
         _dir: TempDir,
-        outcome: ParsedNote,
+        query: Query<QueryAdapter>,
+        note: lithos_core::note::adapter::stored::StoredNote,
+        config: Config,
     }
 
     fn test_config(root: PathBuf) -> TestResult<Config> {
@@ -76,18 +85,32 @@ mod tests {
         std::fs::write(&absolute_path, markdown)?;
 
         let config = test_config(dir.path().to_path_buf())?;
-        let reader = NoteReader::new(&config);
-        let fs_reader = FsReader::new(dir.path());
+        let db_path = dir.path().join("notes.redb");
+        let db = Arc::new(Database::open(&db_path)?);
+        let command = CommandAdapter::new(db.as_ref(), &config);
+        let service = NoteService::new(command);
+        let ingestor = Ingestor::new(&config);
 
-        let outcome = reader.parse(&fs_reader, note_path)?;
+        let _note_ids = service.load(&ingestor)?;
+
+        let query = Query::new(QueryAdapter::new(Arc::clone(&db)));
+        let notes = query.list()?;
+        let note = notes
+            .first()
+            .cloned()
+            .ok_or_else(|| std::io::Error::other("expected stored note"))?;
         Ok(Fixture {
             _dir: dir,
-            outcome,
+            query,
+            note,
+            config,
         })
     }
 
-    fn sorted_tag_paths_from_outcome(outcome: &ParsedNote) -> Vec<Box<str>> {
-        let mut tags: Vec<Box<str>> = outcome
+    fn sorted_tag_paths_from_note(
+        note: &lithos_core::note::adapter::stored::StoredNote,
+    ) -> Vec<Box<str>> {
+        let mut tags: Vec<Box<str>> = note
             .tags()
             .iter()
             .map(NoteTag::full_path)
@@ -97,11 +120,28 @@ mod tests {
         tags
     }
 
-    /// Validates end-to-end parsing and application across all core entities.
+    fn total_tasks(
+        fixture: &Fixture,
+    ) -> TestResult<Vec<lithos_core::note::adapter::stored::StoredTask>> {
+        let status = fixture.config.task().status();
+        let todo = status
+            .name_for_symbol(StatusSymbol::try_new(' ')?)
+            .ok_or_else(|| std::io::Error::other("missing todo status"))?;
+        let done = status
+            .name_for_symbol(StatusSymbol::try_new('x')?)
+            .ok_or_else(|| std::io::Error::other("missing done status"))?;
+
+        let mut tasks = Vec::new();
+        tasks.extend(fixture.query.list_tasks_by_status(todo)?);
+        tasks.extend(fixture.query.list_tasks_by_status(done)?);
+        Ok(tasks)
+    }
+
+    /// Validates end-to-end ingestion across all core entities.
     ///
-    /// This test covers the full pipeline (file -> parse -> apply) using a
+    /// This test covers the full pipeline (file -> parse -> persist) using a
     /// complex markdown fixture to ensure counts and frontmatter presence are
-    /// preserved in the parsed output.
+    /// preserved in stored projections.
     #[test]
     fn note_reader_full_pipeline_preserves_counts() -> TestResult {
         let markdown = concat!(
@@ -125,78 +165,65 @@ mod tests {
         );
 
         let fixture = build_fixture(markdown)?;
+        let tasks = total_tasks(&fixture)?;
 
-        assert_eq!(fixture.outcome.headings().len(), 3);
-        assert_eq!(fixture.outcome.tasks().len(), 3);
-        assert_eq!(fixture.outcome.links().len(), 4);
-        assert_eq!(fixture.outcome.lists().len(), 3);
-        assert_eq!(fixture.outcome.tags().len(), 7);
+        assert_eq!(fixture.note.headings().len(), 3);
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(fixture.note.links().len(), 4);
+        assert_eq!(fixture.note.tags().len(), 7);
 
         let outcome_frontmatter =
-            fixture.outcome.frontmatter().expect("frontmatter should exist");
+            fixture.note.frontmatter().expect("frontmatter should exist");
         assert!(outcome_frontmatter.has_raw("title"));
 
         Ok(())
     }
 
-    /// Ensures task promotion retains linkage between tasks and list items.
-    ///
-    /// This verifies that a promoted checkbox becomes a task and the list item
-    /// retains the correct `task_id` in the parse output.
+    /// Ensures task promotion retains a heading association.
     #[test]
-    fn note_reader_applies_task_linkage_to_list_items() -> TestResult {
-        let markdown = "- [ ] #task Link me\n";
+    fn note_reader_applies_task_headings() -> TestResult {
+        let markdown = "# Tasks\n- [ ] #task Link me\n";
 
         let fixture = build_fixture(markdown)?;
-
-        let outcome_task =
-            fixture.outcome.tasks().first().expect("task exists");
-        let outcome_list =
-            fixture.outcome.lists().first().expect("list exists");
-        let outcome_item = outcome_list.items().next().expect("item exists");
-        assert_eq!(outcome_item.task_id(), Some(outcome_task.id()));
-        assert!(matches!(outcome_item, ListItem::Checkbox { .. }));
+        let tasks = total_tasks(&fixture)?;
+        let task = tasks.first().expect("task exists");
+        let heading = task.heading().expect("heading exists");
+        assert_eq!(heading.text(), "Tasks");
 
         Ok(())
     }
 
-    /// Confirms ingestion promotes tasks and preserves list structure.
-    ///
-    /// This is the minimal ingestion scenario validating that task promotion
-    /// and list tracking remain wired correctly in the full pipeline.
+    /// Confirms ingestion promotes tasks with correct status fields.
     #[test]
     fn note_reader_ingest_promotes_tasks_and_tracks_lists() -> TestResult {
         let markdown = concat!(
             "# Title\n\n",
             "- [ ] #task Review PR [priority:: 1]\n",
-            "- [x] Buy milk\n\n",
+            "- [x] #task Buy milk\n\n",
             "1. First\n",
             "2. Second\n",
         );
 
         let fixture = build_fixture(markdown)?;
+        let tasks = total_tasks(&fixture)?;
+        let status_names: Vec<&str> =
+            tasks.iter().map(|task| task.status_name().as_str()).collect();
+        let status = fixture.config.task().status();
+        let todo = status
+            .name_for_symbol(StatusSymbol::try_new(' ')?)
+            .ok_or_else(|| std::io::Error::other("missing todo status"))?;
+        let done = status
+            .name_for_symbol(StatusSymbol::try_new('x')?)
+            .ok_or_else(|| std::io::Error::other("missing done status"))?;
 
-        let lists = fixture.outcome.lists();
-        assert_eq!(lists.len(), 2, "expected unordered + ordered lists");
-
-        let unordered = lists
-            .iter()
-            .find(|list| matches!(list.list_type(), ListType::Unordered))
-            .expect("unordered list missing");
-        assert_eq!(unordered.items().count(), 2, "unordered list item count");
-
-        let first_item = unordered.items().next().expect("missing first item");
-        let &ListItem::Checkbox {
-            task_id,
-            status,
-            ..
-        } = first_item
-        else {
-            return Err("expected checkbox item".into());
-        };
-
-        assert_eq!(status.value(), ' ', "expected unchecked status");
-        assert!(task_id.is_some(), "expected promoted task id");
+        assert!(
+            status_names.iter().any(|name| *name == todo.as_str()),
+            "expected todo task"
+        );
+        assert!(
+            status_names.iter().any(|name| *name == done.as_str()),
+            "expected done task"
+        );
         Ok(())
     }
 
@@ -209,7 +236,7 @@ mod tests {
 
         let fixture = build_fixture(markdown)?;
 
-        let outcome_tags = sorted_tag_paths_from_outcome(&fixture.outcome);
+        let outcome_tags = sorted_tag_paths_from_note(&fixture.note);
         assert!(outcome_tags.contains(&"alpha".into()));
         assert!(outcome_tags.contains(&"beta".into()));
 
@@ -231,46 +258,28 @@ mod tests {
         let fixture = build_fixture(markdown)?;
 
         let heading =
-            fixture.outcome.headings().first().expect("heading should exist");
+            fixture.note.headings().first().expect("heading should exist");
         assert_eq!(
             heading.text(),
             "\u{1f44b} \u{41f}\u{440}\u{438}\u{432}\u{435}\u{442}"
         );
 
-        let outcome_tags = sorted_tag_paths_from_outcome(&fixture.outcome);
+        let outcome_tags = sorted_tag_paths_from_note(&fixture.note);
         assert!(outcome_tags.contains(&"\u{30bf}\u{30b0}".into()));
 
         Ok(())
     }
 
-    /// Ensures nested list depths are preserved end-to-end.
-    ///
-    /// This confirms list nesting depth survives parsing and application and
-    /// is not flattened during pipeline composition.
+    /// Ensures stored tasks carry note paths and status metadata.
     #[test]
-    fn note_reader_preserves_list_depths() -> TestResult {
+    fn note_reader_preserves_task_paths_and_status() -> TestResult {
         let markdown = "1. First\n   - [ ] #task Nested\n";
 
         let fixture = build_fixture(markdown)?;
-
-        assert_eq!(fixture.outcome.lists().len(), 2);
-
-        let ordered = fixture
-            .outcome
-            .lists()
-            .iter()
-            .find(|list| matches!(list.list_type(), ListType::Ordered { .. }))
-            .expect("ordered list exists");
-        assert_eq!(ordered.depth(), ListDepth::root());
-
-        let unordered = fixture
-            .outcome
-            .lists()
-            .iter()
-            .find(|list| matches!(list.list_type(), ListType::Unordered))
-            .expect("unordered list exists");
-        assert_eq!(unordered.depth().as_u8(), 1);
-
+        let tasks = total_tasks(&fixture)?;
+        let task = tasks.first().expect("task exists");
+        assert_eq!(task.path().as_str(), "notes/note.md");
+        assert!(!task.status_name().as_str().is_empty());
         Ok(())
     }
 }

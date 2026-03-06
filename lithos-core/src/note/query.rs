@@ -4,8 +4,8 @@
 //! through the note query port.
 
 use super::{
-    adapter::stored::StoredTask,
-    aggregate::{AliasName, FileClassName, Note, NoteId},
+    adapter::stored::{StoredNote, StoredTask},
+    aggregate::{AliasName, FileClassName, NoteId},
     error::NoteQueryError,
     paths::{FolderPath, NotePath},
     ports as note_ports,
@@ -37,7 +37,7 @@ where
     Q: note_ports::Query,
     Q::Error: Into<crate::db::DbError>,
 {
-    /// Finds a single note by its configured alias.
+    /// Finds a single stored note projection by its configured alias.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -45,13 +45,13 @@ where
     pub fn find_by_alias(
         &self,
         alias: &AliasName,
-    ) -> Result<Option<Note>, NoteQueryError> {
+    ) -> Result<Option<StoredNote>, NoteQueryError> {
         self.query_port
             .find_by_alias(alias)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds all notes belonging to a specific file class.
+    /// Finds all stored note projections belonging to a specific file class.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -59,13 +59,14 @@ where
     pub fn list_by_file_class(
         &self,
         class: &FileClassName,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list_by_file_class(class)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds all notes located within a specific vault folder.
+    /// Finds all stored note projections located within a specific vault
+    /// folder.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -73,13 +74,13 @@ where
     pub fn list_by_folder(
         &self,
         folder: &FolderPath,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list_by_folder(folder)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds a note by its unique UUID v7 identifier (owned).
+    /// Finds a stored note projection by its unique UUID v7 identifier.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -87,13 +88,13 @@ where
     pub fn find_by_id(
         &self,
         id: NoteId,
-    ) -> Result<Option<Note>, NoteQueryError> {
+    ) -> Result<Option<StoredNote>, NoteQueryError> {
         self.query_port
             .find_by_id(id)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds a note by its vault-relative path (owned).
+    /// Finds a stored note projection by its vault-relative path.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -101,13 +102,13 @@ where
     pub fn find_by_path(
         &self,
         path: &NotePath,
-    ) -> Result<Option<Note>, NoteQueryError> {
+    ) -> Result<Option<StoredNote>, NoteQueryError> {
         self.query_port
             .find_by_path(path)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds all notes containing tasks completed on a specific date.
+    /// Finds all stored notes containing tasks completed on a specific date.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -115,13 +116,13 @@ where
     pub fn list_by_task_completed_date(
         &self,
         completed_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list_by_task_completed_date(completed_date)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds all notes containing tasks created on a specific date.
+    /// Finds all stored notes containing tasks created on a specific date.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -129,13 +130,13 @@ where
     pub fn list_by_task_created_date(
         &self,
         created_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list_by_task_created_date(created_date)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds all notes containing tasks due on a specific date.
+    /// Finds all stored notes containing tasks due on a specific date.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -143,13 +144,13 @@ where
     pub fn list_by_task_due_date(
         &self,
         due_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list_by_task_due_date(due_date)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds all notes containing tasks with a specific priority level.
+    /// Finds all stored notes containing tasks with a specific priority level.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -157,13 +158,13 @@ where
     pub fn list_by_task_priority(
         &self,
         priority: TaskPriority,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list_by_task_priority(priority)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds all notes containing tasks assigned to a specific project.
+    /// Finds all stored notes containing tasks assigned to a specific project.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -171,13 +172,13 @@ where
     pub fn list_by_task_project(
         &self,
         project: &str,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list_by_task_project(project)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds all notes containing tasks with a specific reminder date.
+    /// Finds all stored notes containing tasks with a specific reminder date.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -185,13 +186,13 @@ where
     pub fn list_by_task_reminder_date(
         &self,
         reminder_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list_by_task_reminder_date(reminder_date)
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Finds all notes containing tasks with a specific status name.
+    /// Finds all stored notes containing tasks with a specific status name.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -199,7 +200,7 @@ where
     pub fn list_by_task_status(
         &self,
         status: &StatusName,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list_by_task_status(status)
             .map_err(|error| NoteQueryError::Storage(error.into()))
@@ -249,18 +250,18 @@ where
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Lists all notes currently managed in the vault (owned).
+    /// Lists all stored note projections currently managed in the vault.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
     #[inline]
-    pub fn list(&self) -> Result<Vec<Note>, NoteQueryError> {
+    pub fn list(&self) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list()
             .map_err(|error| NoteQueryError::Storage(error.into()))
     }
 
-    /// Queries notes by a generic frontmatter key-value pair.
+    /// Queries stored notes by a generic frontmatter key-value pair.
     ///
     /// # Errors
     /// Returns `NoteQueryError` if query fails.
@@ -269,7 +270,7 @@ where
         &self,
         key: &FrontmatterKey,
         value: &str,
-    ) -> Result<Vec<Note>, NoteQueryError> {
+    ) -> Result<Vec<StoredNote>, NoteQueryError> {
         self.query_port
             .list_by_frontmatter_kv(key, value)
             .map_err(|error| NoteQueryError::Storage(error.into()))

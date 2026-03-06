@@ -6,6 +6,7 @@
 //! machines orchestrated by the reader to emit domain entities.
 
 pub mod command;
+pub mod ingestor;
 pub mod query;
 pub mod reader;
 pub mod stored;

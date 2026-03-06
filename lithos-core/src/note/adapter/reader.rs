@@ -7,7 +7,7 @@
 //! layer. The `parse_str` entry point is public only for benchmarks; production
 //! code should use `parse` to keep file ingestion in one place.
 
-use std::{ops::Range, path::Path};
+use std::{ops::Range, path::Path, time::SystemTime};
 
 use pulldown_cmark::{
     CowStr, Event, Options, Parser, Tag as CmarkTag, TagEnd,
@@ -22,6 +22,7 @@ use crate::{
         frontmatter::Frontmatter,
         link::Link,
         list::List,
+        position::SourceLineIndex,
         structure::{Heading, Section},
         tag::Tag as NoteTag,
         task::Task,
@@ -191,7 +192,31 @@ impl<'config> NoteReader<'config> {
                 |_, content| Ok(content.into()),
             )
             .map_err(|error| NoteError::Storage(format!("{error}").into()))?;
-        self.parse_str(&markdown)
+        let metadata = match reader.metadata(path) {
+            Ok(meta) => Some(meta),
+            Err(error) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %error,
+                    "Failed to read note metadata"
+                );
+                None
+            }
+        };
+        let modified_at = extract_timestamp(
+            path,
+            metadata.as_ref(),
+            std::fs::Metadata::modified,
+            "modified",
+        );
+        let created_at = extract_timestamp(
+            path,
+            metadata.as_ref(),
+            std::fs::Metadata::created,
+            "created",
+        );
+
+        self.parse_with_timestamps(&markdown, created_at, modified_at)
     }
 
     /// Parses markdown into lists, tasks, headings, and links.
@@ -204,15 +229,25 @@ impl<'config> NoteReader<'config> {
     /// Returns [`NoteError`] when parsing fails.
     #[inline]
     #[doc(hidden)]
+    pub fn parse_str(&self, markdown: &str) -> Result<ParsedNote, NoteError> {
+        self.parse_with_timestamps(markdown, None, None)
+    }
+
+    #[inline]
     #[expect(
         clippy::too_many_lines,
-        reason = "Orchestration keeps extractor flow in one place"
-    )]
-    #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &Event preferred for clarity"
+        reason = "WHAT: long orchestration loop and match ergonomics on \
+                  &Event. WHY: extractors reuse the same event references and \
+                  the flow is clearer centralized. HOW: keep the loop intact \
+                  and match on references without moving events."
     )]
-    pub fn parse_str(&self, markdown: &str) -> Result<ParsedNote, NoteError> {
+    fn parse_with_timestamps(
+        &self,
+        markdown: &str,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> Result<ParsedNote, NoteError> {
         let mut link_ext = super::extract_link::LinkExtractor::new(self.config);
         let mut list_ext = super::extract_list::ListExtractor::new(self.config);
         let mut heading_ext = super::extract_heading::HeadingExtractor::new();
@@ -221,6 +256,7 @@ impl<'config> NoteReader<'config> {
         let mut frontmatter_ext =
             super::extract_frontmatter::FrontmatterExtractor::new();
         let mut tag_ext = super::extract_tag::TagExtractor::new(self.config);
+        let line_index = SourceLineIndex::new(markdown);
 
         let mut links = Vec::new();
         let mut lists = Vec::new();
@@ -337,6 +373,9 @@ impl<'config> NoteReader<'config> {
             links,
             tags,
             frontmatter,
+            line_index,
+            created_at,
+            modified_at,
         })
     }
 
@@ -462,6 +501,9 @@ pub struct ParsedNote {
     links: Vec<Link>,
     tags: Vec<NoteTag>,
     frontmatter: Option<Frontmatter>,
+    line_index: SourceLineIndex,
+    created_at: Option<SystemTime>,
+    modified_at: Option<SystemTime>,
 }
 
 impl ParsedNote {
@@ -512,6 +554,49 @@ impl ParsedNote {
     #[must_use]
     pub fn frontmatter(&self) -> Option<&Frontmatter> {
         self.frontmatter.as_ref()
+    }
+
+    /// Line index for converting byte offsets into line/column positions.
+    #[inline]
+    #[must_use]
+    pub fn line_index(&self) -> &SourceLineIndex {
+        &self.line_index
+    }
+
+    /// Filesystem created timestamp at ingestion time, if available.
+    #[inline]
+    #[must_use]
+    pub const fn created_at(&self) -> Option<SystemTime> {
+        self.created_at
+    }
+
+    /// Filesystem modified timestamp at ingestion time, if available.
+    #[inline]
+    #[must_use]
+    pub const fn modified_at(&self) -> Option<SystemTime> {
+        self.modified_at
+    }
+}
+
+fn extract_timestamp(
+    path: &Path,
+    metadata: Option<&std::fs::Metadata>,
+    time_fn: fn(&std::fs::Metadata) -> std::io::Result<std::time::SystemTime>,
+    time_type: &str,
+) -> Option<SystemTime> {
+    let meta = metadata?;
+
+    match time_fn(meta) {
+        Ok(time) => Some(time),
+        Err(error) => {
+            tracing::debug!(
+                path = %path.display(),
+                error = %error,
+                time_type,
+                "Failed to read timestamp from metadata"
+            );
+            None
+        }
     }
 }
 
@@ -621,6 +706,7 @@ mod tests {
         note::{
             link::{Anchor, EmbedType, Style, Target},
             list::{ListDepth, ListItem, ListType},
+            position::SourceByteOffset,
             value::FieldValue,
         },
     };
@@ -730,6 +816,22 @@ mod tests {
 
         assert_eq!(parsed.lists().len(), 1, "note should have 1 list");
         assert_eq!(parsed.tasks().len(), 1, "note should have 1 task");
+        Ok(())
+    }
+
+    #[test]
+    fn parsed_note_exposes_line_index() -> Result<(), NoteError> {
+        let config = test_config();
+        let reader = NoteReader::new(&config);
+        let markdown = "first\nsecond";
+
+        let parsed = reader.parse_str(markdown)?;
+        let location = parsed
+            .line_index()
+            .line_column(SourceByteOffset::new(0), markdown)?;
+
+        assert_eq!(location.line().value(), 1);
+        assert_eq!(location.column().value(), 1);
         Ok(())
     }
 

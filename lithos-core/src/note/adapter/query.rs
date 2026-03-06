@@ -11,13 +11,13 @@ use crate::{
     config::{frontmatter::FrontmatterKey, task::StatusName},
     db::Database,
     note::{
-        adapter::stored::{StoredTask, metadata_index_keys},
-        aggregate::{AliasName, FileClassName, Note, NoteId},
+        adapter::stored::{StoredNote, StoredTask, metadata_index_keys},
+        aggregate::{AliasName, FileClassName, NoteId},
         db_table::{
-            ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
-            PATH_TO_ID, TASKS, TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
-            TASKS_BY_DUE_DATE, TASKS_BY_METADATA, TASKS_BY_REMINDER_DATE,
-            TASKS_BY_STATUS,
+            ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV,
+            PATH_TO_ID, STORED_NOTES, TASKS, TASKS_BY_COMPLETED_DATE,
+            TASKS_BY_CREATED_DATE, TASKS_BY_DUE_DATE, TASKS_BY_METADATA,
+            TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
         },
         paths::{FolderPath, NotePath},
         ports::Query,
@@ -66,7 +66,7 @@ impl QueryAdapter {
         &self,
         index_table: redb::MultimapTableDefinition<&str, &str>,
         index_key: &str,
-    ) -> Result<Vec<Note>, crate::db::DbError> {
+    ) -> Result<Vec<StoredNote>, crate::db::DbError> {
         use std::collections::BTreeSet;
 
         let task_refs = self.db.multimap_get(index_table, index_key)?;
@@ -86,7 +86,9 @@ impl QueryAdapter {
             let id_str = Uuid::from(note_id)
                 .as_hyphenated()
                 .encode_lower(&mut id_buffer);
-            if let Some(note) = self.db.get_owned::<Note>(NOTES, id_str)? {
+            if let Some(note) =
+                self.db.get_owned::<StoredNote>(STORED_NOTES, id_str)?
+            {
                 notes.push(note);
             }
         }
@@ -97,12 +99,12 @@ impl QueryAdapter {
         &self,
         index_table: redb::MultimapTableDefinition<&str, &str>,
         index_key: &str,
-    ) -> Result<Vec<Note>, crate::db::DbError> {
+    ) -> Result<Vec<StoredNote>, crate::db::DbError> {
         let note_refs = self.db.multimap_get(index_table, index_key)?;
         let mut notes = Vec::with_capacity(note_refs.len());
         for note_id_str in note_refs {
             if let Some(note) =
-                self.db.get_owned::<Note>(NOTES, &note_id_str)?
+                self.db.get_owned::<StoredNote>(STORED_NOTES, &note_id_str)?
             {
                 notes.push(note);
             }
@@ -147,7 +149,7 @@ impl QueryAdapter {
 impl Query for QueryAdapter {
     type Error = crate::db::DbError;
     type NoteArchived<'archived>
-        = &'archived rkyv::Archived<Note>
+        = &'archived rkyv::Archived<StoredNote>
     where
         Self: 'archived;
 
@@ -155,11 +157,11 @@ impl Query for QueryAdapter {
     fn find_by_alias(
         &self,
         alias: &AliasName,
-    ) -> Result<Option<Note>, Self::Error> {
+    ) -> Result<Option<StoredNote>, Self::Error> {
         let ids = self.db.multimap_get(ALIAS_TO_ID, alias.as_str())?;
 
         if let Some(id_str) = ids.first() {
-            self.db.get_owned::<Note>(NOTES, id_str)
+            self.db.get_owned::<StoredNote>(STORED_NOTES, id_str)
         } else {
             Ok(None)
         }
@@ -169,12 +171,14 @@ impl Query for QueryAdapter {
     fn list_by_file_class(
         &self,
         class: &FileClassName,
-    ) -> Result<Vec<Note>, Self::Error> {
+    ) -> Result<Vec<StoredNote>, Self::Error> {
         let ids = self.db.multimap_get(FILE_CLASS_TO_ID, class.as_str())?;
 
         let mut notes = Vec::with_capacity(ids.len());
         for id_str in ids {
-            if let Some(note) = self.db.get_owned::<Note>(NOTES, &id_str)? {
+            if let Some(note) =
+                self.db.get_owned::<StoredNote>(STORED_NOTES, &id_str)?
+            {
                 notes.push(note);
             }
         }
@@ -185,12 +189,14 @@ impl Query for QueryAdapter {
     fn list_by_folder(
         &self,
         folder: &FolderPath,
-    ) -> Result<Vec<Note>, Self::Error> {
+    ) -> Result<Vec<StoredNote>, Self::Error> {
         let ids = self.db.multimap_get(FOLDER_TO_ID, folder.as_str())?;
 
         let mut notes = Vec::with_capacity(ids.len());
         for id_str in ids {
-            if let Some(note) = self.db.get_owned::<Note>(NOTES, &id_str)? {
+            if let Some(note) =
+                self.db.get_owned::<StoredNote>(STORED_NOTES, &id_str)?
+            {
                 notes.push(note);
             }
         }
@@ -198,23 +204,26 @@ impl Query for QueryAdapter {
     }
 
     #[inline]
-    fn find_by_id(&self, id: NoteId) -> Result<Option<Note>, Self::Error> {
+    fn find_by_id(
+        &self,
+        id: NoteId,
+    ) -> Result<Option<StoredNote>, Self::Error> {
         let mut id_buffer = Uuid::encode_buffer();
         let id_str =
             Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
-        self.db.get_owned::<Note>(NOTES, id_str)
+        self.db.get_owned::<StoredNote>(STORED_NOTES, id_str)
     }
 
     #[inline]
     fn find_by_path(
         &self,
         path: &NotePath,
-    ) -> Result<Option<Note>, Self::Error> {
+    ) -> Result<Option<StoredNote>, Self::Error> {
         let ids = self.db.multimap_get(PATH_TO_ID, path.as_str())?;
 
         if let Some(id_str) = ids.first() {
-            self.db.get_owned::<Note>(NOTES, id_str)
+            self.db.get_owned::<StoredNote>(STORED_NOTES, id_str)
         } else {
             Ok(None)
         }
@@ -224,7 +233,7 @@ impl Query for QueryAdapter {
     fn list_by_task_completed_date(
         &self,
         completed_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, Self::Error> {
+    ) -> Result<Vec<StoredNote>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(completed_date.as_i64());
         self.list_notes_by_task_index(TASKS_BY_COMPLETED_DATE, date_str)
@@ -234,7 +243,7 @@ impl Query for QueryAdapter {
     fn list_by_task_created_date(
         &self,
         created_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, Self::Error> {
+    ) -> Result<Vec<StoredNote>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(created_date.as_i64());
         self.list_notes_by_task_index(TASKS_BY_CREATED_DATE, date_str)
@@ -244,7 +253,7 @@ impl Query for QueryAdapter {
     fn list_by_task_due_date(
         &self,
         due_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, Self::Error> {
+    ) -> Result<Vec<StoredNote>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(due_date.as_i64());
         self.list_notes_by_task_index(TASKS_BY_DUE_DATE, date_str)
@@ -254,7 +263,7 @@ impl Query for QueryAdapter {
     fn list_by_task_priority(
         &self,
         priority: TaskPriority,
-    ) -> Result<Vec<Note>, Self::Error> {
+    ) -> Result<Vec<StoredNote>, Self::Error> {
         let value = FieldValue::Number(priority.as_f64());
         let mut keys = metadata_index_keys("priority", &value);
         if let Some(key) = keys.pop() {
@@ -268,7 +277,7 @@ impl Query for QueryAdapter {
     fn list_by_task_project(
         &self,
         project: &str,
-    ) -> Result<Vec<Note>, Self::Error> {
+    ) -> Result<Vec<StoredNote>, Self::Error> {
         let value = FieldValue::String(project.into());
         let mut keys = metadata_index_keys("project", &value);
         if let Some(key) = keys.pop() {
@@ -282,7 +291,7 @@ impl Query for QueryAdapter {
     fn list_by_task_reminder_date(
         &self,
         reminder_date: TaskTimestamp,
-    ) -> Result<Vec<Note>, Self::Error> {
+    ) -> Result<Vec<StoredNote>, Self::Error> {
         let mut buffer = itoa::Buffer::new();
         let date_str = buffer.format(reminder_date.as_i64());
         self.list_notes_by_task_index(TASKS_BY_REMINDER_DATE, date_str)
@@ -292,7 +301,7 @@ impl Query for QueryAdapter {
     fn list_by_task_status(
         &self,
         status: &StatusName,
-    ) -> Result<Vec<Note>, Self::Error> {
+    ) -> Result<Vec<StoredNote>, Self::Error> {
         self.list_notes_by_task_index(TASKS_BY_STATUS, status.as_str())
     }
 
@@ -331,8 +340,8 @@ impl Query for QueryAdapter {
     }
 
     #[inline]
-    fn list(&self) -> Result<Vec<Note>, Self::Error> {
-        self.db.list_owned::<Note>(NOTES)
+    fn list(&self) -> Result<Vec<StoredNote>, Self::Error> {
+        self.db.list_owned::<StoredNote>(STORED_NOTES)
     }
 
     #[inline]
@@ -344,7 +353,7 @@ impl Query for QueryAdapter {
         &self,
         key: &FrontmatterKey,
         value: &str,
-    ) -> Result<Vec<Note>, Self::Error> {
+    ) -> Result<Vec<StoredNote>, Self::Error> {
         use std::fmt::Write as _;
         let mut combined_key =
             String::with_capacity(key.as_str().len() + value.len() + 1);
@@ -369,7 +378,7 @@ impl Query for QueryAdapter {
         let id_str =
             Uuid::from(id).as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
-        self.db.get::<Note, _, R>(NOTES, id_str, f)
+        self.db.get::<StoredNote, _, R>(STORED_NOTES, id_str, f)
     }
 }
 
@@ -398,7 +407,7 @@ mod tests {
             },
             note::{
                 adapter::command::CommandAdapter,
-                aggregate::{Note, NoteId},
+                aggregate::NoteId,
                 frontmatter::Frontmatter,
                 paths::NotePath,
                 ports::Command,
@@ -448,15 +457,17 @@ mod tests {
 
         pub fn note_with_frontmatter() -> QuerySetupResult {
             let (dir, db) = test_db()?;
+            let config = test_config()?;
             let fm = complex_frontmatter();
-            let mut note = Note::try_new(NoteId::new(), "notes/a.md")
-                .map_err(|e| e.to_string())?;
+            let cmd = CommandAdapter::new(&db, &config);
+
+            let path =
+                NotePath::try_new("notes/a.md").map_err(|e| e.to_string())?;
+            let mut note =
+                Command::create(&cmd, &path).map_err(|e| e.to_string())?;
             note.set_frontmatter(Some(fm.clone()));
             let id = note.id();
-            let uuid = Uuid::from(id);
-            db.put_by_uuid(NOTES, uuid, &note).map_err(|e| e.to_string())?;
-            db.multimap_insert(PATH_TO_ID, "notes/a.md", &uuid.to_string())
-                .map_err(|e| e.to_string())?;
+            Command::update(&cmd, note).map_err(|e| e.to_string())?;
             Ok((dir, db, id, fm))
         }
 

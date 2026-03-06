@@ -39,6 +39,7 @@
 // re-implementation.
 
 pub mod config;
+pub mod note;
 pub mod schema;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,3 +54,8 @@ pub mod schema;
 /// The service is storage-agnostic and accepts Command/Query implementations
 /// via dependency injection.
 pub type ConfigService<'db> = config::ConfigService<'db>;
+
+/// Note service type alias.
+///
+/// This is the recommended entry point for note ingestion orchestration.
+pub type NoteService<'db, 'config> = note::NoteService<'db, 'config>;

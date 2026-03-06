@@ -94,6 +94,10 @@ pub(crate) mod db_table {
 
     pub(crate) const NOTES: TableDefinition<&str, &[u8]> =
         TableDefinition::new("notes");
+    pub(crate) const STORED_NOTES: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("stored_notes");
+    pub(crate) const NOTE_EVENTS: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("note_events");
 
     pub(crate) const PATH_TO_ID: MultimapTableDefinition<&str, &str> =
         MultimapTableDefinition::new("path_to_id");

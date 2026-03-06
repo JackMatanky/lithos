@@ -3,7 +3,7 @@
 //! This module implements the Command port trait for Note write operations,
 //! using the Database layer for persistence.
 
-use std::path::Path;
+use std::{path::Path, time::SystemTime};
 
 use uuid::Uuid;
 
@@ -11,13 +11,20 @@ use crate::{
     config::aggregate::Config,
     db::{BatchWriter, Database, DbError},
     note::{
-        adapter::stored::{StoredTask, metadata_index_keys},
+        adapter::{
+            reader::ParsedNote,
+            stored::{
+                NoteEventKind, StoredNote, StoredNoteEvent, StoredTask,
+                metadata_index_keys,
+            },
+        },
         aggregate::{Note, NoteId},
         db_table::{
-            ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV, NOTES,
-            PATH_TO_ID, TAGS_TO_NOTES, TASKS, TASKS_BY_COMPLETED_DATE,
-            TASKS_BY_CREATED_DATE, TASKS_BY_DEPENDS_ON, TASKS_BY_DUE_DATE,
-            TASKS_BY_METADATA, TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
+            ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV,
+            NOTE_EVENTS, NOTES, PATH_TO_ID, STORED_NOTES, TAGS_TO_NOTES, TASKS,
+            TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
+            TASKS_BY_DEPENDS_ON, TASKS_BY_DUE_DATE, TASKS_BY_METADATA,
+            TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
         },
         error::NoteError,
         frontmatter::Frontmatter,
@@ -147,6 +154,290 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         })
     }
 
+    fn collect_index_data_from_parsed(
+        &self,
+        note_id: NoteId,
+        path: &NotePath,
+        parsed: &ParsedNote,
+    ) -> Result<IndexData, DbError> {
+        let frontmatter = parsed.frontmatter();
+        let aliases = frontmatter
+            .map(|fm| fm.aliases(self.config).map(Into::into).collect())
+            .unwrap_or_default();
+        let file_class = frontmatter
+            .and_then(|fm| fm.file_class(self.config))
+            .map(Into::into);
+        let frontmatter_entries =
+            frontmatter.map(Self::frontmatter_entries).unwrap_or_default();
+
+        Ok(IndexData {
+            path: path.as_str().into(),
+            folder: Self::note_folder(path.as_str()),
+            tags: parsed
+                .tags()
+                .iter()
+                .map(|tag| tag.full_path().into())
+                .collect(),
+            aliases,
+            file_class,
+            task_indexes: Self::task_indexes_from_parsed(
+                note_id,
+                path,
+                parsed,
+                self.config,
+            )?,
+            frontmatter_entries,
+        })
+    }
+
+    fn collect_index_data_from_stored(
+        &self,
+        stored: &StoredNote,
+        task_indexes: TaskIndexData,
+    ) -> IndexData {
+        let frontmatter = stored.frontmatter();
+        let aliases = frontmatter
+            .map(|fm| fm.aliases(self.config).map(Into::into).collect())
+            .unwrap_or_default();
+        let file_class = frontmatter
+            .and_then(|fm| fm.file_class(self.config))
+            .map(Into::into);
+        let frontmatter_entries =
+            frontmatter.map(Self::frontmatter_entries).unwrap_or_default();
+
+        IndexData {
+            path: stored.path().as_str().into(),
+            folder: Self::note_folder(stored.path().as_str()),
+            tags: stored
+                .tags()
+                .iter()
+                .map(|tag| tag.full_path().into())
+                .collect(),
+            aliases,
+            file_class,
+            task_indexes,
+            frontmatter_entries,
+        }
+    }
+
+    fn build_stored_note(&self, note: &Note) -> StoredNote {
+        let frontmatter = note.frontmatter().cloned();
+        let title = frontmatter
+            .as_ref()
+            .and_then(|fm| fm.title(self.config))
+            .map(Into::into);
+
+        StoredNote::new(
+            note.id(),
+            note.path().clone(),
+            title,
+            frontmatter,
+            note.tags().cloned().collect(),
+            note.headings().cloned().collect(),
+            note.sections().cloned().collect(),
+            note.links().cloned().collect(),
+            None,
+            None,
+            SystemTime::now(),
+        )
+    }
+
+    fn build_stored_note_from_parsed(
+        &self,
+        note_id: NoteId,
+        path: &NotePath,
+        parsed: &ParsedNote,
+    ) -> StoredNote {
+        let frontmatter = parsed.frontmatter().cloned();
+        let title = frontmatter
+            .as_ref()
+            .and_then(|fm| fm.title(self.config))
+            .map(Into::into);
+
+        StoredNote::new(
+            note_id,
+            path.clone(),
+            title,
+            frontmatter,
+            parsed.tags().to_vec(),
+            parsed.headings().to_vec(),
+            parsed.sections().to_vec(),
+            parsed.links().to_vec(),
+            parsed.created_at(),
+            parsed.modified_at(),
+            SystemTime::now(),
+        )
+    }
+
+    fn find_note_id_by_path(
+        &self,
+        path: &NotePath,
+    ) -> Result<Option<NoteId>, DbError> {
+        let ids = self.db.multimap_get(PATH_TO_ID, path.as_str())?;
+        if let Some(id_str) = ids.first() {
+            let uuid = Uuid::parse_str(id_str)
+                .map_err(|error| DbError::Deserialization(error.to_string()))?;
+            Ok(Some(NoteId::from(uuid)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn load_task_indexes_for_note(
+        &self,
+        note_id: NoteId,
+    ) -> Result<TaskIndexData, DbError> {
+        let stored_tasks = self.db.list_owned::<StoredTask>(TASKS)?;
+        let index_all_fields = self.config.task().indexed().is_empty();
+        let dependencies_enabled = self.config.task().dependencies_enabled();
+
+        let mut tasks = Vec::new();
+        for stored in stored_tasks {
+            if stored.note_id() != note_id {
+                continue;
+            }
+
+            let metadata_keys = Self::task_metadata_keys(
+                stored.metadata(),
+                self.config,
+                index_all_fields,
+            );
+            tasks.push(TaskIndexEntry {
+                stored,
+                metadata_keys,
+            });
+        }
+
+        Ok(TaskIndexData {
+            tasks,
+            dependencies_enabled,
+        })
+    }
+
+    fn build_note_event(
+        note: &Note,
+        kind: NoteEventKind,
+    ) -> Result<StoredNoteEvent, DbError> {
+        let task_count =
+            u32::try_from(note.tasks().count()).map_err(|_error| {
+                DbError::Table("task count out of range".into())
+            })?;
+        let tag_count =
+            u32::try_from(note.tags().count()).map_err(|_error| {
+                DbError::Table("tag count out of range".into())
+            })?;
+
+        Ok(StoredNoteEvent::new(
+            Uuid::now_v7(),
+            note.id(),
+            note.path().clone(),
+            kind,
+            SystemTime::now(),
+            task_count,
+            tag_count,
+        ))
+    }
+
+    fn build_note_event_from_parsed(
+        note_id: NoteId,
+        path: &NotePath,
+        parsed: &ParsedNote,
+        kind: NoteEventKind,
+    ) -> Result<StoredNoteEvent, DbError> {
+        let task_count =
+            u32::try_from(parsed.tasks().len()).map_err(|_error| {
+                DbError::Table("task count out of range".into())
+            })?;
+        let tag_count =
+            u32::try_from(parsed.tags().len()).map_err(|_error| {
+                DbError::Table("tag count out of range".into())
+            })?;
+
+        Ok(StoredNoteEvent::new(
+            Uuid::now_v7(),
+            note_id,
+            path.clone(),
+            kind,
+            SystemTime::now(),
+            task_count,
+            tag_count,
+        ))
+    }
+
+    fn insert_note_event(
+        batch: &mut BatchWriter,
+        event: &StoredNoteEvent,
+    ) -> Result<(), DbError> {
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str = event.id().as_hyphenated().encode_lower(&mut id_buffer);
+        batch.put(NOTE_EVENTS, id_str, event)
+    }
+
+    /// Upsert a parsed note projection with filesystem timestamps.
+    ///
+    /// This adapter-specific entry point is intended for ingestion pipelines
+    /// that parse markdown files via `NoteReader` and want to persist
+    /// projections without constructing the legacy Note aggregate.
+    ///
+    /// # Errors
+    /// Returns `DbError` if persistence fails.
+    #[inline]
+    pub fn upsert_parsed_note(
+        &self,
+        path: &NotePath,
+        parsed: &ParsedNote,
+    ) -> Result<NoteId, DbError> {
+        let existing_id = self.find_note_id_by_path(path)?;
+        let note_id = existing_id.unwrap_or_else(NoteId::new);
+        let id = Uuid::from(note_id);
+        let mut id_buffer = Uuid::encode_buffer();
+        let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
+        let id_str: &str = id_str;
+
+        let stored_note =
+            self.build_stored_note_from_parsed(note_id, path, parsed);
+        let index_data =
+            self.collect_index_data_from_parsed(note_id, path, parsed)?;
+        let event_kind = if existing_id.is_some() {
+            NoteEventKind::Updated
+        } else {
+            NoteEventKind::Created
+        };
+        let event = Self::build_note_event_from_parsed(
+            note_id, path, parsed, event_kind,
+        )?;
+
+        let old_index_data = if existing_id.is_some() {
+            let stored =
+                self.db.get_owned::<StoredNote>(STORED_NOTES, id_str)?;
+            if let Some(stored) = stored {
+                if stored.path() != path {
+                    self.ensure_unique_path(path, Some(id_str))?;
+                }
+                let tasks = self.load_task_indexes_for_note(note_id)?;
+                Some(self.collect_index_data_from_stored(&stored, tasks))
+            } else {
+                None
+            }
+        } else {
+            self.ensure_unique_path(path, None)?;
+            None
+        };
+
+        self.db.batch_write(|batch| {
+            if let Some(old_index_data) = old_index_data {
+                Self::remove_indexes(batch, &old_index_data, id_str)?;
+            }
+
+            Self::insert_indexes(batch, &index_data, id_str)?;
+            batch.put(STORED_NOTES, id_str, &stored_note)?;
+            Self::insert_note_event(batch, &event)?;
+            Ok(())
+        })?;
+
+        Ok(note_id)
+    }
+
     fn insert_indexes(
         batch: &mut BatchWriter,
         index_data: &IndexData,
@@ -251,6 +542,81 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
                 task.id(),
                 note.id(),
                 note.path().clone(),
+                heading,
+                task.position(),
+                None,
+                task.status().clone(),
+                status_symbol,
+                "unknown".into(),
+                text,
+                task.tags().cloned().collect(),
+                metadata,
+                task.schedule().clone(),
+                parent_id,
+                block_id,
+                depends_on,
+            );
+
+            entries.push(TaskIndexEntry {
+                stored,
+                metadata_keys,
+            });
+        }
+
+        Ok(entries)
+    }
+
+    fn task_indexes_from_parsed(
+        note_id: NoteId,
+        path: &NotePath,
+        parsed: &ParsedNote,
+        config: &Config,
+    ) -> Result<TaskIndexData, DbError> {
+        let tasks = Self::task_index_entries_from_parsed(
+            note_id, path, parsed, config,
+        )?;
+
+        Ok(TaskIndexData {
+            tasks,
+            dependencies_enabled: config.task().dependencies_enabled(),
+        })
+    }
+
+    fn task_index_entries_from_parsed(
+        note_id: NoteId,
+        path: &NotePath,
+        parsed: &ParsedNote,
+        config: &Config,
+    ) -> Result<Vec<TaskIndexEntry>, DbError> {
+        let mut entries = Vec::new();
+        let status_config = config.task().status();
+        let index_all_fields = config.task().indexed().is_empty();
+        let dependencies_enabled = config.task().dependencies_enabled();
+
+        for task in parsed.tasks() {
+            let status_symbol = status_config
+                .symbol_for_name(task.status())
+                .ok_or_else(|| {
+                    DbError::Table(
+                        "task status should have a symbol mapping".into(),
+                    )
+                })?;
+            let heading =
+                Self::task_heading_from_parsed(parsed, task.position());
+            let metadata = task.metadata().clone();
+            let metadata_keys =
+                Self::task_metadata_keys(&metadata, config, index_all_fields);
+            let depends_on =
+                Self::task_depends_on(&metadata, dependencies_enabled);
+            let block_id = Self::task_block_id(&metadata);
+            let parent_id = Self::task_parent_id(&metadata);
+
+            let text = TaskText::try_new(task.text())
+                .map_err(|err| DbError::Table(err.to_string()))?;
+            let stored = StoredTask::new(
+                task.id(),
+                note_id,
+                path.clone(),
                 heading,
                 task.position(),
                 None,
@@ -488,13 +854,22 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         note: &Note,
         position: SourceByteOffset,
     ) -> Option<Heading> {
-        for section in note.sections() {
-            let range = section.range();
-            if position >= range.start() && position < range.end() {
-                return section.heading().cloned();
-            }
-        }
-        None
+        note.headings()
+            .filter(|heading| heading.position() <= position)
+            .max_by_key(|heading| heading.position())
+            .cloned()
+    }
+
+    fn task_heading_from_parsed(
+        parsed: &ParsedNote,
+        position: SourceByteOffset,
+    ) -> Option<Heading> {
+        parsed
+            .headings()
+            .iter()
+            .filter(|heading| heading.position() <= position)
+            .max_by_key(|heading| heading.position())
+            .cloned()
     }
 
     fn frontmatter_entries(frontmatter: &Frontmatter) -> Vec<Box<str>> {
@@ -578,10 +953,14 @@ impl Command for CommandAdapter<'_, '_> {
         let id_str = id.as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
         let index_data = self.collect_index_data(&note)?;
+        let stored_note = self.build_stored_note(&note);
+        let event = Self::build_note_event(&note, NoteEventKind::Created)?;
 
         self.db.batch_write(|batch| {
             batch.put(NOTES, id_str, &note)?;
+            batch.put(STORED_NOTES, id_str, &stored_note)?;
             Self::insert_indexes(batch, &index_data, id_str)?;
+            Self::insert_note_event(batch, &event)?;
             Ok(())
         })?;
 
@@ -595,12 +974,16 @@ impl Command for CommandAdapter<'_, '_> {
         let mut id_buffer = Uuid::encode_buffer();
         let id_str = uuid.as_hyphenated().encode_lower(&mut id_buffer);
         let id_str: &str = id_str;
+        let note = self.db.get_owned::<Note>(NOTES, id_str)?;
         let old_data = self.find_note_index_data(id_str)?;
 
-        if let Some(index_data) = old_data {
+        if let (Some(note), Some(index_data)) = (note, old_data) {
+            let event = Self::build_note_event(&note, NoteEventKind::Deleted)?;
             self.db.batch_write(|batch| {
                 Self::remove_indexes(batch, &index_data, id_str)?;
                 batch.delete(NOTES, id_str)?;
+                batch.delete(STORED_NOTES, id_str)?;
+                Self::insert_note_event(batch, &event)?;
                 Ok(())
             })?;
         }
@@ -623,6 +1006,8 @@ impl Command for CommandAdapter<'_, '_> {
             self.ensure_unique_path(note.path(), current_id)?;
         }
         let index_data = self.collect_index_data(&note)?;
+        let stored_note = self.build_stored_note(&note);
+        let event = Self::build_note_event(&note, NoteEventKind::Updated)?;
 
         self.db.batch_write(|batch| {
             if let Some(old_index_data) = old_data {
@@ -631,6 +1016,8 @@ impl Command for CommandAdapter<'_, '_> {
 
             Self::insert_indexes(batch, &index_data, id_str)?;
             batch.put(NOTES, id_str, &note)?;
+            batch.put(STORED_NOTES, id_str, &stored_note)?;
+            Self::insert_note_event(batch, &event)?;
             Ok(())
         })?;
 
@@ -692,7 +1079,13 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use super::*;
-    use crate::note::error::{NoteCommandError, NoteError};
+    use crate::{
+        fs::FsReader,
+        note::{
+            adapter::reader::NoteReader,
+            error::{NoteCommandError, NoteError},
+        },
+    };
 
     mod fixtures {
         use super::*;
@@ -763,6 +1156,14 @@ mod tests {
                 .map_err(|e| e.to_string())
         }
 
+        pub fn stored_note_projection(
+            db: &Database,
+            id: Uuid,
+        ) -> Result<Option<StoredNote>, String> {
+            db.get_owned::<StoredNote>(STORED_NOTES, &id.to_string())
+                .map_err(|e| e.to_string())
+        }
+
         pub fn path_index_ids(
             db: &Database,
             path: &str,
@@ -775,6 +1176,13 @@ mod tests {
             tag: &str,
         ) -> Result<Vec<String>, String> {
             db.multimap_get(TAGS_TO_NOTES, tag).map_err(|e| e.to_string())
+        }
+
+        pub fn note_events(
+            db: &Database,
+        ) -> Result<Vec<StoredNoteEvent>, String> {
+            db.list_owned::<StoredNoteEvent>(NOTE_EVENTS)
+                .map_err(|e| e.to_string())
         }
     }
 
@@ -807,6 +1215,147 @@ mod tests {
                 "notes/a.md",
                 "Stored note path should match"
             );
+            Ok(())
+        }
+
+        #[test]
+        fn create_persists_stored_note_projection()
+        -> Result<(), NoteCommandError> {
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let cmd = CommandAdapter::new(&db, &config);
+
+            let path = fixtures::parse_path("notes/a.md").map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let note = fixtures::create_note(&cmd, &path)?;
+            let id = Uuid::from(note.id());
+
+            let stored = fixtures::stored_note_projection(&db, id)
+                .map_err(|e| {
+                    NoteCommandError::Domain(NoteError::Storage(e.into()))
+                })?
+                .expect("Stored note projection should exist");
+            assert_eq!(stored.path().as_str(), "notes/a.md");
+            Ok(())
+        }
+
+        #[test]
+        fn upsert_parsed_note_persists_file_timestamps()
+        -> Result<(), NoteCommandError> {
+            let (dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let cmd = CommandAdapter::new(&db, &config);
+
+            let notes_dir = dir.path().join("notes");
+            std::fs::create_dir_all(&notes_dir).map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(
+                    e.to_string().into(),
+                ))
+            })?;
+            std::fs::write(notes_dir.join("ingest.md"), "# Title").map_err(
+                |e| {
+                    NoteCommandError::Domain(NoteError::Storage(
+                        e.to_string().into(),
+                    ))
+                },
+            )?;
+
+            let reader = FsReader::new(dir.path());
+            let parsed = NoteReader::new(&config)
+                .parse(&reader, std::path::Path::new("notes/ingest.md"))
+                .map_err(NoteCommandError::Domain)?;
+            let path =
+                fixtures::parse_path("notes/ingest.md").map_err(|e| {
+                    NoteCommandError::Domain(NoteError::Storage(e.into()))
+                })?;
+            let note_id =
+                cmd.upsert_parsed_note(&path, &parsed).map_err(|e| {
+                    NoteCommandError::Domain(NoteError::Storage(
+                        e.to_string().into(),
+                    ))
+                })?;
+
+            let stored =
+                fixtures::stored_note_projection(&db, Uuid::from(note_id))
+                    .map_err(|e| {
+                        NoteCommandError::Domain(NoteError::Storage(e.into()))
+                    })?
+                    .expect("stored note should exist");
+            let stored_created = stored
+                .created_at()
+                .and_then(|time| {
+                    time.duration_since(SystemTime::UNIX_EPOCH).ok()
+                })
+                .map(|duration| duration.as_secs());
+            let parsed_created = parsed
+                .created_at()
+                .and_then(|time| {
+                    time.duration_since(SystemTime::UNIX_EPOCH).ok()
+                })
+                .map(|duration| duration.as_secs());
+            assert_eq!(stored_created, parsed_created);
+
+            let stored_modified = stored
+                .modified_at()
+                .and_then(|time| {
+                    time.duration_since(SystemTime::UNIX_EPOCH).ok()
+                })
+                .map(|duration| duration.as_secs());
+            let parsed_modified = parsed
+                .modified_at()
+                .and_then(|time| {
+                    time.duration_since(SystemTime::UNIX_EPOCH).ok()
+                })
+                .map(|duration| duration.as_secs());
+            assert_eq!(stored_modified, parsed_modified);
+            let recorded = stored
+                .recorded_at()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_err(|error| {
+                    NoteCommandError::Domain(NoteError::Storage(
+                        error.to_string().into(),
+                    ))
+                })?
+                .as_secs();
+            assert!(recorded > 0);
+            Ok(())
+        }
+
+        #[test]
+        fn create_emits_note_event() -> Result<(), NoteCommandError> {
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let cmd = CommandAdapter::new(&db, &config);
+
+            let path = fixtures::parse_path("notes/a.md").map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let note = fixtures::create_note(&cmd, &path)?;
+
+            let events = fixtures::note_events(&db).map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            assert_eq!(events.len(), 1);
+            let event = events.first().ok_or_else(|| {
+                NoteCommandError::Domain(NoteError::Storage(
+                    "missing event".into(),
+                ))
+            })?;
+            assert_eq!(event.note_id(), note.id());
+            assert_eq!(event.kind(), NoteEventKind::Created);
             Ok(())
         }
 
@@ -869,6 +1418,41 @@ mod tests {
                 !old_ids.contains(&id.to_string()),
                 "Old path index should not contain updated note id"
             );
+            Ok(())
+        }
+
+        #[test]
+        fn update_emits_note_event() -> Result<(), NoteCommandError> {
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let cmd = CommandAdapter::new(&db, &config);
+
+            let path_a = fixtures::parse_path("notes/a.md").map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let mut note = fixtures::create_note(&cmd, &path_a)?;
+            let path_b = fixtures::parse_path("notes/b.md").map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            note.set_path(path_b);
+            let note = fixtures::update_note(&cmd, note)?;
+
+            let events = fixtures::note_events(&db).map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            assert_eq!(events.len(), 2);
+            assert!(events.iter().any(|event| {
+                event.note_id() == note.id()
+                    && event.kind() == NoteEventKind::Created
+            }));
+            assert!(events.iter().any(|event| {
+                event.note_id() == note.id()
+                    && event.kind() == NoteEventKind::Updated
+            }));
             Ok(())
         }
 
@@ -964,6 +1548,33 @@ mod tests {
                 NoteCommandError::Domain(NoteError::Storage(e.into()))
             })?;
             assert!(stored.is_none(), "Deleted note should not exist");
+            Ok(())
+        }
+
+        #[test]
+        fn delete_emits_note_event() -> Result<(), NoteCommandError> {
+            let (_dir, db) = fixtures::test_db().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let config = fixtures::test_config().map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let cmd = CommandAdapter::new(&db, &config);
+
+            let path = fixtures::parse_path("notes/a.md").map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            let note = fixtures::create_note(&cmd, &path)?;
+            let id = note.id();
+
+            fixtures::delete_note(&cmd, id)?;
+            let events = fixtures::note_events(&db).map_err(|e| {
+                NoteCommandError::Domain(NoteError::Storage(e.into()))
+            })?;
+            assert_eq!(events.len(), 2);
+            assert!(events.iter().any(|event| {
+                event.note_id() == id && event.kind() == NoteEventKind::Deleted
+            }));
             Ok(())
         }
 
