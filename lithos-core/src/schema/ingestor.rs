@@ -23,7 +23,7 @@ const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::adapter::ingestor::RawSchemaWithMetadata;
+/// use lithos_core::schema::ingestor::RawSchemaWithMetadata;
 ///
 /// let _tuple: RawSchemaWithMetadata = todo!("Provide raw schema data");
 /// ```
@@ -57,7 +57,7 @@ pub type RawSchemaWithFileTimes = RawSchemaWithMetadata;
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::adapter::ingestor::Ingestor;
+/// use lithos_core::schema::ingestor::Ingestor;
 /// use lithos_core::fs::FsReader;
 ///
 /// let root = std::path::PathBuf::from("/tmp");
@@ -77,7 +77,7 @@ impl<'config> Ingestor<'config> {
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::adapter::ingestor::Ingestor;
+    /// use lithos_core::schema::ingestor::Ingestor;
     /// use lithos_core::fs::FsReader;
     ///
     /// let root = std::path::PathBuf::from("/tmp");
@@ -106,7 +106,7 @@ impl Ingestor<'_> {
     ///
     /// # Examples
     /// ```ignore
-    /// # use lithos_core::schema::adapter::ingestor::Ingestor;
+    /// # use lithos_core::schema::ingestor::Ingestor;
     /// # let ingestor = todo!("Provide an Ingestor instance");
     /// let _bank = ingestor.load_raw_property_bank()?;
     /// # Ok::<_, lithos_core::schema::error::SchemaIngestionError>(())
@@ -170,7 +170,7 @@ impl Ingestor<'_> {
     ///
     /// # Examples
     /// ```ignore
-    /// # use lithos_core::schema::adapter::ingestor::Ingestor;
+    /// # use lithos_core::schema::ingestor::Ingestor;
     /// # let ingestor = todo!("Provide an Ingestor instance");
     /// let _schemas = ingestor.scan_raw_schemas()?;
     /// # Ok::<_, lithos_core::schema::error::SchemaIngestionError>(())

@@ -48,7 +48,6 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use crate::schema::{
-    adapter::ingestor::Ingestor,
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
     command::Command,
@@ -57,6 +56,7 @@ use crate::schema::{
         SchemaCommandError, SchemaError, SchemaIngestionError, SchemaQueryError,
     },
     extender::Extender,
+    ingestor::Ingestor,
     query::Query,
     raw::RawSchema,
     resolver::Resolver,

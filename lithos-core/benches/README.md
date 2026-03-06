@@ -97,7 +97,7 @@ This directory contains focused performance benchmarks organized by concern.
 - Scaling behavior across vault sizes (5, 20, 40, 100 schemas)
 
 **When to run**: After changes to:
-- Schema ingestion (`src/schema/adapter/ingestor.rs`)
+- Schema ingestion (`src/schema/ingestor.rs`)
 - PropertyBank validation (`src/schema/bank.rs`)
 - PropertySpec validation logic (`src/schema/property_spec.rs`)
 - Internal pipeline stages (`src/schema/dereferencer.rs`, `extender.rs`, `resolver.rs`)

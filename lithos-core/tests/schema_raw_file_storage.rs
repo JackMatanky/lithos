@@ -17,8 +17,8 @@ use lithos_core::{
     db::Database,
     fs::FsReader,
     schema::{
-        adapter::ingestor::Ingestor,
         db_command::Command as CommandAdapter,
+        ingestor::Ingestor,
         raw_file::{RawPropertyBankFile, RawSchemaFile},
     },
 };

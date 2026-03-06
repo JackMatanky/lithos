@@ -43,6 +43,13 @@ pub mod error;
 pub mod events;
 /// Blake3 hash types for content addressing.
 pub mod hash;
+/// File ingestion pipeline for schemas and property banks.
+///
+/// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow
+/// benchmarks and tests to access the ingestor while hiding from public
+/// documentation.
+#[doc(hidden)]
+pub mod ingestor;
 /// Raw file storage types for versioned schema files.
 pub mod raw_file;
 /// Stored types for database persistence.

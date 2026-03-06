@@ -26,9 +26,9 @@ use lithos_core::{
     },
     fs::FsReader,
     schema::{
-        adapter::ingestor::Ingestor,
         aggregate::SchemaName,
         error::SchemaError,
+        ingestor::Ingestor,
         property::{Multiplicity, Optionality},
     },
 };

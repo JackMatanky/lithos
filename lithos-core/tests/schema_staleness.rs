@@ -26,9 +26,9 @@ use lithos_core::{
     },
     fs::FsReader,
     schema::{
-        adapter::ingestor::Ingestor,
         aggregate::{SchemaId, SchemaName},
         bank::{BankVersion, PropertyBank},
+        ingestor::Ingestor,
     },
 };
 use tempfile::TempDir;
