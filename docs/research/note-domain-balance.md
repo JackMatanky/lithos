@@ -152,13 +152,13 @@ read model should be projection-driven.
 - list.rs
 - structure.rs
 
-5.2 note::adapter::reader (transient)
-- ParsedNote resides in adapter::reader as the output of NoteReader.
-- Introduce adapter::ingest.rs only if ingestion is split from parsing.
-- adapter::extract_* remain parsing logic.
+5.2 note::reader (transient)
+- ParsedNote resides in reader.rs as the output of NoteReader.
+- Introduce ingestor.rs only if ingestion is split from parsing.
+- extract_* remain parsing logic.
 
 5.3 note::projection (read models)
-- adapter::stored::StoredTask (already done)
+- stored::StoredTask (already done)
 - new StoredNote for note-level cache
 - query adapters use projections, not Note aggregate
 
@@ -239,23 +239,23 @@ task.rs
 value.rs
 - Remains shared domain value type for metadata.
 
-adapter/reader.rs
+reader.rs
 - Builds ParsedNote and projections with SourceLineIndex.
 - Should compute `Pos` for each extracted entity if StoredNote is introduced.
 
-adapter/extract_*.rs
+extract_*.rs
 - Continue to produce domain value objects (Task, Tag, Heading).
 - Should surface offsets/ranges sufficient for projection positions.
 
-adapter/stored.rs
-- StoredTask already exists. Keep it in adapter layer.
-- Introduce StoredNote (note metadata cache) here.
+stored.rs
+ - StoredTask already exists. Keep it in the note module.
+ - Introduce StoredNote (note metadata cache) here.
 
-adapter/command.rs
+db_command.rs
 - Becomes projection writer (StoredTask, StoredNote).
 - Stop storing ParsedNote/Note in DB.
 
-adapter/query.rs
+db_query.rs
 - Query DB against projections; do not load Note aggregates.
 
 ----------------------------------------------------------------
@@ -496,22 +496,22 @@ Phase 0: Baseline test scaffolding
   - [ ] Snapshot helpers for ParsedNote + StoredNote
   - [ ] Unicode boundary tests for SourceByteOffset
 
-Phase 1: ParsedNote in adapter::reader
+Phase 1: ParsedNote in reader.rs
 - Tests
   - ParsedNote is produced by NoteReader.
   - ParsedNote contains all domain entities with byte offsets only.
 - Checklist
-  - [ ] ParsedNote type defined in `adapter/reader.rs`
+  - [ ] ParsedNote type defined in `reader.rs`
   - [ ] No persistence of ParsedNote
-  - [ ] Update adapter docs/examples
+  - [ ] Update note docs/examples
 
 Phase 2: StoredNote projection
 - Tests
   - StoredNote includes headings/sections/tasks with Pos.
   - StoredNote stores source_hash/mtime/size/last_indexed_at.
 - Checklist
-  - [ ] Add StoredNote to `adapter/stored.rs`
-  - [ ] Add table definition in `note::db_table`
+  - [ ] Add StoredNote to `stored.rs`
+  - [ ] Add table definition in `note::db_tables`
   - [ ] Add serialization for Pos/Loc
 
 Phase 3: SourceLocation computation pipeline
@@ -602,7 +602,7 @@ the concrete migration steps required for the new architecture.
 
 aggregate.rs
 - [ ] Replace Note aggregate with ParsedNote alias or remove and redirect
-      to adapter::reader::ParsedNote.
+      to reader::ParsedNote.
 - [ ] Remove persistence assumptions and DB helpers.
 - [ ] Update module docs to "ingest artifact" terminology.
 - Key functions:
@@ -611,7 +611,7 @@ aggregate.rs
 - Tests:
   - ParsedNote creation without persistence paths
 
-adapter/reader.rs
+reader.rs
 - [ ] Define ParsedNote (if not already) as NoteReader output.
 - [ ] Build SourceLineIndex from source text.
 - [ ] Collect byte offsets + ranges for all entities.
@@ -623,7 +623,7 @@ adapter/reader.rs
   - ParsedNote includes tags/headings/tasks/links
   - SourceLineIndex line/col with unicode and CRLF
 
-adapter/extract_heading.rs
+extract_heading.rs
 - [ ] Ensure heading positions use SourceByteOffset.
 - [ ] Provide heading range (start/end) if StoredNote requires Pos.
 - [ ] Add tests for Unicode and CRLF line offsets.
@@ -633,7 +633,7 @@ adapter/extract_heading.rs
 - Tests:
   - heading Pos from event ranges
 
-adapter/extract_section.rs
+extract_section.rs
 - [ ] Ensure section ranges are valid boundaries.
 - [ ] Confirm section heading assignment remains stable.
 - [ ] Provide section Pos derived from ranges.
@@ -643,7 +643,7 @@ adapter/extract_section.rs
 - Tests:
   - section range maps to heading
 
-adapter/extract_list.rs
+extract_list.rs
 - [ ] Ensure tasks store byte offsets.
 - [ ] Parse inline fields (brackets + parens) and emoji dates.
 - [ ] Ensure list nesting depth is preserved for parent linkage.
@@ -656,7 +656,7 @@ adapter/extract_list.rs
   - nested lists parent_id
   - task vs checkbox promotion
 
-adapter/extract_tag.rs
+extract_tag.rs
 - [ ] Ensure tags are extracted once (no duplication).
 - [ ] Preserve offsets if required by StoredNote.
 - Key functions:
@@ -664,7 +664,7 @@ adapter/extract_tag.rs
 - Tests:
   - duplicate tags collapse
 
-adapter/extract_link.rs
+extract_link.rs
 - [ ] Ensure link positions and anchors are captured.
 - [ ] Provide block/heading anchors for StoredNote.
 - Key functions:
@@ -672,9 +672,9 @@ adapter/extract_link.rs
 - Tests:
   - block ref anchor Pos
 
-adapter/stored.rs
+stored.rs
 - [ ] Add StoredNote DTO (note metadata cache with Pos/Loc).
-- [ ] Ensure StoredTask remains adapter-only storage DTO.
+ - [ ] Ensure StoredTask remains note module storage DTO.
 - [ ] Add helpers for Pos/Loc serialization.
 - Key functions:
   - StoredNote::new/accessors
@@ -682,7 +682,7 @@ adapter/stored.rs
 - Tests:
   - StoredNote rkyv round-trip
 
-adapter/command.rs
+db_command.rs
 - [ ] Stop writing NOTES table.
 - [ ] Write StoredNote + StoredTask.
 - [ ] Update index insertion/removal to use StoredNote.
@@ -693,7 +693,7 @@ adapter/command.rs
 - Tests:
   - update removes old indexes
 
-adapter/query.rs
+db_query.rs
 - [ ] Read StoredNote for note-level queries.
 - [ ] Keep StoredTask queries intact.
 - [ ] Add note query methods for headings/tags/links if needed.
@@ -702,11 +702,8 @@ adapter/query.rs
 - Tests:
   - queries return StoredNote Pos
 
-adapter/mod.rs
-- [ ] Re-export ParsedNote from reader.
-- [ ] Re-export StoredNote/StoredTask as adapter DTOs.
-- Key functions:
-  - pub use declarations
+mod.rs
+ - [ ] Re-export ParsedNote type alias if needed.
 
 command.rs
 - [ ] Replace Note-based commands with ParsedNote ingestion methods.
