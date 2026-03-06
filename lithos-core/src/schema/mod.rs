@@ -80,6 +80,22 @@ pub(crate) mod db_table {
         TableDefinition::new("bank_property_by_name");
     pub(crate) const PROPERTY_BANK_KEY: &str = "singleton";
 
+    // Raw file storage tables
+    /// Raw schema files (key: `file_path`, value: rkyv-serialized
+    /// `RawSchemaFile`).
+    #[expect(dead_code, reason = "Will be used in Phase 1 Step 1.10")]
+    pub(crate) const RAW_SCHEMA_FILES: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("raw_schema_files");
+
+    /// Raw property bank file (singleton: key = `"property-bank"`).
+    #[expect(dead_code, reason = "Will be used in Phase 1 Step 1.10")]
+    pub(crate) const RAW_PROPERTY_BANK_FILE: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("raw_property_bank_file");
+
+    /// Key for raw property bank singleton.
+    #[expect(dead_code, reason = "Will be used in Phase 1 Step 1.10")]
+    pub(crate) const RAW_PROPERTY_BANK_KEY: &str = "property-bank";
+
     // Inheritance tracking tables
     /// Multimap: parent `SchemaId` → multiple child schema records.
     /// Enables O(1) cascade staleness queries: "find all children of parent P".
