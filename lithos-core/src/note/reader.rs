@@ -7,7 +7,7 @@
 //! layer. The `parse_str` entry point is public only for benchmarks; production
 //! code should use `parse` to keep file ingestion in one place.
 
-use std::{ops::Range, path::Path, time::SystemTime};
+use std::{cell::OnceCell, ops::Range, path::Path, time::SystemTime};
 
 use pulldown_cmark::{
     Event, Options, Parser, Tag as CmarkTag, TagEnd, utils::TextMergeWithOffset,
@@ -279,7 +279,7 @@ impl<'config> NoteReader<'config> {
         let mut frontmatter_ext =
             super::extract_frontmatter::FrontmatterExtractor::new();
         let mut tag_ext = super::extract_tag::TagExtractor::new(self.config);
-        let line_index = SourceLineIndex::new(markdown_ref);
+        let line_index = OnceCell::new();
 
         let mut links = Vec::new();
         let mut lists = Vec::new();
@@ -519,7 +519,7 @@ pub struct ParsedNote {
     links: Vec<Link>,
     tags: Vec<NoteTag>,
     frontmatter: Option<Frontmatter>,
-    line_index: SourceLineIndex,
+    line_index: OnceCell<SourceLineIndex>,
     created_at: Option<SystemTime>,
     modified_at: Option<SystemTime>,
 }
@@ -585,7 +585,7 @@ impl ParsedNote {
     #[inline]
     #[must_use]
     pub fn line_index(&self) -> &SourceLineIndex {
-        &self.line_index
+        self.line_index.get_or_init(|| SourceLineIndex::new(&self.source))
     }
 
     /// Converts a byte offset into a line/column location.
@@ -598,7 +598,7 @@ impl ParsedNote {
         &self,
         offset: SourceByteOffset,
     ) -> Result<SourceLocation, NoteError> {
-        self.line_index.line_column(offset, &self.source)
+        self.line_index().line_column(offset, &self.source)
     }
 
     /// Filesystem created timestamp at ingestion time, if available.
