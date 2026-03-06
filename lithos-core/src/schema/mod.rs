@@ -5,8 +5,6 @@
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
-/// Schema storage adapters.
-pub mod adapter;
 /// Schema aggregate roots and main entities.
 pub mod aggregate;
 /// PropertyBank domain aggregate for centralized property registration.

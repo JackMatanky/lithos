@@ -35,7 +35,7 @@ use crate::{
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::adapter::command::Command;
+/// use lithos_core::schema::db_command::Command;
 ///
 /// let db = todo!("Provide a Database instance");
 /// let adapter = Command::new(&db);
@@ -52,7 +52,7 @@ impl<'db> Command<'db> {
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::adapter::command::Command;
+    /// use lithos_core::schema::db_command::Command;
     ///
     /// let db = todo!("Provide a Database instance");
     /// let adapter = Command::new(&db);
@@ -80,7 +80,7 @@ impl<'db> Command<'db> {
     ///
     /// # Examples
     /// ```ignore
-    /// use lithos_core::schema::adapter::command::CommandAdapter;
+    /// use lithos_core::schema::db_command::CommandAdapter;
     /// use lithos_core::schema::stored::StoredMetadata;
     ///
     /// let db = todo!("Provide a Database instance");
