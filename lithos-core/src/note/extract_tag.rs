@@ -91,27 +91,39 @@ impl<'config> TagExtractor<'config> {
 /// characters until the first non-tag character.
 pub(super) fn scan_tags(text: &str) -> Vec<NoteTag> {
     let mut tags = Vec::new();
-    let mut chars = text.chars().peekable();
+    let mut chars = text.char_indices().peekable();
     let mut prev_is_alnum = false;
 
-    while let Some(ch) = chars.next() {
+    while let Some((start_idx, ch)) = chars.next() {
         if ch != '#' || prev_is_alnum {
             prev_is_alnum = ch.is_alphanumeric();
             continue;
         }
 
-        let mut raw = String::with_capacity(16);
-        raw.push('#');
-        while let Some(&next) = chars.peek() {
-            if !(next.is_alphanumeric() || matches!(next, '_' | '-' | '/')) {
+        let Some(mut end_idx) = start_idx.checked_add(ch.len_utf8()) else {
+            prev_is_alnum = ch.is_alphanumeric();
+            continue;
+        };
+        while let Some(&(next_idx, next_ch)) = chars.peek() {
+            if !(next_ch.is_alphanumeric()
+                || matches!(next_ch, '_' | '-' | '/'))
+            {
                 break;
             }
-            raw.push(next);
             chars.next();
+            let Some(updated) = next_idx.checked_add(next_ch.len_utf8()) else {
+                break;
+            };
+            end_idx = updated;
         }
 
+        let Some(raw) = text.get(start_idx..end_idx) else {
+            prev_is_alnum = ch.is_alphanumeric();
+            continue;
+        };
+
         if raw.len() > 1
-            && let Ok(tag) = NoteTag::try_from_token(&raw)
+            && let Ok(tag) = NoteTag::try_from_token(raw)
         {
             tags.push(tag);
         }
