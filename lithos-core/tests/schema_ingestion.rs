@@ -291,11 +291,11 @@ fn schema_scanner_preserves_timestamps() -> TestResult {
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
     let raw_schemas = ingestor.scan_raw_schemas()?;
 
-    // THEN: Timestamp information is present
+    // THEN: Timestamp and hash information is present
     assert_eq!(raw_schemas.len(), 1);
-    let modified =
-        raw_schemas.first().map(|entry| entry.1).expect("schema should exist");
-    assert!(modified.is_some(), "Modified timestamp should be captured");
+    let first = raw_schemas.first().expect("schema should exist");
+    assert!(first.2.is_some(), "Modified timestamp should be captured");
+    assert!(first.1.as_bytes().len() == 32, "Blake3 hash should be 32 bytes");
 
     Ok(())
 }

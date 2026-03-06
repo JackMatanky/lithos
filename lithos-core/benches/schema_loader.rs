@@ -597,7 +597,7 @@ fn bench_dereferencing(c: &mut Criterion) {
                 // Convert to (SchemaId, RawSchema) pairs
                 let schemas_with_ids: Vec<(SchemaId, RawSchema)> = raw_schemas
                     .into_iter()
-                    .map(|(raw, _, _)| (SchemaId::new(), raw))
+                    .map(|(raw, _, _, _)| (SchemaId::new(), raw))
                     .collect();
 
                 b.iter(|| {
@@ -652,7 +652,7 @@ fn bench_dag_construction(c: &mut Criterion) {
 
                 let schemas_with_ids: Vec<(SchemaId, RawSchema)> = raw_schemas
                     .into_iter()
-                    .map(|(raw, _, _)| (SchemaId::new(), raw))
+                    .map(|(raw, _, _, _)| (SchemaId::new(), raw))
                     .collect();
 
                 let dereferencer = Dereferencer::new(&bank);
@@ -712,7 +712,7 @@ fn bench_property_merging(c: &mut Criterion) {
 
                 let schemas_with_ids: Vec<(SchemaId, RawSchema)> = raw_schemas
                     .into_iter()
-                    .map(|(raw, _, _)| (SchemaId::new(), raw))
+                    .map(|(raw, _, _, _)| (SchemaId::new(), raw))
                     .collect();
 
                 let dereferencer = Dereferencer::new(&bank);
@@ -981,7 +981,7 @@ fn bench_full_pipeline(c: &mut Criterion) {
                     let schemas_with_ids: Vec<(SchemaId, RawSchema)> =
                         raw_schemas
                             .into_iter()
-                            .map(|(raw, _, _)| (SchemaId::new(), raw))
+                            .map(|(raw, _, _, _)| (SchemaId::new(), raw))
                             .collect();
 
                     // Stage 3: Dereferencing

@@ -9,6 +9,7 @@ use crate::{
     fs::FsReader,
     schema::{
         error::SchemaIngestionError,
+        hash::Blake3Hash,
         raw::{RawPropertyBank, RawSchema},
     },
 };
@@ -16,16 +17,28 @@ use crate::{
 /// Supported schema file extensions.
 const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
 
-/// A raw schema with optional filesystem timestamps (modified, created).
+/// A raw schema with filesystem timestamps and content hash.
+///
+/// Tuple fields: (`schema`, `content_hash`, `modified_at`, `created_at`).
 ///
 /// # Examples
 /// ```ignore
-/// use lithos_core::schema::adapter::ingestor::RawSchemaWithFileTimes;
+/// use lithos_core::schema::adapter::ingestor::RawSchemaWithMetadata;
 ///
-/// let _tuple: RawSchemaWithFileTimes = todo!("Provide raw schema data");
+/// let _tuple: RawSchemaWithMetadata = todo!("Provide raw schema data");
 /// ```
-pub type RawSchemaWithFileTimes =
-    (RawSchema, Option<SystemTime>, Option<SystemTime>);
+pub type RawSchemaWithMetadata =
+    (RawSchema, Blake3Hash, Option<SystemTime>, Option<SystemTime>);
+
+/// Property bank with filesystem timestamps and content hash.
+///
+/// Tuple fields: (`bank`, `content_hash`, `modified_at`, `created_at`).
+pub type RawPropertyBankWithMetadata =
+    (RawPropertyBank, Blake3Hash, Option<SystemTime>, Option<SystemTime>);
+
+/// Old type alias for backward compatibility.
+#[deprecated(since = "0.1.0", note = "Use RawSchemaWithMetadata instead")]
+pub type RawSchemaWithFileTimes = RawSchemaWithMetadata;
 
 /// Ingestor for loading raw schema files from a file source.
 ///
@@ -111,11 +124,45 @@ impl Ingestor<'_> {
         Ok(bank)
     }
 
+    /// Load property bank with content hash and timestamps.
+    ///
+    /// Returns (`RawPropertyBank`, `content_hash`, `modified_at`,
+    /// `created_at`).
+    ///
+    /// # Errors
+    /// Returns `SchemaIngestionError` if the file cannot be read or parsed.
+    #[inline]
+    pub fn load_raw_property_bank_with_metadata(
+        &self,
+    ) -> Result<RawPropertyBankWithMetadata, SchemaIngestionError> {
+        let path = self.config.paths().property_bank_path();
+
+        // Read raw content for hashing
+        let content = self
+            .source
+            .read_to_string(&path)
+            .map_err(SchemaIngestionError::from)?;
+        let content_hash = Blake3Hash::compute(content.as_bytes());
+
+        // Parse structured data
+        let bank: RawPropertyBank = self
+            .source
+            .parse_structured(&path)
+            .map_err(SchemaIngestionError::from)?;
+        bank.validate_version(&path.to_string_lossy())?;
+
+        // Extract timestamps
+        let modified = self.source.modified_at(&path);
+        let created = self.source.created_at(&path);
+
+        Ok((bank, content_hash, modified, created))
+    }
+
     /// Scan the schemas directory for all schema files.
     ///
-    /// Returns a vector of (`RawSchema`, modified time, created time) tuples.
-    /// Supports JSON, TOML, and YAML formats. The property bank file is
-    /// excluded.
+    /// Returns a vector of (`schema`, `content_hash`, `modified_at`,
+    /// `created_at`) tuples. Supports JSON, TOML, and YAML formats. The
+    /// property bank file is excluded.
     ///
     /// # Errors
     /// Returns `SchemaIngestionError` if the directory cannot be scanned or
@@ -131,7 +178,7 @@ impl Ingestor<'_> {
     #[inline]
     pub fn scan_raw_schemas(
         &self,
-    ) -> Result<Vec<RawSchemaWithFileTimes>, SchemaIngestionError> {
+    ) -> Result<Vec<RawSchemaWithMetadata>, SchemaIngestionError> {
         let paths = self.config.paths();
         let schemas_dir = paths.schema.schemas_dir().as_path();
         let property_bank_filename = paths.property_bank.as_str();
@@ -168,6 +215,13 @@ impl Ingestor<'_> {
                     )
                 })?;
 
+                // Read raw content for hashing
+                let content = self
+                    .source
+                    .read_to_string(&path)
+                    .map_err(SchemaIngestionError::from)?;
+                let content_hash = Blake3Hash::compute(content.as_bytes());
+
                 // Parse the schema file
                 let mut raw: RawSchema = self
                     .source
@@ -178,12 +232,11 @@ impl Ingestor<'_> {
                 // Set name from filename (always, not from file content)
                 raw.name = filename_stem.into();
 
-                // Extract timestamps using FsReader methods (returns
-                // SystemTime)
+                // Extract timestamps using FsReader methods
                 let modified = self.source.modified_at(&path);
                 let created = self.source.created_at(&path);
 
-                results.push((raw, modified, created));
+                results.push((raw, content_hash, modified, created));
             }
         }
 

@@ -101,9 +101,19 @@ pub struct SchemaService<'db> {
 }
 
 // Type aliases for complex tuples used in service methods
-type RawSchemaWithTimes = (RawSchema, Option<SystemTime>, Option<SystemTime>);
-type SchemaWithTimes =
-    (SchemaId, RawSchema, Option<SystemTime>, Option<SystemTime>);
+type RawSchemaWithTimes = (
+    RawSchema,
+    crate::schema::hash::Blake3Hash,
+    Option<SystemTime>,
+    Option<SystemTime>,
+);
+type SchemaWithTimes = (
+    SchemaId,
+    RawSchema,
+    crate::schema::hash::Blake3Hash,
+    Option<SystemTime>,
+    Option<SystemTime>,
+);
 type PartitionResult = (Vec<SchemaWithTimes>, Vec<SchemaId>);
 
 impl<'db> SchemaService<'db> {
@@ -256,7 +266,9 @@ impl<'db> SchemaService<'db> {
             reason = "Required for borrowing RawSchema while destructuring \
                       tuple"
         )]
-        for &(ref raw_schema, modified, created) in raw_schemas_with_times {
+        for &(ref raw_schema, _hash, modified, created) in
+            raw_schemas_with_times
+        {
             let schema_name = SchemaName::try_new(&raw_schema.name)?;
             let id = name_to_id
                 .get(&schema_name)
@@ -276,14 +288,14 @@ impl<'db> SchemaService<'db> {
         let mut stale = Vec::new();
         let mut fresh_ids = Vec::new();
 
-        for (id, (raw_schema, modified, created)) in
+        for (id, (raw_schema, hash, modified, created)) in
             schema_ids.into_iter().zip(raw_schemas_with_times.iter().cloned())
         {
             let schema_stale = staleness_map.get(&id).copied().unwrap_or(true);
             let is_stale = bank_stale || schema_stale;
 
             if is_stale {
-                stale.push((id, raw_schema, modified, created));
+                stale.push((id, raw_schema, hash, modified, created));
             } else {
                 fresh_ids.push(id);
             }
@@ -308,7 +320,7 @@ impl<'db> SchemaService<'db> {
         let mut raw_map: HashMap<SchemaId, Vec<Box<str>>> =
             HashMap::with_capacity(stale_with_times.len());
 
-        for (id, raw, modified, created) in stale_with_times {
+        for (id, raw, _hash, modified, created) in stale_with_times {
             time_map.insert(id, (modified, created));
             raw_map.insert(id, raw.excludes);
         }
