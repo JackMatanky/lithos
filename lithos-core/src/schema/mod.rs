@@ -29,6 +29,8 @@ pub mod error;
 pub mod events;
 /// Blake3 hash types for content addressing.
 pub mod hash;
+/// Raw file storage types for versioned schema files.
+pub mod raw_file;
 
 /// Schema inheritance-tree builder pipeline stage.
 ///
