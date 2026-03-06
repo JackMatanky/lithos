@@ -25,6 +25,8 @@ pub mod dereferencer;
 pub mod error;
 /// Schema domain events.
 pub mod events;
+/// Blake3 hash types for content addressing.
+pub mod hash;
 
 /// Schema inheritance-tree builder pipeline stage.
 ///
