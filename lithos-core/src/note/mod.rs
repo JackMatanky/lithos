@@ -122,3 +122,6 @@ pub type NoteCommand<'db, 'config> = Command<CommandAdapter<'db, 'config>>;
 
 /// Note query type alias (storage-agnostic).
 pub type NoteQuery = Query<QueryAdapter>;
+
+/// Parsed note ingest artifact.
+pub type ParsedNote = reader::ParsedNote;
