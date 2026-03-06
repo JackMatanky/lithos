@@ -4,7 +4,7 @@
 //! code blocks, and merges frontmatter tags with inline tags while
 //! de-duplicating by full path.
 
-use std::{collections::HashSet, ops::Range};
+use std::ops::Range;
 
 use pulldown_cmark::Event;
 
@@ -18,7 +18,6 @@ use crate::{
 pub struct TagExtractor<'config> {
     config: &'config Config,
     tags: Vec<NoteTag>,
-    tag_set: HashSet<Box<str>>,
     frontmatter: Option<Frontmatter>,
 }
 
@@ -28,7 +27,6 @@ impl<'config> TagExtractor<'config> {
         Self {
             config,
             tags: Vec::new(),
-            tag_set: HashSet::new(),
             frontmatter: None,
         }
     }
@@ -38,8 +36,11 @@ impl<'config> TagExtractor<'config> {
     }
 
     fn add_tag(&mut self, tag: NoteTag) {
-        if !self.tag_set.contains(tag.full_path()) {
-            self.tag_set.insert(tag.full_path().into());
+        if !self
+            .tags
+            .iter()
+            .any(|existing| existing.full_path() == tag.full_path())
+        {
             self.tags.push(tag);
         }
     }
