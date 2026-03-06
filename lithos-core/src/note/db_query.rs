@@ -11,9 +11,8 @@ use crate::{
     config::{frontmatter::FrontmatterKey, task::StatusName},
     db::Database,
     note::{
-        adapter::stored::{StoredNote, StoredTask, metadata_index_keys},
         aggregate::{AliasName, FileClassName, NoteId},
-        db_table::{
+        db_tables::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV,
             PATH_TO_ID, STORED_NOTES, TASKS, TASKS_BY_COMPLETED_DATE,
             TASKS_BY_CREATED_DATE, TASKS_BY_DUE_DATE, TASKS_BY_METADATA,
@@ -21,6 +20,7 @@ use crate::{
         },
         paths::{FolderPath, NotePath},
         ports::Query,
+        stored::{StoredNote, StoredTask, metadata_index_keys},
         task::{TaskDateKind, TaskPriority, TaskTimestamp},
         value::FieldValue,
     },
@@ -36,7 +36,7 @@ use crate::{
 /// ```no_run
 /// use std::sync::Arc;
 ///
-/// use lithos_core::{db::Database, note::adapter::query::QueryAdapter};
+/// use lithos_core::{db::Database, note::db_query::QueryAdapter};
 ///
 /// let root = std::env::temp_dir()
 ///     .join(format!("lithos_query_doc_{}", std::process::id()));
@@ -407,11 +407,9 @@ mod tests {
                 vault::{VaultId, VaultRoot},
             },
             note::{
-                adapter::{command::CommandAdapter, reader::NoteReader},
-                aggregate::NoteId,
-                frontmatter::Frontmatter,
-                paths::NotePath,
-                ports::Command,
+                aggregate::NoteId, db_command::CommandAdapter,
+                frontmatter::Frontmatter, paths::NotePath, ports::Command,
+                reader::NoteReader,
             },
         };
         type QuerySetupResult =

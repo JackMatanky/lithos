@@ -23,10 +23,6 @@
 //! - Avoid order dependence between tests; each test builds its own fixture.
 
 #[cfg(test)]
-#[expect(
-    clippy::panic_in_result_fn,
-    reason = "Integration tests use assertions in Result-returning functions"
-)]
 mod tests {
     use std::{
         path::{Path, PathBuf},
@@ -43,12 +39,8 @@ mod tests {
         },
         db::Database,
         note::{
-            adapter::{
-                command::CommandAdapter, ingestor::Ingestor,
-                query::QueryAdapter,
-            },
-            query::Query,
-            tag::Tag as NoteTag,
+            db_command::CommandAdapter, db_query::QueryAdapter,
+            ingestor::Ingestor, query::Query, tag::Tag as NoteTag,
         },
     };
     use tempfile::TempDir;
@@ -58,7 +50,7 @@ mod tests {
     struct Fixture {
         _dir: TempDir,
         query: Query<QueryAdapter>,
-        note: lithos_core::note::adapter::stored::StoredNote,
+        note: lithos_core::note::stored::StoredNote,
         config: Config,
     }
 
@@ -127,7 +119,7 @@ mod tests {
     }
 
     fn sorted_tag_paths_from_note(
-        note: &lithos_core::note::adapter::stored::StoredNote,
+        note: &lithos_core::note::stored::StoredNote,
     ) -> Vec<Box<str>> {
         let mut tags: Vec<Box<str>> = note
             .tags()
@@ -141,7 +133,7 @@ mod tests {
 
     fn total_tasks(
         fixture: &Fixture,
-    ) -> TestResult<Vec<lithos_core::note::adapter::stored::StoredTask>> {
+    ) -> TestResult<Vec<lithos_core::note::stored::StoredTask>> {
         let status = fixture.config.task().status();
         let todo = status
             .name_for_symbol(StatusSymbol::try_new(' ')?)
@@ -162,7 +154,7 @@ mod tests {
     /// complex markdown fixture to ensure counts and frontmatter presence are
     /// preserved in stored projections.
     #[test]
-    fn note_reader_full_pipeline_preserves_counts() -> TestResult {
+    fn note_reader_full_pipeline_preserves_counts() {
         let markdown = concat!(
             "---\n",
             "title: \"Complex Note\"\n",
@@ -183,8 +175,8 @@ mod tests {
             "List of tags: #tag1 #tag4\n",
         );
 
-        let fixture = build_fixture(markdown)?;
-        let tasks = total_tasks(&fixture)?;
+        let fixture = build_fixture(markdown).expect("fixture");
+        let tasks = total_tasks(&fixture).expect("tasks");
 
         assert_eq!(fixture.note.headings().len(), 3);
         assert_eq!(tasks.len(), 3);
@@ -194,27 +186,23 @@ mod tests {
         let outcome_frontmatter =
             fixture.note.frontmatter().expect("frontmatter should exist");
         assert!(outcome_frontmatter.has_raw("title"));
-
-        Ok(())
     }
 
     /// Ensures task promotion retains a heading association.
     #[test]
-    fn note_reader_applies_task_headings() -> TestResult {
+    fn note_reader_applies_task_headings() {
         let markdown = "# Tasks\n- [ ] #task Link me\n";
 
-        let fixture = build_fixture(markdown)?;
-        let tasks = total_tasks(&fixture)?;
+        let fixture = build_fixture(markdown).expect("fixture");
+        let tasks = total_tasks(&fixture).expect("tasks");
         let task = tasks.first().expect("task exists");
         let heading = task.heading().expect("heading exists");
         assert_eq!(heading.text(), "Tasks");
-
-        Ok(())
     }
 
     /// Confirms ingestion promotes tasks with correct status fields.
     #[test]
-    fn note_reader_ingest_promotes_tasks_and_tracks_lists() -> TestResult {
+    fn note_reader_ingest_promotes_tasks_and_tracks_lists() {
         let markdown = concat!(
             "# Title\n\n",
             "- [ ] #task Review PR [priority:: 1]\n",
@@ -223,17 +211,17 @@ mod tests {
             "2. Second\n",
         );
 
-        let fixture = build_fixture(markdown)?;
-        let tasks = total_tasks(&fixture)?;
+        let fixture = build_fixture(markdown).expect("fixture");
+        let tasks = total_tasks(&fixture).expect("tasks");
         let status_names: Vec<&str> =
             tasks.iter().map(|task| task.status_name().as_str()).collect();
         let status = fixture.config.task().status();
         let todo = status
-            .name_for_symbol(StatusSymbol::try_new(' ')?)
-            .ok_or_else(|| std::io::Error::other("missing todo status"))?;
+            .name_for_symbol(StatusSymbol::try_new(' ').expect("todo symbol"))
+            .expect("missing todo status");
         let done = status
-            .name_for_symbol(StatusSymbol::try_new('x')?)
-            .ok_or_else(|| std::io::Error::other("missing done status"))?;
+            .name_for_symbol(StatusSymbol::try_new('x').expect("done symbol"))
+            .expect("missing done status");
 
         assert!(
             status_names.iter().any(|name| *name == todo.as_str()),
@@ -243,23 +231,20 @@ mod tests {
             status_names.iter().any(|name| *name == done.as_str()),
             "expected done task"
         );
-        Ok(())
     }
 
     /// Verifies frontmatter tag extraction is visible in the parse outcome.
     ///
     /// This asserts that frontmatter tags are extracted and de-duplicated.
     #[test]
-    fn note_reader_frontmatter_tags_surface_in_note() -> TestResult {
+    fn note_reader_frontmatter_tags_surface_in_note() {
         let markdown = "---\ntags: [alpha, beta]\n---\n\nBody text\n";
 
-        let fixture = build_fixture(markdown)?;
+        let fixture = build_fixture(markdown).expect("fixture");
 
         let outcome_tags = sorted_tag_paths_from_note(&fixture.note);
         assert!(outcome_tags.contains(&"alpha".into()));
         assert!(outcome_tags.contains(&"beta".into()));
-
-        Ok(())
     }
 
     /// Ensures Unicode escapes are preserved through the pipeline.
@@ -268,13 +253,13 @@ mod tests {
     /// escapes to validate tag and heading parsing without introducing literal
     /// non-ASCII source.
     #[test]
-    fn note_reader_preserves_unicode_headings_and_tags() -> TestResult {
+    fn note_reader_preserves_unicode_headings_and_tags() {
         let markdown = concat!(
             "# \u{1f44b} \u{41f}\u{440}\u{438}\u{432}\u{435}\u{442}\n",
             "Here is a unicode tag: #\u{30bf}\u{30b0}\n",
         );
 
-        let fixture = build_fixture(markdown)?;
+        let fixture = build_fixture(markdown).expect("fixture");
 
         let heading =
             fixture.note.headings().first().expect("heading should exist");
@@ -285,67 +270,60 @@ mod tests {
 
         let outcome_tags = sorted_tag_paths_from_note(&fixture.note);
         assert!(outcome_tags.contains(&"\u{30bf}\u{30b0}".into()));
-
-        Ok(())
     }
 
     /// Ensures stored tasks carry note paths and status metadata.
     #[test]
-    fn note_reader_preserves_task_paths_and_status() -> TestResult {
+    fn note_reader_preserves_task_paths_and_status() {
         let markdown = "1. First\n   - [ ] #task Nested\n";
 
-        let fixture = build_fixture(markdown)?;
-        let tasks = total_tasks(&fixture)?;
+        let fixture = build_fixture(markdown).expect("fixture");
+        let tasks = total_tasks(&fixture).expect("tasks");
         let task = tasks.first().expect("task exists");
         assert_eq!(task.path().as_str(), "notes/note.md");
         assert!(!task.status_name().as_str().is_empty());
-        Ok(())
     }
 
     #[test]
-    fn load_skips_unchanged_notes() -> TestResult {
+    fn load_skips_unchanged_notes() {
         let (dir, config, db) =
-            build_environment("# Title\n- [ ] #task Review PR")?;
+            build_environment("# Title\n- [ ] #task Review PR")
+                .expect("environment");
         let command = CommandAdapter::new(db.as_ref(), &config);
         let service = NoteService::new(command);
         let ingestor = Ingestor::new(&config);
         let query = Query::new(QueryAdapter::new(Arc::clone(&db)));
 
-        let first = service.load(&ingestor)?;
+        let first = service.load(&ingestor).expect("first load");
         assert_eq!(first.len(), 1, "first load should index one note");
-        let mut first_notes = query.list()?;
-        let first_note = first_notes
-            .pop()
-            .ok_or_else(|| std::io::Error::other("expected stored note"))?;
+        let mut first_notes = query.list().expect("first notes");
+        let first_note = first_notes.pop().expect("expected stored note");
         let first_indexed = first_note.last_indexed_at();
 
-        let second = service.load(&ingestor)?;
+        let second = service.load(&ingestor).expect("second load");
         assert!(second.is_empty(), "second load should skip unchanged note");
-        let mut second_notes = query.list()?;
-        let second_note = second_notes
-            .pop()
-            .ok_or_else(|| std::io::Error::other("expected stored note"))?;
+        let mut second_notes = query.list().expect("second notes");
+        let second_note = second_notes.pop().expect("expected stored note");
         assert_eq!(second_note.last_indexed_at(), first_indexed);
         drop(dir);
-        Ok(())
     }
 
     #[test]
-    fn load_removes_missing_notes() -> TestResult {
+    fn load_removes_missing_notes() {
         let (dir, config, db) =
-            build_environment("# Title\n- [ ] #task Review PR")?;
+            build_environment("# Title\n- [ ] #task Review PR")
+                .expect("environment");
         let command = CommandAdapter::new(db.as_ref(), &config);
         let service = NoteService::new(command);
         let ingestor = Ingestor::new(&config);
         let query = Query::new(QueryAdapter::new(Arc::clone(&db)));
 
-        let _second_note_ids = service.load(&ingestor)?;
+        let _second_note_ids = service.load(&ingestor).expect("first load");
         let note_path = dir.path().join("notes/note.md");
-        std::fs::remove_file(note_path)?;
+        std::fs::remove_file(note_path).expect("remove note");
 
-        let _note_ids = service.load(&ingestor)?;
-        let notes = query.list()?;
+        let _note_ids = service.load(&ingestor).expect("second load");
+        let notes = query.list().expect("list notes");
         assert!(notes.is_empty(), "expected note to be removed");
-        Ok(())
     }
 }

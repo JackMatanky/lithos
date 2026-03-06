@@ -48,24 +48,43 @@
 //! - [`aggregate`] - Legacy ingest artifact (`aggregate::Note`) used during
 //!   parsing; projections are the source of truth.
 //! - [`ports`] - Command and Query trait definitions for CQRS.
-//! - [`command`] & [`query`] - Concrete implementations of the CQRS ports.
-//! - [`adapter::reader`] - Markdown ingestion adapter for note parsing.
-//! - [`adapter::stored`] - Projection DTOs (`StoredNote`, `StoredTask`).
+//! - [`command`] & [`query`] - CQRS facades for application use.
+//! - [`reader`] - Markdown ingestion parser for note parsing.
+//! - [`stored`] - Projection read models (`StoredNote`, `StoredTask`).
 //! - [`task`], [`tag`], [`link`], [`list`] - Sub-entities extracted during
 //!   ingestion and stored in projections.
 
-#![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
+#![expect(
+    clippy::module_name_repetitions,
+    reason = "Public API names include module prefix for clarity"
+)]
 
-/// Note storage adapters.
-pub mod adapter;
 /// Core Note aggregate root and main entities.
 pub mod aggregate;
 /// Note command implementations (CQRS write operations).
 pub mod command;
+/// Note storage adapters.
+pub mod db_command;
+/// Note storage query adapters.
+pub mod db_query;
+/// Note storage table definitions.
+pub(crate) mod db_tables;
+mod extract_frontmatter;
+mod extract_heading;
+mod extract_link;
+mod extract_list;
+mod extract_section;
+mod extract_tag;
+/// Note file ingestor.
+pub mod ingestor;
 /// Note ports for CQRS.
 pub mod ports;
 /// Note query implementations (CQRS read operations).
 pub mod query;
+/// Markdown note reader.
+pub mod reader;
+/// Stored note projections.
+pub mod stored;
 
 /// Frontmatter value objects and logic.
 pub mod frontmatter;
@@ -91,53 +110,8 @@ pub mod position;
 /// Shared primitive for dynamic note values.
 pub mod value;
 
-pub(crate) mod db_table {
-    use redb::{MultimapTableDefinition, TableDefinition};
-
-    pub(crate) const STORED_NOTES: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("stored_notes");
-    pub(crate) const NOTE_EVENTS: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("note_events");
-
-    pub(crate) const PATH_TO_ID: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("path_to_id");
-    pub(crate) const TAGS_TO_NOTES: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("tags_to_notes");
-    pub(crate) const ALIAS_TO_ID: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("alias_to_id");
-    pub(crate) const FILE_CLASS_TO_ID: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("file_class_to_id");
-    pub(crate) const FOLDER_TO_ID: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("folder_to_id");
-    pub(crate) const TASKS_BY_COMPLETED_DATE: MultimapTableDefinition<
-        &str,
-        &str,
-    > = MultimapTableDefinition::new("tasks_by_completed_date");
-    pub(crate) const TASKS_BY_CREATED_DATE: MultimapTableDefinition<
-        &str,
-        &str,
-    > = MultimapTableDefinition::new("tasks_by_created_date");
-    pub(crate) const TASKS_BY_DUE_DATE: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("tasks_by_due_date");
-    pub(crate) const TASKS_BY_REMINDER_DATE: MultimapTableDefinition<
-        &str,
-        &str,
-    > = MultimapTableDefinition::new("tasks_by_reminder_date");
-    pub(crate) const TASKS_BY_STATUS: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("tasks_by_status");
-    pub(crate) const TASKS: TableDefinition<&str, &[u8]> =
-        TableDefinition::new("tasks");
-    pub(crate) const TASKS_BY_METADATA: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("tasks_by_metadata");
-    pub(crate) const TASKS_BY_DEPENDS_ON: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("tasks_by_depends_on");
-    pub(crate) const FRONTMATTER_KV: MultimapTableDefinition<&str, &str> =
-        MultimapTableDefinition::new("frontmatter_kv");
-}
-
 use self::{
-    adapter::{command::CommandAdapter, query::QueryAdapter},
-    command::Command,
+    command::Command, db_command::CommandAdapter, db_query::QueryAdapter,
     query::Query,
 };
 

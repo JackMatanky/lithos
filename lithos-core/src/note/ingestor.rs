@@ -22,7 +22,7 @@ use crate::{
 /// ```ignore
 /// use lithos_core::{
 ///     config::aggregate::Config,
-///     note::adapter::ingestor::Ingestor,
+///     note::ingestor::Ingestor,
 /// };
 ///
 /// let config = todo!("Provide a Config");

@@ -227,7 +227,7 @@ use lithos_core::{
         vault::{VaultId, VaultRoot},
     },
     fs::FsReader,
-    note::adapter::reader::NoteReader,
+    note::reader::NoteReader,
 };
 
 /// Simple markdown sample: minimal note structure (~100 bytes).

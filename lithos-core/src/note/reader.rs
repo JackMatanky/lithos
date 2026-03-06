@@ -123,7 +123,7 @@ pub(super) trait Extractor {
 /// #     vault::{VaultId, VaultRoot},
 /// # };
 /// # use lithos_core::fs::FsReader;
-/// # use lithos_core::note::adapter::reader::NoteReader;
+/// # use lithos_core::note::reader::NoteReader;
 /// # let unique = format!(
 /// #     "lithos_note_reader_example_{}",
 /// #     std::process::id()
@@ -499,7 +499,7 @@ const fn obsidian_options() -> Options {
 ///         raw::RawConfig,
 ///         vault::{VaultId, VaultRoot},
 ///     },
-///     note::adapter::reader::NoteReader,
+///     note::reader::NoteReader,
 /// };
 ///
 /// let root = std::env::temp_dir()

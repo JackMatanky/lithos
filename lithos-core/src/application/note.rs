@@ -1,9 +1,9 @@
 //! Note application service — orchestrates the note ingestion pipeline.
 //!
 //! Pipeline:
-//! 1. Discover note paths via `note::adapter::ingestor::Ingestor`.
-//! 2. Parse markdown via `note::adapter::reader::NoteReader`.
-//! 3. Persist projections via `note::adapter::command::CommandAdapter`.
+//! 1. Discover note paths via `note::ingestor::Ingestor`.
+//! 2. Parse markdown via `note::reader::NoteReader`.
+//! 3. Persist projections via `note::db_command::CommandAdapter`.
 
 #![allow(
     clippy::module_name_repetitions,
@@ -16,12 +16,8 @@ use crate::{
     db::DbError,
     fs::FsReader,
     note::{
-        adapter::{
-            command::CommandAdapter, ingestor::Ingestor, reader::NoteReader,
-        },
-        aggregate::NoteId,
-        error::NoteIngestError,
-        ports::Command as _,
+        aggregate::NoteId, db_command::CommandAdapter, error::NoteIngestError,
+        ingestor::Ingestor, ports::Command as _, reader::NoteReader,
     },
 };
 

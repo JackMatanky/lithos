@@ -842,8 +842,8 @@ mod tests {
             vault::{VaultId, VaultRoot},
         },
         note::{
-            adapter::reader::{ExtractionContext, ExtractionState},
             list::ListType,
+            reader::{ExtractionContext, ExtractionState},
         },
     };
 

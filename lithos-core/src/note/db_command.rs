@@ -11,15 +11,8 @@ use crate::{
     config::aggregate::Config,
     db::{BatchWriter, Database, DbError},
     note::{
-        adapter::{
-            reader::ParsedNote,
-            stored::{
-                StoredLocationRange, StoredNote, StoredTask,
-                metadata_index_keys,
-            },
-        },
         aggregate::NoteId,
-        db_table::{
+        db_tables::{
             ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV,
             NOTE_EVENTS, PATH_TO_ID, STORED_NOTES, TAGS_TO_NOTES, TASKS,
             TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
@@ -35,6 +28,10 @@ use crate::{
         paths::NotePath,
         ports::Command,
         position::SourceByteOffset,
+        reader::ParsedNote,
+        stored::{
+            StoredLocationRange, StoredNote, StoredTask, metadata_index_keys,
+        },
         structure::Heading,
         task::{TaskId, TaskMetadata, TaskText},
         value::FieldValue,
@@ -79,7 +76,7 @@ struct TaskIndexEntry {
 ///         vault::{VaultId, VaultRoot},
 ///     },
 ///     db::Database,
-///     note::adapter::command::CommandAdapter,
+///     note::db_command::CommandAdapter,
 /// };
 ///
 /// let root = std::env::temp_dir()
@@ -1015,8 +1012,8 @@ mod tests {
     use crate::{
         fs::FsReader,
         note::{
-            adapter::reader::NoteReader,
             error::{NoteCommandError, NoteError},
+            reader::NoteReader,
         },
     };
 
