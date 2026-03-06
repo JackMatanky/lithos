@@ -21,6 +21,8 @@ pub mod command;
 #[doc(hidden)]
 pub mod dereferencer;
 
+/// Zstd compression utilities for raw file storage.
+pub mod compression;
 /// Schema errors.
 pub mod error;
 /// Schema domain events.
