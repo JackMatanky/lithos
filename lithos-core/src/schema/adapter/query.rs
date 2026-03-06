@@ -8,10 +8,6 @@ use std::{collections::HashMap, time::SystemTime};
 use crate::{
     db::{BatchReader, Database, DbError},
     schema::{
-        adapter::stored::{
-            StoredBankProperty, StoredChildSchema, StoredMetadata,
-            StoredPropertyBank, StoredSchema,
-        },
         aggregate::{Schema, SchemaId, SchemaName},
         bank::{BankVersion, PropertyBank},
         db_table::{
@@ -23,6 +19,10 @@ use crate::{
         ports::{NameIdPair, Query as QueryPort},
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
+        },
+        stored::{
+            StoredBankProperty, StoredChildSchema, StoredMetadata,
+            StoredPropertyBank, StoredSchema,
         },
     },
 };

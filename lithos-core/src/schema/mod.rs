@@ -31,6 +31,8 @@ pub mod events;
 pub mod hash;
 /// Raw file storage types for versioned schema files.
 pub mod raw_file;
+/// Stored types for database persistence.
+pub(crate) mod stored;
 
 /// Schema inheritance-tree builder pipeline stage.
 ///

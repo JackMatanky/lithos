@@ -213,7 +213,7 @@ impl Command<crate::schema::adapter::command::Command<'_>> {
     /// # let db = todo!("Provide database");
     /// # let command = schema::Command::new(adapter::Command::new(&db));
     /// # let schemas: Vec<lithos_core::schema::aggregate::Schema> = Vec::new();
-    /// # let metadata: Vec<lithos_core::schema::adapter::stored::StoredMetadata> = Vec::new();
+    /// # let metadata: Vec<lithos_core::schema::stored::StoredMetadata> = Vec::new();
     /// command.save_many_with_metadata(&schemas, &metadata)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
@@ -221,7 +221,7 @@ impl Command<crate::schema::adapter::command::Command<'_>> {
     pub fn save_many_with_metadata(
         &self,
         schemas: &[Schema],
-        metadata: &[crate::schema::adapter::stored::StoredMetadata],
+        metadata: &[crate::schema::stored::StoredMetadata],
     ) -> Result<(), SchemaCommandError> {
         self.command_port.save_many_with_metadata(schemas, metadata).map_err(
             |error| {
@@ -276,10 +276,10 @@ mod tests {
     use tempfile::{TempDir, tempdir};
 
     use crate::schema::{
-        self as schema_mod,
-        adapter::{self, stored::StoredSchema},
+        self as schema_mod, adapter,
         aggregate::{SchemaId, SchemaName},
         db_table::{SCHEMA_BY_ID, SCHEMA_ID_BY_NAME},
+        stored::StoredSchema,
     };
 
     mod persistence {

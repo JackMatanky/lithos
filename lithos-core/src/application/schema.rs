@@ -48,7 +48,7 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use crate::schema::{
-    adapter::{ingestor::Ingestor, stored::StoredMetadata},
+    adapter::ingestor::Ingestor,
     aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
     command::Command,
@@ -60,6 +60,7 @@ use crate::schema::{
     query::Query,
     raw::RawSchema,
     resolver::Resolver,
+    stored::StoredMetadata,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

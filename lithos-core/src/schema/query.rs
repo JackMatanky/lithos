@@ -532,8 +532,8 @@ mod tests {
     use super::*;
     use crate::schema::{
         self as schema_mod, adapter,
-        adapter::stored::StoredMetadata,
         aggregate::{SchemaId, SchemaName},
+        stored::StoredMetadata,
     };
 
     mod queries {

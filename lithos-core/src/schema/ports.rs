@@ -244,7 +244,7 @@ pub trait Command: Send + Sync {
 ///     ) -> Result<Option<R>, Self::Error>
 ///     where
 ///         F: FnOnce(
-///             &rkyv::Archived<lithos_core::schema::adapter::stored::StoredMetadata>,
+///             &rkyv::Archived<lithos_core::schema::stored::StoredMetadata>,
 ///         ) -> R,
 ///     {
 ///         Ok(None)
@@ -601,7 +601,5 @@ pub trait Query: Send + Sync {
         f: F,
     ) -> Result<Option<R>, Self::Error>
     where
-        F: FnOnce(
-            &rkyv::Archived<crate::schema::adapter::stored::StoredMetadata>,
-        ) -> R;
+        F: FnOnce(&rkyv::Archived<crate::schema::stored::StoredMetadata>) -> R;
 }

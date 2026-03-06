@@ -3,7 +3,6 @@
 pub mod command;
 pub mod ingestor;
 pub mod query;
-pub(crate) mod stored;
 
 /// Type alias to remove path stuttering: `adapter::Command` vs
 /// `adapter::command::Command`.

@@ -16,7 +16,7 @@ use rkyv::{
     with::{AsUnixTime, Map},
 };
 
-use super::super::{
+use super::{
     aggregate::{Schema, SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
     error::SchemaError,

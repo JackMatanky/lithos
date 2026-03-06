@@ -11,11 +11,6 @@ use tracing::instrument;
 use crate::{
     db::{Database, DbError},
     schema::{
-        adapter::stored::{
-            StoredBankProperty, StoredChildSchema, StoredMetadata,
-            StoredParentSchema, StoredProperty, StoredPropertyBank,
-            StoredSchema,
-        },
         aggregate::{Schema, SchemaId},
         bank::{BankVersion, PropertyBank},
         db_table::{
@@ -28,6 +23,11 @@ use crate::{
         ports::Command as CommandPort,
         property::{Multiplicity, Optionality},
         raw_file::{RawPropertyBankFile, RawSchemaFile},
+        stored::{
+            StoredBankProperty, StoredChildSchema, StoredMetadata,
+            StoredParentSchema, StoredProperty, StoredPropertyBank,
+            StoredSchema,
+        },
     },
 };
 
@@ -81,7 +81,7 @@ impl<'db> Command<'db> {
     /// # Examples
     /// ```ignore
     /// use lithos_core::schema::adapter::command::CommandAdapter;
-    /// use lithos_core::schema::adapter::stored::StoredMetadata;
+    /// use lithos_core::schema::stored::StoredMetadata;
     ///
     /// let db = todo!("Provide a Database instance");
     /// let adapter = CommandAdapter::new(&db);
@@ -259,9 +259,9 @@ impl CommandPort for Command<'_> {
     )]
     fn delete(&self, id: SchemaId) -> Result<(), Self::Error> {
         use crate::schema::{
-            adapter::stored::StoredSchema,
             aggregate::SchemaName,
             events::{Events, SchemaDeleted},
+            stored::StoredSchema,
         };
 
         let id_uuid = id.into_uuid();
