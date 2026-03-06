@@ -1,7 +1,7 @@
 # Config Table Refactoring - Implementation Progress
 
-**Started:** 2026-03-04  
-**Status:** IN PROGRESS (Phase 2 of 9 complete)  
+**Started:** 2026-03-04
+**Status:** IN PROGRESS (Phase 2 of 9 complete)
 **Branch:** main (commit 2d2361e7)
 
 ---
@@ -12,7 +12,7 @@
 
 **Changes:**
 - Added `version: GlobalVersion` field to `Global` struct
-- Added `version: VaultVersion` field to `Vault` struct  
+- Added `version: VaultVersion` field to `Vault` struct
 - Added `version()` getter methods
 - Updated constructors to accept version parameter
 - Updated `TryFrom<&RawConfig>` implementations
@@ -144,7 +144,7 @@ fn is_vault_stale(&self, vault_id: VaultId, created_at: Option<Timestamp>, modif
 
 **Affected test files:**
 - `lithos-core/src/config/adapter/command.rs` - 4 tests
-- `lithos-core/src/config/adapter/query.rs` - 10 tests  
+- `lithos-core/src/config/adapter/query.rs` - 10 tests
 - `lithos-core/src/config/command.rs` - 11 tests
 - `lithos-core/src/config/query.rs` - 3 tests
 - Integration tests in `tests/config_flow.rs`

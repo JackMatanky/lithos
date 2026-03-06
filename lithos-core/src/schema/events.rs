@@ -6,10 +6,12 @@
               #[non_exhaustive] on source types"
 )]
 
-use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
+
+use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
 use super::{
-    aggregate::{SchemaId, SchemaName, Timestamp},
+    aggregate::{SchemaId, SchemaName},
     bank::BankVersion,
     property::{PropertyId, PropertyName},
 };
@@ -20,31 +22,23 @@ use super::{
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName, Timestamp},
+///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaCreated,
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("schema")?;
-/// let event = SchemaCreated::new(id, &name, Timestamp::from_secs(1234567890));
+/// let event = SchemaCreated::new(id, &name, SystemTime::now());
 /// assert_eq!(event.id, id, "Schema id should match");
 /// assert_eq!(event.name, name, "Schema name should match");
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct SchemaCreated {
@@ -52,8 +46,9 @@ pub struct SchemaCreated {
     pub id: SchemaId,
     /// Name of the schema.
     pub name: SchemaName,
-    /// Unix timestamp when the schema was created.
-    pub timestamp: Timestamp,
+    /// Timestamp when the schema was created.
+    #[rkyv(with = AsUnixTime)]
+    pub timestamp: SystemTime,
 }
 
 impl SchemaCreated {
@@ -61,20 +56,22 @@ impl SchemaCreated {
     ///
     /// # Examples
     /// ```
+    /// use std::time::SystemTime;
+    ///
     /// use lithos_core::schema::{
-    ///     aggregate::{SchemaId, SchemaName, Timestamp},
+    ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaCreated,
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
     /// let name = SchemaName::try_new("schema")?;
-    /// let _event = SchemaCreated::new(id, &name, Timestamp::from_secs(456));
+    /// let _event = SchemaCreated::new(id, &name, SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(id: SchemaId, name: &SchemaName, timestamp: Timestamp) -> Self {
+    pub fn new(id: SchemaId, name: &SchemaName, timestamp: SystemTime) -> Self {
         Self {
             id,
             name: name.clone(),
@@ -89,30 +86,22 @@ impl SchemaCreated {
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName, Timestamp},
+///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaResolved,
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("schema")?;
-/// let event = SchemaResolved::new(id, &name, Timestamp::from_secs(123));
+/// let event = SchemaResolved::new(id, &name, SystemTime::now());
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.name, name);
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct SchemaResolved {
@@ -120,8 +109,9 @@ pub struct SchemaResolved {
     pub id: SchemaId,
     /// Name of the schema.
     pub name: SchemaName,
-    /// Unix timestamp when the schema was resolved.
-    pub timestamp: Timestamp,
+    /// Timestamp when the schema was resolved.
+    #[rkyv(with = AsUnixTime)]
+    pub timestamp: SystemTime,
 }
 
 impl SchemaResolved {
@@ -129,20 +119,22 @@ impl SchemaResolved {
     ///
     /// # Examples
     /// ```
+    /// use std::time::SystemTime;
+    ///
     /// use lithos_core::schema::{
-    ///     aggregate::{SchemaId, SchemaName, Timestamp},
+    ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaResolved,
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
     /// let name = SchemaName::try_new("schema")?;
-    /// let _event = SchemaResolved::new(id, &name, Timestamp::from_secs(456));
+    /// let _event = SchemaResolved::new(id, &name, SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(id: SchemaId, name: &SchemaName, timestamp: Timestamp) -> Self {
+    pub fn new(id: SchemaId, name: &SchemaName, timestamp: SystemTime) -> Self {
         Self {
             id,
             name: name.clone(),
@@ -157,30 +149,22 @@ impl SchemaResolved {
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName, Timestamp},
+///     aggregate::{SchemaId, SchemaName},
 ///     events::SchemaDeleted,
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("schema")?;
-/// let event = SchemaDeleted::new(id, &name, Timestamp::from_secs(789));
+/// let event = SchemaDeleted::new(id, &name, SystemTime::now());
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.name, name);
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct SchemaDeleted {
@@ -188,8 +172,9 @@ pub struct SchemaDeleted {
     pub id: SchemaId,
     /// Name of the deleted schema.
     pub name: SchemaName,
-    /// Unix timestamp when the schema was deleted.
-    pub timestamp: Timestamp,
+    /// Timestamp when the schema was deleted.
+    #[rkyv(with = AsUnixTime)]
+    pub timestamp: SystemTime,
 }
 
 impl SchemaDeleted {
@@ -197,20 +182,22 @@ impl SchemaDeleted {
     ///
     /// # Examples
     /// ```
+    /// use std::time::SystemTime;
+    ///
     /// use lithos_core::schema::{
-    ///     aggregate::{SchemaId, SchemaName, Timestamp},
+    ///     aggregate::{SchemaId, SchemaName},
     ///     events::SchemaDeleted,
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = SchemaId::new();
     /// let name = SchemaName::try_new("schema")?;
-    /// let _event = SchemaDeleted::new(id, &name, Timestamp::from_secs(321));
+    /// let _event = SchemaDeleted::new(id, &name, SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(id: SchemaId, name: &SchemaName, timestamp: Timestamp) -> Self {
+    pub fn new(id: SchemaId, name: &SchemaName, timestamp: SystemTime) -> Self {
         Self {
             id,
             name: name.clone(),
@@ -225,31 +212,22 @@ impl SchemaDeleted {
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{
-///     aggregate::Timestamp,
 ///     events::PropertyRegistered,
 ///     property::{PropertyId, PropertyName},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = PropertyId::new();
 /// let name = PropertyName::try_new("flag")?;
-/// let event = PropertyRegistered::new(id, &name, Timestamp::from_secs(42));
+/// let event = PropertyRegistered::new(id, &name, SystemTime::now());
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.name, name);
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct PropertyRegistered {
@@ -257,8 +235,9 @@ pub struct PropertyRegistered {
     pub id: PropertyId,
     /// Name of the property.
     pub name: PropertyName,
-    /// Unix timestamp when the property was registered.
-    pub timestamp: Timestamp,
+    /// Timestamp when the property was registered.
+    #[rkyv(with = AsUnixTime)]
+    pub timestamp: SystemTime,
 }
 
 impl PropertyRegistered {
@@ -266,15 +245,16 @@ impl PropertyRegistered {
     ///
     /// # Examples
     /// ```
+    /// use std::time::SystemTime;
+    ///
     /// use lithos_core::schema::{
-    ///     aggregate::Timestamp,
     ///     events::PropertyRegistered,
     ///     property::{PropertyId, PropertyName},
     /// };
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let id = PropertyId::new();
     /// let name = PropertyName::try_new("flag")?;
-    /// let _event = PropertyRegistered::new(id, &name, Timestamp::from_secs(42));
+    /// let _event = PropertyRegistered::new(id, &name, SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
@@ -283,7 +263,7 @@ impl PropertyRegistered {
     pub fn new(
         id: PropertyId,
         name: &PropertyName,
-        timestamp: Timestamp,
+        timestamp: SystemTime,
     ) -> Self {
         Self {
             id,
@@ -299,30 +279,17 @@ impl PropertyRegistered {
 ///
 /// # Examples
 /// ```
-/// use lithos_core::schema::{
-///     aggregate::Timestamp, bank::BankVersion, events::PropertyBankLoaded,
-/// };
+/// use std::time::SystemTime;
+///
+/// use lithos_core::schema::{bank::BankVersion, events::PropertyBankLoaded};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let event = PropertyBankLoaded::new(
-///     3,
-///     BankVersion::initial(),
-///     Timestamp::from_secs(900),
-/// );
+/// let event =
+///     PropertyBankLoaded::new(3, BankVersion::initial(), SystemTime::now());
 /// assert_eq!(event.property_count, 3);
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct PropertyBankLoaded {
@@ -330,8 +297,9 @@ pub struct PropertyBankLoaded {
     pub property_count: usize,
     /// Version of the property bank.
     pub bank_version: BankVersion,
-    /// Unix timestamp when the bank was loaded.
-    pub timestamp: Timestamp,
+    /// Timestamp when the bank was loaded.
+    #[rkyv(with = AsUnixTime)]
+    pub timestamp: SystemTime,
 }
 
 impl PropertyBankLoaded {
@@ -339,15 +307,12 @@ impl PropertyBankLoaded {
     ///
     /// # Examples
     /// ```
-    /// use lithos_core::schema::{
-    ///     aggregate::Timestamp, bank::BankVersion, events::PropertyBankLoaded,
-    /// };
+    /// use std::time::SystemTime;
+    ///
+    /// use lithos_core::schema::{bank::BankVersion, events::PropertyBankLoaded};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let _event = PropertyBankLoaded::new(
-    ///     1,
-    ///     BankVersion::initial(),
-    ///     Timestamp::from_secs(900),
-    /// );
+    /// let _event =
+    ///     PropertyBankLoaded::new(1, BankVersion::initial(), SystemTime::now());
     /// # Ok(())
     /// # }
     /// ```
@@ -356,7 +321,7 @@ impl PropertyBankLoaded {
     pub fn new(
         property_count: usize,
         bank_version: BankVersion,
-        timestamp: Timestamp,
+        timestamp: SystemTime,
     ) -> Self {
         Self {
             property_count,
@@ -370,14 +335,16 @@ impl PropertyBankLoaded {
 ///
 /// # Examples
 /// ```
+/// use std::time::SystemTime;
+///
 /// use lithos_core::schema::{
-///     aggregate::{SchemaId, SchemaName, Timestamp},
+///     aggregate::{SchemaId, SchemaName},
 ///     events::{Events, SchemaCreated},
 /// };
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let id = SchemaId::new();
 /// let name = SchemaName::try_new("schema")?;
-/// let created = SchemaCreated::new(id, &name, Timestamp::from_secs(1));
+/// let created = SchemaCreated::new(id, &name, SystemTime::now());
 /// let event = Events::SchemaCreated(created);
 /// match event {
 ///     Events::SchemaCreated(_) => {}
@@ -386,9 +353,7 @@ impl PropertyBankLoaded {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum Events {
@@ -412,7 +377,7 @@ mod tests {
     fn schema_created_captures_payload() {
         let id = SchemaId::new();
         let name = SchemaName::try_new("schema").expect("Valid schema name");
-        let timestamp = Timestamp::from_secs(456);
+        let timestamp = SystemTime::now();
         let event = SchemaCreated::new(id, &name, timestamp);
 
         assert_eq!(event.id, id);
@@ -424,7 +389,7 @@ mod tests {
     fn schema_resolved_captures_payload() {
         let id = SchemaId::new();
         let name = SchemaName::try_new("schema").expect("Valid schema name");
-        let timestamp = Timestamp::from_secs(456);
+        let timestamp = SystemTime::now();
         let event = SchemaResolved::new(id, &name, timestamp);
 
         assert_eq!(event.id, id);
@@ -436,7 +401,7 @@ mod tests {
     fn schema_deleted_captures_payload() {
         let id = SchemaId::new();
         let name = SchemaName::try_new("schema").expect("Valid schema name");
-        let timestamp = Timestamp::from_secs(456);
+        let timestamp = SystemTime::now();
         let event = SchemaDeleted::new(id, &name, timestamp);
 
         assert_eq!(event.id, id);
@@ -449,7 +414,7 @@ mod tests {
         let id = PropertyId::new();
         let name =
             PropertyName::try_new("status").expect("Valid property name");
-        let timestamp = Timestamp::from_secs(789);
+        let timestamp = SystemTime::now();
         let event = PropertyRegistered::new(id, &name, timestamp);
 
         assert_eq!(event.id, id);
@@ -460,7 +425,7 @@ mod tests {
     #[test]
     fn property_bank_loaded_captures_payload() {
         let version = BankVersion::initial();
-        let timestamp = Timestamp::from_secs(123);
+        let timestamp = SystemTime::now();
         let event = PropertyBankLoaded::new(42, version, timestamp);
 
         assert_eq!(event.property_count, 42);

@@ -34,14 +34,7 @@ use chrono::{DateTime, Datelike as _, Timelike as _, Utc};
 /// assert!(num.as_number().is_some());
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(serialize_bounds(
     __S: rkyv::ser::Writer + rkyv::ser::Allocator,

@@ -12,7 +12,10 @@
 //! This is a pure adapter - it performs file I/O and parsing but no validation
 //! or database access.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 use figment::{
     Figment,
@@ -21,10 +24,7 @@ use figment::{
 use tracing::instrument;
 
 use crate::{
-    config::{
-        aggregate::Timestamp, error::ConfigIngestError, raw::RawConfig,
-        vault::VaultRoot,
-    },
+    config::{error::ConfigIngestError, raw::RawConfig, vault::VaultRoot},
     fs::FsReader,
 };
 
@@ -270,20 +270,9 @@ impl Ingestor {
         fs_reader: &FsReader,
         file_path: &Path,
     ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
-        // Extract metadata before reading file content
-        let metadata = fs_reader.metadata(file_path).ok();
-        let created_at = extract_timestamp(
-            file_path,
-            metadata.as_ref(),
-            std::fs::Metadata::created,
-            "created_at",
-        );
-        let modified_at = extract_timestamp(
-            file_path,
-            metadata.as_ref(),
-            std::fs::Metadata::modified,
-            "modified_at",
-        );
+        // Extract timestamps using FsReader methods (returns SystemTime)
+        let created_at = fs_reader.created_at(file_path);
+        let modified_at = fs_reader.modified_at(file_path);
 
         // Parse TOML content using FsReader
         let config: RawConfig =
@@ -339,45 +328,7 @@ impl Ingestor {
 ///
 /// Format: `(RawConfig, created_at, modified_at)`.
 pub type RawConfigWithMetadata =
-    (RawConfig, Option<Timestamp>, Option<Timestamp>);
-
-/// Extract a timestamp from file metadata, logging any errors at debug level.
-///
-/// Returns `None` if metadata is unavailable or timestamp extraction fails.
-fn extract_timestamp(
-    path: &Path,
-    metadata: Option<&std::fs::Metadata>,
-    time_fn: fn(&std::fs::Metadata) -> std::io::Result<std::time::SystemTime>,
-    time_type: &str,
-) -> Option<Timestamp> {
-    let meta = metadata?;
-
-    let system_time = match time_fn(meta) {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::debug!(
-                path = %path.display(),
-                error = %e,
-                time_type,
-                "Failed to read timestamp from metadata"
-            );
-            return None;
-        }
-    };
-
-    match system_time.duration_since(std::time::SystemTime::UNIX_EPOCH) {
-        Ok(duration) => Some(Timestamp::from_secs(duration.as_secs())),
-        Err(e) => {
-            tracing::debug!(
-                path = %path.display(),
-                error = %e,
-                time_type,
-                "Timestamp before UNIX_EPOCH"
-            );
-            None
-        }
-    }
-}
+    (RawConfig, Option<SystemTime>, Option<SystemTime>);
 
 // ----------------------------------------------------------- //
 //                            Tests                            //

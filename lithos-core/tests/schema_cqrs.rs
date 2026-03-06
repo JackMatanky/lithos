@@ -1421,7 +1421,6 @@ mod critical {
 // ========================================================================
 
 mod staleness {
-    use lithos_core::schema::aggregate::Timestamp;
 
     use super::*;
 
@@ -1498,14 +1497,18 @@ mod staleness {
     fn is_schema_stale_with_asymmetric_created_at() -> TestResult {
         use lithos_core::schema::bank::BankVersion;
         use redb::TableDefinition;
-
         // Manually create StoredMetadata struct for test metadata crafting
+        use rkyv::with::{AsUnixTime, Map};
+
         #[derive(rkyv::Archive, rkyv::Serialize)]
         struct TempMetadata {
             bank_version: BankVersion,
-            created_at: Option<Timestamp>,
-            modified_at: Option<Timestamp>,
-            recorded_at: Timestamp,
+            #[rkyv(with = Map<AsUnixTime>)]
+            created_at: Option<std::time::SystemTime>,
+            #[rkyv(with = Map<AsUnixTime>)]
+            modified_at: Option<std::time::SystemTime>,
+            #[rkyv(with = AsUnixTime)]
+            recorded_at: std::time::SystemTime,
         }
 
         // Table definitions for direct database access
@@ -1525,15 +1528,16 @@ mod staleness {
 
         // Manually craft metadata with created_at = Some, modified_at = Some
         // to simulate a file that was saved WITH birthtime support
-        let base_time = 1_000_000u64;
-        let created_timestamp = Timestamp::from_secs(base_time);
-        let modified_timestamp = Timestamp::from_secs(base_time + 100);
+        let created_timestamp = std::time::SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_secs(1_000_000);
+        let modified_timestamp = std::time::SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_secs(1_000_100);
 
         let metadata = TempMetadata {
             bank_version: BankVersion::initial(),
             created_at: Some(created_timestamp),
             modified_at: Some(modified_timestamp),
-            recorded_at: Timestamp::now(),
+            recorded_at: std::time::SystemTime::now(),
         };
 
         // Write metadata to database (overwriting the None/None version)
@@ -1560,7 +1564,8 @@ mod staleness {
         );
 
         // WHEN: Checking with newer modified_at (file was actually modified)
-        let newer_modified = Timestamp::from_secs(base_time + 200);
+        let newer_modified = std::time::SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_secs(1_000_200);
         let is_stale_newer_mtime = query.is_schema_stale(
             schema_id,
             None, // ← Still no birthtime

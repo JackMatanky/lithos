@@ -8,8 +8,9 @@
     reason = "rkyv::Archive derive generates exhaustive archived enums"
 )]
 
-use super::error::ConfigError;
+use rkyv::{Archive, Deserialize, Serialize};
 
+use super::error::ConfigError;
 // ----------------------------------------------------------- //
 //                     Public Domain Types                     //
 // ----------------------------------------------------------- //
@@ -27,16 +28,7 @@ use super::error::ConfigError;
 /// let logging = Logging::new(LogLevel::Debug);
 /// assert_eq!(logging.level_str(), "debug");
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Logging {
@@ -82,20 +74,9 @@ impl Logging {
 ///
 /// Defines the granularity of system logs.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Default, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum LogLevel {
     /// Error-level logging only (least verbose).

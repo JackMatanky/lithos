@@ -4,7 +4,7 @@
 //! - `bank_metadata` for version/timestamps
 //! - `bank_property_by_id` and `bank_property_by_name` for versioned rows
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
 use tracing::instrument;
 
@@ -16,7 +16,7 @@ use crate::{
             StoredParentSchema, StoredProperty, StoredPropertyBank,
             StoredSchema,
         },
-        aggregate::{Schema, SchemaId, Timestamp},
+        aggregate::{Schema, SchemaId},
         bank::{BankVersion, PropertyBank},
         db_table::{
             BANK_METADATA, BANK_PROPERTY_BY_ID, BANK_PROPERTY_BY_NAME,
@@ -239,10 +239,11 @@ impl CommandPort for Command<'_> {
 
                 // TODO(EVENT-001): Persist event to SCHEMA_EVENTS table once
                 // event store is implemented (Phase 2)
+                let timestamp = SystemTime::now();
                 let _event = Events::SchemaDeleted(SchemaDeleted::new(
                     id,
                     &schema_name,
-                    Timestamp::now(),
+                    timestamp,
                 ));
 
                 tx.delete(SCHEMA_ID_BY_NAME, stored.name.as_ref())?;
@@ -269,7 +270,7 @@ impl CommandPort for Command<'_> {
         const VERSION_RETENTION_COUNT: u64 = 3;
 
         let bank_version = bank.version();
-        let recorded_at = Timestamp::now();
+        let recorded_at = SystemTime::now();
 
         // Read current metadata to determine old versions to delete
         let previous_metadata = self
@@ -409,7 +410,7 @@ impl CommandPort for Command<'_> {
         self.db.batch_write(|writer| {
             for &(child_id, parent_id, ref excludes) in relationships {
                 let child_key = child_id.to_string();
-                let timestamp = Timestamp::now();
+                let timestamp = SystemTime::now();
 
                 // Remove old parent→child multimap entry if parent changed
                 if let Some(old_ref) = old_parents.get(&child_id)

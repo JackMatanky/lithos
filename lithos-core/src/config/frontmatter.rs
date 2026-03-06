@@ -3,8 +3,9 @@
 //! This module defines the [`Frontmatter`] keys used when parsing
 //! metadata from note files.
 
-use super::error::ConfigError;
+use rkyv::{Archive, Deserialize, Serialize};
 
+use super::error::ConfigError;
 // ----------------------------------------------------------- //
 //                     Public Domain Types                     //
 // ----------------------------------------------------------- //
@@ -22,16 +23,7 @@ use super::error::ConfigError;
 /// let config = Frontmatter::default();
 /// assert_eq!(config.title().as_str(), "title");
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Frontmatter {
@@ -151,19 +143,9 @@ impl Frontmatter {
 ///
 /// - Must not be empty.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct FrontmatterKey(
     /// Internal key storage.

@@ -4,8 +4,10 @@
 //! interfaces, decoupling domain logic from storage implementation details
 //! (like Redb).
 
+use std::time::SystemTime;
+
 use super::{
-    aggregate::{Config, Timestamp, Version},
+    aggregate::{Config, Version},
     global::Global,
     vault::{Vault, VaultId, VaultRoot},
 };
@@ -34,8 +36,8 @@ pub trait Command: Send + Sync {
     fn record_global(
         &self,
         config: &Global,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<(), Self::Error>;
 
     /// Records a final configuration snapshot with atomic version allocation.
@@ -66,8 +68,8 @@ pub trait Command: Send + Sync {
         &self,
         vault_id: VaultId,
         config: &Vault,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<(), Self::Error>;
 
     /// Records the vault ID to root path mapping.
@@ -171,11 +173,12 @@ pub trait Query: Send + Sync {
     /// # Examples
     ///
     /// ```ignore
-    /// use lithos_core::config::{ports::Query, aggregate::Timestamp};
+    /// use lithos_core::config::ports::Query;
+    /// use std::time::SystemTime;
     ///
     /// let query: &dyn Query = todo!();
-    /// let created = Some(Timestamp::from_secs(1000));
-    /// let modified = Timestamp::from_secs(2000);
+    /// let created = Some(SystemTime::now());
+    /// let modified = SystemTime::now();
     ///
     /// if query.is_global_stale(created, modified)? {
     ///     println!("Global config needs reloading");
@@ -183,8 +186,8 @@ pub trait Query: Send + Sync {
     /// ```
     fn is_global_stale(
         &self,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<bool, Self::Error>;
 
     /// Check if a vault config is stale.
@@ -200,16 +203,13 @@ pub trait Query: Send + Sync {
     /// # Examples
     ///
     /// ```ignore
-    /// use lithos_core::config::{
-    ///     ports::Query,
-    ///     aggregate::Timestamp,
-    ///     vault::VaultId,
-    /// };
+    /// use lithos_core::config::{ports::Query, vault::VaultId};
+    /// use std::time::SystemTime;
     ///
     /// let query: &dyn Query = todo!();
     /// let vault_id = VaultId::new();
-    /// let created = Some(Timestamp::from_secs(1000));
-    /// let modified = Timestamp::from_secs(2000);
+    /// let created = Some(SystemTime::now());
+    /// let modified = SystemTime::now();
     ///
     /// if query.is_vault_stale(vault_id, created, modified)? {
     ///     println!("Vault config needs reloading");
@@ -218,8 +218,8 @@ pub trait Query: Send + Sync {
     fn is_vault_stale(
         &self,
         vault_id: VaultId,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<bool, Self::Error>;
 
     /// Zero-copy access to archived configuration via closure (HOT PATH).

@@ -31,14 +31,7 @@ use crate::note::position::{SourceByteOffset, SourceByteRange};
 /// # }
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -112,14 +105,7 @@ impl Heading {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -180,8 +166,6 @@ impl Section {
     Eq,
     PartialOrd,
     Ord,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -219,8 +203,6 @@ impl HeadingLevel {
     Clone,
     PartialEq,
     Eq,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -282,8 +264,6 @@ impl HeadingText {
     Clone,
     PartialEq,
     Eq,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,

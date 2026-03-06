@@ -1,11 +1,13 @@
 //! Redb-backed implementation of the [`crate::config::ports::Query`] trait.
 
+use std::time::SystemTime;
+
 use tracing::instrument;
 
 use super::stored::ConfigMetadata;
 use crate::{
     config::{
-        aggregate::{Config, Timestamp, Version},
+        aggregate::{Config, Version},
         db_table::{
             CONFIG_METADATA, CONFIG_VERSIONS, GLOBAL_CONFIG, VAULT_CONFIG,
             VAULT_ID_BY_PATH,
@@ -174,8 +176,8 @@ impl QueryPort for Query<'_> {
     )]
     fn is_global_stale(
         &self,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<bool, Self::Error> {
         // Get latest global version
         #[expect(
@@ -211,13 +213,13 @@ impl QueryPort for Query<'_> {
         // Check if file was replaced (created_at differs)
         if let (Some(file_created), Some(stored_created)) =
             (created_at, stored.created_at)
-            && file_created.as_secs() != stored_created.as_secs()
+            && file_created != stored_created
         {
             return Ok(true); // Stale: created_at mismatch
         }
 
         // Check if file was modified (modified_at is newer)
-        if stored.modified_at.as_secs() < modified_at.as_secs() {
+        if stored.modified_at < modified_at {
             return Ok(true); // Stale: file modified after storage
         }
 
@@ -233,8 +235,8 @@ impl QueryPort for Query<'_> {
     fn is_vault_stale(
         &self,
         vault_id: VaultId,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<bool, Self::Error> {
         // Get latest vault version
         let prefix = format!("{vault_id}:");
@@ -271,13 +273,13 @@ impl QueryPort for Query<'_> {
         // Check if file was replaced (created_at differs)
         if let (Some(file_created), Some(stored_created)) =
             (created_at, stored.created_at)
-            && file_created.as_secs() != stored_created.as_secs()
+            && file_created != stored_created
         {
             return Ok(true); // Stale: created_at mismatch
         }
 
         // Check if file was modified (modified_at is newer)
-        if stored.modified_at.as_secs() < modified_at.as_secs() {
+        if stored.modified_at < modified_at {
             return Ok(true); // Stale: file modified after storage
         }
 
@@ -328,8 +330,10 @@ mod tests {
         let (db, _temp) = setup_db();
         let query = Query::new(&db);
 
-        let created = Some(Timestamp::from_secs(1000));
-        let modified = Timestamp::from_secs(2000);
+        let created =
+            Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000));
+        let modified =
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2000);
 
         let result = query
             .is_global_stale(created, modified)
@@ -344,8 +348,10 @@ mod tests {
 
         // Store global config and metadata
         let global = crate::config::global::Global::default();
-        let created = Some(Timestamp::from_secs(1000));
-        let modified = Timestamp::from_secs(2000);
+        let created =
+            Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000));
+        let modified =
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2000);
         let metadata = ConfigMetadata::new(created, modified);
 
         let version_key = global.version().value().to_string();
@@ -371,8 +377,10 @@ mod tests {
 
         // Store global config and metadata
         let global = crate::config::global::Global::default();
-        let stored_created = Some(Timestamp::from_secs(1000));
-        let modified = Timestamp::from_secs(2000);
+        let stored_created =
+            Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000));
+        let modified =
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2000);
         let metadata = ConfigMetadata::new(stored_created, modified);
 
         let version_key = global.version().value().to_string();
@@ -384,7 +392,8 @@ mod tests {
             .expect("metadata write should succeed");
 
         // Check staleness with different created_at
-        let file_created = Some(Timestamp::from_secs(999));
+        let file_created =
+            Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(999));
         let query = Query::new(&db);
         let result = query
             .is_global_stale(file_created, modified)
@@ -399,8 +408,10 @@ mod tests {
 
         // Store global config and metadata
         let global = crate::config::global::Global::default();
-        let created = Some(Timestamp::from_secs(1000));
-        let stored_modified = Timestamp::from_secs(2000);
+        let created =
+            Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000));
+        let stored_modified =
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2000);
         let metadata = ConfigMetadata::new(created, stored_modified);
 
         let version_key = global.version().value().to_string();
@@ -412,7 +423,8 @@ mod tests {
             .expect("metadata write should succeed");
 
         // Check staleness with newer modified_at
-        let file_modified = Timestamp::from_secs(2001);
+        let file_modified =
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2001);
         let query = Query::new(&db);
         let result = query
             .is_global_stale(created, file_modified)
@@ -427,8 +439,10 @@ mod tests {
         let query = Query::new(&db);
 
         let vault_id = VaultId::new();
-        let created = Some(Timestamp::from_secs(1000));
-        let modified = Timestamp::from_secs(2000);
+        let created =
+            Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000));
+        let modified =
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2000);
 
         let result = query
             .is_vault_stale(vault_id, created, modified)
@@ -443,8 +457,10 @@ mod tests {
 
         let vault_id = VaultId::new();
         let vault = crate::config::vault::Vault::default();
-        let created = Some(Timestamp::from_secs(1000));
-        let modified = Timestamp::from_secs(2000);
+        let created =
+            Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000));
+        let modified =
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2000);
         let metadata = ConfigMetadata::new(created, modified);
 
         let vault_key = format!("{}:{}", vault_id, vault.version().value());
@@ -468,8 +484,10 @@ mod tests {
 
         let vault_id = VaultId::new();
         let vault = crate::config::vault::Vault::default();
-        let stored_created = Some(Timestamp::from_secs(1000));
-        let modified = Timestamp::from_secs(2000);
+        let stored_created =
+            Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000));
+        let modified =
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2000);
         let metadata = ConfigMetadata::new(stored_created, modified);
 
         let vault_key = format!("{}:{}", vault_id, vault.version().value());
@@ -479,7 +497,8 @@ mod tests {
         db.put(CONFIG_METADATA, &vault_key, &metadata)
             .expect("metadata write should succeed");
 
-        let file_created = Some(Timestamp::from_secs(999));
+        let file_created =
+            Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(999));
         let query = Query::new(&db);
         let result = query
             .is_vault_stale(vault_id, file_created, modified)
@@ -494,8 +513,10 @@ mod tests {
 
         let vault_id = VaultId::new();
         let vault = crate::config::vault::Vault::default();
-        let created = Some(Timestamp::from_secs(1000));
-        let stored_modified = Timestamp::from_secs(2000);
+        let created =
+            Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000));
+        let stored_modified =
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2000);
         let metadata = ConfigMetadata::new(created, stored_modified);
 
         let vault_key = format!("{}:{}", vault_id, vault.version().value());
@@ -505,7 +526,8 @@ mod tests {
         db.put(CONFIG_METADATA, &vault_key, &metadata)
             .expect("metadata write should succeed");
 
-        let file_modified = Timestamp::from_secs(2001);
+        let file_modified =
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2001);
         let query = Query::new(&db);
         let result = query
             .is_vault_stale(vault_id, created, file_modified)

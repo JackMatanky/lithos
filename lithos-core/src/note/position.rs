@@ -31,8 +31,6 @@ use super::error::NoteError;
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     Archive,
     Serialize,
     Deserialize,
@@ -63,16 +61,7 @@ impl SourceByteOffset {
 
 /// 1-based line number derived from a byte offset.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 pub struct SourceLine(u32);
@@ -101,16 +90,7 @@ impl SourceLine {
 
 /// 1-based column number derived from a byte offset.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 pub struct SourceColumn(u32);
@@ -139,16 +119,7 @@ impl SourceColumn {
 
 /// 1-based line/column position derived from a byte offset.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -369,16 +340,7 @@ impl From<SourceByteOffset> for usize {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]

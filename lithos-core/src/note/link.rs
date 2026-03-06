@@ -2,8 +2,6 @@
 //!
 //! Models wiki-links, markdown links, and embedded content references
 //! with support for anchors and aliases.
-
-//! Link subentity for Note aggregate.
 #![allow(
     missing_docs,
     clippy::exhaustive_structs,
@@ -43,14 +41,7 @@ use super::{
 /// # }
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -80,14 +71,7 @@ pub struct Link {
 /// assert_eq!(unresolved.vault_path(), Some("New Note"));
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -130,14 +114,7 @@ pub enum Target {
 /// # }
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -155,8 +132,6 @@ pub enum Anchor {
     Copy,
     PartialEq,
     Eq,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -180,8 +155,6 @@ pub enum Style {
     Copy,
     PartialEq,
     Eq,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -254,8 +227,6 @@ fn matches_any_ignore_case(s: &str, candidates: &[&str]) -> bool {
     Clone,
     PartialEq,
     Eq,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,

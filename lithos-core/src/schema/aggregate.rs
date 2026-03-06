@@ -13,9 +13,11 @@ use std::{
     collections::BTreeMap,
     fmt::{Debug, Display},
     sync::{Arc, LazyLock},
+    time::SystemTime,
 };
 
 use regex::Regex;
+use rkyv::{Archive, Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{
@@ -53,9 +55,7 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Schema {
     /// UUID v7 identity for schema.
@@ -90,65 +90,6 @@ pub struct Schema {
     /// This ensures events are ephemeral and must be explicitly handled by
     /// the application layer after each operation.
     pending_events: Vec<Events>,
-}
-
-// Custom serialization: convert Arc<Property> to Property for storage
-#[expect(
-    clippy::missing_inline_in_public_items,
-    reason = "Inline not needed for this trait method"
-)]
-impl serde::Serialize for Schema {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeStruct as _;
-        let mut state = serializer.serialize_struct("Schema", 4)?;
-        state.serialize_field("id", &self.id)?;
-        state.serialize_field("name", &self.name)?;
-        state.serialize_field("parent_id", &self.parent_id)?;
-        // Convert BTreeMap<PropertyName, Arc<Property>> to Vec<Property> for
-        // serialization
-        let properties: Vec<_> =
-            self.properties.values().map(|p| p.as_ref().clone()).collect();
-        state.serialize_field("properties", &properties)?;
-        state.end()
-    }
-}
-
-#[expect(
-    clippy::missing_inline_in_public_items,
-    clippy::missing_trait_methods,
-    reason = "Inline not needed for this trait method; deserialize_in_place \
-              not required for our use case"
-)]
-// Custom deserialization: convert Property to Arc<Property>
-impl<'de> serde::Deserialize<'de> for Schema {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct SchemaDe {
-            id: SchemaId,
-            name: SchemaName,
-            parent_id: Option<SchemaId>,
-            properties: Vec<Property>,
-        }
-
-        let de = SchemaDe::deserialize(deserializer)?;
-        // Convert Vec<Property> to BTreeMap<PropertyName, Arc<Property>>
-        let properties = Schema::to_property_map(de.properties);
-
-        Ok(Self {
-            id: de.id,
-            name: de.name,
-            parent_id: de.parent_id,
-            properties,
-            pending_events: vec![],
-        })
-    }
 }
 
 impl Schema {
@@ -207,7 +148,7 @@ impl Schema {
             pending_events: vec![],
         };
 
-        let now = Timestamp::now();
+        let now = SystemTime::now();
         schema.add_event(Events::SchemaCreated(SchemaCreated::new(
             id,
             &schema.name,
@@ -258,10 +199,11 @@ impl Schema {
             pending_events: vec![],
         };
 
+        let now = SystemTime::now();
         schema.add_event(Events::SchemaResolved(SchemaResolved::new(
             id,
             &schema.name,
-            Timestamp::now(),
+            now,
         )));
 
         Ok(schema)
@@ -493,14 +435,11 @@ impl Schema {
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(transparent)]
 #[non_exhaustive]
 pub struct SchemaId(Uuid);
 
@@ -616,14 +555,11 @@ impl Default for SchemaId {
     PartialEq,
     Eq,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct SchemaName(Box<str>);
 
@@ -759,81 +695,6 @@ impl TryFrom<Box<str>> for SchemaName {
 // ----------------------------------------------------------- //
 //                  Supporting Value Objects                   //
 // ----------------------------------------------------------- //
-
-/// Unix timestamp (seconds since epoch).
-///
-/// Uses `u64` to prevent negative timestamps, which are invalid for
-/// timestamps since the Unix epoch (1970-01-01).
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct Timestamp(u64);
-
-impl Timestamp {
-    /// Returns the current UTC timestamp.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::aggregate::Timestamp;
-    ///
-    /// let _now = Timestamp::now();
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn now() -> Self {
-        #[expect(
-            clippy::cast_sign_loss,
-            clippy::as_conversions,
-            reason = "Timestamp is clamped to 0, so cast to u64 is safe"
-        )]
-        let secs = chrono::Utc::now().timestamp().max(0) as u64;
-        Self(secs)
-    }
-
-    /// Wraps a timestamp in seconds.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::aggregate::Timestamp;
-    ///
-    /// let ts = Timestamp::from_secs(10);
-    /// assert_eq!(ts.as_secs(), 10);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn from_secs(secs: u64) -> Self {
-        Self(secs)
-    }
-
-    /// Returns the timestamp in seconds.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::aggregate::Timestamp;
-    ///
-    /// let ts = Timestamp::from_secs(10);
-    /// assert_eq!(ts.as_secs(), 10);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_secs(self) -> u64 {
-        self.0
-    }
-}
 
 // ----------------------------------------------------------- //
 //                            Tests                            //

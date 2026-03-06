@@ -50,14 +50,7 @@ use super::{error::SchemaError, property_spec::PropertySpec};
 /// # }
 /// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[non_exhaustive]
 pub struct Property {
@@ -186,14 +179,11 @@ impl Property {
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord))]
-#[serde(transparent)]
 #[non_exhaustive]
 pub struct PropertyId(Uuid);
 
@@ -270,14 +260,11 @@ impl Display for PropertyId {
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug, Hash, PartialEq, Eq))]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct PropertyName(Box<str>);
 
@@ -464,8 +451,6 @@ impl TryFrom<&str> for BankPropertyRef {
     PartialEq,
     Eq,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -500,8 +485,6 @@ impl From<bool> for Optionality {
     PartialEq,
     Eq,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,

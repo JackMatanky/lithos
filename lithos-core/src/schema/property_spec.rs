@@ -15,6 +15,8 @@ use std::{
     sync::{Arc, OnceLock, RwLock},
 };
 
+use rkyv::{Archive, Deserialize, Serialize};
+
 use super::{error::SchemaError, formats::StringFormat};
 use crate::bounds::{Bounds, BoundsError};
 
@@ -39,18 +41,7 @@ use crate::bounds::{Bounds, BoundsError};
 ///     _ => {}
 /// }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum PropertySpec {
     /// Boolean property constraints.
@@ -67,16 +58,7 @@ pub enum PropertySpec {
 
 /// A validated option entry with optional display label.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
@@ -175,33 +157,14 @@ impl PropertySpec {
 ///
 /// This type intentionally has no methods because it carries no data.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Hash,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Default, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct BoolSpec;
 
 /// Date property validation constraints.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct DateSpec {
@@ -302,17 +265,7 @@ impl DateSpec {
 /// let _ = spec;
 /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct FileSpec {
@@ -420,17 +373,8 @@ impl FileSpec {
 /// spec.validate_value(5.0)?;
 /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct NumberSpec {
     bounds: Bounds<FiniteF64>,
@@ -613,18 +557,8 @@ impl NumberSpec {
 /// let _ = spec;
 /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct StringSpec {
     options: Option<Vec<OptionEntry>>,
@@ -773,14 +707,12 @@ impl StringSpec {
     Copy,
     PartialEq,
     PartialOrd,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Default,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(transparent)]
 struct FiniteF64(f64);
 
 impl FiniteF64 {
@@ -815,19 +747,9 @@ impl std::hash::Hash for FiniteF64 {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, Copy, PartialEq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(transparent)]
 struct Step(FiniteF64);
 
 impl Step {
@@ -849,19 +771,9 @@ impl Step {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(transparent)]
 struct VaultRelPath(Box<str>);
 
 impl VaultRelPath {

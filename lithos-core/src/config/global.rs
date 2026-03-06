@@ -11,6 +11,8 @@
 
 use std::{collections::HashMap, path::PathBuf};
 
+use rkyv::{Archive, Deserialize, Serialize};
+
 use super::{
     error::ConfigError,
     frontmatter::Frontmatter,
@@ -25,17 +27,7 @@ use super::{
 /// Unlike the resolved [`crate::config::paths::Paths`], this struct uses
 /// [`Option`] for all fields to represent partial overrides of vault-level
 /// defaults.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Default,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Default, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct Paths {
@@ -145,14 +137,11 @@ impl TryFrom<&super::raw::RawPathsConfig> for Paths {
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(transparent)]
 pub struct GlobalVersion(u64);
 
 impl GlobalVersion {
@@ -246,16 +235,7 @@ impl TryFrom<u64> for GlobalVersion {
 /// let global = Global::default();
 /// assert!(global.trusted_vaults().is_none());
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Global {
     /// Version number for this global config.
@@ -441,18 +421,8 @@ impl TryFrom<&super::raw::RawConfig> for Global {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
-#[serde(untagged)]
 #[non_exhaustive]
 pub enum TrustedVaults {
     /// List format for trusted vault paths.
@@ -462,16 +432,7 @@ pub enum TrustedVaults {
 }
 
 /// List of validated trusted vault paths.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct TrustedVaultList(
@@ -489,16 +450,7 @@ impl TrustedVaultList {
 }
 
 /// Map of trusted vault aliases to validated paths.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct TrustedVaultMap(
@@ -529,19 +481,9 @@ impl TrustedVaultMap {
 ///
 /// Returns [`ConfigError::ValidationFailed`] if the provided path is relative.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(try_from = "String", into = "String")]
 #[non_exhaustive]
 pub struct TrustedVaultPath(
     /// Internal path storage.

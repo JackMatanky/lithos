@@ -20,6 +20,7 @@ use chrono::{DateTime, Utc};
 use regex::Regex;
 use rkyv::{
     Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
+    with::Skip,
 };
 use uuid::Uuid;
 
@@ -276,7 +277,7 @@ pub struct Template {
     /// Metadata for template management.
     pub metadata: Metadata,
     /// Domain events pending emission.
-    #[rkyv(with = rkyv::with::Skip)]
+    #[rkyv(with = Skip)]
     #[serde(skip)]
     pub pending_events: Vec<Events>,
 }

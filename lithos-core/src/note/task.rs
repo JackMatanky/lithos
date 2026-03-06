@@ -50,16 +50,7 @@ use crate::config::task::StatusName;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 pub struct Task {
     id: TaskId,
@@ -81,8 +72,6 @@ pub struct Task {
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     Archive,
     Serialize,
     Deserialize,
@@ -152,17 +141,7 @@ pub struct TaskAttributesBuilder {
 }
 
 /// Task schedule timestamps.
-#[derive(
-    Debug,
-    Clone,
-    Default,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Default, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 pub struct TaskSchedule {
     created: Option<TaskTimestamp>,
@@ -198,17 +177,7 @@ impl TaskSchedule {
 }
 
 /// Validated task text content.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 pub struct TaskText(Box<str>);
 
@@ -458,8 +427,6 @@ impl Task {
     Eq,
     PartialOrd,
     Ord,
-    serde::Serialize,
-    serde::Deserialize,
     Archive,
     Serialize,
     Deserialize,
@@ -608,9 +575,7 @@ pub enum TaskDateKind {
 }
 
 /// Validated task priority.
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TaskPriority(f64);
 
 impl TaskPriority {
@@ -638,16 +603,7 @@ impl TaskPriority {
 
 /// Validated key for task metadata fields.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
 pub struct TaskFieldKey(Box<str>);
@@ -718,16 +674,7 @@ impl fmt::Display for TaskFieldKey {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 pub struct TaskMetadata {
     fields: HashMap<TaskFieldKey, FieldValue>,

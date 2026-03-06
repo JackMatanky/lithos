@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 use super::{
     error::PathValidationError,
@@ -189,7 +192,7 @@ impl Reader {
         T: serde::de::DeserializeOwned,
     {
         let content = self.read_to_string(path)?;
-        match classify_path(path, Some(&content)) {
+        match Self::classify_path(path, Some(&content)) {
             FormatKind::Json => Json::parse(path, &content),
             FormatKind::Toml => Toml::parse(path, &content),
             FormatKind::Yaml => Yaml::parse(path, &content),
@@ -254,6 +257,72 @@ impl Reader {
         })
     }
 
+    /// Returns the file's creation timestamp.
+    ///
+    /// Uses the standard cross-platform `Metadata::created()` method.
+    ///
+    /// Returns `None` if the metadata cannot be read or the creation time is
+    /// not available on this platform. Failures are logged at debug level.
+    #[inline]
+    pub fn created_at(&self, path: &Path) -> Option<SystemTime> {
+        let metadata = match self.metadata(path) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to read metadata for created_at"
+                );
+                return None;
+            }
+        };
+
+        match metadata.created() {
+            Ok(system_time) => Some(system_time),
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to read created timestamp from metadata"
+                );
+                None
+            }
+        }
+    }
+
+    /// Returns the file's modification timestamp.
+    ///
+    /// Uses the standard cross-platform `Metadata::modified()` method.
+    ///
+    /// Returns `None` if the metadata cannot be read or the modification time
+    /// is not available on this platform. Failures are logged at debug level.
+    #[inline]
+    pub fn modified_at(&self, path: &Path) -> Option<SystemTime> {
+        let metadata = match self.metadata(path) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to read metadata for modified_at"
+                );
+                return None;
+            }
+        };
+
+        match metadata.modified() {
+            Ok(system_time) => Some(system_time),
+            Err(e) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to read modified timestamp from metadata"
+                );
+                None
+            }
+        }
+    }
+
     /// Reads a file's content as raw bytes.
     ///
     /// # Errors
@@ -290,55 +359,52 @@ impl Reader {
     ) -> Result<(), PathValidationError> {
         self.validator.validate(path)
     }
-}
 
-/// Detects the file format based on path extension and optional content hint.
-#[must_use]
-fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
-    if Json::is_supported(path) {
-        return FormatKind::Json;
-    }
-    if Toml::is_supported(path) {
-        return FormatKind::Toml;
-    }
-    if Yaml::is_supported(path) {
-        return FormatKind::Yaml;
-    }
-    if Markdown::is_supported(path) {
-        return FormatKind::Markdown;
-    }
-    if Binary::is_supported(path) {
-        return FormatKind::Binary;
-    }
-
-    if let Some(content) = content {
-        let trimmed = content.trim_start();
-        if Json::detect(trimmed) {
+    /// Detects the file format based on path extension and optional content
+    /// hint.
+    #[must_use]
+    fn classify_path(path: &Path, content: Option<&str>) -> FormatKind {
+        if Json::is_supported(path) {
             return FormatKind::Json;
         }
-        if Yaml::detect(trimmed) {
-            return FormatKind::Yaml;
-        }
-        if Toml::detect(trimmed) {
+        if Toml::is_supported(path) {
             return FormatKind::Toml;
         }
+        if Yaml::is_supported(path) {
+            return FormatKind::Yaml;
+        }
+        if Markdown::is_supported(path) {
+            return FormatKind::Markdown;
+        }
+        if Binary::is_supported(path) {
+            return FormatKind::Binary;
+        }
+
+        if let Some(content) = content {
+            let trimmed = content.trim_start();
+            if Json::detect(trimmed) {
+                return FormatKind::Json;
+            }
+            if Yaml::detect(trimmed) {
+                return FormatKind::Yaml;
+            }
+            if Toml::detect(trimmed) {
+                return FormatKind::Toml;
+            }
+        }
+
+        FormatKind::Unknown
     }
-
-    FormatKind::Unknown
 }
 
-/// Helper to check if a file extension matches binary formats.
-#[must_use]
-pub(crate) fn is_binary_extension(path: &Path) -> bool {
-    path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
-        ext.eq_ignore_ascii_case("png")
-            || ext.eq_ignore_ascii_case("jpg")
-            || ext.eq_ignore_ascii_case("jpeg")
-            || ext.eq_ignore_ascii_case("pdf")
-            || ext.eq_ignore_ascii_case("zip")
-            || ext.eq_ignore_ascii_case("wasm")
-    })
-}
+/// File system timestamp type alias.
+///
+/// This is now a direct alias to [`SystemTime`] since we use rkyv's
+/// `AsUnixTime` wrapper for serialization instead of manual conversion.
+///
+/// The filesystem methods [`Reader::created_at`] and [`Reader::modified_at`]
+/// return `Option<SystemTime>` directly.
+pub type FileTimestamp = SystemTime;
 
 #[cfg(test)]
 #[expect(
@@ -368,7 +434,7 @@ mod tests {
             #[case] expected: FormatKind,
         ) {
             assert_eq!(
-                classify_path(Path::new("data"), Some(content)),
+                Reader::classify_path(Path::new("data"), Some(content)),
                 expected
             );
         }
@@ -385,13 +451,13 @@ mod tests {
             #[case] path: &str,
             #[case] expected: FormatKind,
         ) {
-            assert_eq!(classify_path(Path::new(path), None), expected);
+            assert_eq!(Reader::classify_path(Path::new(path), None), expected);
         }
 
         #[test]
         fn favors_extension_over_content_sniffing() {
             assert_eq!(
-                classify_path(
+                Reader::classify_path(
                     Path::new("config.json"),
                     Some("name = \"toml\"")
                 ),
@@ -402,7 +468,7 @@ mod tests {
         #[test]
         fn returns_unknown_without_content() {
             assert_eq!(
-                classify_path(Path::new("data"), None),
+                Reader::classify_path(Path::new("data"), None),
                 FormatKind::Unknown
             );
         }

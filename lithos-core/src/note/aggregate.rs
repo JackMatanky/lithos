@@ -3,8 +3,6 @@
 //! This module defines the legacy [`crate::note::aggregate::Note`] type.
 //! It is slated to become a transient ingest artifact rather than a
 //! persisted aggregate. New code should prefer ParsedNote from the adapter.
-
-//! Note aggregate root and core domain entities.
 //!
 //! The Note aggregate represents an Obsidian-compatible markdown note and owns
 //! all note-local entities such as links, tags, headings, and tasks.
@@ -18,7 +16,7 @@
 
 use std::fmt;
 
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize, with::Skip};
 use uuid::Uuid;
 
 use super::{
@@ -55,16 +53,7 @@ use super::{
 /// # Ok(())
 /// # }
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Note {
@@ -77,22 +66,11 @@ pub struct Note {
     /// YAML metadata.
     frontmatter: Option<Frontmatter>,
     /// Domain events pending emission (not serialized).
-    #[rkyv(with = rkyv::with::Skip)]
-    #[serde(skip)]
+    #[rkyv(with = Skip)]
     pending_events: PendingEvents,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Default,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Default, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 struct NoteContent {
@@ -500,8 +478,6 @@ impl Note {
     Hash,
     PartialOrd,
     Ord,
-    serde::Serialize,
-    serde::Deserialize,
     Archive,
     Serialize,
     Deserialize,
@@ -557,16 +533,7 @@ impl From<NoteId> for uuid::Uuid {
 
 /// Validated alias name for a note.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 pub struct AliasName(Box<str>);
@@ -601,16 +568,7 @@ impl fmt::Display for AliasName {
 
 /// Validated file class name for a note.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
 pub struct FileClassName(Box<str>);

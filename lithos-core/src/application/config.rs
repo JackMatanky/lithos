@@ -36,9 +36,11 @@
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
+use std::time::SystemTime;
+
 use crate::config::{
     adapter::ingest::Ingestor,
-    aggregate::{Config, Timestamp},
+    aggregate::Config,
     command::Command,
     error::ConfigCommandError,
     global::Global,
@@ -54,7 +56,7 @@ use crate::config::{
 /// Return type for staleness check methods.
 ///
 /// Tuple: `(raw_config, created_at, modified_at, is_stale)`.
-type ConfigWithStaleness = (RawConfig, Option<Timestamp>, Timestamp, bool);
+type ConfigWithStaleness = (RawConfig, Option<SystemTime>, SystemTime, bool);
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  ConfigServiceError
@@ -209,17 +211,17 @@ impl<'db> ConfigService<'db> {
             // File exists - check if stale
             // If modified_at is None, use current time (file system doesn't
             // support it)
-            let modified = modified_at.unwrap_or_else(Timestamp::now);
+            let modified = modified_at.unwrap_or_else(SystemTime::now);
             let is_stale = self.query.is_global_stale(created_at, modified)?;
             Ok((raw, created_at, modified, is_stale))
         } else {
             // No file - use defaults
             // Only mark as stale if we haven't saved defaults yet
             // (no metadata with created_at = None exists)
-            // Use a fixed timestamp (epoch) to check if defaults were saved
+            // Use epoch time to check if defaults were saved
             let is_stale =
-                self.query.is_global_stale(None, Timestamp::from_secs(0))?;
-            Ok((RawConfig::default(), None, Timestamp::from_secs(0), is_stale))
+                self.query.is_global_stale(None, SystemTime::UNIX_EPOCH)?;
+            Ok((RawConfig::default(), None, SystemTime::UNIX_EPOCH, is_stale))
         }
     }
 
@@ -238,7 +240,7 @@ impl<'db> ConfigService<'db> {
             // File exists - check if stale
             // If modified_at is None, use current time (file system doesn't
             // support it)
-            let modified = modified_at.unwrap_or_else(Timestamp::now);
+            let modified = modified_at.unwrap_or_else(SystemTime::now);
             let is_stale =
                 self.query.is_vault_stale(vault_id, created_at, modified)?;
             Ok((raw, created_at, modified, is_stale))
@@ -246,13 +248,13 @@ impl<'db> ConfigService<'db> {
             // No file - use defaults
             // Only mark as stale if we haven't saved defaults yet
             // (no metadata with created_at = None exists)
-            // Use a fixed timestamp (epoch) to check if defaults were saved
+            // Use epoch time to check if defaults were saved
             let is_stale = self.query.is_vault_stale(
                 vault_id,
                 None,
-                Timestamp::from_secs(0),
+                SystemTime::UNIX_EPOCH,
             )?;
-            Ok((RawConfig::default(), None, Timestamp::from_secs(0), is_stale))
+            Ok((RawConfig::default(), None, SystemTime::UNIX_EPOCH, is_stale))
         }
     }
 

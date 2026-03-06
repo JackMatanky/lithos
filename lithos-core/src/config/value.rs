@@ -22,6 +22,7 @@
 use std::sync::Arc;
 
 use regex::Regex;
+use rkyv::{Archive, Deserialize, Serialize, with::Skip};
 
 use super::{
     error::ConfigError,
@@ -36,15 +37,7 @@ use crate::bounds::Bounds;
 /// Custom field specification.
 ///
 /// Defines the type and validation rules for a specific metadata field.
-#[derive(
-    Debug,
-    Clone,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub enum FieldSpec {
@@ -69,8 +62,7 @@ pub enum FieldSpec {
         /// Optional validation pattern.
         pattern: Option<String>,
         /// Pre-compiled regex pattern for validation.
-        #[rkyv(with = rkyv::with::Skip)]
-        #[serde(skip)]
+        #[rkyv(with = Skip)]
         compiled: Option<Arc<Regex>>,
     },
     /// Categorical field with a fixed set of allowed values.
@@ -394,16 +386,7 @@ impl FieldSpec {
 /// - Must be 1-64 characters long.
 /// - Must be ASCII alphanumeric, `_`, or `-`.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
 #[rkyv(compare(PartialEq), derive(Debug, Hash, PartialEq, Eq))]
 pub struct FieldName(Box<str>);
@@ -453,16 +436,7 @@ impl From<FieldName> for String {
 }
 
 /// Validated date field specification.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
 pub struct DateSpec {

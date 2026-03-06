@@ -85,3 +85,11 @@ pub type PathValidator = validator::Validator;
 ///
 /// See [`error::PathValidationError`] for all variants.
 pub type PathValidationError = error::PathValidationError;
+
+/// File system timestamp type alias.
+///
+/// Represents file creation/modification timestamps as seconds since Unix
+/// epoch. This is an infrastructure primitive used only in the adapter layer.
+///
+/// See [`reader::FileTimestamp`] for the full API.
+pub type FileTimestamp = reader::FileTimestamp;

@@ -8,7 +8,6 @@
     reason = "rkyv generates Archived types with public fields/variants"
 )]
 
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Note created domain event.
@@ -31,8 +30,6 @@ use uuid::Uuid;
     Clone,
     PartialEq,
     Eq,
-    Serialize,
-    Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -107,8 +104,6 @@ impl NoteCreated {
     Clone,
     PartialEq,
     Eq,
-    Serialize,
-    Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,

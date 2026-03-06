@@ -11,7 +11,9 @@
               match schema module pattern"
 )]
 
-use crate::config::aggregate::Timestamp;
+use std::time::SystemTime;
+
+use rkyv::with::{AsUnixTime, Map};
 
 /// Metadata for config staleness checking.
 ///
@@ -29,6 +31,12 @@ use crate::config::aggregate::Timestamp;
 /// A config is considered stale when:
 /// - `created_at` differs (file replaced)
 /// - `modified_at` is newer (file edited)
+///
+/// # Timestamps
+///
+/// Uses `SystemTime` with rkyv's `AsUnixTime` wrapper for safe serialization.
+/// This stores timestamps as Unix epoch seconds internally while preserving
+/// `SystemTime`'s type safety.
 #[derive(
     Debug,
     Clone,
@@ -44,17 +52,20 @@ pub struct ConfigMetadata {
     ///
     /// When a config file is deleted and recreated, the `created_at`
     /// timestamp will differ, indicating a new file.
-    pub created_at: Option<Timestamp>,
+    #[rkyv(with = Map<AsUnixTime>)]
+    pub created_at: Option<SystemTime>,
 
     /// Filesystem mtime (change detection - detects manual edits).
     ///
     /// Updated whenever the file content changes.
-    pub modified_at: Timestamp,
+    #[rkyv(with = AsUnixTime)]
+    pub modified_at: SystemTime,
 
     /// Wall-clock timestamp when this metadata was persisted to DB.
     ///
     /// Used for debugging and audit trails.
-    pub recorded_at: Timestamp,
+    #[rkyv(with = AsUnixTime)]
+    pub recorded_at: SystemTime,
 }
 
 impl ConfigMetadata {
@@ -64,20 +75,24 @@ impl ConfigMetadata {
     ///
     /// ```ignore
     /// use lithos_core::config::adapter::stored::ConfigMetadata;
-    /// use lithos_core::config::aggregate::Timestamp;
+    /// use std::time::SystemTime;
     ///
     /// let metadata = ConfigMetadata::new(
-    ///     Some(Timestamp::from_secs(1000)),
-    ///     Timestamp::from_secs(2000),
+    ///     Some(SystemTime::now()),
+    ///     SystemTime::now(),
     /// );
     /// ```
     #[inline]
     #[must_use]
-    pub fn new(created_at: Option<Timestamp>, modified_at: Timestamp) -> Self {
+    pub fn new(
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
+    ) -> Self {
+        let recorded_at = SystemTime::now();
         Self {
             created_at,
             modified_at,
-            recorded_at: Timestamp::now(),
+            recorded_at,
         }
     }
 }
@@ -88,18 +103,25 @@ mod tests {
 
     #[test]
     fn new_sets_recorded_at_to_current_time() {
-        let before = Timestamp::now();
-        let metadata = ConfigMetadata::new(None, Timestamp::from_secs(1000));
-        let after = Timestamp::now();
+        use std::time::Duration;
 
-        assert!(metadata.recorded_at.as_secs() >= before.as_secs());
-        assert!(metadata.recorded_at.as_secs() <= after.as_secs());
+        let before = SystemTime::now();
+        let metadata = ConfigMetadata::new(
+            None,
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
+        );
+        let after = SystemTime::now();
+
+        assert!(metadata.recorded_at >= before);
+        assert!(metadata.recorded_at <= after);
     }
 
     #[test]
     fn new_preserves_created_at_and_modified_at() {
-        let created = Timestamp::from_secs(500);
-        let modified = Timestamp::from_secs(1000);
+        use std::time::Duration;
+
+        let created = SystemTime::UNIX_EPOCH + Duration::from_secs(500);
+        let modified = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
         let metadata = ConfigMetadata::new(Some(created), modified);
 
         assert_eq!(metadata.created_at, Some(created));
@@ -108,9 +130,11 @@ mod tests {
 
     #[test]
     fn metadata_round_trips_through_rkyv() {
+        use std::time::Duration;
+
         let original = ConfigMetadata::new(
-            Some(Timestamp::from_secs(500)),
-            Timestamp::from_secs(1000),
+            Some(SystemTime::UNIX_EPOCH + Duration::from_secs(500)),
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1000),
         );
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&original)

@@ -3,8 +3,10 @@
 //! This module provides the [`Query`] type, which handles read operations
 //! through the schema query port.
 
+use std::time::SystemTime;
+
 use super::{
-    aggregate::{Schema, SchemaId, SchemaName, Timestamp},
+    aggregate::{Schema, SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
     error::SchemaQueryError,
     ports as schema_ports,
@@ -326,8 +328,8 @@ where
     pub fn is_schema_stale(
         &self,
         id: SchemaId,
-        created_at: Option<Timestamp>,
-        modified_at: Option<Timestamp>,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
         bank_version: BankVersion,
     ) -> Result<bool, SchemaQueryError> {
         self.query_port
@@ -514,6 +516,8 @@ mod tests {
     };
 
     mod queries {
+        use std::time::Duration;
+
         use super::*;
 
         #[test]
@@ -608,7 +612,7 @@ mod tests {
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
-            let ts = Timestamp::from_secs(1_000_000);
+            let ts = SystemTime::now();
 
             cmd.save(&schema).expect("Save should succeed");
 
@@ -633,8 +637,9 @@ mod tests {
             let schema =
                 fixtures::schema_fixture(fixtures::TEST_SCHEMA_ID_A, "note")
                     .expect("Failed to create schema fixture");
-            let stored_created = Timestamp::from_secs(1_000_000);
-            let file_created = Timestamp::from_secs(2_000_000);
+            let stored_created = SystemTime::now();
+            // Use a different timestamp to simulate mismatch
+            let file_created = stored_created + Duration::from_secs(1);
 
             cmd.save_many_with_metadata(&[schema], &[StoredMetadata::new(
                 BankVersion::initial(),
@@ -752,8 +757,8 @@ mod tests {
             let cmd = schema_mod::Command::new(adapter::Command::new(&db));
             let qry = schema_mod::Query::new(adapter::Query::new(&db));
 
-            let ts_old = Timestamp::from_secs(100);
-            let ts_new = Timestamp::from_secs(200);
+            let ts_old = SystemTime::now();
+            let ts_new = ts_old + Duration::from_secs(1);
 
             // Save two schemas
             let schema1 =

@@ -45,11 +45,11 @@
 
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
 use crate::schema::{
     adapter::{ingestor::Ingestor, stored::StoredMetadata},
-    aggregate::{Schema, SchemaId, SchemaName, Timestamp},
+    aggregate::{Schema, SchemaId, SchemaName},
     bank::PropertyBank,
     command::Command,
     dereferencer::Dereferencer,
@@ -101,9 +101,9 @@ pub struct SchemaService<'db> {
 }
 
 // Type aliases for complex tuples used in service methods
-type RawSchemaWithTimes = (RawSchema, Option<Timestamp>, Option<Timestamp>);
+type RawSchemaWithTimes = (RawSchema, Option<SystemTime>, Option<SystemTime>);
 type SchemaWithTimes =
-    (SchemaId, RawSchema, Option<Timestamp>, Option<Timestamp>);
+    (SchemaId, RawSchema, Option<SystemTime>, Option<SystemTime>);
 type PartitionResult = (Vec<SchemaWithTimes>, Vec<SchemaId>);
 
 impl<'db> SchemaService<'db> {
@@ -242,7 +242,8 @@ impl<'db> SchemaService<'db> {
         current_bank_version: crate::schema::bank::BankVersion,
         bank_stale: bool,
     ) -> Result<PartitionResult, SchemaServiceError> {
-        type StalenessCheck = (SchemaId, Option<Timestamp>, Option<Timestamp>);
+        type StalenessCheck =
+            (SchemaId, Option<SystemTime>, Option<SystemTime>);
 
         // Build schema IDs and staleness checks
         let mut schema_ids: Vec<SchemaId> =
@@ -299,7 +300,7 @@ impl<'db> SchemaService<'db> {
         current_bank_version: crate::schema::bank::BankVersion,
     ) -> Result<(), SchemaServiceError> {
         use crate::schema::ports::InheritanceRelationship;
-        type TimestampPair = (Option<Timestamp>, Option<Timestamp>);
+        type TimestampPair = (Option<SystemTime>, Option<SystemTime>);
 
         // Build metadata and inheritance maps
         let mut time_map: HashMap<SchemaId, TimestampPair> =

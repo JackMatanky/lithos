@@ -4,10 +4,12 @@
 //! mutations (recording settings, rebuilding snapshots). Version allocation is
 //! handled atomically within the command port to prevent race conditions.
 
+use std::time::SystemTime;
+
 use tracing::instrument;
 
 use super::{
-    aggregate::{Config, Timestamp, Version},
+    aggregate::{Config, Version},
     error::ConfigCommandError,
     global::Global,
     ports::{self as config_ports},
@@ -17,16 +19,17 @@ use super::{
 /// # Examples
 ///
 /// ```rust,no_run
+/// # use std::time::SystemTime;
 /// # use tempfile::tempdir;
 /// # use lithos_core::{
-/// #     config::{self, adapter, aggregate::Timestamp, global::Global},
+/// #     config::{self, adapter, global::Global},
 /// #     db::Database,
 /// # };
 /// let dir = tempdir()?;
 /// let db = Database::open(&dir.path().join("config.redb"))?;
 /// let command = config::Command::new(adapter::Command::new(&db));
-/// let created_at = Some(Timestamp::from_secs(1000));
-/// let modified_at = Timestamp::from_secs(2000);
+/// let created_at = Some(SystemTime::now());
+/// let modified_at = SystemTime::now();
 /// command.record_global(&Global::default(), created_at, modified_at)?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
@@ -64,8 +67,8 @@ where
     pub fn record_global(
         &self,
         config: &Global,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<(), ConfigCommandError> {
         self.command_port
             .record_global(config, created_at, modified_at)
@@ -89,8 +92,8 @@ where
         &self,
         vault_id: VaultId,
         config: &Vault,
-        created_at: Option<Timestamp>,
-        modified_at: Timestamp,
+        created_at: Option<SystemTime>,
+        modified_at: SystemTime,
     ) -> Result<(), ConfigCommandError> {
         self.command_port
             .record_vault(vault_id, config, created_at, modified_at)
@@ -253,8 +256,8 @@ mod tests {
         fn record_global(
             &self,
             config: &Global,
-            _created_at: Option<Timestamp>,
-            _modified_at: Timestamp,
+            _created_at: Option<u64>,
+            _modified_at: u64,
         ) -> Result<(), Self::Error> {
             // Facade doesn't use metadata - it's for application service layer
             self.db.put(CONFIG, "global", config)
@@ -264,8 +267,8 @@ mod tests {
             &self,
             vault_id: VaultId,
             config: &Vault,
-            _created_at: Option<Timestamp>,
-            _modified_at: Timestamp,
+            _created_at: Option<u64>,
+            _modified_at: u64,
         ) -> Result<(), Self::Error> {
             // Facade doesn't use metadata - it's for application service layer
             self.db.put(CONFIG, &vault_id.to_string(), config)
@@ -382,8 +385,8 @@ mod tests {
             let cmd = Command::new(DbCommandPort::new(&db));
 
             let global = Global::default();
-            let created_at = Some(Timestamp::from_secs(1000));
-            let modified_at = Timestamp::from_secs(2000);
+            let created_at = Some(1000);
+            let modified_at = 2000;
             cmd.record_global(&global, created_at, modified_at).unwrap();
 
             let stored = db.get_owned::<Global>(CONFIG, "global").unwrap();
@@ -402,8 +405,8 @@ mod tests {
 
             let vault = Vault::default();
             let vault_id = VaultId::new();
-            let created_at = Some(Timestamp::from_secs(1000));
-            let modified_at = Timestamp::from_secs(2000);
+            let created_at = Some(1000);
+            let modified_at = 2000;
             cmd.record_vault(vault_id, &vault, created_at, modified_at)
                 .unwrap();
 

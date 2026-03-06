@@ -4,6 +4,7 @@
 //! fully-merged and validated configuration state for a vault. It also
 //! defines [`Version`] for tracking configuration history.
 
+use rkyv::with::Skip;
 use tracing::instrument;
 
 use super::{
@@ -19,14 +20,7 @@ use super::{
 
 /// Fully-resolved and validated configuration for a vault.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(bytecheck(bounds()))]
 #[non_exhaustive]
@@ -44,8 +38,7 @@ pub struct Config {
     /// Merged task configuration.
     task: Task,
     /// Domain events pending emission (not persisted).
-    #[serde(skip)]
-    #[rkyv(with = rkyv::with::Skip)]
+    #[rkyv(with = Skip)]
     pending_events: Vec<Events>,
 }
 
@@ -203,8 +196,6 @@ impl ArchivedConfig {
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -264,89 +255,6 @@ impl TryFrom<u64> for Version {
             });
         }
         Ok(Self(value))
-    }
-}
-
-/// Unix timestamp in seconds since epoch.
-///
-/// Used for tracking file modification times and metadata recording times.
-/// Supports config staleness detection by comparing file timestamps.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[serde(transparent)]
-#[non_exhaustive]
-pub struct Timestamp(u64);
-
-impl Timestamp {
-    /// Returns the current UTC timestamp in seconds.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::config::aggregate::Timestamp;
-    ///
-    /// let now = Timestamp::now();
-    /// assert!(now.as_secs() > 0);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn now() -> Self {
-        let secs =
-            chrono::Utc::now().timestamp().max(0).try_into().unwrap_or(0);
-        Self(secs)
-    }
-
-    /// Creates a timestamp from seconds since epoch.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::config::aggregate::Timestamp;
-    ///
-    /// let ts = Timestamp::from_secs(1000);
-    /// assert_eq!(ts.as_secs(), 1000);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn from_secs(secs: u64) -> Self {
-        Self(secs)
-    }
-
-    /// Returns the timestamp as seconds since epoch.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::config::aggregate::Timestamp;
-    ///
-    /// let ts = Timestamp::from_secs(1000);
-    /// assert_eq!(ts.as_secs(), 1000);
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn as_secs(self) -> u64 {
-        self.0
-    }
-}
-
-impl std::fmt::Display for Timestamp {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 

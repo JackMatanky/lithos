@@ -3,7 +3,9 @@
 //! Provides name-indexed property lookup with singleton persistence and
 //! versioning for incremental resolution.
 
-use std::{collections::BTreeMap, fmt::Display};
+use std::{collections::BTreeMap, fmt::Display, time::SystemTime};
+
+use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{
     error::SchemaError,
@@ -146,7 +148,7 @@ impl PropertyBank {
             super::events::PropertyBankLoaded::new(
                 bank.all().count(),
                 bank.version(),
-                super::aggregate::Timestamp::now(),
+                SystemTime::now(),
             ),
         );
         bank.add_event(event);
@@ -259,7 +261,7 @@ impl PropertyBank {
         let event = Events::PropertyRegistered(PropertyRegistered::new(
             id,
             &name,
-            super::aggregate::Timestamp::now(),
+            SystemTime::now(),
         ));
         self.add_event(event);
         Ok(())
@@ -380,14 +382,11 @@ impl Default for PropertyBank {
     PartialOrd,
     Ord,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Archive,
+    Serialize,
+    Deserialize,
 )]
 #[rkyv(derive(Debug))]
-#[serde(transparent)]
 #[non_exhaustive]
 pub struct BankVersion(u64);
 
