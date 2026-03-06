@@ -1037,7 +1037,7 @@ impl<'db> super::ports::Query for NoteQuery<'db> {
 ```rust
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use lithos_core::db::Database;
-use lithos_core::note::aggregate::Note;
+use lithos_core::note::stored::StoredNote;
 
 fn bench_read(c: &mut Criterion) {
     // Setup DB with 1000 notes

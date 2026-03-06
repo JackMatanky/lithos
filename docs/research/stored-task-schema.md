@@ -13,7 +13,7 @@ StoredTask (projection record)
 
 Identity and location
 - task_id: TaskId (note::task::TaskId)
-- note_id: NoteId (note::aggregate::NoteId)
+- note_id: NoteId (note::identity::NoteId)
 - path: Box<str> (note path)
 - heading: Option<Heading> (note::structure::Heading)
 - position: SourceLocation (note::position::SourceLocation)

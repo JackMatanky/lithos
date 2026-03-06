@@ -107,15 +107,11 @@ Common workflows:
 1. Create a note aggregate with a validated vault-relative path
 
 ```rust
-use lithos_core::note::aggregate::{Note, NotePath};
-use uuid::Uuid;
+use lithos_core::note::paths::NotePath;
 
 fn example() -> Result<(), lithos_core::note::error::NoteError> {
-  let id = Uuid::now_v7();
   let path = NotePath::try_from("projects/example.md")?;
-  let note = Note::new(id, path)?;
-
-  assert_eq!(note.path().as_str(), "projects/example.md");
+  assert_eq!(path.as_str(), "projects/example.md");
   Ok(())
 }
 ```

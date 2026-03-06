@@ -82,7 +82,7 @@ Typical usage from application code:
 
 ```rust
 use lithos_core::note::{command, query};
-use lithos_core::note::aggregate::NotePath;
+use lithos_core::note::paths::NotePath;
 use lithos_core::note::error::NoteCommandError; // proposed in this spec
 use lithos_core::note::ports::{Command as _, Query as _};
 
