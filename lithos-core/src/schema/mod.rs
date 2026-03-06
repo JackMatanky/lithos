@@ -48,6 +48,8 @@ pub mod property_spec;
 pub mod query;
 /// Raw schema input definitions.
 pub mod raw;
+/// Fixed-size ring buffer for versioned storage.
+pub mod ring_buffer;
 
 /// Schema resolution service.
 ///
