@@ -125,13 +125,15 @@ impl<'config> ListExtractor<'config> {
             // Check for task promotion
             let checkbox_status =
                 StatusSymbol::try_new(item.status_symbol.unwrap_or(' '))?;
-            let tags = scan_tags(&item.text);
-            promoted_task = self.parse_promoted_checkbox_with_tags(
-                &item.text,
-                tags,
-                checkbox_status,
-                item.position,
-            )?;
+            if !self.config.task().tags().is_empty() {
+                let tags = scan_tags(&item.text);
+                promoted_task = self.parse_promoted_checkbox_with_tags(
+                    &item.text,
+                    tags,
+                    checkbox_status,
+                    item.position,
+                )?;
+            }
             status = Some(checkbox_status);
         }
 
