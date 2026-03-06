@@ -469,6 +469,25 @@ where
     }
 }
 
+// Methods specific to the adapter implementation
+impl Query<crate::schema::adapter::Query<'_>> {
+    /// Get the source file hash for a schema (adapter-specific method).
+    ///
+    /// Returns `None` if the schema metadata is not found.
+    ///
+    /// This is used for two-tier staleness detection: if timestamp changed but
+    /// hash is the same, it's a touch-only change.
+    ///
+    /// # Errors
+    /// Returns `SchemaQueryError` if database access fails.
+    pub(crate) fn get_schema_hash(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<crate::schema::hash::Blake3Hash>, SchemaQueryError> {
+        self.query_port.get_schema_hash(id).map_err(SchemaQueryError::Storage)
+    }
+}
+
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,

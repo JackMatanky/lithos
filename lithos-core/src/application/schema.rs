@@ -278,11 +278,59 @@ impl<'db> SchemaService<'db> {
             staleness_checks.push((id, created, modified));
         }
 
-        // Check staleness with cascade
+        // Step 1: Check staleness with cascade (timestamp-based fast path)
         let mut staleness_map = self
             .query
             .are_many_stale(&staleness_checks, current_bank_version)?;
         self.query.cascade_staleness(&mut staleness_map)?;
+
+        // Step 2: Two-tier staleness detection - for schemas marked stale by
+        // timestamp, check if hash actually changed (slow path)
+        let mut hash_map: HashMap<SchemaId, crate::schema::hash::Blake3Hash> =
+            HashMap::with_capacity(raw_schemas_with_times.len());
+
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "Tuple destructuring from slice requires ref pattern"
+        )]
+        for (raw_schema, hash, _modified, _created) in raw_schemas_with_times {
+            let schema_name = SchemaName::try_new(&raw_schema.name)?;
+            if let Some(&id) = name_to_id.get(&schema_name) {
+                hash_map.insert(id, *hash);
+            }
+        }
+
+        // For schemas marked stale by timestamp, check if content hash changed
+        // Iteration over HashMap is intentional here - order doesn't matter for
+        // hash comparison
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Iteration order doesn't matter for hash comparison - \
+                      we're just checking each schema individually"
+        )]
+        for (&id, is_stale) in &mut staleness_map {
+            if !*is_stale {
+                continue; // Skip schemas already marked as fresh
+            }
+
+            // Check if hash actually changed (slow path)
+            let Some(&current_hash) = hash_map.get(&id) else {
+                continue;
+            };
+            let Some(stored_hash) = self.query.get_schema_hash(id)? else {
+                continue;
+            };
+
+            if current_hash == stored_hash {
+                // Hash unchanged - this is a touch-only change
+                // Mark as fresh to avoid re-resolution
+                *is_stale = false;
+                tracing::debug!(
+                    schema_id = %id,
+                    "Touch-only change detected (hash unchanged)"
+                );
+            }
+        }
 
         // Partition into stale and fresh
         let mut stale = Vec::new();

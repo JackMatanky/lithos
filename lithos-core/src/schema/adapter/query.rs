@@ -19,6 +19,7 @@ use crate::{
             PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_CHILDREN,
             SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
         },
+        hash::Blake3Hash,
         ports::{NameIdPair, Query as QueryPort},
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
@@ -142,6 +143,31 @@ impl Query<'_> {
         }
 
         Ok(true) // Fresh
+    }
+
+    /// Get the source file hash for a schema.
+    ///
+    /// Returns `None` if the schema metadata is not found.
+    ///
+    /// This is used for two-tier staleness detection: if timestamp changed but
+    /// hash is the same, it's a touch-only change.
+    pub(crate) fn get_schema_hash(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<Blake3Hash>, DbError> {
+        let id_key = id.into_uuid().to_string();
+        let opt = self.db.get::<StoredMetadata, _, _>(
+            SCHEMA_METADATA,
+            id_key.as_str(),
+            |stored| {
+                // Deserialize the Blake3Hash from the archived metadata
+                rkyv::deserialize::<Blake3Hash, rkyv::rancor::Error>(
+                    &stored.source_file_hash,
+                )
+                .map_err(|e| DbError::Deserialization(e.to_string()))
+            },
+        )?;
+        opt.transpose()
     }
 }
 
