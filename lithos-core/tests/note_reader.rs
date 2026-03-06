@@ -30,7 +30,6 @@ mod tests {
     };
 
     use lithos_core::{
-        application::NoteService,
         config::{
             aggregate::Config,
             raw::RawConfig,
@@ -40,7 +39,8 @@ mod tests {
         db::Database,
         note::{
             db_command::CommandAdapter, db_query::QueryAdapter,
-            ingestor::Ingestor, query::Query, tag::Tag as NoteTag,
+            ingestor::Ingestor, loader::Loader, query::Query,
+            tag::Tag as NoteTag,
         },
     };
     use tempfile::TempDir;
@@ -80,7 +80,7 @@ mod tests {
         let db_path = dir.path().join("notes.redb");
         let db = Arc::new(Database::open(&db_path)?);
         let command = CommandAdapter::new(db.as_ref(), &config);
-        let service = NoteService::new(command);
+        let service = Loader::new(command);
         let ingestor = Ingestor::new(&config);
 
         let _note_ids = service.load(&ingestor)?;
@@ -290,7 +290,7 @@ mod tests {
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
         let command = CommandAdapter::new(db.as_ref(), &config);
-        let service = NoteService::new(command);
+        let service = Loader::new(command);
         let ingestor = Ingestor::new(&config);
         let query = Query::new(QueryAdapter::new(Arc::clone(&db)));
 
@@ -314,7 +314,7 @@ mod tests {
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
         let command = CommandAdapter::new(db.as_ref(), &config);
-        let service = NoteService::new(command);
+        let service = Loader::new(command);
         let ingestor = Ingestor::new(&config);
         let query = Query::new(QueryAdapter::new(Arc::clone(&db)));
 

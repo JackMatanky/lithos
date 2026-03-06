@@ -1,14 +1,9 @@
-//! Note application service — orchestrates the note ingestion pipeline.
+//! Note loader — orchestrates the note ingestion pipeline.
 //!
 //! Pipeline:
 //! 1. Discover note paths via `note::ingestor::Ingestor`.
 //! 2. Parse markdown via `note::reader::NoteReader`.
 //! 3. Persist projections via `note::db_command::CommandAdapter`.
-
-#![allow(
-    clippy::module_name_repetitions,
-    reason = "Namespaced types in application layer"
-)]
 
 use std::{collections::HashSet, path::Path};
 
@@ -21,10 +16,10 @@ use crate::{
     },
 };
 
-/// Errors that can occur during note service operations.
+/// Errors that can occur during note loading operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum NoteServiceError {
+pub enum LoadError {
     /// Ingestion (file listing or parsing) failed.
     #[error("ingestion error: {0}")]
     Ingestion(#[from] NoteIngestError),
@@ -37,12 +32,12 @@ pub enum NoteServiceError {
 /// Thin orchestration service for note ingestion.
 ///
 /// Uses concrete redb adapters for production use.
-pub struct NoteService<'db, 'config> {
+pub struct Loader<'db, 'config> {
     command: CommandAdapter<'db, 'config>,
 }
 
-impl<'db, 'config> NoteService<'db, 'config> {
-    /// Create a new `NoteService` with command adapter.
+impl<'db, 'config> Loader<'db, 'config> {
+    /// Create a new `Loader` with command adapter.
     #[inline]
     #[must_use]
     pub const fn new(command: CommandAdapter<'db, 'config>) -> Self {
@@ -57,12 +52,12 @@ impl<'db, 'config> NoteService<'db, 'config> {
     ///
     /// # Errors
     ///
-    /// Returns [`NoteServiceError`] on I/O, parsing, or storage failure.
+    /// Returns [`LoadError`] on I/O, parsing, or storage failure.
     #[inline]
     pub fn load(
         &self,
         ingestor: &Ingestor<'config>,
-    ) -> Result<Vec<NoteId>, NoteServiceError> {
+    ) -> Result<Vec<NoteId>, LoadError> {
         let config = ingestor.config();
         let reader = NoteReader::new(config);
         let fs = FsReader::new(config.vault_metadata().root().as_path());
@@ -87,7 +82,7 @@ impl<'db, 'config> NoteService<'db, 'config> {
             let stored = self.command.stored_note_by_path(&note_path)?;
             let metadata = fs.metadata(Path::new(note_path.as_str())).map_err(
                 |error| {
-                    NoteServiceError::Ingestion(NoteIngestError::Source(
+                    LoadError::Ingestion(NoteIngestError::Source(
                         error.to_string().into(),
                     ))
                 },
@@ -109,7 +104,7 @@ impl<'db, 'config> NoteService<'db, 'config> {
                 let markdown = fs
                     .read_to_string(Path::new(note_path.as_str()))
                     .map_err(|error| {
-                        NoteServiceError::Ingestion(NoteIngestError::Source(
+                        LoadError::Ingestion(NoteIngestError::Source(
                             error.to_string().into(),
                         ))
                     })?;
@@ -140,7 +135,7 @@ impl<'db, 'config> NoteService<'db, 'config> {
 
     #[inline]
     #[must_use]
-    /// Access the command adapter used by this service.
+    /// Access the command adapter used by this loader.
     pub const fn command(&self) -> &CommandAdapter<'db, 'config> {
         &self.command
     }

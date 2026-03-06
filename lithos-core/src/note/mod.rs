@@ -77,6 +77,8 @@ mod extract_section;
 mod extract_tag;
 /// Note file ingestor.
 pub mod ingestor;
+/// Note loader orchestration.
+pub mod loader;
 /// Note ports for CQRS.
 pub mod ports;
 /// Note query implementations (CQRS read operations).
