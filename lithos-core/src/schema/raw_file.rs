@@ -239,6 +239,47 @@ impl RawPropertyBankFile {
 mod tests {
     use super::*;
 
+    mod diff_raw_files_tests {
+        use super::*;
+
+        #[test]
+        fn unchanged_when_same_hash_and_path() {
+            let v1 = RawFileVersion::new("content", None, None).unwrap();
+            let v2 = RawFileVersion::new("content", None, None).unwrap();
+
+            let change = diff_raw_files(&v1, &v2, "file.json", "file.json");
+            assert_eq!(change, FileChange::Unchanged);
+        }
+
+        #[test]
+        fn modified_when_hash_differs() {
+            let v1 = RawFileVersion::new("old content", None, None).unwrap();
+            let v2 = RawFileVersion::new("new content", None, None).unwrap();
+
+            let change = diff_raw_files(&v1, &v2, "file.json", "file.json");
+            assert_eq!(change, FileChange::Modified);
+        }
+
+        #[test]
+        fn renamed_when_same_hash_different_path() {
+            let v1 = RawFileVersion::new("content", None, None).unwrap();
+            let v2 = RawFileVersion::new("content", None, None).unwrap();
+
+            let change = diff_raw_files(&v1, &v2, "old.json", "new.json");
+            assert_eq!(change, FileChange::Renamed);
+        }
+
+        #[test]
+        fn modified_trumps_renamed() {
+            let v1 = RawFileVersion::new("old", None, None).unwrap();
+            let v2 = RawFileVersion::new("new", None, None).unwrap();
+
+            // Different hash AND different path -> still Modified
+            let change = diff_raw_files(&v1, &v2, "old.json", "new.json");
+            assert_eq!(change, FileChange::Modified);
+        }
+    }
+
     #[test]
     fn raw_file_version_roundtrip() {
         let content = "schema: test\nproperties: []";
@@ -366,5 +407,57 @@ mod tests {
         let current = file.current().expect("no current version");
         let content = current.content().expect("failed to decompress");
         assert_eq!(content, "version 2");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  File Change Detection
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Type of change detected between two file versions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FileChange {
+    /// Content hash unchanged (file not modified).
+    Unchanged,
+    /// Content hash changed (file was modified).
+    Modified,
+    /// Same hash but different path (file was renamed).
+    Renamed,
+}
+
+/// Compare two file versions to detect changes.
+///
+/// This helper enables accurate change detection:
+/// - **Unchanged**: Hash matches, path matches → no action needed
+/// - **Modified**: Hash differs → re-parse and re-resolve
+/// - **Renamed**: Hash matches but path differs → update path, no re-parse
+///
+/// # Examples
+/// ```
+/// # use lithos_core::schema::raw_file::{RawFileVersion, FileChange, diff_raw_files};
+/// let v1 = RawFileVersion::new("content", None, None).unwrap();
+/// let v2 = RawFileVersion::new("content", None, None).unwrap();
+/// assert_eq!(diff_raw_files(&v1, &v2, "same.json", "same.json"), FileChange::Unchanged);
+///
+/// let v3 = RawFileVersion::new("changed", None, None).unwrap();
+/// assert_eq!(diff_raw_files(&v1, &v3, "file.json", "file.json"), FileChange::Modified);
+///
+/// assert_eq!(diff_raw_files(&v1, &v2, "old.json", "new.json"), FileChange::Renamed);
+/// ```
+#[inline]
+#[must_use]
+pub fn diff_raw_files(
+    cached: &RawFileVersion,
+    current: &RawFileVersion,
+    cached_path: &str,
+    current_path: &str,
+) -> FileChange {
+    if cached.content_hash() != current.content_hash() {
+        FileChange::Modified
+    } else if cached_path != current_path {
+        FileChange::Renamed
+    } else {
+        FileChange::Unchanged
     }
 }
