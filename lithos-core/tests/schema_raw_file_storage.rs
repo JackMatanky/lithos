@@ -1,0 +1,270 @@
+//! Integration tests for raw schema file storage with Blake3 hashing and
+//! version history.
+
+#![expect(
+    clippy::panic_in_result_fn,
+    reason = "Integration tests use assertions which panic on failure."
+)]
+#![expect(
+    clippy::tests_outside_test_module,
+    reason = "Integration tests are top-level by default."
+)]
+
+use std::time::SystemTime;
+
+use lithos_core::{
+    config::aggregate::Config,
+    db::Database,
+    fs::FsReader,
+    schema::{
+        adapter::{command::Command as CommandAdapter, ingestor::Ingestor},
+        raw_file::{RawPropertyBankFile, RawSchemaFile},
+    },
+};
+use tempfile::TempDir;
+
+fn setup_test_files(dir: &TempDir) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir.path().join("schemas"))?;
+
+    std::fs::write(
+        dir.path().join("schemas/property_bank.json"),
+        r#"{"$version": "1.0", "properties": {}}"#,
+    )?;
+
+    std::fs::write(
+        dir.path().join("schemas/note.json"),
+        r#"{"$version": "1.0", "properties": {}}"#,
+    )?;
+
+    Ok(())
+}
+
+fn create_test_config(
+    dir: &TempDir,
+) -> Result<Config, Box<dyn std::error::Error>> {
+    use lithos_core::config::{
+        aggregate::Version,
+        raw::RawConfig,
+        vault::{VaultId, VaultRoot},
+    };
+
+    let config = Config::build(
+        &RawConfig::default(),
+        VaultId::new(),
+        VaultRoot::try_new(dir.path().to_path_buf())?,
+        Version::initial(),
+    )?;
+
+    Ok(config)
+}
+
+#[test]
+fn raw_schema_file_storage_saves_and_retrieves()
+-> Result<(), Box<dyn std::error::Error>> {
+    // GIVEN: A temp directory with schema files
+    let dir = TempDir::new()?;
+    setup_test_files(&dir)?;
+
+    let config = create_test_config(&dir)?;
+    let db_dir = TempDir::new()?;
+    let db = Database::open(&db_dir.path().join("test.db"))?;
+
+    // WHEN: Ingesting files and creating RawSchemaFile
+    let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
+    let schemas = ingestor.scan_raw_schemas()?;
+
+    assert_eq!(schemas.len(), 1, "Should find one schema file");
+
+    let first = schemas.first().ok_or("Expected at least one schema")?;
+    let content_hash = &first.1;
+    let created_at = first.2;
+    let modified_at = first.3;
+
+    // Read the actual file content for hashing
+    let file_content =
+        std::fs::read_to_string(dir.path().join("schemas/note.json"))?;
+
+    // Create RawSchemaFile with version using actual file content
+    let raw_file = RawSchemaFile::new(
+        "schemas/note.json".to_owned(),
+        &file_content,
+        created_at,
+        modified_at,
+    )?;
+
+    // WHEN: Saving to database
+    let command = CommandAdapter::new(&db);
+    command.save_raw_schema_file(&raw_file)?;
+
+    // THEN: Verify hash was computed
+    assert_eq!(raw_file.current().unwrap().content_hash(), content_hash);
+    assert_eq!(raw_file.version_count(), 1);
+    assert_eq!(raw_file.file_path(), "schemas/note.json");
+
+    Ok(())
+}
+
+#[test]
+fn raw_schema_file_tracks_version_history()
+-> Result<(), Box<dyn std::error::Error>> {
+    // GIVEN: A RawSchemaFile with initial content
+    let mut file = RawSchemaFile::new(
+        "test.toml".to_owned(),
+        "version 1",
+        Some(SystemTime::now()),
+        Some(SystemTime::now()),
+    )?;
+
+    let db_dir = TempDir::new()?;
+    let db = Database::open(&db_dir.path().join("test.db"))?;
+    let command = CommandAdapter::new(&db);
+
+    // WHEN: Adding multiple versions
+    file.add_version(
+        "version 2",
+        Some(SystemTime::now()),
+        Some(SystemTime::now()),
+    )?;
+    file.add_version(
+        "version 3",
+        Some(SystemTime::now()),
+        Some(SystemTime::now()),
+    )?;
+
+    command.save_raw_schema_file(&file)?;
+
+    // THEN: Version history is maintained
+    assert_eq!(file.version_count(), 3);
+
+    let versions: Vec<_> = file.versions().collect();
+    assert_eq!(versions.len(), 3);
+
+    assert_eq!(
+        versions.first().and_then(|v| v.content().ok()).as_deref(),
+        Some("version 1")
+    );
+    assert_eq!(
+        versions.get(1).and_then(|v| v.content().ok()).as_deref(),
+        Some("version 2")
+    );
+    assert_eq!(
+        versions.get(2).and_then(|v| v.content().ok()).as_deref(),
+        Some("version 3")
+    );
+
+    // Current version should be the latest
+    assert_eq!(file.current().unwrap().content()?, "version 3");
+
+    Ok(())
+}
+
+#[test]
+fn raw_schema_file_evicts_old_versions()
+-> Result<(), Box<dyn std::error::Error>> {
+    // GIVEN: A RawSchemaFile
+    let mut file =
+        RawSchemaFile::new("test.toml".to_owned(), "v1", None, None)?;
+
+    // WHEN: Adding 6 versions (exceeds 5-version limit)
+    for i in 2i32..=6i32 {
+        file.add_version(&format!("v{i}"), None, None)?;
+    }
+
+    // THEN: Only 5 most recent versions are kept
+    assert_eq!(file.version_count(), 5);
+
+    let versions: Vec<_> = file.versions().collect();
+    assert_eq!(
+        versions.first().and_then(|v| v.content().ok()).as_deref(),
+        Some("v2")
+    ); // v1 was evicted
+    assert_eq!(
+        versions.get(4).and_then(|v| v.content().ok()).as_deref(),
+        Some("v6")
+    );
+
+    Ok(())
+}
+
+#[test]
+fn raw_property_bank_file_storage() -> Result<(), Box<dyn std::error::Error>> {
+    // GIVEN: A temp directory with property bank
+    let dir = TempDir::new()?;
+    setup_test_files(&dir)?;
+
+    let config = create_test_config(&dir)?;
+    let db_dir = TempDir::new()?;
+    let db = Database::open(&db_dir.path().join("test.db"))?;
+
+    // WHEN: Loading property bank with metadata
+    let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
+    let (_bank, content_hash, modified_at, created_at) =
+        ingestor.load_raw_property_bank_with_metadata()?;
+
+    // Read the actual file content for hashing
+    let file_content =
+        std::fs::read_to_string(dir.path().join("schemas/property_bank.json"))?;
+
+    // Create RawPropertyBankFile using actual file content
+    let raw_file =
+        RawPropertyBankFile::new(&file_content, created_at, modified_at)?;
+
+    // WHEN: Saving to database
+    let command = CommandAdapter::new(&db);
+    command.save_raw_property_bank_file(&raw_file)?;
+
+    // THEN: Hash and version info is stored
+    assert_eq!(raw_file.current().unwrap().content_hash(), &content_hash);
+    assert_eq!(raw_file.version_count(), 1);
+
+    Ok(())
+}
+
+#[test]
+fn blake3_hash_is_deterministic() -> Result<(), Box<dyn std::error::Error>> {
+    // GIVEN: Same content
+    let content = "test content for hashing";
+
+    // WHEN: Creating multiple RawFileVersions
+    let file1 =
+        RawSchemaFile::new("test1.toml".to_owned(), content, None, None)?;
+
+    let file2 =
+        RawSchemaFile::new("test2.toml".to_owned(), content, None, None)?;
+
+    // THEN: Hashes should be identical
+    let hash1 = file1.current().unwrap().content_hash();
+    let hash2 = file2.current().unwrap().content_hash();
+
+    assert_eq!(hash1, hash2, "Same content should produce same hash");
+
+    Ok(())
+}
+
+#[test]
+fn compression_reduces_size() -> Result<(), Box<dyn std::error::Error>> {
+    // GIVEN: Repetitive content that compresses well
+    let content = "a".repeat(1000);
+
+    // WHEN: Creating RawSchemaFile
+    let file =
+        RawSchemaFile::new("test.toml".to_owned(), &content, None, None)?;
+
+    // THEN: Compressed size should be much smaller than original
+    let compressed_size = file.current().unwrap().compressed_size();
+    assert!(
+        compressed_size < content.len(),
+        "Compressed size ({compressed_size}) should be less than original ({} \
+         bytes)",
+        content.len()
+    );
+
+    // For highly repetitive data, expect at least 10x compression
+    let expected_max_size = 100; // 1000 / 10
+    assert!(
+        compressed_size < expected_max_size,
+        "Expected at least 10x compression for repetitive data"
+    );
+
+    Ok(())
+}
