@@ -1,4 +1,10 @@
-//! Schema domain events.
+//! Schema domain events and pipeline events.
+//!
+//! This module contains two types of events:
+//! - **Domain events**: Aggregate-level events (SchemaCreated,
+//!   PropertyRegistered, etc.)
+//! - **Pipeline events**: Observability events for the loading pipeline
+//!   (SchemaEvent, PropertyBankEvent)
 #![expect(
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
@@ -6,13 +12,14 @@
               #[non_exhaustive] on source types"
 )]
 
-use std::time::SystemTime;
+use std::{path::PathBuf, time::SystemTime};
 
 use rkyv::{Archive, Deserialize, Serialize, with::AsUnixTime};
 
 use super::{
     aggregate::{SchemaId, SchemaName},
     bank::BankVersion,
+    error::SchemaError,
     property::{PropertyId, PropertyName},
 };
 
@@ -369,6 +376,175 @@ pub enum Events {
     PropertyBankLoaded(PropertyBankLoaded),
 }
 
+// ============================================================================
+// Pipeline Events (Phase 3)
+// ============================================================================
+
+/// Pipeline event for schema loading observability.
+///
+/// These events track the lifecycle of schema files through the loading
+/// pipeline: scanning → staleness check → resolution → persistence.
+///
+/// Unlike domain events (`SchemaCreated`, etc.), pipeline events are emitted
+/// during the orchestration process for observability and reactive
+/// coordination.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaEvent {
+    // --- Scan Phase ---
+    /// Schema directory scan started.
+    ScanStarted {
+        /// Path to the schemas directory being scanned.
+        directory: PathBuf,
+    },
+
+    /// Schema file discovered during scan.
+    FileDiscovered {
+        /// Path to the discovered schema file.
+        path: PathBuf,
+        /// Schema name derived from filename.
+        name: Box<str>,
+    },
+
+    /// Schema directory scan completed.
+    ScanCompleted {
+        /// Number of schema files found.
+        file_count: usize,
+    },
+
+    // --- Staleness Phase ---
+    /// Schema file is fresh (no changes since last load).
+    SchemaFresh {
+        /// Schema name.
+        name: Box<str>,
+    },
+
+    /// Schema file is stale (changed since last load or new).
+    SchemaStale {
+        /// Schema name.
+        name: Box<str>,
+        /// Reason for staleness.
+        reason: StalenessReason,
+    },
+
+    // --- Resolution Phase ---
+    /// Schema resolution started.
+    SchemaResolutionStarted {
+        /// Schema name being resolved.
+        name: Box<str>,
+    },
+
+    /// Schema resolved successfully.
+    SchemaResolved {
+        /// Schema name.
+        name: Box<str>,
+        /// Schema ID after resolution.
+        id: SchemaId,
+    },
+
+    /// All schemas resolved.
+    SchemaResolutionCompleted {
+        /// Number of schemas resolved.
+        schema_count: usize,
+    },
+
+    // --- Persistence Phase ---
+    /// Raw schema file cached to database.
+    RawFileCached {
+        /// Schema name.
+        name: Box<str>,
+    },
+
+    /// Resolved schema persisted to database.
+    SchemaPersisted {
+        /// Schema name.
+        name: Box<str>,
+        /// Schema ID.
+        id: SchemaId,
+    },
+
+    // --- Error Events ---
+    /// Parse error during schema ingestion.
+    ParseError {
+        /// Path to the file that failed to parse.
+        path: PathBuf,
+        /// Error details.
+        error: Box<str>,
+    },
+
+    /// Validation error during schema ingestion.
+    ValidationError {
+        /// Schema name that failed validation.
+        name: Box<str>,
+        /// Validation error details.
+        error: SchemaError,
+    },
+
+    /// Resolution error during schema processing.
+    ResolutionError {
+        /// Schema name that failed resolution.
+        name: Box<str>,
+        /// Resolution error details.
+        error: SchemaError,
+    },
+}
+
+/// Reason why a schema is marked as stale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum StalenessReason {
+    /// Schema is new (never loaded before).
+    New,
+    /// Schema file modified timestamp changed.
+    Modified,
+    /// Schema file content hash changed.
+    ContentChanged,
+    /// Property bank version changed (cascade).
+    BankVersionChanged,
+}
+
+/// Pipeline event for property bank loading observability.
+///
+/// These events track the property bank through the loading pipeline.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum PropertyBankEvent {
+    /// Property bank is fresh (no changes).
+    Fresh {
+        /// Bank version.
+        version: BankVersion,
+    },
+
+    /// Property bank is stale (changed).
+    Stale {
+        /// Reason for staleness.
+        reason: StalenessReason,
+    },
+
+    /// Property bank resolution started.
+    ResolutionStarted,
+
+    /// Property bank resolved successfully.
+    Resolved {
+        /// Number of properties in the bank.
+        property_count: usize,
+        /// Bank version.
+        version: BankVersion,
+    },
+
+    /// Property bank persisted to database.
+    Persisted {
+        /// Bank version.
+        version: BankVersion,
+    },
+
+    /// Property bank change triggered schema cascade.
+    TriggeredCascade {
+        /// Number of schemas marked stale.
+        affected_schema_count: usize,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,5 +614,55 @@ mod tests {
         fn is_send_sync<T: Send + Sync>() {}
 
         is_send_sync::<Events>();
+    }
+
+    // Pipeline event tests
+    #[test]
+    fn schema_event_scan_started() {
+        let event = SchemaEvent::ScanStarted {
+            directory: PathBuf::from("/vault/schemas"),
+        };
+        assert!(matches!(event, SchemaEvent::ScanStarted { .. }));
+    }
+
+    #[test]
+    fn schema_event_file_discovered() {
+        let event = SchemaEvent::FileDiscovered {
+            path: PathBuf::from("/vault/schemas/task.json"),
+            name: "task".into(),
+        };
+        assert!(matches!(event, SchemaEvent::FileDiscovered { .. }));
+    }
+
+    #[test]
+    fn schema_event_stale_with_reason() {
+        let event = SchemaEvent::SchemaStale {
+            name: "task".into(),
+            reason: StalenessReason::Modified,
+        };
+        assert!(
+            matches!(event, SchemaEvent::SchemaStale {
+                reason: StalenessReason::Modified,
+                ..
+            }),
+            "Expected SchemaStale event with Modified reason"
+        );
+    }
+
+    #[test]
+    fn property_bank_event_fresh() {
+        let event = PropertyBankEvent::Fresh {
+            version: BankVersion::initial(),
+        };
+        assert!(matches!(event, PropertyBankEvent::Fresh { .. }));
+    }
+
+    #[test]
+    fn pipeline_events_are_send_sync() {
+        fn is_send_sync<T: Send + Sync>() {}
+
+        is_send_sync::<SchemaEvent>();
+        is_send_sync::<PropertyBankEvent>();
+        is_send_sync::<StalenessReason>();
     }
 }
