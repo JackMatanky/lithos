@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-07
 **Branch**: `refactor/schema-file-centric`
-**Status**: ✅ **Phases 1, 2, 6, 7 COMPLETE** | ⚠️ **Phases 3, 4, 5 DEFERRED**
+**Status**: ✅ **Phases 1, 2, 5, 6, 7 COMPLETE** | ⚠️ **Phases 3, 4 DEFERRED**
 
 ---
 
@@ -19,7 +19,7 @@ This document verifies the implementation status of each phase from `SCHEMA_REFA
 | **Phase 2: Staleness Detection** | ✅ Complete | 100% | Two-tier (timestamp + hash), integration tests |
 | **Phase 3: Event System** | ⚠️ Deferred | 0% | Events defined but not emitted/handled |
 | **Phase 4: Incremental Resolution** | ⚠️ Deferred | 0% | Full resolution only |
-| **Phase 5: Raw Validation** | ⚠️ Deferred | 0% | Validation happens during resolution |
+| **Phase 5: Raw Validation** | ✅ Complete | 100% | Syntax validation in raw layer, semantic in resolution |
 | **Phase 6: Module Structure** | ✅ Complete | 100% | Flat structure, wrappers removed, loader moved |
 | **Phase 7: Remove Aggregate** | ✅ Complete | 100% | Schema aggregate deleted, StoredSchema primary |
 
@@ -142,30 +142,60 @@ Implement Phase 4 **only if**:
 
 ---
 
-## Phase 5: Raw Validation ⚠️ DEFERRED
+## Phase 5: Raw Validation ✅ COMPLETE
 
 ### Implementation Status
 
 | Task | Status | Evidence |
 |------|--------|----------|
-| 5.1 RawValidationError enum | ⏸️ Not implemented | |
-| 5.2 RawSchema::validate() | ⏸️ Not implemented | |
-| 5.3 RawPropertyBank::validate() | ⏸️ Not implemented | |
-| 5.4 Semantic validation in resolution | ⏸️ Partial | Validation happens during resolution |
-| 5.5 Ingestor validation | ⏸️ Not implemented | |
-| 5.6 Unit tests | ⏸️ Not implemented | |
+| 5.1 Validation methods | ✅ | `RawSchema::validate()` at raw.rs:113, `RawPropertyBank::validate()` at raw.rs:499 |
+| 5.2 RawSchema validation | ✅ | Validates name, parent, excludes, property names (syntax only) |
+| 5.3 RawPropertyBank validation | ✅ | Validates all property names in bank |
+| 5.4 Semantic validation separation | ✅ | Semantic validation remains in dereferencer/extender/resolver |
+| 5.5 Ingestor integration | ✅ | `ingestor.rs:124,154,238` - calls validate() after parsing |
+| 5.6 Unit tests | ✅ | 11 tests in raw.rs:1152-1363 (valid/invalid names, parent, excludes, properties) |
 
-### Status
-**Deferred**. Current implementation:
-- **All validation happens during resolution** (dereferencer, extender, resolver)
-- No explicit "raw validation" phase
-- Works well: syntax errors caught during parsing (serde), semantic errors during resolution
+### Validation Architecture
 
-### Recommendation
-Implement Phase 5 **only if**:
-- Need to validate files **before** resolution (e.g., pre-commit hooks)
-- Want faster feedback loop (fail on syntax before expensive resolution)
-- Need security validation (path traversal, etc.)
+**Two-tier validation**:
+1. **Raw layer** (syntax only):
+   - Schema name format (via `SchemaName::try_new()`)
+   - Parent schema name format
+   - Exclude property names format
+   - Property names format (via `PropertyName::try_new()`)
+   - Uses regex `^[a-z0-9_-]+$` for all names (max 64 chars)
+
+2. **Resolution layer** (semantics):
+   - Parent schema exists (dereferencer)
+   - Property references resolve (dereferencer)
+   - No circular inheritance (extender)
+   - Property types valid (resolver)
+
+### Error Handling
+
+- Added `SchemaIngestionError::Validation(SchemaError)` variant
+- Removed `Eq` derive from `SchemaIngestionError` (incompatible with `SchemaError`)
+- Validation errors surface early in ingestion pipeline
+
+### Test Coverage
+
+**New tests** (11 total):
+- `raw_schema_validate_valid` - Valid schema passes
+- `raw_schema_validate_invalid_name` - Rejects uppercase, spaces, special chars
+- `raw_schema_validate_invalid_parent_name` - Rejects invalid parent syntax
+- `raw_schema_validate_invalid_exclude_name` - Rejects invalid exclude syntax
+- `raw_schema_validate_invalid_property_name` - Rejects invalid property syntax
+- `raw_schema_validate_with_parent` - Valid parent passes
+- `raw_schema_validate_with_excludes` - Valid excludes pass
+- `raw_schema_validate_with_valid_properties` - Valid properties pass
+- `raw_property_bank_validate_valid` - Valid bank passes
+- `raw_property_bank_validate_invalid_property_name` - Rejects invalid names
+- `raw_property_bank_validate_empty` - Empty bank is valid
+
+### Commit
+**Commit**: `2e77be33` - "feat(schema): implement raw validation layer (Phase 5 complete)"
+**Branch**: `refactor/schema-file-centric`
+**Tests**: 817 passing (731 unit + 86 integration)
 
 ---
 
