@@ -17,12 +17,13 @@ use std::{error::Error, path::PathBuf};
 use lithos_core::{
     db::Database,
     schema::{
-        aggregate::{Schema, SchemaId, SchemaName},
+        aggregate::{SchemaId, SchemaName},
         db_command, db_query, ports,
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec, StringSpec},
+        stored::{StoredProperty, StoredSchema},
     },
 };
 // Re-export port traits - tests using wildcard import need these in scope
@@ -39,14 +40,14 @@ pub trait QueryExt {
     fn find_by_name(
         &self,
         name: &SchemaName,
-    ) -> Result<Option<Schema>, Box<dyn std::error::Error>>;
+    ) -> Result<Option<StoredSchema>, Box<dyn std::error::Error>>;
 }
 
 impl QueryExt for db_query::Query<'_> {
     fn find_by_name(
         &self,
         name: &SchemaName,
-    ) -> Result<Option<Schema>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<StoredSchema>, Box<dyn std::error::Error>> {
         use ports::Query as _;
         let Some(id) = self.find_id_by_name(name)? else {
             return Ok(None);
@@ -62,11 +63,17 @@ impl QueryExt for db_query::Query<'_> {
 /// schema.
 pub trait CommandExt {
     /// Save a single schema (convenience wrapper for `save_many`).
-    fn save(&self, schema: &Schema) -> Result<(), Box<dyn std::error::Error>>;
+    fn save(
+        &self,
+        schema: &StoredSchema,
+    ) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 impl CommandExt for db_command::Command<'_> {
-    fn save(&self, schema: &Schema) -> Result<(), Box<dyn std::error::Error>> {
+    fn save(
+        &self,
+        schema: &StoredSchema,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         use ports::Command as _;
         Ok(self.save_many(std::slice::from_ref(schema))?)
     }
@@ -305,7 +312,7 @@ pub fn string_property(name: &str) -> TestResult<Property> {
 //                    Schema Builders                          //
 // ----------------------------------------------------------- //
 
-/// Builder for creating test `Schema` instances.
+/// Builder for creating test `StoredSchema` instances.
 ///
 /// Provides a fluent API for constructing schemas with properties and
 /// inheritance.
@@ -377,10 +384,29 @@ impl SchemaBuilder {
     /// # Errors
     /// Returns error if schema name is invalid or construction fails.
     #[track_caller]
-    pub fn build(self) -> TestResult<Schema> {
-        let name = SchemaName::try_new(&self.name)?;
+    pub fn build(self) -> TestResult<StoredSchema> {
+        let _name_check = SchemaName::try_new(&self.name)?;
         let id = self.id.unwrap_or_default();
-        Ok(Schema::try_new(id, name, self.parent_id, self.properties)?)
+        let stored_properties: Vec<StoredProperty> = self
+            .properties
+            .into_iter()
+            .map(|p| {
+                StoredProperty::new(
+                    p.id(),
+                    p.name().as_str().into(),
+                    p.optionality() == Optionality::Required,
+                    p.multiplicity() == Multiplicity::Many,
+                    p.spec().clone(),
+                )
+            })
+            .collect();
+
+        Ok(StoredSchema::new(
+            id,
+            self.name.into(),
+            self.parent_id,
+            stored_properties,
+        ))
     }
 }
 
@@ -400,48 +426,51 @@ impl SchemaBuilder {
 /// Panics if schemas are not equal with detailed diff message.
 #[expect(dead_code, reason = "Will be used in upcoming CQRS integration tests")]
 #[track_caller]
-pub fn assert_schema_eq(actual: &Schema, expected: &Schema, context: &str) {
+pub fn assert_schema_eq(
+    actual: &StoredSchema,
+    expected: &StoredSchema,
+    context: &str,
+) {
     assert_eq!(
-        actual.name(),
-        expected.name(),
+        actual.name.as_ref(),
+        expected.name.as_ref(),
         "{context}: Schema names should match"
     );
     assert_eq!(
-        actual.parent_id(),
-        expected.parent_id(),
+        actual.parent_id, expected.parent_id,
         "{context}: Parent IDs should match"
     );
     assert_eq!(
-        actual.properties().count(),
-        expected.properties().count(),
+        actual.properties.len(),
+        expected.properties.len(),
         "{context}: Property counts should match"
     );
 
     // Compare properties (sorted by name for stable comparison)
-    let mut actual_props: Vec<_> = actual.properties().collect();
-    let mut expected_props: Vec<_> = expected.properties().collect();
-    actual_props.sort_by_key(|p| p.name());
-    expected_props.sort_by_key(|p| p.name());
+    let mut actual_props = actual.properties.clone();
+    let mut expected_props = expected.properties.clone();
+    actual_props.sort_by(|a, b| a.name.cmp(&b.name));
+    expected_props.sort_by(|a, b| a.name.cmp(&b.name));
 
     for (actual_prop, expected_prop) in
         actual_props.iter().zip(expected_props.iter())
     {
         assert_eq!(
-            actual_prop.name(),
-            expected_prop.name(),
+            actual_prop.name.as_ref(),
+            expected_prop.name.as_ref(),
             "{context}: Property names should match"
         );
         assert_eq!(
-            actual_prop.optionality(),
-            expected_prop.optionality(),
+            actual_prop.required,
+            expected_prop.required,
             "{context}: Property '{}' optionality should match",
-            actual_prop.name()
+            actual_prop.name.as_ref()
         );
         assert_eq!(
-            actual_prop.multiplicity(),
-            expected_prop.multiplicity(),
+            actual_prop.multi,
+            expected_prop.multi,
             "{context}: Property '{}' multiplicity should match",
-            actual_prop.name()
+            actual_prop.name.as_ref()
         );
     }
 }
@@ -451,13 +480,13 @@ pub fn assert_schema_eq(actual: &Schema, expected: &Schema, context: &str) {
 /// # Panics
 /// Panics if properties are not sorted.
 #[track_caller]
-pub fn assert_properties_sorted(schema: &Schema, context: &str) {
-    let props: Vec<_> = schema.properties().collect();
+pub fn assert_properties_sorted(schema: &StoredSchema, context: &str) {
+    let props = &schema.properties;
     let mut sorted_props = props.clone();
-    sorted_props.sort_by_key(|p| p.name());
+    sorted_props.sort_by(|a, b| a.name.cmp(&b.name));
 
     assert_eq!(
-        props, sorted_props,
+        props, &sorted_props,
         "{context}: Schema properties should be sorted by name"
     );
 }
@@ -468,12 +497,12 @@ pub fn assert_properties_sorted(schema: &Schema, context: &str) {
 /// Panics if property is not found.
 #[track_caller]
 pub fn assert_has_property(
-    schema: &Schema,
+    schema: &StoredSchema,
     property_name: &str,
     context: &str,
 ) {
     let has_prop =
-        schema.properties().any(|p| p.name().as_str() == property_name);
+        schema.properties.iter().any(|p| p.name.as_ref() == property_name);
     assert!(
         has_prop,
         "{context}: Schema should have property '{property_name}'"
@@ -486,12 +515,12 @@ pub fn assert_has_property(
 /// Panics if property is found.
 #[track_caller]
 pub fn assert_not_has_property(
-    schema: &Schema,
+    schema: &StoredSchema,
     property_name: &str,
     context: &str,
 ) {
     let has_prop =
-        schema.properties().any(|p| p.name().as_str() == property_name);
+        schema.properties.iter().any(|p| p.name.as_ref() == property_name);
     assert!(
         !has_prop,
         "{context}: Schema should NOT have property '{property_name}'"

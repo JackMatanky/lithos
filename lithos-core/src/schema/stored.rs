@@ -9,6 +9,15 @@
 //! - `bank_property_by_id` for ID-keyed snapshots
 //! - `bank_property_by_name` for name-keyed snapshots
 
+// Clippy false positive: Archive macro generates internal types that trigger
+// exhaustive_structs, but our public types are marked #[non_exhaustive].
+// This cannot be fixed without changes to rkyv.
+#![expect(
+    clippy::exhaustive_structs,
+    reason = "False positive from rkyv Archive macro - all public types use \
+              #[non_exhaustive]"
+)]
+
 use std::time::SystemTime;
 
 use rkyv::{
@@ -34,6 +43,7 @@ use super::{
 /// Files are the source of truth; schemas are loaded, resolved, and stored
 /// as `StoredSchema` values.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct StoredSchema {
     /// Schema identity.
     pub id: SchemaId,
@@ -43,6 +53,25 @@ pub struct StoredSchema {
     pub parent_id: Option<SchemaId>,
     /// Resolved properties (flattened).
     pub properties: Vec<StoredProperty>,
+}
+
+impl StoredSchema {
+    /// Create a new `StoredSchema` for testing purposes.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        id: SchemaId,
+        name: Box<str>,
+        parent_id: Option<SchemaId>,
+        properties: Vec<StoredProperty>,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            parent_id,
+            properties,
+        }
+    }
 }
 
 /// Adapter storage representation of a property bank snapshot.
@@ -65,6 +94,7 @@ pub(crate) struct StoredPropertyBank {
 /// This stores timestamps as Unix epoch seconds internally while preserving
 /// `SystemTime`'s type safety.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct StoredMetadata {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
@@ -221,6 +251,7 @@ impl TryFrom<StoredPropertyBank> for PropertyBank {
 
 /// Flat storage representation of a single property.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct StoredProperty {
     /// Property identity.
     pub id: PropertyId,
@@ -233,4 +264,25 @@ pub struct StoredProperty {
     pub multi: bool,
     /// Type-specific validation constraints.
     pub spec: PropertySpec,
+}
+
+impl StoredProperty {
+    /// Create a new `StoredProperty`.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        id: PropertyId,
+        name: Box<str>,
+        required: bool,
+        multi: bool,
+        spec: PropertySpec,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            required,
+            multi,
+            spec,
+        }
+    }
 }
