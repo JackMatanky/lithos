@@ -35,14 +35,17 @@ To activate specialized agents, use: `"As [agent-name], ..."` (e.g., `"As dev, i
 
 ### Critical Coding Standards
 - **Zero-copy patterns** for performance-critical paths via GAT-based port traits
-- **Port-based CQRS**: CQRS types generic over split storage ports (`Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`)
-- **Three-tier type alias pattern**:
-  - Domain: `pub type Command<C> = command::Command<C>` (generic, no adapter import)
-  - Adapter: `pub type Command<'db> = command::Command<'db>` (removes stuttering)
-  - Usage: `schema::Command::new(adapter::Command::new(&db))`
-- **Adapter naming**: No suffix - use module disambiguation (`adapter::Command` not `CommandAdapter`)
+- **Port-based CQRS**: Concrete implementations of split storage port traits
+  - `schema::db_query::Query` implements `QueryPort`, `schema::db_command::Command` implements `CommandPort`
+  - Ports split into Query and Command to prevent interface bloat
+  - Storage ports use GATs for zero-copy: `type Archived<'a> where Self: 'a`
+- **Read model pattern**: `StoredSchema` is a read model (no behavior, no events)
+  - NOT a DDD aggregate - just structured data optimized for storage
+  - Use `Loader` for orchestration, not domain methods
 - **Context isolation**: Business contexts (note, schema, template) don't import each other
-- **Type-driven design**: Private fields by default, validation at construction, newtype wrappers
+- **Type-driven validation**:
+  - Raw layer validates syntax only (regex, type system)
+  - Resolution layer validates semantics (refs exist, no cycles, depth limits)
 - **Test-first development**: Red-green-refactor cycle required
 - **ADR documentation**: All architectural decisions documented in [docs/adr/](docs/adr/)
 
@@ -64,9 +67,9 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 ⚠️ **NON-NEGOTIABLE RULES**:
 1. **Context isolation**: Business contexts (note, schema, template) MUST NOT import each other
    - Config is cross-cutting infrastructure (available to all contexts)
-   - Only infrastructure (db, fs, patterns) and config may be imported by business contexts
-2. **Port-based CQRS**: CQRS types MUST be generic over split storage port traits
-   - `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`
+   - Only infrastructure (db, fs, config, patterns) and config may be imported by business contexts
+2. **Port-based CQRS**: Concrete implementations of split storage port traits
+   - `schema::db_query::Query` implements `QueryPort`, `schema::db_command::Command` implements `CommandPort`
    - Ports split into Query and Command to prevent interface bloat
    - Storage ports use GATs for zero-copy: `type Archived<'a> where Self: 'a`
 3. **Type safety**: Private fields by default, validation at construction, newtype wrappers for domain constraints
@@ -77,16 +80,20 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 8. **File Ingestion Rules**:
    - **CQRS ports MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
    - **File ingestion MUST use `FileSource` trait**: Abstract over filesystem for testability
-   - **Application services orchestrate pipelines**: Services coordinate File → Raw → Domain → Database
+   - **Loader orchestrates pipelines**: Loader coordinates File → Raw → Resolved → Database
    - **Parsing and validation are distinct phases**: File → Raw (parsing) → Domain (validation) → DB
+9. **Read Model Pattern**:
+   - **StoredSchema is a read model**: No behavior, no events, no aggregate methods
+   - **Loader handles orchestration**: All pipeline logic in `schema::loader`
+   - **Event-driven pipeline**: Emit events at each stage for observability and reactive coordination
 
 ## Where Does This Code Go?
 
 **Pure business logic (no I/O)?** → `lithos-core/src/{context}/` (note, schema, template)
 **Cross-cutting configuration?** → `lithos-core/src/config/`
-**File ingestion orchestration?** → `lithos-core/src/application/services/`
+**File ingestion orchestration?** → `lithos-core/src/schema/loader.rs`
 **File source abstraction?** → `lithos-core/src/fs/source.rs`
-**File parsing logic?** → `lithos-core/src/fs/parsers.rs`
+**File parsing logic?** → `lithos-core/src/schema/ingestor.rs`
 **Database operations?** → `lithos-core/src/db/`
 **File system utilities?** → `lithos-core/src/fs/`
 **CLI interface?** → `lithos-cli/src/`
