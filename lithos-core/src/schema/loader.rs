@@ -203,6 +203,15 @@ impl<'db> Loader<'db> {
             bank_stale,
         )?;
 
+        // Emit cascade event if PropertyBank change affected schemas
+        if bank_stale {
+            self.emit_property_bank(
+                &crate::schema::events::PropertyBankEvent::TriggeredCascade {
+                    affected_schema_count: stale.len(),
+                },
+            );
+        }
+
         // ── Step 5: load fresh schemas as known_parents ─────────────────────
         // Batch load: O(1) transaction for all fresh schemas
         let known_parents = self
