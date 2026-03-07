@@ -47,7 +47,7 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use crate::schema::{
-    aggregate::{Schema, SchemaId, SchemaName},
+    aggregate::{SchemaId, SchemaName},
     bank::PropertyBank,
     db_command, db_query,
     dereferencer::Dereferencer,
@@ -59,7 +59,7 @@ use crate::schema::{
     ports::{Command as _, Query as _},
     raw::RawSchema,
     resolver::Resolver,
-    stored::StoredMetadata,
+    stored::{StoredMetadata, StoredSchema},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,7 +148,7 @@ impl<'db> Loader<'db> {
     pub fn load(
         &self,
         ingestor: &Ingestor<'_>,
-    ) -> Result<Vec<Schema>, LoaderError> {
+    ) -> Result<Vec<StoredSchema>, LoaderError> {
         // ── Step 1: read existing DB state ──────────────────────────────────
         let name_to_id = self.load_name_to_id_map()?;
 
@@ -372,7 +372,7 @@ impl<'db> Loader<'db> {
     /// Persist resolved schemas with metadata and inheritance relationships.
     fn persist_schemas(
         &self,
-        resolved: &[Schema],
+        resolved: &[StoredSchema],
         stale_with_times: Vec<SchemaWithTimes>,
         current_bank_version: crate::schema::bank::BankVersion,
     ) -> Result<(), LoaderError> {
@@ -394,9 +394,9 @@ impl<'db> Loader<'db> {
         // Build metadata vector
         let metadata: Vec<StoredMetadata> = resolved
             .iter()
-            .map(|schema| {
+            .map(|stored| {
                 let (hash, modified, created) = metadata_map
-                    .get(&schema.id())
+                    .get(&stored.id)
                     .copied()
                     .unwrap_or((Blake3Hash::zero(), None, None));
                 StoredMetadata::new(
@@ -416,10 +416,10 @@ impl<'db> Loader<'db> {
         // Build and save inheritance relationships
         let inheritance_data: Vec<InheritanceRelationship> = resolved
             .iter()
-            .map(|schema| {
+            .map(|stored| {
                 let excludes =
-                    raw_map.get(&schema.id()).cloned().unwrap_or_default();
-                (schema.id(), schema.parent_id(), excludes)
+                    raw_map.get(&stored.id).cloned().unwrap_or_default();
+                (stored.id, stored.parent_id, excludes)
             })
             .collect();
 

@@ -8,7 +8,7 @@ use std::{collections::HashMap, time::SystemTime};
 use crate::{
     db::{BatchReader, Database, DbError},
     schema::{
-        aggregate::{Schema, SchemaId, SchemaName},
+        aggregate::{SchemaId, SchemaName},
         bank::{BankVersion, PropertyBank},
         db_table::{
             BANK_METADATA, BANK_PROPERTY_BY_ID, BANK_PROPERTY_BY_NAME,
@@ -186,7 +186,8 @@ impl QueryPort for Query<'_> {
     fn find_many_by_ids(
         &self,
         ids: &[SchemaId],
-    ) -> Result<std::collections::HashMap<SchemaId, Schema>, Self::Error> {
+    ) -> Result<std::collections::HashMap<SchemaId, StoredSchema>, Self::Error>
+    {
         use std::collections::HashMap;
 
         self.db.batch_read(|reader| {
@@ -217,12 +218,7 @@ impl QueryPort for Query<'_> {
                     )));
                 }
 
-                let schema = Schema::try_from(stored).map_err(
-                    |e: super::error::SchemaError| {
-                        DbError::Deserialization(e.to_string())
-                    },
-                )?;
-                results.insert(*id, schema);
+                results.insert(*id, stored);
             }
 
             Ok(results)
@@ -349,7 +345,10 @@ impl QueryPort for Query<'_> {
     }
 
     #[inline]
-    fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error> {
+    fn find_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<StoredSchema>, Self::Error> {
         let Some(stored) = self
             .db
             .get_owned_by_uuid::<StoredSchema>(SCHEMA_BY_ID, id.into_uuid())?
@@ -372,9 +371,7 @@ impl QueryPort for Query<'_> {
             )));
         }
 
-        Schema::try_from(stored)
-            .map(Some)
-            .map_err(|e| DbError::Deserialization(e.to_string()))
+        Ok(Some(stored))
     }
 
     #[inline]
@@ -493,15 +490,8 @@ impl QueryPort for Query<'_> {
     }
 
     #[inline]
-    fn list(&self) -> Result<Vec<Schema>, Self::Error> {
-        let stored: Vec<StoredSchema> = self.db.list_owned(SCHEMA_BY_ID)?;
-        stored
-            .into_iter()
-            .map(|s| {
-                Schema::try_from(s)
-                    .map_err(|e| DbError::Deserialization(e.to_string()))
-            })
-            .collect()
+    fn list(&self) -> Result<Vec<StoredSchema>, Self::Error> {
+        self.db.list_owned(SCHEMA_BY_ID)
     }
 
     #[inline]

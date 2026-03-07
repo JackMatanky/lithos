@@ -215,6 +215,10 @@ impl Schema {
     /// Unlike [`Schema::new`], no events are emitted.
     #[inline]
     #[must_use]
+    #[expect(
+        dead_code,
+        reason = "Will be removed in Phase 7.9 when aggregate is deleted"
+    )]
     pub(crate) fn reconstruct(
         id: SchemaId,
         name: SchemaName,

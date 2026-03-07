@@ -11,7 +11,7 @@ use tracing::instrument;
 use crate::{
     db::{Database, DbError},
     schema::{
-        aggregate::{Schema, SchemaId},
+        aggregate::SchemaId,
         bank::{BankVersion, PropertyBank},
         db_table::{
             BANK_METADATA, BANK_PROPERTY_BY_ID, BANK_PROPERTY_BY_NAME,
@@ -21,7 +21,7 @@ use crate::{
         },
         hash::Blake3Hash,
         ports::Command as CommandPort,
-        property::{Multiplicity, Optionality},
+        property::{Multiplicity, Optionality, PropertyName},
         raw_file::{RawPropertyBankFile, RawSchemaFile},
         stored::{
             StoredBankProperty, StoredChildSchema, StoredMetadata,
@@ -97,7 +97,7 @@ impl<'db> Command<'db> {
     )]
     pub fn save_many_with_metadata(
         &self,
-        schemas: &[Schema],
+        schemas: &[StoredSchema],
         metadata: &[StoredMetadata],
     ) -> Result<(), DbError> {
         assert_eq!(
@@ -109,22 +109,22 @@ impl<'db> Command<'db> {
         // Validate uniqueness
         let mut name_index = std::collections::HashMap::new();
 
-        for schema in schemas {
-            if name_index.insert(schema.name().clone(), schema.id()).is_some() {
+        for stored in schemas {
+            if name_index.insert(stored.name.clone(), stored.id).is_some() {
                 return Err(DbError::Transaction(format!(
                     "schema name already exists in batch: {}",
-                    schema.name().as_str()
+                    stored.name.as_ref()
                 )));
             }
 
             if let Some(existing) = self.db.get_owned::<SchemaId>(
                 SCHEMA_ID_BY_NAME,
-                schema.name().as_str(),
-            )? && existing != schema.id()
+                stored.name.as_ref(),
+            )? && existing != stored.id
             {
                 return Err(DbError::Transaction(format!(
                     "schema name already exists: {}",
-                    schema.name().as_str()
+                    stored.name.as_ref()
                 )));
             }
         }
@@ -145,24 +145,26 @@ impl<'db> Command<'db> {
                 .map(|(_, stored)| stored.property)
                 .collect();
 
-            let stored = StoredPropertyBank {
+            let stored_bank = StoredPropertyBank {
                 bank_version: bank_metadata.bank_version,
                 recorded_at: bank_metadata.recorded_at,
                 properties,
             };
 
-            let bank = PropertyBank::try_from(stored)
+            let bank = PropertyBank::try_from(stored_bank)
                 .map_err(|e| DbError::Deserialization(e.to_string()))?;
 
             // Validate each schema's property references
-            for schema in schemas {
-                for property in schema.properties() {
-                    if !bank.has(property.name()) {
+            for stored in schemas {
+                for property in &stored.properties {
+                    let prop_name = PropertyName::try_new(&property.name)
+                        .map_err(|e| DbError::Transaction(e.to_string()))?;
+                    if !bank.has(&prop_name) {
                         return Err(DbError::Transaction(format!(
                             "property '{}' in schema '{}' not found in \
                              PropertyBank",
-                            property.name().as_str(),
-                            schema.name().as_str()
+                            property.name.as_ref(),
+                            stored.name.as_ref()
                         )));
                     }
                 }
@@ -174,14 +176,13 @@ impl<'db> Command<'db> {
 
         // Atomic write
         self.db.batch_write(|batch| {
-            for (schema, meta) in schemas.iter().zip(metadata.iter()) {
-                let stored = StoredSchema::from_schema(schema);
-                let id_key = schema.id().into_uuid().to_string();
-                batch.put(SCHEMA_BY_ID, id_key.as_str(), &stored)?;
+            for (stored, meta) in schemas.iter().zip(metadata.iter()) {
+                let id_key = stored.id.into_uuid().to_string();
+                batch.put(SCHEMA_BY_ID, id_key.as_str(), stored)?;
                 batch.put(
                     SCHEMA_ID_BY_NAME,
-                    schema.name().as_str(),
-                    &schema.id(),
+                    stored.name.as_ref(),
+                    &stored.id,
                 )?;
                 batch.put(SCHEMA_METADATA, id_key.as_str(), meta)?;
             }
@@ -234,7 +235,7 @@ impl CommandPort for Command<'_> {
         skip(self, schemas),
         fields(operation = "save_schema_many", record_count = schemas.len())
     )]
-    fn save_many(&self, schemas: &[Schema]) -> Result<(), Self::Error> {
+    fn save_many(&self, schemas: &[StoredSchema]) -> Result<(), Self::Error> {
         // Use default metadata for port trait implementation
         // (tests and simple use cases don't need file timestamps)
         let metadata: Vec<StoredMetadata> = schemas

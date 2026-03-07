@@ -6,8 +6,9 @@
 use std::time::SystemTime;
 
 use super::{
-    aggregate::{Schema, SchemaId, SchemaName},
+    aggregate::{SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
+    stored::StoredSchema,
 };
 use crate::db::BatchReader;
 
@@ -120,11 +121,11 @@ pub trait Command: Send + Sync {
     /// ```ignore
     /// # use lithos_core::schema::ports::Command;
     /// # let command = todo!("Provide a Command implementation");
-    /// # let schemas: Vec<lithos_core::schema::aggregate::Schema> = Vec::new();
+    /// # let schemas: Vec<lithos_core::schema::stored::StoredSchema> = Vec::new();
     /// command.save_many(&schemas)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
-    fn save_many(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
+    fn save_many(&self, schemas: &[StoredSchema]) -> Result<(), Self::Error>;
 
     /// Save the `PropertyBank` to persistence.
     ///
@@ -333,7 +334,10 @@ pub trait Query: Send + Sync {
     /// let _ = query.find_by_id(id)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
-    fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error>;
+    fn find_by_id(
+        &self,
+        id: SchemaId,
+    ) -> Result<Option<StoredSchema>, Self::Error>;
 
     /// Find a schema name-to-ID mapping.
     ///
@@ -385,7 +389,7 @@ pub trait Query: Send + Sync {
     fn find_many_by_ids(
         &self,
         ids: &[SchemaId],
-    ) -> Result<std::collections::HashMap<SchemaId, Schema>, Self::Error>;
+    ) -> Result<std::collections::HashMap<SchemaId, StoredSchema>, Self::Error>;
 
     /// Get the singleton `PropertyBank` registry.
     ///
@@ -484,7 +488,7 @@ pub trait Query: Send + Sync {
     /// let _ = query.list()?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
-    fn list(&self) -> Result<Vec<Schema>, Self::Error>;
+    fn list(&self) -> Result<Vec<StoredSchema>, Self::Error>;
 
     /// Find all direct children of the given parent schemas.
     ///

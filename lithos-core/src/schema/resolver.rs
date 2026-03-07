@@ -1,4 +1,4 @@
-//! `Resolver` — assembles fully-resolved [`Schema`] entities from a
+//! `Resolver` — assembles fully-resolved [`StoredSchema`] entities from a
 //! [`SchemaTree`].
 //!
 //! # Pipeline position
@@ -6,7 +6,7 @@
 //! ```text
 //! Extender → SchemaTree
 //! Resolver        ← here
-//! → Vec<Schema>
+//! → Vec<StoredSchema>
 //! ```
 //!
 //! # Design
@@ -19,13 +19,14 @@
 //! `merge_properties` is a **private** method to prevent callers from
 //! bypassing the correct pipeline.
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use super::{
-    aggregate::{Schema, SchemaId, SchemaName},
+    aggregate::{SchemaId, SchemaName},
     error::SchemaError,
     extender::SchemaTree,
-    property::{Property, PropertyName},
+    property::{Multiplicity, Optionality, Property, PropertyName},
+    stored::{StoredProperty, StoredSchema},
 };
 
 /// Maximum allowed inheritance depth to prevent infinite loops.
@@ -37,18 +38,19 @@ const INHERITANCE_MAX_DEPTH: usize = 10;
 //  Resolver
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Assembles fully-resolved [`Schema`] entities from a [`SchemaTree`].
+/// Assembles fully-resolved [`StoredSchema`] entities from a [`SchemaTree`].
 ///
 /// Stateless: all resolution state is threaded through the arguments.
 ///
 /// **Internal API**: This type is public solely for benchmarking purposes.
-/// Do not depend on it in production code - use `SchemaService` instead.
+/// Do not depend on it in production code - use `Loader` instead.
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct Resolver;
 
 impl Resolver {
-    /// Resolve all schemas in `tree`, returning them as [`Schema`] values.
+    /// Resolve all schemas in `tree`, returning them as [`StoredSchema`]
+    /// values.
     ///
     /// Walks `tree` in topological order (parents before children).  For each
     /// node:
@@ -58,7 +60,7 @@ impl Resolver {
     ///    (a DB-fresh parent), or uses an empty slice for root schemas.
     /// 2. Calls private `merge_properties` to produce the final sorted property
     ///    list.
-    /// 3. Constructs a [`Schema`] via [`Schema::try_new`].
+    /// 3. Constructs a [`StoredSchema`] directly.
     /// 4. Caches the result for use by downstream children.
     ///
     /// # Errors
@@ -71,12 +73,12 @@ impl Resolver {
     #[doc(hidden)]
     pub fn resolve(
         tree: &SchemaTree,
-        known_parents: &HashMap<SchemaId, Schema>,
-    ) -> Result<Vec<Schema>, SchemaError> {
+        known_parents: &HashMap<SchemaId, StoredSchema>,
+    ) -> Result<Vec<StoredSchema>, SchemaError> {
         let order = tree.nodes();
-        let mut resolved_cache: HashMap<SchemaId, Schema> =
+        let mut resolved_cache: HashMap<SchemaId, StoredSchema> =
             HashMap::with_capacity(order.len());
-        let mut results: Vec<Schema> = Vec::with_capacity(order.len());
+        let mut results: Vec<StoredSchema> = Vec::with_capacity(order.len());
 
         for &id in order {
             let node = tree.get(id).ok_or_else(|| {
@@ -97,7 +99,7 @@ impl Resolver {
             }
 
             // Obtain parent's resolved properties.
-            let parent_props: Vec<Arc<Property>> =
+            let parent_props: Vec<Property> =
                 if let Some(parent_id) = node.parent_id {
                     resolved_cache
                         .get(&parent_id)
@@ -117,43 +119,71 @@ impl Resolver {
                                 );
                                 Vec::new()
                             },
-                            |schema| schema.properties().cloned().collect(),
+                            |stored| {
+                                stored
+                                    .properties
+                                    .iter()
+                                    .map(Self::stored_to_property)
+                                    .collect::<Result<Vec<_>, _>>()
+                                    .unwrap_or_default()
+                            },
                         )
                 } else {
                     vec![]
                 };
 
-            // Convert properties to Arc<Property> for zero-allocation sharing.
-            // Parent properties are already Arc-wrapped from the resolved
-            // cache, so when a child inherits them, we only clone
-            // the Arc (cheap pointer copy), not the underlying
-            // Property data.
-            let own_props_arc: Vec<Arc<Property>> =
-                node.properties.iter().map(|p| Arc::new(p.clone())).collect();
-
             let merged = Self::merge_properties(
                 &parent_props,
-                &own_props_arc,
+                &node.properties,
                 &node.excludes,
             );
 
-            let name = SchemaName::try_new(&node.name)?;
+            // Validate name (should always succeed since it passed earlier
+            // validation)
+            let _name_check = SchemaName::try_new(&node.name)?;
 
-            // Use resolve_existing for schemas already in DB to avoid emitting
-            // SchemaCreated event for existing schemas (only emit
-            // SchemaResolved)
-            let is_new_schema = !known_parents.contains_key(&id);
-            let schema = if is_new_schema {
-                Schema::try_new(id, name, node.parent_id, merged)?
-            } else {
-                Schema::resolve_existing(id, name, node.parent_id, merged)?
+            // Build StoredSchema directly
+            let stored_properties: Vec<StoredProperty> = merged
+                .into_iter()
+                .map(|p| StoredProperty {
+                    id: p.id(),
+                    name: p.name().as_str().into(),
+                    required: p.optionality() == Optionality::Required,
+                    multi: p.multiplicity() == Multiplicity::Many,
+                    spec: p.spec().clone(),
+                })
+                .collect();
+
+            let stored = StoredSchema {
+                id,
+                name: node.name.clone(),
+                parent_id: node.parent_id,
+                properties: stored_properties,
             };
 
-            resolved_cache.insert(id, schema.clone());
-            results.push(schema);
+            resolved_cache.insert(id, stored.clone());
+            results.push(stored);
         }
 
         Ok(results)
+    }
+
+    /// Convert a `StoredProperty` to a `Property`.
+    ///
+    /// Used when retrieving parent properties from the cache.
+    fn stored_to_property(
+        sp: &StoredProperty,
+    ) -> Result<Property, SchemaError> {
+        let name = PropertyName::try_new(&sp.name)?;
+        let optionality = Optionality::from(sp.required);
+        let multiplicity = Multiplicity::from(sp.multi);
+        Ok(Property::new(
+            sp.id,
+            name,
+            optionality,
+            multiplicity,
+            sp.spec.clone(),
+        ))
     }
 
     /// Merge parent and own properties into a single sorted vector, applying
@@ -168,8 +198,8 @@ impl Resolver {
     ///
     /// [`Dereferencer`]: super::dereferencer::Dereferencer
     fn merge_properties(
-        parent: &[Arc<Property>],
-        own: &[Arc<Property>],
+        parent: &[Property],
+        own: &[Property],
         excludes: &[Box<str>],
     ) -> Vec<Property> {
         let capacity = parent.len().saturating_add(own.len());
@@ -191,13 +221,12 @@ impl Resolver {
                             p_iter.next();
                         }
                         Ordering::Greater => {
-                            // Clone the Arc's inner Property
-                            result.push((**c).clone());
+                            result.push(c.clone());
                             c_iter.next();
                         }
                         Ordering::Equal => {
                             // Child overrides parent
-                            result.push((**c).clone());
+                            result.push(c.clone());
                             p_iter.next();
                             c_iter.next();
                         }
@@ -208,7 +237,7 @@ impl Resolver {
                     p_iter.next();
                 }
                 (None, Some(&c)) => {
-                    result.push((**c).clone());
+                    result.push(c.clone());
                     c_iter.next();
                 }
                 (None, None) => break,
@@ -221,12 +250,11 @@ impl Resolver {
     #[inline]
     fn push_unless_excluded(
         result: &mut Vec<Property>,
-        prop: &Arc<Property>,
+        prop: &Property,
         excludes: &[Box<str>],
     ) {
         if !Self::is_excluded(prop.name(), excludes) {
-            // Clone the Arc's inner Property
-            result.push((**prop).clone());
+            result.push(prop.clone());
         }
     }
 
@@ -252,7 +280,7 @@ mod tests {
 
     use super::*;
     use crate::schema::{
-        aggregate::{Schema, SchemaId, SchemaName},
+        aggregate::SchemaId,
         dereferencer::DereferencedSchema,
         error::SchemaError,
         extender::Extender,
@@ -260,6 +288,7 @@ mod tests {
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec},
+        stored::StoredSchema,
     };
 
     mod fixtures {
@@ -341,9 +370,9 @@ mod tests {
             let result = Resolver::resolve(&tree, &HashMap::new())?;
 
             assert_eq!(result.len(), 1);
-            let schema = &result[0];
-            assert_eq!(schema.name().as_str(), "root");
-            assert_eq!(schema.properties().count(), 1);
+            let stored = &result[0];
+            assert_eq!(stored.name.as_ref(), "root");
+            assert_eq!(stored.properties.len(), 1);
             Ok(())
         }
 
@@ -371,11 +400,11 @@ mod tests {
 
             let child = result
                 .iter()
-                .find(|s| s.name().as_str() == "child")
+                .find(|s| s.name.as_ref() == "child")
                 .expect("child schema in result");
 
             let prop_names: Vec<&str> =
-                child.properties().map(|p| p.name().as_str()).collect();
+                child.properties.iter().map(|p| p.name.as_ref()).collect();
             assert!(
                 prop_names.contains(&"from-parent"),
                 "Child should inherit parent's property; got: {prop_names:?}"
@@ -424,14 +453,17 @@ mod tests {
 
             let child = result
                 .iter()
-                .find(|s| s.name().as_str() == "child")
+                .find(|s| s.name.as_ref() == "child")
                 .expect("child in result");
-            let prop_name = PropertyName::try_new("shared")?;
-            let shared = child.get(&prop_name).expect("shared property");
-            assert_eq!(
-                shared.optionality(),
-                Optionality::Optional,
-                "Child should override parent's optionality"
+            let shared = child
+                .properties
+                .iter()
+                .find(|p| p.name.as_ref() == "shared")
+                .expect("shared property");
+            assert!(
+                !shared.required,
+                "Child should override parent's optionality (should be \
+                 optional/not required)"
             );
             Ok(())
         }
@@ -459,11 +491,12 @@ mod tests {
 
             let child = result
                 .iter()
-                .find(|s| s.name().as_str() == "child")
+                .find(|s| s.name.as_ref() == "child")
                 .expect("child in result");
-            let excl_name = PropertyName::try_new("excluded")?;
+            let has_excluded =
+                child.properties.iter().any(|p| p.name.as_ref() == "excluded");
             assert!(
-                !child.has(&excl_name),
+                !has_excluded,
                 "Excluded property should be absent from child"
             );
             Ok(())
@@ -475,14 +508,21 @@ mod tests {
             let child_id = SchemaId::from_uuid(CHILD_ID);
 
             let parent_prop = fixtures::bool_property("db-prop")?;
-            let parent_schema = Schema::reconstruct(
-                parent_id,
-                SchemaName::try_new("parent")?,
-                None,
-                vec![parent_prop],
-            );
+            let parent_stored = StoredSchema {
+                id: parent_id,
+                name: "parent".into(),
+                parent_id: None,
+                properties: vec![StoredProperty {
+                    id: parent_prop.id(),
+                    name: parent_prop.name().as_str().into(),
+                    required: parent_prop.optionality()
+                        == Optionality::Required,
+                    multi: parent_prop.multiplicity() == Multiplicity::Many,
+                    spec: parent_prop.spec().clone(),
+                }],
+            };
             let mut known_parents = HashMap::new();
-            known_parents.insert(parent_id, parent_schema);
+            known_parents.insert(parent_id, parent_stored);
 
             let derefed = vec![fixtures::simple_derefed(
                 child_id,
@@ -495,11 +535,12 @@ mod tests {
 
             let child = result
                 .iter()
-                .find(|s| s.name().as_str() == "child")
+                .find(|s| s.name.as_ref() == "child")
                 .expect("child in result");
-            let prop_name = PropertyName::try_new("db-prop")?;
+            let has_db_prop =
+                child.properties.iter().any(|p| p.name.as_ref() == "db-prop");
             assert!(
-                child.has(&prop_name),
+                has_db_prop,
                 "Child should inherit DB-fresh parent property"
             );
             Ok(())

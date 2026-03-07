@@ -28,10 +28,11 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::{
-    aggregate::{Schema, SchemaId, SchemaName},
+    aggregate::{SchemaId, SchemaName},
     dereferencer::DereferencedSchema,
     error::SchemaError,
     property::Property,
+    stored::StoredSchema,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -219,7 +220,7 @@ impl Extender {
     #[doc(hidden)]
     pub fn build(
         derefed: Vec<(SchemaId, DereferencedSchema)>,
-        known_parents: &HashMap<SchemaId, Schema>,
+        known_parents: &HashMap<SchemaId, StoredSchema>,
     ) -> Result<SchemaTree, SchemaError> {
         // Phase 1: build name ↔ id indexes.
         let (name_to_id, id_to_name) =
@@ -253,7 +254,7 @@ impl Extender {
     /// lifetime issues.  `Box<str>: Borrow<str>` so `HashMap::get(&str)` works.
     fn build_name_indexes(
         derefed: &[(SchemaId, DereferencedSchema)],
-        known_parents: &HashMap<SchemaId, Schema>,
+        known_parents: &HashMap<SchemaId, StoredSchema>,
     ) -> Result<NameIndexes, SchemaError> {
         let cap = derefed.len();
         let mut name_to_id: HashMap<Box<str>, SchemaId> =
@@ -268,8 +269,8 @@ impl Extender {
             reason = "Insertion order of DB-fresh parents is irrelevant; all \
                       entries are written to name_to_id unconditionally"
         )]
-        for (id, schema) in known_parents {
-            name_to_id.insert(schema.name().as_str().into(), *id);
+        for (id, stored) in known_parents {
+            name_to_id.insert(stored.name.clone(), *id);
         }
         #[expect(
             clippy::pattern_type_mismatch,
@@ -280,7 +281,7 @@ impl Extender {
             if name_to_id.insert(deref.name.clone(), *id).is_some()
                 && !known_parents
                     .values()
-                    .any(|s| s.name().as_str() == deref.name.as_ref())
+                    .any(|s| s.name.as_ref() == deref.name.as_ref())
             {
                 return Err(SchemaError::AlreadyExists(deref.name.to_string()));
             }
@@ -331,7 +332,7 @@ impl Extender {
     /// Phase 3 — DFS cycle detection over in-batch nodes.
     fn detect_cycles(
         nodes: &HashMap<SchemaId, SchemaNode>,
-        known_parents: &HashMap<SchemaId, Schema>,
+        known_parents: &HashMap<SchemaId, StoredSchema>,
         id_to_name: &HashMap<SchemaId, Box<str>>,
     ) -> Result<(), SchemaError> {
         let mut checker = CycleChecker {
@@ -371,7 +372,7 @@ impl Extender {
     /// schemas.
     fn compute_depths(
         nodes: &mut HashMap<SchemaId, SchemaNode>,
-        known_parents: &HashMap<SchemaId, Schema>,
+        known_parents: &HashMap<SchemaId, StoredSchema>,
     ) {
         // Build depth map via BFS from roots
         let mut depths = HashMap::with_capacity(nodes.len());
@@ -529,7 +530,7 @@ impl Extender {
 /// DFS cycle checker holding shared references to avoid >5 arguments.
 struct CycleChecker<'graph> {
     nodes: &'graph HashMap<SchemaId, SchemaNode>,
-    known_parents: &'graph HashMap<SchemaId, Schema>,
+    known_parents: &'graph HashMap<SchemaId, StoredSchema>,
     id_to_name: &'graph HashMap<SchemaId, Box<str>>,
     visited: HashSet<SchemaId>,
     in_progress: HashSet<SchemaId>,
@@ -580,8 +581,7 @@ mod tests {
 
     use super::*;
     use crate::schema::{
-        aggregate::{Schema, SchemaId, SchemaName},
-        error::SchemaError,
+        aggregate::SchemaId, error::SchemaError, stored::StoredSchema,
     };
 
     mod fixtures {
@@ -665,14 +665,14 @@ mod tests {
             let parent_id = SchemaId::from_uuid(PARENT_ID);
             let child_id = SchemaId::from_uuid(CHILD_ID);
 
-            let parent_schema = Schema::reconstruct(
-                parent_id,
-                SchemaName::try_new("parent")?,
-                None,
-                Vec::new(),
-            );
+            let parent_stored = StoredSchema {
+                id: parent_id,
+                name: "parent".into(),
+                parent_id: None,
+                properties: Vec::new(),
+            };
             let mut known_parents = HashMap::new();
-            known_parents.insert(parent_id, parent_schema);
+            known_parents.insert(parent_id, parent_stored);
 
             let derefed = vec![fixtures::simple_derefed(
                 child_id,
