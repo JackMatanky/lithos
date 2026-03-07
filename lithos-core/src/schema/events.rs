@@ -545,6 +545,41 @@ pub enum PropertyBankEvent {
     },
 }
 
+// ============================================================================
+// Event Handlers (Phase 3)
+// ============================================================================
+
+/// Handler for schema pipeline events.
+///
+/// Implementations can perform logging, metrics collection, or reactive
+/// coordination based on pipeline events.
+///
+/// # Examples
+/// ```
+/// use lithos_core::schema::events::{
+///     PropertyBankEvent, SchemaEvent, SchemaEventHandler,
+/// };
+///
+/// struct MyHandler;
+///
+/// impl SchemaEventHandler for MyHandler {
+///     fn handle_property_bank(&self, event: &PropertyBankEvent) {
+///         // Handle property bank events
+///     }
+///
+///     fn handle_schema(&self, event: &SchemaEvent) {
+///         // Handle schema events
+///     }
+/// }
+/// ```
+pub trait SchemaEventHandler: Send + Sync {
+    /// Handle a property bank pipeline event.
+    fn handle_property_bank(&self, event: &PropertyBankEvent);
+
+    /// Handle a schema pipeline event.
+    fn handle_schema(&self, event: &SchemaEvent);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
