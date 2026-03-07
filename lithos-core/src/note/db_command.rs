@@ -29,9 +29,7 @@ use crate::{
         paths::NotePath,
         ports::Command,
         position::SourceByteOffset,
-        stored::{
-            StoredLocationRange, StoredNote, StoredTask, metadata_index_keys,
-        },
+        stored::{StoredNote, StoredTask, metadata_index_keys},
         structure::Heading,
         task::{TaskId, TaskMetadata, TaskText},
         value::FieldValue,
@@ -201,23 +199,6 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             .as_ref()
             .and_then(|fm| fm.title(self.config))
             .map(Into::into);
-        let heading_locations = parsed
-            .headings()
-            .iter()
-            .map(|heading| parsed.location_for_offset(heading.position()))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error: NoteError| DbError::Table(error.to_string()))?;
-        let section_locations = parsed
-            .sections()
-            .iter()
-            .map(|section| {
-                let range = section.range();
-                let start = parsed.location_for_offset(range.start())?;
-                let end = parsed.location_for_offset(range.end())?;
-                Ok(StoredLocationRange::new(start, end))
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error: NoteError| DbError::Table(error.to_string()))?;
         let source_bytes =
             u64::try_from(parsed.source().len()).map_err(|error| {
                 DbError::Table(format!("source length out of range: {error}"))
@@ -232,9 +213,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             frontmatter,
             parsed.tags().to_vec(),
             parsed.headings().to_vec(),
-            Some(heading_locations),
             parsed.sections().to_vec(),
-            Some(section_locations),
             parsed.links().to_vec(),
             source_hash.into_boxed_str(),
             source_bytes,

@@ -40,9 +40,7 @@ pub struct StoredNote {
     frontmatter: Option<Frontmatter>,
     tags: Vec<Tag>,
     headings: Vec<Heading>,
-    heading_locations: Option<Vec<SourceLocation>>,
     sections: Vec<Section>,
-    section_locations: Option<Vec<StoredLocationRange>>,
     links: Vec<Link>,
     source_hash: Box<str>,
     source_bytes: u64,
@@ -68,9 +66,7 @@ impl StoredNote {
         frontmatter: Option<Frontmatter>,
         tags: Vec<Tag>,
         headings: Vec<Heading>,
-        heading_locations: Option<Vec<SourceLocation>>,
         sections: Vec<Section>,
-        section_locations: Option<Vec<StoredLocationRange>>,
         links: Vec<Link>,
         source_hash: Box<str>,
         source_bytes: u64,
@@ -85,9 +81,7 @@ impl StoredNote {
             frontmatter,
             tags,
             headings,
-            heading_locations,
             sections,
-            section_locations,
             links,
             source_hash,
             source_bytes,
@@ -135,20 +129,8 @@ impl StoredNote {
 
     #[inline]
     #[must_use]
-    pub fn heading_locations(&self) -> Option<&[SourceLocation]> {
-        self.heading_locations.as_deref()
-    }
-
-    #[inline]
-    #[must_use]
     pub fn sections(&self) -> &[Section] {
         &self.sections
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn section_locations(&self) -> Option<&[StoredLocationRange]> {
-        self.section_locations.as_deref()
     }
 
     #[inline]
@@ -185,38 +167,6 @@ impl StoredNote {
     #[must_use]
     pub fn last_indexed_at(&self) -> SystemTime {
         self.last_indexed_at
-    }
-}
-
-/// Stored start/end locations for a source range.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct StoredLocationRange {
-    start: SourceLocation,
-    end: SourceLocation,
-}
-
-impl StoredLocationRange {
-    #[inline]
-    #[must_use]
-    pub const fn new(start: SourceLocation, end: SourceLocation) -> Self {
-        Self {
-            start,
-            end,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn start(&self) -> SourceLocation {
-        self.start
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn end(&self) -> SourceLocation {
-        self.end
     }
 }
 
@@ -479,10 +429,7 @@ mod tests {
 
     use super::*;
     use crate::note::{
-        error::NoteError,
-        position::{SourceColumn, SourceLine, SourceLocation},
-        structure::HeadingLevel,
-        value::FieldValue,
+        error::NoteError, structure::HeadingLevel, value::FieldValue,
     };
 
     fn system_time_after(seconds: u64) -> Result<SystemTime, NoteError> {
@@ -508,11 +455,6 @@ mod tests {
             "Heading",
             SourceByteOffset::new(0),
         )?];
-        let heading_locations = Some(vec![SourceLocation::new(
-            SourceByteOffset::new(0),
-            SourceLine::try_new(1)?,
-            SourceColumn::try_new(1)?,
-        )]);
         let sections = vec![Section::new(
             headings.first().cloned(),
             crate::note::position::SourceByteRange::new(
@@ -520,18 +462,6 @@ mod tests {
                 SourceByteOffset::new(10),
             )?,
         )];
-        let section_locations = Some(vec![StoredLocationRange::new(
-            SourceLocation::new(
-                SourceByteOffset::new(0),
-                SourceLine::try_new(1)?,
-                SourceColumn::try_new(1)?,
-            ),
-            SourceLocation::new(
-                SourceByteOffset::new(10),
-                SourceLine::try_new(1)?,
-                SourceColumn::try_new(11)?,
-            ),
-        )]);
         let links = Vec::new();
         let source_hash = "hash".into();
         let source_bytes = 10u64;
@@ -546,9 +476,7 @@ mod tests {
             Some(frontmatter),
             tags,
             headings,
-            heading_locations,
             sections,
-            section_locations,
             links,
             source_hash,
             source_bytes,
@@ -566,9 +494,7 @@ mod tests {
         assert_eq!(note.title(), Some("Example"));
         assert_eq!(note.tags().len(), 1);
         assert_eq!(note.headings().len(), 1);
-        assert!(note.heading_locations().is_some());
         assert_eq!(note.sections().len(), 1);
-        assert!(note.section_locations().is_some());
         assert_eq!(note.links().len(), 0);
         assert_eq!(note.source_hash(), "hash");
         assert_eq!(note.source_bytes(), 10);
