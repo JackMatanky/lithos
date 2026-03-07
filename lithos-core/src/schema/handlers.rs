@@ -319,6 +319,147 @@ impl SchemaEventHandler for MetricsHandler {
     }
 }
 
+// ============================================================================
+// Test Utilities
+// ============================================================================
+
+/// Test utility for recording events emitted during pipeline execution.
+///
+/// This handler collects all events in memory for testing and assertions.
+///
+/// # Examples
+/// ```
+/// # use lithos_core::schema::handlers::EventCollector;
+/// # use lithos_core::schema::events::{SchemaEvent, SchemaEventHandler};
+/// # use std::path::PathBuf;
+/// let collector = EventCollector::new();
+/// collector.handle_schema(&SchemaEvent::ScanStarted {
+///     directory: PathBuf::from("/vault/schemas"),
+/// });
+///
+/// let events = collector.schema_events();
+/// assert_eq!(events.len(), 1);
+/// ```
+#[derive(Debug, Default)]
+pub struct EventCollector {
+    schema_events: std::sync::Mutex<Vec<SchemaEvent>>,
+    property_bank_events: std::sync::Mutex<Vec<PropertyBankEvent>>,
+}
+
+impl EventCollector {
+    /// Create a new event collector.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Get all collected schema events.
+    ///
+    /// # Panics
+    /// Panics if the internal mutex is poisoned (rare, only if a panic
+    /// occurred while holding the lock).
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "Mutex poisoning is exceptional - intentional panic on \
+                  poisoned lock"
+    )]
+    pub fn schema_events(&self) -> Vec<SchemaEvent> {
+        self.schema_events.lock().expect("Lock poisoned").clone()
+    }
+
+    /// Get all collected property bank events.
+    ///
+    /// # Panics
+    /// Panics if the internal mutex is poisoned (rare, only if a panic
+    /// occurred while holding the lock).
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "Mutex poisoning is exceptional - intentional panic on \
+                  poisoned lock"
+    )]
+    pub fn property_bank_events(&self) -> Vec<PropertyBankEvent> {
+        self.property_bank_events.lock().expect("Lock poisoned").clone()
+    }
+
+    /// Clear all collected events.
+    ///
+    /// # Panics
+    /// Panics if the internal mutex is poisoned (rare, only if a panic
+    /// occurred while holding the lock).
+    #[inline]
+    #[expect(
+        clippy::expect_used,
+        reason = "Mutex poisoning is exceptional - intentional panic on \
+                  poisoned lock"
+    )]
+    pub fn clear(&self) {
+        self.schema_events.lock().expect("Lock poisoned").clear();
+        self.property_bank_events.lock().expect("Lock poisoned").clear();
+    }
+
+    /// Get the count of schema events.
+    ///
+    /// # Panics
+    /// Panics if the internal mutex is poisoned (rare, only if a panic
+    /// occurred while holding the lock).
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "Mutex poisoning is exceptional - intentional panic on \
+                  poisoned lock"
+    )]
+    pub fn schema_event_count(&self) -> usize {
+        self.schema_events.lock().expect("Lock poisoned").len()
+    }
+
+    /// Get the count of property bank events.
+    ///
+    /// # Panics
+    /// Panics if the internal mutex is poisoned (rare, only if a panic
+    /// occurred while holding the lock).
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "Mutex poisoning is exceptional - intentional panic on \
+                  poisoned lock"
+    )]
+    pub fn property_bank_event_count(&self) -> usize {
+        self.property_bank_events.lock().expect("Lock poisoned").len()
+    }
+}
+
+impl SchemaEventHandler for EventCollector {
+    #[inline]
+    #[expect(
+        clippy::expect_used,
+        reason = "Mutex poisoning is exceptional - intentional panic on \
+                  poisoned lock"
+    )]
+    fn handle_property_bank(&self, event: &PropertyBankEvent) {
+        self.property_bank_events
+            .lock()
+            .expect("Lock poisoned")
+            .push(event.clone());
+    }
+
+    #[inline]
+    #[expect(
+        clippy::expect_used,
+        reason = "Mutex poisoning is exceptional - intentional panic on \
+                  poisoned lock"
+    )]
+    fn handle_schema(&self, event: &SchemaEvent) {
+        self.schema_events.lock().expect("Lock poisoned").push(event.clone());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
