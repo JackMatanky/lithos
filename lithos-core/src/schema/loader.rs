@@ -54,6 +54,7 @@ use crate::schema::{
     error::{
         SchemaCommandError, SchemaError, SchemaIngestionError, SchemaQueryError,
     },
+    events::{PropertyBankEvent, SchemaEvent, SchemaEventHandler},
     extender::Extender,
     ingestor::Ingestor,
     ports::{Command as _, Query as _},
@@ -98,6 +99,7 @@ pub enum LoaderError {
 pub struct Loader<'db> {
     query: db_query::Query<'db>,
     command: db_command::Command<'db>,
+    event_handlers: Vec<Box<dyn SchemaEventHandler>>,
 }
 
 // Type aliases for complex tuples used in service methods
@@ -127,6 +129,37 @@ impl<'db> Loader<'db> {
         Self {
             query,
             command,
+            event_handlers: Vec::new(),
+        }
+    }
+
+    /// Add an event handler to the loader.
+    ///
+    /// Event handlers receive notifications at each pipeline stage for
+    /// observability and reactive coordination.
+    #[inline]
+    #[must_use]
+    pub fn with_event_handler(
+        mut self,
+        handler: Box<dyn SchemaEventHandler>,
+    ) -> Self {
+        self.event_handlers.push(handler);
+        self
+    }
+
+    /// Emit a schema event to all registered handlers.
+    #[inline]
+    fn emit_schema(&self, event: &SchemaEvent) {
+        for handler in &self.event_handlers {
+            handler.handle_schema(event);
+        }
+    }
+
+    /// Emit a property bank event to all registered handlers.
+    #[inline]
+    fn emit_property_bank(&self, event: &PropertyBankEvent) {
+        for handler in &self.event_handlers {
+            handler.handle_property_bank(event);
         }
     }
 
@@ -158,6 +191,9 @@ impl<'db> Loader<'db> {
 
         // ── Step 3: scan raw schemas ────────────────────────────────────────
         let raw_schemas_with_times = ingestor.scan_raw_schemas()?;
+        self.emit_schema(&SchemaEvent::ScanCompleted {
+            file_count: raw_schemas_with_times.len(),
+        });
 
         // ── Step 4: staleness partitioning ─────────────────────────────────
         let (stale, fresh_ids) = self.partition_by_staleness(
@@ -191,6 +227,9 @@ impl<'db> Loader<'db> {
             "schema tree built"
         );
         let resolved = Resolver::resolve(&tree, &known_parents)?;
+        self.emit_schema(&SchemaEvent::SchemaResolutionCompleted {
+            schema_count: resolved.len(),
+        });
 
         // ── Step 7: persist ─────────────────────────────────────────────────
         if !resolved.is_empty() {
@@ -204,6 +243,9 @@ impl<'db> Loader<'db> {
         self.command
             .save_property_bank(&bank)
             .map_err(SchemaCommandError::from)?;
+        self.emit_property_bank(&PropertyBankEvent::Persisted {
+            version: current_bank_version,
+        });
 
         Ok(resolved)
     }
