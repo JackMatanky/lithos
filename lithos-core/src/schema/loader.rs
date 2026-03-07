@@ -227,6 +227,15 @@ impl<'db> Loader<'db> {
             "schema tree built"
         );
         let resolved = Resolver::resolve(&tree, &known_parents)?;
+
+        // Emit per-schema resolution events
+        for stored in &resolved {
+            self.emit_schema(&SchemaEvent::SchemaResolved {
+                name: stored.name.to_string().into_boxed_str(),
+                id: stored.id,
+            });
+        }
+
         self.emit_schema(&SchemaEvent::SchemaResolutionCompleted {
             schema_count: resolved.len(),
         });
@@ -280,16 +289,50 @@ impl<'db> Loader<'db> {
                 .map_err(SchemaQueryError::from)?;
 
             if is_stale {
+                self.emit_property_bank(
+                    &crate::schema::events::PropertyBankEvent::Stale {
+                        reason: crate::schema::events::StalenessReason::ContentChanged,
+                    },
+                );
+                self.emit_property_bank(
+                    &crate::schema::events::PropertyBankEvent::ResolutionStarted,
+                );
                 let raw_bank = ingestor.load_raw_property_bank()?;
                 let rebuilt_bank =
                     PropertyBank::try_from_raw(raw_bank, Some(&stored))?;
+                self.emit_property_bank(
+                    &crate::schema::events::PropertyBankEvent::Resolved {
+                        property_count: rebuilt_bank.all().count(),
+                        version: rebuilt_bank.version(),
+                    },
+                );
                 (rebuilt_bank, true)
             } else {
+                self.emit_property_bank(
+                    &crate::schema::events::PropertyBankEvent::Fresh {
+                        version: stored_version,
+                    },
+                );
                 (stored, false)
             }
         } else {
+            // New bank (no stored version) - always requires resolution
+            self.emit_property_bank(
+                &crate::schema::events::PropertyBankEvent::Stale {
+                    reason: crate::schema::events::StalenessReason::New,
+                },
+            );
+            self.emit_property_bank(
+                &crate::schema::events::PropertyBankEvent::ResolutionStarted,
+            );
             let raw_bank = ingestor.load_raw_property_bank()?;
             let new_bank = PropertyBank::try_from_raw(raw_bank, None)?;
+            self.emit_property_bank(
+                &crate::schema::events::PropertyBankEvent::Resolved {
+                    property_count: new_bank.all().count(),
+                    version: new_bank.version(),
+                },
+            );
             (new_bank, true)
         };
 
@@ -297,6 +340,11 @@ impl<'db> Loader<'db> {
     }
 
     /// Partition schemas into stale and fresh based on staleness checks.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Event emissions add necessary observability; function is \
+                  already well-structured"
+    )]
     fn partition_by_staleness(
         &self,
         raw_schemas_with_times: &[RawSchemaWithTimes],
@@ -402,8 +450,30 @@ impl<'db> Loader<'db> {
             let is_stale = bank_stale || schema_stale;
 
             if is_stale {
+                // Determine staleness reason: new if ID not in name_to_id
+                let is_new =
+                    !name_to_id.values().any(|&existing_id| existing_id == id);
+                let reason = if is_new {
+                    crate::schema::events::StalenessReason::New
+                } else if bank_stale {
+                    crate::schema::events::StalenessReason::BankVersionChanged
+                } else {
+                    crate::schema::events::StalenessReason::ContentChanged
+                };
+
+                self.emit_schema(
+                    &crate::schema::events::SchemaEvent::SchemaStale {
+                        name: raw_schema.name.clone(),
+                        reason,
+                    },
+                );
                 stale.push((id, raw_schema, hash, modified, created));
             } else {
+                self.emit_schema(
+                    &crate::schema::events::SchemaEvent::SchemaFresh {
+                        name: raw_schema.name.clone(),
+                    },
+                );
                 fresh_ids.push(id);
             }
         }
@@ -454,6 +524,16 @@ impl<'db> Loader<'db> {
         self.command
             .save_many_with_metadata(resolved, &metadata)
             .map_err(SchemaCommandError::from)?;
+
+        // Emit persistence events for each schema
+        for stored in resolved {
+            self.emit_schema(
+                &crate::schema::events::SchemaEvent::SchemaPersisted {
+                    name: stored.name.to_string().into_boxed_str(),
+                    id: stored.id,
+                },
+            );
+        }
 
         // Build and save inheritance relationships
         let inheritance_data: Vec<InheritanceRelationship> = resolved
