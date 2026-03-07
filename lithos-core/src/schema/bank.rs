@@ -354,6 +354,76 @@ impl PropertyBank {
     fn add_event(&mut self, event: Events) {
         self.pending_events.get_or_insert_with(Vec::new).push(event);
     }
+
+    /// Compare this `PropertyBank` with another to find changed properties.
+    ///
+    /// Returns the names of properties that differ between the two banks.
+    /// A property is considered changed if:
+    /// - It exists in `other` but not in `self` (added)
+    /// - It exists in `self` but not in `other` (removed)
+    /// - The spec differs between `self` and `other` (modified)
+    ///
+    /// Property IDs are ignored for comparison (only name and spec matter).
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_core::schema::bank::PropertyBank;
+    /// # use lithos_core::schema::property::{
+    /// #     Multiplicity, Optionality, Property, PropertyId, PropertyName,
+    /// # };
+    /// # use lithos_core::schema::property_spec::{PropertySpec, BoolSpec};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut bank1 = PropertyBank::new();
+    /// let mut bank2 = PropertyBank::new();
+    ///
+    /// let name = PropertyName::try_new("flag")?;
+    /// let prop1 = Property::new(
+    ///     PropertyId::new(),
+    ///     name.clone(),
+    ///     Optionality::Optional,
+    ///     Multiplicity::Single,
+    ///     PropertySpec::Bool(BoolSpec::default()),
+    /// );
+    /// bank1.register(prop1)?;
+    ///
+    /// // bank2 is empty, so "flag" is a changed property
+    /// let changed = bank1.diff_property_bank(&bank2);
+    /// assert_eq!(changed.len(), 1);
+    /// assert_eq!(changed.first().map(|n| n.as_ref()), Some("flag"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn diff_property_bank(&self, other: &Self) -> Vec<PropertyName> {
+        let mut changed = Vec::new();
+
+        // Check for added or modified properties (in self but different in
+        // other)
+        for (name, prop) in &self.properties {
+            if let Some(other_prop) = other.properties.get(name) {
+                // Property exists in both - check if spec changed
+                if prop.spec() != other_prop.spec()
+                    || prop.optionality() != other_prop.optionality()
+                    || prop.multiplicity() != other_prop.multiplicity()
+                {
+                    changed.push(name.clone());
+                }
+            } else {
+                // Property added (exists in self, not in other)
+                changed.push(name.clone());
+            }
+        }
+
+        // Check for removed properties (in other but not in self)
+        for name in other.properties.keys() {
+            if !self.properties.contains_key(name) {
+                changed.push(name.clone());
+            }
+        }
+
+        changed
+    }
 }
 
 impl Default for PropertyBank {
@@ -841,6 +911,129 @@ mod tests {
             for handle in handles {
                 handle.join().expect("Thread join succeeded");
             }
+        }
+
+        #[test]
+        fn diff_property_bank_detects_added_property() {
+            use crate::schema::property_spec::{BoolSpec, PropertySpec};
+
+            let mut bank1 = PropertyBank::new();
+            let bank2 = PropertyBank::new();
+
+            let name =
+                PropertyName::try_new("flag").expect("Valid property name");
+            let prop = Property::new(
+                PropertyId::new(),
+                name.clone(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::Bool(BoolSpec::default()),
+            );
+            bank1.register(prop).expect("Registration succeeds");
+
+            let changed = bank1.diff_property_bank(&bank2);
+            assert_eq!(changed.len(), 1, "Should detect one changed property");
+            assert_eq!(changed.first().map(PropertyName::as_ref), Some("flag"));
+        }
+
+        #[test]
+        fn diff_property_bank_detects_removed_property() {
+            use crate::schema::property_spec::{BoolSpec, PropertySpec};
+
+            let bank1 = PropertyBank::new();
+            let mut bank2 = PropertyBank::new();
+
+            let name =
+                PropertyName::try_new("flag").expect("Valid property name");
+            let prop = Property::new(
+                PropertyId::new(),
+                name.clone(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::Bool(BoolSpec::default()),
+            );
+            bank2.register(prop).expect("Registration succeeds");
+
+            let changed = bank1.diff_property_bank(&bank2);
+            assert_eq!(changed.len(), 1, "Should detect one changed property");
+            assert_eq!(changed.first().map(PropertyName::as_ref), Some("flag"));
+        }
+
+        #[test]
+        fn diff_property_bank_no_changes_for_identical_banks() {
+            use crate::schema::property_spec::{BoolSpec, PropertySpec};
+
+            let mut bank1 = PropertyBank::new();
+            let mut bank2 = PropertyBank::new();
+
+            let name =
+                PropertyName::try_new("flag").expect("Valid property name");
+
+            // Add identical property to both banks (different IDs are OK)
+            let prop1 = Property::new(
+                PropertyId::new(),
+                name.clone(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::Bool(BoolSpec::default()),
+            );
+            bank1.register(prop1).expect("Registration succeeds");
+
+            let prop2 = Property::new(
+                PropertyId::new(), // Different ID
+                name.clone(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::Bool(BoolSpec::default()),
+            );
+            bank2.register(prop2).expect("Registration succeeds");
+
+            let changed = bank1.diff_property_bank(&bank2);
+            assert_eq!(
+                changed.len(),
+                0,
+                "Should detect no changes for identical specs"
+            );
+        }
+
+        #[test]
+        fn diff_property_bank_detects_modified_spec() {
+            use crate::schema::property_spec::{
+                BoolSpec, PropertySpec, StringSpec,
+            };
+
+            let mut bank1 = PropertyBank::new();
+            let mut bank2 = PropertyBank::new();
+
+            let name =
+                PropertyName::try_new("field").expect("Valid property name");
+
+            // Add property with BoolSpec to bank1
+            let prop1 = Property::new(
+                PropertyId::new(),
+                name.clone(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::Bool(BoolSpec::default()),
+            );
+            bank1.register(prop1).expect("Registration succeeds");
+
+            // Add property with StringSpec to bank2 (different spec)
+            let prop2 = Property::new(
+                PropertyId::new(),
+                name.clone(),
+                Optionality::Optional,
+                Multiplicity::Single,
+                PropertySpec::String(StringSpec::default()),
+            );
+            bank2.register(prop2).expect("Registration succeeds");
+
+            let changed = bank1.diff_property_bank(&bank2);
+            assert_eq!(changed.len(), 1, "Should detect spec change");
+            assert_eq!(
+                changed.first().map(PropertyName::as_ref),
+                Some("field")
+            );
         }
     }
 }
