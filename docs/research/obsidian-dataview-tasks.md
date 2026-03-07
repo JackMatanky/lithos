@@ -80,7 +80,7 @@ Minimum `StoredTask` fields
   - path, heading/section, line (or byte offset)
   - block_id (optional)
 - Status
-  - status_symbol, status_name, status_type
+  - status_symbol, status_name
 - Content
   - text (raw task description)
   - tags (list)

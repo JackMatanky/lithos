@@ -583,7 +583,6 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
                 Some(location),
                 task.status().clone(),
                 status_symbol,
-                "unknown".into(),
                 text,
                 task.tags().cloned().collect(),
                 metadata,

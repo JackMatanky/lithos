@@ -233,7 +233,6 @@ pub struct StoredTask {
     location: Option<SourceLocation>,
     status_name: StatusName,
     status_symbol: StatusSymbol,
-    status_type: Box<str>,
     text: TaskText,
     tags: Vec<Tag>,
     metadata: TaskMetadata,
@@ -259,7 +258,6 @@ impl StoredTask {
         location: Option<SourceLocation>,
         status_name: StatusName,
         status_symbol: StatusSymbol,
-        status_type: Box<str>,
         text: TaskText,
         tags: Vec<Tag>,
         metadata: TaskMetadata,
@@ -277,7 +275,6 @@ impl StoredTask {
             location,
             status_name,
             status_symbol,
-            status_type,
             text,
             tags,
             metadata,
@@ -334,12 +331,6 @@ impl StoredTask {
     #[must_use]
     pub const fn status_symbol(&self) -> StatusSymbol {
         self.status_symbol
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn status_type(&self) -> &str {
-        &self.status_type
     }
 
     #[inline]

@@ -22,7 +22,6 @@ Identity and location
 Status
 - status_symbol: StatusSymbol (config::task::StatusSymbol)
 - status_name: StatusName (config::task::StatusName)
-- status_type: Box<str> (until a StatusType type exists)
 
 Content
 - text: TaskText (note::task::TaskText)
