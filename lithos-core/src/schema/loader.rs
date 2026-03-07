@@ -1,5 +1,4 @@
-//! Schema application service — orchestrates the full schema ingestion
-//! pipeline.
+//! Schema loader — orchestrates the full schema ingestion pipeline.
 //!
 //! # Pipeline Flow
 //!
@@ -64,13 +63,13 @@ use crate::schema::{
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SchemaServiceError
+//  LoaderError
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Errors that can occur during schema service operations.
+/// Errors that can occur during schema loading operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum SchemaServiceError {
+pub enum LoaderError {
     /// Ingestion (file I/O or parsing) failed.
     #[error("ingestion error: {0}")]
     Ingestion(#[from] SchemaIngestionError),
@@ -89,14 +88,14 @@ pub enum SchemaServiceError {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  SchemaService
+//  Loader
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Thin orchestration service for schema ingestion.
+/// Schema loader — orchestrates file ingestion and resolution.
 ///
 /// Uses concrete redb adapters for production use. If testing with mocks
 /// is needed in the future, this can be made generic again.
-pub struct SchemaService<'db> {
+pub struct Loader<'db> {
     query: db_query::Query<'db>,
     command: db_command::Command<'db>,
 }
@@ -117,8 +116,8 @@ type SchemaWithTimes = (
 );
 type PartitionResult = (Vec<SchemaWithTimes>, Vec<SchemaId>);
 
-impl<'db> SchemaService<'db> {
-    /// Create a new `SchemaService` with query and command adapters.
+impl<'db> Loader<'db> {
+    /// Create a new `Loader` with query and command adapters.
     #[inline]
     #[must_use]
     pub fn new(
@@ -143,13 +142,13 @@ impl<'db> SchemaService<'db> {
     ///
     /// # Errors
     ///
-    /// Returns [`SchemaServiceError`] on any I/O, parsing, domain, query, or
+    /// Returns [`LoaderError`] on any I/O, parsing, domain, query, or
     /// command failure.
     #[inline]
     pub fn load(
         &self,
         ingestor: &Ingestor<'_>,
-    ) -> Result<Vec<Schema>, SchemaServiceError> {
+    ) -> Result<Vec<Schema>, LoaderError> {
         // ── Step 1: read existing DB state ──────────────────────────────────
         let name_to_id = self.load_name_to_id_map()?;
 
@@ -212,7 +211,7 @@ impl<'db> SchemaService<'db> {
     /// Load name-to-ID mapping from database.
     fn load_name_to_id_map(
         &self,
-    ) -> Result<HashMap<SchemaName, SchemaId>, SchemaServiceError> {
+    ) -> Result<HashMap<SchemaName, SchemaId>, LoaderError> {
         let existing_pairs =
             self.query.list_name_id_pairs().map_err(SchemaQueryError::from)?;
         let mut name_to_id: HashMap<SchemaName, SchemaId> =
@@ -227,7 +226,7 @@ impl<'db> SchemaService<'db> {
     fn load_property_bank(
         &self,
         ingestor: &Ingestor<'_>,
-    ) -> Result<(PropertyBank, bool), SchemaServiceError> {
+    ) -> Result<(PropertyBank, bool), LoaderError> {
         let stored_bank =
             self.query.get_property_bank().map_err(SchemaQueryError::from)?;
 
@@ -262,7 +261,7 @@ impl<'db> SchemaService<'db> {
         name_to_id: &HashMap<SchemaName, SchemaId>,
         current_bank_version: crate::schema::bank::BankVersion,
         bank_stale: bool,
-    ) -> Result<PartitionResult, SchemaServiceError> {
+    ) -> Result<PartitionResult, LoaderError> {
         type StalenessCheck =
             (SchemaId, Option<SystemTime>, Option<SystemTime>);
 
@@ -376,7 +375,7 @@ impl<'db> SchemaService<'db> {
         resolved: &[Schema],
         stale_with_times: Vec<SchemaWithTimes>,
         current_bank_version: crate::schema::bank::BankVersion,
-    ) -> Result<(), SchemaServiceError> {
+    ) -> Result<(), LoaderError> {
         use crate::schema::{hash::Blake3Hash, ports::InheritanceRelationship};
         type MetadataTriple =
             (Blake3Hash, Option<SystemTime>, Option<SystemTime>);

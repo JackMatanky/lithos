@@ -18,7 +18,6 @@ use std::path::Path;
 
 use common::*;
 use lithos_core::{
-    application::schema::SchemaService,
     config::{
         aggregate::Config,
         raw::RawConfig,
@@ -29,6 +28,7 @@ use lithos_core::{
         aggregate::{SchemaId, SchemaName},
         bank::{BankVersion, PropertyBank},
         ingestor::Ingestor,
+        loader::Loader,
     },
 };
 use tempfile::TempDir;
@@ -161,7 +161,7 @@ fn schema_fresh_when_metadata_matches() -> TestResult {
     let (command, query) = setup_cqrs(test_db.db());
 
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     service.load(&ingestor)?;
 
     let (_cmd, query2) = setup_cqrs(test_db.db());
@@ -213,7 +213,7 @@ fn schema_stale_when_modified_differs() -> TestResult {
     let (command, query) = setup_cqrs(test_db.db());
 
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     service.load(&ingestor)?;
 
     let (_cmd, query2) = setup_cqrs(test_db.db());
@@ -271,7 +271,7 @@ fn schema_stale_when_bank_version_differs() -> TestResult {
     let (command, query) = setup_cqrs(test_db.db());
 
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     service.load(&ingestor)?;
 
     let (_cmd, query2) = setup_cqrs(test_db.db());
@@ -323,7 +323,7 @@ fn touch_only_file_detected_as_fresh() -> TestResult {
     let config = test_config(dir.path())?;
     let (command, query) = setup_cqrs(test_db.db());
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
 
     // Initial load - persists schema with hash
     service.load(&ingestor)?;
@@ -350,7 +350,7 @@ fn touch_only_file_detected_as_fresh() -> TestResult {
     // this as a touch-only change (hash unchanged) and skip re-resolution
     let ingestor2 = Ingestor::new(FsReader::new(dir.path()), &config);
     let (command2, query2) = setup_cqrs(test_db.db());
-    let service2 = SchemaService::new(query2, command2);
+    let service2 = Loader::new(query2, command2);
     let _result = service2.load(&ingestor2)?;
 
     let (_command3, query3) = setup_cqrs(test_db.db());
@@ -386,7 +386,7 @@ fn modified_file_detected_as_stale() -> TestResult {
     let config = test_config(dir.path())?;
     let (command, query) = setup_cqrs(test_db.db());
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
 
     // Initial load
     service.load(&ingestor)?;
@@ -455,7 +455,7 @@ fn service_uses_two_tier_staleness_detection() -> TestResult {
     let config = test_config(dir.path())?;
     let (command, query) = setup_cqrs(test_db.db());
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
 
     // Initial load
     service.load(&ingestor)?;
@@ -494,7 +494,7 @@ fn service_uses_two_tier_staleness_detection() -> TestResult {
     // THEN: Reload and verify only modified schema is re-processed
     let ingestor2 = Ingestor::new(FsReader::new(dir.path()), &config);
     let (command2, query2) = setup_cqrs(test_db.db());
-    let service2 = SchemaService::new(query2, command2);
+    let service2 = Loader::new(query2, command2);
     let _result = service2.load(&ingestor2)?;
 
     // The service should have detected:

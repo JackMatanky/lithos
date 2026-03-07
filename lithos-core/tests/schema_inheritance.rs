@@ -18,7 +18,6 @@ use std::path::Path;
 
 use common::*;
 use lithos_core::{
-    application::schema::{SchemaService, SchemaServiceError},
     config::{
         aggregate::Config,
         raw::RawConfig,
@@ -29,6 +28,7 @@ use lithos_core::{
         aggregate::SchemaName,
         error::SchemaError,
         ingestor::Ingestor,
+        loader::{Loader, LoaderError},
         property::{Multiplicity, Optionality},
     },
 };
@@ -125,7 +125,7 @@ fn multi_level_inheritance_resolves() -> TestResult {
 
     // WHEN: Running pipeline
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     service.load(&ingestor)?;
 
     // THEN: Grandchild has all properties
@@ -191,7 +191,7 @@ fn child_overrides_parent_property() -> TestResult {
 
     // WHEN: Running pipeline
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     service.load(&ingestor)?;
 
     // THEN: Child's property overrides parent
@@ -261,7 +261,7 @@ fn child_excludes_parent_property() -> TestResult {
 
     // WHEN: Running pipeline
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     service.load(&ingestor)?;
 
     // THEN: Excluded property is removed
@@ -306,14 +306,12 @@ fn circular_inheritance_returns_error() -> TestResult {
 
     // WHEN: Running pipeline
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     let result = service.load(&ingestor);
 
     // THEN: Circular inheritance error
     match result {
-        Err(SchemaServiceError::Domain(SchemaError::CircularInheritance(
-            _,
-        ))) => Ok(()),
+        Err(LoaderError::Domain(SchemaError::CircularInheritance(_))) => Ok(()),
         Err(other) => Err(format!("unexpected error: {other:?}").into()),
         Ok(_) => Err("expected circular inheritance error".into()),
     }
@@ -344,14 +342,12 @@ fn missing_parent_returns_error() -> TestResult {
 
     // WHEN: Running pipeline
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     let result = service.load(&ingestor);
 
     // THEN: Parent not found error
     match result {
-        Err(SchemaServiceError::Domain(SchemaError::ParentNotFound(_))) => {
-            Ok(())
-        }
+        Err(LoaderError::Domain(SchemaError::ParentNotFound(_))) => Ok(()),
         Err(other) => Err(format!("unexpected error: {other:?}").into()),
         Ok(_) => Err("expected parent not found error".into()),
     }

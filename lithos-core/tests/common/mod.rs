@@ -18,8 +18,7 @@ use lithos_core::{
     db::Database,
     schema::{
         aggregate::{Schema, SchemaId, SchemaName},
-        db_command, db_query,
-        ports::{self, Command as _, Query as _},
+        db_command, db_query, ports,
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },

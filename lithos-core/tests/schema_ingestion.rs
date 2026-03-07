@@ -13,7 +13,7 @@
 //! **Coverage**:
 //! - Property bank loading from files
 //! - Schema scanning and parsing (JSON, TOML, YAML)
-//! - Full pipeline orchestration via `SchemaService`
+//! - Full pipeline orchestration via `Loader`
 //! - Filesystem timestamp preservation
 //! - Staleness detection and incremental updates
 
@@ -32,14 +32,13 @@ use std::path::Path;
 
 use common::*;
 use lithos_core::{
-    application::schema::SchemaService,
     config::{
         aggregate::Config,
         raw::RawConfig,
         vault::{VaultId, VaultRoot},
     },
     fs::FsReader,
-    schema::{aggregate::SchemaName, ingestor::Ingestor},
+    schema::{aggregate::SchemaName, ingestor::Ingestor, loader::Loader},
 };
 use tempfile::TempDir;
 
@@ -356,7 +355,7 @@ fn full_pipeline_loads_schemas() -> TestResult {
 
     // WHEN: Running full pipeline
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     let resolved = service.load(&ingestor)?;
 
     // THEN: Schemas are resolved and persisted
@@ -418,7 +417,7 @@ fn full_pipeline_resolves_properties() -> TestResult {
 
     // WHEN: Running pipeline
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     service.load(&ingestor)?;
 
     // THEN: Schema has resolved properties
@@ -472,13 +471,13 @@ fn full_pipeline_incremental_updates() -> TestResult {
 
     // WHEN: First load
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let service = SchemaService::new(query, command);
+    let service = Loader::new(query, command);
     let first_run = service.load(&ingestor)?;
     assert_eq!(first_run.len(), 1, "First run should resolve 1 schema");
 
     // AND: Second load (no changes) - recreate service
     let (command2, query2) = setup_cqrs(test_db.db());
-    let service2 = SchemaService::new(query2, command2);
+    let service2 = Loader::new(query2, command2);
     let second_run = service2.load(&ingestor)?;
 
     // THEN: Second run resolves nothing (all fresh)

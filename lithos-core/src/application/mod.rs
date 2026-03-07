@@ -37,9 +37,10 @@
 
 // NOTE: Ingestion services temporarily archived in _archive/ for future
 // re-implementation.
+// NOTE: Schema loader moved to schema module (schema::loader) as part of Phase
+// 6.
 
 pub mod config;
-pub mod schema;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Public Type Aliases
