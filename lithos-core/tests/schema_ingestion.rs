@@ -426,7 +426,7 @@ fn full_pipeline_resolves_properties() -> TestResult {
         .find_by_name(&SchemaName::try_new("document")?)?
         .expect("Schema should exist");
 
-    assert_eq!(schema.properties().count(), 2);
+    assert_eq!(schema.properties.len(), 2);
     assert_has_property(&schema, "title", "document schema");
     assert_has_property(&schema, "description", "document schema");
 

@@ -387,7 +387,7 @@ impl SchemaBuilder {
     pub fn build(self) -> TestResult<StoredSchema> {
         let _name_check = SchemaName::try_new(&self.name)?;
         let id = self.id.unwrap_or_default();
-        let stored_properties: Vec<StoredProperty> = self
+        let mut stored_properties: Vec<StoredProperty> = self
             .properties
             .into_iter()
             .map(|p| {
@@ -400,6 +400,9 @@ impl SchemaBuilder {
                 )
             })
             .collect();
+
+        // Sort properties by name to match expected storage order
+        stored_properties.sort_by(|a, b| a.name.cmp(&b.name));
 
         Ok(StoredSchema::new(
             id,

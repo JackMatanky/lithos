@@ -168,7 +168,7 @@ fn schema_fresh_when_metadata_matches() -> TestResult {
     let schema = query2
         .find_by_name(&SchemaName::try_new("task")?)?
         .expect("schema should exist");
-    let schema_id = schema.id();
+    let schema_id = schema.id;
 
     let bank = query2.get_property_bank()?.expect("bank should exist");
     let bank_version = bank.version();
@@ -220,7 +220,7 @@ fn schema_stale_when_modified_differs() -> TestResult {
     let schema = query2
         .find_by_name(&SchemaName::try_new("task")?)?
         .expect("schema should exist");
-    let schema_id = schema.id();
+    let schema_id = schema.id;
 
     let bank = query2.get_property_bank()?.expect("bank should exist");
     let bank_version = bank.version();
@@ -278,7 +278,7 @@ fn schema_stale_when_bank_version_differs() -> TestResult {
     let schema = query2
         .find_by_name(&SchemaName::try_new("task")?)?
         .expect("schema should exist");
-    let schema_id = schema.id();
+    let schema_id = schema.id;
 
     let bank = query2.get_property_bank()?.expect("bank should exist");
     let bank_version = bank.version();
@@ -359,7 +359,7 @@ fn touch_only_file_detected_as_fresh() -> TestResult {
         .expect("schema should exist");
 
     // Schema should still exist and be valid
-    assert_eq!(schema.name().as_str(), "task", "Schema should remain valid");
+    assert_eq!(schema.name.as_ref(), "task", "Schema should remain valid");
 
     Ok(())
 }
@@ -417,7 +417,7 @@ fn modified_file_detected_as_stale() -> TestResult {
     let (modified_at, created_at) = file_times(&schema_path);
 
     let stale = query2.is_schema_stale(
-        schema.id(),
+        schema.id,
         created_at,
         modified_at,
         bank.version(),
@@ -465,7 +465,7 @@ fn service_uses_two_tier_staleness_detection() -> TestResult {
     let note_before = query_init
         .find_by_name(&SchemaName::try_new("note")?)?
         .expect("note schema should exist");
-    let note_id_before = note_before.id();
+    let note_id_before = note_before.id;
 
     // WHEN: One file is touched, one is modified
     // Sleep briefly to ensure timestamp changes on filesystems with coarse
@@ -508,14 +508,11 @@ fn service_uses_two_tier_staleness_detection() -> TestResult {
         .expect("note schema should exist");
 
     // The note schema should exist and be valid
-    assert_eq!(note_after.name().as_str(), "note", "Note schema should exist");
+    assert_eq!(note_after.name.as_ref(), "note", "Note schema should exist");
 
-    // If the schema was re-resolved, it should have a new ID
-    // (This is implementation-specific; we're just verifying it still works)
-    assert!(
-        note_after.id() == note_id_before || note_after.id() != note_id_before,
-        "Schema processing completed"
-    );
+    // Schema ID may change if re-resolved (implementation-specific)
+    // We just verify the schema is present and valid
+    let _: SchemaId = note_id_before;
 
     Ok(())
 }

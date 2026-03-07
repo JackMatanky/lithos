@@ -29,7 +29,6 @@ use lithos_core::{
         error::SchemaError,
         ingestor::Ingestor,
         loader::{Loader, LoaderError},
-        property::{Multiplicity, Optionality},
     },
 };
 use tempfile::TempDir;
@@ -134,7 +133,7 @@ fn multi_level_inheritance_resolves() -> TestResult {
         .find_by_name(&SchemaName::try_new("urgent_task")?)?
         .expect("schema should exist");
 
-    assert_eq!(schema.properties().count(), 3);
+    assert_eq!(schema.properties.len(), 3);
     assert_has_property(&schema, "title", "inheritance");
     assert_has_property(&schema, "status", "inheritance");
     assert_has_property(&schema, "priority", "inheritance");
@@ -201,12 +200,13 @@ fn child_overrides_parent_property() -> TestResult {
         .expect("schema should exist");
 
     let title = schema
-        .properties()
-        .find(|p| p.name().as_str() == "title")
+        .properties
+        .iter()
+        .find(|p| p.name.as_ref() == "title")
         .expect("title property should exist");
 
-    assert_eq!(title.optionality(), Optionality::Optional);
-    assert_eq!(title.multiplicity(), Multiplicity::Many);
+    assert!(!title.required);
+    assert!(title.multi);
 
     Ok(())
 }

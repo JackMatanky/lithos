@@ -304,7 +304,7 @@ use lithos_core::{
     db::Database,
     fs::FsReader,
     schema::{
-        aggregate::{Schema, SchemaId},
+        aggregate::SchemaId,
         bank::{BankVersion, PropertyBank},
         db_command, db_query,
         dereferencer::Dereferencer,
@@ -314,6 +314,7 @@ use lithos_core::{
         property::PropertyName,
         raw::RawSchema,
         resolver::Resolver,
+        stored::StoredSchema,
     },
 };
 use tempfile::TempDir;
@@ -762,11 +763,8 @@ fn setup_db_with_schemas(
 
         // Create a simple schema (name is unique)
         let name_str = format!("schema_{i}");
-        let name =
-            lithos_core::schema::aggregate::SchemaName::try_new(&name_str)
-                .expect("Failed to create schema name");
-        let schema =
-            Schema::try_new(id, name, None, Vec::new()).expect("valid schema");
+        let name: Box<str> = name_str.into();
+        let schema = StoredSchema::new(id, name, None, Vec::new());
         schemas.push(schema);
     }
 

@@ -569,8 +569,8 @@ mod schema {
             .property(prop)
             .build()?;
 
-        let original_id = schema.id();
-        let original_name = schema.name().clone();
+        let original_id = schema.id;
+        let original_name = schema.name.clone();
 
         // WHEN: Saving and loading
         command.save(&schema)?;
@@ -578,9 +578,9 @@ mod schema {
             query.find_by_id(original_id)?.expect("Schema should exist");
 
         // THEN: All fields preserved
-        assert_eq!(loaded.id(), original_id);
-        assert_eq!(loaded.name(), &original_name);
-        assert_eq!(loaded.properties().count(), 1);
+        assert_eq!(loaded.id, original_id);
+        assert_eq!(loaded.name, original_name);
+        assert_eq!(loaded.properties.len(), 1);
         assert_has_property(&loaded, "is_done", "After roundtrip");
 
         Ok(())
@@ -609,8 +609,8 @@ mod schema {
         let loaded = query.find_by_name(&name)?.expect("Schema should exist");
 
         // THEN: Correct schema returned
-        assert_eq!(loaded.id(), schema.id());
-        assert_eq!(loaded.name(), schema.name());
+        assert_eq!(loaded.id, schema.id);
+        assert_eq!(loaded.name, schema.name);
 
         Ok(())
     }
@@ -668,8 +668,8 @@ mod schema {
             .find_by_id(SchemaId::from_uuid(TEST_SCHEMA_ID_PROJECT))?
             .expect("project schema should exist");
 
-        assert_eq!(loaded1.name().as_str(), "task");
-        assert_eq!(loaded2.name().as_str(), "project");
+        assert_eq!(loaded1.name.as_ref(), "task");
+        assert_eq!(loaded2.name.as_ref(), "project");
 
         // Verify name indices
         assert!(query.find_by_name(&SchemaName::try_new("task")?)?.is_some());
@@ -705,7 +705,7 @@ mod schema {
 
         // THEN: All schemas returned
         assert_eq!(all.len(), 2);
-        let names: Vec<_> = all.iter().map(|s| s.name().as_str()).collect();
+        let names: Vec<_> = all.iter().map(|s| s.name.as_ref()).collect();
         assert!(names.contains(&"task"));
         assert!(names.contains(&"project"));
 
@@ -780,14 +780,13 @@ mod schema {
 
         // WHEN: Saving and loading
         command.save(&schema)?;
-        let loaded =
-            query.find_by_id(schema.id())?.expect("Schema should exist");
+        let loaded = query.find_by_id(schema.id)?.expect("Schema should exist");
 
         // THEN: Properties are sorted
         assert_properties_sorted(&loaded, "Loaded schema");
 
         let names: Vec<_> =
-            loaded.properties().map(|p| p.name().as_str()).collect();
+            loaded.properties.iter().map(|p| p.name.as_ref()).collect();
         assert_eq!(names, vec!["alpha", "middle", "zebra"]);
 
         Ok(())
@@ -806,16 +805,16 @@ mod schema {
         let (command, query) = setup_cqrs(test_db.db());
 
         let schema = SchemaBuilder::new("empty").build()?;
-        let schema_id = schema.id();
+        let schema_id = schema.id;
 
         // WHEN: Saving and loading
         command.save(&schema)?;
         let loaded = query.find_by_id(schema_id)?.expect("Schema should exist");
 
         // THEN: Empty schema works
-        assert_eq!(loaded.properties().count(), 0);
-        assert_eq!(loaded.name().as_str(), "empty");
-        assert_eq!(loaded.id(), schema_id);
+        assert_eq!(loaded.properties.len(), 0);
+        assert_eq!(loaded.name.as_ref(), "empty");
+        assert_eq!(loaded.id, schema_id);
 
         Ok(())
     }
@@ -843,8 +842,8 @@ mod schema {
             .property(prop)
             .build()?;
 
-        let schema_id = schema.id();
-        let schema_name = schema.name().clone();
+        let schema_id = schema.id;
+        let schema_name = schema.name.clone();
 
         // Save with first connection
         {
@@ -861,12 +860,13 @@ mod schema {
         let loaded = query
             .find_by_id(schema_id)?
             .expect("Schema should survive restart");
-        assert_eq!(loaded.id(), schema_id);
-        assert_eq!(loaded.name(), &schema_name);
-        assert_eq!(loaded.properties().count(), 1);
+        assert_eq!(loaded.id, schema_id);
+        assert_eq!(loaded.name, schema_name);
+        assert_eq!(loaded.properties.len(), 1);
 
         // Name index still works
-        assert!(query.find_by_name(&schema_name)?.is_some());
+        let name_lookup = SchemaName::try_new(schema_name.as_ref())?;
+        assert!(query.find_by_name(&name_lookup)?.is_some());
 
         Ok(())
     }
@@ -901,7 +901,7 @@ mod schema {
         let loaded = query
             .find_by_id(SchemaId::from_uuid(TEST_SCHEMA_ID_TASK))?
             .expect("Schema should exist");
-        assert_eq!(loaded.properties().count(), 2);
+        assert_eq!(loaded.properties.len(), 2);
         assert_has_property(&loaded, "is_done", "After update");
         assert_has_property(&loaded, "title", "After update");
 
@@ -972,7 +972,7 @@ mod schema {
             .expect("Schema should exist");
 
         // THEN: Parent ID preserved
-        assert_eq!(loaded.parent_id(), Some(parent_id));
+        assert_eq!(loaded.parent_id, Some(parent_id));
 
         Ok(())
     }
@@ -989,14 +989,14 @@ mod schema {
         let (command, query) = setup_cqrs(test_db.db());
 
         let schema = SchemaBuilder::new("root").build()?;
-        let schema_id = schema.id();
+        let schema_id = schema.id;
 
         // WHEN: Saving and loading
         command.save(&schema)?;
         let loaded = query.find_by_id(schema_id)?.expect("Schema should exist");
 
         // THEN: parent_id is None
-        assert_eq!(loaded.parent_id(), None);
+        assert_eq!(loaded.parent_id, None);
 
         Ok(())
     }
@@ -1026,21 +1026,22 @@ mod schema {
 
         // WHEN: Saving and loading
         command.save(&schema)?;
-        let loaded =
-            query.find_by_id(schema.id())?.expect("Schema should exist");
+        let loaded = query.find_by_id(schema.id)?.expect("Schema should exist");
 
         // THEN: Optionality preserved
         let title_prop = loaded
-            .properties()
-            .find(|p| p.name().as_str() == "title")
+            .properties
+            .iter()
+            .find(|p| p.name.as_ref() == "title")
             .expect("title property should exist");
-        assert_eq!(title_prop.optionality(), Optionality::Required);
+        assert!(title_prop.required);
 
         let desc_prop = loaded
-            .properties()
-            .find(|p| p.name().as_str() == "description")
+            .properties
+            .iter()
+            .find(|p| p.name.as_ref() == "description")
             .expect("description property should exist");
-        assert_eq!(desc_prop.optionality(), Optionality::Optional);
+        assert!(!desc_prop.required);
 
         Ok(())
     }
@@ -1070,21 +1071,22 @@ mod schema {
 
         // WHEN: Saving and loading
         command.save(&schema)?;
-        let loaded =
-            query.find_by_id(schema.id())?.expect("Schema should exist");
+        let loaded = query.find_by_id(schema.id)?.expect("Schema should exist");
 
         // THEN: Multiplicity preserved
         let title_prop = loaded
-            .properties()
-            .find(|p| p.name().as_str() == "title")
+            .properties
+            .iter()
+            .find(|p| p.name.as_ref() == "title")
             .expect("title property should exist");
-        assert_eq!(title_prop.multiplicity(), Multiplicity::Single);
+        assert!(!title_prop.multi);
 
         let tags_prop = loaded
-            .properties()
-            .find(|p| p.name().as_str() == "tags")
+            .properties
+            .iter()
+            .find(|p| p.name.as_ref() == "tags")
             .expect("tags property should exist");
-        assert_eq!(tags_prop.multiplicity(), Multiplicity::Many);
+        assert!(tags_prop.multi);
 
         Ok(())
     }
@@ -1114,7 +1116,7 @@ mod cross_aggregate {
         bank.register(prop)?;
 
         let schema = SchemaBuilder::new("test").build()?;
-        let schema_id = schema.id();
+        let schema_id = schema.id;
 
         // WHEN: Saving both
         command.save_property_bank(&bank)?;
@@ -1127,7 +1129,7 @@ mod cross_aggregate {
             query.find_by_id(schema_id)?.expect("Schema should exist");
 
         assert_eq!(loaded_bank.all().count(), 1);
-        assert_eq!(loaded_schema.name().as_str(), "test");
+        assert_eq!(loaded_schema.name.as_ref(), "test");
 
         Ok(())
     }
@@ -1190,7 +1192,7 @@ mod cross_aggregate {
         let bank_version = bank.version();
 
         let schema = SchemaBuilder::new("test").build()?;
-        let schema_id = schema.id();
+        let schema_id = schema.id;
 
         // WHEN: Saving schema (doesn't touch PropertyBank)
         command.save(&schema)?;
@@ -1385,8 +1387,8 @@ mod critical {
         let (command, query) = setup_cqrs(test_db.db());
 
         let schema = SchemaBuilder::new("test-schema").build()?;
-        let schema_id = schema.id();
-        let schema_name = schema.name().clone();
+        let schema_id = schema.id;
+        let schema_name = schema.name.clone();
         command.save(&schema)?;
 
         // Verify schema exists in all indices
@@ -1394,8 +1396,9 @@ mod critical {
             query.find_by_id(schema_id)?.is_some(),
             "Schema should exist by ID before delete"
         );
+        let name_lookup_before = SchemaName::try_new(schema_name.as_ref())?;
         assert!(
-            query.find_by_name(&schema_name)?.is_some(),
+            query.find_by_name(&name_lookup_before)?.is_some(),
             "Schema should exist by name before delete"
         );
 
@@ -1407,8 +1410,9 @@ mod critical {
             query.find_by_id(schema_id)?.is_none(),
             "Schema should not exist by ID after delete"
         );
+        let name_lookup_after = SchemaName::try_new(schema_name.as_ref())?;
         assert!(
-            query.find_by_name(&schema_name)?.is_none(),
+            query.find_by_name(&name_lookup_after)?.is_none(),
             "Schema should not exist by name after delete"
         );
 
@@ -1458,7 +1462,7 @@ mod staleness {
 
         // Save a schema (will use BankVersion::initial())
         let schema = SchemaBuilder::new("test-schema").build()?;
-        let schema_id = schema.id();
+        let schema_id = schema.id;
         command.save(&schema)?;
 
         // WHEN: Checking staleness against initial version (same as saved)
@@ -1522,7 +1526,7 @@ mod staleness {
         let (command, query) = setup_cqrs(test_db.db());
 
         let schema = SchemaBuilder::new("asymmetric-schema").build()?;
-        let schema_id = schema.id();
+        let schema_id = schema.id;
 
         // Save schema first (will have None/None timestamps)
         command.save(&schema)?;
@@ -1647,7 +1651,7 @@ mod corruption {
         let (command, query) = setup_cqrs(test_db.db());
 
         let schema = SchemaBuilder::new("orphaned-schema").build()?;
-        let schema_id = schema.id();
+        let schema_id = schema.id;
 
         // Save schema normally (includes metadata)
         command.save(&schema)?;
