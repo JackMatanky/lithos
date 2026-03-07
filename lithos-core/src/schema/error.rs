@@ -269,7 +269,7 @@ pub enum SchemaQueryError {
 ///     _ => {}
 /// }
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[non_exhaustive]
 pub enum SchemaIngestionError {
     /// I/O error reading file.
@@ -334,6 +334,10 @@ pub enum SchemaIngestionError {
         /// Expected version.
         expected: Box<str>,
     },
+
+    /// Schema validation error.
+    #[error("Schema validation failed: {0}")]
+    Validation(#[from] SchemaError),
 }
 
 impl From<crate::fs::error::ParseError> for SchemaIngestionError {

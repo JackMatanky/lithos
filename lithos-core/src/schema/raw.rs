@@ -95,6 +95,56 @@ impl RawSchema {
         }
         Ok(())
     }
+
+    /// Validate raw schema syntax and structure.
+    ///
+    /// This performs syntactic validation only:
+    /// - Schema name syntax (via `SchemaName`)
+    /// - Unique property names
+    /// - Parent schema name syntax (if present)
+    /// - Exclude property name syntax
+    ///
+    /// Semantic validation (property refs exist, circular inheritance, etc.)
+    /// happens during resolution.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate(&self) -> Result<(), SchemaError> {
+        // Validate schema name syntax
+        use super::id::SchemaName;
+        SchemaName::try_new(self.name.as_ref())?;
+
+        // Validate parent schema name syntax (if present)
+        if let Some(parent) = self.extends.as_ref() {
+            SchemaName::try_new(parent.as_ref())?;
+        }
+
+        // Validate excludes syntax
+        for excluded in &self.excludes {
+            use super::property::PropertyName;
+            PropertyName::try_new(excluded.as_ref())?;
+        }
+
+        // Check for duplicate property names
+        // (HashMap ensures uniqueness, but check for clarity)
+        if self.properties.is_empty() {
+            // Empty properties is valid (may inherit all from parent)
+            return Ok(());
+        }
+
+        // Validate property name syntax
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Validation does not depend on iteration order"
+        )]
+        for prop_name in self.properties.keys() {
+            use super::property::PropertyName;
+            PropertyName::try_new(prop_name.as_ref())?;
+        }
+
+        Ok(())
+    }
 }
 
 /// Raw property for schema properties map.
@@ -433,6 +483,30 @@ impl RawPropertyBank {
                 expected: SCHEMA_VERSION.into(),
             });
         }
+        Ok(())
+    }
+
+    /// Validate raw property bank syntax and structure.
+    ///
+    /// This performs syntactic validation only:
+    /// - Property names are unique (enforced by `HashMap` structure)
+    /// - Property name syntax (via `PropertyName`)
+    /// - Property specs are valid (enforced by serde deserialization)
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate(&self) -> Result<(), SchemaError> {
+        // Validate property name syntax
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Validation does not depend on iteration order"
+        )]
+        for prop_name in self.properties.keys() {
+            use super::property::PropertyName;
+            PropertyName::try_new(prop_name.as_ref())?;
+        }
+
         Ok(())
     }
 }
@@ -1175,5 +1249,178 @@ mod tests {
                 _ => panic!("Expected Map variant for empty object"),
             }
         }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    //  Raw Validation Tests
+    // ───────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn raw_schema_validate_valid() {
+        let schema = RawSchema {
+            version: SCHEMA_VERSION.into(),
+            name: "test_schema".into(),
+            extends: None,
+            excludes: Vec::new(),
+            properties: HashMap::new(),
+        };
+
+        schema.validate().unwrap();
+    }
+
+    #[test]
+    fn raw_schema_validate_with_parent() {
+        let schema = RawSchema {
+            version: SCHEMA_VERSION.into(),
+            name: "child_schema".into(),
+            extends: Some("parent_schema".into()),
+            excludes: Vec::new(),
+            properties: HashMap::new(),
+        };
+
+        schema.validate().unwrap();
+    }
+
+    #[test]
+    fn raw_schema_validate_with_excludes() {
+        let schema = RawSchema {
+            version: SCHEMA_VERSION.into(),
+            name: "test".into(),
+            extends: Some("parent".into()),
+            excludes: vec!["prop1".into(), "prop2".into()],
+            properties: HashMap::new(),
+        };
+
+        schema.validate().unwrap();
+    }
+
+    #[test]
+    fn raw_schema_validate_invalid_name() {
+        let schema = RawSchema {
+            version: SCHEMA_VERSION.into(),
+            name: "Invalid Name".into(), // Uppercase + space
+            extends: None,
+            excludes: Vec::new(),
+            properties: HashMap::new(),
+        };
+
+        schema.validate().unwrap_err();
+    }
+
+    #[test]
+    fn raw_schema_validate_invalid_parent_name() {
+        let schema = RawSchema {
+            version: SCHEMA_VERSION.into(),
+            name: "child".into(),
+            extends: Some("Parent!Invalid".into()), // Uppercase + special char
+            excludes: Vec::new(),
+            properties: HashMap::new(),
+        };
+
+        schema.validate().unwrap_err();
+    }
+
+    #[test]
+    fn raw_schema_validate_invalid_exclude_name() {
+        let schema = RawSchema {
+            version: SCHEMA_VERSION.into(),
+            name: "test".into(),
+            extends: Some("parent".into()),
+            excludes: vec!["Invalid Property".into()], // Space
+            properties: HashMap::new(),
+        };
+
+        schema.validate().unwrap_err();
+    }
+
+    #[test]
+    fn raw_schema_validate_with_valid_properties() {
+        let mut properties = HashMap::new();
+        properties.insert(
+            "valid_property".into(),
+            RawProperty::Inline(RawPropertyInline {
+                required: false,
+                multi: false,
+                spec: RawPropertySpec::Bool(RawBoolSpec),
+            }),
+        );
+
+        let schema = RawSchema {
+            version: SCHEMA_VERSION.into(),
+            name: "test".into(),
+            extends: None,
+            excludes: Vec::new(),
+            properties,
+        };
+
+        schema.validate().unwrap();
+    }
+
+    #[test]
+    fn raw_schema_validate_invalid_property_name() {
+        let mut properties = HashMap::new();
+        properties.insert(
+            "Invalid Property!".into(), // Space + special char
+            RawProperty::Inline(RawPropertyInline {
+                required: false,
+                multi: false,
+                spec: RawPropertySpec::Bool(RawBoolSpec),
+            }),
+        );
+
+        let schema = RawSchema {
+            version: SCHEMA_VERSION.into(),
+            name: "test".into(),
+            extends: None,
+            excludes: Vec::new(),
+            properties,
+        };
+
+        schema.validate().unwrap_err();
+    }
+
+    #[test]
+    fn raw_property_bank_validate_valid() {
+        let mut properties = HashMap::new();
+        properties.insert("title".into(), RawPropertyBankEntry {
+            multi: false,
+            spec: RawPropertySpec::String(RawStringSpec::default()),
+        });
+
+        let bank = RawPropertyBank {
+            version: SCHEMA_VERSION.into(),
+            properties,
+        };
+
+        bank.validate().unwrap();
+    }
+
+    #[test]
+    fn raw_property_bank_validate_empty() {
+        let bank = RawPropertyBank {
+            version: SCHEMA_VERSION.into(),
+            properties: HashMap::new(),
+        };
+
+        bank.validate().unwrap();
+    }
+
+    #[test]
+    fn raw_property_bank_validate_invalid_property_name() {
+        let mut properties = HashMap::new();
+        properties.insert(
+            "Invalid Name!".into(), // Space + special char
+            RawPropertyBankEntry {
+                multi: false,
+                spec: RawPropertySpec::Bool(RawBoolSpec),
+            },
+        );
+
+        let bank = RawPropertyBank {
+            version: SCHEMA_VERSION.into(),
+            properties,
+        };
+
+        bank.validate().unwrap_err();
     }
 }

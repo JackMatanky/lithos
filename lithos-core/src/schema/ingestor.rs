@@ -121,6 +121,7 @@ impl Ingestor<'_> {
             .parse_structured(&path)
             .map_err(SchemaIngestionError::from)?;
         bank.validate_version(&path.to_string_lossy())?;
+        bank.validate().map_err(SchemaIngestionError::from)?;
         Ok(bank)
     }
 
@@ -150,6 +151,7 @@ impl Ingestor<'_> {
             .parse_structured(&path)
             .map_err(SchemaIngestionError::from)?;
         bank.validate_version(&path.to_string_lossy())?;
+        bank.validate().map_err(SchemaIngestionError::from)?;
 
         // Extract timestamps
         let modified = self.source.modified_at(&path);
@@ -231,6 +233,9 @@ impl Ingestor<'_> {
 
                 // Set name from filename (always, not from file content)
                 raw.name = filename_stem.into();
+
+                // Validate syntax (name, parent, properties, excludes)
+                raw.validate().map_err(SchemaIngestionError::from)?;
 
                 // Extract timestamps using FsReader methods
                 let modified = self.source.modified_at(&path);
