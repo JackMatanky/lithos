@@ -25,14 +25,14 @@ use crate::schema::error::SchemaError;
 /// use lithos_core::schema::property_spec::{StringPattern, StringSpec};
 ///
 /// // No pattern, only options
-/// let spec = StringSpec::try_new(None, None)?;
+/// let spec = StringSpec::new(None, None);
 ///
 /// // With predefined pattern
-/// let spec = StringSpec::try_new(Some(StringPattern::Email), None)?;
+/// let spec = StringSpec::new(Some(StringPattern::Email), None);
 ///
 /// // With custom pattern
 /// let pattern = StringPattern::try_custom(r"^\d{3}-\d{4}$")?;
-/// let spec = StringSpec::try_new(Some(pattern), None)?;
+/// let spec = StringSpec::new(Some(pattern), None);
 /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
@@ -54,34 +54,31 @@ impl Default for StringSpec {
 }
 
 impl StringSpec {
-    /// Create a validated `StringSpec`.
+    /// Create a new `StringSpec`.
     ///
     /// Pattern is already validated at `StringPattern` construction time,
-    /// so this constructor is infallible for valid inputs.
-    ///
-    /// # Errors
-    /// This function is currently infallible but returns `Result` for
-    /// future extensibility and API consistency.
+    /// so this constructor is infallible.
     ///
     /// # Examples
     /// ```
     /// use lithos_core::schema::property_spec::{StringPattern, StringSpec};
     ///
-    /// let spec = StringSpec::try_new(None, None)?;
+    /// let spec = StringSpec::new(None, None);
     ///
     /// let pattern = StringPattern::try_custom(r"^\d+$")?;
-    /// let spec = StringSpec::try_new(Some(pattern), None)?;
+    /// let spec = StringSpec::new(Some(pattern), None);
     /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
     /// ```
     #[inline]
-    pub fn try_new(
+    #[must_use]
+    pub fn new(
         pattern: Option<StringPattern>,
         options: Option<Vec<OptionEntry>>,
-    ) -> Result<Self, SchemaError> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             options,
             pattern,
-        })
+        }
     }
 
     /// Apply overrides from a raw string spec.
@@ -95,7 +92,7 @@ impl StringSpec {
     /// ```
     /// use lithos_core::schema::{property_spec::StringSpec, raw::RawStringSpec};
     ///
-    /// let base = StringSpec::try_new(None, None)?;
+    /// let base = StringSpec::new(None, None);
     /// let overrides = RawStringSpec::default();
     /// let _updated = base.apply_overrides(&overrides)?;
     /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
@@ -105,25 +102,11 @@ impl StringSpec {
         self,
         overrides: &crate::schema::raw::RawStringSpec,
     ) -> Result<Self, SchemaError> {
-        use crate::schema::raw::RawStringFormat;
-
         // Convert RawStringSpec (pattern/format separate) to unified
         // StringPattern
         let pattern = match (overrides.pattern.as_ref(), overrides.format) {
             (Some(p), None) => Some(StringPattern::try_custom(p.clone())?),
-            (None, Some(f)) => {
-                // Convert RawStringFormat to StringPattern
-                let sp = match f {
-                    RawStringFormat::Email => StringPattern::Email,
-                    RawStringFormat::Url => StringPattern::Url,
-                    RawStringFormat::PhoneUs => StringPattern::PhoneUs,
-                    RawStringFormat::Slug => StringPattern::Slug,
-                    RawStringFormat::UuidV4 => StringPattern::UuidV4,
-                    RawStringFormat::WikiLink => StringPattern::WikiLink,
-                    RawStringFormat::ZipCode => StringPattern::ZipCode,
-                };
-                Some(sp)
-            }
+            (None, Some(f)) => Some(StringPattern::from(f)),
             (None, None) => self.pattern,
             (Some(_), Some(_)) => {
                 return Err(SchemaError::ValidationFailed(
@@ -136,39 +119,34 @@ impl StringSpec {
             .options
             .as_ref()
             .map(|o| {
-                o.clone().into_entries().into_iter().map(Into::into).collect()
+                o.clone()
+                    .into_entries()
+                    .into_iter()
+                    .map(OptionEntry::from)
+                    .collect()
             })
             .or(self.options);
 
-        Self::try_new(pattern, options)
+        Ok(Self::new(pattern, options))
     }
 
     #[inline]
     pub(super) fn validate_str(&self, value: &str) -> Result<(), SchemaError> {
-        self.validate_options(value)?;
-        self.validate_pattern(value)?;
-        Ok(())
-    }
-
-    fn validate_options(&self, value: &str) -> Result<(), SchemaError> {
+        // Validate options if present
         if let Some(entries) = self.options.as_ref()
-            && !entries.iter().any(|e| e.value.as_ref() == value)
+            && !entries.iter().any(|e| e.value() == value)
         {
             return Err(SchemaError::InvalidEnumValue {
                 value: value.into(),
-                allowed: entries
-                    .iter()
-                    .map(|e| e.value.as_ref().into())
-                    .collect(),
+                allowed: entries.iter().map(|e| e.value().into()).collect(),
             });
         }
-        Ok(())
-    }
 
-    fn validate_pattern(&self, value: &str) -> Result<(), SchemaError> {
+        // Validate pattern if present
         if let Some(pattern) = self.pattern.as_ref() {
             pattern.validate(value)?;
         }
+
         Ok(())
     }
 }
@@ -365,9 +343,26 @@ impl StringPattern {
     /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
     /// ```
     #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching &Self with value patterns is more readable than \
+                  matching *self"
+    )]
     pub fn validate(&self, value: &str) -> Result<(), SchemaError> {
-        let re = self.regex();
-        if !re.is_match(value) {
+        let matches = match self {
+            Self::Email => Self::static_regex_email().is_match(value),
+            Self::Url => Self::static_regex_url().is_match(value),
+            Self::PhoneUs => Self::static_regex_phone_us().is_match(value),
+            Self::Slug => Self::static_regex_slug().is_match(value),
+            Self::UuidV4 => Self::static_regex_uuid_v4().is_match(value),
+            Self::WikiLink => Self::static_regex_wikilink().is_match(value),
+            Self::ZipCode => Self::static_regex_zipcode().is_match(value),
+            Self::Custom(pattern) => {
+                Self::get_or_compile_pattern(pattern).is_match(value)
+            }
+        };
+
+        if !matches {
             return Err(SchemaError::ValidationFailed(format!(
                 "Value {value} does not match pattern '{self}' ({})",
                 self.pattern()
@@ -376,32 +371,52 @@ impl StringPattern {
         Ok(())
     }
 
-    /// Returns a compiled `Regex` for this pattern.
+    /// Get or compile a custom regex pattern.
     ///
-    /// Predefined formats use static `OnceLock` cells for zero-cost caching.
-    /// Custom patterns use a shared cache to avoid recompilation.
-    ///
-    /// # Panics
-    /// Panics if a built-in pattern is invalid (indicates programmer error).
-    /// Custom patterns are validated at construction, so they never panic.
-    #[inline]
-    #[must_use]
+    /// Uses a simple cache to avoid recompiling patterns on every validation.
+    /// Patterns are guaranteed valid (validated at construction time).
     #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Matching &Self with value patterns is more readable than \
-                  matching *self"
+        clippy::expect_used,
+        reason = "Pattern validated at StringSpec construction, expect \
+                  documents invariant"
     )]
-    pub fn regex(&self) -> Arc<regex::Regex> {
-        match self {
-            Self::Email => Arc::new(Self::static_regex_email().clone()),
-            Self::Url => Arc::new(Self::static_regex_url().clone()),
-            Self::PhoneUs => Arc::new(Self::static_regex_phone_us().clone()),
-            Self::Slug => Arc::new(Self::static_regex_slug().clone()),
-            Self::UuidV4 => Arc::new(Self::static_regex_uuid_v4().clone()),
-            Self::WikiLink => Arc::new(Self::static_regex_wikilink().clone()),
-            Self::ZipCode => Arc::new(Self::static_regex_zipcode().clone()),
-            Self::Custom(pattern) => get_or_compile_pattern(pattern),
+    fn get_or_compile_pattern(pattern: &str) -> Arc<regex::Regex> {
+        let cache =
+            CUSTOM_PATTERN_CACHE.get_or_init(|| RwLock::new(HashMap::new()));
+
+        // Fast path: read lock
+        {
+            let guard = cache.read().unwrap_or_else(|e| {
+                tracing::warn!(
+                    "Regex cache RwLock poisoned (recovered from panic), \
+                     proceeding with recovery"
+                );
+                e.into_inner()
+            });
+            if let Some(re) = guard.get(pattern) {
+                return Arc::clone(re);
+            }
         }
+
+        // Slow path: compile and cache
+        // Pattern is guaranteed valid (validated in try_new), so expect is safe
+        let compiled = Arc::new(regex::Regex::new(pattern).expect(
+            "Custom pattern should be valid (validated at construction)",
+        ));
+
+        let mut guard = cache.write().unwrap_or_else(|e| {
+            tracing::warn!(
+                "Regex cache RwLock poisoned during write (recovered from \
+                 panic), proceeding with recovery"
+            );
+            e.into_inner()
+        });
+        // Check again in case another thread inserted while we compiled
+        if let Some(re) = guard.get(pattern) {
+            return Arc::clone(re);
+        }
+        guard.insert(pattern.into(), Arc::clone(&compiled));
+        compiled
     }
 
     // Static regex accessors for predefined formats
@@ -497,6 +512,22 @@ impl StringPattern {
     }
 }
 
+impl From<crate::schema::raw::RawStringFormat> for StringPattern {
+    #[inline]
+    fn from(format: crate::schema::raw::RawStringFormat) -> Self {
+        use crate::schema::raw::RawStringFormat;
+        match format {
+            RawStringFormat::Email => Self::Email,
+            RawStringFormat::Url => Self::Url,
+            RawStringFormat::PhoneUs => Self::PhoneUs,
+            RawStringFormat::Slug => Self::Slug,
+            RawStringFormat::UuidV4 => Self::UuidV4,
+            RawStringFormat::WikiLink => Self::WikiLink,
+            RawStringFormat::ZipCode => Self::ZipCode,
+        }
+    }
+}
+
 impl std::fmt::Display for StringPattern {
     #[inline]
     #[expect(
@@ -539,9 +570,25 @@ pub type StringFormat = StringPattern;
 #[non_exhaustive]
 pub struct OptionEntry {
     /// The option value used in validation.
-    pub value: Box<str>,
+    value: Box<str>,
     /// Optional display label for UI consumers.
-    pub label: Option<Box<str>>,
+    label: Option<Box<str>>,
+}
+
+impl OptionEntry {
+    /// Returns the option value.
+    #[inline]
+    #[must_use]
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    /// Returns the display label if set.
+    #[inline]
+    #[must_use]
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
+    }
 }
 
 impl From<crate::schema::raw::RawOptionEntry> for OptionEntry {
@@ -571,55 +618,6 @@ type CustomPatternCache = HashMap<Box<str>, Arc<regex::Regex>>;
 
 static CUSTOM_PATTERN_CACHE: OnceLock<RwLock<CustomPatternCache>> =
     OnceLock::new();
-
-/// Get or compile a custom regex pattern.
-///
-/// Uses a simple cache to avoid recompiling patterns on every validation.
-/// Patterns are guaranteed valid (validated at construction time).
-#[expect(
-    clippy::expect_used,
-    reason = "Pattern validated at StringSpec construction, expect documents \
-              invariant"
-)]
-fn get_or_compile_pattern(pattern: &str) -> Arc<regex::Regex> {
-    let cache =
-        CUSTOM_PATTERN_CACHE.get_or_init(|| RwLock::new(HashMap::new()));
-
-    // Fast path: read lock
-    {
-        let guard = cache.read().unwrap_or_else(|e| {
-            tracing::warn!(
-                "Regex cache RwLock poisoned (recovered from panic), \
-                 proceeding with recovery"
-            );
-            e.into_inner()
-        });
-        if let Some(re) = guard.get(pattern) {
-            return Arc::clone(re);
-        }
-    }
-
-    // Slow path: compile and cache
-    // Pattern is guaranteed valid (validated in try_new), so expect is safe
-    let compiled =
-        Arc::new(regex::Regex::new(pattern).expect(
-            "Custom pattern should be valid (validated at construction)",
-        ));
-
-    let mut guard = cache.write().unwrap_or_else(|e| {
-        tracing::warn!(
-            "Regex cache RwLock poisoned during write (recovered from panic), \
-             proceeding with recovery"
-        );
-        e.into_inner()
-    });
-    // Check again in case another thread inserted while we compiled
-    if let Some(re) = guard.get(pattern) {
-        return Arc::clone(re);
-    }
-    guard.insert(pattern.into(), Arc::clone(&compiled));
-    compiled
-}
 
 // ============================================================================
 // Tests
@@ -733,8 +731,8 @@ mod tests {
             },
             "C",
             Err(SchemaError::InvalidEnumValue {
-                value: "C".to_owned(),
-                allowed: vec!["A".to_owned(), "B".to_owned()]
+                value: "C".into(),
+                allowed: vec!["A".into(), "B".into()]
             })
         )]
         #[case::regex_match(

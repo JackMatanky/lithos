@@ -221,12 +221,12 @@ impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
                         ));
                     }
                 };
-                Ok(Self::String(StringSpec::try_new(
+                Ok(Self::String(StringSpec::new(
                     pattern,
                     def.options.map(|o| {
                         o.into_entries().into_iter().map(Into::into).collect()
                     }),
-                )?))
+                )))
             }
         }
     }
