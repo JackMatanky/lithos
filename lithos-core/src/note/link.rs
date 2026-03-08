@@ -55,6 +55,20 @@ pub struct Link {
     embed_type: Option<EmbedType>,
 }
 
+/// Link discovered in frontmatter values.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct FrontmatterLink {
+    key: Box<str>,
+    target: Target,
+    anchor: Option<Anchor>,
+    alias: Option<Box<str>>,
+    embed_type: Option<EmbedType>,
+}
+
 /// Target of a link - may or may not resolve to an existing note.
 ///
 /// # Examples
@@ -284,6 +298,120 @@ impl LinkBuilder {
             ),
         }
     }
+}
+
+impl FrontmatterLink {
+    /// Creates a frontmatter link entry.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        key: Box<str>,
+        target: Target,
+        anchor: Option<Anchor>,
+        alias: Option<Box<str>>,
+        embed_type: Option<EmbedType>,
+    ) -> Self {
+        Self {
+            key,
+            target,
+            anchor,
+            alias,
+            embed_type,
+        }
+    }
+
+    /// Returns the frontmatter key that contained this link.
+    #[inline]
+    #[must_use]
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// Returns the target of the link.
+    #[inline]
+    #[must_use]
+    pub const fn target(&self) -> &Target {
+        &self.target
+    }
+
+    /// Returns the optional anchor.
+    #[inline]
+    #[must_use]
+    pub fn anchor(&self) -> Option<&Anchor> {
+        self.anchor.as_ref()
+    }
+
+    /// Returns the optional alias text.
+    #[inline]
+    #[must_use]
+    pub fn alias(&self) -> Option<&str> {
+        self.alias.as_deref()
+    }
+
+    /// Returns the optional embed type.
+    #[inline]
+    #[must_use]
+    pub const fn embed_type(&self) -> Option<EmbedType> {
+        self.embed_type
+    }
+
+    /// Returns true if this frontmatter link is an embed.
+    #[inline]
+    #[must_use]
+    pub const fn is_embed(&self) -> bool {
+        self.embed_type.is_some()
+    }
+}
+
+/// Parse a frontmatter value into a frontmatter link, if it matches wiki
+/// syntax.
+pub(crate) fn parse_frontmatter_link(
+    key: &str,
+    value: &str,
+) -> Result<Option<FrontmatterLink>, NoteError> {
+    let trimmed = value.trim();
+    let (embed, inner) = if let Some(rest) =
+        trimmed.strip_prefix("![[").and_then(|rest| rest.strip_suffix("]]"))
+    {
+        (true, rest)
+    } else if let Some(rest) =
+        trimmed.strip_prefix("[[").and_then(|rest| rest.strip_suffix("]]"))
+    {
+        (false, rest)
+    } else {
+        return Ok(None);
+    };
+
+    let (target_text, alias) =
+        if let Some((left, right)) = inner.split_once('|') {
+            (left.trim(), Some(right.trim()))
+        } else {
+            (inner.trim(), None)
+        };
+
+    if target_text.is_empty() {
+        return Ok(None);
+    }
+
+    let (target_path, anchor) = split_target_and_anchor(target_text)?;
+    let target = if is_external_target(target_path) {
+        Target::External {
+            url: target_path.into(),
+        }
+    } else {
+        Target::Unresolved {
+            raw: target_path.into(),
+        }
+    };
+    let embed_type = embed.then(|| EmbedType::from_extension(target_path));
+
+    Ok(Some(FrontmatterLink::new(
+        key.into(),
+        target,
+        anchor,
+        alias.filter(|text| !text.is_empty()).map(Into::into),
+        embed_type,
+    )))
 }
 
 impl EmbedType {

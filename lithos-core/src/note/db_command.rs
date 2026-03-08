@@ -17,7 +17,7 @@ use crate::{
             NOTE_EVENTS, PATH_TO_ID, STORED_NOTES, TAGS_TO_NOTES, TASKS,
             TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
             TASKS_BY_DEPENDS_ON, TASKS_BY_DUE_DATE, TASKS_BY_METADATA,
-            TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
+            TASKS_BY_NOTE, TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
         },
         error::NoteError,
         events::{
@@ -31,7 +31,8 @@ use crate::{
         ports::Command,
         position::SourceByteOffset,
         stored::{
-            StoredLocationRange, StoredNote, StoredTask, metadata_index_keys,
+            StoredListItem, StoredLocationRange, StoredNote, StoredTask,
+            metadata_index_keys,
         },
         task::{TaskId, TaskMetadata, TaskText},
         value::FieldValue,
@@ -204,6 +205,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         parsed: &ParsedNote,
     ) -> Result<StoredNote, DbError> {
         let frontmatter = parsed.frontmatter().cloned();
+        let frontmatter_links = parsed.frontmatter_links().to_vec();
         let title = frontmatter
             .as_ref()
             .and_then(|fm| fm.title(self.config))
@@ -225,6 +227,27 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error: NoteError| DbError::Table(error.to_string()))?;
+        let list_items = parsed
+            .list_items()
+            .iter()
+            .map(|entry| {
+                let location = parsed.location_for_offset(entry.position())?;
+                let parent_line = entry
+                    .parent()
+                    .map(|offset| parsed.location_for_offset(offset))
+                    .transpose()?
+                    .map(|parent_location| parent_location.line());
+                Ok(StoredListItem::new(
+                    entry.position(),
+                    Some(location),
+                    entry.depth(),
+                    parent_line,
+                    entry.status(),
+                    entry.task_id(),
+                ))
+            })
+            .collect::<Result<Vec<_>, NoteError>>()
+            .map_err(|error: NoteError| DbError::Table(error.to_string()))?;
         let source_bytes =
             u64::try_from(parsed.source().len()).map_err(|error| {
                 DbError::Table(format!("source length out of range: {error}"))
@@ -237,12 +260,15 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             path.clone(),
             title,
             frontmatter,
+            frontmatter_links,
             parsed.tags().to_vec(),
             parsed.headings().to_vec(),
             Some(heading_locations),
             parsed.sections().to_vec(),
             Some(section_locations),
             parsed.links().to_vec(),
+            parsed.block_refs().to_vec(),
+            list_items,
             source_hash.into_boxed_str(),
             source_bytes,
             parsed.created_at(),
@@ -269,25 +295,28 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         &self,
         note_id: NoteId,
     ) -> Result<TaskIndexData, DbError> {
-        let stored_tasks = self.db.list_owned::<StoredTask>(TASKS)?;
+        let mut id_buffer = Uuid::encode_buffer();
+        let note_id_str =
+            Uuid::from(note_id).as_hyphenated().encode_lower(&mut id_buffer);
+        let task_refs = self.db.multimap_get(TASKS_BY_NOTE, note_id_str)?;
         let index_all_fields = self.config.task().indexed().is_empty();
         let dependencies_enabled = self.config.task().dependencies_enabled();
 
         let mut tasks = Vec::new();
-        for stored in stored_tasks {
-            if stored.note_id() != note_id {
-                continue;
+        for task_id_str in task_refs {
+            if let Some(stored) =
+                self.db.get_owned::<StoredTask>(TASKS, &task_id_str)?
+            {
+                let metadata_keys = Self::task_metadata_keys(
+                    stored.metadata(),
+                    self.config,
+                    index_all_fields,
+                );
+                tasks.push(TaskIndexEntry {
+                    stored,
+                    metadata_keys,
+                });
             }
-
-            let metadata_keys = Self::task_metadata_keys(
-                stored.metadata(),
-                self.config,
-                index_all_fields,
-            );
-            tasks.push(TaskIndexEntry {
-                stored,
-                metadata_keys,
-            });
         }
 
         Ok(TaskIndexData {
@@ -621,6 +650,12 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             let id_str = task_id.as_hyphenated().encode_lower(&mut id_buffer);
 
             batch.put(TASKS, id_str, stored)?;
+
+            let mut note_buffer = Uuid::encode_buffer();
+            let note_id_str = Uuid::from(stored.note_id())
+                .as_hyphenated()
+                .encode_lower(&mut note_buffer);
+            batch.multimap_insert(TASKS_BY_NOTE, note_id_str, id_str)?;
             batch.multimap_insert(
                 TASKS_BY_STATUS,
                 stored.status_name().as_str(),
@@ -690,6 +725,12 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
             let id_str = task_id.as_hyphenated().encode_lower(&mut id_buffer);
 
             batch.delete(TASKS, id_str)?;
+
+            let mut note_buffer = Uuid::encode_buffer();
+            let note_id_str = Uuid::from(stored.note_id())
+                .as_hyphenated()
+                .encode_lower(&mut note_buffer);
+            batch.multimap_remove(TASKS_BY_NOTE, note_id_str, id_str)?;
             batch.multimap_remove(
                 TASKS_BY_STATUS,
                 stored.status_name().as_str(),

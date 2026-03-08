@@ -284,6 +284,7 @@ fn create_test_note(index: usize) -> StoredNote {
         .expect("valid heading"),
     ];
     let sections = vec![Section::new(
+        lithos_core::note::structure::SectionKind::Paragraph,
         None,
         SourceByteRange::new(
             SourceByteOffset::new(0),
@@ -297,12 +298,15 @@ fn create_test_note(index: usize) -> StoredNote {
         note_path,
         Some("Main Title".into()),
         Some(Frontmatter::new(HashMap::new())),
+        Vec::new(),
         tags,
         headings,
         None,
         sections,
         None,
         links,
+        Vec::new(),
+        Vec::new(),
         format!("hash-{index:04}").into_boxed_str(),
         1024,
         None,

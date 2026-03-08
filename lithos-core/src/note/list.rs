@@ -228,6 +228,76 @@ pub enum ListItem {
     },
 }
 
+/// List item metadata entry for indexing.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct ListItemEntry {
+    position: SourceByteOffset,
+    depth: ListDepth,
+    parent: Option<SourceByteOffset>,
+    status: Option<StatusSymbol>,
+    task_id: Option<TaskId>,
+}
+
+impl ListItemEntry {
+    /// Creates a new list item entry.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        position: SourceByteOffset,
+        depth: ListDepth,
+        parent: Option<SourceByteOffset>,
+        status: Option<StatusSymbol>,
+        task_id: Option<TaskId>,
+    ) -> Self {
+        Self {
+            position,
+            depth,
+            parent,
+            status,
+            task_id,
+        }
+    }
+
+    /// Returns the list item byte position.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> SourceByteOffset {
+        self.position
+    }
+
+    /// Returns the list item depth.
+    #[inline]
+    #[must_use]
+    pub const fn depth(&self) -> ListDepth {
+        self.depth
+    }
+
+    /// Returns the parent list item position, if any.
+    #[inline]
+    #[must_use]
+    pub const fn parent(&self) -> Option<SourceByteOffset> {
+        self.parent
+    }
+
+    /// Returns the task status symbol, if this is a checkbox item.
+    #[inline]
+    #[must_use]
+    pub const fn status(&self) -> Option<StatusSymbol> {
+        self.status
+    }
+
+    /// Returns the task id, if this is a promoted task item.
+    #[inline]
+    #[must_use]
+    pub const fn task_id(&self) -> Option<TaskId> {
+        self.task_id
+    }
+}
+
 #[expect(
     clippy::pattern_type_mismatch,
     reason = "Match ergonomics on &self keep accessors concise."

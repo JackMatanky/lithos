@@ -75,24 +75,30 @@ impl Frontmatter {
         format: FrontmatterFormat,
         text: &str,
     ) -> Result<Self, FrontmatterParseError> {
-        let fields = match format {
-            FrontmatterFormat::Yaml => {
-                let yaml_value: serde_yaml::Value = serde_yaml::from_str(text)
-                    .map_err(|_e| FrontmatterParseError::InvalidYaml {
-                        reason: "failed to parse yaml",
-                    })?;
-                Self::yaml_to_field_map(&yaml_value)?
-            }
-            FrontmatterFormat::Toml => {
-                let toml_value: toml::Value =
-                    toml::from_str(text).map_err(|_e| {
-                        FrontmatterParseError::InvalidToml {
+        let fields =
+            match format {
+                FrontmatterFormat::Yaml => {
+                    let yaml_value: serde_yaml::Value =
+                        if let Ok(value) = serde_yaml::from_str(text) {
+                            value
+                        } else {
+                            let sanitized = sanitize_yaml_obsidian_links(text);
+                            serde_yaml::from_str(&sanitized).map_err(|_e| {
+                                FrontmatterParseError::InvalidYaml {
+                                    reason: "failed to parse yaml",
+                                }
+                            })?
+                        };
+                    Self::yaml_to_field_map(&yaml_value)?
+                }
+                FrontmatterFormat::Toml => {
+                    let toml_value: toml::Value = toml::from_str(text)
+                        .map_err(|_e| FrontmatterParseError::InvalidToml {
                             reason: "failed to parse toml",
-                        }
-                    })?;
-                Self::toml_to_field_map(&toml_value)?
-            }
-        };
+                        })?;
+                    Self::toml_to_field_map(&toml_value)?
+                }
+            };
 
         Ok(Self::new(fields))
     }
@@ -432,6 +438,86 @@ impl Frontmatter {
         }
         err
     }
+}
+
+fn sanitize_yaml_obsidian_links(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let line_end = line.trim_end_matches(['\n', '\r']);
+        let line_ending = line.get(line_end.len()..).unwrap_or("");
+        let trimmed = line_end.trim_start();
+        let indent_len = line_end.len().saturating_sub(trimmed.len());
+        let indent = line_end.get(..indent_len).unwrap_or("");
+
+        if let Some(updated) = sanitize_yaml_list_item(trimmed, indent) {
+            output.push_str(&updated);
+            output.push_str(line_ending);
+            continue;
+        }
+
+        if let Some(updated) = sanitize_yaml_mapping_entry(trimmed, indent) {
+            output.push_str(&updated);
+            output.push_str(line_ending);
+            continue;
+        }
+
+        output.push_str(line_end);
+        output.push_str(line_ending);
+    }
+    output
+}
+
+fn sanitize_yaml_list_item(line: &str, indent: &str) -> Option<String> {
+    let rest = line.strip_prefix('-')?.trim_start();
+    if !is_unquoted_obsidian_link(rest) {
+        return None;
+    }
+    let mut updated = String::with_capacity(
+        indent.len().saturating_add(rest.len()).saturating_add(4),
+    );
+    updated.push_str(indent);
+    updated.push_str("- ");
+    updated.push('"');
+    updated.push_str(rest);
+    updated.push('"');
+    Some(updated)
+}
+
+fn sanitize_yaml_mapping_entry(line: &str, indent: &str) -> Option<String> {
+    let colon_index = line.find(':')?;
+    let split_index = colon_index.saturating_add(1);
+    let (key, rest) = line.split_at(split_index);
+    let value = rest.trim_start();
+    if value.is_empty() || value.starts_with('|') || value.starts_with('>') {
+        return None;
+    }
+    if !is_unquoted_obsidian_link(value) {
+        return None;
+    }
+    let whitespace_len = rest.len().saturating_sub(value.len());
+    let whitespace = rest.get(..whitespace_len).unwrap_or("");
+    let mut updated = String::with_capacity(
+        indent
+            .len()
+            .saturating_add(key.len())
+            .saturating_add(whitespace.len())
+            .saturating_add(value.len())
+            .saturating_add(2),
+    );
+    updated.push_str(indent);
+    updated.push_str(key);
+    updated.push_str(whitespace);
+    updated.push('"');
+    updated.push_str(value);
+    updated.push('"');
+    Some(updated)
+}
+
+fn is_unquoted_obsidian_link(value: &str) -> bool {
+    if value.starts_with('"') || value.starts_with('\'') {
+        return false;
+    }
+    value.starts_with("[[") || value.starts_with("![[")
 }
 
 /// Adapter trait for frontmatter-specific conversions from [`FieldValue`].

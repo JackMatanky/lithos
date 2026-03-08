@@ -278,8 +278,9 @@ impl FieldValue {
 
     /// Converts a `serde_yaml::Value` into a `FieldValue`.
     ///
-    /// This is used when parsing YAML frontmatter. Tagged YAML values are not
-    /// supported and will return an error.
+    /// This is used when parsing YAML frontmatter. Tagged YAML values are
+    /// supported only for scalar tags that can be represented as a string; all
+    /// other tagged values return an error.
     ///
     /// # Errors
     /// Returns error if:
@@ -326,7 +327,27 @@ impl FieldValue {
                 }
                 Ok(Self::Object(obj))
             }
-            serde_yaml::Value::Tagged(_) => Err(FieldValueYamlError::Tagged),
+            serde_yaml::Value::Tagged(tagged) => {
+                let tag = tagged.tag.to_string();
+                match &tagged.value {
+                    serde_yaml::Value::Null => Ok(Self::String(tag.into())),
+                    serde_yaml::Value::String(tagged_value) => {
+                        let mut combined = String::with_capacity(
+                            tag.len().saturating_add(tagged_value.len()),
+                        );
+                        combined.push_str(&tag);
+                        combined.push_str(tagged_value);
+                        Ok(Self::String(combined.into()))
+                    }
+                    serde_yaml::Value::Bool(_)
+                    | serde_yaml::Value::Number(_)
+                    | serde_yaml::Value::Sequence(_)
+                    | serde_yaml::Value::Mapping(_)
+                    | serde_yaml::Value::Tagged(_) => {
+                        Err(FieldValueYamlError::Tagged)
+                    }
+                }
+            }
         }
     }
 
@@ -631,7 +652,7 @@ pub enum FieldValueYamlError {
     },
     /// YAML map contains a non-string key.
     NonStringKey,
-    /// YAML tagged values are not supported.
+    /// YAML tagged value is not supported.
     Tagged,
 }
 

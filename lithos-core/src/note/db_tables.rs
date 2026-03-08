@@ -27,6 +27,8 @@ pub(crate) const TASKS_BY_REMINDER_DATE: MultimapTableDefinition<&str, &str> =
     MultimapTableDefinition::new("tasks_by_reminder_date");
 pub(crate) const TASKS_BY_STATUS: MultimapTableDefinition<&str, &str> =
     MultimapTableDefinition::new("tasks_by_status");
+pub(crate) const TASKS_BY_NOTE: MultimapTableDefinition<&str, &str> =
+    MultimapTableDefinition::new("tasks_by_note");
 pub(crate) const TASKS: TableDefinition<&str, &[u8]> =
     TableDefinition::new("tasks");
 pub(crate) const TASKS_BY_METADATA: MultimapTableDefinition<&str, &str> =

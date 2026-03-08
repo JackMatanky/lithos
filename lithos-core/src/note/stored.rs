@@ -20,10 +20,10 @@ use crate::{
         frontmatter::Frontmatter,
         heading::Heading,
         identity::NoteId,
-        link::Link,
+        link::{FrontmatterLink, Link},
         paths::NotePath,
-        position::{SourceByteOffset, SourceLocation},
-        structure::Section,
+        position::{SourceByteOffset, SourceLine, SourceLocation},
+        structure::{BlockRef, Section},
         tag::Tag,
         task::{TaskId, TaskMetadata, TaskSchedule, TaskText, TaskTimestamp},
         value::FieldValue,
@@ -39,12 +39,15 @@ pub struct StoredNote {
     path: NotePath,
     title: Option<Box<str>>,
     frontmatter: Option<Frontmatter>,
+    frontmatter_links: Vec<FrontmatterLink>,
     tags: Vec<Tag>,
     headings: Vec<Heading>,
     heading_locations: Option<Vec<SourceLocation>>,
     sections: Vec<Section>,
     section_locations: Option<Vec<StoredLocationRange>>,
     links: Vec<Link>,
+    block_refs: Vec<BlockRef>,
+    list_items: Vec<StoredListItem>,
     source_hash: Box<str>,
     source_bytes: u64,
     #[rkyv(with = Map<AsUnixTime>)]
@@ -67,12 +70,15 @@ impl StoredNote {
         path: NotePath,
         title: Option<Box<str>>,
         frontmatter: Option<Frontmatter>,
+        frontmatter_links: Vec<FrontmatterLink>,
         tags: Vec<Tag>,
         headings: Vec<Heading>,
         heading_locations: Option<Vec<SourceLocation>>,
         sections: Vec<Section>,
         section_locations: Option<Vec<StoredLocationRange>>,
         links: Vec<Link>,
+        block_refs: Vec<BlockRef>,
+        list_items: Vec<StoredListItem>,
         source_hash: Box<str>,
         source_bytes: u64,
         created_at: Option<SystemTime>,
@@ -84,12 +90,15 @@ impl StoredNote {
             path,
             title,
             frontmatter,
+            frontmatter_links,
             tags,
             headings,
             heading_locations,
             sections,
             section_locations,
             links,
+            block_refs,
+            list_items,
             source_hash,
             source_bytes,
             created_at,
@@ -120,6 +129,12 @@ impl StoredNote {
     #[must_use]
     pub fn frontmatter(&self) -> Option<&Frontmatter> {
         self.frontmatter.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn frontmatter_links(&self) -> &[FrontmatterLink] {
+        &self.frontmatter_links
     }
 
     #[inline]
@@ -156,6 +171,18 @@ impl StoredNote {
     #[must_use]
     pub fn links(&self) -> &[Link] {
         &self.links
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn block_refs(&self) -> &[BlockRef] {
+        &self.block_refs
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn list_items(&self) -> &[StoredListItem] {
+        &self.list_items
     }
 
     #[inline]
@@ -209,6 +236,88 @@ pub struct StoredTask {
     parent_id: Option<TaskId>,
     block_id: Option<Box<str>>,
     depends_on: Vec<Box<str>>,
+}
+
+/// Stored list item metadata entry.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct StoredListItem {
+    position: SourceByteOffset,
+    location: Option<SourceLocation>,
+    depth: crate::note::list::ListDepth,
+    parent_line: Option<SourceLine>,
+    status: Option<StatusSymbol>,
+    task_id: Option<TaskId>,
+}
+
+impl StoredListItem {
+    /// Creates a new stored list item entry.
+    #[inline]
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Stored list item construction needs explicit fields"
+    )]
+    pub fn new(
+        position: SourceByteOffset,
+        location: Option<SourceLocation>,
+        depth: crate::note::list::ListDepth,
+        parent_line: Option<SourceLine>,
+        status: Option<StatusSymbol>,
+        task_id: Option<TaskId>,
+    ) -> Self {
+        Self {
+            position,
+            location,
+            depth,
+            parent_line,
+            status,
+            task_id,
+        }
+    }
+
+    /// Returns the list item byte position.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> SourceByteOffset {
+        self.position
+    }
+
+    /// Returns the list item location.
+    #[inline]
+    #[must_use]
+    pub fn location(&self) -> Option<&SourceLocation> {
+        self.location.as_ref()
+    }
+
+    /// Returns the list item depth.
+    #[inline]
+    #[must_use]
+    pub const fn depth(&self) -> crate::note::list::ListDepth {
+        self.depth
+    }
+
+    /// Returns the parent line number, if available.
+    #[inline]
+    #[must_use]
+    pub const fn parent_line(&self) -> Option<SourceLine> {
+        self.parent_line
+    }
+
+    /// Returns the task status symbol, if this is a checkbox item.
+    #[inline]
+    #[must_use]
+    pub const fn status(&self) -> Option<StatusSymbol> {
+        self.status
+    }
+
+    /// Returns the promoted task id, if present.
+    #[inline]
+    #[must_use]
+    pub const fn task_id(&self) -> Option<TaskId> {
+        self.task_id
+    }
 }
 
 impl StoredTask {
@@ -483,6 +592,7 @@ mod tests {
             SourceColumn::try_new(1)?,
         )]);
         let sections = vec![Section::new(
+            crate::note::structure::SectionKind::Heading,
             headings.first().cloned(),
             crate::note::position::SourceByteRange::new(
                 SourceByteOffset::new(0),
@@ -502,6 +612,9 @@ mod tests {
             ),
         )]);
         let links = Vec::new();
+        let frontmatter_links = Vec::new();
+        let block_refs = Vec::new();
+        let list_items = Vec::new();
         let source_hash = "hash".into();
         let source_bytes = 10u64;
         let created_at = Some(system_time_after(10)?);
@@ -513,12 +626,15 @@ mod tests {
             path,
             title,
             Some(frontmatter),
+            frontmatter_links,
             tags,
             headings,
             heading_locations,
             sections,
             section_locations,
             links,
+            block_refs,
+            list_items,
             source_hash,
             source_bytes,
             created_at,
@@ -528,6 +644,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "Accessor coverage asserts many fields"
+    )]
     fn stored_note_accessors_expose_fields() -> Result<(), NoteError> {
         let note = build_note()?;
 
@@ -539,6 +659,9 @@ mod tests {
         assert_eq!(note.sections().len(), 1);
         assert!(note.section_locations().is_some());
         assert_eq!(note.links().len(), 0);
+        assert_eq!(note.frontmatter_links().len(), 0);
+        assert_eq!(note.block_refs().len(), 0);
+        assert_eq!(note.list_items().len(), 0);
         assert_eq!(note.source_hash(), "hash");
         assert_eq!(note.source_bytes(), 10);
         assert!(note.frontmatter().is_some());

@@ -46,12 +46,6 @@ pub mod db_command;
 pub mod db_query;
 /// Note storage table definitions.
 pub(crate) mod db_tables;
-mod extract_frontmatter;
-mod extract_heading;
-mod extract_link;
-mod extract_list;
-mod extract_section;
-mod extract_tag;
 /// Note identity and validated names.
 pub mod identity;
 /// Note loader orchestration.
