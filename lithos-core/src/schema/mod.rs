@@ -63,8 +63,6 @@ pub mod stored;
 #[doc(hidden)]
 pub mod extender;
 
-/// User-facing string format specifications.
-pub mod formats;
 /// Schema loader — orchestrates file ingestion and resolution.
 pub mod loader;
 /// Schema ports for CQRS.

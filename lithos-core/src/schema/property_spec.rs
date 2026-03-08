@@ -31,7 +31,7 @@ pub use self::{
     date::DateSpec,
     file::FileSpec,
     number::NumberSpec,
-    string::{OptionEntry, StringSpec},
+    string::{OptionEntry, StringFormat, StringSpec},
 };
 use super::error::SchemaError;
 

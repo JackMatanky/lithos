@@ -31,10 +31,9 @@ use std::collections::BTreeMap;
 
 use super::{
     error::{SchemaError, SchemaIngestionError},
-    formats::StringFormat,
     property_spec::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, OptionEntry, PropertySpec,
-        StringSpec,
+        StringFormat, StringSpec,
     },
 };
 
