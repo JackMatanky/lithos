@@ -22,7 +22,9 @@
 //!
 //! ## Event Handlers
 //!
-//! Implement [`SchemaEventHandler`] to receive pipeline events:
+//! Implement [`SchemaEventHandler`] to receive pipeline events.
+//!
+//! See [`crate::schema::handlers`] for concrete implementations:
 //! - `LoggingHandler` - Tracing integration
 //! - `MetricsHandler` - Prometheus/StatsD metrics
 //! - `EventCollector` - Test utility for assertions
