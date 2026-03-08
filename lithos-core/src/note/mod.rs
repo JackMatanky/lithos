@@ -10,6 +10,8 @@
 //! - **Obsidian Compatibility**: Wiki-links, markdown links, YAML/TOML
 //!   frontmatter, and hierarchical inline tags.
 //! - **Port-Based CQRS**: Explicit separation of read and write operations.
+//! - **File Source of Truth**: Parsed notes are ingest artifacts; stored
+//!   projections are rebuildable caches.
 //! - **Zero-Copy Serialization**: Optimized performance using `rkyv` for
 //!   database storage and retrieval.
 //! - **Rich Task Modeling**: Integrated task management with 7 specialized
