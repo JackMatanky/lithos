@@ -174,47 +174,11 @@ impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
         use crate::schema::raw::RawPropertySpec;
 
         match raw {
-            RawPropertySpec::Bool(_) => Ok(Self::Bool(BoolSpec::default())),
-            RawPropertySpec::Date(def) => {
-                let format = def.format.ok_or_else(|| {
-                    SchemaError::ValidationFailed(
-                        "date format is required".into(),
-                    )
-                })?;
-                Ok(Self::Date(DateSpec::try_new(&format)?))
-            }
-            RawPropertySpec::File(def) => Ok(Self::File(FileSpec::try_new(
-                def.directory.as_deref(),
-                def.file_class.as_deref(),
-            )?)),
-            RawPropertySpec::Number(def) => Ok(Self::Number(
-                NumberSpec::try_new(def.min, def.max, def.step)?,
-            )),
-            RawPropertySpec::String(def) => {
-                use crate::schema::raw::RawStringPattern;
-
-                // Convert pattern
-                let pattern = match def.pattern {
-                    Some(RawStringPattern::Custom(p)) => {
-                        Some(StringPattern::try_custom(p)?)
-                    }
-                    Some(RawStringPattern::Named(f)) => {
-                        Some(StringPattern::from(f))
-                    }
-                    None => None,
-                };
-                Ok(Self::String(StringSpec::try_new(
-                    pattern,
-                    def.options
-                        .map(|o| {
-                            o.into_entries()
-                                .into_iter()
-                                .map(TryInto::try_into)
-                                .collect::<Result<Vec<_>, _>>()
-                        })
-                        .transpose()?,
-                )?))
-            }
+            RawPropertySpec::Bool(def) => Ok(Self::Bool(def.try_into()?)),
+            RawPropertySpec::Date(def) => Ok(Self::Date(def.try_into()?)),
+            RawPropertySpec::File(def) => Ok(Self::File(def.try_into()?)),
+            RawPropertySpec::Number(def) => Ok(Self::Number(def.try_into()?)),
+            RawPropertySpec::String(def) => Ok(Self::String(def.try_into()?)),
         }
     }
 }

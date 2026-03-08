@@ -169,6 +169,37 @@ impl StringSpec {
     }
 }
 
+impl TryFrom<crate::schema::raw::RawStringSpec> for StringSpec {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        raw: crate::schema::raw::RawStringSpec,
+    ) -> Result<Self, Self::Error> {
+        let pattern = match raw.pattern {
+            Some(crate::schema::raw::RawStringPattern::Custom(p)) => {
+                Some(StringPattern::try_custom(p)?)
+            }
+            Some(crate::schema::raw::RawStringPattern::Named(f)) => {
+                Some(StringPattern::from(f))
+            }
+            None => None,
+        };
+
+        let options = raw
+            .options
+            .map(|o| {
+                o.into_entries()
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()?;
+
+        Self::try_new(pattern, options)
+    }
+}
+
 // ============================================================================
 // Public API - Supporting Types
 // ============================================================================

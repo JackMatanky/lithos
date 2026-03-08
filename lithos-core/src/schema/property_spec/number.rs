@@ -187,6 +187,17 @@ impl NumberSpec {
     }
 }
 
+impl TryFrom<crate::schema::raw::RawNumberSpec> for NumberSpec {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        raw: crate::schema::raw::RawNumberSpec,
+    ) -> Result<Self, Self::Error> {
+        Self::try_new(raw.min, raw.max, raw.step)
+    }
+}
+
 // --- Internal helper types (type-driven invariants) ---
 
 #[derive(

@@ -2,6 +2,8 @@
 
 use rkyv::{Archive, Deserialize, Serialize};
 
+use crate::schema::error::SchemaError;
+
 /// Boolean property constraints (marker type).
 ///
 /// This type intentionally has no methods because it carries no data.
@@ -11,6 +13,17 @@ use rkyv::{Archive, Deserialize, Serialize};
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct BoolSpec;
+
+impl TryFrom<crate::schema::raw::RawBoolSpec> for BoolSpec {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        _raw: crate::schema::raw::RawBoolSpec,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self)
+    }
+}
 
 #[cfg(test)]
 mod tests {

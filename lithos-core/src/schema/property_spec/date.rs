@@ -96,6 +96,20 @@ impl DateSpec {
     }
 }
 
+impl TryFrom<crate::schema::raw::RawDateSpec> for DateSpec {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        raw: crate::schema::raw::RawDateSpec,
+    ) -> Result<Self, Self::Error> {
+        let format = raw.format.ok_or_else(|| {
+            SchemaError::ValidationFailed("date format is required".into())
+        })?;
+        Self::try_new(&format)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

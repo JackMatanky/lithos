@@ -114,6 +114,17 @@ impl FileSpec {
     }
 }
 
+impl TryFrom<crate::schema::raw::RawFileSpec> for FileSpec {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(
+        raw: crate::schema::raw::RawFileSpec,
+    ) -> Result<Self, Self::Error> {
+        Self::try_new(raw.directory.as_deref(), raw.file_class.as_deref())
+    }
+}
+
 /// Vault-relative path (no traversal, no absolute paths).
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
