@@ -33,7 +33,7 @@ use crate::schema::error::SchemaError;
 #[non_exhaustive]
 pub struct StringSpec {
     /// Optional allowed values (enum-like).
-    options: Option<Vec<OptionEntry>>,
+    options: Option<Box<[OptionEntry]>>,
     /// Optional regex pattern or predefined format.
     pattern: Option<StringPattern>,
 }
@@ -70,7 +70,7 @@ impl StringSpec {
         }
 
         let spec = Self {
-            options,
+            options: options.map(Vec::into_boxed_slice),
             pattern,
         };
 
@@ -139,7 +139,7 @@ impl StringSpec {
                     .collect::<Result<Vec<_>, _>>()
             })
             .transpose()?
-            .or(self.options);
+            .or_else(|| self.options.map(Vec::from));
 
         Self::try_new(pattern, options)
     }
