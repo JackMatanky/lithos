@@ -100,11 +100,14 @@ impl<'db> Command<'db> {
         schemas: &[StoredSchema],
         metadata: &[StoredMetadata],
     ) -> Result<(), DbError> {
-        assert_eq!(
-            schemas.len(),
-            metadata.len(),
-            "schemas and metadata must have the same length"
-        );
+        if schemas.len() != metadata.len() {
+            return Err(DbError::Transaction(format!(
+                "schemas and metadata must have the same length: schemas={}, \
+                 metadata={}",
+                schemas.len(),
+                metadata.len()
+            )));
+        }
 
         // Validate uniqueness
         let mut name_index = std::collections::HashMap::new();

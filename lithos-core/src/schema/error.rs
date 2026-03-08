@@ -76,7 +76,7 @@ pub enum SchemaError {
     CircularInheritance(String),
 
     /// Inheritance chain exceeds maximum depth.
-    #[error("Inheritance depth exceeded: {0} (max: 100)")]
+    #[error("Inheritance depth exceeded: {0} (max: 10)")]
     InheritanceDepthExceeded(usize),
 
     /// Parent schema not found.
