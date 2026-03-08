@@ -37,10 +37,8 @@ pub mod db_command;
 pub mod db_query;
 /// Schema errors.
 pub mod error;
-/// Schema domain events and pipeline events.
+/// Schema domain events, pipeline events, and event handlers.
 pub mod events;
-/// Event handler implementations for pipeline observability.
-pub mod handlers;
 /// Blake3 hash types for content addressing.
 pub mod hash;
 /// File ingestion pipeline for schemas and property banks.
