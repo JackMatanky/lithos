@@ -167,13 +167,7 @@ impl StringSpec {
 
     fn validate_pattern(&self, value: &str) -> Result<(), SchemaError> {
         if let Some(pattern) = self.pattern.as_ref() {
-            let re = pattern.regex();
-            if !re.is_match(value) {
-                return Err(SchemaError::ValidationFailed(format!(
-                    "Value {value} does not match pattern '{pattern}' ({})",
-                    pattern.pattern()
-                )));
-            }
+            pattern.validate(value)?;
         }
         Ok(())
     }
@@ -353,6 +347,33 @@ impl StringPattern {
             Self::ZipCode => "zipcode",
             Self::Custom(_) => "custom",
         }
+    }
+
+    /// Validate a string value against this pattern.
+    ///
+    /// # Errors
+    /// Returns `SchemaError::ValidationFailed` if the value doesn't match the
+    /// pattern.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_core::schema::property_spec::StringPattern;
+    ///
+    /// let pattern = StringPattern::Email;
+    /// assert!(pattern.validate("user@example.com").is_ok());
+    /// assert!(pattern.validate("invalid").is_err());
+    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
+    /// ```
+    #[inline]
+    pub fn validate(&self, value: &str) -> Result<(), SchemaError> {
+        let re = self.regex();
+        if !re.is_match(value) {
+            return Err(SchemaError::ValidationFailed(format!(
+                "Value {value} does not match pattern '{self}' ({})",
+                self.pattern()
+            )));
+        }
+        Ok(())
     }
 
     /// Returns a compiled `Regex` for this pattern.
