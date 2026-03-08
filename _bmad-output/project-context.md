@@ -71,18 +71,22 @@ _This file contains critical rules and patterns that AI agents must follow when 
   - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `lithos-cli`).
 - **Port-Based CQRS:**
   - **Port Traits:** Each context defines split storage capabilities via `<Context>::ports::Query` and `<Context>::ports::Command` traits (e.g., `schema::ports::Query`, `schema::ports::Command`) with GATs for zero-copy reads.
-  - **Generic CQRS:** Command/Query types are generic over respective ports (e.g., `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`).
-  - **Concrete Adapters:** Infrastructure provides concrete implementations without suffix - use module disambiguation (e.g., `adapter::Command`, `adapter::Query`).
-  - **Type Aliases (Three-Tier Pattern):**
-    - Domain `mod.rs`: Generic aliases, no adapter imports: `pub type Command<C> = command::Command<C>`
-    - Adapter `mod.rs`: Remove path stuttering: `pub type Command<'db> = command::Command<'db>`
-    - Usage: `schema::Command::new(adapter::Command::new(&db))`
+  - **Concrete Implementations:** Infrastructure provides concrete implementations (e.g., `schema::db_query::Query`, `schema::db_command::Command`).
+  - **No Generic Wrappers:** Direct use of concrete types (removed 1204 lines of boilerplate).
+  - **Loader Orchestration:** `schema::loader::Loader` orchestrates file → raw → resolved → DB pipeline.
   - **Port Split Benefits:** Read-only test fakes don't implement writes, prevents interface bloat, enables future backend flexibility.
 - **File Ingestion Rules:**
   - **CQRS ports MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
   - **File ingestion MUST use `FileSource` trait**: Abstract over filesystem for testability.
-  - **Application services orchestrate pipelines**: Services coordinate File → Raw → Domain → Database.
+  - **Loader orchestrates pipelines**: Loader coordinates File → Raw → Resolved → Database.
   - **Parsing and validation are distinct phases**: File → Raw (parsing) → Domain (validation) → DB.
+- **Read Model Pattern:**
+  - **StoredSchema is a read model**: No behavior, no events, no aggregate methods.
+  - **Loader handles orchestration**: All pipeline logic in `schema::loader`.
+  - **Event-driven pipeline**: Emit events at each stage for observability and reactive coordination.
+- **Validation Boundaries:**
+  - **Raw layer validates syntax only**: Regex, type system (serde).
+  - **Resolution layer validates semantics**: Refs exist, no cycles, depth limits.
 - **Naming Convention:**
   - Queries: `find_*`, `get_*`, `list_*`, `count_*`
   - Commands: `save`, `delete`, `update`, `create`
