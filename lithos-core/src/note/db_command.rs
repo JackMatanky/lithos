@@ -11,14 +11,11 @@ use crate::{
     config::aggregate::Config,
     db::{BatchWriter, Database, DbError},
     note::{
-        ParsedNote,
-        db_tables::{
-            ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV,
-            NOTE_EVENTS, PATH_TO_ID, STORED_NOTES, TAGS_TO_NOTES, TASKS,
-            TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
-            TASKS_BY_DEPENDS_ON, TASKS_BY_DUE_DATE, TASKS_BY_METADATA,
-            TASKS_BY_NOTE, TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
-        },
+        ALIAS_TO_ID, FILE_CLASS_TO_ID, FOLDER_TO_ID, FRONTMATTER_KV,
+        NOTE_EVENTS, PATH_TO_ID, ParsedNote, STORED_NOTES, TAGS_TO_NOTES,
+        TASKS, TASKS_BY_COMPLETED_DATE, TASKS_BY_CREATED_DATE,
+        TASKS_BY_DEPENDS_ON, TASKS_BY_DUE_DATE, TASKS_BY_METADATA,
+        TASKS_BY_NOTE, TASKS_BY_REMINDER_DATE, TASKS_BY_STATUS,
         error::NoteError,
         events::{
             NoteChangeKind, NoteEvent, NoteEventKind, NoteEventPayload,
