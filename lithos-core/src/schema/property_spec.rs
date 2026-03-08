@@ -191,35 +191,17 @@ impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
                 NumberSpec::try_new(def.min, def.max, def.step)?,
             )),
             RawPropertySpec::String(def) => {
-                use crate::schema::raw::RawStringFormat;
+                use crate::schema::raw::RawStringPattern;
 
-                // Convert separate pattern/format fields into unified
-                // StringPattern
-                let pattern = match (def.pattern.as_ref(), def.format) {
-                    (Some(p), None) => {
-                        Some(StringPattern::try_custom(p.clone())?)
+                // Convert pattern
+                let pattern = match def.pattern {
+                    Some(RawStringPattern::Custom(p)) => {
+                        Some(StringPattern::try_custom(p)?)
                     }
-                    (None, Some(f)) => {
-                        // Convert RawStringFormat to StringPattern
-                        let sp = match f {
-                            RawStringFormat::Email => StringPattern::Email,
-                            RawStringFormat::Url => StringPattern::Url,
-                            RawStringFormat::PhoneUs => StringPattern::PhoneUs,
-                            RawStringFormat::Slug => StringPattern::Slug,
-                            RawStringFormat::UuidV4 => StringPattern::UuidV4,
-                            RawStringFormat::WikiLink => {
-                                StringPattern::WikiLink
-                            }
-                            RawStringFormat::ZipCode => StringPattern::ZipCode,
-                        };
-                        Some(sp)
+                    Some(RawStringPattern::Named(f)) => {
+                        Some(StringPattern::from(f))
                     }
-                    (None, None) => None,
-                    (Some(_), Some(_)) => {
-                        return Err(SchemaError::ValidationFailed(
-                            "pattern and format are mutually exclusive".into(),
-                        ));
-                    }
+                    None => None,
                 };
                 Ok(Self::String(StringSpec::try_new(
                     pattern,

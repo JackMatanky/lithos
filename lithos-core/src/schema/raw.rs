@@ -420,15 +420,22 @@ pub enum RawStringFormat {
     ZipCode,
 }
 
+/// Raw string pattern supporting both custom regex and predefined formats.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[non_exhaustive]
+pub enum RawStringPattern {
+    /// Predefined named format.
+    Named(RawStringFormat),
+    /// Custom regex pattern.
+    Custom(Box<str>),
+}
+
 /// String property definition.
 ///
-/// Supports `options`, `pattern`, and `format` per the meta-schema.
+/// Supports `options` and `pattern` per the meta-schema.
 /// All fields are `Option<T>` to support both inline definitions
 /// and override contexts.
-///
-/// # Invariants
-/// - `format` and `pattern` are mutually exclusive (validated during
-///   conversion).
 ///
 /// # Examples
 /// ```
@@ -443,10 +450,8 @@ pub enum RawStringFormat {
 pub struct RawStringSpec {
     /// Optional allowed values in one of three formats.
     pub options: Option<RawOptions>,
-    /// Optional regex pattern (mutually exclusive with `format`).
-    pub pattern: Option<Box<str>>,
-    /// Optional named format (mutually exclusive with `pattern`).
-    pub format: Option<RawStringFormat>,
+    /// Optional validation pattern (custom regex or predefined format).
+    pub pattern: Option<RawStringPattern>,
 }
 
 /// Raw property bank loaded from vault files.

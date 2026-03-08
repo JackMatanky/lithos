@@ -125,9 +125,17 @@
         },
         "pattern": {
           "title": "Validation Pattern",
-          "description": "A regular expression the property value must match. Use this for structured string formats like email addresses or identifiers.",
-          "type": "string",
-          "format": "regex"
+          "description": "A regular expression the property value must match, or a predefined format like 'email' or 'url'.",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["email", "url", "phone_us", "slug", "uuid_v4", "wikilink", "zipcode"]
+            },
+            {
+              "type": "string",
+              "format": "regex"
+            }
+          ]
         }
       }
     },

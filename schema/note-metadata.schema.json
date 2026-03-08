@@ -138,9 +138,17 @@
         },
         "pattern": {
           "title": "Validation Pattern Override",
-          "description": "Override the regex pattern for a string property.",
-          "type": "string",
-          "format": "regex"
+          "description": "Override the regex pattern or predefined format for a string property.",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["email", "url", "phone_us", "slug", "uuid_v4", "wikilink", "zipcode"]
+            },
+            {
+              "type": "string",
+              "format": "regex"
+            }
+          ]
         },
         "step": {
           "title": "Step Override",
@@ -272,9 +280,17 @@
         },
         "pattern": {
           "title": "Validation Pattern",
-          "description": "A regular expression the property value must match.",
-          "type": "string",
-          "format": "regex"
+          "description": "A regular expression the property value must match, or a predefined format like 'email' or 'url'.",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["email", "url", "phone_us", "slug", "uuid_v4", "wikilink", "zipcode"]
+            },
+            {
+              "type": "string",
+              "format": "regex"
+            }
+          ]
         }
       }
     },

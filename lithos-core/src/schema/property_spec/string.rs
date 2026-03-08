@@ -12,8 +12,17 @@ use crate::schema::error::SchemaError;
 
 /// String property validation constraints.
 ///
+/// A `StringSpec` supports four operational states:
+/// - **Neither**: Accepts any string.
+/// - **Only `options`**: Acts as an enum-style restricted list.
+/// - **Only `pattern`**: Validates the string against a custom regex or
+///   predefined format.
+/// - **Both**: Provides a restricted list where *every element* must
+///   additionally satisfy the pattern constraint.
+///
 /// # Invariants
-/// - If `pattern` is set, it must be a valid regex (enforced at construction).
+/// - If `pattern` is set and is a custom regex, it must be valid (enforced at
+///   construction).
 /// - If both `pattern` and `options` are set, every option must match the
 ///   pattern (enforced at construction).
 /// - `options` (if present) must be non-empty.
@@ -100,19 +109,23 @@ impl StringSpec {
     /// # Errors
     /// Returns `SchemaError` if override values are invalid or inconsistent.
     #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching &Self with value patterns is more readable than \
+                  matching *self"
+    )]
     pub fn apply_overrides(
         self,
         overrides: &crate::schema::raw::RawStringSpec,
     ) -> Result<Self, SchemaError> {
-        let pattern = match (overrides.pattern.as_ref(), overrides.format) {
-            (Some(p), None) => Some(StringPattern::try_custom(p.clone())?),
-            (None, Some(f)) => Some(StringPattern::from(f)),
-            (None, None) => self.pattern,
-            (Some(_), Some(_)) => {
-                return Err(SchemaError::ValidationFailed(
-                    "pattern and format are mutually exclusive".into(),
-                ));
+        let pattern = match overrides.pattern.as_ref() {
+            Some(crate::schema::raw::RawStringPattern::Custom(p)) => {
+                Some(StringPattern::try_custom(p.clone())?)
             }
+            Some(crate::schema::raw::RawStringPattern::Named(f)) => {
+                Some(StringPattern::from(*f))
+            }
+            None => self.pattern,
         };
 
         let options = overrides
@@ -601,7 +614,7 @@ mod tests {
             })
         )]
         #[case::regex_match(
-            RawStringSpec { pattern: Some(r"^\d+$".into()), ..Default::default() },
+            RawStringSpec { pattern: Some(crate::schema::raw::RawStringPattern::Custom(r"^\d+$".into())), ..Default::default() },
             "123",
             Ok(())
         )]
@@ -613,6 +626,13 @@ mod tests {
             let spec = StringSpec::default().apply_overrides(&def).unwrap();
             let result = spec.validate(value);
             assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn empty_spec_accepts_any_string() {
+            let spec = StringSpec::try_new(None, None).unwrap();
+            let result = spec.validate("any arbitrary string");
+            result.unwrap();
         }
 
         #[test]
