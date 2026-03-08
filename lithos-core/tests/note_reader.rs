@@ -30,6 +30,7 @@ mod tests {
     };
 
     use lithos_core::{
+        application::VaultService,
         config::{
             aggregate::Config,
             raw::RawConfig,
@@ -38,8 +39,7 @@ mod tests {
         },
         db::Database,
         note::{
-            db_command::CommandAdapter, db_query::QueryAdapter,
-            ingestor::Ingestor, loader::Loader, query::Query,
+            db_query::QueryAdapter, ports::Query as NoteQueryPort,
             tag::Tag as NoteTag,
         },
     };
@@ -49,7 +49,7 @@ mod tests {
 
     struct Fixture {
         _dir: TempDir,
-        query: Query<QueryAdapter>,
+        query: QueryAdapter,
         note: lithos_core::note::stored::StoredNote,
         config: Config,
     }
@@ -79,14 +79,11 @@ mod tests {
         let config = test_config(dir.path().to_path_buf())?;
         let db_path = dir.path().join("notes.redb");
         let db = Arc::new(Database::open(&db_path)?);
-        let command = CommandAdapter::new(db.as_ref(), &config);
-        let service = Loader::new(command);
-        let ingestor = Ingestor::new(&config);
+        let service = VaultService::new(db.as_ref(), &config);
+        let _note_ids = service.load()?;
 
-        let _note_ids = service.load(&ingestor)?;
-
-        let query = Query::new(QueryAdapter::new(Arc::clone(&db)));
-        let notes = query.list()?;
+        let query = QueryAdapter::new(Arc::clone(&db));
+        let notes = NoteQueryPort::list(&query)?;
         let note = notes
             .first()
             .cloned()
@@ -143,8 +140,10 @@ mod tests {
             .ok_or_else(|| std::io::Error::other("missing done status"))?;
 
         let mut tasks = Vec::new();
-        tasks.extend(fixture.query.list_tasks_by_status(todo)?);
-        tasks.extend(fixture.query.list_tasks_by_status(done)?);
+        tasks
+            .extend(NoteQueryPort::list_tasks_by_status(&fixture.query, todo)?);
+        tasks
+            .extend(NoteQueryPort::list_tasks_by_status(&fixture.query, done)?);
         Ok(tasks)
     }
 
@@ -289,20 +288,19 @@ mod tests {
         let (dir, config, db) =
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
-        let command = CommandAdapter::new(db.as_ref(), &config);
-        let service = Loader::new(command);
-        let ingestor = Ingestor::new(&config);
-        let query = Query::new(QueryAdapter::new(Arc::clone(&db)));
+        let service = VaultService::new(db.as_ref(), &config);
+        let query = QueryAdapter::new(Arc::clone(&db));
 
-        let first = service.load(&ingestor).expect("first load");
+        let first = service.load().expect("first load");
         assert_eq!(first.len(), 1, "first load should index one note");
-        let mut first_notes = query.list().expect("first notes");
+        let mut first_notes = NoteQueryPort::list(&query).expect("first notes");
         let first_note = first_notes.pop().expect("expected stored note");
         let first_indexed = first_note.last_indexed_at();
 
-        let second = service.load(&ingestor).expect("second load");
+        let second = service.load().expect("second load");
         assert!(second.is_empty(), "second load should skip unchanged note");
-        let mut second_notes = query.list().expect("second notes");
+        let mut second_notes =
+            NoteQueryPort::list(&query).expect("second notes");
         let second_note = second_notes.pop().expect("expected stored note");
         assert_eq!(second_note.last_indexed_at(), first_indexed);
         drop(dir);
@@ -313,17 +311,15 @@ mod tests {
         let (dir, config, db) =
             build_environment("# Title\n- [ ] #task Review PR")
                 .expect("environment");
-        let command = CommandAdapter::new(db.as_ref(), &config);
-        let service = Loader::new(command);
-        let ingestor = Ingestor::new(&config);
-        let query = Query::new(QueryAdapter::new(Arc::clone(&db)));
+        let service = VaultService::new(db.as_ref(), &config);
+        let query = QueryAdapter::new(Arc::clone(&db));
 
-        let _second_note_ids = service.load(&ingestor).expect("first load");
+        let _second_note_ids = service.load().expect("first load");
         let note_path = dir.path().join("notes/note.md");
         std::fs::remove_file(note_path).expect("remove note");
 
-        let _note_ids = service.load(&ingestor).expect("second load");
-        let notes = query.list().expect("list notes");
+        let _note_ids = service.load().expect("second load");
+        let notes = NoteQueryPort::list(&query).expect("list notes");
         assert!(notes.is_empty(), "expected note to be removed");
     }
 }

@@ -40,6 +40,7 @@
 
 pub mod config;
 pub mod schema;
+pub mod services;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Public Type Aliases
@@ -53,3 +54,7 @@ pub mod schema;
 /// The service is storage-agnostic and accepts Command/Query implementations
 /// via dependency injection.
 pub type ConfigService<'db> = config::ConfigService<'db>;
+
+/// Vault service type alias.
+pub type VaultService<'db, 'config> =
+    services::vault_service::VaultService<'db, 'config>;

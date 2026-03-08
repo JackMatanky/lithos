@@ -110,6 +110,13 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
         }
     }
 
+    /// Access the configuration used by this adapter.
+    #[inline]
+    #[must_use]
+    pub const fn config(&self) -> &'config Config {
+        self.config
+    }
+
     fn ensure_unique_path(
         &self,
         path: &NotePath,

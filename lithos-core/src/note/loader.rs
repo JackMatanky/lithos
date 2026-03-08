@@ -1,18 +1,10 @@
-//! Note loader — orchestrates the note ingestion pipeline.
-//!
-//! Pipeline:
-//! 1. Discover note paths via `note::ingestor::Ingestor`.
-//! 2. Parse markdown via `note::reader::NoteReader`.
-//! 3. Persist projections via `note::db_command::CommandAdapter`.
-
-use std::{collections::HashSet, path::Path};
+//! Note loader — parses markdown content and persists projections.
 
 use crate::{
     db::DbError,
-    fs::FsReader,
     note::{
         db_command::CommandAdapter, error::NoteIngestError, identity::NoteId,
-        ingestor::Ingestor, ports::Command as _, reader::NoteReader,
+        paths::NotePath, ports::Command as _, reader::NoteReader,
     },
 };
 
@@ -29,11 +21,10 @@ pub enum LoadError {
     Command(#[from] DbError),
 }
 
-/// Thin orchestration service for note ingestion.
-///
-/// Uses concrete redb adapters for production use.
+/// Thin orchestration service for note parsing and persistence.
 pub struct Loader<'db, 'config> {
     command: CommandAdapter<'db, 'config>,
+    reader: NoteReader<'config>,
 }
 
 impl<'db, 'config> Loader<'db, 'config> {
@@ -41,96 +32,32 @@ impl<'db, 'config> Loader<'db, 'config> {
     #[inline]
     #[must_use]
     pub const fn new(command: CommandAdapter<'db, 'config>) -> Self {
+        let reader = NoteReader::new(command.config());
         Self {
             command,
+            reader,
         }
     }
 
-    /// Run the note ingestion pipeline.
+    /// Parse markdown content and persist projections.
     ///
-    /// Returns the note IDs that were inserted/updated.
+    /// Returns the note ID that was inserted/updated.
     ///
     /// # Errors
     ///
-    /// Returns [`LoadError`] on I/O, parsing, or storage failure.
+    /// Returns [`LoadError`] on parsing or storage failure.
     #[inline]
-    pub fn load(
+    pub fn load_content(
         &self,
-        ingestor: &Ingestor<'config>,
-    ) -> Result<Vec<NoteId>, LoadError> {
-        let config = ingestor.config();
-        let reader = NoteReader::new(config);
-        let fs = FsReader::new(config.vault_metadata().root().as_path());
-        let paths =
-            ingestor.scan_note_paths().map_err(NoteIngestError::Domain)?;
-
-        let mut path_set: HashSet<Box<str>> =
-            HashSet::with_capacity(paths.len());
-        for note_path in &paths {
-            path_set.insert(note_path.as_str().into());
-        }
-
-        let stored_notes = self.command.list_stored_notes()?;
-        for stored in stored_notes {
-            if !path_set.contains(stored.path().as_str()) {
-                self.command.record_deleted_note(stored.id())?;
-            }
-        }
-
-        let mut note_ids = Vec::with_capacity(paths.len());
-        for note_path in paths {
-            let stored = self.command.stored_note_by_path(&note_path)?;
-            let metadata = fs.metadata(Path::new(note_path.as_str())).map_err(
-                |error| {
-                    LoadError::Ingestion(NoteIngestError::Source(
-                        error.to_string().into(),
-                    ))
-                },
-            )?;
-            let modified = metadata.modified().ok();
-            let created = metadata.created().ok();
-            let size = metadata.len();
-
-            if let Some(stored) = stored.as_ref() {
-                let is_same_size = stored.source_bytes() == size;
-                let is_same_mtime =
-                    stored.modified_at().zip(modified).is_some_and(
-                        |(stored_time, current)| stored_time == current,
-                    );
-                if is_same_size && is_same_mtime {
-                    continue;
-                }
-
-                let markdown = fs
-                    .read_to_string(Path::new(note_path.as_str()))
-                    .map_err(|error| {
-                        LoadError::Ingestion(NoteIngestError::Source(
-                            error.to_string().into(),
-                        ))
-                    })?;
-                let hash =
-                    blake3::hash(markdown.as_bytes()).to_hex().to_string();
-                if is_same_size && stored.source_hash() == hash {
-                    continue;
-                }
-                let parsed = reader.parse_content(
-                    markdown.into_boxed_str(),
-                    created,
-                    modified,
-                )?;
-                let note_id =
-                    self.command.upsert_parsed_note(&note_path, &parsed)?;
-                note_ids.push(note_id);
-            } else {
-                let parsed =
-                    reader.parse(&fs, Path::new(note_path.as_str()))?;
-                let note_id =
-                    self.command.upsert_parsed_note(&note_path, &parsed)?;
-                note_ids.push(note_id);
-            }
-        }
-
-        Ok(note_ids)
+        path: &NotePath,
+        markdown: Box<str>,
+        created_at: Option<std::time::SystemTime>,
+        modified_at: Option<std::time::SystemTime>,
+    ) -> Result<NoteId, LoadError> {
+        let parsed =
+            self.reader.parse_content(markdown, created_at, modified_at)?;
+        let note_id = self.command.upsert_parsed_note(path, &parsed)?;
+        Ok(note_id)
     }
 
     #[inline]
@@ -138,5 +65,16 @@ impl<'db, 'config> Loader<'db, 'config> {
     /// Access the command adapter used by this loader.
     pub const fn command(&self) -> &CommandAdapter<'db, 'config> {
         &self.command
+    }
+
+    /// Record deletion of a stored note.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LoadError`] if persistence fails.
+    #[inline]
+    pub fn record_deleted_note(&self, id: NoteId) -> Result<(), LoadError> {
+        self.command.record_deleted_note(id)?;
+        Ok(())
     }
 }
