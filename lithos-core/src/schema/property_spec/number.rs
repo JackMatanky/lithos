@@ -187,6 +187,31 @@ impl NumberSpec {
     }
 }
 
+impl ArchivedNumberSpec {
+    /// Validates a numeric value against range and step constraints directly
+    /// from the database without full deserialization.
+    ///
+    /// This method deserializes only the `NumberSpec` (a small struct) rather
+    /// than the entire property hierarchy, providing significant performance
+    /// benefits for validation-heavy workloads.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate_value(&self, value: f64) -> Result<(), SchemaError> {
+        // Deserialize the spec (small overhead) to reuse existing validation
+        // logic
+        let spec: NumberSpec =
+            rkyv::deserialize::<NumberSpec, rkyv::rancor::Error>(self)
+                .map_err(|e| {
+                    SchemaError::ValidationFailed(format!(
+                        "Failed to deserialize NumberSpec: {e}"
+                    ))
+                })?;
+        spec.validate_value(value)
+    }
+}
+
 impl TryFrom<crate::schema::raw::RawNumberSpec> for NumberSpec {
     type Error = SchemaError;
 

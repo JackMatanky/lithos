@@ -96,6 +96,36 @@ impl DateSpec {
     }
 }
 
+impl ArchivedDateSpec {
+    /// Validates a date string against the format constraint directly from the
+    /// database without deserialization.
+    ///
+    /// This is a zero-copy validation method that operates on the archived
+    /// representation.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate_str(&self, value: &str) -> Result<(), SchemaError> {
+        let is_valid =
+            chrono::NaiveDateTime::parse_from_str(value, self.format.as_ref())
+                .is_ok()
+                || chrono::NaiveDate::parse_from_str(
+                    value,
+                    self.format.as_ref(),
+                )
+                .is_ok();
+
+        if !is_valid {
+            return Err(SchemaError::InvalidDateFormat(format!(
+                "Value {value} does not match format {}",
+                self.format.as_ref()
+            )));
+        }
+        Ok(())
+    }
+}
+
 impl TryFrom<crate::schema::raw::RawDateSpec> for DateSpec {
     type Error = SchemaError;
 

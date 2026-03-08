@@ -169,6 +169,36 @@ impl StringSpec {
     }
 }
 
+impl ArchivedStringSpec {
+    /// Validate a runtime string value against all constraints in this archived
+    /// spec directly from the database without deserialization.
+    ///
+    /// This is a zero-copy validation method that operates on the archived
+    /// representation.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate(&self, value: &str) -> Result<(), SchemaError> {
+        // 1. Validate options (enum check)
+        if let Some(entries) = self.options.as_ref()
+            && !entries.iter().any(|e| e.value.as_ref() == value)
+        {
+            return Err(SchemaError::InvalidEnumValue {
+                value: value.into(),
+                allowed: entries.iter().map(|e| (*e.value).into()).collect(),
+            });
+        }
+
+        // 2. Validate pattern (regex/format check)
+        if let Some(pattern) = self.pattern.as_ref() {
+            pattern.validate(value)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl TryFrom<crate::schema::raw::RawStringSpec> for StringSpec {
     type Error = SchemaError;
 
@@ -464,6 +494,54 @@ impl StringPattern {
             regex::Regex::new(StringPattern::ZipCode.pattern())
                 .expect("built-in ZipCode regex pattern is valid")
         })
+    }
+}
+
+impl ArchivedStringPattern {
+    /// Validate a string value against this archived pattern directly from the
+    /// database without deserialization.
+    ///
+    /// This is a zero-copy validation method that operates on the archived
+    /// representation.
+    ///
+    /// # Errors
+    /// Returns `SchemaError::ValidationFailed` if the value doesn't match the
+    /// pattern.
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching &Self with value patterns is more readable than \
+                  matching *self"
+    )]
+    pub fn validate(&self, value: &str) -> Result<(), SchemaError> {
+        let matches = match self {
+            Self::Email => StringPattern::static_regex_email().is_match(value),
+            Self::Url => StringPattern::static_regex_url().is_match(value),
+            Self::PhoneUs => {
+                StringPattern::static_regex_phone_us().is_match(value)
+            }
+            Self::Slug => StringPattern::static_regex_slug().is_match(value),
+            Self::UuidV4 => {
+                StringPattern::static_regex_uuid_v4().is_match(value)
+            }
+            Self::WikiLink => {
+                StringPattern::static_regex_wikilink().is_match(value)
+            }
+            Self::ZipCode => {
+                StringPattern::static_regex_zipcode().is_match(value)
+            }
+            Self::Custom(pattern) => {
+                StringPattern::get_or_compile_pattern(pattern.as_ref())
+                    .is_match(value)
+            }
+        };
+
+        if !matches {
+            return Err(SchemaError::ValidationFailed(format!(
+                "Value {value} does not match pattern (archived)"
+            )));
+        }
+        Ok(())
     }
 }
 

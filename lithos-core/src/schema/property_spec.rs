@@ -152,6 +152,50 @@ impl PropertySpec {
     }
 }
 
+impl ArchivedPropertySpec {
+    /// Validate a value against this archived spec's constraints directly from
+    /// the database without requiring a full deserialization pass.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &enum are intentional here for \
+                  readability"
+    )]
+    pub fn validate(
+        &self,
+        value: &serde_json::Value,
+    ) -> Result<(), SchemaError> {
+        match self {
+            Self::Bool(_) => {
+                if !value.is_boolean() {
+                    return Err(PropertySpec::invalid_type(value, "boolean"));
+                }
+                Ok(())
+            }
+            Self::Date(s) => {
+                let val = PropertySpec::expect_str(value, "string (date)")?;
+                s.validate_str(val)
+            }
+            Self::File(s) => {
+                let val =
+                    PropertySpec::expect_str(value, "string (file path)")?;
+                s.validate_str(val)
+            }
+            Self::Number(s) => {
+                let n = PropertySpec::expect_f64(value, "number")?;
+                s.validate_value(n)
+            }
+            Self::String(s) => {
+                let val = PropertySpec::expect_str(value, "string")?;
+                s.validate(val)
+            }
+        }
+    }
+}
+
 // ============================================================================
 // Conversions from Raw Types (Syntax → Domain)
 // ============================================================================

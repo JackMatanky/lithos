@@ -114,6 +114,36 @@ impl FileSpec {
     }
 }
 
+impl ArchivedFileSpec {
+    /// Validates a file path against directory and file class constraints
+    /// directly from the database without deserialization.
+    ///
+    /// This is a zero-copy validation method that operates on the archived
+    /// representation.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate_str(&self, value: &str) -> Result<(), SchemaError> {
+        VaultRelPath::validate_path(value)?;
+
+        if let Some(dir) = self.directory.as_ref() {
+            let value_path = Path::new(value);
+            let dir_path = Path::new(dir.0.as_ref());
+
+            // File must be INSIDE directory, not AT directory level
+            if !value_path.starts_with(dir_path) || value_path == dir_path {
+                return Err(SchemaError::InvalidDirectoryPath(format!(
+                    "File {value} must be inside (not at) directory {}",
+                    dir.0.as_ref()
+                )));
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl TryFrom<crate::schema::raw::RawFileSpec> for FileSpec {
     type Error = SchemaError;
 
