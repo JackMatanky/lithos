@@ -190,29 +190,8 @@ impl<'config> NoteReader<'config> {
                 NoteIngestError::Source(format!("{error}").into())
             })?;
         let markdown = markdown.into_boxed_str();
-        let metadata = match reader.metadata(path) {
-            Ok(meta) => Some(meta),
-            Err(error) => {
-                tracing::debug!(
-                    path = %path.display(),
-                    error = %error,
-                    "Failed to read note metadata"
-                );
-                None
-            }
-        };
-        let modified_at = extract_timestamp(
-            path,
-            metadata.as_ref(),
-            std::fs::Metadata::modified,
-            "modified",
-        );
-        let created_at = extract_timestamp(
-            path,
-            metadata.as_ref(),
-            std::fs::Metadata::created,
-            "created",
-        );
+        let modified_at = reader.modified_at(path);
+        let created_at = reader.created_at(path);
 
         self.parse_with_timestamps(markdown, created_at, modified_at)
     }
@@ -1263,28 +1242,6 @@ impl ParsedNote {
     #[must_use]
     pub const fn modified_at(&self) -> Option<SystemTime> {
         self.modified_at
-    }
-}
-
-fn extract_timestamp(
-    path: &Path,
-    metadata: Option<&std::fs::Metadata>,
-    time_fn: fn(&std::fs::Metadata) -> std::io::Result<std::time::SystemTime>,
-    time_type: &str,
-) -> Option<SystemTime> {
-    let meta = metadata?;
-
-    match time_fn(meta) {
-        Ok(time) => Some(time),
-        Err(error) => {
-            tracing::debug!(
-                path = %path.display(),
-                error = %error,
-                time_type,
-                "Failed to read timestamp from metadata"
-            );
-            None
-        }
     }
 }
 
