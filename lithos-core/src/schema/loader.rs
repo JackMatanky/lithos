@@ -358,12 +358,50 @@ impl<'db> Loader<'db> {
         Ok((bank, bank_stale))
     }
 
+    /// Refine staleness by checking content hash for timestamp-stale schemas.
+    ///
+    /// This is the "slow path" that verifies whether a timestamp-based stale
+    /// detection was a real content change or just a file touch.
+    fn refine_staleness_by_hash(
+        &self,
+        staleness_map: &mut HashMap<SchemaId, bool>,
+        hash_map: &HashMap<SchemaId, crate::schema::hash::Blake3Hash>,
+    ) -> Result<(), LoaderError> {
+        // Iteration over HashMap is intentional - order doesn't matter
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Iteration order doesn't matter for hash comparison"
+        )]
+        for (&id, is_stale) in staleness_map {
+            if !*is_stale {
+                continue; // Skip schemas already marked as fresh
+            }
+
+            // Check if hash actually changed (slow path)
+            let Some(&current_hash) = hash_map.get(&id) else {
+                continue;
+            };
+            let Some(stored_hash) = self
+                .query
+                .get_schema_hash(id)
+                .map_err(SchemaQueryError::from)?
+            else {
+                continue;
+            };
+
+            if current_hash == stored_hash {
+                // Hash unchanged - this is a touch-only change
+                *is_stale = false;
+                tracing::debug!(
+                    schema_id = %id,
+                    "Touch-only change detected (hash unchanged)"
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Partition schemas into stale and fresh based on staleness checks.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Event emissions add necessary observability; function is \
-                  already well-structured"
-    )]
     fn partition_by_staleness(
         &self,
         raw_schemas_with_times: &[RawSchemaWithTimes],
@@ -406,8 +444,7 @@ impl<'db> Loader<'db> {
             .cascade_staleness(&mut staleness_map)
             .map_err(SchemaQueryError::from)?;
 
-        // Step 2: Two-tier staleness detection - for schemas marked stale by
-        // timestamp, check if hash actually changed (slow path)
+        // Step 2: Build hash map for content comparison
         let mut hash_map: HashMap<SchemaId, crate::schema::hash::Blake3Hash> =
             HashMap::with_capacity(raw_schemas_with_times.len());
 
@@ -422,41 +459,8 @@ impl<'db> Loader<'db> {
             }
         }
 
-        // For schemas marked stale by timestamp, check if content hash changed
-        // Iteration over HashMap is intentional here - order doesn't matter for
-        // hash comparison
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Iteration order doesn't matter for hash comparison - \
-                      we're just checking each schema individually"
-        )]
-        for (&id, is_stale) in &mut staleness_map {
-            if !*is_stale {
-                continue; // Skip schemas already marked as fresh
-            }
-
-            // Check if hash actually changed (slow path)
-            let Some(&current_hash) = hash_map.get(&id) else {
-                continue;
-            };
-            let Some(stored_hash) = self
-                .query
-                .get_schema_hash(id)
-                .map_err(SchemaQueryError::from)?
-            else {
-                continue;
-            };
-
-            if current_hash == stored_hash {
-                // Hash unchanged - this is a touch-only change
-                // Mark as fresh to avoid re-resolution
-                *is_stale = false;
-                tracing::debug!(
-                    schema_id = %id,
-                    "Touch-only change detected (hash unchanged)"
-                );
-            }
-        }
+        // Step 3: Refine staleness by checking content hash (slow path)
+        self.refine_staleness_by_hash(&mut staleness_map, &hash_map)?;
 
         // Partition into stale and fresh
         let mut stale = Vec::new();

@@ -200,8 +200,7 @@ impl<'bank> Dereferencer<'bank> {
     /// targets a type incompatible with the base spec type.
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics on &PropertySpec are intentional for \
-                  readability; dereferencing every arm adds noise"
+        reason = "Matching on &PropertySpec with value patterns is idiomatic"
     )]
     fn apply_spec_overrides(
         base: &PropertySpec,

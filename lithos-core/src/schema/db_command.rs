@@ -228,6 +228,81 @@ impl<'db> Command<'db> {
             Ok(())
         })
     }
+
+    /// Collect old version keys for retention cleanup.
+    ///
+    /// Keeps the last 3 versions to prevent unbounded disk growth.
+    /// Returns (`id_keys`, `name_keys`) tuples to delete.
+    fn collect_old_version_keys(
+        &self,
+        previous_metadata: Option<StoredMetadata>,
+    ) -> (Vec<String>, Vec<String>) {
+        const VERSION_RETENTION_COUNT: u64 = 3;
+
+        // Determine which version to delete (keep last 3: current-2, current-1,
+        // current)
+        let version_to_delete = previous_metadata.and_then(|meta| {
+            let current = meta.bank_version.as_u64();
+            // Only delete if we have accumulated enough versions
+            // Example: current=5, keep [3,4,5], delete 2
+            (current >= VERSION_RETENTION_COUNT).then(|| {
+                BankVersion::from_u64(
+                    current
+                        .saturating_sub(VERSION_RETENTION_COUNT)
+                        .saturating_add(1),
+                )
+            })
+        });
+
+        // Collect keys to delete from both tables before write transaction
+        if let Some(old_version) = version_to_delete {
+            let prefix = StoredBankProperty::prefix(old_version);
+            let id_keys = self
+                .db
+                .batch_read(|reader| {
+                    reader.scan_range::<StoredBankProperty>(
+                        BANK_PROPERTY_BY_ID,
+                        &prefix,
+                    )
+                })
+                .unwrap_or_else(|error| {
+                    tracing::warn!(
+                        version = %old_version.as_u64(),
+                        table = "BANK_PROPERTY_BY_ID",
+                        %error,
+                        "Failed to scan old property bank version for cleanup, \
+                         retention may not work correctly"
+                    );
+                    Vec::new()
+                });
+
+            let name_keys = self
+                .db
+                .batch_read(|reader| {
+                    reader.scan_range::<StoredBankProperty>(
+                        BANK_PROPERTY_BY_NAME,
+                        &prefix,
+                    )
+                })
+                .unwrap_or_else(|error| {
+                    tracing::warn!(
+                        version = %old_version.as_u64(),
+                        table = "BANK_PROPERTY_BY_NAME",
+                        %error,
+                        "Failed to scan old property bank version for cleanup, \
+                         retention may not work correctly"
+                    );
+                    Vec::new()
+                });
+
+            (
+                id_keys.into_iter().map(|(k, _)| k).collect::<Vec<_>>(),
+                name_keys.into_iter().map(|(k, _)| k).collect::<Vec<_>>(),
+            )
+        } else {
+            (Vec::new(), Vec::new())
+        }
+    }
 }
 
 impl CommandPort for Command<'_> {
@@ -306,19 +381,11 @@ impl CommandPort for Command<'_> {
 
     #[inline]
     #[instrument(skip(self, bank), fields(operation = "save_property_bank"))]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Function length acceptable for atomic transaction with \
-                  version retention cleanup logic"
-    )]
     fn save_property_bank(
         &self,
         bank: &PropertyBank,
     ) -> Result<(), Self::Error> {
         // Persist metadata plus versioned property rows with version retention.
-        // Keeps last 3 versions to prevent unbounded disk growth.
-        const VERSION_RETENTION_COUNT: u64 = 3;
-
         let bank_version = bank.version();
         let recorded_at = SystemTime::now();
 
@@ -327,69 +394,8 @@ impl CommandPort for Command<'_> {
             .db
             .get_owned::<StoredMetadata>(BANK_METADATA, PROPERTY_BANK_KEY)?;
 
-        // Determine which version to delete (keep last 3: current-2, current-1,
-        // current)
-        let version_to_delete = previous_metadata.and_then(|meta| {
-            let current = meta.bank_version.as_u64();
-            // Only delete if we have accumulated enough versions
-            // Example: current=5, keep [3,4,5], delete 2
-            (current >= VERSION_RETENTION_COUNT).then(|| {
-                BankVersion::from_u64(
-                    current
-                        .saturating_sub(VERSION_RETENTION_COUNT)
-                        .saturating_add(1),
-                )
-            })
-        });
-
         // Collect keys to delete from both tables before write transaction
-        let keys_to_delete = if let Some(old_version) = version_to_delete {
-            let prefix = StoredBankProperty::prefix(old_version);
-            let id_keys = self
-                .db
-                .batch_read(|reader| {
-                    reader.scan_range::<StoredBankProperty>(
-                        BANK_PROPERTY_BY_ID,
-                        &prefix,
-                    )
-                })
-                .unwrap_or_else(|error| {
-                    tracing::warn!(
-                        version = %old_version.as_u64(),
-                        table = "BANK_PROPERTY_BY_ID",
-                        %error,
-                        "Failed to scan old property bank version for cleanup, \
-                         retention may not work correctly"
-                    );
-                    Vec::new()
-                });
-
-            let name_keys = self
-                .db
-                .batch_read(|reader| {
-                    reader.scan_range::<StoredBankProperty>(
-                        BANK_PROPERTY_BY_NAME,
-                        &prefix,
-                    )
-                })
-                .unwrap_or_else(|error| {
-                    tracing::warn!(
-                        version = %old_version.as_u64(),
-                        table = "BANK_PROPERTY_BY_NAME",
-                        %error,
-                        "Failed to scan old property bank version for cleanup, \
-                         retention may not work correctly"
-                    );
-                    Vec::new()
-                });
-
-            (
-                id_keys.into_iter().map(|(k, _)| k).collect::<Vec<_>>(),
-                name_keys.into_iter().map(|(k, _)| k).collect::<Vec<_>>(),
-            )
-        } else {
-            (Vec::new(), Vec::new())
-        };
+        let keys_to_delete = self.collect_old_version_keys(previous_metadata);
 
         let metadata = StoredMetadata {
             bank_version,
