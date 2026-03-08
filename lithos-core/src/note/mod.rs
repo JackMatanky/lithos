@@ -9,8 +9,7 @@
 //!
 //! - **Obsidian Compatibility**: Wiki-links, markdown links, YAML/TOML
 //!   frontmatter, and hierarchical inline tags.
-//! - **Port-Based CQRS**: Explicit separation of read ([`query::Query`]) and
-//!   write ([`command::Command`]) operations.
+//! - **Port-Based CQRS**: Explicit separation of read and write operations.
 //! - **Zero-Copy Serialization**: Optimized performance using `rkyv` for
 //!   database storage and retrieval.
 //! - **Rich Task Modeling**: Integrated task management with 7 specialized
@@ -31,7 +30,6 @@
 //! - [`reader`] - Markdown ingestion parser for note parsing.
 //! - [`stored`] - Projection read models (`StoredNote`, `StoredTask`).
 //! - [`ports`] - Command and Query trait definitions for CQRS.
-//! - [`command`] & [`query`] - CQRS facades for application use.
 //! - [`task`], [`tag`], [`link`], [`list`] - Sub-entities extracted during
 //!   ingestion and stored in projections.
 
@@ -40,8 +38,6 @@
     reason = "Public API names include module prefix for clarity"
 )]
 
-/// Note command implementations (CQRS write operations).
-pub mod command;
 /// Note storage adapters.
 pub mod db_command;
 /// Note storage query adapters.
@@ -56,14 +52,10 @@ mod extract_section;
 mod extract_tag;
 /// Note identity and validated names.
 pub mod identity;
-/// Note file ingestor.
-pub mod ingestor;
 /// Note loader orchestration.
 pub mod loader;
 /// Note ports for CQRS.
 pub mod ports;
-/// Note query implementations (CQRS read operations).
-pub mod query;
 /// Markdown note reader.
 pub mod reader;
 /// Stored note projections.
@@ -92,17 +84,6 @@ pub mod paths;
 pub mod position;
 /// Shared primitive for dynamic note values.
 pub mod value;
-
-use self::{
-    command::Command, db_command::CommandAdapter, db_query::QueryAdapter,
-    query::Query,
-};
-
-/// Note command type alias (storage-agnostic).
-pub type NoteCommand<'db, 'config> = Command<CommandAdapter<'db, 'config>>;
-
-/// Note query type alias (storage-agnostic).
-pub type NoteQuery = Query<QueryAdapter>;
 
 /// Parsed note ingest artifact.
 pub type ParsedNote = reader::ParsedNote;
