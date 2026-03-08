@@ -119,7 +119,7 @@ impl PropertySpec {
             }
             Self::String(s) => {
                 let val = Self::expect_str(value, "string")?;
-                s.validate_str(val)
+                s.validate(val)
             }
         }
     }
@@ -221,12 +221,17 @@ impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
                         ));
                     }
                 };
-                Ok(Self::String(StringSpec::new(
+                Ok(Self::String(StringSpec::try_new(
                     pattern,
-                    def.options.map(|o| {
-                        o.into_entries().into_iter().map(Into::into).collect()
-                    }),
-                )))
+                    def.options
+                        .map(|o| {
+                            o.into_entries()
+                                .into_iter()
+                                .map(TryInto::try_into)
+                                .collect::<Result<Vec<_>, _>>()
+                        })
+                        .transpose()?,
+                )?))
             }
         }
     }

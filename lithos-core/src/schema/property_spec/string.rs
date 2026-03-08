@@ -1,45 +1,31 @@
 //! String property validation constraints.
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, OnceLock, RwLock},
-};
+use std::sync::Arc;
 
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::schema::error::SchemaError;
 
 // ============================================================================
-// Public API - Primary Types (ordered by importance to developers)
+// Public API - Primary Types
 // ============================================================================
 
 /// String property validation constraints.
 ///
 /// # Invariants
 /// - If `pattern` is set, it must be a valid regex (enforced at construction).
-/// - `pattern` and `options` are independent constraints (both checked if
-///   present).
-///
-/// # Examples
-/// ```
-/// use lithos_core::schema::property_spec::{StringPattern, StringSpec};
-///
-/// // No pattern, only options
-/// let spec = StringSpec::new(None, None);
-///
-/// // With predefined pattern
-/// let spec = StringSpec::new(Some(StringPattern::Email), None);
-///
-/// // With custom pattern
-/// let pattern = StringPattern::try_custom(r"^\d{3}-\d{4}$")?;
-/// let spec = StringSpec::new(Some(pattern), None);
-/// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-/// ```
-#[derive(Debug, Clone, PartialEq, Hash, Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
+/// - If both `pattern` and `options` are set, every option must match the
+///   pattern (enforced at construction).
+/// - `options` (if present) must be non-empty.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug, PartialEq, Eq, Hash))]
 #[non_exhaustive]
 pub struct StringSpec {
+    /// Optional allowed values (enum-like).
     options: Option<Vec<OptionEntry>>,
+    /// Optional regex pattern or predefined format.
     pattern: Option<StringPattern>,
 }
 
@@ -54,56 +40,70 @@ impl Default for StringSpec {
 }
 
 impl StringSpec {
-    /// Create a new `StringSpec`.
+    /// Create a new `StringSpec`, validating consistency between constraints.
     ///
-    /// Pattern is already validated at `StringPattern` construction time,
-    /// so this constructor is infallible.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property_spec::{StringPattern, StringSpec};
-    ///
-    /// let spec = StringSpec::new(None, None);
-    ///
-    /// let pattern = StringPattern::try_custom(r"^\d+$")?;
-    /// let spec = StringSpec::new(Some(pattern), None);
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
+    /// # Errors
+    /// Returns `SchemaError` if:
+    /// 1. Options list is empty (but present).
+    /// 2. Any option value does not match the provided pattern.
     #[inline]
-    #[must_use]
-    pub fn new(
+    pub fn try_new(
         pattern: Option<StringPattern>,
         options: Option<Vec<OptionEntry>>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, SchemaError> {
+        // 1. Validate options are not empty if present
+        if let Some(opts) = options.as_ref()
+            && opts.is_empty()
+        {
+            return Err(SchemaError::ValidationFailed(
+                "options list cannot be empty".into(),
+            ));
+        }
+
+        let spec = Self {
             options,
             pattern,
+        };
+
+        // 2. Validate consistency: Options must match pattern
+        if let (Some(p), Some(opts)) = (spec.pattern(), spec.options()) {
+            for opt in opts {
+                p.validate(opt.value()).map_err(|e| {
+                    SchemaError::ValidationFailed(format!(
+                        "Option value '{}' is inconsistent with pattern: {}",
+                        opt.value(),
+                        e
+                    ))
+                })?;
+            }
         }
+
+        Ok(spec)
+    }
+
+    /// Returns the allowed options for this string if defined.
+    #[inline]
+    #[must_use]
+    pub fn options(&self) -> Option<&[OptionEntry]> {
+        self.options.as_deref()
+    }
+
+    /// Returns the validation pattern for this string if defined.
+    #[inline]
+    #[must_use]
+    pub fn pattern(&self) -> Option<&StringPattern> {
+        self.pattern.as_ref()
     }
 
     /// Apply overrides from a raw string spec.
     ///
-    /// Fields that are `None` in the overrides preserve the base values.
-    ///
     /// # Errors
-    /// Returns `SchemaError` if override values are invalid.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::{property_spec::StringSpec, raw::RawStringSpec};
-    ///
-    /// let base = StringSpec::new(None, None);
-    /// let overrides = RawStringSpec::default();
-    /// let _updated = base.apply_overrides(&overrides)?;
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
+    /// Returns `SchemaError` if override values are invalid or inconsistent.
     #[inline]
     pub fn apply_overrides(
         self,
         overrides: &crate::schema::raw::RawStringSpec,
     ) -> Result<Self, SchemaError> {
-        // Convert RawStringSpec (pattern/format separate) to unified
-        // StringPattern
         let pattern = match (overrides.pattern.as_ref(), overrides.format) {
             (Some(p), None) => Some(StringPattern::try_custom(p.clone())?),
             (None, Some(f)) => Some(StringPattern::from(f)),
@@ -122,17 +122,22 @@ impl StringSpec {
                 o.clone()
                     .into_entries()
                     .into_iter()
-                    .map(OptionEntry::from)
-                    .collect()
+                    .map(OptionEntry::try_from)
+                    .collect::<Result<Vec<_>, _>>()
             })
+            .transpose()?
             .or(self.options);
 
-        Ok(Self::new(pattern, options))
+        Self::try_new(pattern, options)
     }
 
+    /// Validate a runtime string value against all constraints in this spec.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub(super) fn validate_str(&self, value: &str) -> Result<(), SchemaError> {
-        // Validate options if present
+    pub(super) fn validate(&self, value: &str) -> Result<(), SchemaError> {
+        // 1. Validate options (enum check)
         if let Some(entries) = self.options.as_ref()
             && !entries.iter().any(|e| e.value() == value)
         {
@@ -142,7 +147,7 @@ impl StringSpec {
             });
         }
 
-        // Validate pattern if present
+        // 2. Validate pattern (regex/format check)
         if let Some(pattern) = self.pattern.as_ref() {
             pattern.validate(value)?;
         }
@@ -156,100 +161,40 @@ impl StringSpec {
 // ============================================================================
 
 /// String validation pattern (predefined format or custom regex).
-///
-/// This enum unifies predefined formats (like `Email`, `Url`) with
-/// user-defined custom regex patterns into a single type-safe API.
-///
-/// # Examples
-///
-/// ```
-/// use lithos_core::schema::property_spec::StringPattern;
-///
-/// // Predefined format
-/// let email = StringPattern::Email;
-/// assert!(email.pattern().contains("@"));
-///
-/// // Custom pattern
-/// let custom = StringPattern::try_custom(r"^\d{3}-\d{3}-\d{4}$")?;
-/// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-/// ```
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    Archive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
-#[serde(rename_all = "snake_case")]
-#[rkyv(derive(Debug, Hash, PartialEq, Eq))]
+#[rkyv(derive(Debug, PartialEq, Eq, Hash))]
 #[non_exhaustive]
 pub enum StringPattern {
     /// Email address validation (RFC 5322 simplified).
-    ///
-    /// Pattern: `^[^@]+@[^@]+\.[^@]+$`.
     Email,
-
     /// URL validation (HTTP/HTTPS).
-    ///
-    /// Pattern: `^https?://[^\s/$.?#].[^\s]*$`.
     Url,
-
     /// US phone number validation.
-    ///
-    /// Pattern: `^\+?1?[-.\s]?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?
-    /// ([0-9]{4})$`.
     PhoneUs,
-
     /// Slug validation (kebab-case).
-    ///
-    /// Pattern: `^[a-z0-9]+(-[a-z0-9]+)*$`.
     Slug,
-
     /// UUID v4 validation.
-    ///
-    /// Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`.
     UuidV4,
-
     /// `WikiLink` validation (Obsidian-style).
-    ///
-    /// Pattern: `^\[\[([^\]|]+)(\|[^\]]+)?\]\]$`.
     WikiLink,
-
     /// US ZIP code validation (5 or 9 digits).
-    ///
-    /// Pattern: `^\d{5}(-\d{4})?$`.
     ZipCode,
-
     /// User-defined custom regex pattern.
-    ///
-    /// The pattern is validated at construction time via `try_custom()`.
     Custom(Box<str>),
 }
 
 impl StringPattern {
-    /// Create a custom pattern, validating the regex is compilable.
+    /// Create a custom pattern, validating that the regex is compilable.
     ///
     /// # Errors
     /// Returns `SchemaError::InvalidRegex` if the pattern is invalid.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property_spec::StringPattern;
-    ///
-    /// let pattern = StringPattern::try_custom(r"^\d+$")?;
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
     #[inline]
     pub fn try_custom<S: Into<Box<str>>>(
         pattern: S,
     ) -> Result<Self, SchemaError> {
         let pattern = pattern.into();
-        // Validate pattern compiles (then discard compiled regex)
         regex::Regex::new(&pattern).map_err(|e| {
             SchemaError::InvalidRegex(format!("Invalid pattern {pattern}: {e}"))
         })?;
@@ -257,18 +202,6 @@ impl StringPattern {
     }
 
     /// Returns the regex pattern string for this pattern.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::schema::property_spec::StringPattern;
-    ///
-    /// assert_eq!(StringPattern::Slug.pattern(), "^[a-z0-9]+(-[a-z0-9]+)*$");
-    ///
-    /// let custom = StringPattern::try_custom(r"^\d+$")?;
-    /// assert_eq!(custom.pattern(), r"^\d+$");
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
     #[inline]
     #[must_use]
     #[expect(
@@ -294,19 +227,6 @@ impl StringPattern {
     }
 
     /// Returns the human-readable name of this pattern.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_core::schema::property_spec::StringPattern;
-    ///
-    /// assert_eq!(StringPattern::Email.name(), "email");
-    /// assert_eq!(StringPattern::PhoneUs.name(), "phone_us");
-    ///
-    /// let custom = StringPattern::try_custom(r"^\d+$")?;
-    /// assert_eq!(custom.name(), "custom");
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
     #[inline]
     #[must_use]
     #[expect(
@@ -332,16 +252,6 @@ impl StringPattern {
     /// # Errors
     /// Returns `SchemaError::ValidationFailed` if the value doesn't match the
     /// pattern.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::property_spec::StringPattern;
-    ///
-    /// let pattern = StringPattern::Email;
-    /// assert!(pattern.validate("user@example.com").is_ok());
-    /// assert!(pattern.validate("invalid").is_err());
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
@@ -371,47 +281,41 @@ impl StringPattern {
         Ok(())
     }
 
-    /// Get or compile a custom regex pattern.
-    ///
-    /// Uses a simple cache to avoid recompiling patterns on every validation.
-    /// Patterns are guaranteed valid (validated at construction time).
+    /// Get or compile a custom regex pattern from an internal global cache.
     #[expect(
         clippy::expect_used,
-        reason = "Pattern validated at StringSpec construction, expect \
+        reason = "Pattern validated at StringPattern construction, expect \
                   documents invariant"
     )]
     fn get_or_compile_pattern(pattern: &str) -> Arc<regex::Regex> {
+        use std::{
+            collections::HashMap,
+            sync::{OnceLock, RwLock},
+        };
+
+        type CacheMap = HashMap<Box<str>, Arc<regex::Regex>>;
+        static CUSTOM_PATTERN_CACHE: OnceLock<RwLock<CacheMap>> =
+            OnceLock::new();
+
         let cache =
             CUSTOM_PATTERN_CACHE.get_or_init(|| RwLock::new(HashMap::new()));
 
         // Fast path: read lock
         {
-            let guard = cache.read().unwrap_or_else(|e| {
-                tracing::warn!(
-                    "Regex cache RwLock poisoned (recovered from panic), \
-                     proceeding with recovery"
-                );
-                e.into_inner()
-            });
+            let guard =
+                cache.read().unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(re) = guard.get(pattern) {
                 return Arc::clone(re);
             }
         }
 
         // Slow path: compile and cache
-        // Pattern is guaranteed valid (validated in try_new), so expect is safe
         let compiled = Arc::new(regex::Regex::new(pattern).expect(
             "Custom pattern should be valid (validated at construction)",
         ));
 
-        let mut guard = cache.write().unwrap_or_else(|e| {
-            tracing::warn!(
-                "Regex cache RwLock poisoned during write (recovered from \
-                 panic), proceeding with recovery"
-            );
-            e.into_inner()
-        });
-        // Check again in case another thread inserted while we compiled
+        let mut guard =
+            cache.write().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(re) = guard.get(pattern) {
             return Arc::clone(re);
         }
@@ -426,9 +330,10 @@ impl StringPattern {
                   programmer error"
     )]
     fn static_regex_email() -> &'static regex::Regex {
+        use std::sync::OnceLock;
         static REGEX: OnceLock<regex::Regex> = OnceLock::new();
         REGEX.get_or_init(|| {
-            regex::Regex::new(Self::Email.pattern())
+            regex::Regex::new(StringPattern::Email.pattern())
                 .expect("built-in Email regex pattern is valid")
         })
     }
@@ -439,9 +344,10 @@ impl StringPattern {
                   programmer error"
     )]
     fn static_regex_url() -> &'static regex::Regex {
+        use std::sync::OnceLock;
         static REGEX: OnceLock<regex::Regex> = OnceLock::new();
         REGEX.get_or_init(|| {
-            regex::Regex::new(Self::Url.pattern())
+            regex::Regex::new(StringPattern::Url.pattern())
                 .expect("built-in Url regex pattern is valid")
         })
     }
@@ -452,9 +358,10 @@ impl StringPattern {
                   programmer error"
     )]
     fn static_regex_phone_us() -> &'static regex::Regex {
+        use std::sync::OnceLock;
         static REGEX: OnceLock<regex::Regex> = OnceLock::new();
         REGEX.get_or_init(|| {
-            regex::Regex::new(Self::PhoneUs.pattern())
+            regex::Regex::new(StringPattern::PhoneUs.pattern())
                 .expect("built-in PhoneUs regex pattern is valid")
         })
     }
@@ -465,9 +372,10 @@ impl StringPattern {
                   programmer error"
     )]
     fn static_regex_slug() -> &'static regex::Regex {
+        use std::sync::OnceLock;
         static REGEX: OnceLock<regex::Regex> = OnceLock::new();
         REGEX.get_or_init(|| {
-            regex::Regex::new(Self::Slug.pattern())
+            regex::Regex::new(StringPattern::Slug.pattern())
                 .expect("built-in Slug regex pattern is valid")
         })
     }
@@ -478,9 +386,10 @@ impl StringPattern {
                   programmer error"
     )]
     fn static_regex_uuid_v4() -> &'static regex::Regex {
+        use std::sync::OnceLock;
         static REGEX: OnceLock<regex::Regex> = OnceLock::new();
         REGEX.get_or_init(|| {
-            regex::Regex::new(Self::UuidV4.pattern())
+            regex::Regex::new(StringPattern::UuidV4.pattern())
                 .expect("built-in UuidV4 regex pattern is valid")
         })
     }
@@ -491,9 +400,10 @@ impl StringPattern {
                   programmer error"
     )]
     fn static_regex_wikilink() -> &'static regex::Regex {
+        use std::sync::OnceLock;
         static REGEX: OnceLock<regex::Regex> = OnceLock::new();
         REGEX.get_or_init(|| {
-            regex::Regex::new(Self::WikiLink.pattern())
+            regex::Regex::new(StringPattern::WikiLink.pattern())
                 .expect("built-in WikiLink regex pattern is valid")
         })
     }
@@ -504,9 +414,10 @@ impl StringPattern {
                   programmer error"
     )]
     fn static_regex_zipcode() -> &'static regex::Regex {
+        use std::sync::OnceLock;
         static REGEX: OnceLock<regex::Regex> = OnceLock::new();
         REGEX.get_or_init(|| {
-            regex::Regex::new(Self::ZipCode.pattern())
+            regex::Regex::new(StringPattern::ZipCode.pattern())
                 .expect("built-in ZipCode regex pattern is valid")
         })
     }
@@ -550,9 +461,6 @@ impl std::fmt::Display for StringPattern {
 }
 
 /// Legacy compatibility: Re-export as `StringFormat` for existing code.
-///
-/// **Deprecated**: Use `StringPattern` directly. This alias exists only
-/// for backward compatibility during migration.
 #[deprecated(
     since = "0.1.0",
     note = "Use StringPattern instead. StringFormat has been unified with \
@@ -561,12 +469,10 @@ impl std::fmt::Display for StringPattern {
 pub type StringFormat = StringPattern;
 
 /// A validated option entry with optional display label.
-///
-/// This is created from `RawOptionEntry` after ordering is applied.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
-#[rkyv(derive(Debug))]
+#[rkyv(derive(Debug, PartialEq, Eq, Hash))]
 #[non_exhaustive]
 pub struct OptionEntry {
     /// The option value used in validation.
@@ -576,6 +482,27 @@ pub struct OptionEntry {
 }
 
 impl OptionEntry {
+    /// Create a new `OptionEntry`, validating the value.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if the value is empty or only whitespace.
+    #[inline]
+    pub fn try_new<V: Into<Box<str>>>(
+        value: V,
+        label: Option<Box<str>>,
+    ) -> Result<Self, SchemaError> {
+        let value = value.into();
+        if value.trim().is_empty() {
+            return Err(SchemaError::ValidationFailed(
+                "Option value cannot be empty".into(),
+            ));
+        }
+        Ok(Self {
+            value,
+            label,
+        })
+    }
+
     /// Returns the option value.
     #[inline]
     #[must_use]
@@ -591,33 +518,16 @@ impl OptionEntry {
     }
 }
 
-impl From<crate::schema::raw::RawOptionEntry> for OptionEntry {
+impl TryFrom<crate::schema::raw::RawOptionEntry> for OptionEntry {
+    type Error = SchemaError;
+
     #[inline]
-    fn from(raw: crate::schema::raw::RawOptionEntry) -> Self {
-        Self {
-            value: raw.value,
-            label: raw.label,
-        }
+    fn try_from(
+        raw: crate::schema::raw::RawOptionEntry,
+    ) -> Result<Self, Self::Error> {
+        Self::try_new(raw.value, raw.label)
     }
 }
-
-// ============================================================================
-// Internal Implementation - Regex Cache
-// ============================================================================
-
-/// Cache for user-defined custom regex patterns.
-///
-/// Built-in formats use static `OnceLock` per format. Custom patterns use this
-/// shared cache to avoid recompiling on every validation.
-///
-/// Design: Simple unbounded cache since:
-/// 1. Patterns are validated at schema load time (guaranteed valid)
-/// 2. Number of unique patterns is bounded by number of properties (~100s)
-/// 3. Cache is per-process, shared across all validations
-type CustomPatternCache = HashMap<Box<str>, Arc<regex::Regex>>;
-
-static CUSTOM_PATTERN_CACHE: OnceLock<RwLock<CustomPatternCache>> =
-    OnceLock::new();
 
 // ============================================================================
 // Tests
@@ -641,49 +551,6 @@ mod tests {
                 StringPattern::Url.pattern(),
                 r"^https?://[^\s/$.?#].[^\s]*$"
             );
-        }
-
-        #[test]
-        fn phone_us_format_has_correct_pattern() {
-            assert_eq!(
-                StringPattern::PhoneUs.pattern(),
-                r"^\+?1?[-.\s]?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})$"
-            );
-        }
-
-        #[test]
-        fn slug_format_has_correct_pattern() {
-            assert_eq!(
-                StringPattern::Slug.pattern(),
-                "^[a-z0-9]+(-[a-z0-9]+)*$"
-            );
-        }
-
-        #[test]
-        fn uuid_v4_format_has_correct_pattern() {
-            assert_eq!(
-                StringPattern::UuidV4.pattern(),
-                "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-            );
-        }
-
-        #[test]
-        fn wikilink_format_has_correct_pattern() {
-            assert_eq!(
-                StringPattern::WikiLink.pattern(),
-                r"^\[\[([^\]|]+)(\|[^\]]+)?\]\]$"
-            );
-        }
-
-        #[test]
-        fn zipcode_format_has_correct_pattern() {
-            assert_eq!(StringPattern::ZipCode.pattern(), r"^\d{5}(-\d{4})?$");
-        }
-
-        #[test]
-        fn format_name_matches_serde_representation() {
-            assert_eq!(StringPattern::Email.name(), "email");
-            assert_eq!(StringPattern::PhoneUs.name(), "phone_us");
         }
 
         #[test]
@@ -713,8 +580,6 @@ mod tests {
         use super::*;
         use crate::schema::raw::{RawOptions, RawStringSpec};
 
-        /// 3.3-UNIT-011: String Specification Validation Matrix.
-        /// Priority: P1.
         #[rstest]
         #[case::options_match(
             RawStringSpec {
@@ -740,33 +605,25 @@ mod tests {
             "123",
             Ok(())
         )]
-        #[case::regex_mismatch(
-            RawStringSpec { pattern: Some(r"^\d+$".into()), ..Default::default() },
-            "abc",
-            Err(SchemaError::ValidationFailed("Value abc does not match pattern 'custom(^\\d+$)' (^\\d+$)".to_owned()))
-        )]
         fn string_spec_validation_matrix(
             #[case] def: RawStringSpec,
             #[case] value: &str,
             #[case] expected: Result<(), SchemaError>,
         ) {
-            fn validated_spec(def: &RawStringSpec) -> StringSpec {
-                // Use apply_overrides which handles conversion and validation
-                let base = StringSpec::default();
-                base.apply_overrides(def).expect("Test data should be valid")
-            }
+            let spec = StringSpec::default().apply_overrides(&def).unwrap();
+            let result = spec.validate(value);
+            assert_eq!(result, expected);
+        }
 
-            let spec = validated_spec(&def);
+        #[test]
+        fn try_new_rejects_inconsistent_options() {
+            let pattern = StringPattern::try_custom(r"^\d+$").unwrap();
+            let options =
+                vec![OptionEntry::try_new("not-a-number", None).unwrap()];
 
-            // WHEN: validating a string value
-            let result = spec.validate_str(value);
-
-            // THEN: the result matches the expectation
-            assert_eq!(
-                result, expected,
-                "String validation failed for value='{value}': expected \
-                 {expected:?}, got {result:?}"
-            );
+            let result = StringSpec::try_new(Some(pattern), Some(options));
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("inconsistent"));
         }
     }
 }

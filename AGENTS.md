@@ -79,7 +79,7 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 7. **Dependency flow**: Infrastructure (db, fs, config, patterns) → Business Contexts (note, schema, template) → CLI
 8. **File Ingestion Rules**:
    - **CQRS ports MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
-   - **File ingestion MUST use `FileSource` trait**: Abstract over filesystem for testability
+   - **File ingestion MUST use `FsReader`**: Abstract over filesystem for testability
    - **Loader orchestrates pipelines**: Loader coordinates File → Raw → Resolved → Database
    - **Parsing and validation are distinct phases**: File → Raw (parsing) → Domain (validation) → DB
 9. **Read Model Pattern**:
