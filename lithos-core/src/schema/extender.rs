@@ -142,7 +142,7 @@ pub(crate) struct SchemaNode {
 ///   DB-fresh known parent rather than an in-batch node).
 #[derive(Debug)]
 /// **Internal API**: This type is public solely for benchmarking purposes.
-/// Do not depend on it in production code - use `SchemaService` instead.
+/// Do not depend on it in production code - use `Loader` instead.
 #[doc(hidden)]
 pub struct SchemaTree {
     /// IDs of root schemas (no in-batch parent).
@@ -195,7 +195,7 @@ type KahnResult = (Vec<SchemaId>, Vec<SchemaId>);
 /// Builds a [`SchemaTree`] from dereferenced schemas.
 ///
 /// **Internal API**: This type is public solely for benchmarking purposes.
-/// Do not depend on it in production code - use `SchemaService` instead.
+/// Do not depend on it in production code - use `Loader` instead.
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct Extender;

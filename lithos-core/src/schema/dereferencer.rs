@@ -44,7 +44,7 @@ use crate::schema::aggregate::SchemaId;
 /// `Resolver`.
 ///
 /// **Internal API**: This type is public solely for benchmarking purposes.
-/// Do not depend on it in production code - use `SchemaService` instead.
+/// Do not depend on it in production code - use `Loader` instead.
 #[doc(hidden)]
 #[derive(Clone)]
 #[non_exhaustive]
@@ -70,7 +70,7 @@ pub struct DereferencedSchema {
 /// once and reuse the dereferencer across multiple schemas.
 ///
 /// **Internal API**: This type is public solely for benchmarking purposes.
-/// Do not depend on it in production code - use `SchemaService` instead.
+/// Do not depend on it in production code - use `Loader` instead.
 #[doc(hidden)]
 pub struct Dereferencer<'bank> {
     bank: &'bank PropertyBank,

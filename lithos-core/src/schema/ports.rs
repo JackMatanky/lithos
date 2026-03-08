@@ -45,14 +45,14 @@ pub type InheritanceRelationship = (SchemaId, Option<SchemaId>, Vec<Box<str>>);
 ///
 ///     fn delete(
 ///         &self,
-///         _id: lithos_core::schema::aggregate::SchemaId,
+///         _id: lithos_core::schema::id::SchemaId,
 ///     ) -> Result<(), Self::Error> {
 ///         Ok(())
 ///     }
 ///
 ///     fn save_many(
 ///         &self,
-///         _schemas: &[lithos_core::schema::aggregate::Schema],
+///         _schemas: &[lithos_core::schema::stored::StoredSchema],
 ///     ) -> Result<(), Self::Error> {
 ///         Ok(())
 ///     }
@@ -79,7 +79,7 @@ pub trait Command: Send + Sync {
     /// ```ignore
     /// # use lithos_core::schema::ports::Command;
     /// # let command = todo!("Provide a Command implementation");
-    /// # let id = lithos_core::schema::aggregate::SchemaId::new();
+    /// # let id = lithos_core::schema::id::SchemaId::new();
     /// command.delete(id)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
@@ -95,8 +95,8 @@ pub trait Command: Send + Sync {
     /// ```ignore
     /// # use lithos_core::schema::ports::{Command, InheritanceRelationship};
     /// # let command = todo!("Provide a Command implementation");
-    /// # let child_id = lithos_core::schema::aggregate::SchemaId::new();
-    /// # let parent_id = lithos_core::schema::aggregate::SchemaId::new();
+    /// # let child_id = lithos_core::schema::id::SchemaId::new();
+    /// # let parent_id = lithos_core::schema::id::SchemaId::new();
     /// let relationships: Vec<InheritanceRelationship> =
     ///     vec![(child_id, Some(parent_id), vec!["prop".into()])];
     /// command.save_inheritance_many(&relationships)?;
@@ -169,16 +169,16 @@ pub trait Command: Send + Sync {
 ///
 ///     fn find_by_id(
 ///         &self,
-///         _id: lithos_core::schema::aggregate::SchemaId,
-///     ) -> Result<Option<lithos_core::schema::aggregate::Schema>, Self::Error> {
+///         _id: lithos_core::schema::id::SchemaId,
+///     ) -> Result<Option<lithos_core::schema::stored::StoredSchema>, Self::Error> {
 ///         Ok(None)
 ///     }
 ///
-///     fn batch_find_by_ids(
+///     fn find_many_by_ids(
 ///         &self,
-///         _ids: &[lithos_core::schema::aggregate::SchemaId],
-///     ) -> Result<std::collections::HashMap<lithos_core::schema::aggregate::SchemaId, lithos_core::schema::aggregate::Schema>, Self::Error> {
-///         Ok(std::collections::HashMap::new())
+///         _ids: &[lithos_core::schema::id::SchemaId],
+///     ) -> Result<Vec<lithos_core::schema::stored::StoredSchema>, Self::Error> {
+///         Ok(Vec::new())
 ///     }
 ///
 ///     fn get_property_bank(
@@ -330,7 +330,7 @@ pub trait Query: Send + Sync {
     /// ```ignore
     /// # use lithos_core::schema::ports::Query;
     /// # let query = todo!("Provide a Query implementation");
-    /// # let id = lithos_core::schema::aggregate::SchemaId::new();
+    /// # let id = lithos_core::schema::id::SchemaId::new();
     /// let _ = query.find_by_id(id)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
@@ -348,7 +348,7 @@ pub trait Query: Send + Sync {
     ///
     /// ```ignore
     /// # use lithos_core::schema::ports::Query;
-    /// # use lithos_core::schema::aggregate::SchemaName;
+    /// # use lithos_core::schema::id::SchemaName;
     /// # let query = todo!("Provide a Query implementation");
     /// # let name = SchemaName::try_new("note")?;
     /// let id = query.find_id_by_name(&name)?;
@@ -379,8 +379,8 @@ pub trait Query: Send + Sync {
     /// # use std::collections::HashMap;
     /// # let query = todo!("Provide a Query implementation");
     /// # let ids = vec![
-    /// #     lithos_core::schema::aggregate::SchemaId::new(),
-    /// #     lithos_core::schema::aggregate::SchemaId::new(),
+    /// #     lithos_core::schema::id::SchemaId::new(),
+    /// #     lithos_core::schema::id::SchemaId::new(),
     /// # ];
     /// let schemas: HashMap<_, _> = query.find_many_by_ids(&ids)?;
     /// // Result contains only schemas that exist in storage

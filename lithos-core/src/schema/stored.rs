@@ -38,10 +38,10 @@ use rkyv::{
 };
 
 use super::{
-    aggregate::SchemaId,
     bank::{BankVersion, PropertyBank},
     error::SchemaError,
     hash::Blake3Hash,
+    id::SchemaId,
     property::{Multiplicity, Optionality, Property, PropertyId, PropertyName},
     property_spec::PropertySpec,
 };
