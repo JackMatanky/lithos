@@ -65,11 +65,13 @@ pub mod stored;
 
 /// Frontmatter value objects and logic.
 pub mod frontmatter;
+/// Heading value objects.
+pub mod heading;
 /// Link value object.
 pub mod link;
 /// List value objects.
 pub mod list;
-/// Document structure values (Heading and Section).
+/// Document structure values (Section and block references).
 pub mod structure;
 /// Tag value object.
 pub mod tag;

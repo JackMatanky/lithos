@@ -12,8 +12,8 @@ use pulldown_cmark::{
 use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::note::{
     error::NoteError,
+    heading::{Heading, HeadingAccumulator, HeadingLevel},
     position::SourceByteOffset,
-    structure::{Heading, HeadingAccumulator, HeadingLevel},
 };
 
 /// Extractor for markdown headings (H1-H6).

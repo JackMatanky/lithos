@@ -25,6 +25,7 @@ use crate::{
             NoteEventPayloadV1,
         },
         frontmatter::Frontmatter,
+        heading::Heading,
         identity::NoteId,
         paths::NotePath,
         ports::Command,
@@ -32,7 +33,6 @@ use crate::{
         stored::{
             StoredLocationRange, StoredNote, StoredTask, metadata_index_keys,
         },
-        structure::Heading,
         task::{TaskId, TaskMetadata, TaskText},
         value::FieldValue,
     },

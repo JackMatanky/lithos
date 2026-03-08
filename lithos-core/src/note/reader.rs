@@ -19,10 +19,11 @@ use crate::{
     note::{
         error::{NoteError, NoteIngestError},
         frontmatter::Frontmatter,
+        heading::Heading,
         link::Link,
         list::List,
         position::{SourceByteOffset, SourceLineIndex, SourceLocation},
-        structure::{Heading, Section},
+        structure::Section,
         tag::Tag as NoteTag,
         task::Task,
     },

@@ -18,11 +18,12 @@ use crate::{
     config::task::{StatusName, StatusSymbol},
     note::{
         frontmatter::Frontmatter,
+        heading::Heading,
         identity::NoteId,
         link::Link,
         paths::NotePath,
         position::{SourceByteOffset, SourceLocation},
-        structure::{Heading, Section},
+        structure::Section,
         tag::Tag,
         task::{TaskId, TaskMetadata, TaskSchedule, TaskText, TaskTimestamp},
         value::FieldValue,
@@ -448,8 +449,8 @@ mod tests {
     use super::*;
     use crate::note::{
         error::NoteError,
+        heading::HeadingLevel,
         position::{SourceColumn, SourceLine, SourceLocation},
-        structure::HeadingLevel,
         value::FieldValue,
     };
 

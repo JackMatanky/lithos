@@ -12,10 +12,11 @@
 
 use super::{
     error::{LinkError, NoteError},
+    heading::HeadingText,
     identity::NoteId,
     paths::NotePath,
     position::SourceByteOffset,
-    structure::{BlockRefId, HeadingText},
+    structure::BlockRefId,
 };
 
 /// Represents a link within a note.

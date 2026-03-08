@@ -221,12 +221,13 @@ use lithos_core::{
     db::Database,
     note::{
         frontmatter::Frontmatter,
+        heading::{Heading, HeadingLevel},
         identity::NoteId,
         link::{Link, Target},
         paths::NotePath,
         position::{SourceByteOffset, SourceByteRange},
         stored::StoredNote,
-        structure::{Heading, HeadingLevel, Section},
+        structure::Section,
         tag::Tag,
     },
 };
