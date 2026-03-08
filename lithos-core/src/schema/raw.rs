@@ -29,13 +29,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{
-    error::{SchemaError, SchemaIngestionError},
-    property_spec::{
-        BoolSpec, DateSpec, FileSpec, NumberSpec, OptionEntry, PropertySpec,
-        StringPattern, StringSpec,
-    },
-};
+use super::error::{SchemaError, SchemaIngestionError};
 
 /// Current supported schema version.
 pub const SCHEMA_VERSION: &str = "1.0";
@@ -302,64 +296,6 @@ pub enum RawPropertySpec {
     String(RawStringSpec),
 }
 
-impl RawPropertySpec {
-    /// Validate and compile a persisted definition into a validated spec.
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if the definition is invalid.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_core::schema::raw::{RawBoolSpec, RawPropertySpec};
-    ///
-    /// let spec = RawPropertySpec::Bool(RawBoolSpec);
-    /// let _validated = spec.try_into_validated()?;
-    /// # Ok::<_, lithos_core::schema::error::SchemaError>(())
-    /// ```
-    #[inline]
-    pub fn try_into_validated(self) -> Result<PropertySpec, SchemaError> {
-        match self {
-            Self::Bool(_) => Ok(PropertySpec::Bool(BoolSpec::default())),
-            Self::Date(def) => {
-                let format = def.format.ok_or_else(|| {
-                    SchemaError::ValidationFailed(
-                        "date format is required".into(),
-                    )
-                })?;
-                Ok(PropertySpec::Date(DateSpec::try_new(&format)?))
-            }
-            Self::File(def) => Ok(PropertySpec::File(FileSpec::try_new(
-                def.directory.as_deref(),
-                def.file_class.as_deref(),
-            )?)),
-            Self::Number(def) => Ok(PropertySpec::Number(NumberSpec::try_new(
-                def.min, def.max, def.step,
-            )?)),
-            Self::String(def) => {
-                // Convert separate pattern/format fields into unified
-                // StringPattern
-                let pattern = match (def.pattern.as_ref(), def.format.as_ref())
-                {
-                    (Some(p), None) => {
-                        Some(StringPattern::try_custom(p.clone())?)
-                    }
-                    (None, Some(f)) => Some(f.clone()),
-                    (None, None) => None,
-                    (Some(_), Some(_)) => {
-                        return Err(SchemaError::ValidationFailed(
-                            "pattern and format are mutually exclusive".into(),
-                        ));
-                    }
-                };
-                Ok(PropertySpec::String(StringSpec::try_new(
-                    pattern,
-                    def.options.map(RawOptions::into_entries),
-                )?))
-            }
-        }
-    }
-}
-
 /// Boolean property definition (marker type).
 ///
 /// # Examples
@@ -451,6 +387,39 @@ pub struct RawNumberSpec {
     pub step: Option<f64>,
 }
 
+/// Named string format for common validation patterns (raw/syntax layer).
+///
+/// This is the deserialization type. It gets converted to `StringPattern`
+/// in the domain layer during validation.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum RawStringFormat {
+    /// Email address validation.
+    Email,
+    /// URL validation.
+    Url,
+    /// US phone number validation.
+    PhoneUs,
+    /// Slug validation (kebab-case).
+    Slug,
+    /// UUID v4 validation.
+    UuidV4,
+    /// `WikiLink` validation (Obsidian-style).
+    WikiLink,
+    /// US ZIP code validation.
+    ZipCode,
+}
+
 /// String property definition.
 ///
 /// Supports `options`, `pattern`, and `format` per the meta-schema.
@@ -477,7 +446,7 @@ pub struct RawStringSpec {
     /// Optional regex pattern (mutually exclusive with `format`).
     pub pattern: Option<Box<str>>,
     /// Optional named format (mutually exclusive with `pattern`).
-    pub format: Option<StringPattern>,
+    pub format: Option<RawStringFormat>,
 }
 
 /// Raw property bank loaded from vault files.
@@ -771,13 +740,14 @@ impl RawOptions {
         reason = "Fail-fast on unrealistic >4 billion options prevents silent \
                   data corruption"
     )]
-    pub fn into_entries(self) -> Vec<OptionEntry> {
+    pub fn into_entries(self) -> Vec<RawOptionEntry> {
         match self {
             Self::List(items) => items
                 .into_iter()
-                .map(|value| OptionEntry {
+                .map(|value| RawOptionEntry {
                     value,
                     label: None,
+                    order: None,
                 })
                 .collect(),
             Self::Map(map) => {
@@ -799,9 +769,10 @@ impl RawOptions {
                 entries.sort_by_key(|&(order, _)| order);
                 entries
                     .into_iter()
-                    .map(|(_, value)| OptionEntry {
+                    .map(|(_, value)| RawOptionEntry {
                         value,
                         label: None,
+                        order: None,
                     })
                     .collect()
             }
@@ -822,9 +793,10 @@ impl RawOptions {
                 entries.sort_by_key(|&(order, _)| order);
                 entries
                     .into_iter()
-                    .map(|(_, entry)| OptionEntry {
+                    .map(|(_, entry)| RawOptionEntry {
                         value: entry.value,
                         label: entry.label,
+                        order: None,
                     })
                     .collect()
             }

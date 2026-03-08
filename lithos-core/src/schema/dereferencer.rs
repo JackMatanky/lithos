@@ -147,7 +147,7 @@ impl<'bank> Dereferencer<'bank> {
         match entry {
             RawProperty::Inline(inline) => {
                 let prop_name = PropertyName::try_new(name)?;
-                let spec = inline.spec.try_into_validated()?;
+                let spec = inline.spec.try_into()?;
                 let optionality = Optionality::from(inline.required);
                 let multiplicity = Multiplicity::from(inline.multi);
                 Ok(Property::new(

@@ -105,24 +105,39 @@ impl StringSpec {
         self,
         overrides: &crate::schema::raw::RawStringSpec,
     ) -> Result<Self, SchemaError> {
+        use crate::schema::raw::RawStringFormat;
+
         // Convert RawStringSpec (pattern/format separate) to unified
         // StringPattern
-        let pattern =
-            match (overrides.pattern.as_ref(), overrides.format.as_ref()) {
-                (Some(p), None) => Some(StringPattern::try_custom(p.clone())?),
-                (None, Some(f)) => Some(f.clone()),
-                (None, None) => self.pattern,
-                (Some(_), Some(_)) => {
-                    return Err(SchemaError::ValidationFailed(
-                        "pattern and format are mutually exclusive".into(),
-                    ));
-                }
-            };
+        let pattern = match (overrides.pattern.as_ref(), overrides.format) {
+            (Some(p), None) => Some(StringPattern::try_custom(p.clone())?),
+            (None, Some(f)) => {
+                // Convert RawStringFormat to StringPattern
+                let sp = match f {
+                    RawStringFormat::Email => StringPattern::Email,
+                    RawStringFormat::Url => StringPattern::Url,
+                    RawStringFormat::PhoneUs => StringPattern::PhoneUs,
+                    RawStringFormat::Slug => StringPattern::Slug,
+                    RawStringFormat::UuidV4 => StringPattern::UuidV4,
+                    RawStringFormat::WikiLink => StringPattern::WikiLink,
+                    RawStringFormat::ZipCode => StringPattern::ZipCode,
+                };
+                Some(sp)
+            }
+            (None, None) => self.pattern,
+            (Some(_), Some(_)) => {
+                return Err(SchemaError::ValidationFailed(
+                    "pattern and format are mutually exclusive".into(),
+                ));
+            }
+        };
 
         let options = overrides
             .options
             .as_ref()
-            .map(|o| o.clone().into_entries())
+            .map(|o| {
+                o.clone().into_entries().into_iter().map(Into::into).collect()
+            })
             .or(self.options);
 
         Self::try_new(pattern, options)
@@ -494,6 +509,8 @@ impl std::fmt::Display for StringPattern {
 pub type StringFormat = StringPattern;
 
 /// A validated option entry with optional display label.
+///
+/// This is created from `RawOptionEntry` after ordering is applied.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
@@ -504,6 +521,16 @@ pub struct OptionEntry {
     pub value: Box<str>,
     /// Optional display label for UI consumers.
     pub label: Option<Box<str>>,
+}
+
+impl From<crate::schema::raw::RawOptionEntry> for OptionEntry {
+    #[inline]
+    fn from(raw: crate::schema::raw::RawOptionEntry) -> Self {
+        Self {
+            value: raw.value,
+            label: raw.label,
+        }
+    }
 }
 
 // ============================================================================

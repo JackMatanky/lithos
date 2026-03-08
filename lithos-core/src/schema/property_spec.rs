@@ -80,10 +80,10 @@ impl PropertySpec {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_core::schema::raw::{RawPropertySpec, RawBoolSpec};
+    /// # use lithos_core::schema::{raw::{RawPropertySpec, RawBoolSpec}, property_spec::PropertySpec};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let def = RawPropertySpec::Bool(RawBoolSpec);
-    /// let spec = def.try_into_validated()?;
+    /// let spec = PropertySpec::try_from(def)?;
     /// spec.validate(&serde_json::json!(true))?;
     /// # Ok(())
     /// # }
@@ -152,14 +152,94 @@ impl PropertySpec {
     }
 }
 
+// ============================================================================
+// Conversions from Raw Types (Syntax → Domain)
+// ============================================================================
+
+impl TryFrom<crate::schema::raw::RawPropertySpec> for PropertySpec {
+    type Error = SchemaError;
+
+    /// Convert raw property spec (syntax layer) to validated domain spec.
+    ///
+    /// This is the correct direction of dependency: `property_spec` depends on
+    /// `raw`, not the other way around.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails (invalid pattern, missing
+    /// required fields, etc.).
+    #[inline]
+    fn try_from(
+        raw: crate::schema::raw::RawPropertySpec,
+    ) -> Result<Self, Self::Error> {
+        use crate::schema::raw::RawPropertySpec;
+
+        match raw {
+            RawPropertySpec::Bool(_) => Ok(Self::Bool(BoolSpec::default())),
+            RawPropertySpec::Date(def) => {
+                let format = def.format.ok_or_else(|| {
+                    SchemaError::ValidationFailed(
+                        "date format is required".into(),
+                    )
+                })?;
+                Ok(Self::Date(DateSpec::try_new(&format)?))
+            }
+            RawPropertySpec::File(def) => Ok(Self::File(FileSpec::try_new(
+                def.directory.as_deref(),
+                def.file_class.as_deref(),
+            )?)),
+            RawPropertySpec::Number(def) => Ok(Self::Number(
+                NumberSpec::try_new(def.min, def.max, def.step)?,
+            )),
+            RawPropertySpec::String(def) => {
+                use crate::schema::raw::RawStringFormat;
+
+                // Convert separate pattern/format fields into unified
+                // StringPattern
+                let pattern = match (def.pattern.as_ref(), def.format) {
+                    (Some(p), None) => {
+                        Some(StringPattern::try_custom(p.clone())?)
+                    }
+                    (None, Some(f)) => {
+                        // Convert RawStringFormat to StringPattern
+                        let sp = match f {
+                            RawStringFormat::Email => StringPattern::Email,
+                            RawStringFormat::Url => StringPattern::Url,
+                            RawStringFormat::PhoneUs => StringPattern::PhoneUs,
+                            RawStringFormat::Slug => StringPattern::Slug,
+                            RawStringFormat::UuidV4 => StringPattern::UuidV4,
+                            RawStringFormat::WikiLink => {
+                                StringPattern::WikiLink
+                            }
+                            RawStringFormat::ZipCode => StringPattern::ZipCode,
+                        };
+                        Some(sp)
+                    }
+                    (None, None) => None,
+                    (Some(_), Some(_)) => {
+                        return Err(SchemaError::ValidationFailed(
+                            "pattern and format are mutually exclusive".into(),
+                        ));
+                    }
+                };
+                Ok(Self::String(StringSpec::try_new(
+                    pattern,
+                    def.options.map(|o| {
+                        o.into_entries().into_iter().map(Into::into).collect()
+                    }),
+                )?))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::PropertySpec;
     use crate::schema::raw::{RawBoolSpec, RawPropertySpec};
 
     #[test]
     fn validate_dispatches_to_bool_spec() {
-        let spec = RawPropertySpec::Bool(RawBoolSpec)
-            .try_into_validated()
+        let spec = PropertySpec::try_from(RawPropertySpec::Bool(RawBoolSpec))
             .expect("Expected default BoolSpec to validate");
         let result = spec.validate(&serde_json::Value::Bool(true));
         assert!(

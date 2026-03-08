@@ -120,7 +120,7 @@ impl PropertyBank {
 
         for (name, entry) in entries {
             let prop_name = PropertyName::try_from(name)?;
-            let spec = entry.spec.try_into_validated()?;
+            let spec = entry.spec.try_into()?;
             let multiplicity = if entry.multi {
                 super::property::Multiplicity::Many
             } else {
