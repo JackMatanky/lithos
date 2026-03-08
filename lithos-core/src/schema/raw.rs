@@ -33,7 +33,7 @@ use super::{
     error::{SchemaError, SchemaIngestionError},
     property_spec::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, OptionEntry, PropertySpec,
-        StringFormat, StringSpec,
+        StringPattern, StringSpec,
     },
 };
 
@@ -335,11 +335,27 @@ impl RawPropertySpec {
             Self::Number(def) => Ok(PropertySpec::Number(NumberSpec::try_new(
                 def.min, def.max, def.step,
             )?)),
-            Self::String(def) => Ok(PropertySpec::String(StringSpec::try_new(
-                def.pattern,
-                def.format,
-                def.options.map(RawOptions::into_entries),
-            )?)),
+            Self::String(def) => {
+                // Convert separate pattern/format fields into unified
+                // StringPattern
+                let pattern = match (def.pattern.as_ref(), def.format.as_ref())
+                {
+                    (Some(p), None) => {
+                        Some(StringPattern::try_custom(p.clone())?)
+                    }
+                    (None, Some(f)) => Some(f.clone()),
+                    (None, None) => None,
+                    (Some(_), Some(_)) => {
+                        return Err(SchemaError::ValidationFailed(
+                            "pattern and format are mutually exclusive".into(),
+                        ));
+                    }
+                };
+                Ok(PropertySpec::String(StringSpec::try_new(
+                    pattern,
+                    def.options.map(RawOptions::into_entries),
+                )?))
+            }
         }
     }
 }
@@ -461,7 +477,7 @@ pub struct RawStringSpec {
     /// Optional regex pattern (mutually exclusive with `format`).
     pub pattern: Option<Box<str>>,
     /// Optional named format (mutually exclusive with `pattern`).
-    pub format: Option<StringFormat>,
+    pub format: Option<StringPattern>,
 }
 
 /// Raw property bank loaded from vault files.

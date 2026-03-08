@@ -25,13 +25,19 @@ mod string;
 
 // Re-export public types
 use rkyv::{Archive, Deserialize, Serialize};
+// Legacy re-export for backward compatibility
+#[expect(
+    deprecated,
+    reason = "Re-exporting deprecated type for compatibility"
+)]
+pub use string::StringFormat;
 
 pub use self::{
     bool::BoolSpec,
     date::DateSpec,
     file::FileSpec,
     number::NumberSpec,
-    string::{OptionEntry, StringFormat, StringSpec},
+    string::{OptionEntry, StringPattern, StringSpec},
 };
 use super::error::SchemaError;
 
