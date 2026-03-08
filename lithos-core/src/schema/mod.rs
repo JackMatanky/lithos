@@ -18,8 +18,6 @@ pub mod bank;
 #[doc(hidden)]
 pub mod dereferencer;
 
-/// Zstd compression utilities for raw file storage.
-pub mod compression;
 /// Database command adapter for schema CQRS write operations.
 ///
 /// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow
@@ -74,8 +72,6 @@ pub mod property;
 pub mod property_spec;
 /// Raw schema input definitions.
 pub mod raw;
-/// Fixed-size ring buffer for versioned storage.
-pub mod ring_buffer;
 
 /// Schema resolution service.
 ///

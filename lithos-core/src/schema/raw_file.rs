@@ -1,13 +1,193 @@
 //! Raw file storage types for versioned schema files.
 
-use std::time::SystemTime;
+use std::{io::Read as _, time::SystemTime};
 
 use rkyv::{
     Archive, Deserialize, Serialize,
     with::{AsUnixTime, Map},
 };
 
-use super::{compression, hash::Blake3Hash, ring_buffer::RingBuffer};
+use super::hash::Blake3Hash;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Compression Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Compression level (3 = balanced speed/ratio).
+const COMPRESSION_LEVEL: i32 = 3;
+
+/// Compress string content using zstd.
+///
+/// # Errors
+/// Returns error if compression fails.
+#[inline]
+fn compress(content: &str) -> Result<Vec<u8>, std::io::Error> {
+    zstd::encode_all(content.as_bytes(), COMPRESSION_LEVEL)
+}
+
+/// Decompress zstd data to string.
+///
+/// # Errors
+/// Returns error if decompression fails or output is not UTF-8.
+#[inline]
+fn decompress(compressed: &[u8]) -> Result<String, DecompressionError> {
+    let mut decompressed = Vec::new();
+    zstd::Decoder::new(compressed)?.read_to_end(&mut decompressed)?;
+    String::from_utf8(decompressed).map_err(DecompressionError::InvalidUtf8)
+}
+
+/// Decompression errors.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum DecompressionError {
+    /// I/O error during decompression.
+    #[error("decompression I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// Decompressed data is not valid UTF-8.
+    #[error("decompressed data is not valid UTF-8: {0}")]
+    InvalidUtf8(#[from] std::string::FromUtf8Error),
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Ring Buffer (Fixed-Size Version History)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Fixed-size ring buffer for versioned file storage (compile-time size, zero
+/// allocation).
+///
+/// This ring buffer uses `u8` indices for memory efficiency (5 versions max).
+/// All arithmetic and indexing is safe by design (modulo wraparound prevents
+/// out-of-bounds).
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+struct RingBuffer<T, const N: usize> {
+    items: [Option<T>; N],
+    head: u8, // Next write position
+    len: u8,  // Current count (0..=N)
+}
+
+impl<T, const N: usize> RingBuffer<T, N> {
+    /// Create empty ring buffer.
+    #[inline]
+    const fn new() -> Self {
+        Self {
+            items: [const { None }; N],
+            head: 0,
+            len: 0,
+        }
+    }
+
+    /// Push item (evicts oldest if full).
+    #[inline]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "All indices are modulo N (cannot exceed array bounds)"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "u8 <-> usize conversions safe for N = 5"
+    )]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "N is constrained to 5 (ring buffer for file versions)"
+    )]
+    #[expect(
+        clippy::integer_division_remainder_used,
+        reason = "Modulo operation is fundamental to ring buffer wraparound"
+    )]
+    fn push(&mut self, item: T) {
+        self.items[self.head as usize] = Some(item);
+        self.head = (self.head + 1) % (N as u8);
+        if self.len < N as u8 {
+            self.len += 1;
+        }
+    }
+
+    /// Get most recent item.
+    #[inline]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "All indices are modulo N (cannot exceed array bounds)"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "u8 <-> usize conversions safe for N = 5"
+    )]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "N is constrained to 5 (ring buffer for file versions)"
+    )]
+    #[expect(
+        clippy::integer_division_remainder_used,
+        reason = "Modulo operation is fundamental to ring buffer wraparound"
+    )]
+    fn current(&self) -> Option<&T> {
+        if self.len == 0 {
+            return None;
+        }
+        let idx = (self.head + (N as u8) - 1) % (N as u8);
+        self.items[idx as usize].as_ref()
+    }
+
+    /// Get item at index (0 = oldest, len-1 = newest).
+    #[inline]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "All indices are modulo N (cannot exceed array bounds)"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "u8 <-> usize conversions safe for N = 5"
+    )]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "N is constrained to 5 (ring buffer for file versions)"
+    )]
+    #[expect(
+        clippy::integer_division_remainder_used,
+        reason = "Modulo operation is fundamental to ring buffer wraparound"
+    )]
+    fn get(&self, index: usize) -> Option<&T> {
+        if index >= self.len as usize {
+            return None;
+        }
+        let offset =
+            (self.head + (N as u8) - self.len + index as u8) % (N as u8);
+        self.items[offset as usize].as_ref()
+    }
+
+    /// Number of items.
+    #[inline]
+    #[expect(
+        clippy::as_conversions,
+        reason = "u8 -> usize is always safe and lossless"
+    )]
+    const fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    /// Iterate over items (oldest to newest).
+    #[inline]
+    fn iter(&self) -> impl Iterator<Item = &T> {
+        (0..self.len()).filter_map(move |i| self.get(i))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Raw File Version Storage
+// ─────────────────────────────────────────────────────────────────────────────
 
 /// A single version of a raw file (content + metadata + hash).
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
@@ -38,7 +218,7 @@ impl RawFileVersion {
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> Result<Self, std::io::Error> {
-        let compressed_content = compression::compress(content)?;
+        let compressed_content = compress(content)?;
         let content_hash = Blake3Hash::compute(content.as_bytes());
         let recorded_at = SystemTime::now();
 
@@ -84,8 +264,8 @@ impl RawFileVersion {
     /// # Errors
     /// Returns error if decompression fails.
     #[inline]
-    pub fn content(&self) -> Result<String, compression::DecompressionError> {
-        compression::decompress(&self.compressed_content)
+    pub fn content(&self) -> Result<String, DecompressionError> {
+        decompress(&self.compressed_content)
     }
 
     /// Get compressed size in bytes.
