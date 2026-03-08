@@ -15,7 +15,7 @@ use crate::{
     config::aggregate::Config,
     note::{
         error::NoteError,
-        link::{EmbedType, Link, Target, split_target_and_anchor},
+        link::{AliasMode, EmbedState, Link, LinkBuilder, Style},
         position::SourceByteOffset,
     },
 };
@@ -32,115 +32,6 @@ pub struct LinkExtractor<'config> {
     )]
     config: &'config Config,
     current: Option<LinkBuilder>,
-}
-
-/// Builder for accumulating link data during extraction.
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "Builder pattern requires multiple boolean flags for state \
-              tracking"
-)]
-struct LinkBuilder {
-    target: Box<str>,
-    alias: Option<String>,
-    position: SourceByteOffset,
-    is_embed: bool,
-    is_wikilink: bool,
-    collect_alias: bool,
-}
-
-impl LinkBuilder {
-    #[expect(
-        clippy::fn_params_excessive_bools,
-        reason = "Constructor mirrors struct fields; bools are necessary state"
-    )]
-    fn new(
-        target: &str,
-        position: SourceByteOffset,
-        is_embed: bool,
-        is_wikilink: bool,
-        collect_alias: bool,
-    ) -> Self {
-        Self {
-            target: target.into(),
-            alias: None,
-            position,
-            is_embed,
-            is_wikilink,
-            collect_alias,
-        }
-    }
-
-    fn add_alias_text(&mut self, text: &str) {
-        if self.collect_alias {
-            self.alias.get_or_insert_with(String::new).push_str(text);
-        }
-    }
-
-    fn build(self) -> Result<Link, NoteError> {
-        let raw_target = self.target.as_ref();
-        let is_external = Self::is_external(raw_target);
-
-        // Parse anchor from target (internal links only)
-        let (target_path, anchor) = if is_external {
-            (raw_target, None)
-        } else {
-            split_target_and_anchor(raw_target)?
-        };
-
-        // Determine if external
-        let target = if is_external {
-            Target::External {
-                url: target_path.into(),
-            }
-        } else {
-            Target::Unresolved {
-                raw: target_path.into(),
-            }
-        };
-
-        // Build link based on style and embed status
-        if self.is_embed {
-            let embed_type = EmbedType::from_extension(target_path);
-            if self.is_wikilink {
-                Link::try_new_embed(
-                    target,
-                    embed_type,
-                    self.alias.as_deref(),
-                    anchor,
-                    self.position,
-                )
-            } else {
-                Link::try_new_markdown_embed(
-                    target,
-                    embed_type,
-                    self.alias.as_deref(),
-                    self.position,
-                )
-            }
-        } else if self.is_wikilink {
-            Link::try_new_wikilink(
-                target,
-                self.alias.as_deref(),
-                anchor,
-                self.position,
-            )
-        } else {
-            Link::try_new_markdown_link(
-                target,
-                self.alias.as_deref(),
-                anchor,
-                self.position,
-            )
-        }
-    }
-
-    fn is_external(target: &str) -> bool {
-        target.starts_with("http://")
-            || target.starts_with("https://")
-            || target.starts_with("ftp://")
-            || target.starts_with("mailto:")
-    }
 }
 
 impl<'config> LinkExtractor<'config> {
@@ -160,25 +51,35 @@ impl<'config> LinkExtractor<'config> {
         position: SourceByteOffset,
         is_embed: bool,
     ) {
+        let embed = if is_embed {
+            EmbedState::Embed
+        } else {
+            EmbedState::Link
+        };
         match link_type {
             PLinkType::WikiLink {
                 has_pothole,
             } => {
+                let alias_mode = if has_pothole {
+                    AliasMode::Collect
+                } else {
+                    AliasMode::Ignore
+                };
                 self.current = Some(LinkBuilder::new(
                     dest_url.as_ref(),
                     position,
-                    is_embed,
-                    true,
-                    has_pothole,
+                    Style::WikiLink,
+                    embed,
+                    alias_mode,
                 ));
             }
             PLinkType::Autolink | PLinkType::Email => {
                 self.current = Some(LinkBuilder::new(
                     dest_url.as_ref(),
                     position,
-                    is_embed,
-                    false,
-                    false,
+                    Style::MdLink,
+                    embed,
+                    AliasMode::Ignore,
                 ));
             }
             PLinkType::Inline
@@ -191,9 +92,9 @@ impl<'config> LinkExtractor<'config> {
                 self.current = Some(LinkBuilder::new(
                     dest_url.as_ref(),
                     position,
-                    is_embed,
-                    false,
-                    true, // Collect alias for markdown links
+                    Style::MdLink,
+                    embed,
+                    AliasMode::Collect,
                 ));
             }
         }
@@ -284,10 +185,13 @@ mod tests {
     use pulldown_cmark::{CowStr, Event, Tag as CmarkTag, TagEnd};
 
     use super::*;
-    use crate::config::{
-        aggregate::Config,
-        raw::RawConfig,
-        vault::{VaultId, VaultRoot},
+    use crate::{
+        config::{
+            aggregate::Config,
+            raw::RawConfig,
+            vault::{VaultId, VaultRoot},
+        },
+        note::link::EmbedType,
     };
 
     #[test]
