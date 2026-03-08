@@ -22,13 +22,13 @@ Stored* remain core artifacts).
   - [ ] note/adapter/command.rs -> note/db_command.rs
   - [ ] note/adapter/query.rs -> note/db_query.rs
   - [ ] note/adapter/reader.rs -> note/reader.rs
-  - [ ] note/adapter/ingestor.rs -> note/ingestor.rs
   - [ ] note/adapter/stored.rs -> note/stored.rs
   - [ ] note/adapter/extract_*.rs -> note/extract_*.rs
 - [ ] Remove note/adapter/mod.rs and adapter/ directory
 - [ ] Add note/db_tables.rs and move table constants from note/mod.rs
 - [ ] Update all imports across the workspace to new module paths
 - [ ] Update note/mod.rs exports to flat modules only
+- [ ] Move vault-wide discovery to application/vault.rs (VaultService::load)
 
 ----------------------------------------------------------------
 2) Clarify ingest and read model types
