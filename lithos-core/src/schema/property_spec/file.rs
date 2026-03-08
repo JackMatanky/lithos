@@ -124,7 +124,7 @@ impl ArchivedFileSpec {
     /// # Errors
     /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub fn validate_str(&self, value: &str) -> Result<(), SchemaError> {
+    pub fn validate(&self, value: &str) -> Result<(), SchemaError> {
         VaultRelPath::validate_path(value)?;
 
         if let Some(dir) = self.directory.as_ref() {

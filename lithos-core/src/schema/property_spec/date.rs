@@ -106,7 +106,7 @@ impl ArchivedDateSpec {
     /// # Errors
     /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub fn validate_str(&self, value: &str) -> Result<(), SchemaError> {
+    pub fn validate(&self, value: &str) -> Result<(), SchemaError> {
         let is_valid =
             chrono::NaiveDateTime::parse_from_str(value, self.format.as_ref())
                 .is_ok()

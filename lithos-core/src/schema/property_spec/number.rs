@@ -198,7 +198,7 @@ impl ArchivedNumberSpec {
     /// # Errors
     /// Returns `SchemaError` if validation fails.
     #[inline]
-    pub fn validate_value(&self, value: f64) -> Result<(), SchemaError> {
+    pub fn validate(&self, value: f64) -> Result<(), SchemaError> {
         // Deserialize the spec (small overhead) to reuse existing validation
         // logic
         let spec: NumberSpec =

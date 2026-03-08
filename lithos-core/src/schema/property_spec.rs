@@ -177,16 +177,16 @@ impl ArchivedPropertySpec {
             }
             Self::Date(s) => {
                 let val = PropertySpec::expect_str(value, "string (date)")?;
-                s.validate_str(val)
+                s.validate(val)
             }
             Self::File(s) => {
                 let val =
                     PropertySpec::expect_str(value, "string (file path)")?;
-                s.validate_str(val)
+                s.validate(val)
             }
             Self::Number(s) => {
                 let n = PropertySpec::expect_f64(value, "number")?;
-                s.validate_value(n)
+                s.validate(n)
             }
             Self::String(s) => {
                 let val = PropertySpec::expect_str(value, "string")?;
