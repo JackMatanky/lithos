@@ -9,10 +9,7 @@ use std::ops::Range;
 
 use pulldown_cmark::{Event, Tag as CmarkTag, TagEnd};
 
-use super::{
-    extract_tag::scan_tags,
-    reader::{ExtractionContext, ExtractionState, Extractor},
-};
+use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::{
     config::{
         aggregate::Config,
@@ -23,7 +20,7 @@ use crate::{
         error::{NoteError, TaskError},
         list::{List, ListDepth, ListItem, ListType},
         position::SourceByteOffset,
-        tag::Tag,
+        tag::{Tag, scan_tags},
         task::{
             Task, TaskAttributes, TaskAttributesBuilder, TaskFieldKey,
             TaskMetadata, TaskTimestamp,

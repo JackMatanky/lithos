@@ -13,7 +13,10 @@
 
 use std::collections::HashMap;
 
-use super::{error::FrontmatterError, value::FieldValue};
+use super::{
+    error::{FrontmatterError, FrontmatterParseError},
+    value::FieldValue,
+};
 use crate::config::frontmatter::FrontmatterKey;
 
 /// Represents YAML/TOML metadata extracted from a note header.
@@ -52,7 +55,48 @@ pub struct Frontmatter {
     fields: HashMap<Box<str>, FieldValue>,
 }
 
+/// Input format for frontmatter parsing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrontmatterFormat {
+    /// YAML frontmatter block.
+    Yaml,
+    /// TOML frontmatter block.
+    Toml,
+}
+
 impl Frontmatter {
+    /// Parses a frontmatter block into structured fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FrontmatterParseError`] if the content cannot be parsed or
+    /// converted into supported field values.
+    pub(crate) fn parse(
+        format: FrontmatterFormat,
+        text: &str,
+    ) -> Result<Self, FrontmatterParseError> {
+        let fields = match format {
+            FrontmatterFormat::Yaml => {
+                let yaml_value: serde_yaml::Value = serde_yaml::from_str(text)
+                    .map_err(|_e| FrontmatterParseError::InvalidYaml {
+                        reason: "failed to parse yaml",
+                    })?;
+                Self::yaml_to_field_map(&yaml_value)?
+            }
+            FrontmatterFormat::Toml => {
+                let toml_value: toml::Value =
+                    toml::from_str(text).map_err(|_e| {
+                        FrontmatterParseError::InvalidToml {
+                            reason: "failed to parse toml",
+                        }
+                    })?;
+                Self::toml_to_field_map(&toml_value)?
+            }
+        };
+
+        Ok(Self::new(fields))
+    }
+
     /// Creates a new [`Frontmatter`] instance from a field map.
     #[inline]
     #[must_use]
@@ -97,6 +141,103 @@ impl Frontmatter {
         FrontmatterFields {
             inner: self.fields.iter(),
         }
+    }
+
+    fn yaml_to_field_map(
+        value: &serde_yaml::Value,
+    ) -> Result<HashMap<Box<str>, FieldValue>, FrontmatterParseError> {
+        let map =
+            value.as_mapping().ok_or(FrontmatterParseError::NotYamlMapping)?;
+
+        let mut fields = HashMap::with_capacity(map.len());
+        for (key, value_item) in map {
+            let key_str =
+                key.as_str().ok_or(FrontmatterParseError::NonStringKey)?;
+
+            let field_value =
+                FieldValue::try_from_yaml(value_item).map_err(|_error| {
+                    FrontmatterParseError::InvalidYamlValue {
+                        reason: "invalid yaml value",
+                    }
+                })?;
+
+            fields.insert(key_str.into(), field_value);
+        }
+
+        Ok(fields)
+    }
+
+    fn toml_to_field_map(
+        value: &toml::Value,
+    ) -> Result<HashMap<Box<str>, FieldValue>, FrontmatterParseError> {
+        let table =
+            value.as_table().ok_or(FrontmatterParseError::NotTomlTable)?;
+
+        let mut fields = HashMap::with_capacity(table.len());
+        for (key, value_item) in table {
+            let field_value = Self::field_value_from_toml(value_item)?;
+            fields.insert(key.as_str().into(), field_value);
+        }
+
+        Ok(fields)
+    }
+
+    fn field_value_from_toml(
+        value: &toml::Value,
+    ) -> Result<FieldValue, FrontmatterParseError> {
+        if let Some(text) = value.as_str() {
+            return Ok(FieldValue::String(text.into()));
+        }
+        if let Some(number) = value.as_integer() {
+            const MAX_SAFE_INTEGER: u64 = 0x0020_0000_0000_0000;
+            let magnitude = number.unsigned_abs();
+            if magnitude > MAX_SAFE_INTEGER {
+                return Err(FrontmatterParseError::InvalidTomlValue {
+                    reason: "integer value exceeds safe f64 range",
+                });
+            }
+
+            #[expect(
+                clippy::as_conversions,
+                reason = "checked MAX_SAFE_INTEGER ensures exact f64"
+            )]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "checked MAX_SAFE_INTEGER ensures exact f64"
+            )]
+            let parsed = number as f64;
+            return Ok(FieldValue::Number(parsed));
+        }
+        if let Some(number) = value.as_float() {
+            return Ok(FieldValue::Number(number));
+        }
+        if let Some(value) = value.as_bool() {
+            return Ok(FieldValue::Boolean(value));
+        }
+        if let Some(datetime) = value.as_datetime() {
+            return Ok(FieldValue::String(datetime.to_string().into()));
+        }
+        if let Some(values) = value.as_array() {
+            let mut items = Vec::with_capacity(values.len());
+            for item in values {
+                items.push(Self::field_value_from_toml(item)?);
+            }
+            return Ok(FieldValue::Array(items));
+        }
+        if let Some(table) = value.as_table() {
+            let mut obj = HashMap::with_capacity(table.len());
+            for (key, value_item) in table {
+                obj.insert(
+                    key.as_str().into(),
+                    Self::field_value_from_toml(value_item)?,
+                );
+            }
+            return Ok(FieldValue::Object(obj));
+        }
+
+        Err(FrontmatterParseError::InvalidTomlValue {
+            reason: "unsupported toml value",
+        })
     }
 
     /// Strictly extracts a typed value from frontmatter.

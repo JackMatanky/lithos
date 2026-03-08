@@ -11,7 +11,10 @@ use pulldown_cmark::Event;
 use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::{
     config::aggregate::Config,
-    note::{frontmatter::Frontmatter, tag::Tag as NoteTag},
+    note::{
+        frontmatter::Frontmatter,
+        tag::{Tag as NoteTag, scan_tags},
+    },
 };
 
 /// Extractor for Obsidian-style tags.
@@ -83,55 +86,6 @@ impl<'config> TagExtractor<'config> {
             }
         }
     }
-}
-
-/// Scans raw text for Obsidian-style tags.
-///
-/// Tag tokens start with `#` and accept alphanumeric, `_`, `-`, and `/`
-/// characters until the first non-tag character.
-pub(super) fn scan_tags(text: &str) -> Vec<NoteTag> {
-    let mut tags = Vec::new();
-    let mut chars = text.char_indices().peekable();
-    let mut prev_is_alnum = false;
-
-    while let Some((start_idx, ch)) = chars.next() {
-        if ch != '#' || prev_is_alnum {
-            prev_is_alnum = ch.is_alphanumeric();
-            continue;
-        }
-
-        let Some(mut end_idx) = start_idx.checked_add(ch.len_utf8()) else {
-            prev_is_alnum = ch.is_alphanumeric();
-            continue;
-        };
-        while let Some(&(next_idx, next_ch)) = chars.peek() {
-            if !(next_ch.is_alphanumeric()
-                || matches!(next_ch, '_' | '-' | '/'))
-            {
-                break;
-            }
-            chars.next();
-            let Some(updated) = next_idx.checked_add(next_ch.len_utf8()) else {
-                break;
-            };
-            end_idx = updated;
-        }
-
-        let Some(raw) = text.get(start_idx..end_idx) else {
-            prev_is_alnum = ch.is_alphanumeric();
-            continue;
-        };
-
-        if raw.len() > 1
-            && let Ok(tag) = NoteTag::try_from_token(raw)
-        {
-            tags.push(tag);
-        }
-
-        prev_is_alnum = raw.chars().last().is_some_and(char::is_alphanumeric);
-    }
-
-    tags
 }
 
 impl Extractor for TagExtractor<'_> {

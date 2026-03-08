@@ -3,15 +3,14 @@
 //! Extracts YAML/TOML metadata blocks, preserves line breaks in block scalar
 //! content, and converts parsed values into domain `FieldValue` entries.
 
-use std::{collections::HashMap, ops::Range};
+use std::ops::Range;
 
 use pulldown_cmark::{Event, MetadataBlockKind, Tag as CmarkTag, TagEnd};
 
 use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::note::{
-    error::{FrontmatterParseError, NoteError},
-    frontmatter::Frontmatter,
-    value::FieldValue,
+    error::NoteError,
+    frontmatter::{Frontmatter, FrontmatterFormat},
 };
 
 /// Extractor for YAML/TOML frontmatter blocks.
@@ -57,147 +56,15 @@ impl FrontmatterExtractor {
             return Ok(None);
         }
 
-        let fields = match kind {
-            MetadataBlockKind::YamlStyle => {
-                let yaml_value: serde_yaml::Value =
-                    serde_yaml::from_str(&self.text).map_err(|_e| {
-                        NoteError::Frontmatter(
-                            FrontmatterParseError::InvalidYaml {
-                                reason: "failed to parse yaml",
-                            },
-                        )
-                    })?;
-                Self::yaml_to_field_map(&yaml_value)?
-            }
-            MetadataBlockKind::PlusesStyle => {
-                let toml_value: toml::Value = toml::from_str(&self.text)
-                    .map_err(|_e| {
-                        NoteError::Frontmatter(
-                            FrontmatterParseError::InvalidToml {
-                                reason: "failed to parse toml",
-                            },
-                        )
-                    })?;
-                Self::toml_to_field_map(&toml_value)?
-            }
+        let format = match kind {
+            MetadataBlockKind::YamlStyle => FrontmatterFormat::Yaml,
+            MetadataBlockKind::PlusesStyle => FrontmatterFormat::Toml,
         };
 
+        let frontmatter = Frontmatter::parse(format, &self.text)
+            .map_err(NoteError::Frontmatter)?;
         self.text.clear();
-        Ok(Some(Frontmatter::new(fields)))
-    }
-
-    fn yaml_to_field_map(
-        value: &serde_yaml::Value,
-    ) -> Result<HashMap<Box<str>, FieldValue>, NoteError> {
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "matching on &Value keeps conversion concise"
-        )]
-        let serde_yaml::Value::Mapping(map) = value else {
-            return Err(NoteError::Frontmatter(
-                FrontmatterParseError::NotYamlMapping,
-            ));
-        };
-
-        let mut fields = HashMap::with_capacity(map.len());
-        for (key, value_item) in map {
-            let key_str = key.as_str().ok_or(NoteError::Frontmatter(
-                FrontmatterParseError::NonStringKey,
-            ))?;
-
-            let field_value =
-                FieldValue::try_from_yaml(value_item).map_err(|_error| {
-                    NoteError::Frontmatter(
-                        FrontmatterParseError::InvalidYamlValue {
-                            reason: "invalid yaml value",
-                        },
-                    )
-                })?;
-
-            fields.insert(key_str.into(), field_value);
-        }
-
-        Ok(fields)
-    }
-
-    fn toml_to_field_map(
-        value: &toml::Value,
-    ) -> Result<HashMap<Box<str>, FieldValue>, NoteError> {
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "matching on &Value keeps conversion concise"
-        )]
-        let toml::Value::Table(table) = value else {
-            return Err(NoteError::Frontmatter(
-                FrontmatterParseError::NotTomlTable,
-            ));
-        };
-
-        let mut fields = HashMap::with_capacity(table.len());
-        for (key, value_item) in table {
-            let field_value = Self::field_value_from_toml(value_item)?;
-            fields.insert(key.as_str().into(), field_value);
-        }
-
-        Ok(fields)
-    }
-
-    fn field_value_from_toml(
-        value: &toml::Value,
-    ) -> Result<FieldValue, NoteError> {
-        #[expect(
-            clippy::pattern_type_mismatch,
-            reason = "matching on &Value keeps conversion concise"
-        )]
-        match value {
-            toml::Value::String(text) => {
-                Ok(FieldValue::String(text.clone().into()))
-            }
-            toml::Value::Integer(number) => {
-                const MAX_SAFE_INTEGER: u64 = 0x0020_0000_0000_0000;
-                let magnitude = number.unsigned_abs();
-                if magnitude > MAX_SAFE_INTEGER {
-                    return Err(NoteError::Frontmatter(
-                        FrontmatterParseError::InvalidTomlValue {
-                            reason: "integer value exceeds safe f64 range",
-                        },
-                    ));
-                }
-
-                #[expect(
-                    clippy::as_conversions,
-                    reason = "checked MAX_SAFE_INTEGER ensures exact f64"
-                )]
-                #[expect(
-                    clippy::cast_precision_loss,
-                    reason = "checked MAX_SAFE_INTEGER ensures exact f64"
-                )]
-                let parsed = (*number) as f64;
-                Ok(FieldValue::Number(parsed))
-            }
-            toml::Value::Float(value) => Ok(FieldValue::Number(*value)),
-            toml::Value::Boolean(value) => Ok(FieldValue::Boolean(*value)),
-            toml::Value::Datetime(datetime) => {
-                Ok(FieldValue::String(datetime.to_string().into()))
-            }
-            toml::Value::Array(values) => {
-                let mut items = Vec::with_capacity(values.len());
-                for item in values {
-                    items.push(Self::field_value_from_toml(item)?);
-                }
-                Ok(FieldValue::Array(items))
-            }
-            toml::Value::Table(table) => {
-                let mut obj = HashMap::with_capacity(table.len());
-                for (key, value_item) in table {
-                    obj.insert(
-                        key.as_str().into(),
-                        Self::field_value_from_toml(value_item)?,
-                    );
-                }
-                Ok(FieldValue::Object(obj))
-            }
-        }
+        Ok(Some(frontmatter))
     }
 }
 
