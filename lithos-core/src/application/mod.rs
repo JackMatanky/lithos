@@ -40,7 +40,7 @@
 
 pub mod config;
 pub mod schema;
-pub mod services;
+pub mod vault;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Public Type Aliases
@@ -56,5 +56,7 @@ pub mod services;
 pub type ConfigService<'db> = config::ConfigService<'db>;
 
 /// Vault service type alias.
-pub type VaultService<'db, 'config> =
-    services::vault_service::VaultService<'db, 'config>;
+pub type VaultService<'db, 'config> = vault::Service<'db, 'config>;
+
+/// Vault service error type alias.
+pub type VaultError = vault::ServiceError;

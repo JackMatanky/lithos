@@ -20,7 +20,7 @@ use crate::{
 /// Errors surfaced during vault loading operations.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum VaultError {
+pub enum ServiceError {
     /// Ingestion (file I/O or parsing) failed.
     #[error("ingestion error: {0}")]
     Ingestion(#[from] NoteIngestError),
@@ -33,12 +33,12 @@ pub enum VaultError {
 /// Vault-level service for loading file-based content.
 ///
 /// Currently orchestrates markdown note ingestion.
-pub struct VaultService<'db, 'config> {
+pub struct Service<'db, 'config> {
     db: &'db Database,
     config: &'config Config,
 }
 
-impl<'db, 'config> VaultService<'db, 'config> {
+impl<'db, 'config> Service<'db, 'config> {
     /// Create a new vault service with database and config.
     #[inline]
     #[must_use]
@@ -55,11 +55,11 @@ impl<'db, 'config> VaultService<'db, 'config> {
     ///
     /// # Errors
     ///
-    /// Returns [`VaultError`] on I/O, parsing, or storage failure.
+    /// Returns [`ServiceError`] on I/O, parsing, or storage failure.
     #[inline]
     pub fn load(
         &self,
-    ) -> Result<Vec<crate::note::identity::NoteId>, VaultError> {
+    ) -> Result<Vec<crate::note::identity::NoteId>, ServiceError> {
         let fs = FsReader::new(self.config.vault_metadata().root().as_path());
         let paths = Self::scan_note_paths(&fs)?;
 
@@ -142,7 +142,7 @@ impl<'db, 'config> VaultService<'db, 'config> {
         Ok(note_ids)
     }
 
-    fn scan_note_paths(fs: &FsReader) -> Result<Vec<NotePath>, VaultError> {
+    fn scan_note_paths(fs: &FsReader) -> Result<Vec<NotePath>, ServiceError> {
         let pattern = "**/*";
         let files = fs.list_files(pattern).map_err(|error| {
             NoteIngestError::Source(error.to_string().into())
@@ -154,7 +154,7 @@ impl<'db, 'config> VaultService<'db, 'config> {
                 continue;
             }
             if let Err(error) = fs.validate_path(&path) {
-                return Err(VaultError::Ingestion(NoteIngestError::Source(
+                return Err(ServiceError::Ingestion(NoteIngestError::Source(
                     error.to_string().into(),
                 )));
             }
@@ -170,9 +170,9 @@ impl<'db, 'config> VaultService<'db, 'config> {
     }
 }
 
-fn map_load_error(error: LoadError) -> VaultError {
+fn map_load_error(error: LoadError) -> ServiceError {
     match error {
-        LoadError::Ingestion(error) => VaultError::Ingestion(error),
-        LoadError::Command(error) => VaultError::Command(error),
+        LoadError::Ingestion(error) => ServiceError::Ingestion(error),
+        LoadError::Command(error) => ServiceError::Command(error),
     }
 }
