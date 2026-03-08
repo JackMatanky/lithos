@@ -3,11 +3,13 @@
 //! Provides named validation patterns for common string formats, allowing
 //! users to reference `"email"` instead of writing raw regex patterns.
 
-#![allow(
+#![expect(
     clippy::exhaustive_enums,
+    reason = "rkyv Archive derive generates exhaustive archived enums"
+)]
+#![expect(
     clippy::missing_inline_in_public_items,
-    reason = "rkyv Archive derive generates exhaustive archived types; const \
-              fn pattern/name are trivial getters"
+    reason = "Trivial const fn getters (pattern/name) don't need inline"
 )]
 
 use std::sync::OnceLock;

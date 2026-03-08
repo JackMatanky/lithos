@@ -3,7 +3,10 @@
 //! This module contains all entities and services for the schema system,
 //! organized into focused modules for better maintainability.
 
-#![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
+#![expect(
+    clippy::module_name_repetitions,
+    reason = "Schema* types are namespaced intentionally for clarity"
+)]
 
 /// Schema identifier value objects (SchemaId, SchemaName).
 pub mod id;

@@ -1,15 +1,12 @@
 //! Property domain entities and value objects.
 
-#![allow(
+#![expect(
     clippy::module_name_repetitions,
-    clippy::exhaustive_structs,
-    reason = "Core domain logic. rkyv generates exhaustive Archived types \
-              despite #[non_exhaustive]. Property prefix is descriptive"
+    reason = "Property* types are descriptive and namespaced intentionally"
 )]
 #![expect(
     clippy::exhaustive_enums,
-    reason = "rkyv generates exhaustive archived enums despite \
-              #[non_exhaustive] on the source enums."
+    reason = "rkyv Archive derive generates exhaustive archived enums"
 )]
 
 use std::{

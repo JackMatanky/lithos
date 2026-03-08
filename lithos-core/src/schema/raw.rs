@@ -22,10 +22,9 @@
 //! **Key Principle**: Validate as late as possible (only when you have the
 //! data needed to validate).
 
-#![allow(
+#![expect(
     clippy::module_name_repetitions,
-    reason = "RawSchema and RawProperty follow naming conventions for input \
-              types"
+    reason = "Raw* types follow naming conventions for input layer types"
 )]
 
 use std::collections::BTreeMap;
