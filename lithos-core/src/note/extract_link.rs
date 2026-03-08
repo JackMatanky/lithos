@@ -15,7 +15,7 @@ use crate::{
     config::aggregate::Config,
     note::{
         error::NoteError,
-        link::{Anchor, EmbedType, Link, Target},
+        link::{EmbedType, Link, Target, split_target_and_anchor},
         position::SourceByteOffset,
     },
 };
@@ -85,7 +85,7 @@ impl LinkBuilder {
         let (target_path, anchor) = if is_external {
             (raw_target, None)
         } else {
-            self.parse_target_and_anchor()?
+            split_target_and_anchor(raw_target)?
         };
 
         // Determine if external
@@ -132,32 +132,6 @@ impl LinkBuilder {
                 anchor,
                 self.position,
             )
-        }
-    }
-
-    fn parse_target_and_anchor(
-        &self,
-    ) -> Result<(&str, Option<Anchor>), NoteError> {
-        let target = self.target.as_ref();
-
-        // Check for anchor: # or #^
-        if let Some(anchor_pos) = target.find('#') {
-            let (path, anchor_text) = target.split_at(anchor_pos);
-            #[expect(
-                clippy::string_slice,
-                reason = "Indexing at char boundary '#' is safe"
-            )]
-            let anchor_text = &anchor_text[1..]; // Skip the #
-
-            if let Some(block_ref) = anchor_text.strip_prefix('^') {
-                // Block reference: #^block-id
-                Ok((path, Some(Anchor::block_ref(block_ref)?)))
-            } else {
-                // Heading anchor: #heading
-                Ok((path, Some(Anchor::heading(anchor_text)?)))
-            }
-        } else {
-            Ok((target, None))
         }
     }
 

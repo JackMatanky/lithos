@@ -306,6 +306,25 @@ impl Anchor {
     }
 }
 
+/// Split an internal link target into path and optional anchor.
+///
+/// # Errors
+///
+/// Returns [`NoteError::Link`] if the anchor is malformed.
+pub(crate) fn split_target_and_anchor(
+    target: &str,
+) -> Result<(&str, Option<Anchor>), NoteError> {
+    let Some((path, anchor_text)) = target.split_once('#') else {
+        return Ok((target, None));
+    };
+
+    if let Some(block_ref) = anchor_text.strip_prefix('^') {
+        Ok((path, Some(Anchor::block_ref(block_ref)?)))
+    } else {
+        Ok((path, Some(Anchor::heading(anchor_text)?)))
+    }
+}
+
 impl Link {
     /// Returns the optional display alias.
     #[inline]
