@@ -1,4 +1,26 @@
-//! Raw schema and property input definitions.
+//! Raw schema and property input definitions (syntax validation layer).
+//!
+//! ## Validation Boundaries
+//!
+//! This module implements **syntax-only validation** using the type system
+//! and regex patterns. It does NOT validate semantics.
+//!
+//! ### What Raw Validates (Syntax)
+//!
+//! - File name format (alphanumeric + dash/underscore, lowercase)
+//! - Property name syntax (via regex)
+//! - Unique property names within a schema
+//! - Security violations (path traversal attempts)
+//!
+//! ### What Raw Does NOT Validate (Semantics)
+//!
+//! - Property ref existence (validated by [`crate::schema::dereferencer`])
+//! - Schema ref existence (validated by [`crate::schema::extender`])
+//! - Circular inheritance (validated by [`crate::schema::extender`])
+//! - Depth limits (validated by [`crate::schema::resolver`])
+//!
+//! **Key Principle**: Validate as late as possible (only when you have the
+//! data needed to validate).
 
 #![allow(
     clippy::module_name_repetitions,

@@ -1,8 +1,18 @@
 //! Schema loader — orchestrates the full schema ingestion pipeline.
 //!
-//! # Pipeline Flow
+//! ## Orchestration Pattern
 //!
-//! The service uses **staleness detection** to decide whether to load from
+//! The loader coordinates the file → raw → resolved → database pipeline.
+//! It is the **only** place where orchestration logic lives (following the
+//! single responsibility principle).
+//!
+//! - **No behavior in StoredSchema**: Schema is a read model (no methods)
+//! - **Event emission**: Emits pipeline events for observability
+//! - **Staleness detection**: Two-tier (timestamp fast path, hash slow path)
+//!
+//! ## Pipeline Flow
+//!
+//! The loader uses **staleness detection** to decide whether to load from
 //! files or reuse cached data from the database:
 //!
 //! 1. **Load existing state from DB**:

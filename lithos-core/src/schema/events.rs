@@ -1,10 +1,31 @@
 //! Schema domain events and pipeline events.
 //!
+//! ## Event-Driven Architecture
+//!
 //! This module contains two types of events:
-//! - **Domain events**: Aggregate-level events (SchemaCreated,
-//!   PropertyRegistered, etc.)
-//! - **Pipeline events**: Observability events for the loading pipeline
-//!   (SchemaEvent, PropertyBankEvent)
+//!
+//! ### Domain Events
+//!
+//! Aggregate-level events emitted by the PropertyBank:
+//! - `SchemaCreated` - New schema registered
+//! - `SchemaResolved` - Schema resolved through inheritance pipeline
+//! - `PropertyRegistered` - New property added to bank
+//! - `PropertyBankLoaded` - Bank loaded/reloaded
+//!
+//! ### Pipeline Events (Observability)
+//!
+//! Fine-grained events emitted by [`crate::schema::loader`] for observability
+//! and reactive coordination:
+//!
+//! - **`SchemaEvent`**: File scan, staleness checks, resolution, persistence
+//! - **`PropertyBankEvent`**: Bank lifecycle, staleness, cascade triggers
+//!
+//! ## Event Handlers
+//!
+//! Implement [`SchemaEventHandler`] to receive pipeline events:
+//! - `LoggingHandler` - Tracing integration
+//! - `MetricsHandler` - Prometheus/StatsD metrics
+//! - `EventCollector` - Test utility for assertions
 #![expect(
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,

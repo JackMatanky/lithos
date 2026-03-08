@@ -1,13 +1,25 @@
-//! Storage representation for schema aggregates.
+//! Storage representation for resolved schemas (read model pattern).
 //!
-//! [`StoredSchema`] is the rkyv-serialized adapter type persisted to the
-//! `schema_by_id` table. Metadata for staleness checking lives in the
-//! `schema_metadata` table via [`StoredMetadata`].
+//! ## Read Model Architecture
+//!
+//! [`StoredSchema`] is a **read model** - it contains no behavior, no events,
+//! and no domain logic. It is purely structured data optimized for storage
+//! and retrieval.
+//!
+//! - **Not a DDD Aggregate**: No state transitions, no invariant enforcement
+//! - **Orchestration**: All pipeline logic lives in [`crate::schema::loader`]
+//! - **Zero-Copy Reads**: Uses `rkyv` for fast deserialization-free access
+//!
+//! ## Storage Tables
+//!
+//! Schema storage uses:
+//! - `schema_by_id` - Resolved schemas (rkyv-serialized)
+//! - `schema_metadata` - Staleness metadata (hash, timestamps, bank version)
 //!
 //! Property bank storage uses:
-//! - `bank_metadata` for version/timestamp tracking
-//! - `bank_property_by_id` for ID-keyed snapshots
-//! - `bank_property_by_name` for name-keyed snapshots
+//! - `bank_metadata` - Version/timestamp tracking
+//! - `bank_property_by_id` - ID-keyed property snapshots
+//! - `bank_property_by_name` - Name-keyed property snapshots
 
 // Clippy false positive: Archive macro generates internal types that trigger
 // exhaustive_structs, but our public types are marked #[non_exhaustive].
@@ -36,8 +48,20 @@ use super::{
 
 /// Storage representation of a resolved schema (read model).
 ///
-/// Persisted to the `schema_by_id` table. Contains all fields required
-/// for staleness checking and `SchemaTree` reconstruction.
+/// ## Read Model Pattern
+///
+/// This type is a **read model** - it has no behavior, no events, and no
+/// domain logic. It exists purely to store and retrieve resolved schema data.
+///
+/// - **No Methods**: Only field accessors (getters)
+/// - **No State Transitions**: Immutable after resolution
+/// - **No Events**: Event emission happens in [`crate::schema::loader`]
+///
+/// ## Storage
+///
+/// Persisted to the `schema_by_id` table using `rkyv` serialization.
+/// Contains all fields required for staleness checking and inheritance
+/// tree reconstruction.
 ///
 /// This is now the primary schema type used throughout the system.
 /// Files are the source of truth; schemas are loaded, resolved, and stored
