@@ -1,5 +1,5 @@
 //! Shared source-related primitives for the Note context.
-
+//!
 //! Shared domain types for the Note context.
 #![allow(
     clippy::exhaustive_structs,
@@ -59,61 +59,138 @@ impl SourceByteOffset {
     }
 }
 
-/// 1-based line number derived from a byte offset.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-pub struct SourceLine(u32);
-
-impl SourceLine {
-    /// Creates a new 1-based line number.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Structure`] if the value is zero.
+impl From<u32> for SourceByteOffset {
     #[inline]
-    pub fn try_new(value: u32) -> Result<Self, NoteError> {
-        if value == 0 {
-            return Err(NoteError::Structure("line number must be >= 1"));
-        }
-        Ok(Self(value))
-    }
-
-    /// Returns the 1-based line number.
-    #[inline]
-    #[must_use]
-    pub const fn value(self) -> u32 {
-        self.0
+    fn from(offset: u32) -> Self {
+        Self(offset)
     }
 }
 
-/// 1-based column number derived from a byte offset.
+impl From<SourceByteOffset> for u32 {
+    #[inline]
+    fn from(offset: SourceByteOffset) -> Self {
+        offset.0
+    }
+}
+
+impl TryFrom<usize> for SourceByteOffset {
+    type Error = std::num::TryFromIntError;
+
+    #[inline]
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        u32::try_from(value).map(Self)
+    }
+}
+
+/// A byte range in the original UTF-8 source.
+///
+/// Defines a contiguous span of text within a note, typically representing
+/// an entity's location.
+///
+/// # Examples
+///
+/// ```
+/// # use lithos_core::note::position::{SourceByteOffset, SourceByteRange};
+/// let start = SourceByteOffset::new(0);
+/// let end = SourceByteOffset::new(10);
+/// let range = SourceByteRange::new(start, end)?;
+///
+/// assert_eq!(range.len(), 10);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct SourceColumn(u32);
+#[non_exhaustive]
+pub struct SourceByteRange {
+    /// Start of the range (inclusive).
+    start: SourceByteOffset,
+    /// End of the range (exclusive).
+    end: SourceByteOffset,
+}
 
-impl SourceColumn {
-    /// Creates a new 1-based column number.
+impl SourceByteRange {
+    /// Creates a new range from start and end offsets.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the value is zero.
+    /// Returns [`NoteError::Structure`] if `start` is greater than `end`.
     #[inline]
-    pub fn try_new(value: u32) -> Result<Self, NoteError> {
-        if value == 0 {
-            return Err(NoteError::Structure("column number must be >= 1"));
+    pub fn new(
+        start: SourceByteOffset,
+        end: SourceByteOffset,
+    ) -> Result<Self, NoteError> {
+        if start > end {
+            return Err(NoteError::Structure(
+                "source range start must be <= end",
+            ));
         }
-        Ok(Self(value))
+        Ok(Self::new_unchecked(start, end))
     }
 
-    /// Returns the 1-based column number.
+    #[inline]
+    const fn new_unchecked(
+        start: SourceByteOffset,
+        end: SourceByteOffset,
+    ) -> Self {
+        Self {
+            start,
+            end,
+        }
+    }
+
+    /// Returns the start offset (inclusive).
     #[inline]
     #[must_use]
-    pub const fn value(self) -> u32 {
-        self.0
+    pub const fn start(&self) -> SourceByteOffset {
+        self.start
+    }
+
+    /// Returns the end offset (exclusive).
+    #[inline]
+    #[must_use]
+    pub const fn end(&self) -> SourceByteOffset {
+        self.end
+    }
+
+    /// Returns the length of the range in bytes.
+    #[inline]
+    #[must_use]
+    pub const fn len(&self) -> u32 {
+        self.end.0.saturating_sub(self.start.0)
+    }
+
+    /// Returns true if the range is empty.
+    #[inline]
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.start.0 == self.end.0
+    }
+
+    /// Converts this byte range into a location range using cached line starts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if the offsets are out of bounds or
+    /// not on UTF-8 character boundaries.
+    #[inline]
+    pub fn to_location_range(
+        &self,
+        source: &str,
+        line_starts: &[usize],
+    ) -> Result<SourceLocationRange, NoteError> {
+        let start = SourceLocation::try_from_byte_offset_with_index(
+            self.start,
+            source,
+            line_starts,
+        )?;
+        let end = SourceLocation::try_from_byte_offset_with_index(
+            self.end,
+            source,
+            line_starts,
+        )?;
+        Ok(SourceLocationRange::new_unchecked(start, end))
     }
 }
 
@@ -184,17 +261,7 @@ impl SourceLocation {
         offset: SourceByteOffset,
         source: &str,
     ) -> Result<Self, NoteError> {
-        let raw_offset = usize::from(offset);
-        if raw_offset > source.len() {
-            return Err(NoteError::Structure(
-                "source offset exceeds input length",
-            ));
-        }
-        if !source.is_char_boundary(raw_offset) {
-            return Err(NoteError::Structure(
-                "source offset is not on a character boundary",
-            ));
-        }
+        let raw_offset = Self::validate_offset(offset, source)?;
 
         let mut line = 1u32;
         let mut column = 1u32;
@@ -215,6 +282,68 @@ impl SourceLocation {
             SourceLine::try_new(line)?,
             SourceColumn::try_new(column)?,
         ))
+    }
+
+    /// Builds a source location from a byte offset using cached line starts.
+    ///
+    /// Line and column numbers are 1-based. Column counts Unicode scalar
+    /// values, not bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if the offset exceeds the source
+    /// length or is not on a UTF-8 character boundary.
+    #[inline]
+    pub fn try_from_byte_offset_with_index(
+        offset: SourceByteOffset,
+        source: &str,
+        line_starts: &[usize],
+    ) -> Result<Self, NoteError> {
+        let raw_offset = Self::validate_offset(offset, source)?;
+
+        let line_index = line_starts
+            .partition_point(|&start| start <= raw_offset)
+            .saturating_sub(1);
+        let line_start = line_starts.get(line_index).copied().unwrap_or(0);
+        let slice = source.get(line_start..raw_offset).ok_or({
+            NoteError::Structure("source offset is not on a boundary")
+        })?;
+        let column_count = slice.chars().count().saturating_add(1);
+        let line =
+            u32::try_from(line_index.saturating_add(1)).map_err(|_error| {
+                NoteError::Structure("line index out of range")
+            })?;
+        let column = u32::try_from(column_count).map_err(|_error| {
+            NoteError::Structure("column index out of range")
+        })?;
+
+        Ok(SourceLocation::new(
+            offset,
+            SourceLine::try_new(line)?,
+            SourceColumn::try_new(column)?,
+        ))
+    }
+
+    #[inline]
+    fn validate_offset(
+        offset: SourceByteOffset,
+        source: &str,
+    ) -> Result<usize, NoteError> {
+        let raw_offset =
+            usize::try_from(u32::from(offset)).map_err(|_error| {
+                NoteError::Structure("source offset out of range")
+            })?;
+        if raw_offset > source.len() {
+            return Err(NoteError::Structure(
+                "source offset exceeds input length",
+            ));
+        }
+        if !source.is_char_boundary(raw_offset) {
+            return Err(NoteError::Structure(
+                "source offset is not on a character boundary",
+            ));
+        }
+        Ok(raw_offset)
     }
 }
 
@@ -245,10 +374,15 @@ impl SourceLocationRange {
                 "source range start must be <= end",
             ));
         }
-        Ok(Self {
+        Ok(Self::new_unchecked(start, end))
+    }
+
+    #[inline]
+    const fn new_unchecked(start: SourceLocation, end: SourceLocation) -> Self {
+        Self {
             start,
             end,
-        })
+        }
     }
 
     /// Returns the start location (inclusive).
@@ -266,33 +400,87 @@ impl SourceLocationRange {
     }
 
     /// Returns the byte range for this location range.
+    #[inline]
+    #[must_use]
+    pub const fn byte_range(&self) -> SourceByteRange {
+        SourceByteRange::new_unchecked(self.start.offset(), self.end.offset())
+    }
+}
+
+/// 1-based line number derived from a byte offset.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct SourceLine(u32);
+
+impl SourceLine {
+    /// Creates a new 1-based line number.
     ///
     /// # Errors
     ///
-    /// Returns [`NoteError::Structure`] if the start offset is greater than
-    /// the end offset.
+    /// Returns [`NoteError::Structure`] if the value is zero.
     #[inline]
-    pub fn byte_range(&self) -> Result<SourceByteRange, NoteError> {
-        SourceByteRange::new(self.start.offset(), self.end.offset())
+    pub fn try_new(value: u32) -> Result<Self, NoteError> {
+        if value == 0 {
+            return Err(NoteError::Structure("line number must be >= 1"));
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the 1-based line number.
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> u32 {
+        self.0
+    }
+}
+
+/// 1-based column number derived from a byte offset.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct SourceColumn(u32);
+
+impl SourceColumn {
+    /// Creates a new 1-based column number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if the value is zero.
+    #[inline]
+    pub fn try_new(value: u32) -> Result<Self, NoteError> {
+        if value == 0 {
+            return Err(NoteError::Structure("column number must be >= 1"));
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the 1-based column number.
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> u32 {
+        self.0
     }
 }
 
 /// Precomputed line start offsets for fast line/column lookups.
 #[derive(Debug, Clone)]
-pub struct SourceLineIndex {
+pub(crate) struct LineIndex {
     line_starts: Vec<usize>,
 }
 
-impl SourceLineIndex {
+impl LineIndex {
     /// Builds a new line index for the provided source text.
     #[inline]
     #[must_use]
-    pub fn new(source: &str) -> Self {
+    pub(crate) fn new(source: &str) -> Self {
         let mut line_starts = Vec::with_capacity(32);
         line_starts.push(0);
-        for (idx, ch) in source.char_indices() {
-            if ch == '\n' {
-                let next = idx.saturating_add(ch.len_utf8());
+        for (idx, byte) in source.bytes().enumerate() {
+            if byte == b'\n' {
+                let next = idx.saturating_add(1);
                 if next <= source.len() {
                     line_starts.push(next);
                 }
@@ -303,161 +491,10 @@ impl SourceLineIndex {
         }
     }
 
-    /// Converts a byte offset into a line/column using the cached index.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Structure`] if the offset is out of bounds or not
-    /// on a UTF-8 character boundary.
-    #[inline]
-    pub fn line_column(
-        &self,
-        offset: SourceByteOffset,
-        source: &str,
-    ) -> Result<SourceLocation, NoteError> {
-        let raw_offset = usize::from(offset);
-        if raw_offset > source.len() {
-            return Err(NoteError::Structure(
-                "source offset exceeds input length",
-            ));
-        }
-        if !source.is_char_boundary(raw_offset) {
-            return Err(NoteError::Structure(
-                "source offset is not on a character boundary",
-            ));
-        }
-
-        let line_index = self
-            .line_starts
-            .partition_point(|&start| start <= raw_offset)
-            .saturating_sub(1);
-        let line_start = self.line_starts.get(line_index).copied().unwrap_or(0);
-        let slice = source.get(line_start..raw_offset).ok_or({
-            NoteError::Structure("source offset is not on a boundary")
-        })?;
-        let column_count = slice.chars().count().saturating_add(1);
-        let line =
-            u32::try_from(line_index.saturating_add(1)).map_err(|_error| {
-                NoteError::Structure("line index out of range")
-            })?;
-        let column = u32::try_from(column_count).map_err(|_error| {
-            NoteError::Structure("column index out of range")
-        })?;
-
-        Ok(SourceLocation::new(
-            offset,
-            SourceLine::try_new(line)?,
-            SourceColumn::try_new(column)?,
-        ))
-    }
-}
-
-impl From<u32> for SourceByteOffset {
-    #[inline]
-    fn from(offset: u32) -> Self {
-        Self(offset)
-    }
-}
-
-impl From<SourceByteOffset> for u32 {
-    #[inline]
-    fn from(offset: SourceByteOffset) -> Self {
-        offset.0
-    }
-}
-
-impl TryFrom<usize> for SourceByteOffset {
-    type Error = std::num::TryFromIntError;
-
-    #[inline]
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        u32::try_from(value).map(Self)
-    }
-}
-
-impl From<SourceByteOffset> for usize {
-    #[inline]
-    fn from(offset: SourceByteOffset) -> Self {
-        usize::try_from(offset.0).unwrap_or_default()
-    }
-}
-
-/// A byte range in the original UTF-8 source.
-///
-/// Defines a contiguous span of text within a note, typically representing
-/// an entity's location.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::position::{SourceByteOffset, SourceByteRange};
-/// let start = SourceByteOffset::new(0);
-/// let end = SourceByteOffset::new(10);
-/// let range = SourceByteRange::new(start, end)?;
-///
-/// assert_eq!(range.len(), 10);
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
-)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct SourceByteRange {
-    /// Start of the range (inclusive).
-    start: SourceByteOffset,
-    /// End of the range (exclusive).
-    end: SourceByteOffset,
-}
-
-impl SourceByteRange {
-    /// Creates a new range from start and end offsets.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NoteError::Structure`] if `start` is greater than `end`.
-    #[inline]
-    pub fn new(
-        start: SourceByteOffset,
-        end: SourceByteOffset,
-    ) -> Result<Self, NoteError> {
-        if start > end {
-            return Err(NoteError::Structure(
-                "source range start must be <= end",
-            ));
-        }
-        Ok(Self {
-            start,
-            end,
-        })
-    }
-
-    /// Returns the start offset (inclusive).
     #[inline]
     #[must_use]
-    pub const fn start(&self) -> SourceByteOffset {
-        self.start
-    }
-
-    /// Returns the end offset (exclusive).
-    #[inline]
-    #[must_use]
-    pub const fn end(&self) -> SourceByteOffset {
-        self.end
-    }
-
-    /// Returns the length of the range in bytes.
-    #[inline]
-    #[must_use]
-    pub const fn len(&self) -> u32 {
-        self.end.0.saturating_sub(self.start.0)
-    }
-
-    /// Returns true if the range is empty.
-    #[inline]
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.start.0 == self.end.0
+    pub(crate) fn as_slice(&self) -> &[usize] {
+        &self.line_starts
     }
 }
 
@@ -524,10 +561,14 @@ mod tests {
     )]
     fn line_index_matches_offset_lookup() -> Result<(), NoteError> {
         let source = "first\nsecond\nthird";
-        let index = SourceLineIndex::new(source);
+        let index = LineIndex::new(source);
         let offset = SourceByteOffset::try_from("first\nsecond".len())
             .map_err(|_error| NoteError::Structure("test error"))?;
-        let location = index.line_column(offset, source)?;
+        let location = SourceLocation::try_from_byte_offset_with_index(
+            offset,
+            source,
+            index.as_slice(),
+        )?;
         assert_eq!(location.line().value(), 2);
         assert_eq!(location.column().value(), 7);
         Ok(())
@@ -540,10 +581,14 @@ mod tests {
     )]
     fn line_index_handles_crlf() -> Result<(), NoteError> {
         let source = "first\r\nsecond";
-        let index = SourceLineIndex::new(source);
+        let index = LineIndex::new(source);
         let offset = SourceByteOffset::try_from("first\r\n".len())
             .map_err(|_error| NoteError::Structure("test error"))?;
-        let location = index.line_column(offset, source)?;
+        let location = SourceLocation::try_from_byte_offset_with_index(
+            offset,
+            source,
+            index.as_slice(),
+        )?;
         assert_eq!(location.line().value(), 2);
         assert_eq!(location.column().value(), 1);
         Ok(())
@@ -566,7 +611,7 @@ mod tests {
             SourceColumn::try_new(6)?,
         );
         let range = SourceLocationRange::new(start, end)?;
-        let byte_range = range.byte_range()?;
+        let byte_range = range.byte_range();
         assert_eq!(byte_range.len(), 5);
         Ok(())
     }

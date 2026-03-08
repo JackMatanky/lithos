@@ -26,7 +26,7 @@ use crate::{
         },
         list::{List, ListDepth, ListItem, ListItemEntry, ListType},
         position::{
-            SourceByteOffset, SourceByteRange, SourceLineIndex, SourceLocation,
+            LineIndex, SourceByteOffset, SourceByteRange, SourceLocation,
         },
         structure::{BlockRef, Section, SectionKind},
         tag::{Tag as NoteTag, scan_tags},
@@ -1146,7 +1146,7 @@ pub struct ParsedNote {
     block_refs: Vec<BlockRef>,
     tags: Vec<NoteTag>,
     frontmatter: Option<Frontmatter>,
-    line_index: OnceCell<SourceLineIndex>,
+    line_index: OnceCell<LineIndex>,
     created_at: Option<SystemTime>,
     modified_at: Option<SystemTime>,
 }
@@ -1229,11 +1229,9 @@ impl ParsedNote {
         self.frontmatter.as_ref()
     }
 
-    /// Line index for converting byte offsets into line/column positions.
     #[inline]
-    #[must_use]
-    pub fn line_index(&self) -> &SourceLineIndex {
-        self.line_index.get_or_init(|| SourceLineIndex::new(&self.source))
+    fn line_index(&self) -> &LineIndex {
+        self.line_index.get_or_init(|| LineIndex::new(&self.source))
     }
 
     /// Converts a byte offset into a line/column location.
@@ -1246,7 +1244,11 @@ impl ParsedNote {
         &self,
         offset: SourceByteOffset,
     ) -> Result<SourceLocation, NoteError> {
-        self.line_index().line_column(offset, &self.source)
+        SourceLocation::try_from_byte_offset_with_index(
+            offset,
+            &self.source,
+            self.line_index().as_slice(),
+        )
     }
 
     /// Filesystem created timestamp at ingestion time, if available.
@@ -1416,18 +1418,19 @@ mod tests {
     }
 
     #[test]
-    fn parsed_note_exposes_line_index() -> Result<(), NoteError> {
+    fn parsed_note_locations_match_direct_lookup() -> Result<(), NoteError> {
         let config = test_config();
         let reader = NoteReader::new(&config);
         let markdown = "first\nsecond";
 
         let parsed = reader.parse_str(markdown)?;
-        let location = parsed
-            .line_index()
-            .line_column(SourceByteOffset::new(0), markdown)?;
+        let location = parsed.location_for_offset(SourceByteOffset::new(0))?;
+        let direct = SourceLocation::try_from_byte_offset(
+            SourceByteOffset::new(0),
+            markdown,
+        )?;
 
-        assert_eq!(location.line().value(), 1);
-        assert_eq!(location.column().value(), 1);
+        assert_eq!(location, direct);
         Ok(())
     }
 
