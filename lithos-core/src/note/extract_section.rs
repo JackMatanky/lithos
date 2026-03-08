@@ -13,7 +13,7 @@ use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::note::{
     error::NoteError,
     position::{SourceByteOffset, SourceByteRange},
-    structure::{Heading, HeadingLevel, Section},
+    structure::{Heading, HeadingAccumulator, HeadingLevel, Section},
 };
 
 /// Extractor for markdown sections.
@@ -22,7 +22,7 @@ pub struct SectionExtractor<'source> {
     block_depth: u32,
     current: Option<SectionState>,
     last_offset: usize,
-    current_heading: Option<HeadingBuilder>,
+    current_heading: Option<HeadingAccumulator>,
     sections: Vec<Section>,
 }
 
@@ -31,34 +31,6 @@ struct SectionState {
     start: SourceByteOffset,
     heading: Option<Heading>,
     awaiting_heading: bool,
-}
-
-struct HeadingBuilder {
-    level: HeadingLevel,
-    text: String,
-    position: SourceByteOffset,
-}
-
-impl HeadingBuilder {
-    fn new(level: HeadingLevel, position: SourceByteOffset) -> Self {
-        Self {
-            level,
-            text: String::new(),
-            position,
-        }
-    }
-
-    fn push_text(&mut self, text: &str) {
-        self.text.push_str(text);
-    }
-
-    fn push_break(&mut self) {
-        self.text.push(' ');
-    }
-
-    fn build(self) -> Result<Heading, NoteError> {
-        Heading::try_new(self.level, self.text, self.position)
-    }
 }
 
 impl<'source> SectionExtractor<'source> {
@@ -142,7 +114,7 @@ impl<'source> SectionExtractor<'source> {
             CmarkHeadingLevel::H6 => HeadingLevel::try_new(6)?,
         };
 
-        self.current_heading = Some(HeadingBuilder::new(level, position));
+        self.current_heading = Some(HeadingAccumulator::new(level, position));
         Ok(())
     }
 

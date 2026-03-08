@@ -13,41 +13,12 @@ use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::note::{
     error::NoteError,
     position::SourceByteOffset,
-    structure::{Heading, HeadingLevel},
+    structure::{Heading, HeadingAccumulator, HeadingLevel},
 };
 
 /// Extractor for markdown headings (H1-H6).
 pub struct HeadingExtractor {
-    current: Option<HeadingBuilder>,
-}
-
-/// Builder for accumulating heading data during extraction.
-struct HeadingBuilder {
-    level: HeadingLevel,
-    text: String,
-    position: SourceByteOffset,
-}
-
-impl HeadingBuilder {
-    fn new(level: HeadingLevel, position: SourceByteOffset) -> Self {
-        Self {
-            level,
-            text: String::new(),
-            position,
-        }
-    }
-
-    fn push_text(&mut self, text: &str) {
-        self.text.push_str(text);
-    }
-
-    fn push_break(&mut self) {
-        self.text.push(' ');
-    }
-
-    fn build(self) -> Result<Heading, NoteError> {
-        Heading::try_new(self.level, self.text, self.position)
-    }
+    current: Option<HeadingAccumulator>,
 }
 
 impl HeadingExtractor {
@@ -72,7 +43,7 @@ impl HeadingExtractor {
             CmarkHeadingLevel::H6 => HeadingLevel::try_new(6)?,
         };
 
-        self.current = Some(HeadingBuilder::new(level, position));
+        self.current = Some(HeadingAccumulator::new(level, position));
         Ok(())
     }
 }

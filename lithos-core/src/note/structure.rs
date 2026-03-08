@@ -44,6 +44,40 @@ pub struct Heading {
     position: SourceByteOffset,
 }
 
+/// Builder for accumulating heading data during parsing.
+#[derive(Debug)]
+pub(crate) struct HeadingAccumulator {
+    level: HeadingLevel,
+    text: String,
+    position: SourceByteOffset,
+}
+
+impl HeadingAccumulator {
+    #[inline]
+    pub(crate) fn new(level: HeadingLevel, position: SourceByteOffset) -> Self {
+        Self {
+            level,
+            text: String::new(),
+            position,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn push_text(&mut self, text: &str) {
+        self.text.push_str(text);
+    }
+
+    #[inline]
+    pub(crate) fn push_break(&mut self) {
+        self.text.push(' ');
+    }
+
+    #[inline]
+    pub(crate) fn build(self) -> Result<Heading, NoteError> {
+        Heading::try_new(self.level, self.text, self.position)
+    }
+}
+
 impl Heading {
     /// Creates a new heading with validation.
     ///
