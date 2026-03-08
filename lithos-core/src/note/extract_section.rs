@@ -12,7 +12,7 @@ use pulldown_cmark::{
 use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::note::{
     error::NoteError,
-    heading::{Heading, HeadingAccumulator, HeadingLevel},
+    heading::{Heading, HeadingBuilder, HeadingLevel},
     position::{SourceByteOffset, SourceByteRange},
     structure::Section,
 };
@@ -23,7 +23,7 @@ pub struct SectionExtractor<'source> {
     block_depth: u32,
     current: Option<SectionState>,
     last_offset: usize,
-    current_heading: Option<HeadingAccumulator>,
+    current_heading: Option<HeadingBuilder>,
     sections: Vec<Section>,
 }
 
@@ -115,7 +115,7 @@ impl<'source> SectionExtractor<'source> {
             CmarkHeadingLevel::H6 => HeadingLevel::try_new(6)?,
         };
 
-        self.current_heading = Some(HeadingAccumulator::new(level, position));
+        self.current_heading = Some(HeadingBuilder::new(level, position));
         Ok(())
     }
 

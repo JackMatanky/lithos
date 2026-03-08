@@ -12,13 +12,13 @@ use pulldown_cmark::{
 use super::reader::{ExtractionContext, ExtractionState, Extractor};
 use crate::note::{
     error::NoteError,
-    heading::{Heading, HeadingAccumulator, HeadingLevel},
+    heading::{Heading, HeadingBuilder, HeadingLevel},
     position::SourceByteOffset,
 };
 
 /// Extractor for markdown headings (H1-H6).
 pub struct HeadingExtractor {
-    current: Option<HeadingAccumulator>,
+    current: Option<HeadingBuilder>,
 }
 
 impl HeadingExtractor {
@@ -43,7 +43,7 @@ impl HeadingExtractor {
             CmarkHeadingLevel::H6 => HeadingLevel::try_new(6)?,
         };
 
-        self.current = Some(HeadingAccumulator::new(level, position));
+        self.current = Some(HeadingBuilder::new(level, position));
         Ok(())
     }
 }

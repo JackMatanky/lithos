@@ -39,13 +39,13 @@ pub struct Heading {
 
 /// Builder for accumulating heading data during parsing.
 #[derive(Debug)]
-pub(crate) struct HeadingAccumulator {
+pub(crate) struct HeadingBuilder {
     level: HeadingLevel,
     text: String,
     position: SourceByteOffset,
 }
 
-impl HeadingAccumulator {
+impl HeadingBuilder {
     #[inline]
     pub(crate) fn new(level: HeadingLevel, position: SourceByteOffset) -> Self {
         Self {
