@@ -218,6 +218,65 @@ impl SourceLocation {
     }
 }
 
+/// Start/end locations for a source range.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct SourceLocationRange {
+    start: SourceLocation,
+    end: SourceLocation,
+}
+
+impl SourceLocationRange {
+    /// Creates a new range from start and end locations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if `start` is after `end`.
+    #[inline]
+    pub fn new(
+        start: SourceLocation,
+        end: SourceLocation,
+    ) -> Result<Self, NoteError> {
+        if start.offset() > end.offset() {
+            return Err(NoteError::Structure(
+                "source range start must be <= end",
+            ));
+        }
+        Ok(Self {
+            start,
+            end,
+        })
+    }
+
+    /// Returns the start location (inclusive).
+    #[inline]
+    #[must_use]
+    pub const fn start(&self) -> SourceLocation {
+        self.start
+    }
+
+    /// Returns the end location (exclusive).
+    #[inline]
+    #[must_use]
+    pub const fn end(&self) -> SourceLocation {
+        self.end
+    }
+
+    /// Returns the byte range for this location range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::Structure`] if the start offset is greater than
+    /// the end offset.
+    #[inline]
+    pub fn byte_range(&self) -> Result<SourceByteRange, NoteError> {
+        SourceByteRange::new(self.start.offset(), self.end.offset())
+    }
+}
+
 /// Precomputed line start offsets for fast line/column lookups.
 #[derive(Debug, Clone)]
 pub struct SourceLineIndex {
@@ -488,5 +547,43 @@ mod tests {
         assert_eq!(location.line().value(), 2);
         assert_eq!(location.column().value(), 1);
         Ok(())
+    }
+
+    #[test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "Assertions are used to fail tests"
+    )]
+    fn location_range_accepts_ordered_offsets() -> Result<(), NoteError> {
+        let start = SourceLocation::new(
+            SourceByteOffset::new(0),
+            SourceLine::try_new(1)?,
+            SourceColumn::try_new(1)?,
+        );
+        let end = SourceLocation::new(
+            SourceByteOffset::new(5),
+            SourceLine::try_new(1)?,
+            SourceColumn::try_new(6)?,
+        );
+        let range = SourceLocationRange::new(start, end)?;
+        let byte_range = range.byte_range()?;
+        assert_eq!(byte_range.len(), 5);
+        Ok(())
+    }
+
+    #[test]
+    fn location_range_rejects_inverted_offsets() {
+        let start = SourceLocation::new(
+            SourceByteOffset::new(5),
+            SourceLine::try_new(1).expect("valid line"),
+            SourceColumn::try_new(6).expect("valid column"),
+        );
+        let end = SourceLocation::new(
+            SourceByteOffset::new(0),
+            SourceLine::try_new(1).expect("valid line"),
+            SourceColumn::try_new(1).expect("valid column"),
+        );
+        let result = SourceLocationRange::new(start, end);
+        assert!(matches!(result, Err(NoteError::Structure(_))));
     }
 }

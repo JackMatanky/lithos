@@ -22,7 +22,9 @@ use crate::{
         identity::NoteId,
         link::{FrontmatterLink, Link},
         paths::NotePath,
-        position::{SourceByteOffset, SourceLine, SourceLocation},
+        position::{
+            SourceByteOffset, SourceLine, SourceLocation, SourceLocationRange,
+        },
         structure::{BlockRef, Section},
         tag::Tag,
         task::{TaskId, TaskMetadata, TaskSchedule, TaskText, TaskTimestamp},
@@ -44,7 +46,7 @@ pub struct StoredNote {
     headings: Vec<Heading>,
     heading_locations: Option<Vec<SourceLocation>>,
     sections: Vec<Section>,
-    section_locations: Option<Vec<StoredLocationRange>>,
+    section_locations: Option<Vec<SourceLocationRange>>,
     links: Vec<Link>,
     block_refs: Vec<BlockRef>,
     list_items: Vec<StoredListItem>,
@@ -75,7 +77,7 @@ impl StoredNote {
         headings: Vec<Heading>,
         heading_locations: Option<Vec<SourceLocation>>,
         sections: Vec<Section>,
-        section_locations: Option<Vec<StoredLocationRange>>,
+        section_locations: Option<Vec<SourceLocationRange>>,
         links: Vec<Link>,
         block_refs: Vec<BlockRef>,
         list_items: Vec<StoredListItem>,
@@ -163,7 +165,7 @@ impl StoredNote {
 
     #[inline]
     #[must_use]
-    pub fn section_locations(&self) -> Option<&[StoredLocationRange]> {
+    pub fn section_locations(&self) -> Option<&[SourceLocationRange]> {
         self.section_locations.as_deref()
     }
 
@@ -599,7 +601,7 @@ mod tests {
                 SourceByteOffset::new(10),
             )?,
         )];
-        let section_locations = Some(vec![StoredLocationRange::new(
+        let section_locations = Some(vec![SourceLocationRange::new(
             SourceLocation::new(
                 SourceByteOffset::new(0),
                 SourceLine::try_new(1)?,
@@ -610,7 +612,7 @@ mod tests {
                 SourceLine::try_new(1)?,
                 SourceColumn::try_new(11)?,
             ),
-        )]);
+        )?]);
         let links = Vec::new();
         let frontmatter_links = Vec::new();
         let block_refs = Vec::new();
@@ -690,37 +692,5 @@ mod tests {
 
         assert_eq!(deserialized, original);
         Ok(())
-    }
-}
-
-/// Stored start/end locations for a source range.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
-#[non_exhaustive]
-pub struct StoredLocationRange {
-    start: SourceLocation,
-    end: SourceLocation,
-}
-
-impl StoredLocationRange {
-    #[inline]
-    #[must_use]
-    pub const fn new(start: SourceLocation, end: SourceLocation) -> Self {
-        Self {
-            start,
-            end,
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn start(&self) -> SourceLocation {
-        self.start
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn end(&self) -> SourceLocation {
-        self.end
     }
 }

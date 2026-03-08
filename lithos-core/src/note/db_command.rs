@@ -26,11 +26,8 @@ use crate::{
         identity::NoteId,
         paths::NotePath,
         ports::Command,
-        position::SourceByteOffset,
-        stored::{
-            StoredListItem, StoredLocationRange, StoredNote, StoredTask,
-            metadata_index_keys,
-        },
+        position::{SourceByteOffset, SourceLocationRange},
+        stored::{StoredListItem, StoredNote, StoredTask, metadata_index_keys},
         task::{TaskId, TaskMetadata, TaskText},
         value::FieldValue,
     },
@@ -220,7 +217,7 @@ impl<'db, 'config> CommandAdapter<'db, 'config> {
                 let range = section.range();
                 let start = parsed.location_for_offset(range.start())?;
                 let end = parsed.location_for_offset(range.end())?;
-                Ok(StoredLocationRange::new(start, end))
+                SourceLocationRange::new(start, end)
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error: NoteError| DbError::Table(error.to_string()))?;
