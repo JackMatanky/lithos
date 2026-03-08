@@ -25,8 +25,8 @@ use lithos_core::{
     },
     fs::FsReader,
     schema::{
-        aggregate::{SchemaId, SchemaName},
         bank::{BankVersion, PropertyBank},
+        id::{SchemaId, SchemaName},
         ingestor::Ingestor,
         loader::Loader,
     },

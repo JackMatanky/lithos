@@ -29,9 +29,9 @@ use common::*;
 use lithos_core::{
     db::Database,
     schema::{
-        aggregate::{SchemaId, SchemaName},
         bank::PropertyBank,
         db_command, db_query,
+        id::{SchemaId, SchemaName},
         property::{Multiplicity, Optionality, PropertyId, PropertyName},
     },
 };
