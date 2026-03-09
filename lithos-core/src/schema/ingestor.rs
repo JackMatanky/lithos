@@ -9,8 +9,8 @@ use crate::{
     fs::FsReader,
     schema::{
         error::SchemaIngestionError,
-        hash::Blake3Hash,
         raw::{RawPropertyBank, RawSchema},
+        storage::Blake3Hash,
     },
 };
 

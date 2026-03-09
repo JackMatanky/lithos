@@ -115,14 +115,14 @@ pub struct Loader<'db> {
 // Type aliases for complex tuples used in service methods
 type RawSchemaWithTimes = (
     RawSchema,
-    crate::schema::hash::Blake3Hash,
+    crate::schema::storage::Blake3Hash,
     Option<SystemTime>,
     Option<SystemTime>,
 );
 type SchemaWithTimes = (
     SchemaId,
     RawSchema,
-    crate::schema::hash::Blake3Hash,
+    crate::schema::storage::Blake3Hash,
     Option<SystemTime>,
     Option<SystemTime>,
 );
@@ -365,7 +365,7 @@ impl<'db> Loader<'db> {
     fn refine_staleness_by_hash(
         &self,
         staleness_map: &mut HashMap<SchemaId, bool>,
-        hash_map: &HashMap<SchemaId, crate::schema::hash::Blake3Hash>,
+        hash_map: &HashMap<SchemaId, crate::schema::storage::Blake3Hash>,
     ) -> Result<(), LoaderError> {
         // Iteration over HashMap is intentional - order doesn't matter
         #[expect(
@@ -445,8 +445,10 @@ impl<'db> Loader<'db> {
             .map_err(SchemaQueryError::from)?;
 
         // Step 2: Build hash map for content comparison
-        let mut hash_map: HashMap<SchemaId, crate::schema::hash::Blake3Hash> =
-            HashMap::with_capacity(raw_schemas_with_times.len());
+        let mut hash_map: HashMap<
+            SchemaId,
+            crate::schema::storage::Blake3Hash,
+        > = HashMap::with_capacity(raw_schemas_with_times.len());
 
         #[expect(
             clippy::pattern_type_mismatch,
@@ -511,7 +513,9 @@ impl<'db> Loader<'db> {
         stale_with_times: Vec<SchemaWithTimes>,
         current_bank_version: crate::schema::bank::BankVersion,
     ) -> Result<(), LoaderError> {
-        use crate::schema::{hash::Blake3Hash, ports::InheritanceRelationship};
+        use crate::schema::{
+            ports::InheritanceRelationship, storage::Blake3Hash,
+        };
         type MetadataTriple =
             (Blake3Hash, Option<SystemTime>, Option<SystemTime>);
 

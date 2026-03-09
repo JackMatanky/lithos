@@ -39,8 +39,6 @@ pub mod db_query;
 pub mod error;
 /// Schema domain events, pipeline events, and event handlers.
 pub mod events;
-/// Blake3 hash types for content addressing.
-pub mod hash;
 /// File ingestion pipeline for schemas and property banks.
 ///
 /// **Benchmark/Test access**: This module is `#[doc(hidden)] pub` to allow

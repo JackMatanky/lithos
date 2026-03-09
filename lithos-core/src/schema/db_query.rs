@@ -15,13 +15,12 @@ use crate::{
             PROPERTY_BANK_KEY, SCHEMA_BY_ID, SCHEMA_CHILDREN,
             SCHEMA_ID_BY_NAME, SCHEMA_METADATA,
         },
-        hash::Blake3Hash,
         ports::{NameIdPair, Query as QueryPort},
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         storage::{
-            StoredBankProperty, StoredChildSchema, StoredMetadata,
+            Blake3Hash, StoredBankProperty, StoredChildSchema, StoredMetadata,
             StoredPropertyBank, StoredSchema,
         },
     },

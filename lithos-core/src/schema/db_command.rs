@@ -19,11 +19,10 @@ use crate::{
             RAW_SCHEMA_FILES, SCHEMA_BY_ID, SCHEMA_CHILDREN, SCHEMA_ID_BY_NAME,
             SCHEMA_METADATA, SCHEMA_PARENT,
         },
-        hash::Blake3Hash,
         ports::Command as CommandPort,
         property::{Multiplicity, Optionality, PropertyName},
         storage::{
-            RawPropertyBankFile, RawSchemaFile, StoredBankProperty,
+            Blake3Hash, RawPropertyBankFile, RawSchemaFile, StoredBankProperty,
             StoredChildSchema, StoredMetadata, StoredParentSchema,
             StoredProperty, StoredPropertyBank, StoredSchema,
         },
