@@ -510,7 +510,7 @@ impl RawFileVersion {
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> Result<Self, std::io::Error> {
-        let compressed_content = compress(content)?;
+        let compressed_content = Self::compress(content)?;
         let content_hash = Blake3Hash::compute(content.as_bytes());
         let recorded_at = SystemTime::now();
 
@@ -557,7 +557,7 @@ impl RawFileVersion {
     /// Returns error if decompression fails.
     #[inline]
     pub fn content(&self) -> Result<String, DecompressionError> {
-        decompress(&self.compressed_content)
+        Self::decompress(&self.compressed_content)
     }
 
     /// Get compressed size in bytes.
@@ -565,6 +565,26 @@ impl RawFileVersion {
     #[must_use]
     pub fn compressed_size(&self) -> usize {
         self.compressed_content.len()
+    }
+
+    /// Compress string content using zstd.
+    ///
+    /// # Errors
+    /// Returns error if compression fails.
+    #[inline]
+    fn compress(content: &str) -> Result<Vec<u8>, std::io::Error> {
+        zstd::encode_all(content.as_bytes(), COMPRESSION_LEVEL)
+    }
+
+    /// Decompress zstd data to string.
+    ///
+    /// # Errors
+    /// Returns error if decompression fails or output is not UTF-8.
+    #[inline]
+    fn decompress(compressed: &[u8]) -> Result<String, DecompressionError> {
+        let mut decompressed = Vec::new();
+        zstd::Decoder::new(compressed)?.read_to_end(&mut decompressed)?;
+        String::from_utf8(decompressed).map_err(DecompressionError::InvalidUtf8)
     }
 }
 
@@ -639,26 +659,6 @@ pub enum DecompressionError {
 
 /// Compression level (3 = balanced speed/ratio).
 const COMPRESSION_LEVEL: i32 = 3;
-
-/// Compress string content using zstd.
-///
-/// # Errors
-/// Returns error if compression fails.
-#[inline]
-fn compress(content: &str) -> Result<Vec<u8>, std::io::Error> {
-    zstd::encode_all(content.as_bytes(), COMPRESSION_LEVEL)
-}
-
-/// Decompress zstd data to string.
-///
-/// # Errors
-/// Returns error if decompression fails or output is not UTF-8.
-#[inline]
-fn decompress(compressed: &[u8]) -> Result<String, DecompressionError> {
-    let mut decompressed = Vec::new();
-    zstd::Decoder::new(compressed)?.read_to_end(&mut decompressed)?;
-    String::from_utf8(decompressed).map_err(DecompressionError::InvalidUtf8)
-}
 
 /// Fixed-size ring buffer for versioned file storage (compile-time size, zero
 /// allocation).
