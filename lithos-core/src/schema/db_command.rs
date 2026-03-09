@@ -22,11 +22,10 @@ use crate::{
         hash::Blake3Hash,
         ports::Command as CommandPort,
         property::{Multiplicity, Optionality, PropertyName},
-        raw_file::{RawPropertyBankFile, RawSchemaFile},
-        stored::{
-            StoredBankProperty, StoredChildSchema, StoredMetadata,
-            StoredParentSchema, StoredProperty, StoredPropertyBank,
-            StoredSchema,
+        storage::{
+            RawPropertyBankFile, RawSchemaFile, StoredBankProperty,
+            StoredChildSchema, StoredMetadata, StoredParentSchema,
+            StoredProperty, StoredPropertyBank, StoredSchema,
         },
     },
 };
@@ -81,7 +80,7 @@ impl<'db> Command<'db> {
     /// # Examples
     /// ```ignore
     /// use lithos_core::schema::db_command::CommandAdapter;
-    /// use lithos_core::schema::stored::StoredMetadata;
+    /// use lithos_core::schema::storage::StoredMetadata;
     ///
     /// let db = todo!("Provide a Database instance");
     /// let adapter = CommandAdapter::new(&db);
@@ -340,7 +339,7 @@ impl CommandPort for Command<'_> {
         use crate::schema::{
             aggregate::SchemaName,
             events::{Events, SchemaDeleted},
-            stored::StoredSchema,
+            storage::StoredSchema,
         };
 
         let id_uuid = id.into_uuid();

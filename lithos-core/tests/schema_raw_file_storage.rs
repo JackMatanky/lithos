@@ -19,7 +19,7 @@ use lithos_core::{
     schema::{
         db_command::Command as CommandAdapter,
         ingestor::Ingestor,
-        raw_file::{RawPropertyBankFile, RawSchemaFile},
+        storage::{RawPropertyBankFile, RawSchemaFile},
     },
 };
 use tempfile::TempDir;

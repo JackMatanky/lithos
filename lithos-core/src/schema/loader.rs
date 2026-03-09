@@ -70,7 +70,7 @@ use crate::schema::{
     ports::{Command as _, Query as _},
     raw::RawSchema,
     resolver::Resolver,
-    stored::{StoredMetadata, StoredSchema},
+    storage::{StoredMetadata, StoredSchema},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

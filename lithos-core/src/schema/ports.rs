@@ -8,7 +8,7 @@ use std::time::SystemTime;
 use super::{
     aggregate::{SchemaId, SchemaName},
     bank::{BankVersion, PropertyBank},
-    stored::StoredSchema,
+    storage::StoredSchema,
 };
 use crate::db::BatchReader;
 
@@ -52,7 +52,7 @@ pub type InheritanceRelationship = (SchemaId, Option<SchemaId>, Vec<Box<str>>);
 ///
 ///     fn save_many(
 ///         &self,
-///         _schemas: &[lithos_core::schema::stored::StoredSchema],
+///         _schemas: &[lithos_core::schema::storage::StoredSchema],
 ///     ) -> Result<(), Self::Error> {
 ///         Ok(())
 ///     }
@@ -121,7 +121,7 @@ pub trait Command: Send + Sync {
     /// ```ignore
     /// # use lithos_core::schema::ports::Command;
     /// # let command = todo!("Provide a Command implementation");
-    /// # let schemas: Vec<lithos_core::schema::stored::StoredSchema> = Vec::new();
+    /// # let schemas: Vec<lithos_core::schema::storage::StoredSchema> = Vec::new();
     /// command.save_many(&schemas)?;
     /// # Ok::<_, Box<dyn std::error::Error>>(())
     /// ```
@@ -170,14 +170,14 @@ pub trait Command: Send + Sync {
 ///     fn find_by_id(
 ///         &self,
 ///         _id: lithos_core::schema::id::SchemaId,
-///     ) -> Result<Option<lithos_core::schema::stored::StoredSchema>, Self::Error> {
+///     ) -> Result<Option<lithos_core::schema::storage::StoredSchema>, Self::Error> {
 ///         Ok(None)
 ///     }
 ///
 ///     fn find_many_by_ids(
 ///         &self,
 ///         _ids: &[lithos_core::schema::id::SchemaId],
-///     ) -> Result<Vec<lithos_core::schema::stored::StoredSchema>, Self::Error> {
+///     ) -> Result<Vec<lithos_core::schema::storage::StoredSchema>, Self::Error> {
 ///         Ok(Vec::new())
 ///     }
 ///
@@ -245,7 +245,7 @@ pub trait Command: Send + Sync {
 ///     ) -> Result<Option<R>, Self::Error>
 ///     where
 ///         F: FnOnce(
-///             &rkyv::Archived<lithos_core::schema::stored::StoredMetadata>,
+///             &rkyv::Archived<lithos_core::schema::storage::StoredMetadata>,
 ///         ) -> R,
 ///     {
 ///         Ok(None)
@@ -605,5 +605,5 @@ pub trait Query: Send + Sync {
         f: F,
     ) -> Result<Option<R>, Self::Error>
     where
-        F: FnOnce(&rkyv::Archived<crate::schema::stored::StoredMetadata>) -> R;
+        F: FnOnce(&rkyv::Archived<crate::schema::storage::StoredMetadata>) -> R;
 }

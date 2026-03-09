@@ -24,7 +24,7 @@ use lithos_core::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec, StringSpec},
-        stored::{StoredProperty, StoredSchema},
+        storage::{StoredProperty, StoredSchema},
     },
 };
 // Re-export port traits - tests using wildcard import need these in scope

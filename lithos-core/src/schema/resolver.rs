@@ -26,7 +26,7 @@ use super::{
     error::SchemaError,
     extender::SchemaTree,
     property::{Multiplicity, Optionality, Property, PropertyName},
-    stored::{StoredProperty, StoredSchema},
+    storage::{StoredProperty, StoredSchema},
 };
 
 /// Maximum allowed inheritance depth to prevent infinite loops.
@@ -286,7 +286,7 @@ mod tests {
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         property_spec::{BoolSpec, PropertySpec},
-        stored::StoredSchema,
+        storage::StoredSchema,
     };
 
     mod fixtures {

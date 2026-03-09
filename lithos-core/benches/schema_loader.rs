@@ -314,7 +314,7 @@ use lithos_core::{
         property::PropertyName,
         raw::RawSchema,
         resolver::Resolver,
-        stored::StoredSchema,
+        storage::StoredSchema,
     },
 };
 use tempfile::TempDir;

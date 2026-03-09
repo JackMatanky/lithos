@@ -20,7 +20,7 @@ use crate::{
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
-        stored::{
+        storage::{
             StoredBankProperty, StoredChildSchema, StoredMetadata,
             StoredPropertyBank, StoredSchema,
         },

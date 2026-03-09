@@ -32,7 +32,7 @@ use super::{
     dereferencer::DereferencedSchema,
     error::SchemaError,
     property::Property,
-    stored::StoredSchema,
+    storage::StoredSchema,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -581,7 +581,7 @@ mod tests {
 
     use super::*;
     use crate::schema::{
-        aggregate::SchemaId, error::SchemaError, stored::StoredSchema,
+        aggregate::SchemaId, error::SchemaError, storage::StoredSchema,
     };
 
     mod fixtures {

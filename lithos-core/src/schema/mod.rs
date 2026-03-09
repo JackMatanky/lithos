@@ -48,10 +48,8 @@ pub mod hash;
 /// documentation.
 #[doc(hidden)]
 pub mod ingestor;
-/// Raw file storage types for versioned schema files.
-pub mod raw_file;
-/// Stored types for database persistence (read model).
-pub mod stored;
+/// Storage types for raw file versions and resolved data (read models).
+pub mod storage;
 
 /// Schema inheritance-tree builder pipeline stage.
 ///
