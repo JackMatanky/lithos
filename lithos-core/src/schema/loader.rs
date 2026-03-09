@@ -113,19 +113,10 @@ pub struct Loader<'db> {
 }
 
 // Type aliases for complex tuples used in service methods
-type RawSchemaWithTimes = (
-    RawSchema,
-    crate::schema::storage::Blake3Hash,
-    Option<SystemTime>,
-    Option<SystemTime>,
-);
-type SchemaWithTimes = (
-    SchemaId,
-    RawSchema,
-    crate::schema::storage::Blake3Hash,
-    Option<SystemTime>,
-    Option<SystemTime>,
-);
+type RawSchemaWithTimes =
+    (RawSchema, [u8; 32], Option<SystemTime>, Option<SystemTime>);
+type SchemaWithTimes =
+    (SchemaId, RawSchema, [u8; 32], Option<SystemTime>, Option<SystemTime>);
 type PartitionResult = (Vec<SchemaWithTimes>, Vec<SchemaId>);
 
 impl<'db> Loader<'db> {
@@ -365,7 +356,7 @@ impl<'db> Loader<'db> {
     fn refine_staleness_by_hash(
         &self,
         staleness_map: &mut HashMap<SchemaId, bool>,
-        hash_map: &HashMap<SchemaId, crate::schema::storage::Blake3Hash>,
+        hash_map: &HashMap<SchemaId, [u8; 32]>,
     ) -> Result<(), LoaderError> {
         // Iteration over HashMap is intentional - order doesn't matter
         #[expect(
@@ -445,10 +436,8 @@ impl<'db> Loader<'db> {
             .map_err(SchemaQueryError::from)?;
 
         // Step 2: Build hash map for content comparison
-        let mut hash_map: HashMap<
-            SchemaId,
-            crate::schema::storage::Blake3Hash,
-        > = HashMap::with_capacity(raw_schemas_with_times.len());
+        let mut hash_map: HashMap<SchemaId, [u8; 32]> =
+            HashMap::with_capacity(raw_schemas_with_times.len());
 
         #[expect(
             clippy::pattern_type_mismatch,
@@ -513,11 +502,9 @@ impl<'db> Loader<'db> {
         stale_with_times: Vec<SchemaWithTimes>,
         current_bank_version: crate::schema::bank::BankVersion,
     ) -> Result<(), LoaderError> {
-        use crate::schema::{
-            ports::InheritanceRelationship, storage::Blake3Hash,
-        };
+        use crate::schema::ports::InheritanceRelationship;
         type MetadataTriple =
-            (Blake3Hash, Option<SystemTime>, Option<SystemTime>);
+            ([u8; 32], Option<SystemTime>, Option<SystemTime>);
 
         // Build metadata and inheritance maps
         let mut metadata_map: HashMap<SchemaId, MetadataTriple> =
@@ -537,7 +524,7 @@ impl<'db> Loader<'db> {
                 let (hash, modified, created) = metadata_map
                     .get(&stored.id)
                     .copied()
-                    .unwrap_or((Blake3Hash::zero(), None, None));
+                    .unwrap_or(([0u8; 32], None, None));
                 StoredMetadata::new(
                     current_bank_version,
                     hash,

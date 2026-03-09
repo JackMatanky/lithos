@@ -65,65 +65,6 @@ use super::{
 };
 
 // ============================================================================
-// Content Hashing (Blake3)
-// ============================================================================
-
-/// Blake3 hash (32 bytes).
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
-)]
-pub struct Blake3Hash([u8; 32]);
-
-impl Blake3Hash {
-    /// Compute Blake3 hash of bytes.
-    #[inline]
-    #[must_use]
-    pub fn compute(bytes: &[u8]) -> Self {
-        let hash = blake3::hash(bytes);
-        Self(*hash.as_bytes())
-    }
-
-    /// Create a zero hash (all bytes are zero).
-    ///
-    /// Useful for tests and placeholder values when the actual hash is not
-    /// available.
-    #[inline]
-    #[must_use]
-    pub const fn zero() -> Self {
-        Self([0u8; 32])
-    }
-
-    /// Get hash as byte slice.
-    #[inline]
-    #[must_use]
-    pub fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for Blake3Hash {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
-}
-
-impl std::str::FromStr for Blake3Hash {
-    type Err = hex::FromHexError;
-
-    #[inline]
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let bytes = hex::decode(s)?;
-        if bytes.len() != 32 {
-            return Err(hex::FromHexError::InvalidStringLength);
-        }
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(&bytes);
-        Ok(Self(hash))
-    }
-}
-
-// ============================================================================
 // Resolved Data Storage (Read Models - Most Commonly Used)
 // ============================================================================
 
@@ -230,7 +171,7 @@ pub struct StoredMetadata {
     /// Bank version at time of persistence.
     pub bank_version: BankVersion,
     /// Blake3 hash of source file content (for accurate staleness detection).
-    pub source_file_hash: Blake3Hash,
+    pub source_file_hash: [u8; 32],
     /// Filesystem birthtime (from `Metadata::created()`), if available.
     #[rkyv(with = Map<AsUnixTime>)]
     pub created_at: Option<SystemTime>,
@@ -247,7 +188,7 @@ impl StoredMetadata {
     #[inline]
     pub(crate) fn new(
         bank_version: BankVersion,
-        source_file_hash: Blake3Hash,
+        source_file_hash: [u8; 32],
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
     ) -> Self {
@@ -545,7 +486,7 @@ pub struct RawFileVersion {
     /// Compressed file content (zstd level 3).
     compressed_content: Vec<u8>,
     /// Blake3 hash of uncompressed content.
-    content_hash: Blake3Hash,
+    content_hash: [u8; 32],
     /// File creation timestamp (from filesystem).
     #[rkyv(with = Map<AsUnixTime>)]
     created_at: Option<SystemTime>,
@@ -569,7 +510,7 @@ impl RawFileVersion {
         modified_at: Option<SystemTime>,
     ) -> Result<Self, std::io::Error> {
         let compressed_content = Self::compress(content)?;
-        let content_hash = Blake3Hash::compute(content.as_bytes());
+        let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
         let recorded_at = SystemTime::now();
 
         Ok(Self {
@@ -584,7 +525,7 @@ impl RawFileVersion {
     /// Get the Blake3 hash of the content.
     #[inline]
     #[must_use]
-    pub fn content_hash(&self) -> &Blake3Hash {
+    pub fn content_hash(&self) -> &[u8; 32] {
         &self.content_hash
     }
 
@@ -857,32 +798,6 @@ impl<T, const N: usize> RingBuffer<T, N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    mod blake3_hash_tests {
-        use super::*;
-
-        #[test]
-        fn compute_produces_consistent_hash() {
-            let data = b"hello world";
-            let hash1 = Blake3Hash::compute(data);
-            let hash2 = Blake3Hash::compute(data);
-            assert_eq!(hash1, hash2, "Same input produces same hash");
-        }
-
-        #[test]
-        fn display_parse_roundtrip() {
-            let hash = Blake3Hash::compute(b"test");
-            let hex_str = hash.to_string();
-            let parsed: Blake3Hash = hex_str.parse().unwrap();
-            assert_eq!(hash, parsed, "Display/parse roundtrip works");
-        }
-
-        #[test]
-        fn zero_hash_is_all_zeros() {
-            let zero = Blake3Hash::zero();
-            assert_eq!(zero.as_bytes(), &[0u8; 32]);
-        }
-    }
 
     mod diff_raw_files_tests {
         use super::*;

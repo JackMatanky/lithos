@@ -294,7 +294,7 @@ fn schema_scanner_preserves_timestamps() -> TestResult {
     assert_eq!(raw_schemas.len(), 1);
     let first = raw_schemas.first().expect("schema should exist");
     assert!(first.2.is_some(), "Modified timestamp should be captured");
-    assert!(first.1.as_bytes().len() == 32, "Blake3 hash should be 32 bytes");
+    assert!(first.1.len() == 32, "Blake3 hash should be 32 bytes");
 
     Ok(())
 }

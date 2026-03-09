@@ -1507,7 +1507,7 @@ mod staleness {
         #[derive(rkyv::Archive, rkyv::Serialize)]
         struct TempMetadata {
             bank_version: BankVersion,
-            source_file_hash: lithos_core::schema::storage::Blake3Hash,
+            source_file_hash: [u8; 32],
             #[rkyv(with = Map<AsUnixTime>)]
             created_at: Option<std::time::SystemTime>,
             #[rkyv(with = Map<AsUnixTime>)]
@@ -1540,7 +1540,7 @@ mod staleness {
 
         let metadata = TempMetadata {
             bank_version: BankVersion::initial(),
-            source_file_hash: lithos_core::schema::storage::Blake3Hash::zero(),
+            source_file_hash: [0u8; 32],
             created_at: Some(created_timestamp),
             modified_at: Some(modified_timestamp),
             recorded_at: std::time::SystemTime::now(),

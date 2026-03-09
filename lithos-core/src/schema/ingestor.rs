@@ -10,7 +10,6 @@ use crate::{
     schema::{
         error::SchemaIngestionError,
         raw::{RawPropertyBank, RawSchema},
-        storage::Blake3Hash,
     },
 };
 
@@ -28,13 +27,13 @@ const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
 /// let _tuple: RawSchemaWithMetadata = todo!("Provide raw schema data");
 /// ```
 pub type RawSchemaWithMetadata =
-    (RawSchema, Blake3Hash, Option<SystemTime>, Option<SystemTime>);
+    (RawSchema, [u8; 32], Option<SystemTime>, Option<SystemTime>);
 
 /// Property bank with filesystem timestamps and content hash.
 ///
 /// Tuple fields: (`bank`, `content_hash`, `modified_at`, `created_at`).
 pub type RawPropertyBankWithMetadata =
-    (RawPropertyBank, Blake3Hash, Option<SystemTime>, Option<SystemTime>);
+    (RawPropertyBank, [u8; 32], Option<SystemTime>, Option<SystemTime>);
 
 /// Old type alias for backward compatibility.
 #[deprecated(since = "0.1.0", note = "Use RawSchemaWithMetadata instead")]
@@ -143,7 +142,7 @@ impl Ingestor<'_> {
             .source
             .read_to_string(&path)
             .map_err(SchemaIngestionError::from)?;
-        let content_hash = Blake3Hash::compute(content.as_bytes());
+        let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
 
         // Parse structured data
         let bank: RawPropertyBank = self
@@ -222,7 +221,7 @@ impl Ingestor<'_> {
                     .source
                     .read_to_string(&path)
                     .map_err(SchemaIngestionError::from)?;
-                let content_hash = Blake3Hash::compute(content.as_bytes());
+                let content_hash = *blake3::hash(content.as_bytes()).as_bytes();
 
                 // Parse the schema file
                 let mut raw: RawSchema = self

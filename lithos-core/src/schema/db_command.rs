@@ -22,7 +22,7 @@ use crate::{
         ports::Command as CommandPort,
         property::{Multiplicity, Optionality, PropertyName},
         storage::{
-            Blake3Hash, RawPropertyBankFile, RawSchemaFile, StoredBankProperty,
+            RawPropertyBankFile, RawSchemaFile, StoredBankProperty,
             StoredChildSchema, StoredMetadata, StoredParentSchema,
             StoredProperty, StoredPropertyBank, StoredSchema,
         },
@@ -319,7 +319,7 @@ impl CommandPort for Command<'_> {
             .map(|_| {
                 StoredMetadata::new(
                     BankVersion::initial(),
-                    Blake3Hash::zero(),
+                    [0u8; 32],
                     None,
                     None,
                 )
@@ -397,7 +397,7 @@ impl CommandPort for Command<'_> {
 
         let metadata = StoredMetadata {
             bank_version,
-            source_file_hash: Blake3Hash::zero(),
+            source_file_hash: [0u8; 32],
             created_at: None,
             modified_at: None,
             recorded_at,

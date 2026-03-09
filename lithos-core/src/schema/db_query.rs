@@ -20,7 +20,7 @@ use crate::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
         },
         storage::{
-            Blake3Hash, StoredBankProperty, StoredChildSchema, StoredMetadata,
+            StoredBankProperty, StoredChildSchema, StoredMetadata,
             StoredPropertyBank, StoredSchema,
         },
     },
@@ -153,20 +153,13 @@ impl Query<'_> {
     pub(crate) fn get_schema_hash(
         &self,
         id: SchemaId,
-    ) -> Result<Option<Blake3Hash>, DbError> {
+    ) -> Result<Option<[u8; 32]>, DbError> {
         let id_key = id.into_uuid().to_string();
-        let opt = self.db.get::<StoredMetadata, _, _>(
+        self.db.get::<StoredMetadata, _, _>(
             SCHEMA_METADATA,
             id_key.as_str(),
-            |stored| {
-                // Deserialize the Blake3Hash from the archived metadata
-                rkyv::deserialize::<Blake3Hash, rkyv::rancor::Error>(
-                    &stored.source_file_hash,
-                )
-                .map_err(|e| DbError::Deserialization(e.to_string()))
-            },
-        )?;
-        opt.transpose()
+            |stored| stored.source_file_hash,
+        )
     }
 }
 
