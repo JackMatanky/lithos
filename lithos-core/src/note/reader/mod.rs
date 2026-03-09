@@ -7,6 +7,13 @@
 //! `parse_str` entry point is public only for benchmarks; production code
 //! should use `parse` to keep file ingestion in one place.
 
+mod frontmatter;
+mod links;
+mod lists;
+mod sections;
+mod state;
+mod tags;
+
 use std::{cell::OnceCell, path::Path, time::SystemTime};
 
 use pulldown_cmark::{
@@ -14,92 +21,39 @@ use pulldown_cmark::{
     utils::TextMergeWithOffset,
 };
 
+use self::{
+    frontmatter::{collect_frontmatter_links, collect_frontmatter_tags},
+    links::start_link_builder,
+    lists::{
+        add_list_item, parent_for_depth, promote_task_from_item,
+        record_list_item,
+    },
+    sections::{
+        close_section, collect_block_refs, handle_section_start,
+        parse_frontmatter_block,
+    },
+    state::{ListItemBuilder, ListItemRecord},
+    tags::collect_tags,
+};
 use crate::{
-    config::{aggregate::Config, task::StatusSymbol},
+    config::aggregate::Config,
     fs::FsReader,
     note::{
         error::{NoteError, NoteIngestError},
-        frontmatter::{Frontmatter, FrontmatterFormat},
+        frontmatter::Frontmatter,
         heading::{Heading, HeadingBuilder, HeadingLevel},
-        link::{
-            AliasMode, EmbedState, FrontmatterLink, Link, LinkBuilder, Style,
-        },
-        list::{List, ListDepth, ListItem, ListItemEntry, ListType},
-        position::{
-            LineIndex, SourceByteOffset, SourceByteRange, SourceLocation,
-        },
+        link::{FrontmatterLink, Link, LinkBuilder},
+        list::{List, ListDepth, ListItemEntry, ListType},
+        position::{LineIndex, SourceByteOffset, SourceLocation},
         structure::{BlockRef, Section, SectionKind},
-        tag::{Tag as NoteTag, scan_tags},
-        task::{Task, TaskBuilder},
+        tag::Tag as NoteTag,
+        task::Task,
     },
 };
 
 // ----------------------------------------------------------- //
 //                      Markdown Reader                        //
 // ----------------------------------------------------------- //
-
-#[derive(Debug, Default)]
-struct InlineText {
-    buffer: String,
-}
-
-impl InlineText {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn push_text(&mut self, text: &str) {
-        self.buffer.push_str(text);
-    }
-
-    fn push_break(&mut self) {
-        if !self.buffer.ends_with(' ') {
-            self.buffer.push(' ');
-        }
-    }
-
-    fn finish(self) -> String {
-        self.buffer
-    }
-}
-
-#[derive(Debug)]
-struct ListItemBuilder {
-    position: SourceByteOffset,
-    depth: ListDepth,
-    text: InlineText,
-    is_checkbox: bool,
-    status_symbol: Option<char>,
-}
-
-impl ListItemBuilder {
-    fn new(position: SourceByteOffset, depth: ListDepth) -> Self {
-        Self {
-            position,
-            depth,
-            text: InlineText::new(),
-            is_checkbox: false,
-            status_symbol: None,
-        }
-    }
-
-    fn mark_as_checkbox(&mut self, checked: bool) {
-        self.is_checkbox = true;
-        self.status_symbol = Some(if checked {
-            'x'
-        } else {
-            ' '
-        });
-    }
-
-    fn add_text(&mut self, text: &str) {
-        self.text.push_text(text);
-    }
-
-    fn add_break(&mut self) {
-        self.text.push_break();
-    }
-}
 
 /// Markdown reader for extracting note structural elements.
 ///
@@ -478,11 +432,11 @@ impl<'config> NoteReader<'config> {
                 }
                 Event::End(TagEnd::Item) => {
                     if let Some(item) = current_item.take() {
-                        let position = item.position;
-                        let depth = item.depth;
-                        let is_checkbox = item.is_checkbox;
-                        let status_symbol = item.status_symbol;
-                        let raw_text = item.text.finish();
+                        let position = item.position();
+                        let depth = item.depth();
+                        let is_checkbox = item.is_checkbox();
+                        let status_symbol = item.status_symbol();
+                        let raw_text = item.into_text();
                         let (status, promoted_task) = promote_task_from_item(
                             is_checkbox,
                             status_symbol,
@@ -505,13 +459,13 @@ impl<'config> NoteReader<'config> {
 
                         let parent =
                             parent_for_depth(depth, &open_item_by_depth);
-                        let record = ListItemRecord {
+                        let record = ListItemRecord::new(
                             position,
                             depth,
                             parent,
                             status,
-                            task_id: promoted_task_id,
-                        };
+                            promoted_task_id,
+                        );
                         record_list_item(&mut list_items, &record);
                     }
                     current_item = item_stack.pop();
@@ -603,457 +557,6 @@ impl<'config> NoteReader<'config> {
             modified_at,
         })
     }
-}
-
-fn start_link_builder(
-    link_type: pulldown_cmark::LinkType,
-    dest_url: &pulldown_cmark::CowStr<'_>,
-    position: SourceByteOffset,
-    is_embed: bool,
-) -> LinkBuilder {
-    let embed = if is_embed {
-        EmbedState::Embed
-    } else {
-        EmbedState::Link
-    };
-    match link_type {
-        pulldown_cmark::LinkType::WikiLink {
-            has_pothole,
-        } => {
-            let alias_mode = if has_pothole {
-                AliasMode::Collect
-            } else {
-                AliasMode::Ignore
-            };
-            LinkBuilder::new(
-                dest_url.as_ref(),
-                position,
-                Style::WikiLink,
-                embed,
-                alias_mode,
-            )
-        }
-        pulldown_cmark::LinkType::Autolink
-        | pulldown_cmark::LinkType::Email => LinkBuilder::new(
-            dest_url.as_ref(),
-            position,
-            Style::MdLink,
-            embed,
-            AliasMode::Ignore,
-        ),
-        pulldown_cmark::LinkType::Inline
-        | pulldown_cmark::LinkType::Reference
-        | pulldown_cmark::LinkType::ReferenceUnknown
-        | pulldown_cmark::LinkType::Collapsed
-        | pulldown_cmark::LinkType::CollapsedUnknown
-        | pulldown_cmark::LinkType::Shortcut
-        | pulldown_cmark::LinkType::ShortcutUnknown => LinkBuilder::new(
-            dest_url.as_ref(),
-            position,
-            Style::MdLink,
-            embed,
-            AliasMode::Collect,
-        ),
-    }
-}
-
-fn add_tag(tags: &mut Vec<NoteTag>, tag: NoteTag) {
-    if !tags.iter().any(|existing| existing.full_path() == tag.full_path()) {
-        tags.push(tag);
-    }
-}
-
-fn collect_frontmatter_tags(
-    frontmatter: &Frontmatter,
-    config: &Config,
-    tags: &mut Vec<NoteTag>,
-) {
-    let key = config.frontmatter().tags();
-    let Some(value) = frontmatter.get(key) else {
-        return;
-    };
-
-    let mut collect_tokens = |text: &str| {
-        for token in text.split(|ch: char| ch.is_whitespace() || ch == ',') {
-            let token = token.trim();
-            if token.is_empty() {
-                continue;
-            }
-            if let Ok(tag) = NoteTag::try_from_token(token) {
-                add_tag(tags, tag);
-            }
-        }
-    };
-
-    if let Some(text) = value.as_str() {
-        collect_tokens(text);
-        return;
-    }
-
-    if let Some(values) = value.as_array() {
-        for item in values {
-            if let Some(text) = item.as_str() {
-                collect_tokens(text);
-            }
-        }
-    }
-}
-
-fn collect_frontmatter_links(
-    frontmatter: &Frontmatter,
-    links: &mut Vec<FrontmatterLink>,
-) {
-    for (key, value) in frontmatter.fields() {
-        collect_frontmatter_links_for_value(key, value, links);
-    }
-}
-
-fn collect_frontmatter_links_for_value(
-    key: &str,
-    value: &crate::note::value::FieldValue,
-    links: &mut Vec<FrontmatterLink>,
-) {
-    if let Some(text) = value.as_str() {
-        if let Ok(Some(link)) =
-            crate::note::link::parse_frontmatter_link(key, text)
-        {
-            links.push(link);
-        }
-        return;
-    }
-
-    if let Some(values) = value.as_array() {
-        for item in values {
-            if let Some(text) = array_as_wikilink(item)
-                && let Ok(Some(link)) =
-                    crate::note::link::parse_frontmatter_link(key, &text)
-            {
-                links.push(link);
-                continue;
-            }
-            collect_frontmatter_links_for_value(key, item, links);
-        }
-        return;
-    }
-
-    if let Some(values) = value.object_fields() {
-        for (child_key, child_value) in values {
-            let child_key_str: &str = child_key;
-            let mut combined = String::with_capacity(
-                key.len().saturating_add(child_key_str.len()).saturating_add(1),
-            );
-            combined.push_str(key);
-            combined.push('.');
-            combined.push_str(child_key_str);
-            collect_frontmatter_links_for_value(&combined, child_value, links);
-        }
-    }
-}
-
-fn array_as_wikilink(value: &crate::note::value::FieldValue) -> Option<String> {
-    let outer = value.as_array()?;
-    if outer.len() != 1 {
-        return None;
-    }
-    if let Some(text) =
-        outer.first().and_then(crate::note::value::FieldValue::as_str)
-    {
-        return Some(wrap_wikilink_text(text));
-    }
-    let inner = outer.first()?.as_array()?;
-    if inner.len() != 1 {
-        return None;
-    }
-    let text =
-        inner.first().and_then(crate::note::value::FieldValue::as_str)?;
-    Some(wrap_wikilink_text(text))
-}
-
-fn wrap_wikilink_text(text: &str) -> String {
-    let mut combined = String::with_capacity(text.len().saturating_add(4));
-    combined.push_str("[[");
-    combined.push_str(text);
-    combined.push_str("]]");
-    combined
-}
-
-fn handle_section_start(
-    tag: &CmarkTag<'_>,
-    start: usize,
-    section_depth: &mut u32,
-    current_section: &mut Option<(SectionKind, SourceByteOffset)>,
-) -> Result<(), NoteError> {
-    let Some(kind) = section_kind_for_tag(tag) else {
-        return Ok(());
-    };
-    if *section_depth == 0 {
-        let start = SourceByteOffset::try_from_usize(start)?;
-        *current_section = Some((kind, start));
-    }
-    *section_depth = section_depth.saturating_add(1);
-    Ok(())
-}
-
-fn parse_frontmatter_block(
-    kind: MetadataBlockKind,
-    text: &str,
-) -> Result<Option<Frontmatter>, NoteError> {
-    if text.is_empty() {
-        return Ok(None);
-    }
-    let format = match kind {
-        MetadataBlockKind::YamlStyle => FrontmatterFormat::Yaml,
-        MetadataBlockKind::PlusesStyle => FrontmatterFormat::Toml,
-    };
-    let parsed =
-        Frontmatter::parse(format, text).map_err(NoteError::Frontmatter)?;
-    Ok(Some(parsed))
-}
-
-type TaskPromotion = (Option<StatusSymbol>, Option<Task>);
-
-fn promote_task_from_item(
-    is_checkbox: bool,
-    status_symbol: Option<char>,
-    position: SourceByteOffset,
-    raw_text: &str,
-    config: &Config,
-) -> Result<TaskPromotion, NoteError> {
-    if !is_checkbox {
-        return Ok((None, None));
-    }
-
-    let symbol = status_symbol.unwrap_or(' ');
-    let checkbox_status = StatusSymbol::try_new(symbol).map_err(|_error| {
-        NoteError::Task(crate::note::error::TaskError::InvalidStatusSymbol {
-            symbol,
-            reason: "status symbol must be a single ASCII character",
-        })
-    })?;
-
-    if config.task().tags().is_empty() {
-        return Ok((Some(checkbox_status), None));
-    }
-
-    let tags_for_task = scan_tags(raw_text);
-    let builder = TaskBuilder::new(config.task());
-    let promoted = builder.promote_from_checkbox(
-        raw_text,
-        tags_for_task,
-        checkbox_status,
-        position,
-    )?;
-    Ok((Some(checkbox_status), promoted))
-}
-
-fn add_list_item(
-    list_stack: &mut [List],
-    raw_text: &str,
-    position: SourceByteOffset,
-    status: Option<StatusSymbol>,
-    task_id: Option<crate::note::task::TaskId>,
-) {
-    let Some(list) = list_stack.last_mut() else {
-        return;
-    };
-    if let Some(checkbox_status) = status {
-        list.add_item(ListItem::Checkbox {
-            text: raw_text.trim().into(),
-            status: checkbox_status,
-            position,
-            task_id,
-        });
-    } else {
-        list.add_item(ListItem::Plain {
-            text: raw_text.trim().into(),
-            position,
-        });
-    }
-}
-
-struct ListItemRecord {
-    position: SourceByteOffset,
-    depth: ListDepth,
-    parent: Option<SourceByteOffset>,
-    status: Option<StatusSymbol>,
-    task_id: Option<crate::note::task::TaskId>,
-}
-
-fn record_list_item(
-    list_items: &mut Vec<ListItemEntry>,
-    record: &ListItemRecord,
-) {
-    list_items.push(ListItemEntry::new(
-        record.position,
-        record.depth,
-        record.parent,
-        record.status,
-        record.task_id,
-    ));
-}
-
-fn parent_for_depth(
-    depth: ListDepth,
-    open_item_by_depth: &[SourceByteOffset],
-) -> Option<SourceByteOffset> {
-    let depth_index = usize::from(depth.as_u8());
-    if depth_index == 0 {
-        return None;
-    }
-    open_item_by_depth.get(depth_index.saturating_sub(1)).copied()
-}
-
-fn collect_tags(
-    text: &str,
-    inside_code_block: bool,
-    inside_link: bool,
-    tags: &mut Vec<NoteTag>,
-) {
-    if inside_code_block || inside_link {
-        return;
-    }
-    for tag in scan_tags(text) {
-        add_tag(tags, tag);
-    }
-}
-
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "Match ergonomics on borrowed pulldown-cmark tags"
-)]
-fn section_kind_for_tag(tag: &CmarkTag<'_>) -> Option<SectionKind> {
-    match tag {
-        CmarkTag::Paragraph => Some(SectionKind::Paragraph),
-        CmarkTag::Heading {
-            ..
-        } => Some(SectionKind::Heading),
-        CmarkTag::List(_) => Some(SectionKind::List),
-        CmarkTag::CodeBlock(_) => Some(SectionKind::Code),
-        CmarkTag::BlockQuote(kind) => Some(if kind.is_some() {
-            SectionKind::Callout
-        } else {
-            SectionKind::BlockQuote
-        }),
-        CmarkTag::Table(_) => Some(SectionKind::Table),
-        CmarkTag::MetadataBlock(_) => Some(SectionKind::Frontmatter),
-        CmarkTag::HtmlBlock
-        | CmarkTag::Item
-        | CmarkTag::FootnoteDefinition(_)
-        | CmarkTag::DefinitionList
-        | CmarkTag::DefinitionListTitle
-        | CmarkTag::DefinitionListDefinition
-        | CmarkTag::TableHead
-        | CmarkTag::TableRow
-        | CmarkTag::TableCell
-        | CmarkTag::Emphasis
-        | CmarkTag::Strong
-        | CmarkTag::Strikethrough
-        | CmarkTag::Superscript
-        | CmarkTag::Subscript
-        | CmarkTag::Link {
-            ..
-        }
-        | CmarkTag::Image {
-            ..
-        } => None,
-    }
-}
-
-fn close_section(
-    sections: &mut Vec<Section>,
-    current_section: &mut Option<(SectionKind, SourceByteOffset)>,
-    section_depth: &mut u32,
-    event_range: std::ops::Range<usize>,
-    heading: Option<Heading>,
-) -> Result<(), NoteError> {
-    if *section_depth == 0 {
-        return Ok(());
-    }
-    *section_depth = section_depth.saturating_sub(1);
-    if *section_depth > 0 {
-        return Ok(());
-    }
-    let Some((kind, start)) = current_section.take() else {
-        return Ok(());
-    };
-    let end = SourceByteOffset::try_from_usize(event_range.end)?;
-    let source_range = SourceByteRange::new(start, end)?;
-    sections.push(Section::new(kind, heading, source_range));
-    Ok(())
-}
-
-fn collect_block_refs(source: &str) -> Result<Vec<BlockRef>, NoteError> {
-    let mut refs = Vec::new();
-    let mut offset = 0usize;
-    let mut in_code_block = false;
-    let mut in_frontmatter = false;
-    let mut frontmatter_fence: Option<&'static str> = None;
-
-    for line in source.split_inclusive('\n') {
-        let mut trimmed_line = line.trim_end_matches(['\n', '\r']);
-
-        if offset == 0 {
-            if trimmed_line == "---" {
-                in_frontmatter = true;
-                frontmatter_fence = Some("---");
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-            if trimmed_line == "+++" {
-                in_frontmatter = true;
-                frontmatter_fence = Some("+++");
-                offset = offset.saturating_add(line.len());
-                continue;
-            }
-        }
-
-        if in_frontmatter {
-            if frontmatter_fence.is_some_and(|fence| fence == trimmed_line) {
-                in_frontmatter = false;
-            }
-            offset = offset.saturating_add(line.len());
-            continue;
-        }
-
-        let trimmed_start = trimmed_line.trim_start();
-        if trimmed_start.starts_with("```") || trimmed_start.starts_with("~~~")
-        {
-            in_code_block = !in_code_block;
-            offset = offset.saturating_add(line.len());
-            continue;
-        }
-
-        if in_code_block {
-            offset = offset.saturating_add(line.len());
-            continue;
-        }
-
-        trimmed_line = trimmed_line.trim_end();
-        if let Some(caret_idx) = trimmed_line.rfind('^') {
-            let before = trimmed_line.get(..caret_idx).unwrap_or("");
-            let after =
-                trimmed_line.get(caret_idx.saturating_add(1)..).unwrap_or("");
-            let id = after.trim();
-            let valid = !id.is_empty()
-                && id.chars().all(|ch| {
-                    ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'
-                });
-            if valid
-                && (before.is_empty()
-                    || before.chars().last().is_some_and(char::is_whitespace))
-            {
-                let position = SourceByteOffset::try_from_usize(
-                    offset.saturating_add(caret_idx),
-                )?;
-                let block_id = crate::note::structure::BlockRefId::try_new(id)?;
-                refs.push(BlockRef::new(block_id, position));
-            }
-        }
-
-        offset = offset.saturating_add(line.len());
-    }
-
-    Ok(refs)
 }
 
 /// Build the pulldown-cmark option set used for Obsidian-compatible parsing.
