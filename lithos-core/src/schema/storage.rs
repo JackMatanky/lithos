@@ -1,22 +1,23 @@
 //! Storage types for schema system (read models and raw file versions).
 //!
 //! This module contains all storage-related types for the schema system,
-//! organized into two main categories:
+//! organized from most commonly used to implementation details:
+//!
+//! ## Resolved Data Storage (Read Models)
+//!
+//! Storage representations of processed domain data (read model pattern):
+//! - [`StoredSchema`] - Resolved schema read model (most commonly used)
+//! - [`StoredProperty`] - Property read model
+//! - [`StoredMetadata`] - Schema/bank metadata for staleness tracking
 //!
 //! ## Raw File Storage
 //!
 //! Versioned storage of source files (before parsing/resolution):
-//! - [`RawFileVersion`] - Single version of a raw file with compression
 //! - [`RawSchemaFile`] - Schema file with version history (up to 5 versions)
 //! - [`RawPropertyBankFile`] - Property bank file with version history
+//! - [`RawFileVersion`] - Single version of a raw file with compression
 //! - [`FileChange`] - Change detection for staleness checks
-//!
-//! ## Resolved Data Storage
-//!
-//! Storage representations of processed domain data (read model pattern):
-//! - [`StoredSchema`] - Resolved schema read model
-//! - [`StoredProperty`] - Property read model
-//! - [`StoredMetadata`] - Schema/bank metadata for staleness tracking
+//! - [`diff_raw_files()`] - Compare file versions for change detection
 //!
 //! ## Read Model Architecture
 //!
@@ -65,275 +66,281 @@ use super::{
 };
 
 // ============================================================================
-// Raw File Storage (Versioned Source Files)
+// Resolved Data Storage (Read Models - Most Commonly Used)
 // ============================================================================
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Compression Utilities
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Compression level (3 = balanced speed/ratio).
-const COMPRESSION_LEVEL: i32 = 3;
-
-/// Compress string content using zstd.
+/// Storage representation of a resolved schema (read model).
 ///
-/// # Errors
-/// Returns error if compression fails.
-#[inline]
-fn compress(content: &str) -> Result<Vec<u8>, std::io::Error> {
-    zstd::encode_all(content.as_bytes(), COMPRESSION_LEVEL)
-}
-
-/// Decompress zstd data to string.
+/// ## Read Model Pattern
 ///
-/// # Errors
-/// Returns error if decompression fails or output is not UTF-8.
-#[inline]
-fn decompress(compressed: &[u8]) -> Result<String, DecompressionError> {
-    let mut decompressed = Vec::new();
-    zstd::Decoder::new(compressed)?.read_to_end(&mut decompressed)?;
-    String::from_utf8(decompressed).map_err(DecompressionError::InvalidUtf8)
-}
-
-/// Decompression errors.
-#[derive(Debug, thiserror::Error)]
+/// This type is a **read model** - it has no behavior, no events, and no
+/// domain logic. It exists purely to store and retrieve resolved schema data.
+///
+/// - **No Methods**: Only field accessors (getters)
+/// - **No State Transitions**: Immutable after resolution
+/// - **No Events**: Event emission happens in [`crate::schema::loader`]
+///
+/// ## Storage
+///
+/// Persisted to the `schema_by_id` table using `rkyv` serialization.
+/// Contains all fields required for staleness checking and inheritance
+/// tree reconstruction.
+///
+/// This is now the primary schema type used throughout the system.
+/// Files are the source of truth; schemas are loaded, resolved, and stored
+/// as `StoredSchema` values.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[non_exhaustive]
-pub enum DecompressionError {
-    /// I/O error during decompression.
-    #[error("decompression I/O error: {0}")]
-    Io(#[from] std::io::Error),
-
-    /// Decompressed data is not valid UTF-8.
-    #[error("decompressed data is not valid UTF-8: {0}")]
-    InvalidUtf8(#[from] std::string::FromUtf8Error),
+pub struct StoredSchema {
+    /// Schema identity.
+    pub id: SchemaId,
+    /// Schema name (flattened from `SchemaName` newtype).
+    pub name: Box<str>,
+    /// Parent schema ID, for `SchemaTree` reconstruction.
+    pub parent_id: Option<SchemaId>,
+    /// Resolved properties (flattened).
+    pub properties: Vec<StoredProperty>,
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Ring Buffer (Fixed-Size Version History)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Fixed-size ring buffer for versioned file storage (compile-time size, zero
-/// allocation).
-///
-/// This ring buffer uses `u8` indices for memory efficiency (5 versions max).
-/// All arithmetic and indexing is safe by design (modulo wraparound prevents
-/// out-of-bounds).
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-struct RingBuffer<T, const N: usize> {
-    items: [Option<T>; N],
-    head: u8, // Next write position
-    len: u8,  // Current count (0..=N)
-}
-
-impl<T, const N: usize> RingBuffer<T, N> {
-    /// Create empty ring buffer.
+impl StoredSchema {
+    /// Create a new `StoredSchema` for testing purposes.
     #[inline]
-    const fn new() -> Self {
-        Self {
-            items: [const { None }; N],
-            head: 0,
-            len: 0,
-        }
-    }
-
-    /// Push item (evicts oldest if full).
-    #[inline]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
-    )]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "All indices are modulo N (cannot exceed array bounds)"
-    )]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u8 <-> usize conversions safe for N = 5"
-    )]
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "N is constrained to 5 (ring buffer for file versions)"
-    )]
-    #[expect(
-        clippy::integer_division_remainder_used,
-        reason = "Modulo operation is fundamental to ring buffer wraparound"
-    )]
-    fn push(&mut self, item: T) {
-        self.items[self.head as usize] = Some(item);
-        self.head = (self.head + 1) % (N as u8);
-        if self.len < N as u8 {
-            self.len += 1;
-        }
-    }
-
-    /// Get most recent item.
-    #[inline]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
-    )]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "All indices are modulo N (cannot exceed array bounds)"
-    )]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u8 <-> usize conversions safe for N = 5"
-    )]
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "N is constrained to 5 (ring buffer for file versions)"
-    )]
-    #[expect(
-        clippy::integer_division_remainder_used,
-        reason = "Modulo operation is fundamental to ring buffer wraparound"
-    )]
-    fn current(&self) -> Option<&T> {
-        if self.len == 0 {
-            return None;
-        }
-        let idx = (self.head + (N as u8) - 1) % (N as u8);
-        self.items[idx as usize].as_ref()
-    }
-
-    /// Get item at index (0 = oldest, len-1 = newest).
-    #[inline]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
-    )]
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "All indices are modulo N (cannot exceed array bounds)"
-    )]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u8 <-> usize conversions safe for N = 5"
-    )]
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "N is constrained to 5 (ring buffer for file versions)"
-    )]
-    #[expect(
-        clippy::integer_division_remainder_used,
-        reason = "Modulo operation is fundamental to ring buffer wraparound"
-    )]
-    fn get(&self, index: usize) -> Option<&T> {
-        if index >= self.len as usize {
-            return None;
-        }
-        let offset =
-            (self.head + (N as u8) - self.len + index as u8) % (N as u8);
-        self.items[offset as usize].as_ref()
-    }
-
-    /// Number of items.
-    #[inline]
-    #[expect(
-        clippy::as_conversions,
-        reason = "u8 -> usize is always safe and lossless"
-    )]
-    const fn len(&self) -> usize {
-        self.len as usize
-    }
-
-    /// Iterate over items (oldest to newest).
-    #[inline]
-    fn iter(&self) -> impl Iterator<Item = &T> {
-        (0..self.len()).filter_map(move |i| self.get(i))
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Raw File Version Storage
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// A single version of a raw file (content + metadata + hash).
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub struct RawFileVersion {
-    /// Compressed file content (zstd level 3).
-    compressed_content: Vec<u8>,
-    /// Blake3 hash of uncompressed content.
-    content_hash: Blake3Hash,
-    /// File creation timestamp (from filesystem).
-    #[rkyv(with = Map<AsUnixTime>)]
-    created_at: Option<SystemTime>,
-    /// File modification timestamp (from filesystem).
-    #[rkyv(with = Map<AsUnixTime>)]
-    modified_at: Option<SystemTime>,
-    /// When this version was recorded in the database.
-    #[rkyv(with = AsUnixTime)]
-    recorded_at: SystemTime,
-}
-
-impl RawFileVersion {
-    /// Create a new file version from content and metadata.
-    ///
-    /// # Errors
-    /// Returns error if compression fails.
-    #[inline]
+    #[must_use]
     pub fn new(
-        content: &str,
+        id: SchemaId,
+        name: Box<str>,
+        parent_id: Option<SchemaId>,
+        properties: Vec<StoredProperty>,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            parent_id,
+            properties,
+        }
+    }
+}
+
+/// Flat storage representation of a single property.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct StoredProperty {
+    /// Property identity.
+    pub id: PropertyId,
+    /// Property name (flattened from `PropertyName` newtype).
+    pub name: Box<str>,
+    /// Whether the property is required (flattened from `Optionality`).
+    pub required: bool,
+    /// Whether the property accepts multiple values (flattened from
+    /// `Multiplicity`).
+    pub multi: bool,
+    /// Type-specific validation constraints.
+    pub spec: PropertySpec,
+}
+
+impl StoredProperty {
+    /// Create a new `StoredProperty`.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        id: PropertyId,
+        name: Box<str>,
+        required: bool,
+        multi: bool,
+        spec: PropertySpec,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            required,
+            multi,
+            spec,
+        }
+    }
+}
+
+/// Adapter storage representation of property bank metadata.
+///
+/// # Timestamps
+///
+/// Uses `SystemTime` with rkyv's `AsUnixTime` wrapper for safe serialization.
+/// This stores timestamps as Unix epoch seconds internally while preserving
+/// `SystemTime`'s type safety.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct StoredMetadata {
+    /// Bank version at time of persistence.
+    pub bank_version: BankVersion,
+    /// Blake3 hash of source file content (for accurate staleness detection).
+    pub source_file_hash: Blake3Hash,
+    /// Filesystem birthtime (from `Metadata::created()`), if available.
+    #[rkyv(with = Map<AsUnixTime>)]
+    pub created_at: Option<SystemTime>,
+    /// Filesystem mtime (from `Metadata::modified()`), if available.
+    #[rkyv(with = Map<AsUnixTime>)]
+    pub modified_at: Option<SystemTime>,
+    /// Wall-clock timestamp when this record was written.
+    #[rkyv(with = AsUnixTime)]
+    pub recorded_at: SystemTime,
+}
+
+impl StoredMetadata {
+    /// Build metadata for storage.
+    #[inline]
+    pub(crate) fn new(
+        bank_version: BankVersion,
+        source_file_hash: Blake3Hash,
         created_at: Option<SystemTime>,
         modified_at: Option<SystemTime>,
-    ) -> Result<Self, std::io::Error> {
-        let compressed_content = compress(content)?;
-        let content_hash = Blake3Hash::compute(content.as_bytes());
+    ) -> Self {
         let recorded_at = SystemTime::now();
-
-        Ok(Self {
-            compressed_content,
-            content_hash,
+        Self {
+            bank_version,
+            source_file_hash,
             created_at,
             modified_at,
             recorded_at,
-        })
-    }
-
-    /// Get the Blake3 hash of the content.
-    #[inline]
-    #[must_use]
-    pub fn content_hash(&self) -> &Blake3Hash {
-        &self.content_hash
-    }
-
-    /// Get file creation timestamp.
-    #[inline]
-    #[must_use]
-    pub fn created_at(&self) -> Option<SystemTime> {
-        self.created_at
-    }
-
-    /// Get file modification timestamp.
-    #[inline]
-    #[must_use]
-    pub fn modified_at(&self) -> Option<SystemTime> {
-        self.modified_at
-    }
-
-    /// Get database recording timestamp.
-    #[inline]
-    #[must_use]
-    pub fn recorded_at(&self) -> SystemTime {
-        self.recorded_at
-    }
-
-    /// Decompress and return file content.
-    ///
-    /// # Errors
-    /// Returns error if decompression fails.
-    #[inline]
-    pub fn content(&self) -> Result<String, DecompressionError> {
-        decompress(&self.compressed_content)
-    }
-
-    /// Get compressed size in bytes.
-    #[inline]
-    #[must_use]
-    pub fn compressed_size(&self) -> usize {
-        self.compressed_content.len()
+        }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Crate-Internal Storage Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Adapter storage representation of a property bank snapshot.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+pub(crate) struct StoredPropertyBank {
+    /// Bank version at time of persistence.
+    pub bank_version: BankVersion,
+    /// Wall-clock timestamp when this record was written.
+    #[rkyv(with = AsUnixTime)]
+    pub recorded_at: SystemTime,
+    /// Flattened properties in the bank.
+    pub properties: Vec<StoredProperty>,
+}
+
+impl TryFrom<StoredPropertyBank> for PropertyBank {
+    type Error = SchemaError;
+
+    #[inline]
+    fn try_from(stored: StoredPropertyBank) -> Result<Self, Self::Error> {
+        let properties: Result<Vec<_>, _> = stored
+            .properties
+            .into_iter()
+            .map(|sp| {
+                let prop_name = PropertyName::try_new(&sp.name)?;
+                let optionality = Optionality::from(sp.required);
+                let multiplicity = Multiplicity::from(sp.multi);
+                Ok(Property::new(
+                    sp.id,
+                    prop_name,
+                    optionality,
+                    multiplicity,
+                    sp.spec,
+                ))
+            })
+            .collect();
+        PropertyBank::try_reconstruct(properties?, stored.bank_version)
+    }
+}
+
+/// Adapter storage representation of a single bank property snapshot.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+pub(crate) struct StoredBankProperty {
+    /// Bank version at time of persistence.
+    pub bank_version: BankVersion,
+    /// Wall-clock timestamp when this record was written.
+    #[rkyv(with = AsUnixTime)]
+    pub recorded_at: SystemTime,
+    /// Flattened property payload.
+    pub property: StoredProperty,
+}
+
+impl StoredBankProperty {
+    /// Format a bank property key for the given version.
+    #[inline]
+    pub(crate) fn key(version: BankVersion, suffix: &str) -> String {
+        format!("{}:{suffix}", version.as_u64())
+    }
+
+    /// Format a bank property key prefix for the given version.
+    #[inline]
+    pub(crate) fn prefix(version: BankVersion) -> String {
+        format!("{}:", version.as_u64())
+    }
+}
+
+/// Child schema metadata stored in the `schema_children` multimap.
+///
+/// **Storage pattern:**
+/// - Table: `schema_children` (multimap)
+/// - Key: Parent `SchemaId` (as UUID string)
+/// - Values: Multiple `StoredChildSchema` entries (one per child)
+///
+/// Each parent can have many children. This structure stores each child's
+/// inheritance metadata including which properties it excludes from the parent.
+///
+/// **Cascade staleness:** When a parent schema changes, query this multimap
+/// to find all children that must be re-resolved.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+pub(crate) struct StoredChildSchema {
+    /// Child schema ID.
+    pub child_id: SchemaId,
+    /// Property names this child excludes from parent's properties.
+    pub excludes: Vec<Box<str>>,
+    /// Timestamp when this inheritance relationship was last resolved.
+    #[rkyv(with = AsUnixTime)]
+    pub resolved_at: SystemTime,
+}
+
+impl StoredChildSchema {
+    /// Serialize to bytes for multimap storage.
+    ///
+    /// # Errors
+    /// Returns serialization error if rkyv encoding fails.
+    pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, crate::db::DbError> {
+        rkyv::to_bytes(self).map(|bytes| bytes.to_vec()).map_err(
+            |e: rkyv::rancor::Error| {
+                crate::db::DbError::Serialization(e.to_string())
+            },
+        )
+    }
+}
+
+/// Parent schema reference, stored in `schema_parent` table.
+///
+/// **Storage pattern:**
+/// - Table: `schema_parent` (regular table, not multimap)
+/// - Key: Child `SchemaId` (as UUID string)
+/// - Value: `StoredParentSchema`
+///
+/// This table tracks ALL schemas (both roots and children):
+/// - Root schemas: `parent_id = None`
+/// - Child schemas: `parent_id = Some(parent_id)`
+///
+/// **Update optimization:** When updating a child's parent, this table
+/// provides O(1) lookup of the old parent plus the old excludes/timestamp
+/// needed to reconstruct the exact bytes for removing the old entry from
+/// the `schema_children` multimap.
+///
+/// **Data redundancy:** `excludes` and `resolved_at` are stored in both
+/// `schema_parent` and `schema_children`. This trades ~10KB of storage
+/// (for typical 100-schema vaults) for simpler, faster update logic.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+pub(crate) struct StoredParentSchema {
+    /// Parent schema ID, or None for root schemas.
+    pub parent_id: Option<SchemaId>,
+    /// Property names excluded from parent (cached for multimap removal).
+    pub excludes: Vec<Box<str>>,
+    /// Timestamp when relationship was resolved (cached for multimap removal).
+    #[rkyv(with = AsUnixTime)]
+    pub resolved_at: SystemTime,
+}
+
+// ============================================================================
+// Raw File Storage (Public API)
+// ============================================================================
 
 /// Raw schema file with version history (up to 5 versions).
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
@@ -474,9 +481,92 @@ impl RawPropertyBankFile {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  File Change Detection
-// ─────────────────────────────────────────────────────────────────────────────
+/// A single version of a raw file (content + metadata + hash).
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+pub struct RawFileVersion {
+    /// Compressed file content (zstd level 3).
+    compressed_content: Vec<u8>,
+    /// Blake3 hash of uncompressed content.
+    content_hash: Blake3Hash,
+    /// File creation timestamp (from filesystem).
+    #[rkyv(with = Map<AsUnixTime>)]
+    created_at: Option<SystemTime>,
+    /// File modification timestamp (from filesystem).
+    #[rkyv(with = Map<AsUnixTime>)]
+    modified_at: Option<SystemTime>,
+    /// When this version was recorded in the database.
+    #[rkyv(with = AsUnixTime)]
+    recorded_at: SystemTime,
+}
+
+impl RawFileVersion {
+    /// Create a new file version from content and metadata.
+    ///
+    /// # Errors
+    /// Returns error if compression fails.
+    #[inline]
+    pub fn new(
+        content: &str,
+        created_at: Option<SystemTime>,
+        modified_at: Option<SystemTime>,
+    ) -> Result<Self, std::io::Error> {
+        let compressed_content = compress(content)?;
+        let content_hash = Blake3Hash::compute(content.as_bytes());
+        let recorded_at = SystemTime::now();
+
+        Ok(Self {
+            compressed_content,
+            content_hash,
+            created_at,
+            modified_at,
+            recorded_at,
+        })
+    }
+
+    /// Get the Blake3 hash of the content.
+    #[inline]
+    #[must_use]
+    pub fn content_hash(&self) -> &Blake3Hash {
+        &self.content_hash
+    }
+
+    /// Get file creation timestamp.
+    #[inline]
+    #[must_use]
+    pub fn created_at(&self) -> Option<SystemTime> {
+        self.created_at
+    }
+
+    /// Get file modification timestamp.
+    #[inline]
+    #[must_use]
+    pub fn modified_at(&self) -> Option<SystemTime> {
+        self.modified_at
+    }
+
+    /// Get database recording timestamp.
+    #[inline]
+    #[must_use]
+    pub fn recorded_at(&self) -> SystemTime {
+        self.recorded_at
+    }
+
+    /// Decompress and return file content.
+    ///
+    /// # Errors
+    /// Returns error if decompression fails.
+    #[inline]
+    pub fn content(&self) -> Result<String, DecompressionError> {
+        decompress(&self.compressed_content)
+    }
+
+    /// Get compressed size in bytes.
+    #[inline]
+    #[must_use]
+    pub fn compressed_size(&self) -> usize {
+        self.compressed_content.len()
+    }
+}
 
 /// Type of change detected between two file versions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -527,271 +617,178 @@ pub fn diff_raw_files(
 }
 
 // ============================================================================
-// Resolved Data Storage (Read Model Pattern)
+// Supporting Types
 // ============================================================================
 
-/// Storage representation of a resolved schema (read model).
-///
-/// ## Read Model Pattern
-///
-/// This type is a **read model** - it has no behavior, no events, and no
-/// domain logic. It exists purely to store and retrieve resolved schema data.
-///
-/// - **No Methods**: Only field accessors (getters)
-/// - **No State Transitions**: Immutable after resolution
-/// - **No Events**: Event emission happens in [`crate::schema::loader`]
-///
-/// ## Storage
-///
-/// Persisted to the `schema_by_id` table using `rkyv` serialization.
-/// Contains all fields required for staleness checking and inheritance
-/// tree reconstruction.
-///
-/// This is now the primary schema type used throughout the system.
-/// Files are the source of truth; schemas are loaded, resolved, and stored
-/// as `StoredSchema` values.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+/// Decompression errors.
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub struct StoredSchema {
-    /// Schema identity.
-    pub id: SchemaId,
-    /// Schema name (flattened from `SchemaName` newtype).
-    pub name: Box<str>,
-    /// Parent schema ID, for `SchemaTree` reconstruction.
-    pub parent_id: Option<SchemaId>,
-    /// Resolved properties (flattened).
-    pub properties: Vec<StoredProperty>,
+pub enum DecompressionError {
+    /// I/O error during decompression.
+    #[error("decompression I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// Decompressed data is not valid UTF-8.
+    #[error("decompressed data is not valid UTF-8: {0}")]
+    InvalidUtf8(#[from] std::string::FromUtf8Error),
 }
 
-impl StoredSchema {
-    /// Create a new `StoredSchema` for testing purposes.
+// ============================================================================
+// Internal Implementation Details
+// ============================================================================
+
+/// Compression level (3 = balanced speed/ratio).
+const COMPRESSION_LEVEL: i32 = 3;
+
+/// Compress string content using zstd.
+///
+/// # Errors
+/// Returns error if compression fails.
+#[inline]
+fn compress(content: &str) -> Result<Vec<u8>, std::io::Error> {
+    zstd::encode_all(content.as_bytes(), COMPRESSION_LEVEL)
+}
+
+/// Decompress zstd data to string.
+///
+/// # Errors
+/// Returns error if decompression fails or output is not UTF-8.
+#[inline]
+fn decompress(compressed: &[u8]) -> Result<String, DecompressionError> {
+    let mut decompressed = Vec::new();
+    zstd::Decoder::new(compressed)?.read_to_end(&mut decompressed)?;
+    String::from_utf8(decompressed).map_err(DecompressionError::InvalidUtf8)
+}
+
+/// Fixed-size ring buffer for versioned file storage (compile-time size, zero
+/// allocation).
+///
+/// This ring buffer uses `u8` indices for memory efficiency (5 versions max).
+/// All arithmetic and indexing is safe by design (modulo wraparound prevents
+/// out-of-bounds).
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+struct RingBuffer<T, const N: usize> {
+    items: [Option<T>; N],
+    head: u8, // Next write position
+    len: u8,  // Current count (0..=N)
+}
+
+impl<T, const N: usize> RingBuffer<T, N> {
+    /// Create empty ring buffer.
     #[inline]
-    #[must_use]
-    pub fn new(
-        id: SchemaId,
-        name: Box<str>,
-        parent_id: Option<SchemaId>,
-        properties: Vec<StoredProperty>,
-    ) -> Self {
+    const fn new() -> Self {
         Self {
-            id,
-            name,
-            parent_id,
-            properties,
+            items: [const { None }; N],
+            head: 0,
+            len: 0,
         }
     }
-}
 
-/// Adapter storage representation of a property bank snapshot.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub(crate) struct StoredPropertyBank {
-    /// Bank version at time of persistence.
-    pub bank_version: BankVersion,
-    /// Wall-clock timestamp when this record was written.
-    #[rkyv(with = AsUnixTime)]
-    pub recorded_at: SystemTime,
-    /// Flattened properties in the bank.
-    pub properties: Vec<StoredProperty>,
-}
-
-/// Adapter storage representation of property bank metadata.
-///
-/// # Timestamps
-///
-/// Uses `SystemTime` with rkyv's `AsUnixTime` wrapper for safe serialization.
-/// This stores timestamps as Unix epoch seconds internally while preserving
-/// `SystemTime`'s type safety.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct StoredMetadata {
-    /// Bank version at time of persistence.
-    pub bank_version: BankVersion,
-    /// Blake3 hash of source file content (for accurate staleness detection).
-    pub source_file_hash: Blake3Hash,
-    /// Filesystem birthtime (from `Metadata::created()`), if available.
-    #[rkyv(with = Map<AsUnixTime>)]
-    pub created_at: Option<SystemTime>,
-    /// Filesystem mtime (from `Metadata::modified()`), if available.
-    #[rkyv(with = Map<AsUnixTime>)]
-    pub modified_at: Option<SystemTime>,
-    /// Wall-clock timestamp when this record was written.
-    #[rkyv(with = AsUnixTime)]
-    pub recorded_at: SystemTime,
-}
-
-impl StoredMetadata {
-    /// Build metadata for storage.
+    /// Push item (evicts oldest if full).
     #[inline]
-    pub(crate) fn new(
-        bank_version: BankVersion,
-        source_file_hash: Blake3Hash,
-        created_at: Option<SystemTime>,
-        modified_at: Option<SystemTime>,
-    ) -> Self {
-        let recorded_at = SystemTime::now();
-        Self {
-            bank_version,
-            source_file_hash,
-            created_at,
-            modified_at,
-            recorded_at,
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "All indices are modulo N (cannot exceed array bounds)"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "u8 <-> usize conversions safe for N = 5"
+    )]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "N is constrained to 5 (ring buffer for file versions)"
+    )]
+    #[expect(
+        clippy::integer_division_remainder_used,
+        reason = "Modulo operation is fundamental to ring buffer wraparound"
+    )]
+    fn push(&mut self, item: T) {
+        self.items[self.head as usize] = Some(item);
+        self.head = (self.head + 1) % (N as u8);
+        if self.len < N as u8 {
+            self.len += 1;
         }
     }
-}
 
-/// Child schema metadata stored in the `schema_children` multimap.
-///
-/// **Storage pattern:**
-/// - Table: `schema_children` (multimap)
-/// - Key: Parent `SchemaId` (as UUID string)
-/// - Values: Multiple `StoredChildSchema` entries (one per child)
-///
-/// Each parent can have many children. This structure stores each child's
-/// inheritance metadata including which properties it excludes from the parent.
-///
-/// **Cascade staleness:** When a parent schema changes, query this multimap
-/// to find all children that must be re-resolved.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub(crate) struct StoredChildSchema {
-    /// Child schema ID.
-    pub child_id: SchemaId,
-    /// Property names this child excludes from parent's properties.
-    pub excludes: Vec<Box<str>>,
-    /// Timestamp when this inheritance relationship was last resolved.
-    #[rkyv(with = AsUnixTime)]
-    pub resolved_at: SystemTime,
-}
-
-impl StoredChildSchema {
-    /// Serialize to bytes for multimap storage.
-    ///
-    /// # Errors
-    /// Returns serialization error if rkyv encoding fails.
-    pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, crate::db::DbError> {
-        rkyv::to_bytes(self).map(|bytes| bytes.to_vec()).map_err(
-            |e: rkyv::rancor::Error| {
-                crate::db::DbError::Serialization(e.to_string())
-            },
-        )
-    }
-}
-
-/// Parent schema reference, stored in `schema_parent` table.
-///
-/// **Storage pattern:**
-/// - Table: `schema_parent` (regular table, not multimap)
-/// - Key: Child `SchemaId` (as UUID string)
-/// - Value: `StoredParentSchema`
-///
-/// This table tracks ALL schemas (both roots and children):
-/// - Root schemas: `parent_id = None`
-/// - Child schemas: `parent_id = Some(parent_id)`
-///
-/// **Update optimization:** When updating a child's parent, this table
-/// provides O(1) lookup of the old parent plus the old excludes/timestamp
-/// needed to reconstruct the exact bytes for removing the old entry from
-/// the `schema_children` multimap.
-///
-/// **Data redundancy:** `excludes` and `resolved_at` are stored in both
-/// `schema_parent` and `schema_children`. This trades ~10KB of storage
-/// (for typical 100-schema vaults) for simpler, faster update logic.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub(crate) struct StoredParentSchema {
-    /// Parent schema ID, or None for root schemas.
-    pub parent_id: Option<SchemaId>,
-    /// Property names excluded from parent (cached for multimap removal).
-    pub excludes: Vec<Box<str>>,
-    /// Timestamp when relationship was resolved (cached for multimap removal).
-    #[rkyv(with = AsUnixTime)]
-    pub resolved_at: SystemTime,
-}
-
-/// Adapter storage representation of a single bank property snapshot.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-pub(crate) struct StoredBankProperty {
-    /// Bank version at time of persistence.
-    pub bank_version: BankVersion,
-    /// Wall-clock timestamp when this record was written.
-    #[rkyv(with = AsUnixTime)]
-    pub recorded_at: SystemTime,
-    /// Flattened property payload.
-    pub property: StoredProperty,
-}
-
-impl StoredBankProperty {
-    /// Format a bank property key for the given version.
+    /// Get most recent item.
     #[inline]
-    pub(crate) fn key(version: BankVersion, suffix: &str) -> String {
-        format!("{}:{suffix}", version.as_u64())
-    }
-
-    /// Format a bank property key prefix for the given version.
-    #[inline]
-    pub(crate) fn prefix(version: BankVersion) -> String {
-        format!("{}:", version.as_u64())
-    }
-}
-
-impl TryFrom<StoredPropertyBank> for PropertyBank {
-    type Error = SchemaError;
-
-    #[inline]
-    fn try_from(stored: StoredPropertyBank) -> Result<Self, Self::Error> {
-        let properties: Result<Vec<_>, _> = stored
-            .properties
-            .into_iter()
-            .map(|sp| {
-                let prop_name = PropertyName::try_new(&sp.name)?;
-                let optionality = Optionality::from(sp.required);
-                let multiplicity = Multiplicity::from(sp.multi);
-                Ok(Property::new(
-                    sp.id,
-                    prop_name,
-                    optionality,
-                    multiplicity,
-                    sp.spec,
-                ))
-            })
-            .collect();
-        PropertyBank::try_reconstruct(properties?, stored.bank_version)
-    }
-}
-
-/// Flat storage representation of a single property.
-#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct StoredProperty {
-    /// Property identity.
-    pub id: PropertyId,
-    /// Property name (flattened from `PropertyName` newtype).
-    pub name: Box<str>,
-    /// Whether the property is required (flattened from `Optionality`).
-    pub required: bool,
-    /// Whether the property accepts multiple values (flattened from
-    /// `Multiplicity`).
-    pub multi: bool,
-    /// Type-specific validation constraints.
-    pub spec: PropertySpec,
-}
-
-impl StoredProperty {
-    /// Create a new `StoredProperty`.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        id: PropertyId,
-        name: Box<str>,
-        required: bool,
-        multi: bool,
-        spec: PropertySpec,
-    ) -> Self {
-        Self {
-            id,
-            name,
-            required,
-            multi,
-            spec,
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "All indices are modulo N (cannot exceed array bounds)"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "u8 <-> usize conversions safe for N = 5"
+    )]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "N is constrained to 5 (ring buffer for file versions)"
+    )]
+    #[expect(
+        clippy::integer_division_remainder_used,
+        reason = "Modulo operation is fundamental to ring buffer wraparound"
+    )]
+    fn current(&self) -> Option<&T> {
+        if self.len == 0 {
+            return None;
         }
+        let idx = (self.head + (N as u8) - 1) % (N as u8);
+        self.items[idx as usize].as_ref()
+    }
+
+    /// Get item at index (0 = oldest, len-1 = newest).
+    #[inline]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "Ring buffer arithmetic is modulo-bounded (0..N)"
+    )]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "All indices are modulo N (cannot exceed array bounds)"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "u8 <-> usize conversions safe for N = 5"
+    )]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "N is constrained to 5 (ring buffer for file versions)"
+    )]
+    #[expect(
+        clippy::integer_division_remainder_used,
+        reason = "Modulo operation is fundamental to ring buffer wraparound"
+    )]
+    fn get(&self, index: usize) -> Option<&T> {
+        if index >= self.len as usize {
+            return None;
+        }
+        let offset =
+            (self.head + (N as u8) - self.len + index as u8) % (N as u8);
+        self.items[offset as usize].as_ref()
+    }
+
+    /// Number of items.
+    #[inline]
+    #[expect(
+        clippy::as_conversions,
+        reason = "u8 -> usize is always safe and lossless"
+    )]
+    const fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    /// Iterate over items (oldest to newest).
+    #[inline]
+    fn iter(&self) -> impl Iterator<Item = &T> {
+        (0..self.len()).filter_map(move |i| self.get(i))
     }
 }
 
