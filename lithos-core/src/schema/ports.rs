@@ -250,6 +250,19 @@ pub trait Command: Send + Sync {
 ///     {
 ///         Ok(None)
 ///     }
+///
+///     fn find_schemas_using_properties(
+///         &self,
+///         _property_names: &[lithos_core::schema::property::PropertyName],
+///     ) -> Result<
+///         std::collections::HashMap<
+///             lithos_core::schema::aggregate::SchemaId,
+///             Vec<lithos_core::schema::property::PropertyName>,
+///         >,
+///         Self::Error,
+///     > {
+///         Ok(std::collections::HashMap::new())
+///     }
 /// }
 /// ```
 pub trait Query: Send + Sync {
@@ -390,6 +403,40 @@ pub trait Query: Send + Sync {
         &self,
         ids: &[SchemaId],
     ) -> Result<std::collections::HashMap<SchemaId, StoredSchema>, Self::Error>;
+
+    /// Find all schemas that reference the given properties.
+    ///
+    /// Returns a map of schema ID to the list of property names that schema
+    /// references from the given list. This is used for incremental resolution
+    /// when `PropertyBank` changes - only schemas that reference changed
+    /// properties need re-resolution.
+    ///
+    /// # Errors
+    /// Returns a storage-specific error if query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use lithos_core::schema::ports::Query;
+    /// # use lithos_core::schema::property::PropertyName;
+    /// # let query = todo!("Provide a Query implementation");
+    /// # let names = vec![PropertyName::try_new("flag")?];
+    /// let affected = query.find_schemas_using_properties(&names)?;
+    /// // Returns: HashMap<SchemaId, Vec<PropertyName>>
+    /// # Ok::<_, Box<dyn std::error::Error>>(())
+    /// ```
+    #[expect(
+        clippy::type_complexity,
+        reason = "HashMap<SchemaId, Vec<PropertyName>> is clearest for \
+                  affected schema tracking"
+    )]
+    fn find_schemas_using_properties(
+        &self,
+        property_names: &[super::property::PropertyName],
+    ) -> Result<
+        std::collections::HashMap<SchemaId, Vec<super::property::PropertyName>>,
+        Self::Error,
+    >;
 
     /// Get the singleton `PropertyBank` registry.
     ///

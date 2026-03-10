@@ -636,4 +636,103 @@ impl QueryPort for Query<'_> {
 
         Ok(())
     }
+
+    #[inline]
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "HashMap iteration order doesn't affect correctness"
+    )]
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "for+if+if pattern is clearest for property matching logic"
+    )]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "RawProperty::Ref pattern is clearest - auto-fix conflicts \
+                  with warning"
+    )]
+    fn find_schemas_using_properties(
+        &self,
+        property_names: &[PropertyName],
+    ) -> Result<HashMap<SchemaId, Vec<PropertyName>>, Self::Error> {
+        use crate::schema::{
+            db_table::RAW_SCHEMA_FILES, property::BankPropertyRef,
+            raw::RawProperty, storage::RawSchemaFile,
+        };
+
+        if property_names.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        // Convert property names to a HashSet for O(1) lookup
+        let property_set: std::collections::HashSet<&PropertyName> =
+            property_names.iter().collect();
+
+        let mut result: HashMap<SchemaId, Vec<PropertyName>> = HashMap::new();
+
+        // Scan all raw schema files
+        let raw_files =
+            self.db.list_owned::<RawSchemaFile>(RAW_SCHEMA_FILES)?;
+
+        for raw_file in raw_files {
+            // Get the most recent version
+            let Some(version) = raw_file.current() else {
+                continue;
+            };
+
+            // Decompress and parse the raw schema content
+            let content = version.content().map_err(|e| {
+                DbError::Deserialization(format!(
+                    "Failed to decompress raw schema file {}: {e}",
+                    raw_file.file_path()
+                ))
+            })?;
+
+            let raw_schema: crate::schema::raw::RawSchema =
+                toml::from_str(&content).map_err(|e| {
+                    DbError::Deserialization(format!(
+                        "Failed to parse raw schema file {}: {e}",
+                        raw_file.file_path()
+                    ))
+                })?;
+
+            // Look up schema ID by name
+            let schema_name = SchemaName::try_new(&raw_schema.name)
+                .map_err(|e| DbError::Deserialization(e.to_string()))?;
+            let Some(schema_id) = self.find_id_by_name(&schema_name)? else {
+                continue;
+            };
+
+            // Check each property for references to changed properties
+            let mut affected_properties = Vec::new();
+            for (prop_name_str, raw_property) in &raw_schema.properties {
+                // Only check RawProperty::Ref variants
+                if let RawProperty::Ref(ref_prop) = raw_property {
+                    // Parse the reference to extract property name
+                    let Ok(bank_ref) =
+                        BankPropertyRef::parse(&ref_prop.ref_path)
+                    else {
+                        continue; // Skip invalid refs
+                    };
+
+                    // Check if this property is in our changed set
+                    if property_set.contains(bank_ref.name()) {
+                        let prop_name =
+                            PropertyName::try_from(prop_name_str.as_ref())
+                                .map_err(|e| {
+                                    DbError::Deserialization(e.to_string())
+                                })?;
+                        affected_properties.push(prop_name);
+                    }
+                }
+            }
+
+            // Only add to result if schema has affected properties
+            if !affected_properties.is_empty() {
+                result.insert(schema_id, affected_properties);
+            }
+        }
+
+        Ok(result)
+    }
 }

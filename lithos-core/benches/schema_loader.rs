@@ -1005,6 +1005,210 @@ fn bench_full_pipeline(c: &mut Criterion) {
     group.finish();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Incremental Resolution (Property Bank Changes)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Benchmark: Query to find schemas using specific properties.
+///
+/// Measures the cost of `find_schemas_using_properties()` which scans raw
+/// schema files to identify which schemas reference changed PropertyBank
+/// properties. This is used for incremental resolution optimization.
+///
+/// **Bottleneck**: File decompression + TOML parsing (O(n) with schema count)
+fn bench_find_schemas_using_properties(c: &mut Criterion) {
+    let mut group = c.benchmark_group("incremental_resolution/find_affected");
+
+    for size in VAULT_SIZES {
+        group.throughput(Throughput::Elements(size.schema_count as u64));
+
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size.name),
+            size,
+            |b, size| {
+                // Setup: Create vault and populate database with schemas
+                let vault = generate_vault(size);
+                let config = bench_config(vault.path());
+
+                let db_dir =
+                    TempDir::new().expect("Failed to create temp DB dir");
+                let db_path = db_dir.path().join("bench.db");
+                let db = Database::open(&db_path).expect("Failed to open DB");
+
+                // Load schemas into database
+                let cmd = db_command::Command::new(&db);
+                let qry = db_query::Query::new(&db);
+
+                let ingestor = Ingestor::new(
+                    FsReader::new(vault.path().to_path_buf()),
+                    &config,
+                );
+                let service =
+                    lithos_core::schema::loader::Loader::new(qry, cmd);
+                service.load(&ingestor).expect("Failed to load schemas");
+
+                // Property names to search for (common properties from SCHEMAS)
+                let changed_props = vec![
+                    PropertyName::try_new("pillar").expect("valid name"),
+                    PropertyName::try_new("status").expect("valid name"),
+                ];
+
+                let qry2 = db_query::Query::new(&db);
+                b.iter(|| {
+                    let affected = qry2
+                        .find_schemas_using_properties(&changed_props)
+                        .expect("Query failed");
+                    black_box(affected.len())
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+/// Benchmark: Incremental property resolution vs full resolution.
+///
+/// Compares the performance of:
+/// 1. **Incremental**: `resolve_affected_properties()` - updates only changed
+///    properties
+/// 2. **Full**: Complete pipeline (Dereferencer → Extender → Resolver)
+///
+/// Expected: Incremental should be 5-10x faster for schemas with few affected
+/// properties.
+///
+/// **Bottleneck**: PropertyBank lookup + property spec updates (incremental) vs
+/// full dereferencing + DAG construction (full)
+fn bench_incremental_vs_full_resolution(c: &mut Criterion) {
+    let mut group = c.benchmark_group("incremental_resolution/comparison");
+
+    for size in VAULT_SIZES {
+        // Skip large vaults for this detailed comparison (takes too long)
+        if size.schema_count > 40 {
+            continue;
+        }
+
+        group.throughput(Throughput::Elements(size.schema_count as u64));
+
+        // Benchmark incremental resolution
+        group.bench_with_input(
+            BenchmarkId::new("incremental", size.name),
+            size,
+            |b, size| {
+                // Setup: Generate schemas with PropertyBank
+                let vault = generate_vault(size);
+                let config = bench_config(vault.path());
+                let ingestor = Ingestor::new(
+                    FsReader::new(vault.path().to_path_buf()),
+                    &config,
+                );
+
+                // Load PropertyBank
+                let raw_bank = ingestor
+                    .load_raw_property_bank()
+                    .expect("Failed to load bank");
+                let bank = PropertyBank::try_from_raw(raw_bank, None)
+                    .expect("Failed to validate bank");
+
+                // Load and resolve schemas initially
+                let raw_schemas = ingestor
+                    .scan_raw_schemas()
+                    .expect("Failed to scan schemas");
+
+                let schemas_with_ids: Vec<(SchemaId, RawSchema)> = raw_schemas
+                    .into_iter()
+                    .map(|(raw, _, _, _, _)| (SchemaId::new(), raw))
+                    .collect();
+
+                let dereferencer = Dereferencer::new(&bank);
+                let derefed = dereferencer
+                    .deref(schemas_with_ids)
+                    .expect("Failed to dereference");
+                let tree = Extender::build(derefed, &HashMap::new())
+                    .expect("Failed to build DAG");
+                let resolved = Resolver::resolve(&tree, &HashMap::new())
+                    .expect("Failed to resolve");
+
+                // Properties that changed (simulate PropertyBank change)
+                let changed_props =
+                    vec![PropertyName::try_new("pillar").expect("valid name")];
+
+                b.iter(|| {
+                    // Incremental resolution: update only affected properties
+                    let mut updated_count = 0;
+                    for schema in &resolved {
+                        // Check if schema has affected properties
+                        let has_affected = schema.properties.iter().any(|p| {
+                            changed_props.iter().any(|changed| {
+                                p.name.as_ref() == changed.as_str()
+                            })
+                        });
+
+                        if has_affected {
+                            let _updated =
+                                Resolver::resolve_affected_properties(
+                                    schema,
+                                    &changed_props,
+                                    &bank,
+                                )
+                                .expect("Incremental resolution failed");
+                            updated_count += 1;
+                        }
+                    }
+                    black_box(updated_count)
+                });
+            },
+        );
+
+        // Benchmark full resolution for comparison
+        group.bench_with_input(
+            BenchmarkId::new("full_pipeline", size.name),
+            size,
+            |b, size| {
+                let vault = generate_vault(size);
+                let config = bench_config(vault.path());
+
+                b.iter(|| {
+                    let ingestor = Ingestor::new(
+                        FsReader::new(vault.path().to_path_buf()),
+                        &config,
+                    );
+                    let raw_bank = ingestor
+                        .load_raw_property_bank()
+                        .expect("Failed to load bank");
+                    let raw_schemas = ingestor
+                        .scan_raw_schemas()
+                        .expect("Failed to scan schemas");
+
+                    let bank = PropertyBank::try_from_raw(raw_bank, None)
+                        .expect("Failed to validate bank");
+
+                    let schemas_with_ids: Vec<(SchemaId, RawSchema)> =
+                        raw_schemas
+                            .into_iter()
+                            .map(|(raw, _, _, _, _)| (SchemaId::new(), raw))
+                            .collect();
+
+                    let dereferencer = Dereferencer::new(&bank);
+                    let derefed = dereferencer
+                        .deref(schemas_with_ids)
+                        .expect("Failed to dereference");
+
+                    let tree = Extender::build(derefed, &HashMap::new())
+                        .expect("Failed to build DAG");
+
+                    let resolved = Resolver::resolve(&tree, &HashMap::new())
+                        .expect("Failed to resolve");
+
+                    black_box(resolved.len())
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_file_io_and_parse,
@@ -1018,5 +1222,7 @@ criterion_group!(
     bench_schema_lookup_serial,
     bench_schema_lookup_batch,
     bench_full_pipeline,
+    bench_find_schemas_using_properties,
+    bench_incremental_vs_full_resolution,
 );
 criterion_main!(benches);

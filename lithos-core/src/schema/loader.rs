@@ -198,7 +198,8 @@ impl<'db> Loader<'db> {
         let name_to_id = self.load_name_to_id_map()?;
 
         // ── Step 2: PropertyBank staleness check ────────────────────────────
-        let (bank, bank_stale) = self.load_property_bank(ingestor)?;
+        let (bank, bank_stale, changed_properties) =
+            self.load_property_bank(ingestor)?;
         let current_bank_version = bank.version();
 
         // ── Step 3: scan raw schemas ────────────────────────────────────────
@@ -224,6 +225,16 @@ impl<'db> Loader<'db> {
             );
         }
 
+        // ── Step 4b: Incremental resolution for bank-only changes ──────────
+        let (stale_for_full_resolution, incrementally_resolved) = self
+            .apply_incremental_resolution(
+                stale,
+                bank_stale,
+                &changed_properties,
+                &bank,
+                current_bank_version,
+            )?;
+
         // ── Step 5: load fresh schemas as known_parents ─────────────────────
         // Batch load: O(1) transaction for all fresh schemas
         let known_parents = self
@@ -234,20 +245,27 @@ impl<'db> Loader<'db> {
         // ── Step 6: pipeline (Dereferencer → Extender → Resolver) ──────────
         // Extract just (id, raw_schema) for dereferencer, keep timestamps
         // separate
-        let stale_with_times = stale;
+        let stale_with_times = stale_for_full_resolution;
         let stale_for_deref: Vec<(SchemaId, RawSchema)> = stale_with_times
             .iter()
             .map(|entry| (entry.0, entry.1.clone()))
             .collect();
 
-        let derefed = Dereferencer::new(&bank).deref(stale_for_deref)?;
-        let tree = Extender::build(derefed, &known_parents)?;
-        tracing::debug!(
-            root_count = tree.roots().len(),
-            total_count = tree.nodes().len(),
-            "schema tree built"
-        );
-        let resolved = Resolver::resolve(&tree, &known_parents)?;
+        let mut resolved = if stale_for_deref.is_empty() {
+            Vec::new()
+        } else {
+            let derefed = Dereferencer::new(&bank).deref(stale_for_deref)?;
+            let tree = Extender::build(derefed, &known_parents)?;
+            tracing::debug!(
+                root_count = tree.roots().len(),
+                total_count = tree.nodes().len(),
+                "schema tree built"
+            );
+            Resolver::resolve(&tree, &known_parents)?
+        };
+
+        // Combine full resolution and incremental resolution results
+        resolved.extend(incrementally_resolved);
 
         // Emit per-schema resolution events
         for stored in &resolved {
@@ -295,14 +313,25 @@ impl<'db> Loader<'db> {
     }
 
     /// Load property bank, checking staleness and rebuilding if needed.
+    ///
+    /// Returns tuple of (bank, `was_stale`, `changed_property_names`).
+    #[expect(
+        clippy::type_complexity,
+        reason = "Return tuple is clearest for internal pipeline orchestration"
+    )]
     fn load_property_bank(
         &self,
         ingestor: &Ingestor<'_>,
-    ) -> Result<(PropertyBank, bool), LoaderError> {
+    ) -> Result<
+        (PropertyBank, bool, Vec<super::property::PropertyName>),
+        LoaderError,
+    > {
         let stored_bank =
             self.query.get_property_bank().map_err(SchemaQueryError::from)?;
 
-        let (bank, bank_stale) = if let Some(stored) = stored_bank {
+        let (bank, bank_stale, changed_properties) = if let Some(stored) =
+            stored_bank
+        {
             let stored_version = stored.version();
             let is_stale = self
                 .query
@@ -322,6 +351,9 @@ impl<'db> Loader<'db> {
                     ingestor.load_raw_property_bank_with_metadata()?;
                 let rebuilt_bank =
                     PropertyBank::try_from_raw(raw_bank, Some(&stored))?;
+
+                // Compute changed properties for incremental resolution
+                let changed_props = rebuilt_bank.diff_property_bank(&stored);
 
                 // Persist raw property bank file
                 let raw_bank_file =
@@ -343,17 +375,18 @@ impl<'db> Loader<'db> {
                         version: rebuilt_bank.version(),
                     },
                 );
-                (rebuilt_bank, true)
+                (rebuilt_bank, true, changed_props)
             } else {
                 self.emit_property_bank(
                     &crate::schema::events::PropertyBankEvent::Fresh {
                         version: stored_version,
                     },
                 );
-                (stored, false)
+                (stored, false, Vec::new())
             }
         } else {
             // New bank (no stored version) - always requires resolution
+            // All properties are "changed" in this case
             self.emit_property_bank(
                 &crate::schema::events::PropertyBankEvent::Stale {
                     reason: crate::schema::events::StalenessReason::New,
@@ -386,10 +419,13 @@ impl<'db> Loader<'db> {
                     version: new_bank.version(),
                 },
             );
-            (new_bank, true)
+            // For new bank, consider all properties as changed
+            let all_props: Vec<_> =
+                new_bank.all().map(|p| p.name().clone()).collect();
+            (new_bank, true, all_props)
         };
 
-        Ok((bank, bank_stale))
+        Ok((bank, bank_stale, changed_properties))
     }
 
     /// Refine staleness by checking content hash for timestamp-stale schemas.
@@ -623,5 +659,105 @@ impl<'db> Loader<'db> {
             .map_err(SchemaCommandError::from)?;
 
         Ok(())
+    }
+
+    /// Apply incremental resolution for schemas affected by `PropertyBank`
+    /// changes.
+    ///
+    /// This method partitions stale schemas into two groups:
+    /// 1. Schemas with file changes → need full resolution
+    /// 2. Schemas with only bank changes → need incremental resolution
+    ///
+    /// For the second group, it applies `resolve_affected_properties()` to
+    /// update only the properties that reference changed bank properties.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Method needs bank version, changed properties, and bank to \
+                  apply incremental resolution"
+    )]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Tuple destructuring requires ref patterns"
+    )]
+    #[expect(
+        clippy::type_complexity,
+        reason = "Return tuple is clearest for pipeline result partitioning"
+    )]
+    fn apply_incremental_resolution(
+        &self,
+        stale: Vec<SchemaWithTimes>,
+        bank_stale: bool,
+        changed_properties: &[super::property::PropertyName],
+        bank: &PropertyBank,
+        current_bank_version: crate::schema::bank::BankVersion,
+    ) -> Result<(Vec<SchemaWithTimes>, Vec<StoredSchema>), LoaderError> {
+        // Early return if bank is not stale or no properties changed
+        if !bank_stale || changed_properties.is_empty() {
+            return Ok((stale, Vec::new()));
+        }
+
+        // Find schemas that reference changed properties
+        let affected_map = self
+            .query
+            .find_schemas_using_properties(changed_properties)
+            .map_err(SchemaQueryError::from)?;
+
+        // Partition stale schemas: file-changed vs. bank-only-changed
+        let mut full_resolution = Vec::new();
+        let mut incremental_ids = Vec::new();
+        let staleness_map = self
+            .query
+            .are_many_stale(
+                &stale
+                    .iter()
+                    .map(|(id, _, _, _hash, modified, created)| {
+                        (*id, *created, *modified)
+                    })
+                    .collect::<Vec<_>>(),
+                current_bank_version,
+            )
+            .map_err(SchemaQueryError::from)?;
+
+        for entry in stale {
+            let (id, _raw, _content, _hash, _modified, _created) = &entry;
+            // Schema is file-stale if marked stale even without bank staleness
+            // We check original staleness (before bank cascade)
+            let file_stale = staleness_map.get(id).copied().unwrap_or(true);
+
+            if !file_stale && affected_map.contains_key(id) {
+                // Schema file is fresh but references changed bank properties
+                incremental_ids.push(*id);
+            } else {
+                // Schema file changed OR doesn't reference changed properties
+                full_resolution.push(entry);
+            }
+        }
+
+        // Apply incremental resolution to bank-only-changed schemas
+        let mut resolved_incremental = Vec::new();
+        if !incremental_ids.is_empty() {
+            let stored_schemas = self
+                .query
+                .find_many_by_ids(&incremental_ids)
+                .map_err(SchemaQueryError::from)?;
+
+            #[expect(
+                clippy::iter_over_hash_type,
+                reason = "HashMap iteration order doesn't matter - we process \
+                          all affected schemas"
+            )]
+            for (id, affected_props) in &affected_map {
+                if let Some(stored) = stored_schemas.get(id) {
+                    let updated = Resolver::resolve_affected_properties(
+                        stored,
+                        affected_props,
+                        bank,
+                    )?;
+                    resolved_incremental.push(updated);
+                }
+            }
+        }
+
+        Ok((full_resolution, resolved_incremental))
     }
 }

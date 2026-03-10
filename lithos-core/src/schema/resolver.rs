@@ -260,6 +260,86 @@ impl Resolver {
     fn is_excluded(name: &PropertyName, excludes: &[Box<str>]) -> bool {
         excludes.iter().any(|e| e.as_ref() == name.as_str())
     }
+
+    /// Incrementally resolve affected properties in a schema when PropertyBank
+    /// changes.
+    ///
+    /// This is a performance optimization for the case where only PropertyBank
+    /// properties have changed, not the schema file itself. Instead of
+    /// re-resolving the entire schema from scratch, this method updates only
+    /// the properties that reference changed bank properties.
+    ///
+    /// # Arguments
+    ///
+    /// * `schema` - The existing resolved schema to update
+    /// * `affected_properties` - Names of properties in this schema that
+    ///   reference changed bank properties
+    /// * `bank` - The updated PropertyBank with new property definitions
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaError`] if any property lookup fails or if the property
+    /// is not found in the bank (indicates database inconsistency).
+    ///
+    /// **Internal API**: Public for benchmarking only.
+    #[doc(hidden)]
+    #[inline]
+    pub fn resolve_affected_properties(
+        schema: &StoredSchema,
+        affected_properties: &[PropertyName],
+        bank: &super::bank::PropertyBank,
+    ) -> Result<StoredSchema, SchemaError> {
+        if affected_properties.is_empty() {
+            return Ok(schema.clone());
+        }
+
+        // Build a set for O(1) lookup
+        let affected_set: std::collections::HashSet<&PropertyName> =
+            affected_properties.iter().collect();
+
+        // Update affected properties with new definitions from bank
+        let updated_properties: Result<Vec<StoredProperty>, SchemaError> =
+            schema
+                .properties
+                .iter()
+                .map(|stored_prop| {
+                    let prop_name = PropertyName::try_new(&stored_prop.name)?;
+
+                    // If this property is affected, look up new definition
+                    // from bank
+                    if affected_set.contains(&prop_name) {
+                        let bank_prop =
+                            bank.get(&prop_name).ok_or_else(|| {
+                                SchemaError::PropertyRefNotFound(format!(
+                                    "property_bank#/{}",
+                                    stored_prop.name
+                                ))
+                            })?;
+
+                        // Update the spec from the bank, keep other fields
+                        // (required, multi) Properties in schemas can override
+                        // optionality/multiplicity
+                        Ok(StoredProperty {
+                            id: bank_prop.id(),
+                            name: stored_prop.name.clone(),
+                            required: stored_prop.required,
+                            multi: stored_prop.multi,
+                            spec: bank_prop.spec().clone(),
+                        })
+                    } else {
+                        // Property not affected, keep as-is
+                        Ok(stored_prop.clone())
+                    }
+                })
+                .collect();
+
+        Ok(StoredSchema {
+            id: schema.id,
+            name: schema.name.clone(),
+            parent_id: schema.parent_id,
+            properties: updated_properties?,
+        })
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
