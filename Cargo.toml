@@ -34,7 +34,7 @@ serde_yaml = "0.9"
 toml = "0.8"
 redb = "3.1"
 rkyv = { version = "0.8", features = ["bytecheck", "std", "uuid-1", "unaligned"] }
-uuid = { version = "1.19", features = ["v7", "v5", "serde"] }
+uuid = { version = "1.22", features = ["v7", "v5", "serde"] }
 
 # Application Logic
 minijinja = "2.14"
