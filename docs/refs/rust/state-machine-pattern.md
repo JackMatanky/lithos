@@ -387,18 +387,27 @@ factory.machine = factory.machine.step();
 ### Schema Loading Pipeline
 
 **Requirements:**
-- 7 distinct phases (discover → parse → validate → graph → sort → resolve → project)
+- 8 distinct phases with strict ordering:
+  1. Discover files
+  2. Parse to `RawSchema`
+  3. Validate syntax
+  4. Expand `$ref` pointers via `PropertyBank`
+  5. Build dependency graph
+  6. Topological sort
+  7. Resolve inheritance (merge properties)
+  8. Project to storage
 - Each phase has different data and error types
-- Phases can't be skipped
-- Shared context (vault root, config, filesystem reader)
+- Phases can't be skipped (especially `$ref` expansion before resolution)
+- Shared context (vault root, config, filesystem reader, PropertyBank)
 
 **Pattern:** Generic state machine
 
 ```rust
-// The loader machine
+// The loader machine (shared context + generic state)
 struct SchemaLoader<S> {
     vault_root: PathBuf,
     fs_reader: Arc<dyn FsReader>,
+    property_bank: Arc<PropertyBank>,  // For $ref expansion
     config: Arc<Config>,
     state: S,
 }
@@ -409,11 +418,15 @@ struct Discovered {
 }
 
 struct Parsed {
-    raw_schemas: Vec<RawSchema>,
+    raw_schemas: Vec<RawSchema>,  // Contains $ref pointers
 }
 
 struct Validated {
-    schemas: Vec<Schema>,
+    schemas: Vec<Schema>,  // Syntax validated, still has $refs
+}
+
+struct Dereferenced {  // NEW: After $ref expansion
+    schemas: Vec<Schema>,  // $refs replaced with actual properties
 }
 
 struct Graphed {
@@ -427,7 +440,7 @@ struct Sorted {
 }
 
 struct Resolved {
-    resolved: Vec<ResolvedSchema>,
+    resolved: Vec<Schema>,  // Inheritance merged, fully resolved
 }
 
 // Initial state constructor
@@ -435,95 +448,210 @@ impl SchemaLoader<Discovered> {
     fn discover(
         vault_root: PathBuf,
         fs_reader: Arc<dyn FsReader>,
+        property_bank: Arc<PropertyBank>,
         config: Arc<Config>,
     ) -> Result<Self, DiscoveryError> {
         let files = fs_reader.discover_schemas(&vault_root)?;
         Ok(SchemaLoader {
             vault_root,
             fs_reader,
+            property_bank,
             config,
             state: Discovered { files },
         })
     }
 }
 
-// Transitions
+// Transitions (showing key phases)
 impl From<SchemaLoader<Discovered>> for Result<SchemaLoader<Parsed>, ParseError> {
-    // Implementation...
+    // Parse files into RawSchema
 }
 
-impl From<SchemaLoader<Parsed>> for Result<SchemaLoader<Validated>, ValidationError> {
-    // Implementation...
+impl From<SchemaLoader<Validated>> for Result<SchemaLoader<Dereferenced>, RefError> {
+    fn from(val: SchemaLoader<Validated>) -> Result<SchemaLoader<Dereferenced>, RefError> {
+        // Expand $ref pointers using PropertyBank
+        let schemas = val.state.schemas
+            .into_iter()
+            .map(|schema| val.property_bank.expand_refs(schema))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(SchemaLoader {
+            vault_root: val.vault_root,
+            fs_reader: val.fs_reader,
+            property_bank: val.property_bank,
+            config: val.config,
+            state: Dereferenced { schemas },
+        })
+    }
 }
 
 // Usage
-let loader = SchemaLoader::discover(vault_root, fs_reader, config)?
-    .into()?  // Parse
-    .into()?  // Validate
-    .into()?  // Build graph
+let loader = SchemaLoader::discover(vault_root, fs_reader, property_bank, config)?
+    .into()?  // Parse (File → RawSchema)
+    .into()?  // Validate (syntax check)
+    .into()?  // Dereference ($ref expansion) ← CRITICAL PHASE
+    .into()?  // Build graph (detect cycles)
     .into()?  // Topological sort
-    .into()?; // Resolve
+    .into()?; // Resolve (merge inheritance)
 
 loader.project(&storage)?;
 ```
 
 **Why this works:**
-- ✅ Can't skip phases - Type system enforces order
-- ✅ Each phase has its own error type
-- ✅ Shared context (vault_root, fs_reader, config) lives in `SchemaLoader<S>`
-- ✅ State-specific data lives in state types
-- ✅ Compile-time guarantees
+- ✅ Can't skip `$ref` expansion - Type system enforces it comes before graphing
+- ✅ Can't accidentally use schemas with unresolved `$ref`s
+- ✅ Each phase has its own error type (`RefError::PropertyNotFound`)
+- ✅ Shared context includes `PropertyBank` for all phases
+- ✅ State transitions are linear and enforced
+- ✅ Compile-time guarantees prevent invalid orderings
 
 ### Config Loading Pipeline
 
 **Requirements:**
-- Multiple phases (load → merge → resolve variables → validate → finalize)
-- Need to merge multiple config sources
-- Variable resolution has dependencies
-- Final config should be immutable
+- Hybrid loading strategy (similar to schema system):
+  - Check database first (cached, validated config)
+  - Only reload from files if stale (file mtime > cached timestamp)
+  - Prefer minimal parsing - resolve only what's needed
+- Multiple file sources (global, vault, environment, CLI args)
+- Hierarchical merging with precedence rules
+- Final config should be immutable and shareable
 
-**Pattern:** Generic state machine
+**Pattern:** Generic state machine (for full reload path)
 
 ```rust
 struct ConfigLoader<S> {
-    // Shared across all phases
-    default_config: Config,
+    // Shared context
+    storage: Arc<dyn ConfigStorage>,
+    fs_reader: Arc<dyn FsReader>,
+    figment: Figment,  // For hierarchical loading
     state: S,
+}
+
+// States for full reload path
+struct CacheChecked {
+    cached: Option<(Config, SystemTime)>,  // Cached config + timestamp
+    file_paths: Vec<(PathBuf, SystemTime)>,  // Files + mtimes
+}
+
+struct StaleDetected {
+    stale_files: Vec<PathBuf>,  // Only files that changed
 }
 
 struct Loaded {
     global: RawConfig,
     vault: Option<RawConfig>,
+    env: HashMap<String, String>,
 }
 
 struct Merged {
-    config: RawConfig,
-}
-
-struct Resolved {
-    config: RawConfig,  // Variables expanded
+    config: RawConfig,  // Hierarchically merged
 }
 
 struct Validated {
-    config: Config,  // Fully validated
+    config: Config,  // Validated, ready to use
 }
 
-struct Finalized {
-    config: Arc<Config>,  // Immutable, shareable
+struct Cached {
+    config: Arc<Config>,  // Cached in database + memory
 }
 
-impl ConfigLoader<Loaded> {
-    fn load_from_defaults() -> Result<Self, LoadError> {
-        // Implementation...
+// Initial state - check cache first
+impl ConfigLoader<CacheChecked> {
+    fn check_cache(
+        storage: Arc<dyn ConfigStorage>,
+        fs_reader: Arc<dyn FsReader>,
+        figment: Figment,
+    ) -> Result<Self, LoadError> {
+        let cached = storage.get_cached_config()?;
+        let file_paths = fs_reader.discover_config_files()?;
+
+        Ok(ConfigLoader {
+            storage,
+            fs_reader,
+            figment,
+            state: CacheChecked { cached, file_paths },
+        })
     }
 }
 
-// Transitions...
+// Transition: Determine if cache is stale
+impl ConfigLoader<CacheChecked> {
+    fn check_staleness(self) -> ConfigLoadResult {
+        match self.state.cached {
+            Some((config, cached_time)) => {
+                let stale_files: Vec<_> = self.state.file_paths
+                    .into_iter()
+                    .filter(|(_, mtime)| *mtime > cached_time)
+                    .map(|(path, _)| path)
+                    .collect();
+
+                if stale_files.is_empty() {
+                    // Cache is fresh - use it directly
+                    ConfigLoadResult::Fresh(config)
+                } else {
+                    // Cache is stale - need to reload
+                    ConfigLoadResult::Stale(ConfigLoader {
+                        storage: self.storage,
+                        fs_reader: self.fs_reader,
+                        figment: self.figment,
+                        state: StaleDetected { stale_files },
+                    })
+                }
+            }
+            None => {
+                // No cache - full reload needed
+                ConfigLoadResult::NotCached(ConfigLoader {
+                    storage: self.storage,
+                    fs_reader: self.fs_reader,
+                    figment: self.figment,
+                    state: StaleDetected {
+                        stale_files: self.state.file_paths.into_iter().map(|(p, _)| p).collect(),
+                    },
+                })
+            }
+        }
+    }
+}
+
+enum ConfigLoadResult {
+    Fresh(Arc<Config>),  // Cache hit - use directly
+    Stale(ConfigLoader<StaleDetected>),  // Reload needed
+    NotCached(ConfigLoader<StaleDetected>),  // First load
+}
+
+// Transitions for reload path...
+impl From<ConfigLoader<StaleDetected>> for Result<ConfigLoader<Loaded>, LoadError> {
+    // Only parse stale files, not all files
+}
+
 impl From<ConfigLoader<Loaded>> for ConfigLoader<Merged> {
-    fn from(val: ConfigLoader<Loaded>) -> Self {
-        // Merge global + vault configs
-    }
+    // Merge using Figment (global < vault < env < cli)
 }
+
+// Usage - hybrid approach
+let result = ConfigLoader::check_cache(storage, fs_reader, figment)?
+    .check_staleness();
+
+let config = match result {
+    ConfigLoadResult::Fresh(config) => config,  // Fast path - use cache
+    ConfigLoadResult::Stale(loader) | ConfigLoadResult::NotCached(loader) => {
+        // Slow path - reload and cache
+        loader
+            .into()?  // Load (only stale files)
+            .into()?  // Merge
+            .into()?  // Validate
+            .cache()?  // Save to database
+    }
+};
+```
+
+**Why this works:**
+- ✅ Optimizes for common case (cache hit) - no parsing needed
+- ✅ Only reloads what changed - not all files every time
+- ✅ Type system enforces cache check happens first
+- ✅ Can't accidentally skip staleness detection
+- ✅ Hierarchical merge (Figment) happens in dedicated phase
+- ✅ Database acts as projection/cache (same as schema system)
 ```
 
 ### When NOT to Use State Machines
