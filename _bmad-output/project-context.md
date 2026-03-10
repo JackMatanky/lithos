@@ -46,8 +46,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Code Quality & Standards
 - **clippy**: Enforces **cognitive complexity < 25** and custom quality lints (via `clippy.toml`).
 - **Definition of Done:**
-  - [ ] No file I/O in CQRS ports (verify with architecture tests).
-  - [ ] File ingestion uses `FileSource` trait (not direct `std::fs` in domain).
+  - [ ] No file I/O in Storage traits (verify with architecture tests).
+  - [ ] File ingestion uses `FsReader` trait (not direct `std::fs` in domain).
 - **rustfmt**: Enforces project-wide formatting and import sorting (via `rustfmt.toml`).
 - **nextest**: Optimized test runner for high-performance concurrent execution.
 - **tarpaulin**: Code coverage analysis tool targeting **80%+ coverage**.
@@ -69,28 +69,28 @@ _This file contains critical rules and patterns that AI agents must follow when 
     - Business contexts (note, schema, template) MUST NOT import each other.
     - Business contexts MAY depend on config context (user-configurable rules) and pure infrastructure (generic utilities).
   - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `lithos-cli`).
-- **Port-Based CQRS:**
-  - **Port Traits:** Each context defines split storage capabilities via `<Context>::ports::Query` and `<Context>::ports::Command` traits (e.g., `schema::ports::Query`, `schema::ports::Command`) with GATs for zero-copy reads.
-  - **Concrete Implementations:** Infrastructure provides concrete implementations (e.g., `schema::db_query::Query`, `schema::db_command::Command`).
-  - **No Generic Wrappers:** Direct use of concrete types (removed 1204 lines of boilerplate).
-  - **Loader Orchestration:** `schema::loader::Loader` orchestrates file → raw → resolved → DB pipeline.
-  - **Port Split Benefits:** Read-only test fakes don't implement writes, prevents interface bloat, enables future backend flexibility.
+- **Storage Pattern:**
+  - **Unified Storage Traits:** Each context defines a single `Storage` trait (e.g., `schema::Storage`, `note::Storage`) that provides both read and write operations.
+  - **Concrete Implementations:** Infrastructure provides concrete implementations (e.g., `schema::RedbStorage`, `schema::InMemoryStorage`).
+  - **No Split Ports:** Read and write operations coexist in one trait to avoid interface bloat and unnecessary abstraction layers.
+  - **Loader Orchestration:** Context-specific loaders (e.g., `schema::Loader`) orchestrate file → raw → domain → storage pipeline.
+  - **Testability:** Test fakes implement the full `Storage` trait, returning errors or no-ops for unneeded operations.
 - **File Ingestion Rules:**
-  - **CQRS ports MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
-  - **File ingestion MUST use `FileSource` trait**: Abstract over filesystem for testability.
-  - **Loader orchestrates pipelines**: Loader coordinates File → Raw → Resolved → Database.
-  - **Parsing and validation are distinct phases**: File → Raw (parsing) → Domain (validation) → DB.
+  - **Storage traits MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
+  - **File ingestion MUST use `FsReader` trait**: Abstract over filesystem for testability.
+  - **Loader orchestrates pipelines**: Loader coordinates File → Raw → Domain → Storage.
+  - **Parsing and validation are distinct phases**: File → Raw (parsing) → Domain (validation) → Storage.
 - **Read Model Pattern:**
-  - **StoredSchema is a read model**: No behavior, no events, no aggregate methods.
-  - **Loader handles orchestration**: All pipeline logic in `schema::loader`.
-  - **Event-driven pipeline**: Emit events at each stage for observability and reactive coordination.
+  - **`*View` types are optional read models**: Only introduce when domain shape is inefficient for storage/queries.
+  - **Loader handles orchestration**: All pipeline logic in context-specific loaders (e.g., `schema::loader`).
+  - **Functional composition**: Direct function calls with `Result<T, E>` for error propagation (no events required).
 - **Validation Boundaries:**
   - **Raw layer validates syntax only**: Regex, type system (serde).
   - **Resolution layer validates semantics**: Refs exist, no cycles, depth limits.
 - **Naming Convention:**
-  - Queries: `find_*`, `get_*`, `list_*`, `count_*`
-  - Commands: `save`, `delete`, `update`, `create`
-  - Ports: Prefer short, qualified names: `<Context>::ports::Query` and `<Context>::ports::Command` (e.g., `schema::ports::Query`, `schema::ports::Command`)
+  - Read operations: `find_*` (optional), `get_*` (singleton), `list_*` (multiple), `count_*` (aggregates), `with_*` (zero-copy closure-based)
+  - Write operations: `save`, `delete`, `update`, `create`, `*_many` (bulk operations)
+  - Storage traits: Prefer short, qualified names: `<Context>::Storage` (e.g., `schema::Storage`, `note::Storage`)
 - **Sync-First Execution Model:**
   - **Default to Sync:** Core domain logic and file I/O must be synchronous.
   - **Async at Edges:** Use `async` ONLY for LSP server, network I/O, or explicit concurrency (e.g., parallel indexing).
@@ -118,13 +118,14 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Numeric Safety:** Prohibit 'as' casting; use .try_into().context("...") to prevent silent truncation and handle errors gracefully. Avoid .expect() in production—propagate errors instead.
 
 #### Persistence & Performance
-- **rkyv Requirements:** Domain types MUST derive `Archive`, `Serialize`, `Deserialize`, and `CheckBytes` for zero-copy database operations. `Stored*` types used only when domain shape inefficient.
-- **Three-Shape Model (ADR 003):**
+- **rkyv Requirements:** Domain types MUST derive `Archive`, `Serialize`, `Deserialize`, and `CheckBytes` for zero-copy database operations. `*View` types used only when domain shape inefficient.
+- **Serialization Shapes Model (ADR 003):**
   - **`Raw*` (serde):** Unvalidated input from filesystem for tolerant parsing
   - **Domain (rkyv + serde feature-gated):** Validated entities with rkyv derives, used throughout application
-  - **`Stored*` (rkyv, optional):** Storage-optimized representation, only when domain shape causes performance issues
-  - **Default Strategy:** Store domain types directly; introduce `Stored*` only when profiling reveals inefficiency
-- **Zero-Copy Boundary:** Port traits use GATs (`type Archived<'a>`) to enable closure-based archived reads without leaking transaction lifetimes.
+  - **`Archived*` (implicit):** Zero-copy representation generated by `rkyv`, provides query optimization for free
+  - **`*View` (rkyv, optional):** Storage-optimized representation, only when domain shape causes performance issues
+  - **Default Strategy:** Store domain types directly; `Archived*` provides efficient reads; introduce `*View` only when profiling reveals inefficiency
+- **Zero-Copy Access:** Storage methods use closure-based access patterns (`with_archived`) to enable zero-copy reads without leaking transaction lifetimes.
 - **Note Identity:** Use **UUID v7** for primary keys in Redb to ensure time-ordered insertion and logical stability during file renames.
 - **Memory Strategy:** Favor `Box<str>` or `SmolStr` for immutable identifiers. Use `Cow<'a, str>` for metadata frequently read from storage buffers.
 
@@ -174,9 +175,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Strict Undefineds:** Use `UndefinedBehavior::Strict`. Template authors (agents) must ensure all variables are provided or have defaults in the MiniJinja context. Rendering code should fail fast on undefined variables.
 
 ### Testing Rules
-- **Port-Based Testing Hierarchy:**
+- **Storage-Based Testing Hierarchy:**
   - **Domain Tests:** Pure unit tests with zero dependencies. Focus on logic, invariants, and conversions.
-  - **Integration Tests:** Use `FakeStore` implementations to test CQRS logic without DB. Use real `RedbStore` with temporary DBs for full integration. Locations: Unit in `lithos-core/src/`, Integration in `lithos-core/tests/`.
+  - **Integration Tests:** Use `InMemoryStorage` implementations to test business logic without DB. Use real `RedbStorage` with temporary DBs for full integration. Locations: Unit in `lithos-core/src/`, Integration in `lithos-core/tests/`.
   - **E2E CLI Tests:** Use `assert_cmd` or similar to test the compiled binary against real temporary vaults.
 - **Authorized Entry Points:** All testing via Mise: Use 'mise run test' for all types, 'test:unit:<module>' for specific modules (config/note/schema/template/db/fs), 'test:coverage' for tarpaulin reports, 'test:bench' for criterion. Example: 'mise run test:unit:note'.
 - **Mandatory Tools:** nextest (runner), tarpaulin (coverage), insta (snapshots), pretty_assertions (diffs), criterion (benchmarks), proptest (property testing).
@@ -202,14 +203,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 #### Naming & Mechanical Sympathy
 - **Transparency:** Prohibit hiding expensive clones or allocations behind getter methods. If a method clones, it MUST be named `clone_x()` or `to_x_owned()`.
-- **Port/Adapter Naming:**
-  - **Ports:** Short, qualified names: `<Context>::ports::Query` and `<Context>::ports::Command` (e.g., `schema::ports::Query`, `schema::ports::Command`).
-  - **Adapters:** No suffix, use module disambiguation: `adapter::Command`, `adapter::Query` (not `CommandAdapter`, `QueryAdapter`).
-  - **Type Aliases (Three-Tier):**
-    - Domain: Generic, no adapter import: `pub type Command<C> = command::Command<C>`
-    - Adapter: Path stuttering removal: `pub type Command<'db> = command::Command<'db>`
-    - Public API: Module-qualified usage: `schema::Command`, `adapter::Command`
-- **DTO Isolation:** Use `Stored*` prefix for persistence DTOs (e.g., `StoredNote`). These live in the storage layer and never leak into the public domain API.
+- **Storage Trait Naming:**
+  - **Storage Traits:** Short, qualified names: `<Context>::Storage` (e.g., `schema::Storage`, `note::Storage`).
+  - **Implementations:** Descriptive suffixes: `RedbStorage`, `InMemoryStorage`, `FakeStorage`.
+  - **Type Aliases:** Use module-qualified usage for clarity: `schema::RedbStorage`, `note::InMemoryStorage`.
+- **View Type Isolation:** Use `*View` suffix for optional storage-optimized types (e.g., `SchemaView`). These live in the context module and are only used when domain shape is inefficient for storage/queries.
 
 #### Documentation as "Agent Glue"
 - **The "Why" Mandate:** Doc comments (`///`) must focus on **Invariants** and **Architectural Context**. (e.g. "Must be wrapped in `Arc` because it is shared across threads").
