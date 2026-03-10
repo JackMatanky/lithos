@@ -430,7 +430,7 @@ fn load_schema_file(path: &Path) -> Result<Schema, Error> {
 
 ```rust
 // ❌ NEVER DO THIS
-// In db/storage/schema.rs
+// In schema/adapters/storage.rs
 use crate::schema::Schema;  // Infrastructure importing domain
 
 impl SchemaStorage {

@@ -646,7 +646,7 @@ Database (redb, zero-copy bytes)
 ┌─────────────────────────────────────────┐
 │ *View (rkyv derives, optional)          │
 │ - Read-optimized cache representation   │
-│ - Location: db/views/<context>.rs       │
+│ - Location: <context>/view.rs           │
 │ - Only when queries need projection     │
 └─────────────────┬───────────────────────┘
                   │
@@ -816,13 +816,13 @@ Introduce `*View` types when mapping files to database queries:
 
 **Default Strategy:** Store domain types directly if they are simple, but use `*View` for read-optimized queries.
 
-**Location:** `db/views/<context>.rs`
+**Location:** `<context>/view.rs` or `<context>/views/<view_name>.rs`
 **Derives:** `rkyv::Archive + Serialize + Deserialize`
 
 **Example:**
 
 ```rust
-// db/views/schema.rs
+// schema/view.rs
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct SchemaView {
     pub name: Box<str>,  // Flattened from SchemaName newtype
@@ -847,7 +847,7 @@ fn parse_schema_yaml(path: &Path) -> Result<Schema, ParseError> {
     Schema::try_from(raw)  // Validate (TryFrom boundary)
 }
 
-// db/schema_adapter.rs - Domain → Storage
+// schema/adapters/storage.rs - Domain → Storage
 impl SchemaStorage for RedbSchemaStorage<'_> {
     fn save(&self, schema: &Schema) -> Result<(), DbError> {
         // Option 1: Store domain directly if simple
@@ -1026,7 +1026,7 @@ pub struct Schema {
     // Ergonomic, behavior-rich
 }
 
-// View type (in db/views/ or storage adapter)
+// View type (in <context>/view.rs or storage adapter)
 #[derive(Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
 pub struct SchemaView {
@@ -1051,9 +1051,9 @@ impl TryFrom<SchemaView> for Schema { /* ... */ }
 
 **Location:**
 
-- `db/views/schema.rs` - SchemaView and conversions
-- `db/views/note.rs` - NoteView and conversions
-- Or `db/<context>_storage.rs` if storing adapter and view type together
+- `schema/view.rs` - SchemaView and conversions
+- `note/view.rs` - NoteView and conversions
+- Or `<context>/adapters/storage.rs` if storing adapter and view type together
 
 ### Zero-Copy Idioms (Footguns to Avoid)
 

@@ -1,5 +1,5 @@
 ---
-name: domain-serialization-strategy-with-feature-gates
+name: domain-serialization-strategy
 status: accepted
 stakeholders: [Development Team, Architects, Jack (Developer)]
 date_proposed: 2026-01-14
@@ -8,7 +8,7 @@ date_implemented: pending
 date_updated: 2026-03-10
 ---
 
-# ADR 003: Domain Serialization Strategy with Feature Gates
+# ADR 003: Domain Serialization Strategy
 
 ## Context
 
@@ -30,7 +30,7 @@ The Lithos project requires serialization capabilities for multiple purposes:
 
 ### Three-Shape Serialization Model
 
-1. **Raw\* (serde only, optional per context)**: Unvalidated input from filesystem
+1. **`Raw*` (serde only, optional per context)**: Unvalidated input from filesystem
    - Purpose: Tolerant parsing from YAML/JSON files with nullable fields for better error messages
    - Location: `<context>/raw.rs`
    - Example: `RawSchema { name: Option<String>, properties: Option<Vec<...>> }`
@@ -42,9 +42,9 @@ The Lithos project requires serialization capabilities for multiple purposes:
    - **Has rkyv derives by default** for zero-copy database reads via storage implementations
    - Example: `Schema { name: SchemaName, properties: Vec<Property> }`
 
-3. **\*View (rkyv only, optional optimization)**: Storage-optimized projection representation
+3. **`*View` (rkyv only, optional optimization)**: Storage-optimized projection representation
    - Purpose: Represents a read-optimized projection in the expendable database cache. Used only when domain shape causes storage inefficiency (wrapper newtypes complicate indexing, deep nesting, Arc sharing issues)
-   - Location: `db/view/<context>.rs`
+   - Location: `<context>/view.rs` or `<context>/views/<view_name>.rs`
    - Mechanical conversions at storage boundary
    - Example: `SchemaView { name: String, properties: Vec<PropertyView> }` (flattened newtypes)
 
@@ -61,7 +61,7 @@ The Lithos project requires serialization capabilities for multiple purposes:
 
 ### Feature Flag Pattern
 
-```rust
+```toml
 // In lithos-core/Cargo.toml
 [features]
 default = []
@@ -70,7 +70,9 @@ serde = ["dep:serde"]
 [dependencies]
 serde = { version = "1.0", features = ["derive"], optional = true }
 rkyv = { version = "0.8", features = ["validation"] }  # Required for zero-copy DB
+```
 
+```rust
 // In domain entities (<context>/aggregate.rs)
 use rkyv::{Archive, Serialize, Deserialize};
 
@@ -91,9 +93,9 @@ pub struct Schema {
 lithos-core = { path = "../lithos-core", features = ["serde"] }
 ```
 
-**Storage Layer** (uses domain type directly or optional *View if needed):
+**Storage Layer** (uses domain type directly or optional `*View` if needed):
 ```rust
-// Default: Store domain type directly (in db/storage/schema.rs)
+// Default: Store domain type directly (in schema/adapters/storage.rs)
 impl schema::Storage for RedbSchemaStorage<'_> {
     type Archived<'a> = &'a ArchivedSchema;  // Domain type's archived form
 
@@ -104,7 +106,7 @@ impl schema::Storage for RedbSchemaStorage<'_> {
     }
 }
 
-// Optional: *View only when domain shape inefficient (in db/view/schema.rs)
+// Optional: *View only when domain shape inefficient (in schema/view.rs)
 #[derive(Archive, Serialize, Deserialize)]
 #[repr(C)]
 pub struct SchemaView {
@@ -146,7 +148,7 @@ impl From<SchemaView> for Schema { /* mechanical conversion */ }
 
 **Storage Separation Preserved**:
 
-- **Unified Traits**: Implementations in `db/` implement storage capabilities; domain never directly touches database
+- **Unified Traits**: Context storage adapters implement storage capabilities; generic `db/` provides infrastructure; domain never directly touches database
 - **Optional `*View`**: Only create when domain shape causes storage inefficiency (decision tree in Appendix A)
 - **Migration Control**: Treat domain type changes as potential migrations; use `*View` layer when migration risk is high
 
@@ -254,7 +256,7 @@ To mitigate this while allowing rkyv in domain, we adopt the three-shape model:
    - Purpose: parse user data and hold "maybe invalid" values.
    - Traits: serde derives only (feature-gated if needed).
 
-2. **`Domain*` (rkyv + behavior)**: runtime shapes.
+2. **Domain (rkyv + behavior)**: runtime shapes.
    - Purpose: invariants, ergonomics, and behavior.
    - Traits: rkyv derives for zero-copy access.
    - **Rule**: Changes here ARE potential migration events. Treat them with care.
