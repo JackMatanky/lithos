@@ -21,8 +21,8 @@ The note bounded context uses a CQRS split:
 Current implementation lives in:
 
 - `lithos-core/src/note/ports.rs` (traits `Command`, `Query`)
-- `lithos-core/src/note/command.rs` (DB-backed command impl)
-- `lithos-core/src/note/query.rs` (DB-backed query impl)
+- `lithos-core/src/note/db_command.rs` (DB-backed command adapter)
+- `lithos-core/src/note/db_query.rs` (DB-backed query adapter)
 - `lithos-core/src/db.rs` (redb + rkyv primitives)
 
 Persistence design:
@@ -78,24 +78,25 @@ Additional CQRS conventions for this repo:
 
 ### 2.1 User/Dev Experience
 
-Typical usage from application code:
+Typical usage from application code (adapters + ports):
 
 ```rust
-use lithos_core::note::{command, query};
-use lithos_core::note::aggregate::NotePath;
-use lithos_core::note::error::NoteCommandError; // proposed in this spec
+use std::sync::Arc;
+
+use lithos_core::note::db_command::CommandAdapter;
+use lithos_core::note::db_query::QueryAdapter;
+use lithos_core::note::paths::NotePath;
 use lithos_core::note::ports::{Command as _, Query as _};
 
-let cmd = command::Command::new(&db);
-let qry = query::Query::new(&db);
+let cmd = CommandAdapter::new(&db, &config);
+let qry = QueryAdapter::new(Arc::new(db));
 
-// `NoteCommandError` is the proposed command-side error type in this spec.
-fn example() -> Result<(), NoteCommandError> {
+fn example() -> Result<(), Box<dyn std::error::Error>> {
   let path = NotePath::try_from("notes/a.md")?;
-  let note = cmd.create(path)?;
+  let _id = cmd.record_parsed_note(&path, &parsed)?;
 
-  let _by_id = qry.find_by_id(note.id)?;
-  let _by_path = qry.find_by_path(note.path())?;
+  let _by_id = qry.find_by_id(_id)?;
+  let _by_path = qry.find_by_path(&path)?;
   Ok(())
 }
 ```
@@ -291,11 +292,12 @@ These structs make commands extensible (future fields) without breaking call sit
 
 #### Component: `note::ports::Command`
 
-- **Responsibility**: mutate note state and maintain indexes.
-- **Public Interface (target)**:
-  - `create(path: NotePath) -> Result<Note, NoteCommandError>` (or `create(cmd: CreateNote)`)
-  - `update(note: Note) -> Result<Note, NoteCommandError>` (or `update(cmd: UpdateNote)`)
-  - `delete(id: NoteId) -> Result<(), NoteCommandError>` (or `delete(cmd: DeleteNote)`)
+- **Responsibility**: persist projections and maintain indexes.
+- **Public Interface (current)**:
+  - `record_parsed_note(path: &NotePath, parsed: &ParsedNote) -> Result<NoteId, Error>`
+  - `record_deleted_note(id: NoteId) -> Result<(), Error>`
+  - `rebuild_note_indexes() -> Result<usize, Error>`
+  - `rebuild_task_indexes() -> Result<usize, Error>`
 
 - **Errors**
   - Domain validation: `NoteError` (wrapped)
@@ -303,11 +305,11 @@ These structs make commands extensible (future fields) without breaking call sit
 
 #### Component: `note::ports::Query`
 
-- **Responsibility**: retrieve note state.
+- **Responsibility**: retrieve stored projections.
 - **Public Interface (baseline, dyn-compatible)**:
-  - `find_by_id(id: NoteId) -> Result<Option<Note>, NoteQueryError>`
-  - `find_by_path(path: &NotePath) -> Result<Option<Note>, NoteQueryError>`
-  - `list() -> Result<Vec<Note>, NoteQueryError>`
+  - `find_by_id(id: NoteId) -> Result<Option<StoredNote>, Error>`
+  - `find_by_path(path: &NotePath) -> Result<Option<StoredNote>, Error>`
+  - `list() -> Result<Vec<StoredNote>, Error>`
 
 **Archived access strategy ("zero-deserialize")**
 
@@ -317,7 +319,7 @@ Therefore the zero-copy API is provided on a **concrete** query type (recommende
 
 Target concrete methods:
 
-- `with_archived_by_id<R>(&self, id: NoteId, f: impl FnOnce(&ArchivedNote) -> R) -> Result<Option<R>, NoteQueryError>`
+- `with_archived_by_id<R>(&self, id: NoteId, f: impl FnOnce(&ArchivedNote) -> R) -> Result<Option<R>, DbError>`
 
 This mirrors `Database::get` and allows returning small computed results without deserializing the full note.
 
@@ -343,13 +345,11 @@ Validation rule:
 
 #### Component: CQRS error types
 
-- `NoteCommandError`
+- `NoteCommandError` / `NoteQueryError` (application-level wrappers)
   - `Domain(#[from] NoteError)`
   - `Storage(#[from] DbError)`
-
-- `NoteQueryError`
-  - `Domain(#[from] NoteError)` (rare, but reserved for future)
-  - `Storage(#[from] DbError)`
+  - Note: port adapters currently return `DbError` directly; app services can
+    wrap into these enums when needed.
 
 Design rule: do not eagerly stringify DB errors inside CQRS paths.
 
@@ -375,9 +375,9 @@ To align with repo conventions, the primary API should be concrete types, with t
 
 Recommended structure:
 
-- `note::command::NoteCommand` (concrete) with inherent methods (`create`, `update`, `delete`)
-- `note::query::NoteQuery` (concrete) with inherent methods (`find_by_id`, `find_by_path`, `list`, `with_archived_by_id`)
-- `note::ports::{Command, Query}` traits remain for tests/alternate backends and can be implemented by the concrete types.
+- `note::db_command::CommandAdapter` (concrete) with inherent methods for projection writes.
+- `note::db_query::QueryAdapter` (concrete) with inherent methods for reads.
+- `note::ports::{Command, Query}` traits remain for tests/alternate backends and are implemented by the adapters.
 
 Practical guidance:
 
@@ -467,7 +467,7 @@ Validation & unchecked variants (dependability guidance):
 
 ### 4.1 Tactical Decisions
 
-#### Decision: Split errors by CQRS port (`NoteCommandError` vs `NoteQueryError`)
+#### Decision: Optional CQRS error wrappers (`NoteCommandError` / `NoteQueryError`)
 
 - **Context**: CQRS surfaces differ; command failure modes and query failure modes should remain distinct.
 - **Choice**: Define two error enums, both wrapping `NoteError` and `DbError`.
@@ -525,14 +525,14 @@ Phased plan (optimize for correctness first, then performance):
 
 1. **Error contract cleanup**
 
-- Introduce `NoteCommandError` and `NoteQueryError` as concrete enums.
+- Introduce `NoteCommandError` and `NoteQueryError` as concrete enums for application services.
 - Convert dependency errors into these types at the CQRS boundary (no stringification).
 - Ensure error variants preserve sources for debugging.
 
 2. **Query tiering + naming**
 
 - Keep `note::ports::Query` owned-tier and dyn-compatible.
-- Add concrete `NoteQuery::with_archived_by_id` (and similar helpers as needed) for hot paths.
+- Add concrete `QueryAdapter::with_archived_by_id` (and similar helpers as needed) for hot paths.
 - Update hot-path call sites (LSP/index scans) to use `with_archived_*` rather than `get_owned`.
 
 3. **Index maintenance hardening (commands)**

@@ -38,11 +38,8 @@ lithos/
 │       ├── patterns.rs         # Shared domain patterns (Aggregate, Command)
 │       ├── application/        # APPLICATION LAYER (Cross-context orchestration)
 │       │   ├── mod.rs          # Application service exports
-│       │   ├── vault.rs        # Vault facade (high-level API)
-│       │   └── services/       # Cross-context workflow services
-│       │       ├── note_creation.rs     # "Create note from template" workflow
-│       │       ├── vault_init.rs        # "Initialize vault" workflow
-│       │       └── batch_indexing.rs    # "Batch index notes" workflow
+│       │   ├── vault.rs        # VaultService (file discovery + note ingestion)
+│       │   └── services/       # Cross-context workflow services (future)
 │       ├── db/                 # PERSISTENCE INFRASTRUCTURE (redb + rkyv)
 │       │   ├── mod.rs          # Database module entry, core Database type
 │       │   ├── batch.rs        # Atomic write batch implementation
@@ -50,17 +47,14 @@ lithos/
 │       │   ├── reader.rs       # Zero-copy read helpers
 │       │   └── writer.rs       # Batch write helpers
 │       ├── note/               # NOTE CONTEXT (Knowledge Graph) - BUSINESS
-│       │   ├── mod.rs          # Public API, re-exports, type aliases (NoteQuery, NoteCommand)
-│       │   ├── aggregate.rs    # Note aggregate root (domain, has rkyv derives)
-│       │   ├── raw.rs          # RawNote (serde only, pre-validation, optional)
-│       │   ├── command.rs      # Command<C: NoteCommandPort> write operations
-│       │   ├── query.rs        # Query<Q: NoteQueryPort> read operations
-│       │   ├── ports.rs        # NoteQueryPort + NoteCommandPort traits with GATs
-│       │   ├── adapters/       # Storage adapters (context-scoped)
-│       │   │   ├── mod.rs
-│       │   │   ├── query.rs      # impl note::ports::Query
-│       │   │   ├── command.rs    # impl note::ports::Command
-│       │   │   └── stored.rs     # Optional: StoredNote (only if domain shape inefficient)
+│       │   ├── mod.rs          # Public API, re-exports
+│       │   ├── ports.rs        # Note Query/Command traits with GATs
+│       │   ├── db_command.rs   # Storage command adapter (impl ports::Command)
+│       │   ├── db_query.rs     # Storage query adapter (impl ports::Query)
+│       │   ├── db_tables.rs    # Table definitions
+│       │   ├── reader.rs       # Markdown reader + ParsedNote
+│       │   ├── loader.rs       # Parse + persist orchestration (no file discovery)
+│       │   ├── stored.rs       # StoredNote/StoredTask projections
 │       │   ├── frontmatter.rs  # Metadata extraction and parsing
 │       │   ├── link.rs         # Wiki-link and embed logic
 │       │   ├── structure.rs    # Markdown structural analysis

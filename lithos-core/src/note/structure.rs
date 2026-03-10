@@ -1,108 +1,69 @@
 //! Structural entities for document organization.
 //!
-//! Provides [`crate::note::structure::Heading`] and
-//! [`crate::note::structure::Section`] types to model the hierarchical
-//! and sequential structure of a markdown document.
+//! Provides [`crate::note::structure::Section`] to model sequential document
+//! structure alongside headings.
 
-//! Document structure subentities for Note aggregate.
-//!
-//! Provides heading-based organization and section content management for
-//! notes. Headings (H1-H6) mark structural points in the document, while
-//! sections group content between headings.
+#![expect(
+    clippy::exhaustive_enums,
+    reason = "rkyv generates exhaustive archived enums"
+)]
 
-use super::error::NoteError;
-use crate::note::types::{SourceByteOffset, SourceByteRange};
+use super::error::{LinkError, NoteError};
+use crate::note::{
+    heading::Heading,
+    position::{SourceByteOffset, SourceByteRange},
+};
 
-/// Represents a heading within a note.
-///
-/// Headings (H1-H6) mark structural points in the document.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::{structure::{Heading, HeadingLevel}, types::SourceByteOffset};
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let level = HeadingLevel::try_new(1)?;
-/// let heading = Heading::new(level, "Project Overview", SourceByteOffset::new(0))?;
-///
-/// assert_eq!(heading.text(), "Project Overview");
-/// # Ok(())
-/// # }
-/// ```
+/// Section kinds aligned with Obsidian cached metadata.
 #[derive(
-    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-pub struct Heading {
-    /// Heading level (1-6, corresponding to # through ######).
-    level: HeadingLevel,
-    /// Heading text content.
-    text: Box<str>,
-    /// Character position in the source document.
-    position: SourceByteOffset,
+pub enum SectionKind {
+    /// A paragraph block.
+    Paragraph,
+    /// A heading block.
+    Heading,
+    /// A list block.
+    List,
+    /// A code block.
+    Code,
+    /// A block quote.
+    BlockQuote,
+    /// A callout block quote.
+    Callout,
+    /// A table block.
+    Table,
+    /// A frontmatter block.
+    Frontmatter,
+    /// Other or unknown block type.
+    Other(Box<str>),
 }
 
-impl Heading {
-    /// Creates a new heading with validation.
-    ///
-    /// # Errors
-    /// Returns `NoteError::ValidationFailed` if heading text is empty.
-    #[inline]
-    pub fn new<T: Into<Box<str>>>(
-        level: HeadingLevel,
-        text: T,
-        position: SourceByteOffset,
-    ) -> Result<Self, NoteError> {
-        let text = text.into();
-        if text.trim().is_empty() {
-            return Err(NoteError::ValidationFailed(
-                "Heading text cannot be empty".to_owned(),
-            ));
-        }
-
-        Ok(Self {
-            level,
-            text,
-            position,
-        })
-    }
-
-    /// Returns the heading level.
-    #[inline]
-    #[must_use]
-    pub const fn level(&self) -> HeadingLevel {
-        self.level
-    }
-
-    /// Returns the character position in the source document.
-    #[inline]
-    #[must_use]
-    pub const fn position(&self) -> SourceByteOffset {
-        self.position
-    }
-
-    /// Returns the heading text content.
-    #[inline]
-    #[must_use]
-    pub fn text(&self) -> &str {
-        &self.text
-    }
-}
-
-/// Represents a content section within a note.
+/// Represents a top-level section within a note.
 ///
-/// A section groups content between headings. Content before the first
-/// heading is represented as a section with `None` for the heading field.
+/// Sections are derived from root-level markdown blocks (heading, paragraph,
+/// list, etc.). Heading sections optionally store their heading value.
 ///
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{structure::Section, types::SourceByteRange, types::SourceByteOffset};
-/// let range = SourceByteRange::new(SourceByteOffset::new(0), SourceByteOffset::new(50));
-/// let section = Section::new(None, "Initial preamble content.", range);
+/// # use lithos_core::note::{structure::{Section, SectionKind}, position::SourceByteRange, position::SourceByteOffset};
+/// let range = SourceByteRange::new(
+///     SourceByteOffset::new(0),
+///     SourceByteOffset::new(50),
+/// )?;
+/// let section = Section::new(SectionKind::Paragraph, None, range);
 ///
 /// assert!(section.heading().is_none());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
@@ -110,11 +71,11 @@ impl Heading {
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
 pub struct Section {
+    /// Section kind.
+    kind: SectionKind,
     /// Optional heading that starts this section (None for content before
     /// first heading).
     heading: Option<Heading>,
-    /// Section content text.
-    content: Box<str>,
     /// Character range in the source document.
     range: SourceByteRange,
 }
@@ -123,23 +84,23 @@ impl Section {
     /// Creates a new section.
     #[inline]
     #[must_use]
-    pub fn new<T: Into<Box<str>>>(
+    pub fn new(
+        kind: SectionKind,
         heading: Option<Heading>,
-        content: T,
         range: SourceByteRange,
     ) -> Self {
         Self {
+            kind,
             heading,
-            content: content.into(),
             range,
         }
     }
 
-    /// Returns the section content text.
+    /// Returns the section kind.
     #[inline]
     #[must_use]
-    pub fn content(&self) -> &str {
-        &self.content
+    pub const fn kind(&self) -> &SectionKind {
+        &self.kind
     }
 
     /// Returns the optional heading that starts this section.
@@ -157,284 +118,161 @@ impl Section {
     }
 }
 
-/// Heading level (1-6).
-///
-/// # Errors
-///
-/// Returns [`NoteError::Structure`] if the level is not between 1 and 6.
-///
-/// # Examples
-///
-/// ```
-/// # use lithos_core::note::structure::HeadingLevel;
-/// let h1 = HeadingLevel::try_new(1).unwrap();
-/// assert_eq!(h1.as_u8(), 1);
-///
-/// assert!(HeadingLevel::try_new(7).is_err());
-/// ```
+/// Validated block reference identifier.
 #[derive(
     Debug,
     Clone,
-    Copy,
     PartialEq,
     Eq,
-    PartialOrd,
-    Ord,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
-pub struct HeadingLevel(u8);
+pub struct BlockRefId(Box<str>);
 
-impl HeadingLevel {
-    /// Creates a new `HeadingLevel`, validating it is between 1 and 6.
+impl BlockRefId {
+    /// Creates a validated block reference identifier.
     ///
     /// # Errors
-    /// Returns an error if the level is not in the range 1..=6.
+    ///
+    /// Returns [`NoteError::Link`] if the identifier is empty.
     #[inline]
-    pub fn try_new(level: u8) -> Result<Self, NoteError> {
-        if (1..=6).contains(&level) {
-            Ok(Self(level))
-        } else {
-            Err(NoteError::Structure(format!(
-                "Invalid heading level: {level}. Must be between 1 and 6."
-            )))
+    pub fn try_new(value: &str) -> Result<Self, NoteError> {
+        let text = value.trim();
+        if text.is_empty() {
+            return Err(NoteError::Link(LinkError::EmptyBlockRefAnchor));
+        }
+        Ok(Self(text.into()))
+    }
+
+    /// Returns the block reference identifier as a string slice.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Block reference entry with position.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct BlockRef {
+    id: BlockRefId,
+    position: SourceByteOffset,
+}
+
+impl BlockRef {
+    /// Creates a new block reference entry.
+    #[inline]
+    #[must_use]
+    pub fn new(id: BlockRefId, position: SourceByteOffset) -> Self {
+        Self {
+            id,
+            position,
         }
     }
 
-    /// Returns the raw level value.
+    /// Returns the block reference id.
     #[inline]
     #[must_use]
-    pub const fn as_u8(&self) -> u8 {
-        self.0
+    pub fn id(&self) -> &BlockRefId {
+        &self.id
+    }
+
+    /// Returns the source byte position of the block id.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> SourceByteOffset {
+        self.position
     }
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::panic_in_result_fn,
-    reason = "Tests use assertions in Result-returning functions."
-)]
 mod tests {
     use super::*;
+    use crate::note::{heading::HeadingLevel, position::SourceByteOffset};
 
-    mod fixtures {
-        use super::*;
+    struct SectionWithTitle {
+        section: Section,
+        range: SourceByteRange,
+    }
 
-        pub fn summary_heading() -> Result<Heading, NoteError> {
-            Heading::new(
-                HeadingLevel::try_new(3)?,
-                "Summary".to_owned(),
-                SourceByteOffset::from(22u32),
-            )
-        }
+    fn intro_heading() -> Heading {
+        Heading::try_new(
+            HeadingLevel::try_new(1).unwrap(),
+            "Intro",
+            SourceByteOffset::from(0u32),
+        )
+        .unwrap()
+    }
 
-        pub fn implementation_heading() -> Result<Heading, NoteError> {
-            Heading::new(
-                HeadingLevel::try_new(2)?,
-                "Implementation".to_owned(),
-                SourceByteOffset::from(10u32),
-            )
-        }
+    fn section_with_intro() -> Section {
+        let start = SourceByteOffset::from(0u32);
+        let end = SourceByteOffset::from(4u32);
+        Section::new(
+            SectionKind::Heading,
+            Some(intro_heading()),
+            SourceByteRange::new(start, end).unwrap(),
+        )
+    }
 
-        pub fn intro_heading() -> Result<Heading, NoteError> {
-            Heading::new(
-                HeadingLevel::try_new(1)?,
-                "Intro".to_owned(),
-                SourceByteOffset::from(0u32),
-            )
-        }
-
-        pub fn section_with_intro() -> Result<Section, NoteError> {
-            let start = SourceByteOffset::from(0u32);
-            let end = SourceByteOffset::from(4u32);
-            Ok(Section::new(
-                Some(intro_heading()?),
-                "Body".to_owned(),
-                SourceByteRange::new(start, end),
-            ))
-        }
-
-        #[expect(
-            clippy::type_complexity,
-            reason = "Fixture returns a complex tuple for test setup \
-                      convenience."
-        )]
-        pub fn section_with_title()
-        -> Result<(Section, Option<Heading>, SourceByteRange), NoteError>
-        {
-            let heading = Some(Heading::new(
-                HeadingLevel::try_new(1)?,
+    fn section_with_title() -> SectionWithTitle {
+        let heading = Some(
+            Heading::try_new(
+                HeadingLevel::try_new(1).unwrap(),
                 "Title",
                 SourceByteOffset::from(0u32),
-            )?);
-            let range = SourceByteRange::new(
-                SourceByteOffset::from(0u32),
-                SourceByteOffset::from(15u32),
-            );
-            let section =
-                Section::new(heading.clone(), "Section content", range);
-            Ok((section, heading, range))
+            )
+            .unwrap(),
+        );
+        let range = SourceByteRange::new(
+            SourceByteOffset::from(0u32),
+            SourceByteOffset::from(15u32),
+        )
+        .unwrap();
+        let section = Section::new(SectionKind::Heading, heading, range);
+        SectionWithTitle {
+            section,
+            range,
         }
     }
 
-    mod heading {
-        use super::*;
-
-        #[test]
-        fn heading_level_accessor_returns_level() -> Result<(), NoteError> {
-            let heading = fixtures::summary_heading()?;
-            assert_eq!(heading.level().as_u8(), 3, "Heading level should be 3");
-            Ok(())
-        }
-
-        #[test]
-        fn heading_text_accessor_returns_text() -> Result<(), NoteError> {
-            let heading = fixtures::summary_heading()?;
-            assert_eq!(
-                heading.text(),
-                "Summary",
-                "Heading text should be 'Summary'"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn heading_position_accessor_returns_position() -> Result<(), NoteError>
-        {
-            let heading = fixtures::summary_heading()?;
-            assert_eq!(
-                heading.position(),
-                SourceByteOffset::from(22u32),
-                "Heading position should be 22"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn new_heading_sets_level() -> Result<(), NoteError> {
-            let heading = fixtures::implementation_heading()?;
-            assert_eq!(heading.level().as_u8(), 2, "Heading level should be 2");
-            Ok(())
-        }
-
-        #[test]
-        fn new_heading_sets_text() -> Result<(), NoteError> {
-            let heading = fixtures::implementation_heading()?;
-            assert_eq!(
-                heading.text(),
-                "Implementation",
-                "Heading text should be 'Implementation'"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn new_heading_sets_position() -> Result<(), NoteError> {
-            let heading = fixtures::implementation_heading()?;
-            assert_eq!(
-                heading.position(),
-                SourceByteOffset::from(10u32),
-                "Heading position should be 10"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn heading_level_validation_rejects_invalid_values() {
-            let level = 7;
-            let result = HeadingLevel::try_new(level);
-            assert!(
-                result.is_err(),
-                "Invalid heading level (7) should be rejected"
-            );
-        }
-
-        #[test]
-        fn new_returns_error_for_empty_text() -> Result<(), NoteError> {
-            let level = HeadingLevel::try_new(1)?;
-            let text = "   ".to_owned();
-            let pos = SourceByteOffset::from(0u32);
-            let result = Heading::new(level, text, pos);
-            assert!(
-                matches!(result, Err(NoteError::ValidationFailed(_))),
-                "Empty heading text should be rejected, got: {result:?}"
-            );
-            Ok(())
-        }
+    #[test]
+    fn section_heading_accessor_returns_heading() {
+        let section = section_with_intro();
+        assert!(
+            matches!(section.heading(), Some(heading) if heading.text() == "Intro"),
+            "Section heading text should be 'Intro'"
+        );
     }
 
-    mod section {
-        use super::*;
+    #[test]
+    fn section_range_accessor_returns_range() {
+        let SectionWithTitle {
+            section,
+            range,
+        } = section_with_title();
+        assert_eq!(section.range(), range, "Section range should match");
+    }
 
-        #[test]
-        fn section_content_accessor_returns_content() -> Result<(), NoteError> {
-            let section = fixtures::section_with_intro()?;
-            assert_eq!(
-                section.content(),
-                "Body",
-                "Section content should be 'Body'"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn section_heading_accessor_returns_heading() -> Result<(), NoteError> {
-            let section = fixtures::section_with_intro()?;
-            assert!(
-                matches!(section.heading(), Some(heading) if heading.text() == "Intro"),
-                "Section heading text should be 'Intro'"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn section_range_accessor_returns_range() -> Result<(), NoteError> {
-            let section = fixtures::section_with_intro()?;
-            let expected_range = SourceByteRange::new(
-                SourceByteOffset::from(0u32),
-                SourceByteOffset::from(4u32),
-            );
-            assert_eq!(
-                section.range(),
-                expected_range,
-                "Section range should be 0..4"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn new_section_sets_heading() -> Result<(), NoteError> {
-            let (section, heading, _range) = fixtures::section_with_title()?;
-            assert_eq!(
-                section.heading(),
-                heading.as_ref(),
-                "Section heading should match input"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn new_section_sets_content() -> Result<(), NoteError> {
-            let (section, _heading, _range) = fixtures::section_with_title()?;
-            assert_eq!(
-                section.content(),
-                "Section content",
-                "Section content should match input"
-            );
-            Ok(())
-        }
-
-        #[test]
-        fn new_section_sets_range() -> Result<(), NoteError> {
-            let (section, _heading, range) = fixtures::section_with_title()?;
-            assert_eq!(
-                section.range(),
-                range,
-                "Section range should match input"
-            );
-            Ok(())
-        }
+    #[test]
+    fn section_heading_none() {
+        let range = SourceByteRange::new(
+            SourceByteOffset::from(0u32),
+            SourceByteOffset::from(10u32),
+        )
+        .unwrap();
+        let section = Section::new(SectionKind::Paragraph, None, range);
+        assert!(section.heading().is_none(), "Heading should be None");
     }
 }

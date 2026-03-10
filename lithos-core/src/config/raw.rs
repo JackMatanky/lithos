@@ -79,6 +79,8 @@ pub struct RawTaskConfig {
     pub fields: Option<HashMap<String, RawFieldSpec>>,
     /// Configuration for indexing task fields.
     pub indexing: Option<RawIndexingConfig>,
+    /// Configuration for task dependencies.
+    pub dependencies: Option<RawTaskDependencies>,
 }
 
 /// Configuration for date fields in tasks.
@@ -156,6 +158,14 @@ pub enum RawFieldSpec {
 pub struct RawIndexingConfig {
     /// List of field keywords that should be indexed for querying.
     pub indexed_fields: Option<Vec<String>>,
+}
+
+/// Raw task dependency configuration.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawTaskDependencies {
+    /// Whether task dependencies are enabled.
+    pub enabled: Option<bool>,
 }
 
 /// Raw trusted vaults configuration.

@@ -14,9 +14,10 @@
 use std::collections::HashMap;
 
 use super::{
-    error::{FrontmatterError, NoteError},
+    error::{FrontmatterError, FrontmatterParseError},
     value::FieldValue,
 };
+use crate::config::frontmatter::FrontmatterKey;
 
 /// Represents YAML/TOML metadata extracted from a note header.
 ///
@@ -37,8 +38,10 @@ use super::{
 /// let mut fields = HashMap::new();
 /// fields.insert("status".into(), FieldValue::String("draft".into()));
 ///
-/// let fm = Frontmatter::new(fields)?;
-/// assert!(fm.has("status"));
+/// let fm = Frontmatter::new(fields);
+/// let key =
+///     lithos_core::config::frontmatter::FrontmatterKey::try_new("status")?;
+/// assert!(fm.has(&key));
 /// # Ok(())
 /// # }
 /// ```
@@ -52,34 +55,195 @@ pub struct Frontmatter {
     fields: HashMap<Box<str>, FieldValue>,
 }
 
+/// Input format for frontmatter parsing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrontmatterFormat {
+    /// YAML frontmatter block.
+    Yaml,
+    /// TOML frontmatter block.
+    Toml,
+}
+
 impl Frontmatter {
-    /// Creates a new [`Frontmatter`] instance from a field map.
+    /// Parses a frontmatter block into structured fields.
     ///
     /// # Errors
     ///
-    /// Currently infallible, but returns [`Result`] for future structural
-    /// validation.
+    /// Returns [`FrontmatterParseError`] if the content cannot be parsed or
+    /// converted into supported field values.
+    pub(crate) fn parse(
+        format: FrontmatterFormat,
+        text: &str,
+    ) -> Result<Self, FrontmatterParseError> {
+        let fields =
+            match format {
+                FrontmatterFormat::Yaml => {
+                    let yaml_value: serde_yaml::Value =
+                        if let Ok(value) = serde_yaml::from_str(text) {
+                            value
+                        } else {
+                            let sanitized = sanitize_yaml_obsidian_links(text);
+                            serde_yaml::from_str(&sanitized).map_err(|_e| {
+                                FrontmatterParseError::InvalidYaml {
+                                    reason: "failed to parse yaml",
+                                }
+                            })?
+                        };
+                    Self::yaml_to_field_map(&yaml_value)?
+                }
+                FrontmatterFormat::Toml => {
+                    let toml_value: toml::Value = toml::from_str(text)
+                        .map_err(|_e| FrontmatterParseError::InvalidToml {
+                            reason: "failed to parse toml",
+                        })?;
+                    Self::toml_to_field_map(&toml_value)?
+                }
+            };
+
+        Ok(Self::new(fields))
+    }
+
+    /// Creates a new [`Frontmatter`] instance from a field map.
     #[inline]
-    pub fn new(
-        fields: HashMap<Box<str>, FieldValue>,
-    ) -> Result<Self, NoteError> {
-        Ok(Self {
+    #[must_use]
+    pub fn new(fields: HashMap<Box<str>, FieldValue>) -> Self {
+        Self {
             fields,
-        })
+        }
     }
 
     /// Returns a reference to the value for the given key, if it exists.
     #[inline]
     #[must_use]
-    pub fn get(&self, key: &str) -> Option<&FieldValue> {
-        self.fields.get(key)
+    pub fn get(&self, key: &FrontmatterKey) -> Option<&FieldValue> {
+        self.fields.get(key.as_str())
     }
 
     /// Returns `true` if the frontmatter contains a field with the given key.
     #[inline]
     #[must_use]
-    pub fn has(&self, key: &str) -> bool {
+    pub fn has(&self, key: &FrontmatterKey) -> bool {
+        self.fields.contains_key(key.as_str())
+    }
+
+    /// Returns a reference to the value for the given raw key, if it exists.
+    #[inline]
+    #[must_use]
+    pub fn get_raw(&self, key: &str) -> Option<&FieldValue> {
+        self.fields.get(key)
+    }
+
+    /// Returns `true` if the frontmatter contains a field with the given raw
+    /// key.
+    #[inline]
+    #[must_use]
+    pub fn has_raw(&self, key: &str) -> bool {
         self.fields.contains_key(key)
+    }
+
+    #[inline]
+    #[must_use]
+    pub(crate) fn fields(&self) -> FrontmatterFields<'_> {
+        FrontmatterFields {
+            inner: self.fields.iter(),
+        }
+    }
+
+    fn yaml_to_field_map(
+        value: &serde_yaml::Value,
+    ) -> Result<HashMap<Box<str>, FieldValue>, FrontmatterParseError> {
+        let map =
+            value.as_mapping().ok_or(FrontmatterParseError::NotYamlMapping)?;
+
+        let mut fields = HashMap::with_capacity(map.len());
+        for (key, value_item) in map {
+            let key_str =
+                key.as_str().ok_or(FrontmatterParseError::NonStringKey)?;
+
+            let field_value =
+                FieldValue::try_from_yaml(value_item).map_err(|_error| {
+                    FrontmatterParseError::InvalidYamlValue {
+                        reason: "invalid yaml value",
+                    }
+                })?;
+
+            fields.insert(key_str.into(), field_value);
+        }
+
+        Ok(fields)
+    }
+
+    fn toml_to_field_map(
+        value: &toml::Value,
+    ) -> Result<HashMap<Box<str>, FieldValue>, FrontmatterParseError> {
+        let table =
+            value.as_table().ok_or(FrontmatterParseError::NotTomlTable)?;
+
+        let mut fields = HashMap::with_capacity(table.len());
+        for (key, value_item) in table {
+            let field_value = Self::field_value_from_toml(value_item)?;
+            fields.insert(key.as_str().into(), field_value);
+        }
+
+        Ok(fields)
+    }
+
+    fn field_value_from_toml(
+        value: &toml::Value,
+    ) -> Result<FieldValue, FrontmatterParseError> {
+        if let Some(text) = value.as_str() {
+            return Ok(FieldValue::String(text.into()));
+        }
+        if let Some(number) = value.as_integer() {
+            const MAX_SAFE_INTEGER: u64 = 0x0020_0000_0000_0000;
+            let magnitude = number.unsigned_abs();
+            if magnitude > MAX_SAFE_INTEGER {
+                return Err(FrontmatterParseError::InvalidTomlValue {
+                    reason: "integer value exceeds safe f64 range",
+                });
+            }
+
+            #[expect(
+                clippy::as_conversions,
+                reason = "checked MAX_SAFE_INTEGER ensures exact f64"
+            )]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "checked MAX_SAFE_INTEGER ensures exact f64"
+            )]
+            let parsed = number as f64;
+            return Ok(FieldValue::Number(parsed));
+        }
+        if let Some(number) = value.as_float() {
+            return Ok(FieldValue::Number(number));
+        }
+        if let Some(value) = value.as_bool() {
+            return Ok(FieldValue::Boolean(value));
+        }
+        if let Some(datetime) = value.as_datetime() {
+            return Ok(FieldValue::String(datetime.to_string().into()));
+        }
+        if let Some(values) = value.as_array() {
+            let mut items = Vec::with_capacity(values.len());
+            for item in values {
+                items.push(Self::field_value_from_toml(item)?);
+            }
+            return Ok(FieldValue::Array(items));
+        }
+        if let Some(table) = value.as_table() {
+            let mut obj = HashMap::with_capacity(table.len());
+            for (key, value_item) in table {
+                obj.insert(
+                    key.as_str().into(),
+                    Self::field_value_from_toml(value_item)?,
+                );
+            }
+            return Ok(FieldValue::Object(obj));
+        }
+
+        Err(FrontmatterParseError::InvalidTomlValue {
+            reason: "unsupported toml value",
+        })
     }
 
     /// Strictly extracts a typed value from frontmatter.
@@ -96,19 +260,19 @@ impl Frontmatter {
     #[inline]
     #[expect(
         private_bounds,
-        reason = "FromFieldValue is an internal adapter trait that should not \
-                  be public"
+        reason = "TryFromFieldValue is an internal adapter trait that should \
+                  not be public"
     )]
-    pub fn try_get<T: FromFieldValue>(
+    pub fn try_get<T: TryFromFieldValue>(
         &self,
-        key: &str,
+        key: &FrontmatterKey,
     ) -> Result<Option<T>, FrontmatterError> {
         let Some(value) = self.get(key) else {
             return Ok(None);
         };
-        T::from_value(value)
+        T::try_from_value(value)
             .map(Some)
-            .map_err(|err| Self::with_key_context(key, err))
+            .map_err(|err| Self::with_key_context(key.as_str(), err))
     }
 
     /// Strictly extracts a required typed value from frontmatter.
@@ -119,15 +283,15 @@ impl Frontmatter {
     #[inline]
     #[expect(
         private_bounds,
-        reason = "FromFieldValue is an internal adapter trait that should not \
-                  be public"
+        reason = "TryFromFieldValue is an internal adapter trait that should \
+                  not be public"
     )]
-    pub fn try_get_required<T: FromFieldValue>(
+    pub fn try_get_required<T: TryFromFieldValue>(
         &self,
-        key: &str,
+        key: &FrontmatterKey,
     ) -> Result<T, FrontmatterError> {
         self.try_get(key)?.ok_or_else(|| FrontmatterError::Missing {
-            key: key.into(),
+            key: key.as_str().into(),
         })
     }
 
@@ -142,7 +306,7 @@ impl Frontmatter {
     #[inline]
     pub fn try_get_string_vec_strict(
         &self,
-        key: &str,
+        key: &FrontmatterKey,
     ) -> Result<Vec<Box<str>>, FrontmatterError> {
         self.try_get_required::<Vec<Box<str>>>(key)
     }
@@ -159,22 +323,22 @@ impl Frontmatter {
     #[inline]
     #[expect(
         private_bounds,
-        reason = "FromFieldValueRef is an internal adapter trait that should \
-                  not be public"
+        reason = "TryFromFieldValueRef is an internal adapter trait that \
+                  should not be public"
     )]
     pub fn try_get_ref<'frontmatter, T>(
         &'frontmatter self,
-        key: &str,
+        key: &FrontmatterKey,
     ) -> Result<Option<T>, FrontmatterError>
     where
-        T: FromFieldValueRef<'frontmatter>,
+        T: TryFromFieldValueRef<'frontmatter>,
     {
         let Some(value) = self.get(key) else {
             return Ok(None);
         };
-        T::from_value_ref(value)
+        T::try_from_value_ref(value)
             .map(Some)
-            .map_err(|err| Self::with_key_context(key, err))
+            .map_err(|err| Self::with_key_context(key.as_str(), err))
     }
 
     /// Strictly extracts a required *borrowed* typed value from frontmatter.
@@ -185,18 +349,18 @@ impl Frontmatter {
     #[inline]
     #[expect(
         private_bounds,
-        reason = "FromFieldValueRef is an internal adapter trait that should \
-                  not be public"
+        reason = "TryFromFieldValueRef is an internal adapter trait that \
+                  should not be public"
     )]
     pub fn try_get_required_ref<'frontmatter, T>(
         &'frontmatter self,
-        key: &str,
+        key: &FrontmatterKey,
     ) -> Result<T, FrontmatterError>
     where
-        T: FromFieldValueRef<'frontmatter>,
+        T: TryFromFieldValueRef<'frontmatter>,
     {
         self.try_get_ref(key)?.ok_or_else(|| FrontmatterError::Missing {
-            key: key.into(),
+            key: key.as_str().into(),
         })
     }
 
@@ -207,8 +371,7 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Option<&str> {
-        self.get(config.frontmatter().title().as_str())
-            .and_then(FieldValue::as_str)
+        self.get(config.frontmatter().title()).and_then(FieldValue::as_str)
     }
 
     /// Returns the file class of the note, using the configured key.
@@ -218,20 +381,32 @@ impl Frontmatter {
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Option<&str> {
-        self.get(config.frontmatter().file_class().as_str())
-            .and_then(FieldValue::as_str)
+        self.get(config.frontmatter().file_class()).and_then(FieldValue::as_str)
+    }
+
+    /// Returns a borrowed iterator over aliases.
+    ///
+    /// This is zero-copy; use [`Frontmatter::aliases_owned`] when you need
+    /// owned values.
+    #[inline]
+    #[must_use]
+    pub fn aliases<'frontmatter>(
+        &'frontmatter self,
+        config: &crate::config::aggregate::Config,
+    ) -> AliasValues<'frontmatter> {
+        AliasValues::new(self.get(config.frontmatter().alias()))
     }
 
     /// Returns the aliases of the note as a vector of boxed strings.
+    ///
+    /// This allocates; prefer [`Frontmatter::aliases`] in hot paths.
     #[inline]
     #[must_use]
-    pub fn aliases(
+    pub fn aliases_owned(
         &self,
         config: &crate::config::aggregate::Config,
     ) -> Vec<Box<str>> {
-        self.get(config.frontmatter().alias().as_str())
-            .and_then(as_string_array_lossy)
-            .unwrap_or_default()
+        self.aliases(config).map(Into::into).collect()
     }
 
     #[inline]
@@ -265,6 +440,86 @@ impl Frontmatter {
     }
 }
 
+fn sanitize_yaml_obsidian_links(text: &str) -> String {
+    let mut output = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let line_end = line.trim_end_matches(['\n', '\r']);
+        let line_ending = line.get(line_end.len()..).unwrap_or("");
+        let trimmed = line_end.trim_start();
+        let indent_len = line_end.len().saturating_sub(trimmed.len());
+        let indent = line_end.get(..indent_len).unwrap_or("");
+
+        if let Some(updated) = sanitize_yaml_list_item(trimmed, indent) {
+            output.push_str(&updated);
+            output.push_str(line_ending);
+            continue;
+        }
+
+        if let Some(updated) = sanitize_yaml_mapping_entry(trimmed, indent) {
+            output.push_str(&updated);
+            output.push_str(line_ending);
+            continue;
+        }
+
+        output.push_str(line_end);
+        output.push_str(line_ending);
+    }
+    output
+}
+
+fn sanitize_yaml_list_item(line: &str, indent: &str) -> Option<String> {
+    let rest = line.strip_prefix('-')?.trim_start();
+    if !is_unquoted_obsidian_link(rest) {
+        return None;
+    }
+    let mut updated = String::with_capacity(
+        indent.len().saturating_add(rest.len()).saturating_add(4),
+    );
+    updated.push_str(indent);
+    updated.push_str("- ");
+    updated.push('"');
+    updated.push_str(rest);
+    updated.push('"');
+    Some(updated)
+}
+
+fn sanitize_yaml_mapping_entry(line: &str, indent: &str) -> Option<String> {
+    let colon_index = line.find(':')?;
+    let split_index = colon_index.saturating_add(1);
+    let (key, rest) = line.split_at(split_index);
+    let value = rest.trim_start();
+    if value.is_empty() || value.starts_with('|') || value.starts_with('>') {
+        return None;
+    }
+    if !is_unquoted_obsidian_link(value) {
+        return None;
+    }
+    let whitespace_len = rest.len().saturating_sub(value.len());
+    let whitespace = rest.get(..whitespace_len).unwrap_or("");
+    let mut updated = String::with_capacity(
+        indent
+            .len()
+            .saturating_add(key.len())
+            .saturating_add(whitespace.len())
+            .saturating_add(value.len())
+            .saturating_add(2),
+    );
+    updated.push_str(indent);
+    updated.push_str(key);
+    updated.push_str(whitespace);
+    updated.push('"');
+    updated.push_str(value);
+    updated.push('"');
+    Some(updated)
+}
+
+fn is_unquoted_obsidian_link(value: &str) -> bool {
+    if value.starts_with('"') || value.starts_with('\'') {
+        return false;
+    }
+    value.starts_with("[[") || value.starts_with("![[")
+}
+
 /// Adapter trait for frontmatter-specific conversions from [`FieldValue`].
 ///
 /// This trait provides frontmatter-specific error handling by converting
@@ -273,53 +528,53 @@ impl Frontmatter {
 ///
 /// # Implementation Note
 ///
-/// This trait mirrors [`super::value::FromFieldValue`] but returns
+/// This trait mirrors [`super::value::TryFromFieldValue`] but returns
 /// [`FrontmatterError`] instead of [`super::value::FieldValueError`].
 /// The blanket implementation adapts all types implementing
-/// [`super::value::FromFieldValue`].
-pub(super) trait FromFieldValue: Sized {
+/// [`super::value::TryFromFieldValue`].
+pub(super) trait TryFromFieldValue: Sized {
     /// Attempts to extract a value of type `Self` from a [`FieldValue`].
     ///
     /// # Errors
     ///
     /// Returns a [`FrontmatterError`] describing why the conversion failed.
-    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError>;
 }
 
 /// Adapter trait for frontmatter-specific borrowed conversions from
 /// [`FieldValue`].
 ///
-/// This trait mirrors [`super::value::FromFieldValueRef`] but returns
+/// This trait mirrors [`super::value::TryFromFieldValueRef`] but returns
 /// [`FrontmatterError`] instead of [`super::value::FieldValueError`].
 /// The blanket implementation adapts all types implementing
-/// [`super::value::FromFieldValueRef`].
-pub(super) trait FromFieldValueRef<'frontmatter>: Sized {
+/// [`super::value::TryFromFieldValueRef`].
+pub(super) trait TryFromFieldValueRef<'frontmatter>: Sized {
     /// Attempts to extract a value of type `Self` from a borrowed
     /// [`FieldValue`].
     ///
     /// # Errors
     ///
     /// Returns a [`FrontmatterError`] describing why the conversion failed.
-    fn from_value_ref(
+    fn try_from_value_ref(
         value: &'frontmatter FieldValue,
     ) -> Result<Self, FrontmatterError>;
 }
 
-// Blanket implementation that adapts value::FromFieldValue to
-// frontmatter::FromFieldValue
-impl<T> FromFieldValue for T
+// Blanket implementation that adapts value::TryFromFieldValue to
+// frontmatter::TryFromFieldValue
+impl<T> TryFromFieldValue for T
 where
-    T: super::value::FromFieldValue,
+    T: super::value::TryFromFieldValue,
 {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
-        T::from_value(value).map_err(|err| match err {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FrontmatterError> {
+        T::try_from_value(value).map_err(|err| match err {
             super::value::FieldValueError::TypeMismatch {
                 expected,
                 actual,
             } => FrontmatterError::TypeMismatch {
                 key: "".into(),
-                expected: format!("{expected}").into(),
+                expected,
                 actual,
             },
             super::value::FieldValueError::InvalidDateTimestamp {
@@ -342,23 +597,23 @@ where
     }
 }
 
-// Blanket implementation that adapts value::FromFieldValueRef to
-// frontmatter::FromFieldValueRef
-impl<'frontmatter, T> FromFieldValueRef<'frontmatter> for T
+// Blanket implementation that adapts value::TryFromFieldValueRef to
+// frontmatter::TryFromFieldValueRef
+impl<'frontmatter, T> TryFromFieldValueRef<'frontmatter> for T
 where
-    T: super::value::FromFieldValueRef<'frontmatter>,
+    T: super::value::TryFromFieldValueRef<'frontmatter>,
 {
     #[inline]
-    fn from_value_ref(
+    fn try_from_value_ref(
         value: &'frontmatter FieldValue,
     ) -> Result<Self, FrontmatterError> {
-        T::from_value_ref(value).map_err(|err| match err {
+        T::try_from_value_ref(value).map_err(|err| match err {
             super::value::FieldValueError::TypeMismatch {
                 expected,
                 actual,
             } => FrontmatterError::TypeMismatch {
                 key: "".into(),
-                expected: format!("{expected}").into(),
+                expected,
                 actual,
             },
             super::value::FieldValueError::InvalidDateTimestamp {
@@ -381,31 +636,111 @@ where
     }
 }
 
-/// Returns a lenient string array conversion.
-///
-/// This filters out non-string elements rather than erroring.
-#[inline]
-#[must_use]
-pub fn as_string_array_lossy(value: &FieldValue) -> Option<Vec<Box<str>>> {
-    if let Some(arr) = value.as_array() {
-        return Some(
-            arr.iter()
-                .filter_map(|item| item.as_str().map(Into::into))
-                .collect(),
-        );
+/// Borrowed frontmatter fields iterator.
+pub(crate) struct FrontmatterFields<'frontmatter> {
+    inner: std::collections::hash_map::Iter<'frontmatter, Box<str>, FieldValue>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Iterator wrapper forwards core methods only."
+)]
+impl<'frontmatter> Iterator for FrontmatterFields<'frontmatter> {
+    type Item = (&'frontmatter str, &'frontmatter FieldValue);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(key, value)| (key.as_ref(), value))
     }
 
-    value.as_str().map(|s| vec![s.into()])
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+/// Borrowed alias iterator returned by [`Frontmatter::aliases`].
+pub struct AliasValues<'frontmatter> {
+    source: AliasSource<'frontmatter>,
+}
+
+enum AliasSource<'frontmatter> {
+    Empty,
+    Single(Option<&'frontmatter str>),
+    Array(std::slice::Iter<'frontmatter, FieldValue>),
+}
+
+impl<'frontmatter> AliasValues<'frontmatter> {
+    fn new(value: Option<&'frontmatter FieldValue>) -> Self {
+        let source = if let Some(value) = value {
+            if let Some(text) = value.as_str() {
+                AliasSource::Single(Some(text))
+            } else if let Some(values) = value.as_array() {
+                AliasSource::Array(values.iter())
+            } else {
+                AliasSource::Empty
+            }
+        } else {
+            AliasSource::Empty
+        };
+        Self {
+            source,
+        }
+    }
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Iterator wrapper forwards core methods only."
+)]
+impl<'frontmatter> Iterator for AliasValues<'frontmatter> {
+    type Item = &'frontmatter str;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.source {
+            AliasSource::Empty => None,
+            AliasSource::Single(ref mut value) => value.take(),
+            AliasSource::Array(ref mut iter) => {
+                for item in iter.by_ref() {
+                    if let Some(text) = item.as_str() {
+                        return Some(text);
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match &self.source {
+            AliasSource::Empty | AliasSource::Single(None) => (0, Some(0)),
+            AliasSource::Single(Some(_)) => (1, Some(1)),
+            AliasSource::Array(iter) => {
+                let (_, upper) = iter.size_hint();
+                (0, upper)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     /// Test fixtures and builders for Frontmatter tests.
+    #[expect(
+        dead_code,
+        reason = "Fixture helpers are used by multiple test modules"
+    )]
     mod fixtures {
         use chrono::{DateTime, TimeZone as _, Utc};
 
         use super::{super::*, TEST_TIMESTAMP};
-        use crate::config::aggregate::Config;
+        use crate::{config::aggregate::Config, note::error::NoteError};
 
         /// Builder for creating test Frontmatter instances.
         pub struct FrontmatterBuilder {
@@ -449,8 +784,13 @@ mod tests {
                 self
             }
 
+            #[expect(
+                clippy::unnecessary_wraps,
+                reason = "Fixture builder keeps Result parity with fallible \
+                          builders"
+            )]
             pub fn build(self) -> Result<Frontmatter, NoteError> {
-                Frontmatter::new(self.fields)
+                Ok(Frontmatter::new(self.fields))
             }
         }
 
@@ -467,6 +807,7 @@ mod tests {
                     date_created_key: Some("date_created".to_owned()),
                     date_modified_key: Some("date_modified".to_owned()),
                     file_class_key: Some("kind".to_owned()),
+                    tags_key: Some("labels".to_owned()),
                     title_key: Some("subject".to_owned()),
                 }),
                 ..Default::default()
@@ -522,7 +863,6 @@ mod tests {
             fields.insert("b".into(), FieldValue::Boolean(true));
             fields.insert("n".into(), FieldValue::Number(1.5f64));
             Frontmatter::new(fields)
-                .expect("Frontmatter construction should succeed")
         }
 
         pub fn frontmatter_with_aliases_mixed() -> Frontmatter {
@@ -535,21 +875,18 @@ mod tests {
                 ]),
             );
             Frontmatter::new(fields)
-                .expect("Frontmatter construction should succeed")
         }
 
         pub fn frontmatter_with_number() -> Frontmatter {
             let mut fields = HashMap::new();
             fields.insert("n".into(), FieldValue::Number(1.0f64));
             Frontmatter::new(fields)
-                .expect("Frontmatter construction should succeed")
         }
 
         pub fn frontmatter_with_invalid_date() -> Frontmatter {
             let mut fields = HashMap::new();
             fields.insert("d".into(), FieldValue::Date(i64::MAX));
             Frontmatter::new(fields)
-                .expect("Frontmatter construction should succeed")
         }
 
         pub fn sample_datetime() -> DateTime<Utc> {
@@ -573,7 +910,10 @@ mod tests {
         #[test]
         fn array_coerces_to_array() {
             let value = FieldValue::Array(vec![FieldValue::Boolean(true)]);
-            assert!(value.as_array().is_some(), "Array should coerce to array");
+            assert!(
+                value.array_items().is_some(),
+                "Array should coerce to items"
+            );
         }
 
         #[test]
@@ -595,7 +935,7 @@ mod tests {
         fn boolean_does_not_coerce_to_array() {
             let value = FieldValue::Boolean(true);
             assert!(
-                value.as_array().is_none(),
+                value.array_items().is_none(),
                 "Boolean should not coerce to array"
             );
         }
@@ -647,8 +987,8 @@ mod tests {
             obj_map.insert("k".into(), FieldValue::Boolean(false));
             let value = FieldValue::Object(obj_map);
             assert!(
-                value.as_object().is_some(),
-                "Object should coerce to HashMap"
+                value.object_fields().is_some(),
+                "Object should coerce to fields"
             );
         }
 
@@ -673,7 +1013,7 @@ mod tests {
         fn string_does_not_coerce_to_object() {
             let value = FieldValue::String("s".into());
             assert!(
-                value.as_object().is_none(),
+                value.object_fields().is_none(),
                 "String should not coerce to object"
             );
         }
@@ -721,135 +1061,6 @@ mod tests {
         }
     }
 
-    mod accessors {
-        use super::{super::*, fixtures};
-
-        #[test]
-        fn title_uses_configured_key() {
-            let config = fixtures::config_with_custom_frontmatter_keys();
-            let fm = fixtures::frontmatter_with_custom_keys();
-            assert_eq!(
-                fm.title(&config),
-                Some("Subj"),
-                "Title should use configured key"
-            );
-        }
-
-        #[test]
-        fn file_class_uses_configured_key() {
-            let config = fixtures::config_with_custom_frontmatter_keys();
-            let fm = fixtures::frontmatter_with_custom_keys();
-            assert_eq!(
-                fm.file_class(&config),
-                Some("Note"),
-                "File class should use configured key"
-            );
-        }
-
-        #[test]
-        fn aliases_use_configured_key() {
-            let config = fixtures::config_with_custom_frontmatter_keys();
-            let fm = fixtures::frontmatter_with_custom_keys();
-            assert_eq!(
-                fm.aliases(&config),
-                vec!["Alias".into()],
-                "Aliases should use configured key"
-            );
-        }
-
-        #[test]
-        fn has_returns_true_for_existing_field() {
-            let fm = fixtures::frontmatter_with_title();
-            assert!(fm.has("title"), "Should find existing field 'title'");
-        }
-
-        #[test]
-        fn has_returns_false_for_missing_field() {
-            let fm = fixtures::frontmatter_with_title();
-            assert!(!fm.has("missing"), "Should not find non-existent field");
-        }
-
-        #[test]
-        fn string_array_lossy_converts_single_string() {
-            let fm = fixtures::frontmatter_with_string_arrays();
-            assert_eq!(
-                fm.get("single").and_then(as_string_array_lossy),
-                Some(vec!["a".into()]),
-                "Single string should convert to array"
-            );
-        }
-
-        #[test]
-        fn string_array_lossy_returns_array_values() {
-            let fm = fixtures::frontmatter_with_string_arrays();
-            assert_eq!(
-                fm.get("multi").and_then(as_string_array_lossy),
-                Some(vec!["b".into()]),
-                "Array should be returned as-is"
-            );
-        }
-
-        #[test]
-        fn get_returns_boolean_value() {
-            let fm = fixtures::frontmatter_with_scalar_values();
-            assert_eq!(
-                fm.get("b").and_then(FieldValue::as_bool),
-                Some(true),
-                "Boolean field should be returned"
-            );
-        }
-
-        #[test]
-        fn get_returns_number_value() {
-            let fm = fixtures::frontmatter_with_scalar_values();
-            assert_eq!(
-                fm.get("n").and_then(FieldValue::as_number),
-                Some(1.0f64),
-                "Number field should be returned"
-            );
-        }
-
-        #[test]
-        fn get_returns_string_value() {
-            let fm = fixtures::frontmatter_with_scalar_values();
-            assert_eq!(
-                fm.get("s").and_then(FieldValue::as_str),
-                Some("s"),
-                "String field should be returned"
-            );
-        }
-
-        #[test]
-        fn get_returns_datetime_value() {
-            let fm = fixtures::frontmatter_with_scalar_values();
-
-            assert!(
-                fm.get("d")
-                    .and_then(crate::note::value::FieldValue::as_date)
-                    .is_some(),
-                "Date field should convert to DateTime"
-            );
-        }
-
-        #[test]
-        fn get_returns_none_for_missing_field() {
-            let fm = fixtures::frontmatter_with_scalar_values();
-            assert!(
-                fm.get("missing").is_none(),
-                "Missing field should return None"
-            );
-        }
-
-        #[test]
-        fn get_returns_none_for_type_mismatch() {
-            let fm = fixtures::frontmatter_with_scalar_values();
-            assert!(
-                fm.get("n").and_then(FieldValue::as_bool).is_none(),
-                "Type mismatch should return None"
-            );
-        }
-    }
-
     mod conversions {
         use chrono::{DateTime, Utc};
 
@@ -859,7 +1070,8 @@ mod tests {
         #[test]
         fn try_get_returns_string_value() {
             let fm = fixtures::frontmatter_for_try_get();
-            let result = fm.try_get::<Box<str>>("s");
+            let key = FrontmatterKey::try_new("s").expect("valid key");
+            let result = fm.try_get::<Box<str>>(&key);
             assert_eq!(
                 result,
                 Ok(Some("text".into())),
@@ -870,7 +1082,8 @@ mod tests {
         #[test]
         fn try_get_returns_boolean_value() {
             let fm = fixtures::frontmatter_for_try_get();
-            let result = fm.try_get::<bool>("b");
+            let key = FrontmatterKey::try_new("b").expect("valid key");
+            let result = fm.try_get::<bool>(&key);
             assert_eq!(
                 result,
                 Ok(Some(true)),
@@ -881,7 +1094,8 @@ mod tests {
         #[test]
         fn try_get_returns_number_value() {
             let fm = fixtures::frontmatter_for_try_get();
-            let result = fm.try_get::<f64>("n");
+            let key = FrontmatterKey::try_new("n").expect("valid key");
+            let result = fm.try_get::<f64>(&key);
             assert_eq!(
                 result,
                 Ok(Some(1.5f64)),
@@ -892,17 +1106,18 @@ mod tests {
         #[test]
         fn try_get_returns_type_mismatch_error() {
             let fm = fixtures::frontmatter_for_try_get();
-            let result = fm.try_get::<bool>("s");
+            let lookup_key = FrontmatterKey::try_new("s").expect("valid key");
+            let result = fm.try_get::<bool>(&lookup_key);
             assert!(
                 matches!(
                     &result,
                     Err(FrontmatterError::TypeMismatch {
-                        key,
+                        key: error_key,
                         expected,
                         actual,
                     })
-                        if key.as_ref() == "s"
-                            && expected.as_ref() == "boolean"
+                        if error_key.as_ref() == "s"
+                            && *expected == FieldValueType::Boolean
                             && *actual == FieldValueType::String
                 ),
                 "type mismatch should error: {result:?}"
@@ -912,16 +1127,18 @@ mod tests {
         #[test]
         fn strict_string_vec_errors_on_non_string_array_elements() {
             let fm = fixtures::frontmatter_with_aliases_mixed();
-            let result = fm.try_get_string_vec_strict("aliases");
+            let lookup_key =
+                FrontmatterKey::try_new("aliases").expect("valid key");
+            let result = fm.try_get_string_vec_strict(&lookup_key);
             assert!(
                 matches!(
                     &result,
                     Err(FrontmatterError::ArrayElementTypeMismatch {
-                        key,
+                        key: error_key,
                         index: 1,
                         expected: FieldValueType::String,
                         actual: FieldValueType::Number,
-                    }) if key.as_ref() == "aliases"
+                    }) if error_key.as_ref() == "aliases"
                 ),
                 "strict extraction should fail: {result:?}"
             );
@@ -931,20 +1148,34 @@ mod tests {
         fn lenient_string_vec_drops_non_string_elements() {
             let fm = fixtures::frontmatter_with_aliases_mixed();
             assert_eq!(
-                fm.get("aliases").and_then(as_string_array_lossy),
+                fm.get_raw("aliases").and_then(string_array_lossy),
                 Some(vec!["ok".into()])
             );
+        }
+
+        fn string_array_lossy(value: &FieldValue) -> Option<Vec<Box<str>>> {
+            if let Some(items) = value.array_items() {
+                return Some(
+                    items
+                        .filter_map(|item| item.as_str().map(Into::into))
+                        .collect(),
+                );
+            }
+
+            value.as_str().map(|s| vec![s.into()])
         }
 
         #[test]
         fn strict_get_required_reports_missing_key() {
             let fm = fixtures::frontmatter_with_number();
-            let result = fm.try_get_required::<Box<str>>("missing");
+            let lookup_key =
+                FrontmatterKey::try_new("missing").expect("valid key");
+            let result = fm.try_get_required::<Box<str>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
-                    Err(FrontmatterError::Missing { key })
-                        if key.as_ref() == "missing"
+                    Err(FrontmatterError::Missing { key: error_key })
+                        if error_key.as_ref() == "missing"
                 ),
                 "missing key should error: {result:?}"
             );
@@ -953,17 +1184,18 @@ mod tests {
         #[test]
         fn strict_get_required_reports_type_mismatch() {
             let fm = fixtures::frontmatter_with_number();
-            let result = fm.try_get_required::<Box<str>>("n");
+            let lookup_key = FrontmatterKey::try_new("n").expect("valid key");
+            let result = fm.try_get_required::<Box<str>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
                     Err(FrontmatterError::TypeMismatch {
-                        key,
+                        key: error_key,
                         expected,
                         actual,
                     })
-                        if key.as_ref() == "n"
-                            && expected.as_ref() == "string"
+                        if error_key.as_ref() == "n"
+                            && *expected == FieldValueType::String
                             && *actual == FieldValueType::Number
                 ),
                 "type mismatch should error: {result:?}"
@@ -973,15 +1205,16 @@ mod tests {
         #[test]
         fn strict_date_reports_invalid_timestamp() {
             let fm = fixtures::frontmatter_with_invalid_date();
-            let result = fm.try_get_required::<DateTime<Utc>>("d");
+            let lookup_key = FrontmatterKey::try_new("d").expect("valid key");
+            let result = fm.try_get_required::<DateTime<Utc>>(&lookup_key);
             assert!(
                 matches!(
                     &result,
                     Err(FrontmatterError::InvalidDateTimestamp {
-                        key,
+                        key: error_key,
                         timestamp,
                     })
-                        if key.as_ref() == "d" && *timestamp == i64::MAX
+                        if error_key.as_ref() == "d" && *timestamp == i64::MAX
                 ),
                 "invalid timestamp should error: {result:?}"
             );

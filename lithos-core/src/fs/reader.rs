@@ -353,13 +353,6 @@ impl Reader {
     ///
     /// Returns [`PathValidationError`] if the path is invalid.
     #[inline]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Internal API for explicit path validation"
-        )
-    )]
     pub(crate) fn validate_path(
         &self,
         path: &Path,

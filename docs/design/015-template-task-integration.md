@@ -207,15 +207,17 @@ $ lithos template render daily-tasks.md
 **Registering Task Functions (Application Startup):**
 
 ```rust
+use std::sync::Arc;
+
 use lithos_core::template::{TemplateCatalog, TemplateQuery};
-use lithos_core::note::Query as NoteQuery;
+use lithos_core::note::db_query::QueryAdapter as NoteQuery;
 use lithos_core::config::task::TaskConfig;
 use lithos_core::db::Database;
 
 // 1. Open database and create ports
 let db = Database::open("vault.redb")?;
 let template_query = Box::new(TemplateQuery::new(&db));
-let note_query = Box::new(NoteQuery::new(&db));
+let note_query = Box::new(NoteQuery::new(Arc::new(db)));
 let task_config = TaskConfig::load(&db)?;
 
 // 2. Create TemplateCatalog with task function registration
@@ -240,8 +242,10 @@ let output = catalog.render(
 ```rust
 // template/functions/query.rs
 
+use lithos_core::note::ports::Query as NoteQueryPort;
+
 pub fn tasks_overdue(
-    query: &impl NoteQuery,
+    query: &impl NoteQueryPort,
     config: &TaskConfig,
 ) -> Result<Vec<TaskView>, TemplateError> {
     let now = chrono::Utc::now();
@@ -374,7 +378,7 @@ graph TB
     end
 
     subgraph "Note Context (Domain)"
-        NoteQuery[Note Query Port]
+        NoteQueryPort[Note Query Port]
         Task[Task Entity]
     end
 
@@ -383,9 +387,9 @@ graph TB
     end
 
     Template --> Catalog
-    QueryFns --> NoteQuery
+    QueryFns --> NoteQueryPort
     FormatFns --> TaskConfig
-    NoteQuery --> Task
+    NoteQueryPort --> Task
     Task -.converts to.-> TaskView
 
     style Catalog fill:#fff4e1
@@ -493,7 +497,7 @@ impl TemplateValue {
 - **Public Interface:**
   - `TemplateCatalog::builder() -> TemplateCatalogBuilder`
     - _Behavior:_ Creates builder for configuring catalog with task functions
-  - `TemplateCatalogBuilder::with_task_query(query: Box<dyn NoteQuery>, config: &TaskConfig) -> Self`
+  - `TemplateCatalogBuilder::with_task_query(query: Box<dyn NoteQueryPort>, config: &TaskConfig) -> Self`
     - _Behavior:_ Registers task query functions (tasks_overdue, tasks_by_field, etc.) with MiniJinja Environment
   - `TemplateCatalogBuilder::with_task_format(config: &TaskConfig) -> Self`
     - _Behavior:_ Registers task formatting functions (format_checkbox) with MiniJinja Environment
@@ -505,7 +509,7 @@ impl TemplateValue {
 - **State/Invariants:**
   - Task functions registered during build phase (before load_all())
   - TaskConfig loaded before builder creation (no lazy loading)
-  - Query/format functions closed over shared state (Arc<Query>, Arc<TaskConfig>)
+  - Query/format functions closed over shared state (Arc<QueryPort>, Arc<TaskConfig>)
 
 #### Component: Query Functions
 
@@ -608,7 +612,7 @@ sequenceDiagram
 impl TemplateCatalogBuilder {
     pub fn with_task_query(
         mut self,
-        query: Box<dyn NoteQuery>,
+        query: Box<dyn NoteQueryPort>,
         config: &TaskConfig,
     ) -> Self {
         let query = Arc::from(query);
@@ -823,7 +827,7 @@ fn render_template(
 
 - Add `TemplateCatalogBuilder::with_task_query()` method
 - Register query functions: tasks_overdue, tasks_by_field, tasks_completed_since, task_projects, tasks_by_status
-- Functions close over `Arc<Box<dyn NoteQuery>>` and `Arc<TaskConfig>`
+- Functions close over `Arc<Box<dyn NoteQueryPort>>` and `Arc<TaskConfig>`
 
 **Phase 3: Add Format Functions**
 

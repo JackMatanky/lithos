@@ -1,4 +1,4 @@
-//! List subentities for the Note aggregate.
+//! List value objects for notes.
 #![allow(
     missing_docs,
     clippy::exhaustive_structs,
@@ -7,7 +7,9 @@
               docs"
 )]
 
-use super::{task::TaskId, types::SourceByteOffset};
+use std::fmt;
+
+use super::{error::NoteError, position::SourceByteOffset, task::TaskId};
 use crate::config::task::StatusSymbol;
 
 /// Markdown list structure.
@@ -18,23 +20,19 @@ use crate::config::task::StatusSymbol;
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::list::{List, ListType};
+/// # use lithos_core::note::list::{List, ListDepth, ListType};
 /// let list = List::new(ListType::Unordered);
-/// assert_eq!(list.depth(), 0);
+/// assert_eq!(list.depth(), ListDepth::root());
 /// ```
 #[derive(
     Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 #[rkyv(derive(Debug))]
 #[non_exhaustive]
-#[expect(
-    clippy::struct_field_names,
-    reason = "list_type is the clearest name for the list kind."
-)]
 pub struct List {
-    list_type: ListType,
+    kind: ListType,
     items: Vec<ListItem>,
-    depth: u8,
+    depth: ListDepth,
 }
 
 impl List {
@@ -43,18 +41,18 @@ impl List {
     #[must_use]
     pub fn new(list_type: ListType) -> Self {
         Self {
-            list_type,
+            kind: list_type,
             items: Vec::new(),
-            depth: 0,
+            depth: ListDepth::root(),
         }
     }
 
     /// Creates a new empty list with an explicit depth.
     #[inline]
     #[must_use]
-    pub fn with_depth(list_type: ListType, depth: u8) -> Self {
+    pub fn with_depth(list_type: ListType, depth: ListDepth) -> Self {
         Self {
-            list_type,
+            kind: list_type,
             items: Vec::new(),
             depth,
         }
@@ -65,11 +63,11 @@ impl List {
     #[must_use]
     pub fn with_capacity(
         list_type: ListType,
-        depth: u8,
+        depth: ListDepth,
         capacity: usize,
     ) -> Self {
         Self {
-            list_type,
+            kind: list_type,
             items: Vec::with_capacity(capacity),
             depth,
         }
@@ -85,27 +83,106 @@ impl List {
     #[inline]
     #[must_use]
     pub const fn list_type(&self) -> ListType {
-        self.list_type
+        self.kind
     }
 
     /// Returns the list items in source order.
     #[inline]
     #[must_use]
-    pub fn items(&self) -> &[ListItem] {
-        &self.items
+    pub fn items(&self) -> ListItems<'_> {
+        ListItems {
+            inner: self.items.iter(),
+        }
     }
 
     /// Returns the list nesting depth (0 = top level).
     #[inline]
     #[must_use]
-    pub const fn depth(&self) -> u8 {
+    pub const fn depth(&self) -> ListDepth {
         self.depth
     }
 
     /// Sets the list nesting depth.
     #[inline]
-    pub fn set_depth(&mut self, depth: u8) {
+    pub fn set_depth(&mut self, depth: ListDepth) {
         self.depth = depth;
+    }
+}
+
+/// Validated list nesting depth.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+pub struct ListDepth(u8);
+
+impl ListDepth {
+    /// Returns the root list depth (0).
+    #[inline]
+    #[must_use]
+    pub const fn root() -> Self {
+        Self(0)
+    }
+
+    /// Creates a validated list depth from a numeric value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteError::ListDepthOutOfRange`] if the depth is out of range.
+    #[inline]
+    pub fn try_new(depth: usize) -> Result<Self, NoteError> {
+        u8::try_from(depth).map(Self).map_err(|_error| {
+            NoteError::ListDepthOutOfRange {
+                depth,
+                reason: "depth exceeds maximum allowed value of 255",
+            }
+        })
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn as_u8(self) -> u8 {
+        self.0
+    }
+}
+
+impl fmt::Display for ListDepth {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Borrowed iterator over list items.
+pub struct ListItems<'list> {
+    inner: std::slice::Iter<'list, ListItem>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Iterator wrapper forwards core methods only."
+)]
+impl<'list> Iterator for ListItems<'list> {
+    type Item = &'list ListItem;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -118,7 +195,7 @@ impl List {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::{list::ListItem, types::SourceByteOffset};
+/// # use lithos_core::note::{list::ListItem, position::SourceByteOffset};
 /// let item = ListItem::Plain {
 ///     text: "Buy groceries".into(),
 ///     position: SourceByteOffset::new(0),
@@ -151,15 +228,171 @@ pub enum ListItem {
     },
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct InlineText {
+    buffer: String,
+}
+
+impl InlineText {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn push_text(&mut self, text: &str) {
+        self.buffer.push_str(text);
+    }
+
+    pub(crate) fn push_break(&mut self) {
+        if !self.buffer.ends_with(' ') {
+            self.buffer.push(' ');
+        }
+    }
+
+    pub(crate) fn finish(self) -> String {
+        self.buffer
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ListItemBuilder {
+    position: SourceByteOffset,
+    depth: ListDepth,
+    text: InlineText,
+    is_checkbox: bool,
+    status_symbol: Option<char>,
+}
+
+impl ListItemBuilder {
+    pub(crate) fn new(position: SourceByteOffset, depth: ListDepth) -> Self {
+        Self {
+            position,
+            depth,
+            text: InlineText::new(),
+            is_checkbox: false,
+            status_symbol: None,
+        }
+    }
+
+    pub(crate) fn mark_as_checkbox(&mut self, checked: bool) {
+        self.is_checkbox = true;
+        self.status_symbol = Some(if checked {
+            'x'
+        } else {
+            ' '
+        });
+    }
+
+    pub(crate) const fn position(&self) -> SourceByteOffset {
+        self.position
+    }
+
+    pub(crate) const fn depth(&self) -> ListDepth {
+        self.depth
+    }
+
+    pub(crate) const fn is_checkbox(&self) -> bool {
+        self.is_checkbox
+    }
+
+    pub(crate) const fn status_symbol(&self) -> Option<char> {
+        self.status_symbol
+    }
+
+    pub(crate) fn add_text(&mut self, text: &str) {
+        self.text.push_text(text);
+    }
+
+    pub(crate) fn add_break(&mut self) {
+        self.text.push_break();
+    }
+
+    pub(crate) fn into_text(self) -> String {
+        self.text.finish()
+    }
+}
+
+/// List item metadata entry for indexing.
+#[derive(
+    Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
+#[rkyv(derive(Debug))]
+#[non_exhaustive]
+pub struct ListItemEntry {
+    position: SourceByteOffset,
+    depth: ListDepth,
+    parent: Option<SourceByteOffset>,
+    status: Option<StatusSymbol>,
+    task_id: Option<TaskId>,
+}
+
+impl ListItemEntry {
+    /// Creates a new list item entry.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        position: SourceByteOffset,
+        depth: ListDepth,
+        parent: Option<SourceByteOffset>,
+        status: Option<StatusSymbol>,
+        task_id: Option<TaskId>,
+    ) -> Self {
+        Self {
+            position,
+            depth,
+            parent,
+            status,
+            task_id,
+        }
+    }
+
+    /// Returns the list item byte position.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> SourceByteOffset {
+        self.position
+    }
+
+    /// Returns the list item depth.
+    #[inline]
+    #[must_use]
+    pub const fn depth(&self) -> ListDepth {
+        self.depth
+    }
+
+    /// Returns the parent list item position, if any.
+    #[inline]
+    #[must_use]
+    pub const fn parent(&self) -> Option<SourceByteOffset> {
+        self.parent
+    }
+
+    /// Returns the task status symbol, if this is a checkbox item.
+    #[inline]
+    #[must_use]
+    pub const fn status(&self) -> Option<StatusSymbol> {
+        self.status
+    }
+
+    /// Returns the task id, if this is a promoted task item.
+    #[inline]
+    #[must_use]
+    pub const fn task_id(&self) -> Option<TaskId> {
+        self.task_id
+    }
+}
+
 #[expect(
     clippy::pattern_type_mismatch,
-    reason = "Accessor methods intentionally use match ergonomics on `&self` \
-              to keep code concise."
+    reason = "Match ergonomics on &self keep accessors concise."
 )]
 impl ListItem {
     /// Returns the source byte position of this list item.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
     pub const fn position(&self) -> SourceByteOffset {
         match self {
             Self::Plain {
@@ -176,6 +409,10 @@ impl ListItem {
     /// Returns the text content of this list item.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
     pub fn text(&self) -> &str {
         match self {
             Self::Plain {
@@ -185,13 +422,17 @@ impl ListItem {
             | Self::Checkbox {
                 text,
                 ..
-            } => text,
+            } => text.as_ref(),
         }
     }
 
     /// Returns the checkbox status symbol if this is a checkbox item.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
     pub const fn status(&self) -> Option<StatusSymbol> {
         match self {
             Self::Checkbox {
@@ -207,6 +448,10 @@ impl ListItem {
     /// Returns the task id if this checkbox was promoted.
     #[inline]
     #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &self"
+    )]
     pub const fn task_id(&self) -> Option<TaskId> {
         match self {
             Self::Checkbox {
@@ -221,6 +466,10 @@ impl ListItem {
 
     /// Sets the task id for a promoted checkbox item.
     #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics on &mut self"
+    )]
     pub fn set_task_id(&mut self, task_id: TaskId) {
         if let Self::Checkbox {
             task_id: slot,
@@ -265,53 +514,4 @@ pub enum ListType {
     },
     /// Unordered list (bullets).
     Unordered,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn list_adds_items_in_order() {
-        let mut list = List::new(ListType::Unordered);
-        list.add_item(ListItem::Plain {
-            text: "first".into(),
-            position: SourceByteOffset::new(0),
-        });
-        list.add_item(ListItem::Plain {
-            text: "second".into(),
-            position: SourceByteOffset::new(10),
-        });
-
-        assert_eq!(list.items().len(), 2);
-        assert_eq!(list.items().first().expect("first item").text(), "first");
-        assert_eq!(list.items().get(1).expect("second item").text(), "second");
-    }
-
-    #[test]
-    fn checkbox_task_id_is_mutable() {
-        let mut item = ListItem::Checkbox {
-            text: "task".into(),
-            status: StatusSymbol::try_new(' ').expect("valid status"),
-            position: SourceByteOffset::new(5),
-            task_id: None,
-        };
-
-        let task_id = TaskId::new();
-        item.set_task_id(task_id);
-        assert_eq!(item.task_id(), Some(task_id));
-
-        item.clear_task_id();
-        assert_eq!(item.task_id(), None);
-    }
-
-    #[test]
-    fn list_depth_is_settable() {
-        let mut list = List::new(ListType::Ordered {
-            start: 1,
-        });
-        assert_eq!(list.depth(), 0);
-        list.set_depth(2);
-        assert_eq!(list.depth(), 2);
-    }
 }

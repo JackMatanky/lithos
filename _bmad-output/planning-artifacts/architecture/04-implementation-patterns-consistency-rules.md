@@ -1362,6 +1362,31 @@ impl TryFrom<StoredSchema> for Schema { /* ... */ }
 - **redb custom Value**: Implement `redb::Value` via local newtypes/wrappers when you need custom encoding.
 - **moka determinism**: In tests, call `run_pending_tasks()` to ensure cache stats are consistent.
 
+### Archived Types Usage (rkyv)
+
+**Pattern:** Use `rkyv::Archived<T>` in public APIs and CQRS ports. Use `Archived*` only in the defining module to add small, safe accessors for private fields on archived representations.
+
+✅ **Prefer:**
+
+```rust
+// Public API / port signature
+type NoteArchived<'a> = &'a rkyv::Archived<Note>;
+
+// Local accessors for private fields (same module as Tag)
+impl ArchivedTag {
+    pub fn full_path(&self) -> &str { /* ... */ }
+}
+```
+
+❌ **Avoid:**
+
+```rust
+// Leaking Archived* in public signatures
+fn with_archived_tag(&self, f: impl FnOnce(&ArchivedTag) -> R) -> R;
+```
+
+**Rationale:** `rkyv::Archived<T>` keeps public APIs stable and generic. `Archived*` accessors are only for local encapsulation when archived fields are private.
+
 ## Project Structure & Module Layout
 
 **Workspace Organization:**

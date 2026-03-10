@@ -5,13 +5,14 @@
     missing_docs,
     clippy::exhaustive_structs,
     clippy::exhaustive_enums,
+    clippy::missing_trait_methods,
     reason = "rkyv derives generate archived/resolver items that are missing \
-              docs"
+              docs, Error trait requires default impls that we don't use"
 )]
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike as _, Timelike as _, Utc};
 
 /// Shared primitive for dynamic note values (frontmatter and task metadata).
 ///
@@ -102,6 +103,8 @@ impl core::fmt::Display for FieldValueType {
               patterns and keep the code concise"
 )]
 impl FieldValue {
+    const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_992.0;
+
     /// Returns the value type descriptor.
     #[inline]
     #[must_use]
@@ -125,6 +128,15 @@ impl FieldValue {
         } else {
             None
         }
+    }
+
+    /// Returns an iterator over array items if this is an `Array` variant.
+    #[inline]
+    #[must_use]
+    pub fn array_items(&self) -> Option<FieldArrayItems<'_>> {
+        self.as_array().map(|arr| FieldArrayItems {
+            inner: arr.iter(),
+        })
     }
 
     /// Returns the boolean value if this is a `Boolean` variant.
@@ -171,6 +183,15 @@ impl FieldValue {
         }
     }
 
+    /// Returns an iterator over object fields if this is an `Object` variant.
+    #[inline]
+    #[must_use]
+    pub fn object_fields(&self) -> Option<FieldObjectFields<'_>> {
+        self.as_object().map(|obj| FieldObjectFields {
+            inner: obj.iter(),
+        })
+    }
+
     /// Returns the string value if this is a `String` variant.
     #[inline]
     #[must_use]
@@ -182,39 +203,84 @@ impl FieldValue {
         }
     }
 
+    fn write_json_string(out: &mut String, value: &str) {
+        out.push('"');
+        for ch in value.chars() {
+            match ch {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                '\u{08}' => out.push_str("\\b"),
+                '\u{0C}' => out.push_str("\\f"),
+                _ if ch.is_control() => {
+                    use std::fmt::Write as _;
+                    #[expect(
+                        clippy::let_underscore_must_use,
+                        reason = "Writing to String is infallible"
+                    )]
+                    let _ = write!(out, "\\u{:04X}", u32::from(ch));
+                }
+                _ => out.push(ch),
+            }
+        }
+        out.push('"');
+    }
+
     /// Convert a `serde_json::Value` into a `FieldValue`.
     ///
     /// This is useful for adapters parsing JSON-like structures (including
     /// YAML/TOML converted via serde).
+    ///
+    /// # Errors
+    ///
+    /// Returns error when:
+    /// - Numbers cannot be represented as `f64`
+    /// - Null values are encountered
     #[inline]
-    #[must_use]
-    pub fn from_json(value: &serde_json::Value) -> Self {
+    pub fn try_from_json(
+        value: &serde_json::Value,
+    ) -> Result<Self, FieldValueParseError> {
         match value {
             serde_json::Value::String(s) => {
-                Self::String(s.clone().into_boxed_str())
+                Ok(Self::String(s.clone().into_boxed_str()))
             }
             serde_json::Value::Number(n) => {
-                Self::Number(n.as_f64().unwrap_or(0.0))
+                let number = n.as_f64().ok_or_else(|| {
+                    FieldValueParseError::NumberOutOfRange {
+                        raw: n.to_string().into(),
+                    }
+                })?;
+                Ok(Self::Number(number))
             }
-            serde_json::Value::Bool(b) => Self::Boolean(*b),
+            serde_json::Value::Bool(b) => Ok(Self::Boolean(*b)),
             serde_json::Value::Array(arr) => {
-                Self::Array(arr.iter().map(Self::from_json).collect())
+                let mut values = Vec::with_capacity(arr.len());
+                for item in arr {
+                    values.push(Self::try_from_json(item)?);
+                }
+                Ok(Self::Array(values))
             }
-            serde_json::Value::Object(obj) => Self::Object(
-                obj.iter()
-                    .map(|(k, v)| {
-                        (k.clone().into_boxed_str(), Self::from_json(v))
-                    })
-                    .collect(),
-            ),
-            serde_json::Value::Null => Self::String("".into()),
+            serde_json::Value::Object(obj) => {
+                let mut map = HashMap::with_capacity(obj.len());
+                for (key, json_value) in obj {
+                    map.insert(
+                        key.as_str().into(),
+                        Self::try_from_json(json_value)?,
+                    );
+                }
+                Ok(Self::Object(map))
+            }
+            serde_json::Value::Null => Err(FieldValueParseError::NullValue),
         }
     }
 
     /// Converts a `serde_yaml::Value` into a `FieldValue`.
     ///
-    /// This is used when parsing YAML frontmatter. Tagged YAML values are not
-    /// supported and will return an error.
+    /// This is used when parsing YAML frontmatter. Tagged YAML values are
+    /// supported only for scalar tags that can be represented as a string; all
+    /// other tagged values return an error.
     ///
     /// # Errors
     /// Returns error if:
@@ -222,34 +288,65 @@ impl FieldValue {
     /// - YAML map contains non-string keys
     /// - YAML contains tagged values
     #[inline]
-    pub fn from_yaml(value: &serde_yaml::Value) -> Result<Self, String> {
+    pub fn try_from_yaml(
+        value: &serde_yaml::Value,
+    ) -> Result<Self, FieldValueYamlError> {
         match value {
             serde_yaml::Value::Null => Ok(Self::String("".into())),
             serde_yaml::Value::Bool(b) => Ok(Self::Boolean(*b)),
             serde_yaml::Value::Number(n) => {
-                let f = n
-                    .as_f64()
-                    .ok_or_else(|| "invalid number in YAML".to_owned())?;
+                let f = n.as_f64().ok_or_else(|| {
+                    FieldValueYamlError::InvalidNumber {
+                        raw: n.to_string().into(),
+                    }
+                })?;
+                if !f.is_finite() {
+                    return Err(FieldValueYamlError::InvalidNumber {
+                        raw: n.to_string().into(),
+                    });
+                }
+                if f.abs() > Self::MAX_SAFE_INTEGER {
+                    return Err(FieldValueYamlError::NumberOutOfRange {
+                        raw: n.to_string().into(),
+                    });
+                }
                 Ok(Self::Number(f))
             }
             serde_yaml::Value::String(s) => Ok(Self::String(s.clone().into())),
             serde_yaml::Value::Sequence(seq) => {
                 let arr: Result<Vec<_>, _> =
-                    seq.iter().map(Self::from_yaml).collect();
+                    seq.iter().map(Self::try_from_yaml).collect();
                 Ok(Self::Array(arr?))
             }
             serde_yaml::Value::Mapping(map) => {
                 let mut obj = HashMap::new();
                 for (k, v) in map {
-                    let key = k.as_str().ok_or_else(|| {
-                        "non-string key in YAML map".to_owned()
-                    })?;
-                    obj.insert(key.into(), Self::from_yaml(v)?);
+                    let key =
+                        k.as_str().ok_or(FieldValueYamlError::NonStringKey)?;
+                    obj.insert(key.into(), Self::try_from_yaml(v)?);
                 }
                 Ok(Self::Object(obj))
             }
-            serde_yaml::Value::Tagged(_) => {
-                Err("tagged YAML values not supported".into())
+            serde_yaml::Value::Tagged(tagged) => {
+                let tag = tagged.tag.to_string();
+                match &tagged.value {
+                    serde_yaml::Value::Null => Ok(Self::String(tag.into())),
+                    serde_yaml::Value::String(tagged_value) => {
+                        let mut combined = String::with_capacity(
+                            tag.len().saturating_add(tagged_value.len()),
+                        );
+                        combined.push_str(&tag);
+                        combined.push_str(tagged_value);
+                        Ok(Self::String(combined.into()))
+                    }
+                    serde_yaml::Value::Bool(_)
+                    | serde_yaml::Value::Number(_)
+                    | serde_yaml::Value::Sequence(_)
+                    | serde_yaml::Value::Mapping(_)
+                    | serde_yaml::Value::Tagged(_) => {
+                        Err(FieldValueYamlError::Tagged)
+                    }
+                }
             }
         }
     }
@@ -260,26 +357,142 @@ impl FieldValue {
     #[inline]
     #[must_use]
     pub fn to_json_string(&self) -> String {
-        let mut out = String::new();
+        let mut out = String::with_capacity(128);
         self.write_json(&mut out);
         out
+    }
+
+    /// Convert this `FieldValue` to a `serde_yaml::Value`.
+    ///
+    /// Useful for writing updated frontmatter back to files.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::value::FieldValue;
+    /// let field = FieldValue::String("example".into());
+    /// let yaml = field.to_yaml_value();
+    /// assert!(matches!(yaml, serde_yaml::Value::String(_)));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn to_yaml_value(&self) -> serde_yaml::Value {
+        match self {
+            Self::String(s) => serde_yaml::Value::String(s.to_string()),
+            Self::Number(n) => {
+                serde_yaml::Value::Number(serde_yaml::Number::from(*n))
+            }
+            Self::Boolean(b) => serde_yaml::Value::Bool(*b),
+            Self::Date(ts) => {
+                // Use Unix epoch (1970-01-01 00:00:00 UTC) as fallback for
+                // invalid timestamps
+                let datetime = DateTime::from_timestamp(*ts, 0)
+                    .unwrap_or(DateTime::<Utc>::UNIX_EPOCH);
+                serde_yaml::Value::String(datetime.to_rfc3339())
+            }
+            Self::Array(arr) => {
+                let seq: Vec<_> = arr.iter().map(Self::to_yaml_value).collect();
+                serde_yaml::Value::Sequence(seq)
+            }
+            Self::Object(obj) => {
+                let mut map = serde_yaml::Mapping::new();
+                #[expect(
+                    clippy::iter_over_hash_type,
+                    reason = "Conversion order doesn't affect correctness"
+                )]
+                for (key, value) in obj {
+                    map.insert(
+                        serde_yaml::Value::String(key.to_string()),
+                        value.to_yaml_value(),
+                    );
+                }
+                serde_yaml::Value::Mapping(map)
+            }
+        }
+    }
+
+    /// Convert this `FieldValue` to a `toml::Value`.
+    ///
+    /// # Errors
+    /// Returns error if timestamp cannot be converted to TOML datetime.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use lithos_core::note::value::FieldValue;
+    /// let field = FieldValue::Number(42.0);
+    /// let toml = field.to_toml_value().unwrap();
+    /// assert!(matches!(toml, toml::Value::Integer(42)));
+    /// ```
+    #[inline]
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        clippy::float_cmp,
+        reason = "Datetime component conversions are bounded and safe; float \
+                  equality check for integer detection is intentional"
+    )]
+    pub fn to_toml_value(
+        &self,
+    ) -> Result<toml::Value, FieldValueConversionError> {
+        match self {
+            Self::String(s) => Ok(toml::Value::String(s.to_string())),
+            Self::Number(n) => {
+                // Check if number is a whole number that fits in i64
+                if n.is_finite()
+                    && n.trunc() == *n
+                    && n.abs() <= i64::MAX as f64
+                {
+                    let int_value = *n as i64;
+                    Ok(toml::Value::Integer(int_value))
+                } else {
+                    Ok(toml::Value::Float(*n))
+                }
+            }
+            Self::Boolean(b) => Ok(toml::Value::Boolean(*b)),
+            Self::Date(ts) => {
+                let datetime = DateTime::from_timestamp(*ts, 0)
+                    .ok_or(FieldValueConversionError::InvalidTimestamp)?;
+                Ok(toml::Value::Datetime(toml::value::Datetime {
+                    date: Some(toml::value::Date {
+                        year: datetime.year() as u16,
+                        month: datetime.month() as u8,
+                        day: datetime.day() as u8,
+                    }),
+                    time: Some(toml::value::Time {
+                        hour: datetime.hour() as u8,
+                        minute: datetime.minute() as u8,
+                        second: datetime.second() as u8,
+                        nanosecond: datetime.nanosecond(),
+                    }),
+                    offset: None,
+                }))
+            }
+            Self::Array(arr) => {
+                let vec: Result<Vec<_>, _> =
+                    arr.iter().map(Self::to_toml_value).collect();
+                Ok(toml::Value::Array(vec?))
+            }
+            Self::Object(obj) => {
+                let mut map = toml::map::Map::new();
+                #[expect(
+                    clippy::iter_over_hash_type,
+                    reason = "Conversion order doesn't affect correctness"
+                )]
+                for (key, value) in obj {
+                    map.insert(key.to_string(), value.to_toml_value()?);
+                }
+                Ok(toml::Value::Table(map))
+            }
+        }
     }
 
     fn write_json(&self, out: &mut String) {
         match self {
             Self::String(s) => {
-                out.push('"');
-                // Manual escaping to avoid allocation when no quotes present
-                for ch in s.chars() {
-                    if ch == '"' {
-                        out.push_str("\\\"");
-                    } else if ch == '\\' {
-                        out.push_str("\\\\");
-                    } else {
-                        out.push(ch);
-                    }
-                }
-                out.push('"');
+                Self::write_json_string(out, s);
             }
             Self::Number(n) => {
                 use std::fmt::Write as _;
@@ -316,18 +529,69 @@ impl FieldValue {
             }
             Self::Object(obj) => {
                 out.push('{');
-                for (i, (k, v)) in obj.iter().enumerate() {
+                let mut keys: Vec<_> = obj.keys().collect();
+                keys.sort_by(|left, right| left.as_ref().cmp(right.as_ref()));
+                for (i, key) in keys.iter().enumerate() {
                     if i > 0 {
                         out.push_str(", ");
                     }
-                    out.push('"');
-                    out.push_str(k);
-                    out.push_str("\": ");
-                    v.write_json(out);
+                    Self::write_json_string(out, key);
+                    out.push_str(": ");
+                    if let Some(value) = obj.get(*key) {
+                        value.write_json(out);
+                    } else {
+                        out.push_str("null");
+                    }
                 }
                 out.push('}');
             }
         }
+    }
+}
+
+/// Borrowed iterator over object fields in a [`FieldValue::Object`].
+pub struct FieldObjectFields<'value> {
+    inner: std::collections::hash_map::Iter<'value, Box<str>, FieldValue>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Iterator wrapper forwards core methods only."
+)]
+impl<'value> Iterator for FieldObjectFields<'value> {
+    type Item = (&'value str, &'value FieldValue);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(key, value)| (key.as_ref(), value))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+/// Borrowed iterator over array items in a [`FieldValue::Array`].
+pub struct FieldArrayItems<'value> {
+    inner: std::slice::Iter<'value, FieldValue>,
+}
+
+#[expect(
+    clippy::missing_trait_methods,
+    reason = "Iterator wrapper forwards core methods only."
+)]
+impl<'value> Iterator for FieldArrayItems<'value> {
+    type Item = &'value FieldValue;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 
@@ -361,6 +625,111 @@ pub enum FieldValueError {
     },
 }
 
+/// Error type for parsing JSON into [`FieldValue`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldValueParseError {
+    /// Numeric value is outside the representable `f64` range.
+    NumberOutOfRange {
+        /// The numeric value as provided by JSON.
+        raw: Box<str>,
+    },
+    /// Null values are not supported for field values.
+    NullValue,
+}
+
+/// Error type for parsing YAML into [`FieldValue`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldValueYamlError {
+    /// Numeric value is not representable as a finite `f64`.
+    InvalidNumber {
+        /// The numeric value as provided by YAML.
+        raw: Box<str>,
+    },
+    /// Numeric value exceeds the safe integer range for `f64`.
+    NumberOutOfRange {
+        /// The numeric value as provided by YAML.
+        raw: Box<str>,
+    },
+    /// YAML map contains a non-string key.
+    NonStringKey,
+    /// YAML tagged value is not supported.
+    Tagged,
+}
+
+/// Error type for converting [`FieldValue`] to TOML.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldValueConversionError {
+    /// Invalid timestamp that cannot be converted to TOML datetime.
+    InvalidTimestamp,
+}
+
+impl core::fmt::Display for FieldValueParseError {
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on &self keeps error formatting concise"
+    )]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::NumberOutOfRange {
+                raw,
+            } => write!(f, "number out of range for f64: {raw}"),
+            Self::NullValue => f.write_str("null values are not supported"),
+        }
+    }
+}
+
+impl core::fmt::Display for FieldValueYamlError {
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on &self keeps error formatting concise"
+    )]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidNumber {
+                raw,
+            } => write!(f, "invalid number in YAML: {raw}"),
+            Self::NumberOutOfRange {
+                raw,
+            } => write!(f, "integer value exceeds safe f64 range: {raw}"),
+            Self::NonStringKey => f.write_str("non-string key in YAML map"),
+            Self::Tagged => f.write_str("tagged YAML values not supported"),
+        }
+    }
+}
+
+impl std::error::Error for FieldValueYamlError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
+impl core::fmt::Display for FieldValueConversionError {
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on &self keeps error formatting concise"
+    )]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidTimestamp => {
+                f.write_str("invalid timestamp for conversion")
+            }
+        }
+    }
+}
+
+impl std::error::Error for FieldValueConversionError {}
+
+impl std::error::Error for FieldValueParseError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
 impl core::fmt::Display for FieldValueError {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -391,11 +760,12 @@ impl core::fmt::Display for FieldValueError {
     }
 }
 
-#[expect(
-    clippy::missing_trait_methods,
-    reason = "Default trait methods are sufficient for this simple error type"
-)]
-impl std::error::Error for FieldValueError {}
+impl std::error::Error for FieldValueError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
 
 // ----------------------------------------------------------- //
 //                      Trait Definitions                      //
@@ -410,12 +780,12 @@ impl std::error::Error for FieldValueError {}
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::value::{FieldValue, FromFieldValue, FieldValueError};
+/// # use lithos_core::note::value::{FieldValue, TryFromFieldValue, FieldValueError};
 /// let val = FieldValue::Boolean(true);
-/// let result = bool::from_value(&val).unwrap();
+/// let result = bool::try_from_value(&val).unwrap();
 /// assert!(result);
 /// ```
-pub trait FromFieldValue: Sized {
+pub trait TryFromFieldValue: Sized {
     /// Attempts to extract a value of type `Self` from a [`FieldValue`].
     ///
     /// Returns a structured error when the value is present but incompatible.
@@ -423,7 +793,7 @@ pub trait FromFieldValue: Sized {
     /// # Errors
     ///
     /// Returns a structured error describing why the conversion failed.
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError>;
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError>;
 }
 
 /// Fallible, strict conversions from a borrowed [`FieldValue`].
@@ -433,19 +803,19 @@ pub trait FromFieldValue: Sized {
 /// # Examples
 ///
 /// ```
-/// # use lithos_core::note::value::{FieldValue, FromFieldValueRef, FieldValueError};
+/// # use lithos_core::note::value::{FieldValue, TryFromFieldValueRef, FieldValueError};
 /// let val = FieldValue::String("borrowed".into());
-/// let result = <&str>::from_value_ref(&val).unwrap();
+/// let result = <&str>::try_from_value_ref(&val).unwrap();
 /// assert_eq!(result, "borrowed");
 /// ```
-pub trait FromFieldValueRef<'value>: Sized {
+pub trait TryFromFieldValueRef<'value>: Sized {
     /// Attempts to extract a value of type `Self` from a borrowed
     /// [`FieldValue`].
     ///
     /// # Errors
     ///
     /// Returns a structured error describing why the conversion failed.
-    fn from_value_ref(
+    fn try_from_value_ref(
         value: &'value FieldValue,
     ) -> Result<Self, FieldValueError>;
 }
@@ -454,9 +824,9 @@ pub trait FromFieldValueRef<'value>: Sized {
 //                    Trait Implementations                    //
 // ----------------------------------------------------------- //
 
-impl FromFieldValue for bool {
+impl TryFromFieldValue for bool {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         value.as_bool().ok_or_else(|| FieldValueError::TypeMismatch {
             expected: FieldValueType::Boolean,
             actual: value.value_type(),
@@ -464,9 +834,9 @@ impl FromFieldValue for bool {
     }
 }
 
-impl FromFieldValue for f64 {
+impl TryFromFieldValue for f64 {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         value.as_number().ok_or_else(|| FieldValueError::TypeMismatch {
             expected: FieldValueType::Number,
             actual: value.value_type(),
@@ -474,9 +844,9 @@ impl FromFieldValue for f64 {
     }
 }
 
-impl FromFieldValue for Box<str> {
+impl TryFromFieldValue for Box<str> {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         value.as_str().map(Into::into).ok_or_else(|| {
             FieldValueError::TypeMismatch {
                 expected: FieldValueType::String,
@@ -486,9 +856,9 @@ impl FromFieldValue for Box<str> {
     }
 }
 
-impl FromFieldValue for DateTime<Utc> {
+impl TryFromFieldValue for DateTime<Utc> {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         use chrono::TimeZone as _;
         let ts =
             value.as_date().ok_or_else(|| FieldValueError::TypeMismatch {
@@ -503,9 +873,9 @@ impl FromFieldValue for DateTime<Utc> {
     }
 }
 
-impl FromFieldValue for Vec<Box<str>> {
+impl TryFromFieldValue for Vec<Box<str>> {
     #[inline]
-    fn from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
+    fn try_from_value(value: &FieldValue) -> Result<Self, FieldValueError> {
         if let Some(arr) = value.as_array() {
             let mut out = Vec::with_capacity(arr.len());
             for (index, item) in arr.iter().enumerate() {
@@ -530,9 +900,9 @@ impl FromFieldValue for Vec<Box<str>> {
     }
 }
 
-impl<'value> FromFieldValueRef<'value> for &'value str {
+impl<'value> TryFromFieldValueRef<'value> for &'value str {
     #[inline]
-    fn from_value_ref(
+    fn try_from_value_ref(
         value: &'value FieldValue,
     ) -> Result<Self, FieldValueError> {
         value.as_str().ok_or_else(|| FieldValueError::TypeMismatch {
@@ -542,9 +912,9 @@ impl<'value> FromFieldValueRef<'value> for &'value str {
     }
 }
 
-impl<'value> FromFieldValueRef<'value> for &'value [FieldValue] {
+impl<'value> TryFromFieldValueRef<'value> for &'value [FieldValue] {
     #[inline]
-    fn from_value_ref(
+    fn try_from_value_ref(
         value: &'value FieldValue,
     ) -> Result<Self, FieldValueError> {
         value.as_array().ok_or_else(|| FieldValueError::TypeMismatch {
@@ -556,6 +926,80 @@ impl<'value> FromFieldValueRef<'value> for &'value [FieldValue] {
 
 #[cfg(test)]
 mod tests {
+    mod conversion_tests {
+        use super::*;
+
+        #[test]
+        fn yaml_round_trip_string() {
+            let original = FieldValue::String("test".into());
+            let yaml = original.to_yaml_value();
+            let round_trip = FieldValue::try_from_yaml(&yaml).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn yaml_round_trip_number() {
+            let original = FieldValue::Number(42.5);
+            let yaml = original.to_yaml_value();
+            let round_trip = FieldValue::try_from_yaml(&yaml).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn yaml_round_trip_boolean() {
+            let original = FieldValue::Boolean(true);
+            let yaml = original.to_yaml_value();
+            let round_trip = FieldValue::try_from_yaml(&yaml).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn yaml_round_trip_array() {
+            let original = FieldValue::Array(vec![
+                FieldValue::String("a".into()),
+                FieldValue::Number(1.0),
+                FieldValue::Boolean(false),
+            ]);
+            let yaml = original.to_yaml_value();
+            let round_trip = FieldValue::try_from_yaml(&yaml).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn yaml_round_trip_object() {
+            let mut map = HashMap::new();
+            map.insert("key".into(), FieldValue::String("value".into()));
+            let original = FieldValue::Object(map);
+            let yaml = original.to_yaml_value();
+            let round_trip = FieldValue::try_from_yaml(&yaml).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn toml_round_trip_string() {
+            let original = FieldValue::String("test".into());
+            let toml = original.to_toml_value().unwrap();
+            // TOML → JSON → FieldValue (existing path)
+            let json = serde_json::to_value(&toml).unwrap();
+            let round_trip = FieldValue::try_from_json(&json).unwrap();
+            assert_eq!(original, round_trip);
+        }
+
+        #[test]
+        fn toml_converts_whole_numbers_to_integer() {
+            let original = FieldValue::Number(42.0);
+            let toml = original.to_toml_value().unwrap();
+            assert!(matches!(toml, toml::Value::Integer(42)));
+        }
+
+        #[test]
+        fn toml_converts_floats() {
+            let original = FieldValue::Number(42.5);
+            let toml = original.to_toml_value().unwrap();
+            assert!(matches!(toml, toml::Value::Float(_)));
+        }
+    }
+
     use serde_json::json;
 
     use super::*;
@@ -573,15 +1017,14 @@ mod tests {
             "arr": [1i32, "two"],
             "obj": {
                 "nested": "val"
-            },
-            "null": null
+            }
         });
 
-        let val = FieldValue::from_json(&json);
+        let val = FieldValue::try_from_json(&json)?;
 
         let obj = val
             .as_object()
-            .ok_or_else(|| "val should be an object".to_owned())?;
+            .ok_or_else(|| String::from("val should be an object"))?;
 
         assert_eq!(obj.get("str").and_then(FieldValue::as_str), Some("hello"));
         assert_eq!(
@@ -590,30 +1033,38 @@ mod tests {
         );
         assert_eq!(obj.get("bool").and_then(FieldValue::as_bool), Some(true));
 
-        let arr = obj
+        let arr: Vec<&FieldValue> = obj
             .get("arr")
-            .ok_or_else(|| "missing 'arr' key".to_owned())?
-            .as_array()
-            .ok_or_else(|| "'arr' should be an array".to_owned())?;
+            .ok_or_else(|| String::from("missing 'arr' key"))?
+            .array_items()
+            .ok_or_else(|| String::from("'arr' should be an array"))?
+            .collect();
 
-        assert_eq!(arr.first().and_then(FieldValue::as_number), Some(1.0f64));
-        assert_eq!(arr.get(1).and_then(FieldValue::as_str), Some("two"));
+        assert_eq!(arr.first().and_then(|item| item.as_number()), Some(1.0f64));
+        assert_eq!(arr.get(1).and_then(|item| item.as_str()), Some("two"));
 
         let nested = obj
             .get("obj")
-            .ok_or_else(|| "missing 'obj' key".to_owned())?
+            .ok_or_else(|| String::from("missing 'obj' key"))?
             .as_object()
-            .ok_or_else(|| "'obj' should be an object".to_owned())?;
+            .ok_or_else(|| String::from("'obj' should be an object"))?;
 
         assert_eq!(
             nested.get("nested").and_then(FieldValue::as_str),
             Some("val")
         );
 
-        // Null becomes empty string as per implementation
-        assert_eq!(obj.get("null").and_then(FieldValue::as_str), Some(""));
-
         Ok(())
+    }
+
+    #[test]
+    fn from_json_rejects_null() {
+        let json = json!({
+            "null": null
+        });
+
+        let result = FieldValue::try_from_json(&json);
+        assert!(matches!(result, Err(FieldValueParseError::NullValue)));
     }
 
     #[test]

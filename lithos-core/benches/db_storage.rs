@@ -51,12 +51,12 @@
 //!
 //! # Input Model
 //!
-//! - **Data**: Realistic `Note` aggregates with links, tags, tasks, headings,
-//!   sections (~200-500 bytes serialized)
+//! - **Data**: Realistic `StoredNote` projections with links, tags, tasks,
+//!   headings, sections (~200-500 bytes serialized)
 //! - **Determinism**: Fresh database per benchmark group; UUIDs are v7
 //!   (time-based) but measurements are stable
-//! - **Representativeness**: Note structure mirrors production workload (3
-//!   tags, 2 links, 2 tasks, 2 headings)
+//! - **Representativeness**: Stored note structure mirrors production workload
+//!   (3 tags, 2 links, 2 tasks, 2 headings)
 //! - **Sizes**:
 //!   - Small: 100 notes (read benchmarks)
 //!   - Medium: 500 notes (batch write scaling)
@@ -83,7 +83,7 @@
 //! - Bottleneck: redb B-tree traversal, not serialization
 //!
 //! **Full Deserialization** (~750-850 ns):
-//! - Construct owned `Note` with all heap allocations
+//! - Construct owned `StoredNote` with all heap allocations
 //! - Should be 1.5-2x slower than zero-copy
 //! - Still sub-microsecond for small notes (<1KB serialized)
 //! - Bottleneck: heap allocation, not rkyv logic
@@ -151,7 +151,7 @@
 //! # Maintenance Contract
 //!
 //! **Update when**:
-//! - Note domain model changes (new fields, removed fields, nesting changes)
+//! - Stored note model changes (new fields, removed fields, nesting changes)
 //! - Database layer API changes (method signatures, transaction model)
 //! - rkyv configuration changes (features, validation strategy)
 //! - New storage hot paths identified (add corresponding benchmarks)
@@ -172,8 +172,8 @@
 //!   readers/writers
 //! - **No allocator comparison**: Uses system allocator; custom allocators not
 //!   tested
-//! - **Synthetic data**: Note structures are realistic but not from production
-//!   corpus
+//! - **Synthetic data**: Stored note structures are realistic but not from
+//!   production corpus
 //! - **Cache warm**: Does not model cold-start database opening overhead
 //!
 //! # Benchmark Index
@@ -211,45 +211,41 @@
               needless_borrowed_reference lints"
 )]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
 use criterion::{
     BenchmarkId, Criterion, Throughput, black_box, criterion_group,
     criterion_main,
 };
 use lithos_core::{
-    config::{
-        aggregate::Config,
-        raw::RawConfig,
-        task::StatusSymbol,
-        vault::{VaultId, VaultRoot},
-    },
     db::Database,
     note::{
-        aggregate::{Note, NoteId},
         frontmatter::Frontmatter,
+        heading::{Heading, HeadingLevel},
+        identity::NoteId,
         link::{Link, Target},
-        structure::{Heading, HeadingLevel, Section},
+        paths::NotePath,
+        position::{SourceByteOffset, SourceByteRange},
+        stored::StoredNote,
+        structure::Section,
         tag::Tag,
-        task::Task,
-        types::{SourceByteOffset, SourceByteRange},
     },
 };
 use redb::TableDefinition;
 use tempfile::TempDir;
 use uuid::Uuid;
 
-const NOTES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("notes");
+const STORED_NOTES_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("stored_notes");
 
-/// Creates a realistic `Note` value with nested structures.
-fn create_test_note(index: usize) -> Note {
+/// Creates a realistic stored note value with nested structures.
+fn create_test_note(index: usize) -> StoredNote {
     let id = NoteId::new();
     let path = format!("notes/test-{index:04}.md");
 
-    let mut note = Note::new(id, &path).expect("valid path");
-
-    note.add_link(
-        Link::new_wikilink(
+    let note_path = NotePath::try_new(&path).expect("valid path");
+    let links = vec![
+        Link::try_new_wikilink(
             Target::Unresolved {
                 raw: "other-note.md".into(),
             },
@@ -258,9 +254,7 @@ fn create_test_note(index: usize) -> Note {
             SourceByteOffset::new(0),
         )
         .expect("valid link"),
-    );
-    note.add_link(
-        Link::new_markdown_link(
+        Link::try_new_markdown_link(
             Target::External {
                 url: "https://example.com".into(),
             },
@@ -269,71 +263,56 @@ fn create_test_note(index: usize) -> Note {
             SourceByteOffset::new(50),
         )
         .expect("valid link"),
-    );
-
-    note.add_tag(Tag::new("#rust").expect("valid tag"));
-    note.add_tag(Tag::new("#performance").expect("valid tag"));
-    note.add_tag(Tag::new("#database/benchmarks").expect("valid tag"));
-
-    note.add_heading(
-        Heading::new(
+    ];
+    let tags = vec![
+        Tag::try_new("#rust").expect("valid tag"),
+        Tag::try_new("#performance").expect("valid tag"),
+        Tag::try_new("#database/benchmarks").expect("valid tag"),
+    ];
+    let headings = vec![
+        Heading::try_new(
             HeadingLevel::try_new(1).expect("valid level"),
             "Main Title",
             SourceByteOffset::new(0),
         )
         .expect("valid heading"),
-    );
-    note.add_heading(
-        Heading::new(
+        Heading::try_new(
             HeadingLevel::try_new(2).expect("valid level"),
             "Subsection",
             SourceByteOffset::new(10),
         )
         .expect("valid heading"),
-    );
-
-    let config = Config::build(
-        &RawConfig::default(),
-        VaultId::new(),
-        VaultRoot::try_new(std::path::PathBuf::from("/vault"))
-            .expect("valid vault root"),
-        lithos_core::config::aggregate::Version::initial(),
-    )
-    .expect("config");
-    let status = StatusSymbol::try_new(' ').expect("valid status");
-    note.add_task(
-        Task::from_checkbox(
-            "Do something",
-            status,
-            SourceByteOffset::new(15),
-            config.task(),
-        )
-        .expect("valid task"),
-    );
-    note.add_task(
-        Task::from_checkbox(
-            "Already done",
-            StatusSymbol::try_new('x').expect("valid status"),
-            SourceByteOffset::new(16),
-            config.task(),
-        )
-        .expect("valid task"),
-    );
-
-    note.add_section(Section::new(
+    ];
+    let sections = vec![Section::new(
+        lithos_core::note::structure::SectionKind::Paragraph,
         None,
-        "Test section content",
         SourceByteRange::new(
             SourceByteOffset::new(0),
             SourceByteOffset::new(100),
-        ),
-    ));
+        )
+        .expect("valid source range"),
+    )];
 
-    note.set_frontmatter(Some(
-        Frontmatter::new(HashMap::new()).expect("valid frontmatter"),
-    ));
-
-    note
+    StoredNote::new(
+        id,
+        note_path,
+        Some("Main Title".into()),
+        Some(Frontmatter::new(HashMap::new())),
+        Vec::new(),
+        tags,
+        headings,
+        None,
+        sections,
+        None,
+        links,
+        Vec::new(),
+        Vec::new(),
+        format!("hash-{index:04}").into_boxed_str(),
+        1024,
+        None,
+        None,
+        SystemTime::UNIX_EPOCH,
+    )
 }
 
 fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
@@ -348,7 +327,9 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
             let note = create_test_note(i);
             let id_str = Uuid::from(note.id()).to_string();
             note_ids.push(note.id());
-            batch_db.put(NOTES_TABLE, &id_str, &note).expect("insert note");
+            batch_db
+                .put(STORED_NOTES_TABLE, &id_str, &note)
+                .expect("insert note");
         }
         Ok(())
     })
@@ -361,7 +342,7 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
 ///
 /// # Purpose
 ///
-/// Measures the cost of accessing rkyv-archived `Note` data without
+/// Measures the cost of accessing rkyv-archived `StoredNote` data without
 /// deserialization, validating Lithos's core zero-copy claim.
 ///
 /// # What is Measured
@@ -378,7 +359,8 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
 ///
 /// # Setup
 ///
-/// - Database created with 100 realistic `Note` aggregates outside timed region
+/// - Database created with 100 realistic `StoredNote` projections outside timed
+///   region
 /// - Target UUID selected before benchmark starts
 /// - Closure accesses archived data but does not deserialize
 ///
@@ -403,7 +385,7 @@ fn setup_db_with_notes(count: usize) -> (TempDir, Database, Vec<NoteId>) {
 ///
 /// # Notes for Future
 ///
-/// - Changing `Note` field layout may affect archived access patterns
+/// - Changing `StoredNote` field layout may affect archived access patterns
 /// - Do not remove `black_box(archived)` or compiler will eliminate closure
 fn bench_zero_copy_read(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
@@ -415,9 +397,13 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 
     group.bench_function("get_zero_copy", |b| {
         b.iter(|| {
-            db.get::<Note, _, _>(NOTES_TABLE, &test_key, |archived| {
-                black_box(archived);
-            })
+            db.get::<StoredNote, _, _>(
+                STORED_NOTES_TABLE,
+                &test_key,
+                |archived| {
+                    black_box(archived);
+                },
+            )
             .expect("get note")
         });
     });
@@ -425,11 +411,11 @@ fn bench_zero_copy_read(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmarks full deserialization to owned `Note` value (steady-state).
+/// Benchmarks full deserialization to owned `StoredNote` value (steady-state).
 ///
 /// # Purpose
 ///
-/// Measures the cost of constructing an owned `Note` from archived data,
+/// Measures the cost of constructing an owned `StoredNote` from archived data,
 /// providing baseline comparison for zero-copy reads.
 ///
 /// # What is Measured
@@ -452,7 +438,8 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 ///
 /// # Expected Characteristics
 ///
-/// - **Complexity**: O(n) in Note field count (recursive deserialization)
+/// - **Complexity**: O(n) in `StoredNote` field count (recursive
+///   deserialization)
 /// - **Dominant costs**: Memory allocation, string copying, Vec construction
 /// - **Typical range**: 700-1000 ns (2-3x slower than zero-copy)
 ///
@@ -460,8 +447,8 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 ///
 /// - **Approaching `read_zero_copy`**: Check if rkyv validation overhead
 ///   increased
-/// - **Diverging from `read_zero_copy`**: May indicate more complex Note
-///   structure
+/// - **Diverging from `read_zero_copy`**: May indicate more complex
+///   `StoredNote` structure
 /// - **Sibling benchmarks**: Compare ratio with `read_zero_copy` (should stay
 ///   ~2-3x)
 ///
@@ -472,8 +459,8 @@ fn bench_zero_copy_read(c: &mut Criterion) {
 ///
 /// # Notes for Future
 ///
-/// - Adding nested collections to Note will increase deserialization cost
-///   non-linearly
+/// - Adding nested collections to `StoredNote` will increase deserialization
+///   cost non-linearly
 fn bench_full_deserialize(c: &mut Criterion) {
     let (_temp, db, note_ids) = setup_db_with_notes(100);
     let test_id = note_ids[50];
@@ -484,8 +471,9 @@ fn bench_full_deserialize(c: &mut Criterion) {
 
     group.bench_function("get_owned", |b| {
         b.iter(|| {
-            let note: Option<Note> =
-                db.get_owned(NOTES_TABLE, &test_key).expect("get owned note");
+            let note: Option<StoredNote> = db
+                .get_owned(STORED_NOTES_TABLE, &test_key)
+                .expect("get owned note");
             black_box(note.expect("note exists"));
         });
     });
@@ -497,7 +485,7 @@ fn bench_full_deserialize(c: &mut Criterion) {
 ///
 /// # Purpose
 ///
-/// Measures the cost of writing one Note with a dedicated transaction,
+/// Measures the cost of writing one `StoredNote` with a dedicated transaction,
 /// providing baseline for batch write comparison.
 ///
 /// # What is Measured
@@ -528,7 +516,7 @@ fn bench_single_write(c: &mut Criterion) {
         b.iter(|| {
             let note = create_test_note(counter);
             counter = counter.wrapping_add(1);
-            db.put_by_uuid(NOTES_TABLE, Uuid::from(note.id()), &note)
+            db.put_by_uuid(STORED_NOTES_TABLE, Uuid::from(note.id()), &note)
                 .expect("put note");
         });
     });
@@ -589,7 +577,7 @@ fn bench_batch_write(c: &mut Criterion) {
                             let note = create_test_note(i as usize);
                             let id_str = Uuid::from(note.id()).to_string();
                             batch_db
-                                .put(NOTES_TABLE, &id_str, &note)
+                                .put(STORED_NOTES_TABLE, &id_str, &note)
                                 .expect("put note");
                         }
                         Ok(())
@@ -636,7 +624,7 @@ fn bench_delete(c: &mut Criterion) {
             index = index.wrapping_add(1);
 
             let existed = db
-                .delete_by_uuid(NOTES_TABLE, Uuid::from(id))
+                .delete_by_uuid(STORED_NOTES_TABLE, Uuid::from(id))
                 .expect("delete note");
             black_box(existed);
         });
@@ -679,9 +667,13 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
     let hot_key = note_keys.first().expect("note key");
     group.bench_function("hot_read", |b| {
         b.iter(|| {
-            db.get::<Note, _, _>(NOTES_TABLE, hot_key.as_str(), |archived| {
-                black_box(archived);
-            })
+            db.get::<StoredNote, _, _>(
+                STORED_NOTES_TABLE,
+                hot_key.as_str(),
+                |archived| {
+                    black_box(archived);
+                },
+            )
             .expect("get note")
         });
     });
@@ -692,9 +684,13 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
             let cold_id = note_keys[cold_index % note_keys.len()].as_str();
             cold_index = cold_index.wrapping_add(1);
 
-            db.get::<Note, _, _>(NOTES_TABLE, cold_id, |archived| {
-                black_box(archived);
-            })
+            db.get::<StoredNote, _, _>(
+                STORED_NOTES_TABLE,
+                cold_id,
+                |archived| {
+                    black_box(archived);
+                },
+            )
             .expect("get note")
         });
     });
@@ -716,7 +712,8 @@ fn bench_cache_effectiveness(c: &mut Criterion) {
 ///
 /// # Fairness
 ///
-/// - Identical write operations (same Note structure, size, UUID generation)
+/// - Identical write operations (same `StoredNote` structure, size, UUID
+///   generation)
 /// - Same database file creation (fresh DB for each variant)
 ///
 /// # Expected Characteristics
@@ -749,8 +746,12 @@ fn bench_transaction_overhead(c: &mut Criterion) {
 
             for i in 0..batch_size {
                 let note = create_test_note(i as usize);
-                db.put_by_uuid(NOTES_TABLE, Uuid::from(note.id()), &note)
-                    .expect("put note");
+                db.put_by_uuid(
+                    STORED_NOTES_TABLE,
+                    Uuid::from(note.id()),
+                    &note,
+                )
+                .expect("put note");
             }
         });
     });
@@ -769,7 +770,7 @@ fn bench_transaction_overhead(c: &mut Criterion) {
                     let note = create_test_note(i as usize);
                     let id_str = Uuid::from(note.id()).to_string();
                     batch_db
-                        .put(NOTES_TABLE, &id_str, &note)
+                        .put(STORED_NOTES_TABLE, &id_str, &note)
                         .expect("put note");
                 }
                 Ok(())
@@ -828,12 +829,13 @@ fn bench_scan_range(c: &mut Criterion) {
 
     // Pre-populate with 1000 notes using prefixed keys
     // Keys format: "notes/test-XXXX" where XXXX is 0000-0999
-    let notes: Vec<Note> = (0..TOTAL_NOTES).map(create_test_note).collect();
+    let notes: Vec<StoredNote> =
+        (0..TOTAL_NOTES).map(create_test_note).collect();
 
     db.batch_write(|writer| {
         for (i, note) in notes.iter().enumerate() {
             let key = format!("notes/test-{i:04}");
-            writer.put(NOTES_TABLE, &key, note)?;
+            writer.put(STORED_NOTES_TABLE, &key, note)?;
         }
         Ok(())
     })
@@ -846,12 +848,14 @@ fn bench_scan_range(c: &mut Criterion) {
     group.bench_function("range_query_100_matches", |b| {
         b.iter(|| {
             let prefix = "notes/test-01";
-            let results = db
+            let count = db
                 .batch_read(|reader| {
-                    reader.scan_range::<Note>(NOTES_TABLE, prefix)
+                    let results = reader
+                        .scan_range::<StoredNote>(STORED_NOTES_TABLE, prefix)?;
+                    Ok(results.len())
                 })
                 .expect("batch_read");
-            black_box(results.len())
+            black_box(count)
         });
     });
 
@@ -859,19 +863,22 @@ fn bench_scan_range(c: &mut Criterion) {
     group.bench_function("full_scan_filter_100_matches", |b| {
         b.iter(|| {
             let prefix = "notes/test-01";
-            let results = db
+            let count = db
                 .batch_read(|reader| {
-                    let all_pairs =
-                        reader.list_key_value_pairs::<Note>(NOTES_TABLE)?;
-                    let filtered: Vec<_> = all_pairs
+                    let all_pairs = reader.list_key_value_pairs::<StoredNote>(
+                        STORED_NOTES_TABLE,
+                    )?;
+                    let filtered = all_pairs
                         .into_iter()
                         .filter(|(key, _)| key.starts_with(prefix))
-                        .map(|(_, value)| black_box(value))
-                        .collect();
+                        .fold(0usize, |count, (_, value)| {
+                            black_box(value);
+                            count + 1
+                        });
                     Ok(filtered)
                 })
                 .expect("batch_read");
-            black_box(results.len())
+            black_box(count)
         });
     });
 

@@ -22,6 +22,7 @@
 //! - Heading extraction
 //! - Section construction
 //! - File I/O (adapter reads from a temp file)
+//! - Parse-only path (in-memory markdown)
 //! - Scaling behavior (simple → medium → complex markdown samples)
 //!
 //! **Excluded**:
@@ -39,11 +40,12 @@
 //!
 //! - **Harness**: Criterion.rs (100 samples, 3s warmup, 5s measurement)
 //! - **Throughput**: Bytes of markdown processed per second
-//! - **Black-boxing**: Parsed Note passed through `black_box()` to prevent
+//! - **Black-boxing**: Parsed output passed through `black_box()` to prevent
 //!   elision
-//! - **Setup**: Note structure and temp files created outside timed region
+//! - **Setup**: Config and temp files created outside timed region
 //! - **Compilation**: `--release` mode (criterion default)
-//! - **Environment**: tmpfs-backed temp directory for file operations
+//! - **Environment**: tmpfs-backed temp directory for ingestion benchmarks
+//! - **Environment**: In-memory markdown strings for parse-only benchmarks
 //!
 //! # Input Model
 //!
@@ -72,7 +74,8 @@
 //! - **Same inputs**: All benchmarks use identical static markdown samples
 //! - **Compilation**: `--release` mode, no special target-cpu or LTO
 //! - **Environment**: tmpfs-backed temp directory (eliminates disk I/O
-//!   variance)
+//!   variance) for ingestion
+//! - **Environment**: In-memory markdown strings for parse-only runs
 //! - **Allocation**: System allocator (no custom allocator)
 //! - **Setup separation**: Config, file writes, Note construction outside
 //!   `b.iter()`
@@ -102,6 +105,7 @@
 //! **Scaling behavior**: O(n) confirmed (5x size → 1.35x time, 20x size → 3.5x
 //! time).
 //! - **Fixed overhead**: ~10-13 µs (file I/O, Config, Note construction)
+//! - **Parse-only overhead**: lower fixed costs (Config, parser setup)
 //! - **Parsing cost**: ~5-35 µs depending on complexity
 //! - **Throughput improves with size**: Fixed costs amortized over larger
 //!   inputs
@@ -119,7 +123,7 @@
 //!
 //! **If simple throughput drops below 5 MiB/s**:
 //! - Fixed overhead increased (file I/O, Config/Note construction)
-//! - Check for new validation in `Note::new()` or `NoteReader::new()`
+//! - Check for new validation in `NoteReader::new()` or parse routines
 //!
 //! **If medium/complex throughput drops below 20 MiB/s**:
 //! - Parsing logic changed (pulldown-cmark, regex matching)
@@ -153,6 +157,7 @@
 //! - Memory usage or allocation patterns (criterion doesn't track)
 //! - Concurrent parsing performance (single-threaded only)
 //! - Real-world file I/O impact (tmpfs eliminates disk latency)
+//! - Parse-only I/O behavior (not measured)
 //! - Frontmatter YAML parsing cost (not included in samples)
 //!
 //! ## Actionable Optimization Targets
@@ -179,9 +184,12 @@
 //!
 //! | Benchmark                 | Input Size | Expected Time | Throughput  | What is Measured                   |
 //! | :------------------------ | :--------- | :------------ | :---------- | :--------------------------------- |
-//! | `ingest_markdown/simple`  | 91B        | ~13-14 µs     | ~7 MiB/s    | Minimal note (1 heading, 3 tasks)  |
-//! | `ingest_markdown/medium`  | 500B       | ~18-19 µs     | ~27 MiB/s   | Typical note (multiple sections)   |
-//! | `ingest_markdown/complex` | 2419B      | ~47-48 µs     | ~50 MiB/s   | Dense note (deep hierarchy, links) |
+//! | `ingest_markdown/simple`  | 91B        | ~13-14 µs     | ~7 MiB/s    | Full pipeline (file → note)        |
+//! | `ingest_markdown/medium`  | 500B       | ~18-19 µs     | ~27 MiB/s   | Full pipeline (file → note)        |
+//! | `ingest_markdown/complex` | 2419B      | ~47-48 µs     | ~50 MiB/s   | Full pipeline (file → note)        |
+//! | `parse_markdown/simple`   | 91B        | ~11-12 µs     | ~8 MiB/s    | Parse-only (no file I/O)           |
+//! | `parse_markdown/medium`   | 500B       | ~16-17 µs     | ~30 MiB/s   | Parse-only (no file I/O)           |
+//! | `parse_markdown/complex`  | 2419B      | ~44-45 µs     | ~55 MiB/s   | Parse-only (no file I/O)           |
 //!
 //! # Known Limitations
 //!
@@ -190,6 +198,7 @@
 //! - **Single-threaded**: Does not model concurrent parsing scenarios
 //! - **tmpfs I/O**: Eliminates real disk latency (actual file I/O will be
 //!   slower)
+//! - **Parse-only**: In-memory parsing excludes any file system overhead
 //! - **Static samples**: Does not test variance across production note types
 //!
 //! # Safety
@@ -206,6 +215,8 @@
     reason = "Criterion benchmarks prefer direct control flow with asserts"
 )]
 
+use std::path::Path;
+
 use criterion::{
     Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
@@ -216,10 +227,7 @@ use lithos_core::{
         vault::{VaultId, VaultRoot},
     },
     fs::FsReader,
-    note::{
-        adapter::reader::NoteReader,
-        aggregate::{Note, NoteId},
-    },
+    note::reader::NoteReader,
 };
 
 /// Simple markdown sample: minimal note structure (~100 bytes).
@@ -348,7 +356,8 @@ fn complex_markdown() -> &'static str {
 ///
 /// # What is Measured
 ///
-/// - **Metric**: Latency per `NoteReader::apply()` call
+/// - **Metric**: Latency per `NoteReader::apply()` and
+///   `NoteReader::parse_str()`
 /// - **Throughput**: Markdown bytes processed per second
 /// - **Scaling**: Simple (~100B) → Medium (~500B) → Complex (~2KB)
 ///
@@ -373,6 +382,103 @@ fn complex_markdown() -> &'static str {
 /// - No frontmatter YAML parsing (separate cost)
 /// - No memory allocation measurement
 /// - tmpfs I/O (real disk will be slower)
+struct BenchSamples<'sample> {
+    simple: &'sample str,
+    medium: &'sample str,
+    complex: &'sample str,
+}
+
+fn bench_ingest_group(
+    c: &mut Criterion,
+    reader: &FsReader,
+    note_reader: &NoteReader<'_>,
+    root: &Path,
+    samples: &BenchSamples<'_>,
+) {
+    let mut ingest_group = c.benchmark_group("note_parsing");
+
+    // Simple benchmark
+    std::fs::write(root.join("notes/simple.md"), samples.simple)
+        .expect("write simple markdown");
+    ingest_group.throughput(Throughput::Bytes(samples.simple.len() as u64));
+    ingest_group.bench_function("ingest_markdown/simple", |b| {
+        b.iter(|| {
+            let parsed = note_reader
+                .parse(reader, std::path::Path::new("notes/simple.md"))
+                .expect("ingest markdown");
+            black_box(parsed);
+        });
+    });
+
+    // Medium benchmark
+    std::fs::write(root.join("notes/medium.md"), samples.medium)
+        .expect("write medium markdown");
+    ingest_group.throughput(Throughput::Bytes(samples.medium.len() as u64));
+    ingest_group.bench_function("ingest_markdown/medium", |b| {
+        b.iter(|| {
+            let parsed = note_reader
+                .parse(reader, std::path::Path::new("notes/medium.md"))
+                .expect("ingest markdown");
+            black_box(parsed);
+        });
+    });
+
+    // Complex benchmark
+    std::fs::write(root.join("notes/complex.md"), samples.complex)
+        .expect("write complex markdown");
+    ingest_group.throughput(Throughput::Bytes(samples.complex.len() as u64));
+    ingest_group.bench_function("ingest_markdown/complex", |b| {
+        b.iter(|| {
+            let parsed = note_reader
+                .parse(reader, std::path::Path::new("notes/complex.md"))
+                .expect("ingest markdown");
+            black_box(parsed);
+        });
+    });
+
+    ingest_group.finish();
+}
+
+fn bench_parse_group(
+    c: &mut Criterion,
+    note_reader: &NoteReader<'_>,
+    samples: &BenchSamples<'_>,
+) {
+    let mut parse_group = c.benchmark_group("note_parsing_parse_only");
+
+    // Parse-only simple benchmark
+    parse_group.throughput(Throughput::Bytes(samples.simple.len() as u64));
+    parse_group.bench_function("parse_markdown/simple", |b| {
+        b.iter(|| {
+            let outcome =
+                note_reader.parse_str(samples.simple).expect("parse markdown");
+            black_box(outcome);
+        });
+    });
+
+    // Parse-only medium benchmark
+    parse_group.throughput(Throughput::Bytes(samples.medium.len() as u64));
+    parse_group.bench_function("parse_markdown/medium", |b| {
+        b.iter(|| {
+            let outcome =
+                note_reader.parse_str(samples.medium).expect("parse markdown");
+            black_box(outcome);
+        });
+    });
+
+    // Parse-only complex benchmark
+    parse_group.throughput(Throughput::Bytes(samples.complex.len() as u64));
+    parse_group.bench_function("parse_markdown/complex", |b| {
+        b.iter(|| {
+            let outcome =
+                note_reader.parse_str(samples.complex).expect("parse markdown");
+            black_box(outcome);
+        });
+    });
+
+    parse_group.finish();
+}
+
 fn bench_note_ingest(c: &mut Criterion) {
     let root = std::env::temp_dir()
         .join(format!("lithos_note_bench_{}", std::process::id()));
@@ -390,69 +496,14 @@ fn bench_note_ingest(c: &mut Criterion) {
     let reader = FsReader::new(root.as_path());
     let note_reader = NoteReader::new(&config);
 
-    let mut group = c.benchmark_group("note_parsing");
+    let samples = BenchSamples {
+        simple: simple_markdown(),
+        medium: medium_markdown(),
+        complex: complex_markdown(),
+    };
 
-    // Simple benchmark
-    let simple = simple_markdown();
-    std::fs::write(root.join("notes/simple.md"), simple)
-        .expect("write simple markdown");
-    group.throughput(Throughput::Bytes(simple.len() as u64));
-    group.bench_function("ingest_markdown/simple", |b| {
-        b.iter(|| {
-            let mut note = Note::new(NoteId::new(), "notes/simple.md")
-                .expect("valid note");
-            note_reader
-                .apply(
-                    &reader,
-                    &mut note,
-                    std::path::Path::new("notes/simple.md"),
-                )
-                .expect("ingest markdown");
-            black_box(note);
-        });
-    });
-
-    // Medium benchmark
-    let medium = medium_markdown();
-    std::fs::write(root.join("notes/medium.md"), medium)
-        .expect("write medium markdown");
-    group.throughput(Throughput::Bytes(medium.len() as u64));
-    group.bench_function("ingest_markdown/medium", |b| {
-        b.iter(|| {
-            let mut note = Note::new(NoteId::new(), "notes/medium.md")
-                .expect("valid note");
-            note_reader
-                .apply(
-                    &reader,
-                    &mut note,
-                    std::path::Path::new("notes/medium.md"),
-                )
-                .expect("ingest markdown");
-            black_box(note);
-        });
-    });
-
-    // Complex benchmark
-    let complex = complex_markdown();
-    std::fs::write(root.join("notes/complex.md"), complex)
-        .expect("write complex markdown");
-    group.throughput(Throughput::Bytes(complex.len() as u64));
-    group.bench_function("ingest_markdown/complex", |b| {
-        b.iter(|| {
-            let mut note = Note::new(NoteId::new(), "notes/complex.md")
-                .expect("valid note");
-            note_reader
-                .apply(
-                    &reader,
-                    &mut note,
-                    std::path::Path::new("notes/complex.md"),
-                )
-                .expect("ingest markdown");
-            black_box(note);
-        });
-    });
-
-    group.finish();
+    bench_ingest_group(c, &reader, &note_reader, root.as_path(), &samples);
+    bench_parse_group(c, &note_reader, &samples);
 }
 
 criterion_group!(benches, bench_note_ingest);

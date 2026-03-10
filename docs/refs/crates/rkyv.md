@@ -60,6 +60,8 @@ pub trait Archive {
 **Important:** `Archived<T>` is a distinct type from `T`. Zero-copy access works with `Archived<T>`; deserialization is required to get `T`.
 See https://rkyv.org/ for conceptual guidance on working with archived types.
 
+**Lithos pattern:** Use `rkyv::Archived<T>` in public APIs and CQRS ports. Use `Archived*` only for local accessors inside the defining module when archived fields are private.
+
 **Resolver:**
 
 - Contains offset information

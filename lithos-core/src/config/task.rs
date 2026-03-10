@@ -70,6 +70,8 @@ pub struct Task {
     fields: HashMap<Box<str>, FieldSpec>,
     /// List of field names to be indexed.
     indexed: Vec<Box<str>>,
+    /// Whether task dependency indexing is enabled.
+    dependencies_enabled: bool,
 }
 
 impl Default for Task {
@@ -157,6 +159,10 @@ impl Task {
             completed,
             fields,
             indexed,
+            dependencies_enabled: raw
+                .dependencies
+                .and_then(|deps| deps.enabled)
+                .unwrap_or(false),
         })
     }
 
@@ -221,6 +227,13 @@ impl Task {
     /// Return the list of indexed field names.
     pub fn indexed(&self) -> &[Box<str>] {
         &self.indexed
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return whether task dependency indexing is enabled.
+    pub fn dependencies_enabled(&self) -> bool {
+        self.dependencies_enabled
     }
 
     #[inline]
@@ -431,7 +444,8 @@ impl StatusSymbol {
 ///
 /// - Must start with `#`.
 /// - Must be at least 2 characters long.
-/// - Remaining characters must be ASCII alphanumeric, `_`, or `-`.
+/// - Segments are separated by `/`.
+/// - Segments must be alphanumeric, `_`, or `-`.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize,
 )]
@@ -447,22 +461,48 @@ impl TaskTag {
     /// `#` or contains invalid characters.
     pub fn try_new<T: AsRef<str>>(value: T) -> Result<Self, ConfigError> {
         let text = value.as_ref();
-        if text.len() < 2 || !text.starts_with('#') {
+        let Some(tag_body) = text.strip_prefix('#') else {
             return Err(ConfigError::ValidationFailed {
                 field: "task_tags".into(),
                 message: "task tag must start with '#' and be non-empty"
                     .to_owned()
                     .into(),
             });
-        }
-        if !text
-            .chars()
-            .skip(1)
-            .all(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        {
+        };
+        if tag_body.is_empty() {
             return Err(ConfigError::ValidationFailed {
                 field: "task_tags".into(),
-                message: "task tag must be ASCII alphanumeric, '_' or '-'"
+                message: "task tag must be non-empty".to_owned().into(),
+            });
+        }
+
+        for segment in tag_body.split('/') {
+            if segment.is_empty() {
+                return Err(ConfigError::ValidationFailed {
+                    field: "task_tags".into(),
+                    message: "task tag cannot contain empty segments"
+                        .to_owned()
+                        .into(),
+                });
+            }
+            if !segment
+                .chars()
+                .all(|c: char| c.is_alphanumeric() || c == '_' || c == '-')
+            {
+                return Err(ConfigError::ValidationFailed {
+                    field: "task_tags".into(),
+                    message: "task tag segments must be alphanumeric, '_' or \
+                              '-'"
+                    .to_owned()
+                    .into(),
+                });
+            }
+        }
+
+        if tag_body.chars().any(|c| c.is_ascii() && c.is_ascii_whitespace()) {
+            return Err(ConfigError::ValidationFailed {
+                field: "task_tags".into(),
+                message: "task tag must not contain whitespace"
                     .to_owned()
                     .into(),
             });
@@ -537,6 +577,7 @@ mod tests {
                 }),
                 fields: Some(fields),
                 indexing: None,
+                dependencies: None,
             }
         }
     }
@@ -551,9 +592,34 @@ mod tests {
     }
 
     #[test]
+    fn task_tag_accepts_hierarchical() {
+        let tag = TaskTag::try_new("#work/project");
+        assert!(
+            tag.is_ok(),
+            "TaskTag '#work/project' should be valid, but got: {tag:?}"
+        );
+    }
+
+    #[test]
+    fn task_tag_accepts_unicode_segments() {
+        let tag = TaskTag::try_new("#\u{8a08}\u{753b}/\u{6b21}");
+        assert!(
+            tag.is_ok(),
+            "TaskTag '#\u{8a08}\u{753b}/\u{6b21}' should be valid, but got: \
+             {tag:?}"
+        );
+    }
+
+    #[test]
     fn task_tag_rejects_missing_hash_prefix() {
         let tag = TaskTag::try_new("work");
         assert!(tag.is_err(), "TaskTag without hash prefix should be invalid");
+    }
+
+    #[test]
+    fn task_tag_rejects_empty_segments() {
+        let tag = TaskTag::try_new("#work//proj");
+        assert!(tag.is_err(), "TaskTag should reject empty segments");
     }
 
     #[test]
@@ -636,6 +702,7 @@ mod tests {
             indexing: Some(RawIndexingConfig {
                 indexed_fields: Some(vec!["unknown".to_owned()]),
             }),
+            dependencies: None,
         };
 
         let result = Task::try_from_raw(raw);
