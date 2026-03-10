@@ -5,7 +5,7 @@ stakeholders: [Development Team, Architects, Jack (Developer)]
 date_proposed: 2026-01-14
 date_decided: 2026-02-01
 date_implemented: pending
-date_updated: 2026-02-01
+date_updated: 2026-03-10
 ---
 
 # ADR 003: Domain Serialization Strategy with Feature Gates
@@ -26,7 +26,7 @@ The Lithos project requires serialization capabilities for multiple purposes:
 
 ## Decision
 
-**Domain models have rkyv derives for zero-copy database operations and feature-gated serde for optional JSON serialization. Storage DTOs (`Stored*`) are an optional optimization layer, only created when domain shape is inefficient for storage.**
+**Domain models have rkyv derives for zero-copy database operations and feature-gated serde for optional JSON serialization. View types (`*View`) are an optional optimization layer, only created when domain shape is inefficient for storage.**
 
 ### Three-Shape Serialization Model
 
@@ -39,21 +39,21 @@ The Lithos project requires serialization capabilities for multiple purposes:
    - Purpose: Invariant-preserving domain models, zero-copy database operations
    - Location: `<context>/aggregate.rs`
    - Derives: `rkyv::Archive + Serialize + Deserialize`, optionally `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]`
-   - **Has rkyv derives by default** for zero-copy database reads via port adapters
+   - **Has rkyv derives by default** for zero-copy database reads via storage implementations
    - Example: `Schema { name: SchemaName, properties: Vec<Property> }`
 
-3. **Stored\* (rkyv only, optional optimization)**: Storage-optimized representation
-   - Purpose: Only when domain shape causes storage inefficiency (wrapper newtypes complicate indexing, deep nesting, Arc sharing issues)
-   - Location: `db/stored/<context>.rs`
+3. **\*View (rkyv only, optional optimization)**: Storage-optimized projection representation
+   - Purpose: Represents a read-optimized projection in the expendable database cache. Used only when domain shape causes storage inefficiency (wrapper newtypes complicate indexing, deep nesting, Arc sharing issues)
+   - Location: `db/view/<context>.rs`
    - Mechanical conversions at storage boundary
-   - Example: `StoredSchema { name: String, properties: Vec<StoredProperty> }` (flattened newtypes)
+   - Example: `SchemaView { name: String, properties: Vec<PropertyView> }` (flattened newtypes)
 
 ### Implementation Guidelines
 
 1. **Feature-Gated Serde**: Domain entities use `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]` for CLI/LSP JSON output
 2. **rkyv on Domain**: Domain entities derive rkyv traits (`Archive`, `Serialize`, `Deserialize`) for zero-copy database operations
-3. **Default Strategy**: Store domain types directly in database (they have rkyv derives); only create `Stored*` when profiling reveals performance issues
-4. **Storage DTOs (Optional)**: Create `Stored*` types only when:
+3. **Default Strategy**: Store domain types directly in database (they have rkyv derives); only create `*View` when profiling reveals performance issues
+4. **Storage DTOs (Optional)**: Create `*View` types only when:
    - Wrapper newtypes (SchemaName, NotePath) complicate database indexing
    - Deep nesting causes excessive alignment copy overhead
    - Arc<T> sharing doesn't serialize efficiently with rkyv
@@ -91,29 +91,29 @@ pub struct Schema {
 lithos-core = { path = "../lithos-core", features = ["serde"] }
 ```
 
-**Storage Adapter** (uses domain type directly or optional Stored* if needed):
+**Storage Layer** (uses domain type directly or optional *View if needed):
 ```rust
-// Default: Store domain type directly (in db/schema_adapter.rs)
-impl SchemaQueryPort for RedbSchemaQueryAdapter<'_> {
+// Default: Store domain type directly (in db/storage/schema.rs)
+impl schema::Storage for RedbSchemaStorage<'_> {
     type Archived<'a> = &'a ArchivedSchema;  // Domain type's archived form
 
-    fn find_owned_by_name(&self, name: &SchemaName)
+    fn get_by_name(&self, name: &SchemaName)
         -> Result<Option<Schema>, DbError>
     {
         self.db.get_owned::<Schema>("schemas", name.as_ref())
     }
 }
 
-// Optional: Stored* only when domain shape inefficient (in db/stored/schema.rs)
+// Optional: *View only when domain shape inefficient (in db/view/schema.rs)
 #[derive(Archive, Serialize, Deserialize)]
 #[repr(C)]
-pub struct StoredSchema {
+pub struct SchemaView {
     pub name: String,  // Flattened from SchemaName newtype
-    pub properties: Vec<StoredProperty>,
+    pub properties: Vec<PropertyView>,
 }
 
-impl From<&Schema> for StoredSchema { /* mechanical conversion */ }
-impl From<StoredSchema> for Schema { /* mechanical conversion */ }
+impl From<&Schema> for SchemaView { /* mechanical conversion */ }
+impl From<SchemaView> for Schema { /* mechanical conversion */ }
 ```
 
 ### Rationale
@@ -139,21 +139,21 @@ impl From<StoredSchema> for Schema { /* mechanical conversion */ }
 
 **Zero-Copy Performance**:
 
-- **Port-Based Abstraction**: Storage ports use GATs (Generic Associated Types) to expose `Archived<'a>` views without leaking transaction lifetimes
+- **Storage Abstraction**: Unified `Storage` traits use GATs (Generic Associated Types) to expose `Archived<'a>` views without leaking transaction lifetimes
 - **No Ergonomic Cost**: Domain types still use `String`/`Vec` (not `ArchivedString`/`ArchivedVec`); rkyv derives don't change the API surface
 - **Closure-Scoped Access**: Archived views accessed via `with_archived_*` methods that take closures, preventing lifetime leaks
 - **Type Safety**: Compiler enforces that archived references cannot escape transaction scope via HRTBs (`for<'a> FnOnce`)
 
 **Storage Separation Preserved**:
 
-- **Adapter Pattern**: Port adapters in `db/` implement storage capabilities; domain never directly touches database
-- **Optional `Stored*`**: Only create when domain shape causes storage inefficiency (decision tree in Appendix A)
-- **Migration Control**: Treat domain type changes as potential migrations; use `Stored*` layer when migration risk is high
+- **Unified Traits**: Implementations in `db/` implement storage capabilities; domain never directly touches database
+- **Optional `*View`**: Only create when domain shape causes storage inefficiency (decision tree in Appendix A)
+- **Migration Control**: Treat domain type changes as potential migrations; use `*View` layer when migration risk is high
 
 **Practical Benefits**:
 
 - **90% Case**: Domain types stored directly without extra conversion layer (simpler, faster)
-- **10% Case**: `Stored*` optimization available when profiling reveals need (flattened newtypes, optimized layouts)
+- **10% Case**: `*View` optimization available when profiling reveals need (flattened newtypes, optimized layouts)
 - **Zero Unsafe**: GATs + HRTBs provide compile-time safety without `unsafe` blocks
 
 ## Alternatives Considered
@@ -174,7 +174,7 @@ impl From<StoredSchema> for Schema { /* mechanical conversion */ }
 
 - **Pros**: Maximum flexibility, zero-copy database operations, no DTO mapping for 90% of cases, type safety via GATs
 - **Cons**: rkyv is required dependency (not optional), domain refactors can trigger storage migrations, need to be mindful of format stability
-- **Verdict**: **ACCEPTED** - Port-based abstraction preserves separation of concerns while enabling zero-copy performance. `Stored*` layer available as escape hatch when needed.
+- **Verdict**: **ACCEPTED** - Storage abstraction preserves separation of concerns while enabling zero-copy performance. `*View` layer available as escape hatch when needed.
 
 ### Alternative 4: Custom Derives Only
 
@@ -189,15 +189,15 @@ impl From<StoredSchema> for Schema { /* mechanical conversion */ }
 - **Feature Flags in Libraries**: Rust best practice for optional functionality (documented in Cargo Book "Optional Dependencies")
 - **rkyv Analysis**: Zero-copy deserialization framework suitable for storage, but creates domain coupling with Archive trait bounds
 - **Serde Analysis**: De facto standard for Rust serialization, feature-gated pattern is idiomatic (used by serde itself)
-- **Use Case Separation**: rkyv excels at storage performance (storage adapter), serde excels at API interoperability (CLI/LSP)
+- **Use Case Separation**: rkyv excels at storage performance (storage implementation), serde excels at API interoperability (CLI/LSP)
 
 ### Compatibility & Performance
 
-- **Hexagonal Alignment**: Feature-gated serde maintains domain purity (zero deps by default), rkyv strictly in storage adapter
+- **Module Boundary Alignment**: Feature-gated serde maintains domain purity (zero deps by default), rkyv strictly in storage implementations
 - **Performance Impact**:
   - Library compilation: 30-40% faster without serde derives (measured in similar projects)
   - Runtime: Zero overhead when feature disabled (serde code not compiled)
-  - Storage: Full zero-copy performance (rkyv in adapter, not domain)
+  - Storage: Full zero-copy performance (rkyv in implementation, not domain)
 - **Ecosystem Fit**: Idiomatic Rust pattern, used by popular libraries (tokio, serde, clap)
 
 ### Enforcement
@@ -259,14 +259,14 @@ To mitigate this while allowing rkyv in domain, we adopt the three-shape model:
    - Traits: rkyv derives for zero-copy access.
    - **Rule**: Changes here ARE potential migration events. Treat them with care.
 
-3. **`Stored*` (rkyv + validation)**: persisted/on-disk shapes (Optional).
-   - Purpose: define the stable archived layout when domain shape evolves incompatibly.
+3. **`*View` (rkyv + validation)**: persisted/on-disk projection shapes (Optional).
+   - Purpose: define the stable archived layout for read models when domain shape evolves incompatibly.
    - Traits: rkyv derives, bytecheck/validation bounds.
    - **Rule**: If domain changes become too frequent/breaking, introduce this layer to decouple.
 
-### A.3 Decision Tree for Stored Types
+### A.3 Decision Tree for View Types
 
-We do not introduce `Stored*` types speculatively. We only introduce them when:
+We do not introduce `*View` types speculatively. We only introduce them when:
 
 1. **Wrapper Types Complicate Indexing**: `SchemaName` (newtype) vs `String` keys.
 2. **Deep Nesting**: Domain hierarchy causes excessive alignment copy overhead.

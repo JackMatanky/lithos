@@ -11,7 +11,7 @@ section: "Implementation Standards"
 
 ## Pattern Categories Defined
 
-**Critical Conflict Points Identified:** 30+ areas where AI agents could make different choices in async Rust CLI applications with port-based CQRS, bounded contexts, and event-driven patterns.
+**Critical Conflict Points Identified:** 30+ areas where AI agents could make different choices in async Rust CLI applications with modular boundaries, functional pipelines, and type-driven design.
 
 ## Naming Patterns
 
@@ -133,9 +133,9 @@ pub struct SchemaView<'a> { /* ... */ }
 **API Contract Naming:**
 
 - **Trait Methods:** `snake_case` with clear action verbs (e.g., `persist_note`, `find_templates`)
-- **Port Traits:** Descriptive names ending with `Port` (e.g., `CacheWriterPort`, `VaultReaderPort`)
+- **Storage Traits:** Descriptive names ending with `Storage` (e.g., `CacheStorage`, `NoteStorage`)
 - **DTO Structs:** Prefer role-based names over type-suffixes (e.g., `VaultFile`, `VaultFileRecord`, `CreateNoteRequest`). If `Dto` is used, reserve it for strict boundary/wire types (CLI/adapters/serde), not domain/core.
-- **Event Names:** `PascalCase` with past tense (e.g., `NoteIndexed`, `TemplateExecuted`)
+- **View Types:** Use the `*View` suffix for read-optimized database projections (e.g., `SchemaView`, `NoteView`).
 
 **Builder Naming:**
 
@@ -539,358 +539,61 @@ When designing a type, ask:
 ✅ Expose collections via `&[T]` or iterators, not `&mut Vec<T>`
 ✅ Use `#[non_exhaustive]` on public enums
 
-## CQRS & Port Patterns
+## Module & Storage Patterns
 
-**Core Principle:** Separate read and write capabilities via split port traits to prevent interface bloat, enable read-only test fakes, and support future backend flexibility.
+**Core Principle:** Reject CQRS and event sourcing in favor of module boundaries, Iterator-based ingestion pipelines, and simple `Storage` trait abstractions for I/O.
 
-### Split Ports Pattern
+### Module Isolation over Trait Isolation
 
-**Pattern:** Define separate `QueryPort` and `CommandPort` traits in single `<context>/ports.rs` file.
+**Pattern:** Business contexts (note, schema, template) isolate business logic through Rust modules. Traits are reserved strictly for abstracting I/O, not for separating domain services.
 
-**Why Split Ports:**
+**Why Module Boundaries:**
+- Simpler dependency management.
+- Prevents god-objects through strict ownership and visibility rules.
+- Aligns with idiomatic Rust module structure.
 
-- Read-only use cases don't implement writes
-- Test fakes only implement needed capabilities
-- Future flexibility (cache reads, DB writes independently)
-- Prevents "god interface" anti-pattern
+### Unified Storage Trait Pattern
+
+**Pattern:** Define a single, simple `Storage` trait per domain module for all persistence operations.
 
 ✅ **Prefer:**
 
 ```rust
-// <context>/ports.rs - Single file, multiple focused traits
-pub trait SchemaQueryPort {
-    type Error: std::error::Error;
-    type Archived<'a> where Self: 'a;  // GAT for zero-copy
-
-    // COLD TIER: Owned reads for mutations/complex operations
-    fn find_owned_by_name(&self, name: &SchemaName)
-        -> Result<Option<Schema>, Self::Error>;
-
-    fn list_all_owned(&self) -> Result<Vec<Schema>, Self::Error>;
-
-    // HOT TIER: Zero-copy closure-scoped reads (LSP hot path)
-    fn with_archived_by_name<R>(
-        &self,
-        name: &SchemaName,
-        f: impl for<'a> FnOnce(Self::Archived<'a>) -> R,
-    ) -> Result<Option<R>, Self::Error>;
-}
-
-pub trait SchemaCommandPort {
+pub trait SchemaStorage {
     type Error: std::error::Error;
 
+    fn get(&self, name: &SchemaName) -> Result<Option<Schema>, Self::Error>;
     fn save(&self, schema: &Schema) -> Result<(), Self::Error>;
-    fn delete(&self, name: &SchemaName) -> Result<bool, Self::Error>;
-    fn batch_save(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
+    fn list(&self) -> Result<Vec<Schema>, Self::Error>;
 }
 ```
 
 ❌ **Avoid:**
 
 ```rust
-// Single "Store" trait forces all implementers to provide everything
-pub trait SchemaStore {
-    // Read operations
-    fn find_owned_by_name(...) -> ...;
-    fn list_all_owned(...) -> ...;
-
-    // Write operations (read-only fakes forced to implement these!)
-    fn save(...) -> ...;
-    fn delete(...) -> ...;
+// Split CQRS ports that create interface bloat
+pub trait SchemaQueryPort {
+    // ...
+}
+pub trait SchemaCommandPort {
+    // ...
 }
 ```
 
-### Generic CQRS Types Pattern
+### Functional Composition Pipeline
 
-**Pattern:** CQRS types generic over respective ports, hide generics via type aliases.
+**Pattern:** Use functional composition and Iterator pipelines for processing data, rather than complex Command/Event routing.
 
 ✅ **Prefer:**
 
-```rust
-// <context>/query.rs - Generic over QueryPort
-pub struct Query<Q> {
-    query_port: Q,
-}
-
-impl<Q: SchemaQueryPort> Query<Q> {
-    pub fn new(query_port: Q) -> Self {
-        Self { query_port }
-    }
-
-    pub fn find_owned_by_name(&self, name: &SchemaName)
-        -> Result<Option<Schema>, QueryError<Q::Error>>
-    {
-        self.query_port.find_owned_by_name(name)
-            .map_err(QueryError::Storage)
-    }
-
-    // Hot path helper
-    pub fn with_archived_by_name<R>(
-        &self,
-        name: &SchemaName,
-        f: impl for<'a> FnOnce(Q::Archived<'a>) -> R,
-    ) -> Result<Option<R>, QueryError<Q::Error>>
-    {
-        self.query_port.with_archived_by_name(name, f)
-            .map_err(QueryError::Storage)
-    }
-}
-
-// <context>/command.rs - Generic over CommandPort
-pub struct Command<C> {
-    command_port: C,
-}
-
-impl<C: SchemaCommandPort> Command<C> {
-    pub fn new(command_port: C) -> Self {
-        Self { command_port }
-    }
-
-    pub fn save(&self, schema: &Schema)
-        -> Result<(), CommandError<C::Error>>
-    {
-        self.command_port.save(schema)
-            .map_err(CommandError::Storage)
-    }
-}
+```text
+File → parse (Raw) → validate (Domain) → project (Storage)
 ```
 
-### Adapter Implementation Pattern
-
-**Pattern:** Adapters live in `<context>/adapters/` and implement port traits. They are scoped to their context, not placed in a generic `db/` module.
-
-✅ **Prefer:**
-
-```rust
-// schema/adapters/query.rs - Context-scoped adapter
-pub struct QueryAdapter<'db> {
-    db: &'db Database,
-}
-
-impl schema::ports::Query for QueryAdapter<'_> {
-    type Error = DbError;
-    type Archived<'a> = &'a ArchivedSchema;  // Domain type or StoredSchema
-
-    fn find_owned_by_name(&self, name: &SchemaName)
-        -> Result<Option<Schema>, DbError>
-    {
-        // Default: Store domain type directly (has rkyv derives)
-        self.db.get_owned::<Schema>("schemas", name.as_ref())
-
-        // Optional: If Stored* exists for optimization
-        // let stored: Option<StoredSchema> = self.db.get_owned("schemas", name.as_ref())?;
-        // Ok(stored.map(Schema::from))
-    }
-
-    fn with_archived_by_name<R>(
-        &self,
-        name: &SchemaName,
-        f: impl for<'a> FnOnce(&'a ArchivedSchema) -> R,
-    ) -> Result<Option<R>, DbError> {
-        self.db.get::<Schema, _, _>("schemas", name.as_ref(), f)
-    }
-}
-
-// schema/adapters/command.rs
-pub struct CommandAdapter<'db> {
-    db: &'db Database,
-}
-
-impl schema::ports::Command for CommandAdapter<'_> {
-    type Error = DbError;
-
-    fn save(&self, schema: &Schema) -> Result<(), DbError> {
-        // Default: Store domain type directly
-        self.db.put("schemas", schema.name().as_ref(), schema)
-    }
-}
-```
-
-**Rationale:**
-- **Cohesion**: All schema-related code lives in `schema/`
-- **Independence**: Can test `schema/` with different storage backends
-- **Clarity**: `db/` contains only generic database primitives
-- **No Circular Dependencies**: Adapters import `db/` utilities and implement domain ports
-- **No Premature Nesting**: Flat `adapters/` directory until multiple backends require organization
-
-❌ **Avoid:**
-
-```rust
-// Adapter in generic infrastructure (blurs dependencies)
-// db/schema_adapter.rs - WRONG: Creates coupling between db/ and domain
-pub struct RedbSchemaStore { /* ... */ }
-impl SchemaStore for RedbSchemaStore {
-    // Now db/ module depends on schema/ business logic!
-}
-```
-
-### Type Aliases for Ergonomics
-
-**Pattern:** Hide generic complexity from 99% of callers.
-
-✅ **Prefer:**
-
-```rust
-// <context>/mod.rs - Generic type aliases (no adapter imports, no architecture violation)
-pub type Command<C> = command::Command<C>;
-pub type Query<Q> = query::Query<Q>;
-
-// <context>/adapter/mod.rs - Type aliases for path stuttering
-pub type Command<'db> = command::Command<'db>;
-pub type Query<'db> = query::Query<'db>;
-
-// Usage - caller provides concrete adapter:
-use schema::{self, adapter};
-let query = schema::Query::new(adapter::Query::new(&db));
-let schema = query.find_owned_by_name(name)?;
-```
-
-### Benefits
-
-- **Decoupling**: CQRS layer independent of concrete database implementation
-- **Zero-Copy Performance**: GATs enable `Archived<'a>` without leaking transaction lifetimes
-- **Testability**: Can substitute `FakeSchemaQueryPort` or `FakeSchemaCommandPort` implementing respective ports
-- **Interface Segregation**: Read-only test fakes don't implement write operations
-- **Static Dispatch**: Performance benefits when using concrete type aliases (monomorphization)
-- **Future-Proof**: Can change storage backend by implementing new adapters, or use different backends for reads vs writes
-- **Lean Ports**: Each port trait contains only methods relevant to its responsibility
-
-### Port-Based Testing Pattern
-
-**Pattern:** Different test fakes for read vs write, minimal implementation.
-
-✅ **Prefer:**
-
-```rust
-// <context>/query.rs tests - Read-only fake
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    struct FakeSchemaQueryPort {
-        schemas: HashMap<SchemaName, Schema>,
-    }
-
-    impl SchemaQueryPort for FakeSchemaQueryPort {
-        type Error = String;
-        type Archived<'a> = &'a Schema;  // Just borrow domain type
-
-        fn find_owned_by_name(&self, name: &SchemaName)
-            -> Result<Option<Schema>, String>
-        {
-            Ok(self.schemas.get(name).cloned())
-        }
-
-        fn with_archived_by_name<R>(
-            &self,
-            name: &SchemaName,
-            f: impl for<'a> FnOnce(&'a Schema) -> R,
-        ) -> Result<Option<R>, String> {
-            Ok(self.schemas.get(name).map(f))
-        }
-
-        // No need to implement list_all_owned if test doesn't use it!
-        fn list_all_owned(&self) -> Result<Vec<Schema>, String> {
-            unimplemented!("not needed for this test")
-        }
-    }
-
-    #[test]
-    fn finds_existing_schema() {
-        let mut store = FakeSchemaQueryPort {
-            schemas: HashMap::new()
-        };
-        let schema = Schema::new("test")?;
-        store.schemas.insert(schema.name().clone(), schema.clone());
-
-        let query = Query::new(store);  // Generic Query<FakeSchemaQueryPort>
-
-        let result = query.find_owned_by_name(schema.name())?;
-        assert_eq!(result, Some(schema));
-    }
-}
-```
-
-### Port Pattern Checklist
-
-When implementing port-based CQRS, verify:
-
-- [ ] Ports split into `QueryPort` and `CommandPort` (not single `Store`)
-- [ ] Both ports defined in single `<context>/ports.rs` file
-- [ ] Query uses GAT: `type Archived<'a> where Self: 'a`
-- [ ] Hot path uses HRTB: `impl for<'a> FnOnce(Self::Archived<'a>) -> R`
-- [ ] CQRS types generic: `Query<Q>`, `Command<C>`
-- [ ] Adapters in `<context>/adapters/` (context-scoped, not generic `db/`)
-- [ ] Type aliases hide generics: `RedbSchemaQuery<'db>`
-- [ ] Domain types have rkyv derives
-- [ ] `Stored*` only created when profiling shows need (in `adapters/stored.rs`)
-- [ ] Test fakes implement only needed port methods
-- [ ] No unsafe blocks in CQRS or port implementations
-- [ ] Context isolation maintained (adapters import `db/`, domain doesn't)
-- [ ] Application layer coordinates cross-context workflows (not CLI)
-
-### CQRS Naming Conventions
-
-- **Queries:** `find_*`, `get_*`, `list_*`, `count_*`.
-- **Commands:** `save`, `delete`, `update`, `create`.
-- **Port Traits:** `<Context>QueryPort`, `<Context>CommandPort`.
-- **CQRS Types:** `Query<Q>`, `Command<C>` generic over port traits.
-- **Type Aliases:** `<Context>Query<'db>` and `<Context>Command<'db>` for ergonomic use (storage-agnostic names).
-- **Adapter Naming:** Adapters use implementation prefix: `RedbSchemaQueryAdapter`, `RedbSchemaCommandAdapter`.
-- **Legacy (deprecated):** Port traits named `<Context>Store` (e.g., `NoteStore`, `SchemaStore`).
-
-### Database Access Rules
-
-- **Port-Based Access:** Contexts define split storage port traits (e.g., `SchemaQueryPort`, `SchemaCommandPort`).
-- **Generic CQRS:** Command/Query types are generic over ports: `Query<Q: SchemaQueryPort>`, `Command<C: SchemaCommandPort>`.
-- **Zero-Copy Reads:** Ports use GATs to enable closure-based archived access.
-- **Type Aliases:** Use storage-agnostic names for public API: `SchemaQuery<'db>`, `SchemaCommand<'db>`.
-- **Adapter Implementation:** Adapters include implementation prefix: `CommandAdapter`, `QueryAdapter` (internal), or `RedbSchemaQueryAdapter` (if multiple backends).
-- **Test Substitution:** Use `FakeSchemaQueryPort` or `FakeSchemaCommandPort` implementing the respective port.
-- **Legacy Note:** Single-store `SchemaStore` traits are deprecated; see Anti-Patterns.
-
-### Legacy Single-Store CQRS Example (Deprecated)
-
-The following pattern is retained for historical context and for recognizing deprecated usage. It conflicts with split-port guidance.
-
-```rust
-// Port trait (in context/ports.rs)
-pub trait SchemaStore {
-    type Error;
-    type Archived<'a> where Self: 'a;
-
-    fn find_owned_by_name(&self, name: &SchemaName)
-        -> Result<Option<Schema>, Self::Error>;
-
-    fn with_archived_by_name<R>(
-        &self,
-        name: &SchemaName,
-        f: impl for<'a> FnOnce(Self::Archived<'a>) -> R,
-    ) -> Result<Option<R>, Self::Error>;
-}
-
-// Query implementation (in context/query.rs)
-pub struct Query<S> {
-    store: S,
-}
-
-impl<S: SchemaStore> Query<S> {
-    pub fn new(store: S) -> Self {
-        Self { store }
-    }
-
-    pub fn find_owned_by_name(&self, name: &SchemaName)
-        -> Result<Option<Schema>, QueryError<S::Error>>
-    {
-        self.store.find_owned_by_name(name)
-            .map_err(QueryError::Storage)
-    }
-}
-
-// Type alias for default backend (in context/mod.rs)
-pub type RedbSchemaQuery<'db> = Query<RedbSchemaStore<'db>>;
-```
+Data transitions through discrete stages:
+1. `parse()`: File contents to unvalidated `Raw*` struct.
+2. `validate()`: `TryFrom<Raw*>` to validated `Domain` struct.
+3. `project()`: Persist to database via `Storage` trait.
 
 ## Serialization & Storage Patterns
 
@@ -941,10 +644,10 @@ Database (redb, zero-copy bytes)
                   │
                   ▼ project/adapt (optional, only when needed)
 ┌─────────────────────────────────────────┐
-│ Stored* (rkyv derives, optional)        │
-│ - Storage-optimized representation      │
-│ - Location: db/stored/<context>.rs      │
-│ - Only when domain shape inefficient    │
+│ *View (rkyv derives, optional)          │
+│ - Read-optimized cache representation   │
+│ - Location: db/views/<context>.rs       │
+│ - Only when queries need projection     │
 └─────────────────┬───────────────────────┘
                   │
                   ▼ serialize (rkyv)
@@ -1100,35 +803,34 @@ let validated: Frontmatter = raw.try_into()?;          // Validate (explicit)
 
 ---
 
-#### Shape 3: `Stored*` Types (Storage Optimization, Optional)
+#### Shape 3: `*View` Types (Read-Optimized Projections)
 
-**Purpose:** Only when domain shape is inefficient for storage (rarely needed).
+**Purpose:** Represent read-optimized projections in the expendable database cache.
 
 **When to Create:**
-Only introduce `Stored*` when profiling reveals:
+Introduce `*View` types when mapping files to database queries:
 
-- ✅ Wrapper newtypes (SchemaName) complicate database indexing
-- ✅ Deep nesting causes excessive alignment copy overhead
-- ✅ Arc<T> sharing doesn't serialize efficiently
-- ✅ Storage layout differs significantly from domain representation
+- ✅ When database needs a flattened or indexing-friendly projection.
+- ✅ When domain shape is inefficient for storage.
+- ✅ When projecting data from multiple files.
 
-**Default Strategy:** Store domain types directly (they have rkyv derives).
+**Default Strategy:** Store domain types directly if they are simple, but use `*View` for read-optimized queries.
 
-**Location:** `db/stored/<context>.rs`
+**Location:** `db/views/<context>.rs`
 **Derives:** `rkyv::Archive + Serialize + Deserialize`
 
-**Example (only if profiling shows need):**
+**Example:**
 
 ```rust
-// db/stored/schema.rs
+// db/views/schema.rs
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-pub struct StoredSchema {
+pub struct SchemaView {
     pub name: Box<str>,  // Flattened from SchemaName newtype
-    pub properties: Vec<StoredProperty>,
+    pub properties: Vec<PropertyView>,
 }
 
-impl From<Schema> for StoredSchema { /* ... */ }
-impl TryFrom<StoredSchema> for Schema { /* ... */ }
+impl From<Schema> for SchemaView { /* ... */ }
+impl TryFrom<SchemaView> for Schema { /* ... */ }
 ```
 
 ---
@@ -1146,14 +848,14 @@ fn parse_schema_yaml(path: &Path) -> Result<Schema, ParseError> {
 }
 
 // db/schema_adapter.rs - Domain → Storage
-impl SchemaCommandPort for RedbSchemaCommandAdapter<'_> {
+impl SchemaStorage for RedbSchemaStorage<'_> {
     fn save(&self, schema: &Schema) -> Result<(), DbError> {
-        // Option 1: Store domain directly (preferred, default)
+        // Option 1: Store domain directly if simple
         self.db.put("schemas", schema.name().as_ref(), schema)
 
-        // Option 2: Convert to Stored* only if profiling shows need
-        // let stored = StoredSchema::from(schema);
-        // self.db.put("schemas", schema.name().as_ref(), &stored)
+        // Option 2: Convert to *View for read optimization
+        // let view = SchemaView::from(schema);
+        // self.db.put("schemas", schema.name().as_ref(), &view)
     }
 }
 ```
@@ -1279,18 +981,18 @@ impl RawFrontmatter {
 db.put("config", "frontmatter", &raw_frontmatter)?;
 ```
 
-❌ **DON'T: Create Stored* prematurely**
+❌ **DON'T: Create `*View` types prematurely**
 
 ```rust
-// ❌ BAD: Creating Stored* without performance justification
-pub struct StoredSchema { /* ... */ }  // Domain works fine!
+// ❌ BAD: Creating *View without query performance justification
+pub struct SchemaView { /* ... */ }  // Domain works fine!
 ```
 
 ---
 
 #### Summary Table
 
-| Aspect             | Raw Types                   | Domain Types             | Stored Types                |
+| Aspect             | Raw Types                   | Domain Types             | View Types                  |
 | ------------------ | --------------------------- | ------------------------ | --------------------------- |
 | **Purpose**        | Accept flexible input       | Represent valid entities | Optimize storage            |
 | **Validation**     | None (can be invalid)       | Guaranteed invariants    | N/A (mechanical conversion) |
@@ -1301,19 +1003,18 @@ pub struct StoredSchema { /* ... */ }  // Domain works fine!
 | **Testing**        | Easy to make invalid        | Hard to make invalid     | Not tested directly         |
 | **When to create** | Always (for external input) | Always                   | Rarely (profiling only)     |
 
-**Golden Rule:** Raw types are **dumb data**, validation is **explicit** via `TryFrom`, domain types are **smart** with invariants, Stored types are **rare optimizations**.
+**Golden Rule:** Raw types are **dumb data**, validation is **explicit** via `TryFrom`, domain types are **smart** with invariants, View types are **rare optimizations**.
 
 ## Storage Patterns
 
-Following **ADR 003 Appendix A**, minimize coupling between domain and storage format. When a `Stored*` representation is introduced (optional), apply these triggers and guidelines; default remains to store domain types directly unless profiling or migration stability requires otherwise.
+Following **ADR 003 Appendix A**, minimize coupling between domain and storage format. When a `*View` representation is introduced, apply these triggers and guidelines; default remains to store domain types directly if they map well, but use `*View` to optimize database querying.
 
-**When to Introduce Stored Types:**
+**When to Introduce View Types:**
 
-- ✅ For persisted aggregates (Note, Schema, Template, Config)
-- ✅ When domain refactors shouldn't trigger migrations
-- ✅ When archived layout needs careful control (alignment, endianness)
+- ✅ For read-optimized database projections (NoteView, SchemaView)
+- ✅ When database needs a flattened or indexing-friendly format
+- ✅ When projecting data combined from multiple domain boundaries
 - ❌ Not for every type (avoid DTO explosion)
-- ❌ Not for value objects unless they cause migration pain
 
 **Pattern:**
 
@@ -1325,34 +1026,34 @@ pub struct Schema {
     // Ergonomic, behavior-rich
 }
 
-// Stored type (in db/stored/ or storage adapter)
+// View type (in db/views/ or storage adapter)
 #[derive(Archive, Serialize, Deserialize)]
 #[rkyv(derive(Debug))]
-pub struct StoredSchema {
+pub struct SchemaView {
     pub name: Box<str>,
     pub version: u32,
-    pub properties: Vec<StoredProperty>,
-    // Stable layout - changes trigger migration decisions
+    pub properties: Vec<PropertyView>,
+    // Stable layout for fast queries
 }
 
 // Conversions (in storage adapter)
-impl From<Schema> for StoredSchema { /* ... */ }
-impl TryFrom<StoredSchema> for Schema { /* ... */ }
+impl From<Schema> for SchemaView { /* ... */ }
+impl TryFrom<SchemaView> for Schema { /* ... */ }
 ```
 
 **Guidelines:**
 
-1. **One `Stored*` per persisted aggregate** (not per value object)
+1. **One `*View` per persisted aggregate** if beneficial for queries
 2. **Keep conversions mechanical and co-located** in storage layer
 3. **Use projections for new query patterns** (don't widen stored blobs)
 4. **Keep archived compute closure-scoped** (never leak transaction-scoped borrows)
-5. **Treat `Stored*` changes as migration decisions** (document format versions)
+5. **Treat `*View` types as expendable cache representations** (can be rebuilt from files)
 
 **Location:**
 
-- `db/stored/schema.rs` - StoredSchema and conversions
-- `db/stored/note.rs` - StoredNote and conversions
-- Or `db/<context>_adapter.rs` if storing adapter and stored type together
+- `db/views/schema.rs` - SchemaView and conversions
+- `db/views/note.rs` - NoteView and conversions
+- Or `db/<context>_storage.rs` if storing adapter and view type together
 
 ### Zero-Copy Idioms (Footguns to Avoid)
 
@@ -1364,7 +1065,7 @@ impl TryFrom<StoredSchema> for Schema { /* ... */ }
 
 ### Archived Types Usage (rkyv)
 
-**Pattern:** Use `rkyv::Archived<T>` in public APIs and CQRS ports. Use `Archived*` only in the defining module to add small, safe accessors for private fields on archived representations.
+**Pattern:** Use `rkyv::Archived<T>` in public APIs and Storage traits. Use `Archived*` only in the defining module to add small, safe accessors for private fields on archived representations.
 
 ✅ **Prefer:**
 
@@ -1433,11 +1134,12 @@ fn with_archived_tag(&self, f: impl FnOnce(&ArchivedTag) -> R) -> R;
 
 ## Communication & Dependency Rules
 
-**Event System Standards:**
+**State Mutation & Flow:**
 
-- **Event Naming:** `PascalCase` with past tense (e.g., `NoteIndexed`).
-- **Co-location:** Events defined in `<context>/events.rs`.
-- **Dispatch:** Deferred dispatch via `UnitOfWork` or simple callbacks (Phase 1).
+- **Direct Functional Calls:** Mutations happen via direct functional calls and pipeline iterators.
+- **Error Propagation:** All fallible operations must return `Result<T, E>`.
+- **No Event Bus:** System state mutations do not use event sourcing or an event bus.
+- **Side Effects:** Handled explicitly through pipeline composition and orchestration.
 
 **Inter-Module Communication:**
 
@@ -1461,8 +1163,7 @@ use crate::patterns;
 // Within context:
 use super::aggregate::Note;
 use super::error::NoteError;
-use super::ports::NoteQueryPort;
-use super::ports::NoteCommandPort;
+use super::storage::NoteStorage;
 ```
 
 ❌ **FORBIDDEN:**
@@ -1509,7 +1210,7 @@ use crate::template::Template;  // From config context
 
 - Follow established naming conventions without exception
 - Maintain context boundaries (business contexts must not import each other; only infrastructure/cross-cutting)
-- Use port-based CQRS pattern (generic over storage traits, not direct database coupling)
+- Use unified storage pattern (generic over Storage traits, not direct database coupling)
 - Use async/await consistently in async-enabled edge layers with proper error handling; keep core sync-first
 - Implement comprehensive error handling with typed errors and context
 - Write tests for all public APIs and critical paths including async operations

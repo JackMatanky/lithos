@@ -1,14 +1,16 @@
 ---
 name: minimal-event-foundation-with-deferred-orchestration
-status: accepted
+status: superseded
 stakeholders: [Jack (Developer), Architects]
 date_proposed: 2026-01-08
 date_decided: 2026-02-01
 date_implemented: pending
-date_updated: 2026-02-01
+date_updated: 2026-03-10
 ---
 
 # ADR 004: Minimal Event Foundation with Deferred Orchestration
+
+> **Update (March 2026):** This ADR has been **superseded**. Event orchestration has been abandoned in favor of direct functional composition and Iterator-based pipelines. Because file mutations happen externally and the DB is just an expendable cache projection, there is no need for complex event routing to coordinate state changes. The content below is preserved for historical context.
 
 ## Context
 

@@ -12,32 +12,32 @@ stakeholders: [Jack (Developer), Architecture Team]
 
 ## Context
 
-Lithos needs to ingest configuration files (TOML/JSON/YAML), schemas, templates, and notes from the filesystem into the database. The project follows port-based CQRS architecture with strict separation of concerns: CQRS ports abstract database operations only, and the domain layer remains pure and infrastructure-free.
+Lithos needs to ingest configuration files (TOML/JSON/YAML), schemas, templates, and notes from the filesystem into the database. The project follows a simple, functional architecture where the filesystem is the source of truth, and the database is an expendable cache. A unified `Storage` trait abstracts projection operations, and the domain layer remains pure and infrastructure-free.
 
-**Current Problem**: The existing architecture mistakenly mixes file I/O concerns into CQRS ports, violating separation of concerns and making the system harder to test, reason about, and evolve.
+**Current Problem**: The existing architecture mistakenly mixes file I/O concerns into storage traits, violating separation of concerns and making the system harder to test, reason about, and evolve.
 
 **Evaluation Criteria**:
 
-1. **Architectural Integrity**: CQRS ports must remain database-only (no file I/O)
+1. **Architectural Integrity**: `Storage` traits must remain focused on the read model projection (no file I/O)
 2. **Context Isolation**: Business contexts (config, schema, template, note) must not cross-import
 3. **Testability**: File ingestion must be testable without touching the filesystem
 4. **Performance**: Support incremental updates (file watching) and parallel processing
-5. **Maintainability**: Clear separation between file I/O, parsing, validation, and persistence
+5. **Maintainability**: Clear separation between file I/O, parsing, validation, and projection
 6. **Real-world Validation**: Follow established patterns from mature Rust projects
 
 **Forces at Play**:
 
-- **Technical**: Need multi-stage pipeline (File → Parse → Validate → Persist) with clear boundaries
+- **Technical**: Need multi-stage pipeline (File → Parse → Validate → Project) with clear boundaries
 - **Business**: Support 100-100K files with acceptable performance (see design doc 014)
-- **Architectural**: Maintain hexagonal architecture and port-based CQRS principles
+- **Architectural**: Maintain module isolation and simple storage abstractions
 
 ## Decision
 
-We will separate file ingestion from database persistence using a **Service Layer pattern** with explicit transformation pipelines:
+We will separate file ingestion from database projection using an **Iterator-based Loader pipeline** with explicit transformations:
 
 ```
-File System → FileSource trait → Parsers → Raw* → Domain (TryFrom) → CQRS Ports → Database
-            (abstraction)      (fs/)     (serde) (validation)   (db-only)
+File System → FileSource trait → Parsers → Raw* → Domain (TryFrom) → Storage Trait → DB Projection
+            (abstraction)      (fs/)     (serde) (validation)   (projection)
 ```
 
 **Key Components**:
@@ -45,14 +45,14 @@ File System → FileSource trait → Parsers → Raw* → Domain (TryFrom) → C
 1. **FileSource Trait** (`fs/source.rs`): Abstracts file system access for testability
 2. **File Parsers** (`fs/parsers.rs`): Convert files to unvalidated `Raw*` types
 3. **Domain Validation**: `TryFrom<Raw*>` enforces business rules at boundary
-4. **Application Services** (`application/services/`): Orchestrate the complete pipeline
-5. **CQRS Ports**: Remain database-only (no file I/O methods)
+4. **Loaders** (`application/loaders/`): Orchestrate the complete pipeline
+5. **Storage Traits**: Remain read-model only (no file I/O methods)
 
 **Critical Rules**:
 
-- ✅ CQRS ports MUST NOT have file I/O methods (`load_from_file`, `scan_directory`, etc.)
+- ✅ `Storage` traits MUST NOT have file I/O methods (`load_from_file`, `scan_directory`, etc.)
 - ✅ File ingestion MUST use `FileSource` trait for abstraction
-- ✅ Application services orchestrate the `File → Raw → Domain → Database` workflow
+- ✅ Loaders orchestrate the `File → Raw → Domain → Projection` workflow
 - ✅ Parsing and validation are distinct phases with explicit boundaries
 
 ## Alternatives Considered
@@ -82,7 +82,7 @@ pub trait SchemaRepository {
 - Tight coupling between ingestion and persistence
 - Can't split hot path (DB reads) from cold path (file ingestion)
 
-**Why Rejected**: Violates port-based CQRS and separation of concerns. Can't optimize hot database reads independently from cold file ingestion.
+**Why Rejected**: Violates separation of concerns. Can't optimize hot database reads independently from cold file ingestion.
 
 ---
 
@@ -116,12 +116,12 @@ pub trait DatabaseGateway {
 
 ---
 
-### Alternative 3: "Loader" Ports in CQRS (Current Anti-Pattern)
+### Alternative 3: "Loader" Methods in Storage Traits (Current Anti-Pattern)
 
 **Pattern**:
 
 ```rust
-pub trait Command {
+pub trait Storage {
     fn load_from_file(&self, path: &Path) -> Result<Schema, Error>;  // ❌ File I/O
     fn save(&self, schema: &Schema) -> Result<(), Error>;  // ✅ Database
 }
@@ -134,7 +134,7 @@ pub trait Command {
 
 **Cons**:
 
-- Violates Single Responsibility (port does file I/O + parsing + validation + database)
+- Violates Single Responsibility (trait does file I/O + parsing + validation + database)
 - Untestable (mock must fake filesystem and database)
 - Tight coupling (database adapter depends on filesystem)
 - Lifecycle confusion (file ingestion is periodic workflow, not query operation)
@@ -236,7 +236,7 @@ The `config::ingest::build_merged_raw()` implementation already demonstrates thi
    - File I/O: Mock with `InMemoryFileSource`
    - Parsing: Test with fake file contents
    - Validation: Test `TryFrom<Raw*>` with constructed inputs
-   - Persistence: Test CQRS ports with in-memory database
+   - Persistence: Test Storage traits with in-memory database
 
 2. **Performance**: Hot path (database reads) optimized separately from cold path (file ingestion)
    - Zero-copy database reads via `with_archived()` methods
@@ -248,8 +248,8 @@ The `config::ingest::build_merged_raw()` implementation already demonstrates thi
    - Explicit boundaries make codebase easier to navigate
    - Follows established Rust patterns (matches Cargo, rustc, Diesel)
 
-4. **Architectural Integrity**: Port-based CQRS intact
-   - Ports remain database-only
+4. **Architectural Integrity**: Projection isolation intact
+   - Storage traits remain read-model only
    - Context isolation maintained
    - No circular dependencies
 
@@ -264,8 +264,8 @@ The `config::ingest::build_merged_raw()` implementation already demonstrates thi
    - **Mitigation**: Each layer has clear responsibility, indirection is justified
    - **Benefit**: Testability and maintainability outweigh complexity cost
 
-2. **Requires Discipline**: Developers must use services, not bypass to ports
-   - **Mitigation**: Architecture tests prevent violations (fail CI if file I/O in ports)
+2. **Requires Discipline**: Developers must use loaders, not bypass to storage
+   - **Mitigation**: Architecture tests prevent violations (fail CI if file I/O in storage)
    - **Mitigation**: Documentation in `project-context.md` makes rules explicit
 
 3. **Migration Effort**: Refactor existing code to use new pattern
@@ -274,7 +274,7 @@ The `config::ingest::build_merged_raw()` implementation already demonstrates thi
 
 ### Risks
 
-1. **Risk: Developers bypass services and add file I/O to ports**
+1. **Risk: Developers bypass loaders and add file I/O to storage**
    - **Likelihood**: Medium (if pattern not well-documented)
    - **Impact**: High (breaks architectural integrity)
    - **Mitigation**: Architecture tests in CI, ADR documentation, code review checklist
@@ -343,21 +343,19 @@ pub trait FileSource: Send + Sync {
 2. **`InMemoryFileSource`**: HashMap-based for testing (no disk I/O)
 3. **Future**: `EmbeddedFileSource` (via `include_str!`), `HttpFileSource` (network)
 
-## Appendix B: Application Service Pattern
+## Appendix B: Application Loader Pattern
 
 ```rust
-/// Schema ingestion service.
+/// Schema ingestion loader.
 ///
-/// Orchestrates the workflow: File → RawSchema → Schema → Database.
-pub struct SchemaIngestionService<'a, Q, C> {
-    query: &'a schema::query::Query<Q>,
-    command: &'a schema::command::Command<C>,
+/// Orchestrates the workflow: File → RawSchema → Schema → Database Projection.
+pub struct SchemaLoader<'a, S> {
+    storage: &'a S,
 }
 
-impl<'a, Q, C> SchemaIngestionService<'a, Q, C>
+impl<'a, S> SchemaLoader<'a, S>
 where
-    Q: schema::ports::Query,
-    C: schema::ports::Command,
+    S: schema::Storage,
 {
     /// Ingest a single schema file.
     pub fn ingest_file(
@@ -371,8 +369,8 @@ where
         // Step 2: Validation (Raw → Domain)
         let schema = Schema::try_from(raw)?;
 
-        // Step 3: Persistence (Database write)
-        self.command.save_with_metadata(&schema, &Default::default())?;
+        // Step 3: Projection (Database write)
+        self.storage.save(&schema)?;
 
         Ok(schema.id())
     }
@@ -381,25 +379,25 @@ where
 
 **Design Rationale**:
 
-- **Generic over CQRS ports**: Supports any Query/Command implementation (redb, postgres, in-memory)
+- **Generic over Storage trait**: Supports any Storage implementation (redb, postgres, in-memory)
 - **Explicit workflow steps**: Each phase clearly separated with comments
 - **Partial failure tolerance**: `ingest_directory()` continues on individual file errors
 - **Instrumentation**: Tracing spans at each step for observability
-- **Testability**: Inject fake `FileSource` and fake CQRS ports
+- **Testability**: Inject fake `FileSource` and fake Storage implementations
 
 ## Appendix C: Anti-Patterns to Avoid
 
-### Anti-Pattern 1: File I/O in CQRS Ports
+### Anti-Pattern 1: File I/O in Storage Traits
 
 ```rust
 // ❌ NEVER DO THIS
-pub trait Command {
+pub trait Storage {
     fn load_from_file(&self, path: &Path) -> Result<Schema, Error>;
     fn save(&self, schema: &Schema) -> Result<(), Error>;
 }
 ```
 
-**Why Wrong**: Port does file I/O AND database operations. Violates single responsibility. Impossible to test independently.
+**Why Wrong**: Storage trait does file I/O AND database operations. Violates single responsibility. Impossible to test independently.
 
 ---
 
@@ -432,10 +430,10 @@ fn load_schema_file(path: &Path) -> Result<Schema, Error> {
 
 ```rust
 // ❌ NEVER DO THIS
-// In db/adapters/schema.rs
+// In db/storage/schema.rs
 use crate::schema::Schema;  // Infrastructure importing domain
 
-impl SchemaAdapter {
+impl SchemaStorage {
     pub fn load_all_from_vault(&self, vault_path: &Path) -> Result<Vec<Schema>, Error> {
         // File I/O + database writes in adapter
     }
@@ -449,11 +447,9 @@ impl SchemaAdapter {
 ```
 Application Layer (orchestrates workflows)
     ↓ uses
-Domain Layer (schema::Query, schema::Command)
-    ↓ uses
-Port Traits (schema::ports::Query, schema::ports::Command)
+Domain Layer (schema::Storage)
     ↑ implemented by
-Adapter Layer (schema::adapter::query, schema::adapter::command)
+Storage Layer (db::storage::schema)
     ↓ uses
 Infrastructure (db::Database)
 ```
@@ -474,27 +470,27 @@ Infrastructure (db::Database)
 
 ---
 
-### Phase 2: Ingestion Services (Parallel to Existing)
+### Phase 2: Ingestion Loaders (Parallel to Existing)
 
-**Goal**: Create application services that orchestrate pipelines.
+**Goal**: Create loaders that orchestrate pipelines.
 
 **Tasks**:
 
-1. Create `SchemaIngestionService` in `application/services/`
-2. Create `TemplateIngestionService`
-3. Create `NoteIngestionService`
+1. Create `SchemaLoader` in `application/loaders/`
+2. Create `TemplateLoader`
+3. Create `NoteLoader`
 
-**Result**: Services exist but not yet used by CLI.
+**Result**: Loaders exist but not yet used by CLI.
 
 ---
 
 ### Phase 3: CLI Integration (Breaking Changes)
 
-**Goal**: Wire up services in CLI commands.
+**Goal**: Wire up loaders in CLI commands.
 
 **Tasks**:
 
-1. Refactor `lithos init` to use ingestion services
+1. Refactor `lithos init` to use loaders
 2. Remove direct file I/O from CLI
 
 **Result**: CLI uses new architecture, old code paths removed.
@@ -533,21 +529,21 @@ Infrastructure (db::Database)
 
 **Phase 2 Tasks**:
 
-- [x] Implement `SchemaIngestionService`
-- [x] Implement `TemplateIngestionService`
-- [x] Implement `NoteIngestionService`
+- [x] Implement `SchemaLoader`
+- [x] Implement `TemplateLoader`
+- [x] Implement `NoteLoader`
 - [x] Add `IngestionError` type
 - [x] Write integration tests for services
 
 **Phase 3 Tasks**:
 
-- [x] Refactor `lithos init` command to use services (deferred to CLI layer implementation)
+- [x] Refactor `lithos init` command to use loaders (deferred to CLI layer implementation)
 - [x] Remove any direct file I/O from CLI (deferred to CLI layer implementation)
 - [x] Update CLI tests (deferred)
 
 **Phase 4 Tasks**:
 
-- [x] Add architectural tests (fail if file I/O in ports)
+- [x] Add architectural tests (fail if file I/O in storage)
 - [x] Update `project-context.md` with rules
 - [x] Add criterion benchmarks for ingestion
 - [x] Document in this ADR (done)
@@ -561,7 +557,7 @@ Infrastructure (db::Database)
 
 ## Appendix F: Real-World Research
 
-Analysis of file ingestion patterns in 5 mature Rust projects reveals consistent architectural themes that validate our Service Layer approach.
+Analysis of file ingestion patterns in 5 mature Rust projects reveals consistent architectural themes that validate our Loader approach.
 
 ### Project 1: Cargo (Package Manager)
 
@@ -693,4 +689,4 @@ Match results
 4. **Application layer coordinates** the workflow, not infrastructure
 5. **Incremental updates** track changes and minimize re-processing (rustc's query system, cargo's fingerprints, tree-sitter's incremental parsing)
 
-**Validation of Our Approach**: The Service Layer pattern with `FileSource` trait matches patterns proven in production Rust systems handling millions of files. Our `Raw*` → Domain validation mirrors Cargo's `TomlManifest` → `Manifest` and rustc's `AST` → `HIR` transformations.
+**Validation of Our Approach**: The Loader pattern with `FileSource` trait matches patterns proven in production Rust systems handling millions of files. Our `Raw*` → Domain validation mirrors Cargo's `TomlManifest` → `Manifest` and rustc's `AST` → `HIR` transformations.

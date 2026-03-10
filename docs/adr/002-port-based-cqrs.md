@@ -1,15 +1,17 @@
 ---
 name: port-based-cqrs-architecture-with-split-ports
-status: accepted
+status: superseded
 supersedes: []
 date_proposed: 2026-02-05
 date_decided: 2026-02-05
 date_implemented: pending
-date_updated: 2026-02-05
+date_updated: 2026-03-10
 stakeholders: [Jack (Architect), Development Team]
 ---
 
 # ADR 002: Port-Based CQRS Architecture with Split Ports
+
+> **Update (March 2026):** This ADR has been **superseded**. The project has shifted away from CQRS towards a lean, functional Rust architecture. We realized that since files on the filesystem are the true source of truth, and the database is merely an expendable read-optimized projection/cache, full CQRS with Command and Query ports is too heavyweight for this CLI tool. Instead, we use unified `Storage` traits and module-based functional composition. The content below is preserved for historical context.
 
 ## Context
 

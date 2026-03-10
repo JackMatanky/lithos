@@ -1,14 +1,14 @@
 ---
-name: persistence-and-cache-infrastructure-with-redb-and-rkyv
+name: read-model-projection-cache-infrastructure-with-redb-and-rkyv
 status: accepted
 stakeholders: [Jack (Developer), Architects]
 date_proposed: 2026-01-08
 date_decided: 2026-01-11
 date_implemented: 2026-01-11
-date_updated: 2026-02-01
+date_updated: 2026-03-10
 ---
 
-# ADR 006: Persistence and Cache Infrastructure with Redb and rkyv
+# ADR 006: Read Model / Projection Cache Infrastructure with Redb and rkyv
 
 ## Context
 
@@ -23,12 +23,12 @@ The previous Go implementation used a "directory-like" structure that was rigid 
 
 ## Decision
 
-We will use **Redb** as the primary storage engine, with values serialized using the **rkyv** zero-copy framework.
+We will use **Redb** as the primary storage engine, with values serialized using the **rkyv** zero-copy framework. Note that files on the filesystem are the true source of truth, and the database acts as an expendable read-optimized projection/cache.
 
 ### 1. Storage Engine: Redb
 
 - **Pure Rust:** Eliminates C-toolchain dependencies and FFI overhead.
-- **ACID Transactions:** Ensures data integrity for the knowledge graph.
+- **ACID Transactions:** Ensures data integrity for the knowledge graph (acting as a robust, expendable cache projection).
 - **MVCC Concurrency:** Provides non-blocking snapshots for readers, essential for background indexing in the LSP.
 
 ### 2. Serialization: rkyv
@@ -64,7 +64,7 @@ We will use **Redb** as the primary storage engine, with values serialized using
 
 ### Compatibility & Performance
 
-- **Hexagonal Alignment**: Isolated in the `adapters` layer, protecting the `domain` from storage specifics.
+- **Module Boundary Alignment**: Isolated in the `db` layer behind a unified `Storage` trait, protecting the `domain` from projection specifics.
 - **Performance Impact**: Critical for achieving the sub-50ms latency target for link suggestions and resolution, and scaling to 100,000+ notes.
 
 ## Consequences
@@ -72,7 +72,7 @@ We will use **Redb** as the primary storage engine, with values serialized using
 - **Positive**:
   - **Extreme Performance**: Sub-millisecond data access for hot paths.
   - **Concurrency**: MVCC allows non-blocking background indexing.
-  - **Stability**: ACID transactions protect the knowledge graph integrity.
+  - **Stability**: ACID transactions protect the knowledge graph projection integrity.
 - **Negative**:
   - **Schema Evolution**: Using `rkyv` requires careful management of byte-layouts and a robust versioning strategy.
   - **Relational Complexity**: We must manually implement graph traversals (backlinks) using bidirectional adjacency lists.
@@ -98,7 +98,7 @@ Zero-copy reads are the primary mechanism for achieving sub-50ms latency in the 
 Standard `insert(key, &value)` requires Redb to allocate an internal buffer, copy your data into it, and then eventually write it to the database page. To eliminate this intermediate copy:
 - **Mechanism**: Use `table.insert_reserve(key, size) -> Result<ReservedWriteGuard>`.
 - **Implementation**: The `ReservedWriteGuard` provides a mutable byte slice (`&mut [u8]`) mapped directly to the database page. Use `rkyv` to serialize data directly into this slice.
-- **Benefit**: Achieves true zero-copy writes from the application logic to the persistence layer, minimizing CPU cache misses and memory pressure.
+- **Benefit**: Achieves true zero-copy writes from the application logic to the cache projection layer, minimizing CPU cache misses and memory pressure.
 
 ### 3. Durability Tuning for Bulk Operations
 Redb's default `Durability::Immediate` triggers an `fsync` on every commit, which is a significant bottleneck during vault initialization (10k+ notes).
@@ -108,7 +108,7 @@ Redb's default `Durability::Immediate` triggers an `fsync` on every commit, whic
 
 ### 4. Concurrency via MVCC (Multi-Version Concurrency Control)
 Redb's MVCC allows one writer and multiple concurrent readers without locks.
-- **Snapshot Isolation**: Every `ReadTransaction` receives a point-in-time snapshot. Readers never block the `IndexerActor` from writing new data.
+- **Snapshot Isolation**: Every `ReadTransaction` receives a point-in-time snapshot. Readers never block the `Loader` from writing new data into the cache.
 - **The Reader Starvation Risk**: Long-running `ReadTransaction`s prevent Redb from reclaiming old pages (vacuuming). This causes the database file to grow rapidly.
 - **Guideline**: Keep read transactions short-lived. For LSP "hover" or "definition" lookups, open the transaction, extract the data via `rkyv` zero-copy, and drop the transaction immediately.
 
@@ -137,7 +137,7 @@ rkyv 0.8 is not just a serialization library; it is a **zero-copy data architect
 Traditional serialization (like `serde_json` or `bincode`) aims to transform bytes into a native Rust struct. rkyv explicitly rejects this.
 - **The Split**: Every type `T` that implements `Archive` is associated with a distinct `Archived<T>` type.
 - **Ownership**: The native `T` is used for **construction and mutation** (owning the data). The `Archived<T>` is used for **zero-copy access** (viewing the data).
-- **Result**: You never "deserialize" a vault index into memory. You open a memory-mapped file and access the `ArchivedVault` directly, treating the disk as extended memory.
+- **Result**: You never "deserialize" a vault index into memory. You open a memory-mapped file and access the `ArchivedVault` directly, treating the disk projection as extended memory.
 
 ### 2. The "Secret Sauce": Relative Pointers (`RelPtr`)
 The primary reason zero-copy data usually fails is **ASLR (Address Space Layout Randomization)**. If a buffer contains a standard pointer (an absolute 64-bit address), that pointer becomes invalid the moment the buffer is loaded at a different address.
