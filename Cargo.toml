@@ -20,7 +20,7 @@ description = "A CLI-first templating and schema system for Obsidian vaults"
 
 [workspace.dependencies]
 # Core Runtime
-tokio = { version = "1.49", features = ["macros"] }
+tokio = { version = "1.50", features = ["macros"] }
 async-trait = "0.1"
 
 # API & CLI
