@@ -1,185 +1,153 @@
-# State Machine Pattern for Rust
+# State Machine Pattern in Rust
 
 ## Overview
 
-This document describes when and how to use state machine patterns in Lithos, based on the [type-state pattern](https://hoverbear.org/blog/rust-state-machine-pattern/).
+This document explains the **type-state pattern** for state machines in Rust, based on [Hoverbear's state machine article](https://hoverbear.org/blog/rust-state-machine-pattern/). It walks through why we need state machines, the problems with naive approaches, and how to leverage Rust's type system for compile-time guarantees.
 
-**Key Principle:** Use state machines to make **invalid state transitions unrepresentable** at compile time.
-
----
-
-## Pattern Decision Tree
-
-```
-Does your process have multiple distinct phases?
-├─ NO → Use simple functions/structs
-└─ YES → Continue
-
-Can phases be skipped or executed out of order?
-├─ YES → You need runtime validation (use enum state machine)
-└─ NO → Continue
-
-Do phases have different data/operations?
-├─ YES → Use Type-State Pattern (compile-time enforcement)
-└─ NO → Use simple phase tracking (enum or flag)
-
-Is the flow cyclical (can return to previous states)?
-├─ YES → Use Enum State Machine
-└─ NO → Use Type-State Pattern
-```
+**Core Idea:** Use Rust's type system to make **invalid state transitions impossible at compile time**.
 
 ---
 
-## Approach 1: Type-State Pattern (Compile-Time Enforcement)
+## What is a State Machine?
 
-**Best for:** Linear or tree-like pipelines where each phase has distinct data and operations.
+A **state machine** is any system that:
+1. Has a finite set of **states**
+2. Has defined **transitions** between states
+3. Can only be in **one state at a time**
 
-### Basic Structure
+**Examples:**
+- TCP connection: `Closed → SynSent → Established → CloseWait → Closed`
+- File processing: `Discovered → Parsed → Validated → Stored`
+- Schema resolution: `Raw → Validated → Graphed → Sorted → Resolved`
+
+**Key constraint:** Not all transitions are valid. For example:
+- TCP can't go from `Closed` directly to `Established`
+- File processing can't skip `Parsed` and go straight to `Validated`
+
+**Goal:** Enforce these constraints **at compile time**, not runtime.
+
+---
+
+## The Problem: What We Want
+
+Before exploring solutions, let's define what we want from a state machine pattern:
+
+### Requirements
+
+1. **Only one state at a time** - Can't be in multiple states simultaneously
+2. **State-specific data** - Each state can carry its own data
+3. **Well-defined transitions** - Moving between states has clear semantics
+4. **Shared context** - Some data persists across all states
+5. **Restricted transitions** - Only explicitly defined transitions allowed
+6. **Consuming transitions** - Old state can't be reused after transition
+7. **Stack allocation** - No unnecessary heap allocations
+8. **Clear error messages** - Invalid transitions caught at compile time
+9. **Type system leverage** - Use Rust's types to maximum advantage
+10. **Compile-time errors** - As many errors as possible before running
+
+---
+
+## Approach 1: Naive Enum (Runtime Validation)
+
+### Structure
+
+The most obvious approach is to use an enum:
 
 ```rust
-/// Multi-phase schema ingestion pipeline.
-pub struct SchemaIngestion<S> {
-    context: IngestionContext,  // Shared data across all phases
-    state: S,                    // Phase-specific data
+enum State {
+    Waiting { waiting_time: Duration },
+    Filling { rate: usize },
+    Done,
 }
 
-/// Phase-specific state types
-pub struct Discovered {
-    files: Vec<PathBuf>,
+struct Machine {
+    state: State,
 }
 
-pub struct Parsed {
-    raw_schemas: Vec<RawSchema>,
-}
+impl Machine {
+    fn new() -> Self {
+        Machine {
+            state: State::Waiting { waiting_time: Duration::from_secs(0) },
+        }
+    }
 
-pub struct Validated {
-    schemas: Vec<Schema>,
-}
+    fn to_filling(&mut self) {
+        self.state = match self.state {
+            State::Waiting { .. } => State::Filling { rate: 1 },
+            _ => panic!("Invalid transition from {:?} to Filling!", self.state),
+        }
+    }
 
-pub struct GraphBuilt {
-    graph: DependencyGraph,
-    schemas: Vec<Schema>,
-}
-
-pub struct Resolved {
-    resolved_schemas: Vec<ResolvedSchema>,
-}
-
-/// Shared context available in all phases
-pub struct IngestionContext {
-    vault_root: PathBuf,
-    fs_reader: Arc<dyn FsReader>,
-    config: Arc<Config>,
+    fn to_done(&mut self) {
+        self.state = match self.state {
+            State::Filling { .. } => State::Done,
+            _ => panic!("Invalid transition from {:?} to Done!", self.state),
+        }
+    }
 }
 ```
 
-### Type-Safe Transitions
+### Problems
 
-Each state has methods that **consume `self`** and return the next state:
+❌ **Invalid transitions fail at RUNTIME** - You won't know until the code runs
+❌ **Must `match` every state in every method** - Lots of boilerplate
+❌ **Internal mutation can bypass checks** - `machine.state = State::Done` works inside the module
+❌ **Panics crash the program** - Even with `Result`, errors are runtime
+
+### Benefits
+
+✅ **Small memory footprint** - Enum size is the largest variant
+✅ **Stack allocated** - No heap allocations
+✅ **Defined semantics** - Transitions either work or crash
+
+**Verdict:** This approach doesn't meet our requirements. We need compile-time guarantees.
+
+---
+
+## Approach 2: Separate Structs with Transitions
+
+### Structure
+
+Instead of an enum, use separate structs for each state:
 
 ```rust
-impl SchemaIngestion<Discovered> {
-    /// Discover schema files in the vault.
-    pub fn discover(
-        vault_root: PathBuf,
-        fs_reader: Arc<dyn FsReader>,
-        config: Arc<Config>,
-    ) -> Result<Self, DiscoveryError> {
-        let files = fs_reader.discover_schemas(&vault_root)?;
-
-        Ok(SchemaIngestion {
-            context: IngestionContext { vault_root, fs_reader, config },
-            state: Discovered { files },
-        })
-    }
-
-    /// Parse discovered files into raw schemas.
-    pub fn parse(self) -> Result<SchemaIngestion<Parsed>, ParseError> {
-        let raw_schemas = self.state.files
-            .into_iter()
-            .map(|path| self.context.fs_reader.read_schema(&path))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(SchemaIngestion {
-            context: self.context,
-            state: Parsed { raw_schemas },
-        })
-    }
+// States as separate structs
+struct Waiting {
+    waiting_time: Duration,
+    shared_value: usize,  // Repeated in every state!
 }
 
-impl SchemaIngestion<Parsed> {
-    /// Validate raw schemas.
-    pub fn validate(self) -> Result<SchemaIngestion<Validated>, ValidationError> {
-        let schemas = self.state.raw_schemas
-            .into_iter()
-            .map(|raw| Schema::try_from(raw))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(SchemaIngestion {
-            context: self.context,
-            state: Validated { schemas },
-        })
-    }
+struct Filling {
+    rate: usize,
+    shared_value: usize,  // Repeated!
 }
 
-impl SchemaIngestion<Validated> {
-    /// Build dependency graph and check for cycles.
-    pub fn build_graph(self) -> Result<SchemaIngestion<GraphBuilt>, CycleError> {
-        let graph = DependencyGraph::build(&self.state.schemas)?;
-        graph.check_cycles()?;
-
-        Ok(SchemaIngestion {
-            context: self.context,
-            state: GraphBuilt {
-                graph,
-                schemas: self.state.schemas,
-            },
-        })
-    }
+struct Done {
+    shared_value: usize,  // Repeated!
 }
 
-impl SchemaIngestion<GraphBuilt> {
-    /// Topologically sort schemas (infallible - DAG is guaranteed).
-    pub fn topological_sort(self) -> SchemaIngestion<Sorted> {
-        let order = self.state.graph.topological_sort();
+impl Waiting {
+    fn new() -> Self {
+        Waiting {
+            waiting_time: Duration::from_secs(0),
+            shared_value: 0,
+        }
+    }
 
-        SchemaIngestion {
-            context: self.context,
-            state: Sorted {
-                order,
-                schemas: self.state.schemas,
-            },
+    // Transition consumes self and returns new state
+    fn to_filling(self) -> Filling {
+        Filling {
+            rate: 1,
+            shared_value: self.shared_value,  // Manually transfer
         }
     }
 }
 
-impl SchemaIngestion<Sorted> {
-    /// Resolve schemas in topological order.
-    pub fn resolve(self) -> Result<SchemaIngestion<Resolved>, ResolveError> {
-        let mut resolved = Vec::new();
-        let mut cache = HashMap::new();
-
-        for id in self.state.order {
-            let schema = &self.state.schemas[id];
-            let resolved_schema = self.resolve_schema(schema, &cache)?;
-            cache.insert(id, resolved_schema.clone());
-            resolved.push(resolved_schema);
+impl Filling {
+    fn to_done(self) -> Done {
+        Done {
+            shared_value: self.shared_value,  // Manually transfer
         }
-
-        Ok(SchemaIngestion {
-            context: self.context,
-            state: Resolved { resolved_schemas: resolved },
-        })
-    }
-}
-
-impl SchemaIngestion<Resolved> {
-    /// Project resolved schemas to storage (final phase).
-    pub fn project(self, storage: &impl SchemaStorage) -> Result<(), StorageError> {
-        for schema in self.state.resolved_schemas {
-            storage.save(&schema)?;
-        }
-        Ok(())
     }
 }
 ```
@@ -187,433 +155,532 @@ impl SchemaIngestion<Resolved> {
 ### Usage
 
 ```rust
-// ✅ Compile-time enforced ordering
-let ingestion = SchemaIngestion::discover(vault_root, fs_reader, config)?
-    .parse()?           // Can only parse after discovery
-    .validate()?        // Can only validate after parsing
-    .build_graph()?     // Can only build graph after validation
-    .topological_sort() // Can only sort after graph is built
-    .resolve()?;        // Can only resolve after sorting
+let waiting = Waiting::new();
+let filling = waiting.to_filling();  // Old state consumed
+let done = filling.to_done();
 
-ingestion.project(&storage)?;
-
-// ❌ COMPILE ERROR: Can't skip phases
-let ingestion = SchemaIngestion::discover(vault_root, fs_reader, config)?;
-ingestion.build_graph()?;  // ERROR: no method `build_graph` on type `SchemaIngestion<Discovered>`
-
-// ❌ COMPILE ERROR: Can't call wrong methods
-let ingestion = SchemaIngestion::discover(vault_root, fs_reader, config)?
-    .parse()?;
-ingestion.project(&storage)?;  // ERROR: no method `project` on type `SchemaIngestion<Parsed>`
+// ❌ COMPILE ERROR: Can't skip states
+// let done = waiting.to_done();  // ERROR: no method `to_done` on `Waiting`
 ```
+
+### Problems
+
+❌ **Massive code duplication** - `shared_value` repeated everywhere
+❌ **Manual field transfer** - Easy to forget fields during transitions
+❌ **Unclear shared state** - Which fields are shared vs state-specific?
+❌ **Variable size** - Need enum wrapper to store in parent struct
 
 ### Benefits
 
-1. **Impossible to skip phases** - Type system prevents calling methods in wrong order
-2. **Clear error handling per phase** - Each phase has its own error type
-3. **Testability** - Can construct and test individual phases
-4. **Documentation** - Type signature shows current phase
-5. **Refactoring safety** - Adding/removing phases causes compile errors
+✅ **Compile-time transition validation** - Invalid transitions can't compile
+✅ **Consumes old state** - Can't accidentally reuse stale state
+✅ **No match statements** - Direct method calls
+✅ **Clear error messages** - Type system tells you what's wrong
+
+**Verdict:** We're getting closer! Compile-time validation is great, but code duplication is painful.
 
 ---
 
-## Approach 2: Enum State Machine (Runtime State Tracking)
+## Approach 3: Generic State Machine (The Solution)
 
-**Best for:** Cyclical state transitions, runtime state inspection, or when state needs to be serialized.
+### Core Insight
 
-### Basic Structure
+**Separate the machine from its states:**
+- The **machine** holds shared context
+- The **state** is a generic type parameter
+- Each state is a lightweight struct with state-specific data
 
 ```rust
-/// LSP server connection states.
-#[derive(Debug, Clone)]
-pub enum LspState {
-    Uninitialized,
-    Initializing { params: InitializeParams },
-    Indexing { progress: usize, total: usize },
-    Ready,
-    ShuttingDown,
-    Failed { error: String },
+// The machine is generic over its state
+struct Machine<S> {
+    shared_value: usize,  // Available in all states
+    state: S,             // Current state (type changes on transition)
 }
 
-pub struct LspServer {
-    state: LspState,
-    workspace: Option<Workspace>,
-    client: Option<Client>,
+// States are lightweight - only state-specific data
+struct Waiting {
+    waiting_time: Duration,
 }
 
-impl LspServer {
-    pub fn new() -> Self {
-        Self {
-            state: LspState::Uninitialized,
-            workspace: None,
-            client: None,
+struct Filling {
+    rate: usize,
+}
+
+struct Done;
+```
+
+### Implementation Pattern
+
+**Define initial state constructor:**
+
+```rust
+impl Machine<Waiting> {
+    fn new(shared_value: usize) -> Self {
+        Machine {
+            shared_value,
+            state: Waiting {
+                waiting_time: Duration::from_secs(0),
+            },
         }
-    }
-
-    /// Handle initialization request.
-    pub fn initialize(&mut self, params: InitializeParams) -> Result<(), LspError> {
-        match self.state {
-            LspState::Uninitialized => {
-                self.state = LspState::Initializing { params };
-                Ok(())
-            }
-            _ => Err(LspError::InvalidState {
-                expected: "Uninitialized",
-                actual: format!("{:?}", self.state),
-            }),
-        }
-    }
-
-    /// Start indexing the workspace.
-    pub fn start_indexing(&mut self) -> Result<(), LspError> {
-        match self.state {
-            LspState::Initializing { .. } => {
-                self.state = LspState::Indexing { progress: 0, total: 100 };
-                Ok(())
-            }
-            _ => Err(LspError::InvalidState {
-                expected: "Initializing",
-                actual: format!("{:?}", self.state),
-            }),
-        }
-    }
-
-    /// Mark server as ready.
-    pub fn mark_ready(&mut self) -> Result<(), LspError> {
-        match self.state {
-            LspState::Indexing { .. } => {
-                self.state = LspState::Ready;
-                Ok(())
-            }
-            _ => Err(LspError::InvalidState {
-                expected: "Indexing",
-                actual: format!("{:?}", self.state),
-            }),
-        }
-    }
-
-    /// Handle document change (only valid when Ready).
-    pub fn handle_change(&mut self, change: DocumentChange) -> Result<(), LspError> {
-        match self.state {
-            LspState::Ready => {
-                // Process change
-                Ok(())
-            }
-            _ => Err(LspError::NotReady),
-        }
-    }
-
-    /// Shutdown server (can transition from Ready or Failed).
-    pub fn shutdown(&mut self) -> Result<(), LspError> {
-        match self.state {
-            LspState::Ready | LspState::Failed { .. } => {
-                self.state = LspState::ShuttingDown;
-                Ok(())
-            }
-            _ => Err(LspError::CannotShutdown),
-        }
-    }
-
-    /// Check if server is ready to handle requests.
-    pub fn is_ready(&self) -> bool {
-        matches!(self.state, LspState::Ready)
-    }
-
-    /// Get current state for debugging/logging.
-    pub fn current_state(&self) -> &LspState {
-        &self.state
     }
 }
 ```
 
+**Define transitions using `From`:**
+
+```rust
+// Waiting → Filling
+impl From<Machine<Waiting>> for Machine<Filling> {
+    fn from(val: Machine<Waiting>) -> Machine<Filling> {
+        Machine {
+            shared_value: val.shared_value,  // Transfer shared context
+            state: Filling {
+                rate: 1,  // Initialize new state data
+            },
+        }
+    }
+}
+
+// Filling → Done
+impl From<Machine<Filling>> for Machine<Done> {
+    fn from(val: Machine<Filling>) -> Machine<Done> {
+        Machine {
+            shared_value: val.shared_value,
+            state: Done,
+        }
+    }
+}
+```
+
+### Usage
+
+```rust
+// Create machine in initial state
+let in_waiting = Machine::<Waiting>::new(0);
+
+// Explicit transition with type annotation
+let in_filling = Machine::<Filling>::from(in_waiting);
+
+// Or let type inference handle it
+let in_done = in_filling.into();  // Type inferred from context
+
+// ❌ COMPILE ERROR: Invalid transition
+// let in_done = Machine::<Done>::from(in_waiting);
+// ERROR: the trait `From<Machine<Waiting>>` is not implemented for `Machine<Done>`
+```
+
+### Error Messages
+
+What happens when you try an invalid transition?
+
+```rust
+let in_waiting = Machine::<Waiting>::new(0);
+let in_done = Machine::<Done>::from(in_waiting);
+```
+
+**Compiler says:**
+
+```
+error[E0277]: the trait bound `Machine<Done>: From<Machine<Waiting>>` is not satisfied
+  |
+  | let in_done = Machine::<Done>::from(in_waiting);
+  |               ^^^^^^^^^^^^^^^^^^
+  |
+  = help: the following implementations were found:
+  = help:   <Machine<Filling> as From<Machine<Waiting>>>
+  = help:   <Machine<Done> as From<Machine<Filling>>>
+```
+
+**The compiler literally tells you the valid transitions!**
+
 ### Benefits
 
-1. **Runtime state inspection** - Can query current state
-2. **Cyclical transitions** - Can return to previous states
-3. **Serializable** - Can save/restore state
-4. **Flexible error handling** - Can transition to error states and recover
+✅ **Compile-time validation** - Invalid transitions can't compile
+✅ **Clear error messages** - Compiler suggests valid transitions
+✅ **No code duplication** - Shared context lives in `Machine<S>`
+✅ **Consumes old state** - Type system enforces linear usage
+✅ **Stack allocated** - Memory-efficient
+✅ **Type signature shows state** - `Machine<Filling>` is self-documenting
+✅ **Idiomatic Rust** - Uses standard `From`/`Into` traits
 
-### When to Use Enum vs Type-State
+### Drawbacks
 
-| Criterion                      | Type-State                | Enum                      |
-|--------------------------------|---------------------------|---------------------------|
-| Phase ordering                 | Linear/tree               | Cyclical                  |
-| State inspection needed?       | No                        | Yes                       |
-| Serialize state?               | No                        | Yes                       |
-| Can skip phases?               | Never                     | Sometimes                 |
-| Error recovery                 | Fail fast                 | Transition to error state |
-| Compile-time guarantees        | Strong                    | Weak                      |
+⚠️ **Variable size** - `Machine<Waiting>` and `Machine<Filling>` have different sizes
+⚠️ **Minor type noise** - `From` implementations are a bit verbose
+
+**Verdict:** This is the pattern to use! Clean, type-safe, and idiomatic.
 
 ---
 
-## Approach 3: Factory Pattern for Construction
+## Handling Parent Structures (The Enum Wrapper)
 
-**Pattern:** Use named constructors to create initial states clearly.
+### The Problem
+
+If you need to store a state machine in a parent struct, you face a problem:
 
 ```rust
-impl SchemaIngestion<Discovered> {
-    /// Discover schemas from vault root.
-    pub fn discover(
+struct Factory {
+    machine: Machine<???>,  // What type goes here?
+}
+```
+
+Different states have different sizes, so you can't pick a single concrete type.
+
+### The Solution: Enum Wrapper
+
+Use an enum to wrap all possible states:
+
+```rust
+enum MachineWrapper {
+    Waiting(Machine<Waiting>),
+    Filling(Machine<Filling>),
+    Done(Machine<Done>),
+}
+
+struct Factory {
+    machine: MachineWrapper,
+}
+
+impl Factory {
+    fn new() -> Self {
+        Factory {
+            machine: MachineWrapper::Waiting(Machine::new(0)),
+        }
+    }
+}
+```
+
+### Transitioning Within the Wrapper
+
+You'll need to `match` to extract, transition, and re-wrap:
+
+```rust
+impl MachineWrapper {
+    fn step(self) -> Self {
+        match self {
+            MachineWrapper::Waiting(m) => MachineWrapper::Filling(m.into()),
+            MachineWrapper::Filling(m) => MachineWrapper::Done(m.into()),
+            MachineWrapper::Done(m) => MachineWrapper::Waiting(m.into()),
+        }
+    }
+}
+
+// Usage
+let mut factory = Factory::new();
+factory.machine = factory.machine.step();
+```
+
+### Why This Isn't Terrible
+
+**Yes, you have to match.** But this is actually good because:
+
+1. **Exhaustiveness checking** - Compiler forces you to handle all states
+2. **Explicit intent** - Clear what happens in each state
+3. **Type safety preserved** - Still can't do invalid transitions
+
+**The wrapper is ONLY needed when embedding in a parent struct.** Most of your code works with the typed `Machine<S>` directly.
+
+---
+
+## Lithos-Specific Patterns
+
+### Schema Loading Pipeline
+
+**Requirements:**
+- 7 distinct phases (discover → parse → validate → graph → sort → resolve → project)
+- Each phase has different data and error types
+- Phases can't be skipped
+- Shared context (vault root, config, filesystem reader)
+
+**Pattern:** Generic state machine
+
+```rust
+// The loader machine
+struct SchemaLoader<S> {
+    vault_root: PathBuf,
+    fs_reader: Arc<dyn FsReader>,
+    config: Arc<Config>,
+    state: S,
+}
+
+// States (lightweight, phase-specific data only)
+struct Discovered {
+    files: Vec<PathBuf>,
+}
+
+struct Parsed {
+    raw_schemas: Vec<RawSchema>,
+}
+
+struct Validated {
+    schemas: Vec<Schema>,
+}
+
+struct Graphed {
+    graph: DependencyGraph,
+    schemas: Vec<Schema>,
+}
+
+struct Sorted {
+    order: Vec<SchemaId>,
+    schemas: Vec<Schema>,
+}
+
+struct Resolved {
+    resolved: Vec<ResolvedSchema>,
+}
+
+// Initial state constructor
+impl SchemaLoader<Discovered> {
+    fn discover(
         vault_root: PathBuf,
         fs_reader: Arc<dyn FsReader>,
         config: Arc<Config>,
     ) -> Result<Self, DiscoveryError> {
-        // ...
-    }
-
-    /// Create from already-discovered files (for testing).
-    pub fn from_files(
-        files: Vec<PathBuf>,
-        context: IngestionContext,
-    ) -> Self {
-        SchemaIngestion {
-            context,
+        let files = fs_reader.discover_schemas(&vault_root)?;
+        Ok(SchemaLoader {
+            vault_root,
+            fs_reader,
+            config,
             state: Discovered { files },
-        }
+        })
     }
 }
 
-impl ConfigLoad<Raw> {
-    /// Load from default locations.
-    pub fn from_defaults() -> Result<Self, ConfigError> {
-        // ...
-    }
-
-    /// Load from explicit paths.
-    pub fn from_paths(
-        global_path: PathBuf,
-        vault_path: Option<PathBuf>,
-    ) -> Result<Self, ConfigError> {
-        // ...
-    }
+// Transitions
+impl From<SchemaLoader<Discovered>> for Result<SchemaLoader<Parsed>, ParseError> {
+    // Implementation...
 }
+
+impl From<SchemaLoader<Parsed>> for Result<SchemaLoader<Validated>, ValidationError> {
+    // Implementation...
+}
+
+// Usage
+let loader = SchemaLoader::discover(vault_root, fs_reader, config)?
+    .into()?  // Parse
+    .into()?  // Validate
+    .into()?  // Build graph
+    .into()?  // Topological sort
+    .into()?; // Resolve
+
+loader.project(&storage)?;
 ```
 
----
-
-## Lithos-Specific Guidelines
-
-### Schema Ingestion Pipeline
-
-**Use Type-State Pattern:**
-
-```rust
-SchemaIngestion::discover(vault_root, fs_reader, config)?
-    .parse()?           // File → RawSchema
-    .validate()?        // RawSchema → Schema
-    .build_graph()?     // Detect cycles
-    .topological_sort() // Order dependencies
-    .resolve()?         // Merge inheritance
-    .project(storage)?; // Save to DB
-```
-
-**Phases:**
-1. `Discovered` - Files found on filesystem
-2. `Parsed` - Raw YAML/TOML parsed
-3. `Validated` - Syntax validation complete
-4. `GraphBuilt` - Dependency graph built, cycles checked
-5. `Sorted` - Topological sort complete
-6. `Resolved` - Inheritance merged, ready for storage
+**Why this works:**
+- ✅ Can't skip phases - Type system enforces order
+- ✅ Each phase has its own error type
+- ✅ Shared context (vault_root, fs_reader, config) lives in `SchemaLoader<S>`
+- ✅ State-specific data lives in state types
+- ✅ Compile-time guarantees
 
 ### Config Loading Pipeline
 
-**Use Type-State Pattern:**
+**Requirements:**
+- Multiple phases (load → merge → resolve variables → validate → finalize)
+- Need to merge multiple config sources
+- Variable resolution has dependencies
+- Final config should be immutable
+
+**Pattern:** Generic state machine
 
 ```rust
-ConfigLoad::from_defaults()?
-    .merge_vault_config(vault_path)?  // Merge vault-specific config
-    .resolve_variables()?              // Expand ${VAR} references
-    .validate()?                       // Check required fields
-    .finalize()?;                      // Lock immutable config
-```
+struct ConfigLoader<S> {
+    // Shared across all phases
+    default_config: Config,
+    state: S,
+}
 
-### LSP Server Lifecycle
+struct Loaded {
+    global: RawConfig,
+    vault: Option<RawConfig>,
+}
 
-**Use Enum State Machine:**
+struct Merged {
+    config: RawConfig,
+}
 
-```rust
-enum LspState {
-    Uninitialized,
-    Initializing { params: InitializeParams },
-    Indexing { progress: usize, total: usize },
-    Ready,
-    ShuttingDown,
-    Failed { error: String },
+struct Resolved {
+    config: RawConfig,  // Variables expanded
+}
+
+struct Validated {
+    config: Config,  // Fully validated
+}
+
+struct Finalized {
+    config: Arc<Config>,  // Immutable, shareable
+}
+
+impl ConfigLoader<Loaded> {
+    fn load_from_defaults() -> Result<Self, LoadError> {
+        // Implementation...
+    }
+}
+
+// Transitions...
+impl From<ConfigLoader<Loaded>> for ConfigLoader<Merged> {
+    fn from(val: ConfigLoader<Loaded>) -> Self {
+        // Merge global + vault configs
+    }
 }
 ```
 
-**Why enum:** Can transition back to `Indexing` when files change, need runtime state inspection for progress reporting.
+### When NOT to Use State Machines
 
-### File Watcher
+**Don't use for:**
+- ❌ Simple boolean flags (`started: bool` is fine)
+- ❌ Single-phase operations (just use a function)
+- ❌ When phases can be freely reordered (use enum + runtime validation)
 
-**Use Enum State Machine:**
-
-```rust
-enum WatcherState {
-    Idle,
-    Debouncing { timer: Instant, changes: Vec<PathBuf> },
-    Scanning { files: Vec<PathBuf> },
-    Processing,
-}
-```
-
-**Why enum:** Cyclical transitions (Idle → Debouncing → Scanning → Idle).
+**DO use for:**
+- ✅ Multi-phase pipelines with strict ordering
+- ✅ When each phase has distinct data/operations
+- ✅ When you want compile-time guarantees
+- ✅ Complex workflows (schema resolution, config loading, protocol state)
 
 ---
 
 ## Testing State Machines
 
-### Type-State Pattern Testing
+### Testing Individual Phases
 
 ```rust
 #[test]
-fn schema_ingestion_phases_enforced() {
-    // Test each phase independently
-    let context = test_context();
-
-    // Phase 1: Discovery
-    let discovered = SchemaIngestion {
-        context: context.clone(),
-        state: Discovered {
-            files: vec![PathBuf::from("schema1.yaml")],
+fn validates_cycles_at_graph_phase() {
+    // Construct machine in specific state for testing
+    let in_validated_state = SchemaLoader {
+        vault_root: test_vault(),
+        fs_reader: test_reader(),
+        config: test_config(),
+        state: Validated {
+            schemas: vec![
+                schema_a_extends_b(),
+                schema_b_extends_a(),  // Cycle!
+            ],
         },
     };
 
-    // Phase 2: Parsing
-    let parsed = discovered.parse().unwrap();
-    assert_eq!(parsed.state.raw_schemas.len(), 1);
-
-    // Phase 3: Validation
-    let validated = parsed.validate().unwrap();
-    assert_eq!(validated.state.schemas.len(), 1);
-}
-
-#[test]
-fn schema_resolution_validates_cycles() {
-    let validated = test_validated_state_with_cycle();
-
-    // Should fail at graph building phase
-    let result = validated.build_graph();
+    // Test just the graph building phase
+    let result: Result<SchemaLoader<Graphed>, _> = in_validated_state.try_into();
     assert!(matches!(result, Err(CycleError::CircularDependency { .. })));
 }
 ```
 
-### Enum State Machine Testing
+### Testing Full Pipeline
 
 ```rust
 #[test]
-fn lsp_lifecycle_transitions() {
-    let mut server = LspServer::new();
-    assert!(matches!(server.state, LspState::Uninitialized));
+fn full_pipeline_integration() {
+    let loader = SchemaLoader::discover(test_vault(), test_reader(), test_config())
+        .unwrap()
+        .into().unwrap()  // Parse
+        .into().unwrap()  // Validate
+        .into().unwrap()  // Graph
+        .into().unwrap()  // Sort
+        .into().unwrap(); // Resolve
 
-    // Initialize
-    server.initialize(test_params()).unwrap();
-    assert!(matches!(server.state, LspState::Initializing { .. }));
+    loader.project(&test_storage()).unwrap();
 
-    // Start indexing
-    server.start_indexing().unwrap();
-    assert!(matches!(server.state, LspState::Indexing { .. }));
-
-    // Mark ready
-    server.mark_ready().unwrap();
-    assert!(matches!(server.state, LspState::Ready));
-}
-
-#[test]
-fn lsp_rejects_invalid_transitions() {
-    let mut server = LspServer::new();
-
-    // Can't handle changes before initialization
-    let result = server.handle_change(test_change());
-    assert!(matches!(result, Err(LspError::NotReady)));
+    // Verify final state
+    assert_eq!(test_storage().count(), 3);
 }
 ```
 
 ---
 
-## Anti-Patterns to Avoid
+## Naming Conventions
 
-### ❌ DON'T: Use state machines for simple boolean flags
+### Machine Name: Domain Concept
 
-```rust
-// ❌ BAD: Overkill for a simple flag
-enum ProcessState {
-    NotStarted,
-    Started,
-}
+The machine struct should describe **what it does**, not that it's a state machine:
 
-// ✅ GOOD: Use a boolean
-struct Process {
-    started: bool,
-}
-```
+✅ **Good:**
+- `SchemaLoader<S>` - Loads schemas through multiple phases
+- `ConfigLoader<S>` - Loads and merges configuration
+- `Connection<S>` - Manages network connection lifecycle
 
-### ❌ DON'T: Mix enum and type-state patterns
+❌ **Bad:**
+- `SchemaState<S>` - What does "state" mean here?
+- `SchemaIngestion<S>` - Only highlights one part (ingestion)
+- `SchemaStateMachine<S>` - Implementation detail, not domain concept
 
-```rust
-// ❌ BAD: Confusing hybrid
-struct Pipeline<S> {
-    state: S,
-    runtime_state: RuntimeState,  // Which one is the source of truth?
-}
-```
+### State Names: Phase or Status
 
-### ❌ DON'T: Create state machines for single-phase operations
+State types should describe **where you are** in the process:
 
-```rust
-// ❌ BAD: No phases, no need for state machine
-struct TemplateRender<S> {
-    state: S,
-}
+✅ **Good:**
+- `Discovered`, `Parsed`, `Validated` - Clear phases
+- `Connected`, `Disconnected`, `Failed` - Clear status
+- `Waiting`, `Filling`, `Done` - Descriptive
 
-// ✅ GOOD: Just use a function
-fn render_template(template: &Template, context: &Context) -> Result<String, Error>
-```
-
-### ❌ DON'T: Store state machines when you only need the result
-
-```rust
-// ❌ BAD: Storing entire pipeline state
-struct SchemaResolver {
-    ingestion: SchemaIngestion<Resolved>,  // Why store this?
-}
-
-// ✅ GOOD: Store the result
-struct SchemaResolver {
-    resolved_schemas: Vec<ResolvedSchema>,
-}
-```
+❌ **Bad:**
+- `StateA`, `StateB`, `StateC` - No semantic meaning
+- `Step1`, `Step2`, `Step3` - Order-dependent, not descriptive
 
 ---
 
 ## Summary
 
-**Type-State Pattern (Compile-Time):**
-- ✅ Linear/tree pipelines
-- ✅ Each phase has distinct data
-- ✅ Want compile-time ordering guarantees
-- ✅ Cannot skip phases
-- ❌ Not for cyclical transitions
-- **Lithos use:** Schema ingestion, config loading
+### Key Takeaways
 
-**Enum State Machine (Runtime):**
-- ✅ Cyclical transitions
-- ✅ Need runtime state inspection
-- ✅ Need to serialize state
-- ✅ Can transition to error states and recover
-- ❌ No compile-time phase ordering
-- **Lithos use:** LSP lifecycle, file watcher
+1. **Use generic state machines for multi-phase pipelines** - `Machine<S>` pattern
+2. **Put shared data in the machine** - Don't duplicate across states
+3. **Put phase-specific data in states** - Keep states lightweight
+4. **Use `From`/`Into` for transitions** - Idiomatic and consumptive
+5. **Wrap in enum only when needed** - For embedding in parent structs
+6. **Let the type system enforce correctness** - Impossible states are unrepresentable
 
-**Simple Alternatives:**
-- Boolean flags for binary states
-- Plain functions for single-phase operations
-- Pipeline functions for simple transforms
+### Decision Matrix
+
+| Use Case | Pattern | Example |
+|----------|---------|---------|
+| Multi-phase linear pipeline | Generic state machine | Schema loading |
+| Complex workflow with branching | Generic state machine | Protocol state |
+| Cyclical state transitions | Enum-based runtime state | LSP server |
+| Simple flag | Boolean | `is_initialized` |
+| One-time operation | Function | Template rendering |
+
+### Pattern Template
+
+```rust
+// 1. Define the machine (generic over state)
+struct Machine<S> {
+    shared_context: Context,
+    state: S,
+}
+
+// 2. Define states (lightweight)
+struct State1 { phase1_data: Data1 }
+struct State2 { phase2_data: Data2 }
+
+// 3. Define initial state constructor
+impl Machine<State1> {
+    fn new(context: Context) -> Self {
+        Machine { shared_context: context, state: State1 { .. } }
+    }
+}
+
+// 4. Define transitions with `From`
+impl From<Machine<State1>> for Machine<State2> {
+    fn from(val: Machine<State1>) -> Machine<State2> {
+        Machine {
+            shared_context: val.shared_context,
+            state: State2 { phase2_data: transform(val.state.phase1_data) },
+        }
+    }
+}
+
+// 5. Use it
+let machine = Machine::new(context)
+    .into();  // Type system enforces correct order
+```
 
 ---
 
 ## References
 
-- [Hoverbear - Rust State Machine Pattern](https://hoverbear.org/blog/rust-state-machine-pattern/)
+- [Hoverbear - Rust State Machine Pattern](https://hoverbear.org/blog/rust-state-machine-pattern/) - Original article
 - [Rust API Guidelines - Type Safety](https://rust-lang.github.io/api-guidelines/type-safety.html)
-- ADR 002: Storage Pattern (Lithos)
-- ADR 003: Serialization Strategy (Lithos)
+- [Rust Book - Generics](https://doc.rust-lang.org/book/ch10-00-generics.html)
+- [Rust Book - From and Into](https://doc.rust-lang.org/std/convert/trait.From.html)
