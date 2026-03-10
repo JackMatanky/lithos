@@ -40,12 +40,14 @@ The Lithos project requires serialization capabilities for multiple purposes:
    - Location: `<context>/aggregate.rs`
    - Derives: `rkyv::Archive + Serialize + Deserialize`, optionally `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]`
    - **Has rkyv derives by default** for zero-copy database reads via storage implementations
+   - **Rule**: Since domain types are stored directly by default, changes to domain fields are potential migration events. Treat them with care.
    - Example: `Schema { name: SchemaName, properties: Vec<Property> }`
 
 3. **`*View` (rkyv only, optional optimization)**: Storage-optimized projection representation
-   - Purpose: Represents a read-optimized projection in the expendable database cache. Used only when domain shape causes storage inefficiency (wrapper newtypes complicate indexing, deep nesting, Arc sharing issues)
+   - Purpose: Represents a read-optimized projection in the expendable database cache. Defines the stable archived layout for read models when domain shape evolves incompatibly.
    - Location: `<context>/view.rs` or `<context>/views/<view_name>.rs`
    - Mechanical conversions at storage boundary
+   - **Rule**: Do not introduce `*View` types speculatively. If domain changes become too frequent/breaking, introduce this layer to decouple storage from domain.
    - Example: `SchemaView { name: String, properties: Vec<PropertyView> }` (flattened newtypes)
 
 ### Implementation Guidelines
@@ -57,6 +59,7 @@ The Lithos project requires serialization capabilities for multiple purposes:
    - Wrapper newtypes (SchemaName, NotePath) complicate database indexing
    - Deep nesting causes excessive alignment copy overhead
    - Arc<T> sharing doesn't serialize efficiently with rkyv
+   - Migration pressure: Domain refactors are causing too many storage migrations
 5. **Compile-Time Enforcement**: Architectural tests verify serde remains feature-gated (optional dependency)
 
 ### Feature Flag Pattern
@@ -245,42 +248,3 @@ fn domain_has_zero_required_dependencies() {
   - **Conditional Compilation**: Some API surfaces only available with feature enabled
   - **Testing Overhead**: Must test both with/without serde feature enabled
   - **Documentation Burden**: Must document feature flag in library docs and examples
-
-## Appendix A: Minimizing "derive-everything" Blast Radius (Historic Context)
-
-*Note: This appendix was written when rkyv was prohibited in domain. With the acceptance of Alternative 3 (rkyv allowed), this section serves as historical context for why the three-shape model was adopted.*
-
-### A.1 The Coupling Risk
-
-The core risk is *coupling*: if rkyv derives are applied broadly on "domain-shaped" types, then routine refactors become **persisted-format changes**.
-
-In concrete terms, if `Schema` / `Note` are both "domain + stored" at once, we should expect more on-disk migrations when we refactor domain fields.
-
-### A.2 Mitigation Strategy: Three-Shape Model
-
-To mitigate this while allowing rkyv in domain, we adopt the three-shape model:
-
-1. **`Raw*` (serde-only)**: input/wire shapes.
-   - Purpose: parse user data and hold "maybe invalid" values.
-   - Traits: serde derives only (feature-gated if needed).
-
-2. **Domain (rkyv + behavior)**: runtime shapes.
-   - Purpose: invariants, ergonomics, and behavior.
-   - Traits: rkyv derives for zero-copy access.
-   - **Rule**: Changes here ARE potential migration events. Treat them with care.
-
-3. **`*View` (rkyv + validation)**: persisted/on-disk projection shapes (Optional).
-   - Purpose: define the stable archived layout for read models when domain shape evolves incompatibly.
-   - Traits: rkyv derives, bytecheck/validation bounds.
-   - **Rule**: If domain changes become too frequent/breaking, introduce this layer to decouple.
-
-### A.3 Decision Tree for View Types
-
-We do not introduce `*View` types speculatively. We only introduce them when:
-
-1. **Wrapper Types Complicate Indexing**: `SchemaName` (newtype) vs `String` keys.
-2. **Deep Nesting**: Domain hierarchy causes excessive alignment copy overhead.
-3. **Shared State**: `Arc<T>` or cyclic references don't serialize efficiently.
-4. **Migration Pressure**: Domain refactors are causing too many storage migrations.
-
-Until then, we stick to **Path 3**: Domain types have rkyv derives and are stored directly.
