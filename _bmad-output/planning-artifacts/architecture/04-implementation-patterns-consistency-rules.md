@@ -543,6 +543,8 @@ When designing a type, ask:
 
 **Core Principle:** Reject CQRS and event sourcing in favor of module boundaries, Iterator-based ingestion pipelines, and simple `Storage` trait abstractions for I/O.
 
+**For complex multi-phase pipelines:** Use state machine patterns to enforce phase ordering and make invalid state transitions unrepresentable. See **[State Machine Pattern Reference](../../../docs/refs/rust/state-machine-pattern.md)** for detailed guidance on when and how to use type-state patterns vs enum state machines.
+
 ### Module Isolation over Trait Isolation
 
 **Pattern:** Business contexts (note, schema, template) isolate business logic through Rust modules. Traits are reserved strictly for abstracting I/O, not for separating domain services.
