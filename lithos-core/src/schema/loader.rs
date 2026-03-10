@@ -113,10 +113,21 @@ pub struct Loader<'db> {
 }
 
 // Type aliases for complex tuples used in service methods
-type RawSchemaWithTimes =
-    (RawSchema, [u8; 32], Option<SystemTime>, Option<SystemTime>);
-type SchemaWithTimes =
-    (SchemaId, RawSchema, [u8; 32], Option<SystemTime>, Option<SystemTime>);
+type RawSchemaWithTimes = (
+    RawSchema,
+    String,             // raw file content
+    [u8; 32],           // content hash
+    Option<SystemTime>, // modified_at
+    Option<SystemTime>, // created_at
+);
+type SchemaWithTimes = (
+    SchemaId,
+    RawSchema,
+    String,             // raw file content
+    [u8; 32],           // content hash
+    Option<SystemTime>, // modified_at
+    Option<SystemTime>, // created_at
+);
 type PartitionResult = (Vec<SchemaWithTimes>, Vec<SchemaId>);
 
 impl<'db> Loader<'db> {
@@ -307,9 +318,25 @@ impl<'db> Loader<'db> {
                 self.emit_property_bank(
                     &crate::schema::events::PropertyBankEvent::ResolutionStarted,
                 );
-                let raw_bank = ingestor.load_raw_property_bank()?;
+                let (raw_bank, content, _hash, modified, created) =
+                    ingestor.load_raw_property_bank_with_metadata()?;
                 let rebuilt_bank =
                     PropertyBank::try_from_raw(raw_bank, Some(&stored))?;
+
+                // Persist raw property bank file
+                let raw_bank_file =
+                    crate::schema::storage::RawPropertyBankFile::new(
+                        &content, created, modified,
+                    )
+                    .map_err(|e| {
+                        LoaderError::from(SchemaCommandError::Storage(
+                            crate::db::DbError::Database(e.to_string()),
+                        ))
+                    })?;
+                self.command
+                    .save_raw_property_bank_file(&raw_bank_file)
+                    .map_err(SchemaCommandError::from)?;
+
                 self.emit_property_bank(
                     &crate::schema::events::PropertyBankEvent::Resolved {
                         property_count: rebuilt_bank.all().count(),
@@ -335,8 +362,24 @@ impl<'db> Loader<'db> {
             self.emit_property_bank(
                 &crate::schema::events::PropertyBankEvent::ResolutionStarted,
             );
-            let raw_bank = ingestor.load_raw_property_bank()?;
+            let (raw_bank, content, _hash, modified, created) =
+                ingestor.load_raw_property_bank_with_metadata()?;
             let new_bank = PropertyBank::try_from_raw(raw_bank, None)?;
+
+            // Persist raw property bank file
+            let raw_bank_file =
+                crate::schema::storage::RawPropertyBankFile::new(
+                    &content, created, modified,
+                )
+                .map_err(|e| {
+                    LoaderError::from(SchemaCommandError::Storage(
+                        crate::db::DbError::Database(e.to_string()),
+                    ))
+                })?;
+            self.command
+                .save_raw_property_bank_file(&raw_bank_file)
+                .map_err(SchemaCommandError::from)?;
+
             self.emit_property_bank(
                 &crate::schema::events::PropertyBankEvent::Resolved {
                     property_count: new_bank.all().count(),
@@ -414,7 +457,7 @@ impl<'db> Loader<'db> {
             reason = "Required for borrowing RawSchema while destructuring \
                       tuple"
         )]
-        for &(ref raw_schema, _hash, modified, created) in
+        for &(ref raw_schema, ref _content, _hash, modified, created) in
             raw_schemas_with_times
         {
             let schema_name = SchemaName::try_new(&raw_schema.name)?;
@@ -443,7 +486,9 @@ impl<'db> Loader<'db> {
             clippy::pattern_type_mismatch,
             reason = "Tuple destructuring from slice requires ref pattern"
         )]
-        for (raw_schema, hash, _modified, _created) in raw_schemas_with_times {
+        for (raw_schema, _content, hash, _modified, _created) in
+            raw_schemas_with_times
+        {
             let schema_name = SchemaName::try_new(&raw_schema.name)?;
             if let Some(&id) = name_to_id.get(&schema_name) {
                 hash_map.insert(id, *hash);
@@ -457,7 +502,7 @@ impl<'db> Loader<'db> {
         let mut stale = Vec::new();
         let mut fresh_ids = Vec::new();
 
-        for (id, (raw_schema, hash, modified, created)) in
+        for (id, (raw_schema, content, hash, modified, created)) in
             schema_ids.into_iter().zip(raw_schemas_with_times.iter().cloned())
         {
             let schema_stale = staleness_map.get(&id).copied().unwrap_or(true);
@@ -481,7 +526,7 @@ impl<'db> Loader<'db> {
                         reason,
                     },
                 );
-                stale.push((id, raw_schema, hash, modified, created));
+                stale.push((id, raw_schema, content, hash, modified, created));
             } else {
                 self.emit_schema(
                     &crate::schema::events::SchemaEvent::SchemaFresh {
@@ -506,15 +551,29 @@ impl<'db> Loader<'db> {
         type MetadataTriple =
             ([u8; 32], Option<SystemTime>, Option<SystemTime>);
 
-        // Build metadata and inheritance maps
+        // Build metadata and inheritance maps, persist raw files
         let mut metadata_map: HashMap<SchemaId, MetadataTriple> =
             HashMap::with_capacity(stale_with_times.len());
         let mut raw_map: HashMap<SchemaId, Vec<Box<str>>> =
             HashMap::with_capacity(stale_with_times.len());
 
-        for (id, raw, hash, modified, created) in stale_with_times {
+        for (id, raw, content, hash, modified, created) in stale_with_times {
             metadata_map.insert(id, (hash, modified, created));
             raw_map.insert(id, raw.excludes);
+
+            // Persist raw file with version history
+            let file_path = format!("schemas/{}.toml", raw.name);
+            let raw_file = crate::schema::storage::RawSchemaFile::new(
+                file_path, &content, created, modified,
+            )
+            .map_err(|e| {
+                LoaderError::from(SchemaCommandError::Storage(
+                    crate::db::DbError::Database(e.to_string()),
+                ))
+            })?;
+            self.command
+                .save_raw_schema_file(&raw_file)
+                .map_err(SchemaCommandError::from)?;
         }
 
         // Build metadata vector

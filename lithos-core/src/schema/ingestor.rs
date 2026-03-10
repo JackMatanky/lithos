@@ -26,14 +26,25 @@ const SCHEMA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
 ///
 /// let _tuple: RawSchemaWithMetadata = todo!("Provide raw schema data");
 /// ```
-pub type RawSchemaWithMetadata =
-    (RawSchema, [u8; 32], Option<SystemTime>, Option<SystemTime>);
+pub type RawSchemaWithMetadata = (
+    RawSchema,
+    String,             // raw file content
+    [u8; 32],           // content hash
+    Option<SystemTime>, // modified_at
+    Option<SystemTime>, // created_at
+);
 
 /// Property bank with filesystem timestamps and content hash.
 ///
-/// Tuple fields: (`bank`, `content_hash`, `modified_at`, `created_at`).
-pub type RawPropertyBankWithMetadata =
-    (RawPropertyBank, [u8; 32], Option<SystemTime>, Option<SystemTime>);
+/// Tuple fields: (`bank`, `raw_content`, `content_hash`, `modified_at`,
+/// `created_at`).
+pub type RawPropertyBankWithMetadata = (
+    RawPropertyBank,
+    String,             // raw file content
+    [u8; 32],           // content hash
+    Option<SystemTime>, // modified_at
+    Option<SystemTime>, // created_at
+);
 
 /// Old type alias for backward compatibility.
 #[deprecated(since = "0.1.0", note = "Use RawSchemaWithMetadata instead")]
@@ -126,8 +137,8 @@ impl Ingestor<'_> {
 
     /// Load property bank with content hash and timestamps.
     ///
-    /// Returns (`RawPropertyBank`, `content_hash`, `modified_at`,
-    /// `created_at`).
+    /// Returns (`RawPropertyBank`, `raw_content`, `content_hash`,
+    /// `modified_at`, `created_at`).
     ///
     /// # Errors
     /// Returns `SchemaIngestionError` if the file cannot be read or parsed.
@@ -156,7 +167,7 @@ impl Ingestor<'_> {
         let modified = self.source.modified_at(&path);
         let created = self.source.created_at(&path);
 
-        Ok((bank, content_hash, modified, created))
+        Ok((bank, content, content_hash, modified, created))
     }
 
     /// Scan the schemas directory for all schema files.
@@ -240,7 +251,7 @@ impl Ingestor<'_> {
                 let modified = self.source.modified_at(&path);
                 let created = self.source.created_at(&path);
 
-                results.push((raw, content_hash, modified, created));
+                results.push((raw, content, content_hash, modified, created));
             }
         }
 

@@ -77,8 +77,8 @@ fn raw_schema_file_storage_saves_and_retrieves()
     assert_eq!(schemas.len(), 1, "Should find one schema file");
 
     let first = schemas.first().ok_or("Expected at least one schema")?;
-    let content_hash = &first.1;
-    let created_at = first.2;
+    let content_hash = &first.2;
+    let created_at = first.4;
     let modified_at = first.3;
 
     // Read the actual file content for hashing
@@ -199,7 +199,7 @@ fn raw_property_bank_file_storage() -> Result<(), Box<dyn std::error::Error>> {
 
     // WHEN: Loading property bank with metadata
     let ingestor = Ingestor::new(FsReader::new(dir.path()), &config);
-    let (_bank, content_hash, modified_at, created_at) =
+    let (_bank, _content, content_hash, modified_at, created_at) =
         ingestor.load_raw_property_bank_with_metadata()?;
 
     // Read the actual file content for hashing
