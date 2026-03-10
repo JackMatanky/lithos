@@ -1,7 +1,6 @@
 ---
 name: storage-pattern-architecture
 status: accepted
-supersedes: [0002] # Replaces the previous Port-Based CQRS decision
 date_proposed: 2026-03-10
 date_decided: 2026-03-10
 date_implemented: pending
@@ -12,30 +11,21 @@ stakeholders: [Jack (Architect), Development Team]
 
 ## Context
 
-Lithos is a local, file-based CLI application where the filesystem is the ultimate source of truth, and the local database is merely an expendable read-optimized projection/cache.
+Lithos is a local, file-based CLI application where the filesystem is the ultimate source of truth, and the local database is merely an expendable read-optimized projection/cache. State mutations occur externally (e.g., a user edits Markdown in Obsidian or Vim), and the domain is inherently tied to file I/O. The database can be wiped and rebuilt at any time.
 
-Previously, the architecture mandated a "Port-Based CQRS" pattern, enforcing a rigid separation into `CommandPort` and `QueryPort` traits alongside event orchestration. While CQRS is powerful for distributed event-sourced systems where the database is authoritative, research into idiomatic Rust file-based projects (like Zola, mdBook, and Cargo) revealed that CQRS is heavyweight overkill for a tool where:
-
-1. State mutations occur externally (user edits Markdown in Obsidian/Vim).
-2. The domain is inherently tied to file I/O.
-3. The database can be wiped and rebuilt at any time.
-
-Applying traditional Hexagonal CQRS to a file-sync tool created unnecessary complexity: excessive boilerplate, misaligned mental models (file writes aren't traditional CQRS commands), and an impedance mismatch with idiomatic Rust's functional composition.
-
-We need a pattern that supports:
-
-- **Testability:** The ability to mock I/O boundaries without standing up a database.
-- **Zero-Copy Performance:** Using `rkyv`'s `Archived<T>` without leaking transaction lifetimes in hot paths.
-- **Simplicity:** Lean, functional pipelines that favor Rust's ownership and module systems over complex architectural patterns.
+We need to manage these file-based states while achieving specific architectural goals:
+- **Testability:** The ability to mock I/O boundaries and unit test business logic without standing up a real database.
+- **Zero-Copy Performance:** Achieving extreme read performance using `rkyv`'s `Archived<T>` without leaking transaction lifetimes in hot paths.
+- **Simplicity & Safety:** Lean, functional pipelines that favor Rust's ownership and module systems to prevent god objects, rather than relying on complex architectural patterns.
 
 ## Decision
 
-We will adopt a **Unified Storage Trait Architecture** with functional composition, abandoning CQRS and explicit Command/Query separation for business logic.
+We will adopt a **Unified Storage Trait Architecture** utilizing functional composition.
 
-1. **Unified Storage Traits**: Instead of split Command/Query ports, each domain module will define a single `Storage` trait abstracting all interactions with the database cache (e.g., `schema::Storage`).
-2. **Module Boundaries Over Trait Boundaries**: Business logic will be isolated using Rust's module system (`mod schema`, `mod note`) rather than interface traits.
-3. **Pipeline Orchestration**: External mutations (file changes) or internal actions (CLI commands) will trigger functional Iterator-based pipelines (`parse() -> validate() -> project()`), coordinated by module `Loader`s.
-4. **GAT-Based Zero-Copy**: The `Storage` trait will continue to use Generic Associated Types (GATs) with closure-scoped access (`with_archived`) to maintain extreme zero-copy read performance.
+1. **Unified Storage Traits**: Each domain module defines a single `Storage` trait abstracting all interactions with the database cache (e.g., `schema::Storage`).
+2. **Module Boundaries Over Trait Boundaries**: Business logic is isolated using Rust's module system (`mod schema`, `mod note`) to enforce boundaries natively.
+3. **Pipeline Orchestration**: External mutations (file changes) or internal actions (CLI commands) trigger functional Iterator-based pipelines (`parse() -> validate() -> project()`), coordinated by module `Loader`s.
+4. **GAT-Based Zero-Copy**: The `Storage` trait uses Generic Associated Types (GATs) with closure-scoped access (`with_archived`) to maintain zero-copy read performance.
 
 ### 1. Unified Storage Trait
 
@@ -65,7 +55,7 @@ pub trait Storage {
 
 ### 2. Module-Based Functional Pipelines
 
-Instead of Command Objects and Command Handlers, operations are composed functionally within their modules:
+Operations are composed functionally within their modules using loader orchestrators:
 
 ```rust
 // In schema/loader.rs
@@ -89,41 +79,42 @@ pub fn load_schema_file(
 
 ## Alternatives Considered
 
-### Alternative 1: Full Port-Based CQRS (Previous Architecture)
+### Alternative 1: Concrete Database Coupling (No Traits)
 
-- **Pros**: Strict write vs. read separation; high purity in domain models; familiar to DDD practitioners.
-- **Cons**: Severe boilerplate overhead. "Commands" conceptually clashed with the reality that users were directly editing files outside the system. Requires orchestrating events that have no distributed consumers.
-- **Verdict**: Rejected. Too heavyweight for a local CLI/LSP application.
-
-### Alternative 2: Concrete Database Coupling (No Traits)
-
-- **Pros**: Ultimate simplicity. Direct calls to `Redb` throughout the codebase.
+- **Description**: Direct calls to `redb` throughout the codebase without interface abstractions.
+- **Pros**: Ultimate simplicity. No abstraction overhead.
 - **Cons**: Impossible to unit test business logic without standing up a real temp-file database for every test. Ties domain logic intimately to a specific third-party crate.
 - **Verdict**: Rejected. We must retain testability and separation of I/O.
+
+### Alternative 2: Full Port-Based CQRS
+
+- **Description**: Strict write vs. read separation through `CommandPort` and `QueryPort` traits, using command objects and event sourcing orchestration.
+- **Pros**: Strict write vs. read separation; high purity in domain models; familiar to DDD practitioners.
+- **Cons**: Heavyweight overkill for a local file-sync tool. It creates an impedance mismatch because state changes are driven by external file edits rather than traditional CQRS commands. It requires orchestrating events that have no distributed consumers, introducing severe boilerplate overhead.
+- **Verdict**: Rejected. The structural ceremony is unnecessary for a local CLI application.
 
 ## Technical Validation
 
 ### Research Findings
 
-A deep architectural review of successful Rust file-based tools (Cargo, mdBook, Zola, rust-analyzer) revealed that none of them use CQRS. Instead, they universally rely on:
-
+A deep architectural review of successful Rust file-based tools (Cargo, mdBook, Zola, rust-analyzer) reveals they rely on:
 - Iterator pipelines for file ingestion.
-- Functional composition returning `Result<T, E>` (rather than emitting domain events).
+- Functional composition returning `Result<T, E>`.
 - Module privacy for boundary enforcement.
 - Simple trait abstractions strictly for I/O (like Cargo's `Source` trait or testing mocks).
 
 ### Benchmarks & Prototypes
 
-The GAT + HRTB pattern (`impl for<'a> FnOnce(Self::Archived<'a>) -> R`) used previously in `QueryPort` ports perfectly identically to the new unified `Storage` trait, maintaining the exact same nanosecond-level read latency from Redb.
+The GAT + HRTB pattern (`impl for<'a> FnOnce(Self::Archived<'a>) -> R`) in a unified `Storage` trait maintains exact nanosecond-level read latency from `redb`, allowing zero-copy capabilities without needing complex read-model query traits.
 
 ## Consequences
 
 - **Positive**:
-  - **Drastically Reduced Boilerplate**: Eliminates Command structs, Query structs, port splitting, and event dispatchers.
+  - **Minimal Boilerplate**: Simple functional traits without Command/Query struct proliferation.
   - **Idiomatic Rust**: Aligns with how standard Rust tools (like Cargo) are built, making it easier for Rust developers to contribute.
   - **Simpler Mental Model**: Developers just think in terms of "Read File -> Parse -> Validate -> Cache".
 - **Negative**:
-  - **Less Formal Audit Trail**: Without explicit Command objects and Event sourcing, debugging relies on standard logging rather than an immutable event log.
+  - **Less Formal Audit Trail**: Debugging relies on standard logging rather than an immutable event log.
 - **Risks**:
   - If the application unexpectedly pivots to a highly concurrent distributed cloud service, this architecture will lack the strict CQRS boundaries needed to scale writes independently of reads. (Mitigation: Unlikely given the core premise is local PKM).
 
@@ -135,9 +126,9 @@ The GAT + HRTB pattern (`impl for<'a> FnOnce(Self::Archived<'a>) -> R`) used pre
 
 ## Appendix
 
-### Historical Context: Why CQRS was initially chosen
+### Historical Context: Why CQRS was initially implemented
 
-CQRS was originally selected to prevent "god-object orchestration" and to separate read and write models based on the developer's past experience building similar systems in Go and C#. However, as the system was implemented in Rust, it became clear that Rust's ownership rules, strict type system, and module boundaries natively prevent god-objects without requiring the structural ceremony of CQRS.
+Historically, Port-Based CQRS was originally implemented in this project to prevent "god-object orchestration" and to separate read and write models based on the developer's past experience building similar systems in Go and C#. However, as the system was implemented in Rust, it became clear that Rust's ownership rules, strict type system, and module boundaries natively prevent god-objects without requiring the structural ceremony of CQRS. Consequently, that architecture was superseded by this Unified Storage Trait approach.
 
 ### Storage Adapter Implementation Pattern
 
