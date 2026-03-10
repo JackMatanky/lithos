@@ -28,7 +28,7 @@ The Lithos project requires serialization capabilities for multiple purposes:
 
 **Domain models have rkyv derives for zero-copy database operations. `serde` should generally not be used in the domain, as it pollutes domain logic and slows down compilation. It is only permitted behind feature flags specifically for CLI/LSP JSON output needs, and even then sparingly. View types (`*View`) are an optional optimization layer, only created when domain shape is inefficient for storage.**
 
-### Three-Shape Serialization Model
+### Serialization Shapes
 
 1. **`Raw*` (serde only, optional per context)**: Unvalidated input from filesystem
    - Purpose: Tolerant parsing from YAML/JSON files with nullable fields for better error messages
@@ -43,11 +43,16 @@ The Lithos project requires serialization capabilities for multiple purposes:
    - **Rule**: Since domain types are stored directly by default, changes to domain fields are potential migration events. Treat them with care.
    - Example: `Schema { name: SchemaName, properties: Vec<Property> }`
 
-3. **`*View` (rkyv only, optional optimization)**: Storage-optimized projection representation
-   - Purpose: Represents a read-optimized projection in the expendable database cache. Defines the stable archived layout for read models when domain shape evolves incompatibly.
+3. **`Archived*` (rkyv generated)**: Implicit zero-copy representation
+   - Purpose: Generated automatically by `rkyv` from Domain (or View) types, providing immediate zero-copy database reads. In most cases, this *is* the perfectly optimized view, offering query optimization for free without the boilerplate of mapping to a separate type.
+   - Location: Memory-mapped directly from Redb.
+   - **Rule**: Use the generic `rkyv::Archived<T>` for public zero-copy APIs. Local generated `Archived*` types are strictly for internal safe accessors.
+
+4. **`*View` (rkyv only, optional optimization)**: Storage-optimized projection representation
+   - Purpose: Represents a highly tailored projection specifically designed to answer queries efficiently, or to pack bytes more tightly for cache locality.
    - Location: `<context>/view.rs` or `<context>/views/<view_name>.rs`
    - Mechanical conversions at storage boundary
-   - **Rule**: Do not introduce `*View` types speculatively. If domain changes become too frequent/breaking, introduce this layer to decouple storage from domain.
+   - **Rule**: Do not introduce `*View` types speculatively. By adhering to YAGNI (You Aren't Gonna Need It), we avoid boilerplate mapping logic. Only introduce this layer when the domain shape actively works against storage efficiency (e.g., runtime-only constructs like `Arc`/`Mutex`, excessive layout padding), or when a query demands a completely different data shape.
    - Example: `SchemaView { name: String, properties: Vec<PropertyView> }` (flattened newtypes)
 
 ### Implementation Guidelines

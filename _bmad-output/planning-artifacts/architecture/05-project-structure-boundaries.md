@@ -161,9 +161,10 @@ lithos/
   - **Performance:** Ensures new notes are appended to Redb B-Tree leaves sequentially, achieving O(1) insertion.
   - **Persistence:** Allows notes to be moved or renamed while preserving their logical relationships in the Knowledge Graph.
 - **Files as Source of Truth:** User-editable vault files on the filesystem are authoritative. The database is a rebuildable, query-optimized projection cache.
-- **Three-Shape Serialization Model:**
+- **Serialization Shapes Model:**
   - **`Raw*` (serde):** Unvalidated input from filesystem, nullable fields for better errors (e.g., `RawSchema`). Contains no behavior.
   - **Domain (rkyv + serde feature-gated):** Validated entities with **rkyv derives** for zero-copy DB operations. Validation happens in `TryFrom<Raw*>`.
+  - **`Archived*` (rkyv generated):** Implicit zero-copy representation mapped directly from the DB, offering free query optimization for Domain types.
   - **`*View` (rkyv, optional):** Read-optimized database projections (e.g., `SchemaView`, `NoteView`). Only created when domain shape is inefficient for storage or when queries need a flattened format.
 - **Zero-Copy Access:** **rkyv** buffers are managed in `src/db/` and returned via closure-based APIs, allowing the CLI to read data without memory duplication.
 

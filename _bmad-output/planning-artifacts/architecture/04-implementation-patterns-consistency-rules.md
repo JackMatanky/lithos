@@ -603,9 +603,9 @@ Data transitions through discrete stages:
 - **Optional:** Serde is optional for domain types, required for DTOs/Config.
 - **Zero-Copy:** Use `rkyv` for performance-critical storage types.
 
-### Three-Shape Serialization Pattern
+### Serialization Shapes Pattern
 
-**Core Principle:** Separate concerns of parsing, validation, and storage optimization through three distinct type layers.
+**Core Principle:** Separate concerns of parsing, validation, and storage optimization through distinct type layers.
 
 **Architecture Flow:**
 
@@ -615,7 +615,12 @@ External Input (TOML/YAML/JSON/User Input)
 Raw* Types (unvalidated, optional fields)
     ↓ TryFrom<Raw*> (VALIDATION BOUNDARY)
 Domain Types (validated invariants, typed enums)
-    ↓ rkyv::Archive (if persisted)
+    ↓ rkyv::Archive (if persisted directly)
+Archived* (zero-copy representation in redb)
+    OR
+    ↓ project/adapt (optional optimization)
+*View (rkyv derives, read-optimized)
+    ↓ serialize (rkyv)
 Database (redb, zero-copy bytes)
 ```
 
@@ -642,7 +647,13 @@ Database (redb, zero-copy bytes)
 │ - Has rkyv derives for zero-copy DB     │
 └─────────────────┬───────────────────────┘
                   │
-                  ▼ project/adapt (optional, only when needed)
+                  ▼ memory-map (rkyv)
+┌─────────────────────────────────────────┐
+│ Archived* (rkyv generated)              │
+│ - Implicit zero-copy view of Domain     │
+│ - Used for free query optimization      │
+└─────────────────┬───────────────────────┘
+                  OR project/adapt (optional)
 ┌─────────────────────────────────────────┐
 │ *View (rkyv derives, optional)          │
 │ - Read-optimized cache representation   │
@@ -803,7 +814,18 @@ let validated: Frontmatter = raw.try_into()?;          // Validate (explicit)
 
 ---
 
-#### Shape 3: `*View` Types (Read-Optimized Projections)
+#### Shape 3: `Archived*` Types (Implicit Zero-Copy Representation)
+
+**Purpose:** Provide immediate zero-copy database reads automatically generated from Domain (or View) types.
+
+**Characteristics:**
+- **Zero-cost:** Generated automatically by `rkyv`, offering query optimization for free without the boilerplate of mapping to a separate type.
+- **Location:** Memory-mapped directly from Redb; internal accessors only.
+- **Rule:** Use generic `rkyv::Archived<T>` for public zero-copy APIs. Local generated `Archived*` types are only for internal safe accessors.
+
+---
+
+#### Shape 4: `*View` Types (Read-Optimized Projections)
 
 **Purpose:** Represent read-optimized projections in the expendable database cache.
 
