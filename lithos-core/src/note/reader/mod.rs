@@ -32,7 +32,7 @@ use self::{
         close_section, collect_block_refs, handle_section_start,
         parse_frontmatter_block,
     },
-    state::{ListItemBuilder, ListItemRecord},
+    state::ListItemRecord,
     tags::collect_tags,
 };
 use crate::{
@@ -43,7 +43,7 @@ use crate::{
         frontmatter::Frontmatter,
         heading::{Heading, HeadingBuilder, HeadingLevel},
         link::{FrontmatterLink, Link, LinkBuilder},
-        list::{List, ListDepth, ListItemEntry, ListType},
+        list::{List, ListDepth, ListItemBuilder, ListItemEntry, ListType},
         position::{LineIndex, SourceByteOffset, SourceLocation},
         structure::{BlockRef, Section, SectionKind},
         tag::Tag as NoteTag,
