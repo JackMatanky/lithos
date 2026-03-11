@@ -5,6 +5,10 @@
   "description": "Unified configuration schema for global and vault-level Lithos config files. Supports TOML, YAML, and JSON formats. Some fields are context-specific: 'vault_path', 'name', 'version', and 'cache_dir' apply only to vault configs; 'trusted_vaults' applies only to global configs. For vault configs, 'vault_path' is required. Defaults shown reflect Rust implementation in lithos-core/src/config/raw.rs.",
   "type": "object",
   "additionalProperties": false,
+  "oneOf": [
+    { "$ref": "#/$defs/GlobalConfig" },
+    { "$ref": "#/$defs/VaultConfig" }
+  ],
   "properties": {
     "vault_path": {
       "title": "Vault Path",
@@ -137,21 +141,43 @@
         },
         "status": {
           "title": "Checkbox Status Mapping",
-          "description": "Maps status names to checkbox symbols. Keys are status names (1-32 chars, alphanumeric/underscore). Values are single printable ASCII characters or space.",
+          "description": "Maps status names to checkbox symbols and types. Keys are status names (1-32 chars, alphanumeric/underscore).",
           "type": "object",
           "additionalProperties": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "symbol": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1
+              },
+              "status_type": {
+                "type": "string",
+                "enum": ["todo", "in_progress", "on_hold", "done", "cancelled", "non_task"]
+              },
+              "next_symbol": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1
+              }
+            },
+            "required": ["symbol", "status_type"]
           },
           "propertyNames": {
             "pattern": "^[a-zA-Z0-9_]{1,32}$"
           },
           "minProperties": 1,
           "default": {
-            "todo": " ",
-            "done": "x"
+            "todo": { "symbol": " ", "status_type": "todo" },
+            "done": { "symbol": "x", "status_type": "done" }
           }
+        },
+        "use_emoji": {
+          "title": "Use Emoji Task Format",
+          "description": "If true, parse and emit emoji-based task metadata; if false, use Dataview-style inline fields.",
+          "type": "boolean",
+          "default": true
         },
         "dates": {
           "title": "Date Field Configuration",
@@ -162,7 +188,9 @@
             "due": { "$ref": "#/$defs/DateFieldSpec" },
             "created": { "$ref": "#/$defs/DateFieldSpec" },
             "completed": { "$ref": "#/$defs/DateFieldSpec" },
-            "reminder": { "$ref": "#/$defs/DateFieldSpec" }
+            "reminder": { "$ref": "#/$defs/DateFieldSpec" },
+            "start": { "$ref": "#/$defs/DateFieldSpec" },
+            "scheduled": { "$ref": "#/$defs/DateFieldSpec" }
           }
         },
         "fields": {
@@ -226,6 +254,31 @@
     }
   },
   "$defs": {
+    "GlobalConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "log_level": { "$ref": "#/properties/log_level" },
+        "paths": { "$ref": "#/properties/paths" },
+        "frontmatter": { "$ref": "#/properties/frontmatter" },
+        "task": { "$ref": "#/properties/task" },
+        "trusted_vaults": { "$ref": "#/properties/trusted_vaults" }
+      }
+    },
+    "VaultConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_path"],
+      "properties": {
+        "vault_path": { "$ref": "#/properties/vault_path" },
+        "name": { "$ref": "#/properties/name" },
+        "version": { "$ref": "#/properties/version" },
+        "log_level": { "$ref": "#/properties/log_level" },
+        "paths": { "$ref": "#/properties/paths" },
+        "frontmatter": { "$ref": "#/properties/frontmatter" },
+        "task": { "$ref": "#/properties/task" }
+      }
+    },
     "DateFieldSpec": {
       "title": "Date Field Specification",
       "description": "Configuration for a date field in tasks. The field name (due, created, completed, reminder) is used as the keyword in task text.",
