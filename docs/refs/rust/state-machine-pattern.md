@@ -11,16 +11,19 @@ This document explains the **type-state pattern** for state machines in Rust, ba
 ## What is a State Machine?
 
 A **state machine** is any system that:
+
 1. Has a finite set of **states**
 2. Has defined **transitions** between states
 3. Can only be in **one state at a time**
 
 **Examples:**
+
 - TCP connection: `Closed → SynSent → Established → CloseWait → Closed`
 - File processing: `Discovered → Parsed → Validated → Stored`
 - Schema resolution: `Raw → Validated → Graphed → Sorted → Resolved`
 
 **Key constraint:** Not all transitions are valid. For example:
+
 - TCP can't go from `Closed` directly to `Established`
 - File processing can't skip `Parsed` and go straight to `Validated`
 
@@ -186,6 +189,7 @@ let done = filling.to_done();
 ### Core Insight
 
 **Separate the machine from its states:**
+
 - The **machine** holds shared context
 - The **state** is a generic type parameter
 - Each state is a lightweight struct with state-specific data
@@ -384,66 +388,86 @@ factory.machine = factory.machine.step();
 
 ## Lithos-Specific Patterns
 
-### Schema Loading Pipeline
+### Schema Loading: Orchestration vs Pipeline
 
-**Requirements:**
-- 8 distinct phases with strict ordering:
-  1. Discover files
-  2. Parse to `RawSchema`
-  3. Validate syntax
-  4. Expand `$ref` pointers via `PropertyBank`
-  5. Build dependency graph
-  6. Topological sort
-  7. Resolve inheritance (merge properties)
-  8. Project to storage
-- Each phase has different data and error types
-- Phases can't be skipped (especially `$ref` expansion before resolution)
-- Shared context (vault root, config, filesystem reader, PropertyBank)
+The schema system has **two separate concerns**:
 
-**Pattern:** Generic state machine
+1. **Orchestration** (with branching) - Handled by `CommandAdapter`
+2. **Linear Pipeline** (no branching) - Handled by `SchemaLoader` state machine
+
+#### Part 1: Orchestration Layer (Branching Logic)
+
+The `CommandAdapter` handles cache checking and decides whether to load:
 
 ```rust
-// The loader machine (shared context + generic state)
+// NOT a state machine - just normal control flow
+struct SchemaCommandAdapter {
+    storage: Arc<dyn SchemaStorage>,
+    loader: SchemaLoader,
+}
+
+impl SchemaCommandAdapter {
+    fn load_all(&self) -> Result<Vec<Schema>, SchemaError> {
+        let mut results = Vec::new();
+
+        for schema_name in self.discover_schema_names()? {
+            // Check cache with staleness detection
+            if let Some((cached, metadata)) = self.storage.get(&schema_name)? {
+                let file_hash = self.compute_file_hash(&schema_name)?;
+
+                if metadata.source_hash == file_hash {
+                    // Cache hit - use directly
+                    tracing::debug!(schema_name, "Cache hit");
+                    results.push(cached);
+                    continue;
+                }
+
+                // Stale - invalidate
+                tracing::info!(schema_name, "Cache stale, reloading");
+                self.storage.invalidate(&schema_name)?;
+            }
+
+            // Cache miss or stale - run loader pipeline
+            let resolved = self.loader.load_single(schema_name)?;
+            self.storage.save(&resolved)?;
+            results.push(resolved);
+        }
+
+        Ok(results)
+    }
+}
+```
+
+**This is NOT a state machine** because:
+
+- Flow branches (cache hit vs miss)
+- Loop iterates over multiple items
+- Uses normal if/else control flow
+
+#### Part 2: Loader Pipeline (Linear State Machine)
+
+The `SchemaLoader` handles the **linear pipeline** from file → resolved schema:
+
+```rust
+// This IS a state machine - linear phases
 struct SchemaLoader<S> {
     vault_root: PathBuf,
     fs_reader: Arc<dyn FsReader>,
-    property_bank: Arc<PropertyBank>,  // For $ref expansion
+    property_bank: Arc<PropertyBank>,
     config: Arc<Config>,
     state: S,
 }
 
-// States (lightweight, phase-specific data only)
-struct Discovered {
-    files: Vec<PathBuf>,
-}
+// States (one per pipeline phase)
+struct Discovered { files: Vec<PathBuf> }
+struct Parsed { raw_schemas: Vec<RawSchema> }
+struct Validated { schemas: Vec<Schema> }  // Still has $refs
+struct Dereferenced { schemas: Vec<Schema> }  // $refs expanded
+struct Graphed { graph: DependencyGraph, schemas: Vec<Schema> }
+struct Sorted { order: Vec<SchemaId>, schemas: Vec<Schema> }
+struct Resolved { schemas: Vec<Schema> }  // Final, ready for storage
 
-struct Parsed {
-    raw_schemas: Vec<RawSchema>,  // Contains $ref pointers
-}
-
-struct Validated {
-    schemas: Vec<Schema>,  // Syntax validated, still has $refs
-}
-
-struct Dereferenced {  // NEW: After $ref expansion
-    schemas: Vec<Schema>,  // $refs replaced with actual properties
-}
-
-struct Graphed {
-    graph: DependencyGraph,
-    schemas: Vec<Schema>,
-}
-
-struct Sorted {
-    order: Vec<SchemaId>,
-    schemas: Vec<Schema>,
-}
-
-struct Resolved {
-    resolved: Vec<Schema>,  // Inheritance merged, fully resolved
-}
-
-// Initial state constructor
+// Initial state
 impl SchemaLoader<Discovered> {
     fn discover(
         vault_root: PathBuf,
@@ -462,14 +486,9 @@ impl SchemaLoader<Discovered> {
     }
 }
 
-// Transitions (showing key phases)
-impl From<SchemaLoader<Discovered>> for Result<SchemaLoader<Parsed>, ParseError> {
-    // Parse files into RawSchema
-}
-
+// Transitions (showing critical $ref expansion phase)
 impl From<SchemaLoader<Validated>> for Result<SchemaLoader<Dereferenced>, RefError> {
     fn from(val: SchemaLoader<Validated>) -> Result<SchemaLoader<Dereferenced>, RefError> {
-        // Expand $ref pointers using PropertyBank
         let schemas = val.state.schemas
             .into_iter()
             .map(|schema| val.property_bank.expand_refs(schema))
@@ -485,187 +504,283 @@ impl From<SchemaLoader<Validated>> for Result<SchemaLoader<Dereferenced>, RefErr
     }
 }
 
-// Usage
-let loader = SchemaLoader::discover(vault_root, fs_reader, property_bank, config)?
-    .into()?  // Parse (File → RawSchema)
-    .into()?  // Validate (syntax check)
-    .into()?  // Dereference ($ref expansion) ← CRITICAL PHASE
+impl SchemaLoader<Resolved> {
+    /// Final phase: return resolved schemas for storage
+    fn into_schemas(self) -> Vec<Schema> {
+        self.state.schemas
+    }
+}
+
+// Usage (linear, no branching)
+let schemas = SchemaLoader::discover(vault_root, fs_reader, property_bank, config)?
+    .into()?  // Parse
+    .into()?  // Validate
+    .into()?  // Dereference ($ref expansion) ← MUST happen before graph
     .into()?  // Build graph (detect cycles)
     .into()?  // Topological sort
-    .into()?; // Resolve (merge inheritance)
-
-loader.project(&storage)?;
+    .into()?  // Resolve (merge inheritance)
+    .into_schemas();  // Extract final result
 ```
 
-**Why this works:**
-- ✅ Can't skip `$ref` expansion - Type system enforces it comes before graphing
-- ✅ Can't accidentally use schemas with unresolved `$ref`s
-- ✅ Each phase has its own error type (`RefError::PropertyNotFound`)
-- ✅ Shared context includes `PropertyBank` for all phases
-- ✅ State transitions are linear and enforced
-- ✅ Compile-time guarantees prevent invalid orderings
+#### Why Separate Orchestration and Pipeline?
 
-### Config Loading Pipeline
+**Orchestration** (CommandAdapter):
 
-**Requirements:**
-- Hybrid loading strategy (similar to schema system):
-  - Check database first (cached, validated config)
-  - Only reload from files if stale (file mtime > cached timestamp)
-  - Prefer minimal parsing - resolve only what's needed
-- Multiple file sources (global, vault, environment, CLI args)
-- Hierarchical merging with precedence rules
-- Final config should be immutable and shareable
+- ✅ Handles branching (cache hit vs miss)
+- ✅ Manages storage operations
+- ✅ Coordinates multiple schema loads
+- ❌ NOT a state machine (control flow branches)
 
-**Pattern:** Generic state machine (for full reload path)
+**Pipeline** (SchemaLoader):
+
+- ✅ Linear phase transitions (no branching)
+- ✅ Type-safe phase ordering
+- ✅ Compile-time enforcement
+- ✅ PERFECT for state machine pattern
+
+**Key Insight:** State machines work best for **linear pipelines**. When you have branching logic (cache checks, conditional loads), handle that in a **separate orchestration layer** using normal control flow.
+
+### Config Loading: Orchestration vs Pipeline
+
+Similar to schemas, config has **two layers**:
+
+1. **Orchestration** (with branching) - Handled by `ConfigCommandAdapter`
+2. **Linear Pipeline** (no branching) - Handled by `ConfigLoader` state machine
+
+#### Part 1: Orchestration Layer (Branching Logic)
 
 ```rust
-struct ConfigLoader<S> {
-    // Shared context
+// NOT a state machine - handles branching
+struct ConfigCommandAdapter {
     storage: Arc<dyn ConfigStorage>,
+    loader: ConfigLoader,
+}
+
+impl ConfigCommandAdapter {
+    fn load(&self) -> Result<Arc<Config>, ConfigError> {
+        // Check cache with staleness detection
+        if let Some((cached, metadata)) = self.storage.get_cached()? {
+            let file_mtimes = self.get_config_file_mtimes()?;
+            let latest_mtime = file_mtimes.values().max().copied();
+
+            if let Some(latest) = latest_mtime {
+                if metadata.cached_at >= latest {
+                    // Cache is fresh
+                    tracing::debug!("Config cache hit");
+                    return Ok(Arc::new(cached));
+                }
+            }
+
+            // Cache is stale
+            tracing::info!("Config cache stale, reloading");
+        }
+
+        // Cache miss or stale - run loader pipeline
+        let config = self.loader.load_all()?;
+        self.storage.save(&config)?;
+        Ok(Arc::new(config))
+    }
+}
+```
+
+#### Part 2: Loader Pipeline (Linear State Machine)
+
+The `ConfigLoader` handles the **linear pipeline** from files → validated config:
+
+```rust
+// This IS a state machine - linear phases
+struct ConfigLoader<S> {
+    figment: Figment,
     fs_reader: Arc<dyn FsReader>,
-    figment: Figment,  // For hierarchical loading
     state: S,
 }
 
-// States for full reload path
-struct CacheChecked {
-    cached: Option<(Config, SystemTime)>,  // Cached config + timestamp
-    file_paths: Vec<(PathBuf, SystemTime)>,  // Files + mtimes
-}
-
-struct StaleDetected {
-    stale_files: Vec<PathBuf>,  // Only files that changed
+// States (one per phase)
+struct Discovered {
+    global_path: PathBuf,
+    vault_path: Option<PathBuf>,
 }
 
 struct Loaded {
     global: RawConfig,
     vault: Option<RawConfig>,
-    env: HashMap<String, String>,
 }
 
 struct Merged {
-    config: RawConfig,  // Hierarchically merged
+    config: RawConfig,  // Figment merged: global < vault < env < cli
 }
 
 struct Validated {
-    config: Config,  // Validated, ready to use
+    config: Config,  // Fully validated
 }
 
-struct Cached {
-    config: Arc<Config>,  // Cached in database + memory
-}
-
-// Initial state - check cache first
-impl ConfigLoader<CacheChecked> {
-    fn check_cache(
-        storage: Arc<dyn ConfigStorage>,
-        fs_reader: Arc<dyn FsReader>,
+// Initial state
+impl ConfigLoader<Discovered> {
+    fn discover(
         figment: Figment,
-    ) -> Result<Self, LoadError> {
-        let cached = storage.get_cached_config()?;
-        let file_paths = fs_reader.discover_config_files()?;
-
+        fs_reader: Arc<dyn FsReader>,
+    ) -> Result<Self, ConfigError> {
+        let (global_path, vault_path) = fs_reader.discover_config_files()?;
         Ok(ConfigLoader {
-            storage,
-            fs_reader,
             figment,
-            state: CacheChecked { cached, file_paths },
+            fs_reader,
+            state: Discovered { global_path, vault_path },
         })
     }
 }
 
-// Transition: Determine if cache is stale
-impl ConfigLoader<CacheChecked> {
-    fn check_staleness(self) -> ConfigLoadResult {
-        match self.state.cached {
-            Some((config, cached_time)) => {
-                let stale_files: Vec<_> = self.state.file_paths
-                    .into_iter()
-                    .filter(|(_, mtime)| *mtime > cached_time)
-                    .map(|(path, _)| path)
-                    .collect();
+// Transitions
+impl From<ConfigLoader<Discovered>> for Result<ConfigLoader<Loaded>, LoadError> {
+    fn from(val: ConfigLoader<Discovered>) -> Result<ConfigLoader<Loaded>, LoadError> {
+        let global = val.fs_reader.read_config(&val.state.global_path)?;
+        let vault = val.state.vault_path
+            .map(|p| val.fs_reader.read_config(&p))
+            .transpose()?;
 
-                if stale_files.is_empty() {
-                    // Cache is fresh - use it directly
-                    ConfigLoadResult::Fresh(config)
-                } else {
-                    // Cache is stale - need to reload
-                    ConfigLoadResult::Stale(ConfigLoader {
-                        storage: self.storage,
-                        fs_reader: self.fs_reader,
-                        figment: self.figment,
-                        state: StaleDetected { stale_files },
-                    })
-                }
-            }
-            None => {
-                // No cache - full reload needed
-                ConfigLoadResult::NotCached(ConfigLoader {
-                    storage: self.storage,
-                    fs_reader: self.fs_reader,
-                    figment: self.figment,
-                    state: StaleDetected {
-                        stale_files: self.state.file_paths.into_iter().map(|(p, _)| p).collect(),
-                    },
-                })
-            }
+        Ok(ConfigLoader {
+            figment: val.figment,
+            fs_reader: val.fs_reader,
+            state: Loaded { global, vault },
+        })
+    }
+}
+
+impl From<ConfigLoader<Loaded>> for ConfigLoader<Merged> {
+    fn from(val: ConfigLoader<Loaded>) -> ConfigLoader<Merged> {
+        // Use Figment to merge: global < vault < env < cli
+        let merged = val.figment
+            .merge(Toml::from_str(&val.state.global))
+            .merge(val.state.vault.map(|v| Toml::from_str(&v)))
+            .merge(Env::prefixed("LITHOS_"))
+            .extract()
+            .unwrap();
+
+        ConfigLoader {
+            figment: val.figment,
+            fs_reader: val.fs_reader,
+            state: Merged { config: merged },
         }
     }
 }
 
-enum ConfigLoadResult {
-    Fresh(Arc<Config>),  // Cache hit - use directly
-    Stale(ConfigLoader<StaleDetected>),  // Reload needed
-    NotCached(ConfigLoader<StaleDetected>),  // First load
-}
+impl From<ConfigLoader<Merged>> for Result<ConfigLoader<Validated>, ValidationError> {
+    fn from(val: ConfigLoader<Merged>) -> Result<ConfigLoader<Validated>, ValidationError> {
+        let config = Config::try_from(val.state.config)?;  // Validate
 
-// Transitions for reload path...
-impl From<ConfigLoader<StaleDetected>> for Result<ConfigLoader<Loaded>, LoadError> {
-    // Only parse stale files, not all files
-}
-
-impl From<ConfigLoader<Loaded>> for ConfigLoader<Merged> {
-    // Merge using Figment (global < vault < env < cli)
-}
-
-// Usage - hybrid approach
-let result = ConfigLoader::check_cache(storage, fs_reader, figment)?
-    .check_staleness();
-
-let config = match result {
-    ConfigLoadResult::Fresh(config) => config,  // Fast path - use cache
-    ConfigLoadResult::Stale(loader) | ConfigLoadResult::NotCached(loader) => {
-        // Slow path - reload and cache
-        loader
-            .into()?  // Load (only stale files)
-            .into()?  // Merge
-            .into()?  // Validate
-            .cache()?  // Save to database
+        Ok(ConfigLoader {
+            figment: val.figment,
+            fs_reader: val.fs_reader,
+            state: Validated { config },
+        })
     }
-};
+}
+
+impl ConfigLoader<Validated> {
+    fn into_config(self) -> Config {
+        self.state.config
+    }
+}
+
+// Usage (linear, no branching)
+let config = ConfigLoader::discover(figment, fs_reader)?
+    .into()?  // Load files
+    .into()   // Merge (Figment hierarchical merge)
+    .into()?  // Validate
+    .into_config();  // Extract result
 ```
 
-**Why this works:**
-- ✅ Optimizes for common case (cache hit) - no parsing needed
-- ✅ Only reloads what changed - not all files every time
-- ✅ Type system enforces cache check happens first
-- ✅ Can't accidentally skip staleness detection
-- ✅ Hierarchical merge (Figment) happens in dedicated phase
-- ✅ Database acts as projection/cache (same as schema system)
+**Why separate layers:**
+
+- **Orchestration** handles cache checks and branching → normal control flow
+- **Pipeline** handles linear transformations → state machine
+- State machines enforce ordering where it matters (load → merge → validate)
+- Branching logic stays in orchestration, not the state machine
+
+### Handling Branching Logic (Cache Checks, Conditional Loading)
+
+**Question:** What if I have branching logic (cache hit vs miss) in my pipeline?
+
+**Answer:** **Separate orchestration from pipeline.**
+
+State machines work best for **linear phase progressions**. When you have branching (if/else, early returns), handle that in a **separate orchestration layer**.
+
+#### Pattern: Two-Layer Architecture
+
+```rust
+// Layer 1: Orchestration (handles branching)
+struct CommandAdapter {
+    storage: Arc<dyn Storage>,
+    loader: Loader,  // State machine
+}
+
+impl CommandAdapter {
+    fn load(&self) -> Result<Data, Error> {
+        // Check cache (branching logic)
+        if let Some(cached) = self.check_cache()? {
+            return Ok(cached);  // Early return - no pipeline needed
+        }
+
+        // Cache miss - run linear pipeline
+        let data = self.loader.run_pipeline()?;
+        self.storage.save(&data)?;
+        Ok(data)
+    }
+
+    fn check_cache(&self) -> Result<Option<Data>, Error> {
+        if let Some((cached, metadata)) = self.storage.get()? {
+            if !self.is_stale(&metadata)? {
+                return Ok(Some(cached));  // Branching!
+            }
+        }
+        Ok(None)
+    }
+}
+
+// Layer 2: Pipeline (linear state machine)
+struct Loader<S> { state: S }
+impl Loader<Initial> {
+    fn run_pipeline(self) -> Result<Data, Error> {
+        self.into()?  // Phase 1
+            .into()?  // Phase 2
+            .into()?  // Phase 3
+            .into_data()  // Extract result
+    }
+}
 ```
+
+**Key insight:**
+
+- **Orchestration = branching logic** → Use normal `if`/`match`/`return`
+- **Pipeline = linear phases** → Use state machine for type safety
+
+#### When to Use Each
+
+| Scenario                   | Use State Machine? | Pattern                          |
+| -------------------------- | ------------------ | -------------------------------- |
+| Cache check → maybe load   | ❌ No              | Orchestration layer with if/else |
+| Load → parse → validate    | ✅ Yes             | State machine (linear phases)    |
+| Loop over multiple items   | ❌ No              | Normal for loop                  |
+| Single item transformation | ✅ Yes             | State machine (if multi-phase)   |
+| Conditional logic          | ❌ No              | Normal control flow              |
+| Phase ordering enforcement | ✅ Yes             | State machine                    |
 
 ### When NOT to Use State Machines
 
 **Don't use for:**
+
 - ❌ Simple boolean flags (`started: bool` is fine)
 - ❌ Single-phase operations (just use a function)
+- ❌ Branching control flow (cache checks, early returns)
+- ❌ Loops over collections (process each item separately)
 - ❌ When phases can be freely reordered (use enum + runtime validation)
 
 **DO use for:**
+
 - ✅ Multi-phase pipelines with strict ordering
 - ✅ When each phase has distinct data/operations
 - ✅ When you want compile-time guarantees
-- ✅ Complex workflows (schema resolution, config loading, protocol state)
+- ✅ Linear transformations (no branching within pipeline)
+- ✅ Complex workflows where order matters (protocol state, file processing)
 
 ---
 
@@ -724,11 +839,13 @@ fn full_pipeline_integration() {
 The machine struct should describe **what it does**, not that it's a state machine:
 
 ✅ **Good:**
+
 - `SchemaLoader<S>` - Loads schemas through multiple phases
 - `ConfigLoader<S>` - Loads and merges configuration
 - `Connection<S>` - Manages network connection lifecycle
 
 ❌ **Bad:**
+
 - `SchemaState<S>` - What does "state" mean here?
 - `SchemaIngestion<S>` - Only highlights one part (ingestion)
 - `SchemaStateMachine<S>` - Implementation detail, not domain concept
@@ -738,11 +855,13 @@ The machine struct should describe **what it does**, not that it's a state machi
 State types should describe **where you are** in the process:
 
 ✅ **Good:**
+
 - `Discovered`, `Parsed`, `Validated` - Clear phases
 - `Connected`, `Disconnected`, `Failed` - Clear status
 - `Waiting`, `Filling`, `Done` - Descriptive
 
 ❌ **Bad:**
+
 - `StateA`, `StateB`, `StateC` - No semantic meaning
 - `Step1`, `Step2`, `Step3` - Order-dependent, not descriptive
 
@@ -761,13 +880,13 @@ State types should describe **where you are** in the process:
 
 ### Decision Matrix
 
-| Use Case | Pattern | Example |
-|----------|---------|---------|
-| Multi-phase linear pipeline | Generic state machine | Schema loading |
-| Complex workflow with branching | Generic state machine | Protocol state |
-| Cyclical state transitions | Enum-based runtime state | LSP server |
-| Simple flag | Boolean | `is_initialized` |
-| One-time operation | Function | Template rendering |
+| Use Case                        | Pattern                  | Example            |
+| ------------------------------- | ------------------------ | ------------------ |
+| Multi-phase linear pipeline     | Generic state machine    | Schema loading     |
+| Complex workflow with branching | Generic state machine    | Protocol state     |
+| Cyclical state transitions      | Enum-based runtime state | LSP server         |
+| Simple flag                     | Boolean                  | `is_initialized`   |
+| One-time operation              | Function                 | Template rendering |
 
 ### Pattern Template
 
