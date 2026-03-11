@@ -12,13 +12,13 @@ stakeholders: [Jack (Developer), Architecture Team]
 
 ## Context
 
-Lithos needs to ingest configuration files (TOML/JSON/YAML), schemas, templates, and notes from the filesystem into the database. The project follows a simple, functional architecture where the filesystem is the source of truth, and the database is an expendable cache. A unified `Storage` trait abstracts projection operations, and the domain layer remains pure and infrastructure-free.
+Lithos needs to ingest configuration files (TOML/JSON/YAML), schemas, templates, and notes from the filesystem into the database. The project follows a simple, functional architecture where the filesystem is the source of truth, and the database is an expendable cache. A unified `Repository` trait abstracts projection operations, and the domain layer remains pure and infrastructure-free.
 
 **Current Problem**: The existing architecture mistakenly mixes file I/O concerns into storage traits, violating separation of concerns and making the system harder to test, reason about, and evolve.
 
 **Evaluation Criteria**:
 
-1. **Architectural Integrity**: `Storage` traits must remain focused on the read model projection (no file I/O)
+1. **Architectural Integrity**: `Repository` traits must remain focused on the read model projection (no file I/O)
 2. **Context Isolation**: Business contexts (config, schema, template, note) must not cross-import
 3. **Testability**: File ingestion must be testable without touching the filesystem
 4. **Performance**: Support incremental updates (file watching) and parallel processing
@@ -36,7 +36,7 @@ Lithos needs to ingest configuration files (TOML/JSON/YAML), schemas, templates,
 We will separate file ingestion from database projection using an **Iterator-based Loader pipeline** with explicit transformations:
 
 ```
-File System → FileSource trait → Parsers → Raw* → Domain (TryFrom) → Storage Trait → DB Projection
+File System → FileSource trait → Parsers → Raw* → Domain (TryFrom) → Repository Trait → DB Projection
             (abstraction)      (fs/)     (serde) (validation)   (projection)
 ```
 
@@ -46,11 +46,11 @@ File System → FileSource trait → Parsers → Raw* → Domain (TryFrom) → S
 2. **File Parsers** (`fs/parsers.rs`): Convert files to unvalidated `Raw*` types
 3. **Domain Validation**: `TryFrom<Raw*>` enforces business rules at boundary
 4. **Loaders** (`application/loaders/`): Orchestrate the complete pipeline
-5. **Storage Traits**: Remain read-model only (no file I/O methods)
+5. **Repository Traits**: Remain read-model only (no file I/O methods)
 
 **Critical Rules**:
 
-- ✅ `Storage` traits MUST NOT have file I/O methods (`load_from_file`, `scan_directory`, etc.)
+- ✅ `Repository` traits MUST NOT have file I/O methods (`load_from_file`, `scan_directory`, etc.)
 - ✅ File ingestion MUST use `FileSource` trait for abstraction
 - ✅ Loaders orchestrate the `File → Raw → Domain → Projection` workflow
 - ✅ Parsing and validation are distinct phases with explicit boundaries
@@ -116,12 +116,12 @@ pub trait DatabaseGateway {
 
 ---
 
-### Alternative 3: "Loader" Methods in Storage Traits (Current Anti-Pattern)
+### Alternative 3: "Loader" Methods in Repository Traits (Current Anti-Pattern)
 
 **Pattern**:
 
 ```rust
-pub trait Storage {
+pub trait Repository {
     fn load_from_file(&self, path: &Path) -> Result<Schema, Error>;  // ❌ File I/O
     fn save(&self, schema: &Schema) -> Result<(), Error>;  // ✅ Database
 }
@@ -236,7 +236,7 @@ The `config::ingest::build_merged_raw()` implementation already demonstrates thi
    - File I/O: Mock with `InMemoryFileSource`
    - Parsing: Test with fake file contents
    - Validation: Test `TryFrom<Raw*>` with constructed inputs
-   - Persistence: Test Storage traits with in-memory database
+   - Persistence: Test Repository traits with in-memory database
 
 2. **Performance**: Hot path (database reads) optimized separately from cold path (file ingestion)
    - Zero-copy database reads via `with_archived()` methods
@@ -249,7 +249,7 @@ The `config::ingest::build_merged_raw()` implementation already demonstrates thi
    - Follows established Rust patterns (matches Cargo, rustc, Diesel)
 
 4. **Architectural Integrity**: Projection isolation intact
-   - Storage traits remain read-model only
+   - Repository traits remain read-model only
    - Context isolation maintained
    - No circular dependencies
 
@@ -355,7 +355,7 @@ pub struct SchemaLoader<'a, S> {
 
 impl<'a, S> SchemaLoader<'a, S>
 where
-    S: schema::Storage,
+    S: schema::Repository,
 {
     /// Ingest a single schema file.
     pub fn ingest_file(
@@ -379,7 +379,7 @@ where
 
 **Design Rationale**:
 
-- **Generic over Storage trait**: Supports any Storage implementation (redb, postgres, in-memory)
+- **Generic over Repository trait**: Supports any Storage implementation (redb, postgres, in-memory)
 - **Explicit workflow steps**: Each phase clearly separated with comments
 - **Partial failure tolerance**: `ingest_directory()` continues on individual file errors
 - **Instrumentation**: Tracing spans at each step for observability
@@ -387,17 +387,17 @@ where
 
 ## Appendix C: Anti-Patterns to Avoid
 
-### Anti-Pattern 1: File I/O in Storage Traits
+### Anti-Pattern 1: File I/O in Repository Traits
 
 ```rust
 // ❌ NEVER DO THIS
-pub trait Storage {
+pub trait Repository {
     fn load_from_file(&self, path: &Path) -> Result<Schema, Error>;
     fn save(&self, schema: &Schema) -> Result<(), Error>;
 }
 ```
 
-**Why Wrong**: Storage trait does file I/O AND database operations. Violates single responsibility. Impossible to test independently.
+**Why Wrong**: Repository trait does file I/O AND database operations. Violates single responsibility. Impossible to test independently.
 
 ---
 
@@ -447,7 +447,7 @@ impl SchemaStorage {
 ```
 Application Layer (orchestrates workflows)
     ↓ uses
-Domain Layer (schema::Storage)
+Domain Layer (schema::Repository)
     ↑ implemented by
 Storage Layer (db::storage::schema)
     ↓ uses

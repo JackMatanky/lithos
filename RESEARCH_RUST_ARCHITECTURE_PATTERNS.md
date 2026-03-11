@@ -149,8 +149,8 @@ pub mod schema {
     // Domain types
     pub struct Schema { /* ... */ }
 
-    // Storage abstraction (simple trait)
-    pub trait Storage {
+    // Repository abstraction (simple trait)
+    pub trait Repository {
         fn get(&self, id: &Id) -> Result<Option<&Schema>>;
         fn insert(&mut self, schema: Schema) -> Result<Id>;
     }
@@ -170,7 +170,7 @@ pub mod schema {
 ```rust
 // DON'T: God object with all operations
 struct SchemaManager {
-    storage: Box<dyn Storage>,
+    Repository: Box<dyn Repository>,
     validator: Box<dyn Validator>,
     loader: Box<dyn Loader>,
     cache: Box<dyn Cache>,
@@ -187,7 +187,7 @@ pub fn load_and_validate(path: &Path) -> Result<Schema> {
     Ok(schema)
 }
 
-pub fn save_to_db(schema: &Schema, db: &mut impl Storage) -> Result<()> {
+pub fn save_to_db(schema: &Schema, db: &mut impl Repository) -> Result<()> {
     db.insert(schema.clone())
 }
 ```
@@ -270,7 +270,7 @@ impl Raw<String> {
 }
 
 impl Validated<Schema> {
-    fn store(self, db: &mut impl Storage) -> Result<Stored<Id>, DbError> {
+    fn store(self, db: &mut impl Repository) -> Result<Stored<Id>, DbError> {
         let id = db.insert(self.0)?;
         Ok(Stored(id))
     }
@@ -300,7 +300,7 @@ impl ParsedSchema {
 
 impl ValidatedSchema {
     // Only valid schemas can be stored
-    pub fn store(&self, db: &mut impl Storage) -> Result<Id> { /* ... */ }
+    pub fn store(&self, db: &mut impl Repository) -> Result<Id> { /* ... */ }
 }
 ```
 
@@ -313,7 +313,7 @@ impl ValidatedSchema {
 **Not CQRS** (no events, no separate models):
 
 ```rust
-// Storage abstraction - ONE model, split operations
+// Repository abstraction - ONE model, split operations
 pub trait SchemaQuery {
     fn get(&self, id: &Id) -> Result<Option<&Schema>>;
     fn list(&self) -> Result<Vec<&Schema>>;
@@ -358,7 +358,7 @@ impl SchemaCommand for InMemorySchemas {
 
 ```rust
 // Generic Associated Types for borrowed access
-pub trait Storage {
+pub trait Repository {
     type Stored<'a> where Self: 'a;
 
     fn with_item<R>(&self, id: &Id, f: impl FnOnce(&Self::Stored<'_>) -> R)
@@ -366,7 +366,7 @@ pub trait Storage {
 }
 
 // Usage: avoid clones in hot paths
-storage.with_item(&id, |schema| {
+repository.with_item(&id, |schema| {
     // Work with borrowed data, no allocation
     schema.validate()
 })?;
@@ -426,7 +426,7 @@ pub enum Message {
 }
 
 pub fn schema_worker(rx: mpsc::Receiver<Message>) {
-    let mut storage = Storage::new();
+    let mut storage = Repository::new();
 
     for msg in rx {
         match msg {
@@ -745,7 +745,7 @@ lithos-core/
 │   ├── types.rs        # Schema, Field, etc.
 │   ├── parser.rs       # TOML → Schema
 │   ├── validator.rs    # Validation logic
-│   └── storage.rs      # Storage trait + impl
+│   └── storage.rs      # Repository trait + impl
 ├── note/
 │   ├── mod.rs
 │   ├── types.rs        # Note, Content
@@ -767,8 +767,8 @@ pub struct Schema { /* ... */ }
 pub fn parse(content: &str) -> Result<Schema, ParseError> { /* ... */ }
 pub fn validate(schema: &Schema) -> Result<(), ValidationError> { /* ... */ }
 
-// Storage trait (NOT Command/Query split)
-pub trait Storage {
+// Repository trait (NOT Command/Query split)
+pub trait Repository {
     fn get(&self, id: &Id) -> Result<Option<Schema>>;
     fn list(&self) -> Result<Vec<Schema>>;
     fn save(&mut self, schema: Schema) -> Result<Id>;
@@ -799,7 +799,7 @@ pub struct SchemaService<S> {
     storage: S,
 }
 
-impl<S: Storage> SchemaService<S> {
+impl<S: Repository> SchemaService<S> {
     pub fn create_from_file(&mut self, path: &Path) -> Result<Id> {
         let content = std::fs::read_to_string(path)?;
         let schema = parse(&content)?;

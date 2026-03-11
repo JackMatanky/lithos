@@ -15,8 +15,8 @@ section: "Architecture Decisions"
 
 - **Workspace Shape:** `lithos-core` + `lithos-cli` single-core crate to enable zero-copy optimizations and reduce compilation overhead.
 - **Files as Source of Truth:** The system architecture is fundamentally file-centric. Vault files are the authoritative source of truth. The database is a rebuildable, query-optimized projection.
-- **Idiomatic Rust Separation:** Reject CQRS and event sourcing in favor of module boundaries, Iterator-based ingestion pipelines, and simple `Storage` trait abstractions for I/O.
-- **Storage Engine:** Redb + rkyv (zero-copy structured KV) with a concrete `Database` type mapped through simple Storage traits. [ADR 006](docs/adr/006-persistence-cache-infrastructure.md)
+- **Idiomatic Rust Separation:** Reject CQRS and event sourcing in favor of module boundaries, Iterator-based ingestion pipelines, and simple `Repository` trait abstractions for I/O.
+- **Storage Engine:** Redb + rkyv (zero-copy structured KV) with a concrete `Database` type mapped through simple Repository traits. [ADR 006](docs/adr/006-persistence-cache-infrastructure.md)
 - **Serialization Strategy:** Controlled serde allowance in domain (feature-gated). [ADR 003](docs/adr/003-domain-serialization.md)
 - **Templating:** MiniJinja (Dynamic Jinja2). [ADR 007](docs/adr/007-template-engine.md)
 - **Markdown Parser:** pulldown-cmark (event-streaming). [ADR 008](docs/adr/008-markdown-parsing.md)
@@ -39,7 +39,7 @@ section: "Architecture Decisions"
 
 - **Files are Authoritative:** External file edits drive system state. The database is an expendable cache/projection optimized for fast lookups.
 - **Sync-first core** with async only at edges for CLI/LSP integration.
-- **Module Isolation over Trait Isolation:** Business contexts (note, schema, template) isolate business logic through Rust modules. Traits are reserved strictly for abstracting I/O (like `Storage` or `FileSystem`), not for separating domain services.
+- **Module Isolation over Trait Isolation:** Business contexts (note, schema, template) isolate business logic through Rust modules. Traits are reserved strictly for abstracting I/O (like `Repository` or `FileSystem`), not for separating domain services.
 - **Composition over Inheritance:** Use functional composition and Iterator pipelines (`parse() -> validate() -> project()`) instead of complex Command/Event routing.
 - **Type-driven design:** private fields by default, validation at construction, newtype wrappers for domain constraints.
 
@@ -48,7 +48,7 @@ section: "Architecture Decisions"
 - **Source of Truth:** User-editable vault files on the filesystem.
 - **Engine:** Redb (pure-Rust, ACID KV) with rkyv zero-copy serialization.
 - **Ingestion Pipeline:** Iterator-based pipeline converting `File` → `Raw*` (parsing) → `Domain` (validation) → `Storage` (projection).
-- **Access Pattern:** Unified `Storage` traits per domain module (no CQRS split). Traits define operations (`get`, `save`, `list`) allowing multiple implementations (Redb, memory, test mocks).
+- **Access Pattern:** Unified `Repository` traits per domain module (no CQRS split). Traits define operations (`get`, `save`, `list`) allowing multiple implementations (Redb, memory, test mocks).
 - **Serialization Shapes Model:**
   - **`Raw*`:** Unvalidated input from filesystem (serde derives, tolerant parsing).
   - **Domain:** Validated entities with invariants, rkyv derives for zero-copy database operations.
@@ -62,7 +62,7 @@ section: "Architecture Decisions"
 - **Ingestion Flow:**
   - File discovery via `FsReader` abstraction.
   - Context-specific loaders iterate over files, applying parsing and validation.
-  - Validated domain objects are persisted via the `Storage` trait.
+  - Validated domain objects are persisted via the `Repository` trait.
 - **User Action Flow:**
   - CLI operations run business logic, perform file I/O via an infrastructure abstraction, and immediately trigger the ingestion pipeline to update the read models.
 - **Absence of Events:** System state mutations do not require an event bus or event sourcing. Observability and side-effects are managed via explicit functional composition and logging.

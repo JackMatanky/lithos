@@ -11,7 +11,7 @@ section: "Project Structure"
 
 ## Complete Project Directory Structure
 
-> **Note**: This structure represents the **target state** after refactoring to the unified Storage pattern. Files marked with:
+> **Note**: This structure represents the **target state** after refactoring to the unified Repository pattern. Files marked with:
 > - `✅ CREATED` - Already implemented with new pattern
 > - `[TODO: create]` - Needs to be created during refactor
 > - `[TODO: assess]` - Evaluate if needed (optional View pattern)
@@ -59,7 +59,7 @@ lithos/
 │       │   ├── aggregate.rs    # Note aggregate root (domain, has rkyv derives)
 │       │   ├── raw.rs          # RawNote (serde only, pre-validation) [TODO: create]
 │       │   ├── loader.rs       # Parse + validate + persist orchestration pipeline
-│       │   ├── storage.rs      # note::Storage trait + Redb/InMemory/Fake implementations [TODO: create]
+│       │   ├── storage.rs      # note::Repository trait + Redb/InMemory/Fake implementations [TODO: create]
 │       │   ├── view.rs         # Optional: NoteView/TaskView projections (only if needed) [TODO: assess]
 │       │   ├── frontmatter.rs  # Metadata extraction and parsing
 │       │   ├── link.rs         # Wiki-link and embed logic
@@ -83,7 +83,7 @@ lithos/
 │       │   ├── aggregate.rs    # Schema aggregate root (domain, has rkyv derives) [TODO: create]
 │       │   ├── raw.rs          # RawSchema (serde only, pre-validation)
 │       │   ├── loader.rs       # 8-phase pipeline: Discover→Parse→Validate→Dereference→Graph→Sort→Resolve→Project
-│       │   ├── storage.rs      # schema::Storage trait + Redb/InMemory/Fake implementations ✅ CREATED
+│       │   ├── storage.rs      # schema::Repository trait + Redb/InMemory/Fake implementations ✅ CREATED
 │       │   ├── ingestor.rs     # File parsing logic (File → RawSchema)
 │       │   ├── view.rs         # Optional: SchemaView projection (only if needed) [TODO: assess]
 │       │   ├── id.rs           # Schema identity types
@@ -104,7 +104,7 @@ lithos/
 │       │   ├── aggregate.rs    # Template aggregate root (domain, has rkyv derives)
 │       │   ├── raw.rs          # RawTemplate (serde only, pre-validation, optional)
 │       │   ├── loader.rs       # Parse + validate + persist orchestration pipeline [TODO: create]
-│       │   ├── storage.rs      # template::Storage trait + Redb/InMemory/Fake implementations [TODO: create]
+│       │   ├── storage.rs      # template::Repository trait + Redb/InMemory/Fake implementations [TODO: create]
 │       │   ├── view.rs         # Optional: TemplateView projection (only if needed) [TODO: assess]
 │       │   ├── block.rs        # Template block structures
 │       │   ├── catalog.rs      # Template catalog and discovery
@@ -120,7 +120,7 @@ lithos/
 │       │   ├── aggregate.rs    # Config aggregate root (domain, has rkyv derives)
 │       │   ├── raw.rs          # RawConfig (serde only, pre-validation)
 │       │   ├── loader.rs       # Config resolution pipeline with hybrid caching [TODO: refactor]
-│       │   ├── storage.rs      # config::Storage trait + adapter implementation [TODO: create]
+│       │   ├── storage.rs      # config::Repository trait + adapter implementation [TODO: create]
 │       │   ├── view.rs         # Optional: ConfigView projection (only if needed) [TODO: assess]
 │       │   ├── frontmatter.rs  # Frontmatter-specific config
 │       │   ├── global.rs       # System-wide settings
@@ -175,11 +175,11 @@ lithos/
   - Business contexts depend on config context and infrastructure, but NOT on each other.
 - **Dependency Flow:**
   - Technical Infrastructure (db/, fs/, patterns/) → Context Storage Implementations.
-  - Domain Contexts (note/, schema/, template/, config/) → Storage Traits.
+  - Domain Contexts (note/, schema/, template/, config/) → Repository Traits.
   - Application Layer (application/) → Domain + Infrastructure (via dependency injection).
   - Drivers (CLI, LSP) → Application Layer.
-- **Unified Storage Traits:**
-  - Each context defines a single, simple `Storage` trait for all persistence operations (e.g., `SchemaStorage`, `NoteStorage`).
+- **Unified Repository Traits:**
+  - Each context defines a single, simple `Repository` trait for all persistence operations (e.g., `schema::Repository`, `note::Repository`).
   - Storage adapters are implemented directly in `<context>/storage.rs`, utilizing the generic `db/` infrastructure.
   - Avoids interface bloat and complex trait bounds by utilizing single traits per context instead of split CQRS ports.
 
@@ -213,7 +213,7 @@ lithos/
   - `aggregate.rs` (invariants, domain entities with rkyv derives).
   - `raw.rs` (unvalidated input with serde derives, dumb data DTOs).
   - `loader.rs` (Iterator-based pipelines: parse -> validate -> project).
-  - `storage.rs` (Unified Storage trait and its Redb adapter implementation).
+  - `storage.rs` (Unified Repository trait and its Redb adapter implementation).
   - `view.rs` (Optional read-optimized projections for the database).
 - **Co-location:** Errors (`error.rs`), Events (`events.rs`), and Storage components are co-located within the context folder.
 - **Flat Context Directory:** Avoid premature nesting. Adapters and traits live together in `storage.rs`.

@@ -253,13 +253,13 @@ Rust's monomorphization means using rich types has no runtime cost:
    - Parse once, pass typed values everywhere
    - If DB has `StoredSchema`, assume it's valid
 
-### Unified Storage Pattern
+### Unified Repository Pattern
 
-**Type-driven insight**: Instead of separate Query/Command traits, use a single `Storage` trait that provides both reads and writes. The trait itself encodes the contract.
+**Type-driven insight**: Instead of separate Query/Command traits, use a single `Repository` trait that provides both reads and writes. The trait itself encodes the contract.
 
 ```rust
 // ✅ Single trait, clear contract
-pub trait Storage {
+pub trait Repository {
     // Reads
     fn get(&self, id: SchemaId) -> Result<Option<StoredSchema>, Error>;
     fn with_archived<F, R>(&self, id: SchemaId, f: F) -> Result<Option<R>, Error>
@@ -312,7 +312,7 @@ Type-driven design in Lithos means:
 
 The refactor from CQRS to file-based follows these principles:
 - Files → parse → validated types → database (parse, don't validate)
-- Unified Storage trait (type encodes contract)
+- Unified Repository trait (type encodes contract)
 - Property Bank as parsed registry (validate once, use everywhere)
 - Domain types carry proofs (SchemaId vs Uuid, PropertyId vs String)
 

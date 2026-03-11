@@ -11,7 +11,7 @@ section: "Architecture Evaluation"
 
 ## Primary Technology Domain
 
-CLI Tool (Rust) - Complex vault templating system with 50 functional requirements requiring modular architecture with isolated business contexts, unified Storage traits, and async operations.
+CLI Tool (Rust) - Complex vault templating system with 50 functional requirements requiring modular architecture with isolated business contexts, unified Repository traits, and async operations.
 
 ## Technical Preferences Confirmed
 
@@ -23,7 +23,7 @@ Based on project requirements analysis: Rust 1.70+, async runtime, modular archi
 
 **Custom Single-Crate Setup**: Traditional approach but doesn't scale for 50-FR requirements or enable the semi-microservices development pattern you established in Go.
 
-**Resources Reviewed**: Rust-Trends/example_project_structure provides basic layout. Djamware guide offers organizational principles but lacks the architectural depth of our implementation. Research into Rust ecosystem file-based projects (Cargo, mdBook, Zola, rust-analyzer) informed our files-as-source-of-truth approach with unified Storage traits.
+**Resources Reviewed**: Rust-Trends/example_project_structure provides basic layout. Djamware guide offers organizational principles but lacks the architectural depth of our implementation. Research into Rust ecosystem file-based projects (Cargo, mdBook, Zola, rust-analyzer) informed our files-as-source-of-truth approach with unified Repository traits.
 
 ## Selected Starter: Single-Crate Architecture (Performance Pivot)
 
@@ -43,10 +43,10 @@ We have pivoted to a **Single-Crate Core Architecture** to prioritize:
   - **Pure Infrastructure:** db, fs, patterns (generic utilities)
   - **Boundaries:** Enforced via:
     - Visibility modifiers (`pub(crate)`, `pub`)
-    - Unified Storage traits (single trait per context combining reads and writes)
+    - Unified Repository traits (single trait per context combining reads and writes)
     - Architecture tests (validate no forbidden cross-context imports)
   - **Dependencies flow INWARD:** Infrastructure (db, fs, config) ← Business Contexts (note, schema, template) ← CLI
-  - **Storage Pattern:** Each context defines unified `Storage` trait with multiple implementations (Redb, InMemory, Fake)
+  - **Repository Pattern:** Each context defines unified `Repository` trait with multiple implementations (Redb, InMemory, Fake)
 - **`lithos-cli`:** Thin binary driver for terminal UI and orchestration.
 
 **Initialization Commands:**
@@ -74,17 +74,17 @@ resolver = "2"
 **Architectural Decisions (Revised):**
 
 - **Module-based Boundaries:** Logical separation via modules and isolated contexts (`note/`, `schema/`, `db/`) instead of physical crates.
-- **Unified Storage Traits:** Each context defines single `Storage` trait combining reads and writes (no CQRS split).
+- **Unified Repository Traits:** Each context defines single `Repository` trait combining reads and writes (no CQRS split).
 - **Files as Source of Truth:** Markdown files in vault are authoritative; database is rebuildable projection/cache.
 - **Sync-First:** Core logic is synchronous; async is restricted to CLI/LSP edges.
-- **Zero-Copy via Closures:** Storage traits use closure-based `with_archived()` for zero-copy reads.
+- **Zero-Copy via Closures:** Repository traits use closure-based `with_archived()` for zero-copy reads.
 - **Optional View Pattern:** Introduce `*View` types only when domain shape is inefficient for storage (per ADR 003).
 
-**Storage Pattern for Decoupling:**
+**Repository Pattern for Decoupling:**
 
 While the single-crate structure enables zero-copy performance, we maintain architectural boundaries through:
 
-1. **Unified Storage Traits:** Each context defines `<context>::Storage` trait with reads (`get`, `list`, `with_archived`) and writes (`save`, `delete`)
+1. **Unified Repository Traits:** Each context defines `<context>::Repository` trait with reads (`get`, `list`, `with_archived`) and writes (`save`, `delete`)
 2. **Multiple Implementations:** `RedbStorage`, `InMemoryStorage`, `FakeStorage` per context
 3. **Closure-Based Access:** `with_archived<F, R>(&self, id, f: F)` provides zero-copy without lifetime leakage
 4. **Test Substitution:** `FakeStorage` for unit tests without real database

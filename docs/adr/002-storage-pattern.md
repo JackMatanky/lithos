@@ -20,19 +20,19 @@ We need to manage these file-based states while achieving specific architectural
 
 ## Decision
 
-We will adopt a **Unified Storage Trait Architecture** utilizing functional composition.
+We will adopt a **Unified Repository Trait Architecture** utilizing functional composition.
 
-1. **Unified Storage Traits**: Each domain module defines a single `Storage` trait abstracting all interactions with the database cache (e.g., `schema::Storage`).
+1. **Unified Repository Traits**: Each domain module defines a single `Repository` trait abstracting all interactions with the database cache (e.g., `schema::Repository`).
 2. **Module Boundaries Over Trait Boundaries**: Business logic is isolated using Rust's module system (`mod schema`, `mod note`) to enforce boundaries natively.
 3. **Pipeline Orchestration**: External mutations (file changes) or internal actions (CLI commands) trigger functional Iterator-based pipelines (`parse() -> validate() -> project()`), coordinated by module `Loader`s.
-4. **GAT-Based Zero-Copy**: The `Storage` trait uses Generic Associated Types (GATs) with closure-scoped access (`with_archived`) to maintain zero-copy read performance.
+4. **GAT-Based Zero-Copy**: The `Repository` trait uses Generic Associated Types (GATs) with closure-scoped access (`with_archived`) to maintain zero-copy read performance.
 
-### 1. Unified Storage Trait
+### 1. Unified Repository Trait
 
 Defined in `<context>/storage.rs`:
 
 ```rust
-pub trait Storage {
+pub trait Repository {
     type Error: std::error::Error;
     type Archived<'a> where Self: 'a;  // GAT for zero-copy
 
@@ -61,7 +61,7 @@ Operations are composed functionally within their modules using loader orchestra
 // In schema/loader.rs
 pub fn load_schema_file(
     path: &Path,
-    storage: &mut impl Storage,
+    storage: &mut impl Repository,
 ) -> Result<SchemaId, Error> {
     // 1. File I/O (can be abstracted via a simple fs trait if needed)
     let content = std::fs::read_to_string(path)?;
@@ -105,7 +105,7 @@ A deep architectural review of successful Rust file-based tools (Cargo, mdBook, 
 
 ### Benchmarks & Prototypes
 
-The GAT + HRTB pattern (`impl for<'a> FnOnce(Self::Archived<'a>) -> R`) in a unified `Storage` trait maintains exact nanosecond-level read latency from `redb`, allowing zero-copy capabilities without needing complex read-model query traits.
+The GAT + HRTB pattern (`impl for<'a> FnOnce(Self::Archived<'a>) -> R`) in a unified `Repository` trait maintains exact nanosecond-level read latency from `redb`, allowing zero-copy capabilities without needing complex read-model query traits.
 
 ## Consequences
 
@@ -128,9 +128,9 @@ The GAT + HRTB pattern (`impl for<'a> FnOnce(Self::Archived<'a>) -> R`) in a uni
 
 ### Historical Context: Why CQRS was initially implemented
 
-Historically, Port-Based CQRS was originally implemented in this project to prevent "god-object orchestration" and to separate read and write models based on the developer's past experience building similar systems in Go and C#. However, as the system was implemented in Rust, it became clear that Rust's ownership rules, strict type system, and module boundaries natively prevent god-objects without requiring the structural ceremony of CQRS. Consequently, that architecture was superseded by this Unified Storage Trait approach.
+Historically, Port-Based CQRS was originally implemented in this project to prevent "god-object orchestration" and to separate read and write models based on the developer's past experience building similar systems in Go and C#. However, as the system was implemented in Rust, it became clear that Rust's ownership rules, strict type system, and module boundaries natively prevent god-objects without requiring the structural ceremony of CQRS. Consequently, that architecture was superseded by this Unified Repository Trait approach.
 
-### Storage Adapter Implementation Pattern
+### Repository Adapter Implementation Pattern
 
 Adapters implement the trait and are scoped to their context (e.g., `schema/adapters/storage.rs`). They map the domain `Schema` to the `SchemaView` (the database projection).
 
@@ -139,7 +139,7 @@ pub struct RedbSchemaStorage<'db> {
     db: &'db Database,
 }
 
-impl schema::Storage for RedbSchemaStorage<'_> {
+impl schema::Repository for RedbSchemaRepository<'_> {
     type Error = DbError;
     type Archived<'a> = &'a ArchivedSchemaView;
 

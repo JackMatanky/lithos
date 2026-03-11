@@ -28,15 +28,15 @@ To activate specialized agents, use: `"As [agent-name], ..."` (e.g., `"As dev, i
 
 ### Technology Stack
 - **Language**: Rust (latest stable)
-- **Architecture**: Module-based separation with unified Storage traits - business contexts isolated, file-driven state management
+- **Architecture**: Module-based separation with unified Repository traits - business contexts isolated, file-driven state management
 - **Key Libraries**: redb (zero-copy DB), rkyv (serialization), pulldown-cmark (markdown parsing)
 - **Testing**: nextest, criterion benchmarks, tarpaulin coverage
 - **Build**: cargo workspace with mise task orchestration
 
 ### Critical Coding Standards
 - **Zero-copy patterns** for performance-critical paths via closure-based `with_archived()` methods
-- **Unified Storage traits**: Single trait per context combining read and write operations
-  - `schema::Storage` provides both reads (`get`, `list`) and writes (`save`, `delete`)
+- **Unified Repository traits**: Single trait per context combining read and write operations
+  - `schema::Repository` provides both reads (`get`, `list`) and writes (`save`, `delete`)
   - Concrete implementations: `RedbStorage`, `InMemoryStorage`, `FakeStorage`
   - Closure-based access for zero-copy: `with_archived<F, R>(&self, id, f: F)`
 - **Optional View types**: `*View` types only when domain shape is inefficient
@@ -69,8 +69,8 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 1. **Context isolation**: Business contexts (note, schema, template) MUST NOT import each other
    - Config is cross-cutting infrastructure (available to all contexts)
    - Only infrastructure (db, fs, config) may be imported by business contexts
-2. **Unified Storage traits**: Single trait per context combining read and write operations
-   - `schema::Storage` provides both reads (`get`, `list`) and writes (`save`, `delete`)
+2. **Unified Repository traits**: Single trait per context combining read and write operations
+   - `schema::Repository` provides both reads (`get`, `list`) and writes (`save`, `delete`)
    - Concrete implementations: `RedbStorage`, `InMemoryStorage`, `FakeStorage`
    - Closure-based access for zero-copy: `with_archived<F, R>(&self, id, f: F)`
 3. **Type safety**: Private fields by default, validation at construction, newtype wrappers for domain constraints
@@ -79,7 +79,7 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 6. **ADRs required**: Document all architectural decisions in [docs/adr/](docs/adr/)
 7. **Dependency flow**: Infrastructure (db, fs, config) → Business Contexts (note, schema, template) → CLI
 8. **File Ingestion Rules**:
-   - **Storage traits MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
+   - **Repository traits MUST NOT have file I/O methods**: No `load_from_file`, `scan_directory`, etc.
    - **File ingestion MUST use `FsReader`**: Abstract over filesystem for testability
    - **Loader orchestrates pipelines**: Loader coordinates File → Raw → Domain → Storage
    - **Parsing and validation are distinct phases**: File → Raw (parsing) → Domain (validation) → Storage
@@ -111,7 +111,7 @@ For deeper guidance on Rust style/module organization/tooling and crate-specific
 
 **All method and function names MUST follow our standardized taxonomy**: [docs/refs/rust/naming-taxonomy.md](docs/refs/rust/naming-taxonomy.md)
 
-**Quick Reference for Storage Traits**:
+**Quick Reference for Repository Traits**:
 - **Read methods**: `find_*` (optional), `get_*` (singleton), `list_*` (multiple), `count_*` (aggregates), `with_*` (zero-copy closure-based), `is_*` (boolean)
 - **Write methods**: `create`, `save`, `update`, `delete`, `*_many` (bulk operations)
 - **Conversions**: `as_*` (free), `to_*` (expensive), `into_*` (consumes)
@@ -238,7 +238,7 @@ where
 fn get_archived(&self, id: Id) -> Result<Option<Guard>, Error>;
 ```
 
-When implementing Storage traits:
+When implementing Repository traits:
 - Prefer closure-based `with_archived()` over returning guards
 - Avoid complex lifetime patterns that require `self_cell` or GAT Guard patterns
 
@@ -252,7 +252,7 @@ Before marking any task complete:
 - [ ] Tests cover critical paths and business logic (not chasing % targets)
 - [ ] No `unwrap()`/`panic!` in production code
 - [ ] Context boundaries respected (business contexts isolated, no cross-imports)
-- [ ] Unified Storage pattern followed (single trait per context)
+- [ ] Unified Repository pattern followed (single trait per context)
 - [ ] Type-driven design applied (private fields, validated constructors)
 - [ ] Documentation updated (doc comments for public APIs)
 - [ ] Doc tests run when docs/examples changed (`cargo test --doc`)

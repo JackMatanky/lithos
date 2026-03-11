@@ -709,7 +709,7 @@ State machines work best for **linear phase progressions**. When you have branch
 ```rust
 // Layer 1: Orchestration (handles branching)
 struct CommandAdapter {
-    storage: Arc<dyn Storage>,
+    storage: Arc<dyn Repository>,
     loader: Loader,  // State machine
 }
 

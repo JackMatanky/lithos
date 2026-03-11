@@ -64,7 +64,7 @@ We will use **Redb** as the primary storage engine, with values serialized using
 
 ### Compatibility & Performance
 
-- **Module Boundary Alignment**: Isolated in the `db` layer behind a unified `Storage` trait, protecting the `domain` from projection specifics.
+- **Module Boundary Alignment**: Isolated in the `db` layer behind a unified `Repository` trait, protecting the `domain` from projection specifics.
 - **Performance Impact**: Critical for achieving the sub-50ms latency target for link suggestions and resolution, and scaling to 100,000+ notes.
 
 ## Consequences

@@ -74,7 +74,7 @@ These requirements drive a modular architecture with isolated business contexts 
 
 - Primary domain: CLI developer tool with comprehensive template/schema management and future LSP ecosystem expansion
 - Complexity level: medium-high (50 functional requirements, solo developer, ecosystem expansion)
-- Estimated architectural components: 12-16 (isolated business contexts with unified Storage traits, storage implementations, CLI framework, template engine, schema system, vault indexer, interactive components)
+- Estimated architectural components: 12-16 (isolated business contexts with unified Repository traits, storage implementations, CLI framework, template engine, schema system, vault indexer, interactive components)
 - MVP scope recommendation: Reduce initial scope to 20-25 core functional requirements focusing on template execution, schema validation, and basic vault operations to maintain solo developer velocity and achieve 6-month MVP timeline
 - Success metrics: Template creation time reduction (target: 75% faster than manual), crash rate (target: 0%), schema compliance automation (target: 95%)
 - Agile guardrails: Weekly sprints with demo deliverables, daily standups, monthly retrospectives despite solo development to maintain discipline
@@ -111,9 +111,9 @@ These requirements drive a modular architecture with isolated business contexts 
 - **Business Contexts:** note, schema, template are isolated (no cross-imports)
 - **Cross-Cutting Context:** config (user-configurable business rules) available to all contexts
 - **Pure Infrastructure:** db, fs (generic utilities) available to all contexts
-- **Storage Pattern:** Each context defines unified `Storage` trait combining reads and writes
+- **Repository Pattern:** Each context defines unified `Repository` trait combining reads and writes
 - **Zero-Copy:** Closure-based `with_archived()` methods provide zero-copy reads
-- **Testing:** Storage traits enable test substitution (RedbStorage, InMemoryStorage, FakeStorage)
+- **Testing:** Repository traits enable test substitution (RedbStorage, InMemoryStorage, FakeStorage)
 
 **Interactive UX:** Fuzzy finding, schema-driven prompts, suggesters, multi-selection, progressive help - demands advanced CLI interaction patterns for 50+ features, with contextual help and guidance during input operations.
 
@@ -132,7 +132,7 @@ These requirements drive a modular architecture with isolated business contexts 
 - Normal control flow for branching logic (cache checks, conditional loading)
 - No event emission required - simple, idiomatic Rust patterns
 
-**Test Architecture:** Pure domain tests (business logic), storage implementation tests (Redb/InMemory/Fake adapters), integration tests (cross-context workflows), end-to-end CLI tests. Storage traits enable separate test strategies (fast in-memory tests, integration tests with real DB). Performance testing with criterion benchmarks. Security testing for config encryption. TDD approach targeting 80%+ coverage.
+**Test Architecture:** Pure domain tests (business logic), storage implementation tests (Redb/InMemory/Fake adapters), integration tests (cross-context workflows), end-to-end CLI tests. Repository traits enable separate test strategies (fast in-memory tests, integration tests with real DB). Performance testing with criterion benchmarks. Security testing for config encryption. TDD approach targeting 80%+ coverage.
 
 **Documentation Strategy:** Match progressive complexity UX - power users get API docs + advanced guides, new users get quickstart tutorials + guided CLI help. Migration guides critical for adoption. Documentation as code with mdBook focusing on concrete outcomes.
 

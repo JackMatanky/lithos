@@ -31,7 +31,7 @@ section: "Completion & Handoff"
 - 8 major architectural decisions (ADRs) made
 - Comprehensive naming, async, and error patterns defined
 - **Single-Crate Architecture** (`lithos-core`) specified for zero-copy performance
-- **Unified Storage Traits** pattern for testability without CQRS complexity
+- **Unified Repository Traits** pattern for testability without CQRS complexity
 - **Files as Source of Truth** with database as rebuildable projection/cache
 - **Optional View Pattern** (ADR 003) - introduce `*View` only when domain shape is inefficient
 - 50 functional requirements fully supported
@@ -59,11 +59,11 @@ Initialize the Workspace with `lithos-core` and `lithos-cli`. Implement `db.rs` 
    - Core `Database` type with zero-copy APIs via closure-based `with_archived()`
    - First storage trait implementation (e.g., `schema::RedbStorage`)
    - Optional `*View` type only if domain shape proves inefficient
-4. Implement first context with unified Storage pattern (recommend: `schema`):
-   - Define `schema::Storage` trait with reads (`get`, `list`, `with_archived`) and writes (`save`, `delete`)
-   - Implement `schema::RedbStorage` concrete adapter
+4. Implement first context with unified Repository pattern (recommend: `schema`):
+   - Define `schema::Repository` trait with reads (`get`, `list`, `with_archived`) and writes (`save`, `delete`)
+   - Implement `schema::RedbRepository` concrete adapter
    - Implement `schema::Loader` for File → Raw → Domain → Storage pipeline
-   - Add `schema::InMemoryStorage` for tests
+   - Add `schema::InMemoryRepository` for tests
 5. Migrate remaining contexts following schema pattern
 6. Implement CLI commands using concrete storage implementations
 7. Add architecture boundary tests (contexts don't cross-import)

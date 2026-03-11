@@ -13,8 +13,8 @@ section: "Implementation Standards"
 
 **MUST READ FIRST:**
 
-- [Core Architectural Decisions](./03-core-architectural-decisions.md) - Files as source of truth, unified Storage pattern
-- [ADR 002: Storage Pattern](../../../docs/adr/002-storage-pattern.md) - Unified Storage traits architecture
+- [Core Architectural Decisions](./03-core-architectural-decisions.md) - Files as source of truth, unified Repository pattern
+- [ADR 002: Storage Pattern](../../../docs/adr/002-storage-pattern.md) - Unified Repository traits architecture
 - [ADR 003: Serialization Strategy](../../../docs/adr/003-serialization-strategy.md) - Raw/Domain/View shapes model
 - [State Machine Pattern Reference](../../../docs/refs/rust/state-machine-pattern.md) - Multi-phase pipeline patterns
 - [Rust Naming Taxonomy](../../../docs/refs/rust/naming-taxonomy.md) - Method naming conventions
@@ -29,7 +29,7 @@ section: "Implementation Standards"
 
 - **Files as Source of Truth:** User-editable vault files are authoritative
 - **Database as Cache:** Redb provides rebuildable, query-optimized projection
-- **Unified Storage Pattern:** Single trait per context (no CQRS split)
+- **Unified Repository Pattern:** Single trait per context (no CQRS split)
 - **File Ingestion Pipeline:** File → Raw → Domain → Storage → Database
 - **Context Isolation:** Business contexts don't cross-import
 - **Zero-Copy Access:** rkyv enables fast reads without deserialization
@@ -97,23 +97,23 @@ Each phase in our pipeline is **parsing**, not just validation:
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ DOMAIN TYPES (Fully Validated - Most Structured)                │
-│ - Schema, Note, Template, Config (or Stored* in current impl)  │
+│ - Schema, Note, Template, Config (or Stored* in current impl)   │
 │ - Private fields, validated constructors ONLY                   │
-│ - rkyv derives for zero-copy storage                           │
-│ - Optional serde (feature-gated) for CLI JSON output           │
-│ - Location: <context>/aggregate.rs or storage.rs               │
-│                                                                  │
-│ Guarantee: If you have a Domain type, it's valid. No re-checks.│
+│ - rkyv derives for zero-copy storage                            │
+│ - Optional serde (feature-gated) for CLI JSON output            │
+│ - Location: <context>/aggregate.rs or storage.rs                │
+│                                                                 │
+│ Guarantee: If you have a Domain type, it's valid. No re-checks. │
 └─────────────────┬───────────────────────────────────────────────┘
-                  │ Storage::save()
+                  │ Repository::save()
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ PHASE 3: PERSIST (Domain → Database)                            │
-│ - Storage trait: save(), get(), list(), with_archived()        │
-│ - Implementations: RedbStorage, InMemoryStorage, FakeStorage   │
-│ - rkyv serializes to bytes                                     │
-│ - Location: <context>/storage.rs                               │
-│                                                                  │
+│ - Repository trait: save(), get(), list(), with_archived()      │
+│ - Implementations: RedbStorage, InMemoryStorage, FakeStorage    │
+│ - rkyv serializes to bytes                                      │
+│ - Location: <context>/storage.rs                                │
+│                                                                 │
 │ No validation here: Domain types are already valid              │
 └─────────────────┬───────────────────────────────────────────────┘
                   │ rkyv::Archive
@@ -154,7 +154,7 @@ For each context (note, schema, template, config):
 - [ ] **Domain/Stored type** in `<context>/aggregate.rs` or `storage.rs` (rkyv derives, private fields)
 - [ ] **TryFrom<Raw> parsing** (NOT just validation - transforms to stronger type)
 - [ ] **Smart constructors** on domain types (`try_new()`, not public fields)
-- [ ] **Storage trait** in `<context>/storage.rs` (get, save, list, with_archived)
+- [ ] **Repository trait** in `<context>/storage.rs` (get, save, list, with_archived)
 - [ ] **Loader** in `<context>/loader.rs` (orchestrates File → Raw → Domain → Storage)
 - [ ] **FsReader integration** for secure file access
 - [ ] **Hash-based staleness** in metadata tables (optional, for optimization)
@@ -168,15 +168,15 @@ For each context (note, schema, template, config):
 - [ ] Business logic accepts domain types (not `Raw*` or primitives that need validation)
 - [ ] No validation inside domain methods (validation at construction only)
 
-### 2. Unified Storage Pattern (No CQRS Split)
+### 2. Unified Repository Pattern (No CQRS Split)
 
 **Pattern:** Single trait per context combining reads and writes.
 
-✅ **Correct (Unified Storage):**
+✅ **Correct (Unified Repository):**
 
 ```rust
 // Define once per context
-pub trait Storage {
+pub trait Repository {
     type Error: std::error::Error;
 
     // Reads
@@ -191,14 +191,14 @@ pub trait Storage {
 }
 
 // Implement for each backend
-pub struct RedbStorage<'db> { /* ... */ }
-impl<'db> Storage for RedbStorage<'db> { /* ... */ }
+pub struct RedbRepository<'db> { /* ... */ }
+impl<'db> Repository for RedbRepository<'db> { /* ... */ }
 
-pub struct InMemoryStorage { /* ... */ }
-impl Storage for InMemoryStorage { /* ... */ }
+pub struct InMemoryRepository { /* ... */ }
+impl Repository for InMemoryRepository { /* ... */ }
 
-pub struct FakeStorage { /* ... */ }
-impl Storage for FakeStorage { /* ... */ }
+pub struct FakeRepository { /* ... */ }
+impl Repository for FakeRepository { /* ... */ }
 ```
 
 ❌ **Wrong (CQRS Split):**
@@ -259,7 +259,7 @@ use crate::bounds::Bounds;      // Cross-cutting utility
 
 // Within same context:
 use super::raw::RawSchema;
-use super::storage::Storage;
+use super::storage::Repository;
 use super::error::SchemaError;
 ```
 
@@ -302,7 +302,7 @@ let raw: RawSchema = serde_yaml::from_str(file_contents)?;
 // 2. Validate Raw → Domain (TryFrom boundary)
 let domain: Schema = raw.try_into()?;
 
-// 3. Persist Domain → Database (Storage trait)
+// 3. Persist Domain → Database (Repository trait)
 storage.save(&domain)?;
 
 // 4. Read with zero-copy (closure-based)
@@ -500,7 +500,7 @@ note.rs, schema.rs, loader.rs  // snake_case
 Note, Schema, SchemaId, NoteError  // PascalCase
 
 // Traits
-Storage, FsReader, Validator  // PascalCase, descriptive
+Repository, FsReader, Validator  // PascalCase, descriptive
 
 // Constants
 MAX_DEPTH, DEFAULT_TIMEOUT  // SCREAMING_SNAKE_CASE
@@ -597,7 +597,7 @@ async fn main() -> miette::Result<()> {
 }
 
 // ❌ NEVER #[async_trait] in lithos-core
-// ❌ NEVER async methods in Storage traits
+// ❌ NEVER async methods in Repository traits
 ```
 
 ---
@@ -607,7 +607,7 @@ async fn main() -> miette::Result<()> {
 **All AI Agents MUST:**
 
 1. **Follow file ingestion pipeline** for every context (File → Raw → Domain → Storage)
-2. **Use unified Storage trait** (not CQRS split)
+2. **Use unified Repository trait** (not CQRS split)
 3. **Respect context isolation** (no business context cross-imports)
 4. **Implement serialization shapes** correctly (Raw → Domain → Archived)
 5. **Use naming taxonomy** for all methods (find*/get*/list*/with*\*)
@@ -766,11 +766,11 @@ Key points:
 | **Archived\***    | Zero-copy DB access       | Automatic (rkyv-generated) | N/A (generated)        | N/A (generated)                         |
 | **\*View**        | Read-optimized projection | Rarely (profiling only)    | `<context>/view.rs`    | `rkyv::Archive`                         |
 
-### Storage Trait Pattern
+### Repository Trait Pattern
 
 ```rust
 // Define once per context
-pub trait Storage {
+pub trait Repository {
     fn get(&self, id: &Id) -> Result<Option<T>, Error>;
     fn save(&self, entity: &T) -> Result<(), Error>;
     fn list(&self) -> Result<Vec<T>, Error>;
@@ -779,9 +779,9 @@ pub trait Storage {
 }
 
 // Implement for each backend
-impl Storage for RedbStorage { /* ... */ }
-impl Storage for InMemoryStorage { /* ... */ }
-impl Storage for FakeStorage { /* ... */ }
+impl Repository for RedbRepository { /* ... */ }
+impl Repository for InMemoryRepository { /* ... */ }
+impl Repository for FakeRepository { /* ... */ }
 ```
 
 ### Context Isolation Rules
@@ -811,7 +811,7 @@ File → [parse] → Raw* → [validate] → Domain → [persist] → Database
 | `#[async_trait]` in `lithos-core`      | Sync-first core, async at edges                |
 | Creating `*View` prematurely           | Use `Archived<Domain>` first, profile          |
 | Methods on `Raw*` types                | `TryFrom<Raw*>` for validation boundary        |
-| CQRS split (Query/Command traits)      | Unified `Storage` trait                        |
+| CQRS split (Query/Command traits)      | Unified `Repository` trait                     |
 | Event sourcing for orchestration       | Functional composition with `Result<T, E>`     |
 
 ---
