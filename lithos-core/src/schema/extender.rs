@@ -1,10 +1,10 @@
 //! `Extender` — builds a topologically-ordered [`SchemaTree`] from
-//! dereferenced schemas and previously-resolved (DB-fresh) parents.
+//! ref-expanded schemas and previously-resolved (DB-fresh) parents.
 //!
 //! # Pipeline position
 //!
 //! ```text
-//! Dereferencer → Vec<(SchemaId, DereferencedSchema)>
+//! RefExpander → Vec<(SchemaId, RefExpandedSchema)>
 //! Extender          ← here
 //! → SchemaTree
 //! Resolver
@@ -13,7 +13,7 @@
 //! # Design
 //!
 //! The `Extender` takes:
-//! - Stale schemas already dereferenced by [`Dereferencer`] (their `$ref`s
+//! - Stale schemas already expanded by [`RefExpander`] (their `$ref`s
 //!   resolved).
 //! - A map of fresh (non-stale) schemas loaded from the DB — these may act as
 //!   parents.
@@ -22,15 +22,15 @@
 //! (parents before children) so the downstream [`Resolver`] can walk the tree
 //! once without back-tracking.
 //!
-//! [`Dereferencer`]: super::dereferencer::Dereferencer
+//! [`RefExpander`]: super::expander::RefExpander
 //! [`Resolver`]: super::resolver::Resolver
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::{
     aggregate::{SchemaId, SchemaName},
-    dereferencer::DereferencedSchema,
     error::SchemaError,
+    expander::RefExpandedSchema,
     property::Property,
     storage::StoredSchema,
 };
@@ -192,7 +192,7 @@ type NameIndexes = (HashMap<Box<str>, SchemaId>, HashMap<SchemaId, Box<str>>);
 /// Type alias for the `(order, roots)` pair returned by Kahn's algorithm.
 type KahnResult = (Vec<SchemaId>, Vec<SchemaId>);
 
-/// Builds a [`SchemaTree`] from dereferenced schemas.
+/// Builds a [`SchemaTree`] from ref-expanded schemas.
 ///
 /// **Internal API**: This type is public solely for benchmarking purposes.
 /// Do not depend on it in production code - use `Loader` instead.
@@ -201,9 +201,9 @@ type KahnResult = (Vec<SchemaId>, Vec<SchemaId>);
 pub struct Extender;
 
 impl Extender {
-    /// Build a [`SchemaTree`] from stale, dereferenced schemas.
+    /// Build a [`SchemaTree`] from stale, ref-expanded schemas.
     ///
-    /// `derefed` — schemas processed by the [`Dereferencer`].
+    /// `expanded` — schemas processed by the [`RefExpander`].
     /// `known_parents` — fresh schemas pre-loaded from the DB; their IDs are
     /// valid parent targets.
     ///
@@ -211,23 +211,23 @@ impl Extender {
     ///
     /// - [`SchemaError::CircularInheritance`] — a cycle was detected.
     /// - [`SchemaError::ParentNotFound`] — a `extends` name refers to a schema
-    ///   that is neither in `derefed` nor in `known_parents`.
+    ///   that is neither in `expanded` nor in `known_parents`.
     /// - [`SchemaError::AlreadyExists`] — two schemas share the same name.
     ///
-    /// [`Dereferencer`]: super::dereferencer::Dereferencer
+    /// [`RefExpander`]: super::expander::RefExpander
     #[inline]
     /// **Internal API**: Public for benchmarking only.
     #[doc(hidden)]
     pub fn build(
-        derefed: Vec<(SchemaId, DereferencedSchema)>,
+        expanded: Vec<(SchemaId, RefExpandedSchema)>,
         known_parents: &HashMap<SchemaId, StoredSchema>,
     ) -> Result<SchemaTree, SchemaError> {
         // Phase 1: build name ↔ id indexes.
         let (name_to_id, id_to_name) =
-            Self::build_name_indexes(&derefed, known_parents)?;
+            Self::build_name_indexes(&expanded, known_parents)?;
 
         // Phase 2: build node map with resolved parent IDs.
-        let mut nodes = Self::build_nodes(derefed, &name_to_id)?;
+        let mut nodes = Self::build_nodes(expanded, &name_to_id)?;
 
         // Phase 3: DFS cycle detection.
         Self::detect_cycles(&nodes, known_parents, &id_to_name)?;
@@ -250,13 +250,13 @@ impl Extender {
 
     /// Phase 1 — build owned `name → id` and `id → name` indexes.
     ///
-    /// Uses `Box<str>` keys so `derefed` can be consumed in Phase 2 without
+    /// Uses `Box<str>` keys so `expanded` can be consumed in Phase 2 without
     /// lifetime issues.  `Box<str>: Borrow<str>` so `HashMap::get(&str)` works.
     fn build_name_indexes(
-        derefed: &[(SchemaId, DereferencedSchema)],
+        expanded: &[(SchemaId, RefExpandedSchema)],
         known_parents: &HashMap<SchemaId, StoredSchema>,
     ) -> Result<NameIndexes, SchemaError> {
-        let cap = derefed.len();
+        let cap = expanded.len();
         let mut name_to_id: HashMap<Box<str>, SchemaId> =
             HashMap::with_capacity(cap.saturating_add(known_parents.len()));
         let mut id_to_name: HashMap<SchemaId, Box<str>> =
@@ -274,18 +274,20 @@ impl Extender {
         }
         #[expect(
             clippy::pattern_type_mismatch,
-            reason = "Match ergonomics on &(SchemaId, DereferencedSchema) \
+            reason = "Match ergonomics on &(SchemaId, RefExpandedSchema) \
                       tuples; explicit derefs would add noise without clarity"
         )]
-        for (id, deref) in derefed {
-            if name_to_id.insert(deref.name.clone(), *id).is_some()
+        for (id, expanded_schema) in expanded {
+            if name_to_id.insert(expanded_schema.name.clone(), *id).is_some()
                 && !known_parents
                     .values()
-                    .any(|s| s.name.as_ref() == deref.name.as_ref())
+                    .any(|s| s.name.as_ref() == expanded_schema.name.as_ref())
             {
-                return Err(SchemaError::AlreadyExists(deref.name.to_string()));
+                return Err(SchemaError::AlreadyExists(
+                    expanded_schema.name.to_string(),
+                ));
             }
-            id_to_name.insert(*id, deref.name.clone());
+            id_to_name.insert(*id, expanded_schema.name.clone());
         }
         Ok((name_to_id, id_to_name))
     }
@@ -293,16 +295,16 @@ impl Extender {
     /// Phase 2 — build the node map, resolving each `extends` name to a
     /// `SchemaId`.
     fn build_nodes(
-        derefed: Vec<(SchemaId, DereferencedSchema)>,
+        expanded: Vec<(SchemaId, RefExpandedSchema)>,
         name_to_id: &HashMap<Box<str>, SchemaId>,
     ) -> Result<HashMap<SchemaId, SchemaNode>, SchemaError> {
-        let mut nodes = HashMap::with_capacity(derefed.len());
-        for (id, deref) in derefed {
-            let parent_id = Self::resolve_parent(&deref, name_to_id)?;
+        let mut nodes = HashMap::with_capacity(expanded.len());
+        for (id, expanded_schema) in expanded {
+            let parent_id = Self::resolve_parent(&expanded_schema, name_to_id)?;
             nodes.insert(id, SchemaNode {
-                name: deref.name,
-                properties: deref.properties,
-                excludes: deref.excludes,
+                name: expanded_schema.name,
+                properties: expanded_schema.properties,
+                excludes: expanded_schema.excludes,
                 parent_id,
                 children: Vec::new(),
                 // Depth computed in Phase 5
@@ -314,10 +316,10 @@ impl Extender {
 
     /// Resolve the optional `extends` string to a `SchemaId`.
     fn resolve_parent(
-        deref: &DereferencedSchema,
+        expanded_schema: &RefExpandedSchema,
         name_to_id: &HashMap<Box<str>, SchemaId>,
     ) -> Result<Option<SchemaId>, SchemaError> {
-        let Some(parent_name) = deref.extends.as_ref() else {
+        let Some(parent_name) = expanded_schema.extends.as_ref() else {
             return Ok(None);
         };
         SchemaName::try_from(parent_name.as_ref())?;
@@ -586,14 +588,14 @@ mod tests {
 
     mod fixtures {
         use super::*;
-        use crate::schema::dereferencer::DereferencedSchema;
+        use crate::schema::expander::RefExpandedSchema;
 
-        pub fn simple_derefed(
+        pub fn simple_expanded(
             id: SchemaId,
             name: &str,
             extends: Option<&str>,
-        ) -> (SchemaId, DereferencedSchema) {
-            (id, DereferencedSchema {
+        ) -> (SchemaId, RefExpandedSchema) {
+            (id, RefExpandedSchema {
                 name: name.into(),
                 extends: extends.map(Into::into),
                 excludes: Vec::new(),
@@ -627,8 +629,8 @@ mod tests {
         #[test]
         fn single_root_schema() -> Result<(), SchemaError> {
             let id = SchemaId::from_uuid(PARENT_ID);
-            let derefed = vec![fixtures::simple_derefed(id, "root", None)];
-            let tree = Extender::build(derefed, &HashMap::new())?;
+            let expanded = vec![fixtures::simple_expanded(id, "root", None)];
+            let tree = Extender::build(expanded, &HashMap::new())?;
             assert_eq!(tree.nodes(), &[id]);
             assert_eq!(tree.roots(), &[id]);
             assert!(tree.get(id).is_some());
@@ -639,11 +641,11 @@ mod tests {
         fn parent_before_child_in_order() -> Result<(), SchemaError> {
             let parent_id = SchemaId::from_uuid(PARENT_ID);
             let child_id = SchemaId::from_uuid(CHILD_ID);
-            let derefed = vec![
-                fixtures::simple_derefed(child_id, "child", Some("parent")),
-                fixtures::simple_derefed(parent_id, "parent", None),
+            let expanded = vec![
+                fixtures::simple_expanded(child_id, "child", Some("parent")),
+                fixtures::simple_expanded(parent_id, "parent", None),
             ];
-            let tree = Extender::build(derefed, &HashMap::new())?;
+            let tree = Extender::build(expanded, &HashMap::new())?;
             let order = tree.nodes();
             let parent_pos = order
                 .iter()
@@ -674,12 +676,12 @@ mod tests {
             let mut known_parents = HashMap::new();
             known_parents.insert(parent_id, parent_stored);
 
-            let derefed = vec![fixtures::simple_derefed(
+            let expanded = vec![fixtures::simple_expanded(
                 child_id,
                 "child",
                 Some("parent"),
             )];
-            let tree = Extender::build(derefed, &known_parents)?;
+            let tree = Extender::build(expanded, &known_parents)?;
             assert_eq!(tree.nodes(), &[child_id]);
             Ok(())
         }
@@ -687,12 +689,12 @@ mod tests {
         #[test]
         fn missing_parent_returns_error() {
             let child_id = SchemaId::from_uuid(CHILD_ID);
-            let derefed = vec![fixtures::simple_derefed(
+            let expanded = vec![fixtures::simple_expanded(
                 child_id,
                 "child",
                 Some("nonexistent"),
             )];
-            let result = Extender::build(derefed, &HashMap::new());
+            let result = Extender::build(expanded, &HashMap::new());
             assert!(
                 matches!(result, Err(SchemaError::ParentNotFound(_))),
                 "Expected ParentNotFound, got: {result:?}"
@@ -701,16 +703,16 @@ mod tests {
 
         #[test]
         fn cycle_detection_returns_error() {
-            use crate::schema::dereferencer::DereferencedSchema;
+            use crate::schema::expander::RefExpandedSchema;
             let id = SchemaId::from_uuid(ORPHAN_ID);
             // Schema "self" extends "self" — a self-loop.
-            let derefed = vec![(id, DereferencedSchema {
+            let expanded = vec![(id, RefExpandedSchema {
                 name: "self".into(),
                 extends: Some("self".into()),
                 excludes: Vec::new(),
                 properties: Vec::new(),
             })];
-            let result = Extender::build(derefed, &HashMap::new());
+            let result = Extender::build(expanded, &HashMap::new());
             assert!(
                 matches!(
                     result,
@@ -724,7 +726,7 @@ mod tests {
         /// GAP-001: Test multi-node circular inheritance (A→B→C→A).
         #[test]
         fn cycle_detection_multi_node_cycle() {
-            use crate::schema::dereferencer::DereferencedSchema;
+            use crate::schema::expander::RefExpandedSchema;
 
             const ID_A: Uuid =
                 Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_1001);
@@ -738,20 +740,20 @@ mod tests {
             let id_c = SchemaId::from_uuid(ID_C);
 
             // A extends C, B extends A, C extends B → cycle!
-            let derefed = vec![
-                (id_a, DereferencedSchema {
+            let expanded = vec![
+                (id_a, RefExpandedSchema {
                     name: "a".into(),
                     extends: Some("c".into()),
                     excludes: Vec::new(),
                     properties: Vec::new(),
                 }),
-                (id_b, DereferencedSchema {
+                (id_b, RefExpandedSchema {
                     name: "b".into(),
                     extends: Some("a".into()),
                     excludes: Vec::new(),
                     properties: Vec::new(),
                 }),
-                (id_c, DereferencedSchema {
+                (id_c, RefExpandedSchema {
                     name: "c".into(),
                     extends: Some("b".into()),
                     excludes: Vec::new(),
@@ -759,7 +761,7 @@ mod tests {
                 }),
             ];
 
-            let result = Extender::build(derefed, &HashMap::new());
+            let result = Extender::build(expanded, &HashMap::new());
             assert!(
                 matches!(result, Err(SchemaError::CircularInheritance(_))),
                 "Should detect multi-node cycle, got: {result:?}"
@@ -770,11 +772,11 @@ mod tests {
         fn children_wired_on_in_batch_parent() -> Result<(), SchemaError> {
             let parent_id = SchemaId::from_uuid(PARENT_ID);
             let child_id = SchemaId::from_uuid(CHILD_ID);
-            let derefed = vec![
-                fixtures::simple_derefed(parent_id, "parent", None),
-                fixtures::simple_derefed(child_id, "child", Some("parent")),
+            let expanded = vec![
+                fixtures::simple_expanded(parent_id, "parent", None),
+                fixtures::simple_expanded(child_id, "child", Some("parent")),
             ];
-            let tree = Extender::build(derefed, &HashMap::new())?;
+            let tree = Extender::build(expanded, &HashMap::new())?;
             let parent_node = tree.get(parent_id).expect("parent node");
             assert!(
                 parent_node.children.contains(&child_id),

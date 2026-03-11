@@ -34,7 +34,7 @@
 ✅ **Zero-copy reads**: GAT methods enable 2-33x faster operations (no deserialization)
 ✅ **Batch operations**: `find_many_by_ids()`, `are_many_stale()` amortize transactions
 ✅ **Staleness detection**: Timestamp-based with cascade to descendants
-✅ **Resolution pipeline**: `Dereferencer → Extender → Resolver` for inheritance
+✅ **Resolution pipeline**: `RefExpander → Extender → Resolver` for inheritance
 ✅ **Two-shape serialization**: `RawSchema` (serde) → `StoredSchema` (rkyv)
 
 ### What Doesn't Work (Change)
@@ -84,7 +84,7 @@
 │ - current_version: u8                                        │
 └────────────────┬─────────────────────────────────────────────┘
                  │
-                 ▼ validate + resolve (Dereferencer → Extender → Resolver)
+                 ▼ validate + resolve (RefExpander → Extender → Resolver)
 ┌──────────────────────────────────────────────────────────────┐
 │ SCHEMA (Read Model)                                          │
 │ Table: schema_by_id (key: SchemaId)                          │
@@ -119,7 +119,7 @@ lithos-core/src/schema/
 ├── db_command.rs             # Redb CommandPort implementation
 ├── db_tables.rs              # Table definitions (const TABLE_NAME: TableDefinition)
 │
-├── dereferencer.rs           # Property dereferencing (validates refs exist in bank)
+├── expander.rs               # Property ref expansion (validates refs exist in bank)
 ├── extender.rs               # Inheritance tree building (validates refs exist, no cycles)
 ├── resolver.rs               # Property merging (validates depth, conflicts)
 │
@@ -135,7 +135,7 @@ ports.rs  ← imports stored.rs for return types (has GAT methods)
     ↑ implemented by
 db_query.rs, db_command.rs  ← imports db_tables.rs
     ↑ used by
-loader.rs  ← orchestrates: ingestor + dereferencer + extender + resolver + ports
+loader.rs  ← orchestrates: ingestor + expander + extender + resolver + ports
 ```
 
 **Key changes from current**:
@@ -339,7 +339,7 @@ loader.rs  ← orchestrates: ingestor + dereferencer + extender + resolver + por
   - Check: Property names are unique
   - Check: Property specs are valid (already enforced by serde types)
 - [ ] **5.4**: Move semantic validation to resolution layer
-  - Dereferencer: Check property refs exist in bank
+  - RefExpander: Check property refs exist in bank
   - Extender: Check schema refs exist, detect circular inheritance
   - Resolver: Check depth limits, property conflicts
 - [ ] **5.5**: Update `Ingestor` to call `raw.validate()` after parsing
@@ -452,7 +452,7 @@ loader.rs  ← orchestrates: ingestor + dereferencer + extender + resolver + por
   - Remove: "Schema is a DDD aggregate"
   - Add: "StoredSchema is a read model (no behavior)"
   - Add: "Raw validation is syntax-only (type-driven)"
-  - Add: "Resolution validates semantics (Dereferencer, Extender, Resolver)"
+  - Add: "Resolution validates semantics (RefExpander, Extender, Resolver)"
 - [ ] **8.2**: Update `_bmad-output/project-context.md`
 - [ ] **8.3**: Create ADR: "Schema as Read Model"
   - Document: Why aggregates were removed
@@ -485,7 +485,7 @@ loader.rs  ← orchestrates: ingestor + dereferencer + extender + resolver + por
 | Layer | Validates | Does NOT Validate | Tool |
 |-------|-----------|------------------|------|
 | **Raw** (syntax) | File name format, property name syntax, unique names, security (path traversal) | Property ref existence, schema ref existence, depth, cycles | Regex, type system (serde) |
-| **Dereferencer** (property refs) | Property refs exist in PropertyBank | Schema refs, depth, cycles | HashMap lookup |
+| **RefExpander** (property refs) | Property refs exist in PropertyBank | Schema refs, depth, cycles | HashMap lookup |
 | **Extender** (schema refs) | Schema refs exist, no circular inheritance | Depth, property conflicts | Graph traversal (BFS) |
 | **Resolver** (semantics) | Inheritance depth, property conflicts | - | Tree traversal |
 

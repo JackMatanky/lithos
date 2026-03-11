@@ -38,7 +38,7 @@
 //!    - **Fresh schemas** → reuse from DB (fetch as `known_parents`)
 //!
 //! 5. **Process only stale schemas**:
-//!    - `Dereferencer::deref()` → resolve property refs
+//!    - `RefExpander::expand_all()` → resolve property refs
 //!    - `Extender::build()` → build inheritance tree
 //!    - `Resolver::resolve()` → merge parent properties
 //!
@@ -60,11 +60,11 @@ use crate::schema::{
     aggregate::{SchemaId, SchemaName},
     bank::PropertyBank,
     db_command, db_query,
-    dereferencer::Dereferencer,
     error::{
         SchemaCommandError, SchemaError, SchemaIngestionError, SchemaQueryError,
     },
     events::{PropertyBankEvent, SchemaEvent, SchemaEventHandler},
+    expander::RefExpander,
     extender::Extender,
     ingestor::Ingestor,
     ports::{Command as _, Query as _},
@@ -178,7 +178,7 @@ impl<'db> Loader<'db> {
     /// Run the full ingestion pipeline.
     ///
     /// Reads raw files via `ingestor`, resolves schemas through the
-    /// `Dereferencer → Extender → Resolver` pipeline, and persists the
+    /// `RefExpander → Extender → Resolver` pipeline, and persists the
     /// results.  Only stale schemas are re-resolved; fresh schemas are used
     /// as `known_parents` for the inheritance tree.
     ///
@@ -242,20 +242,21 @@ impl<'db> Loader<'db> {
             .find_many_by_ids(&fresh_ids)
             .map_err(SchemaQueryError::from)?;
 
-        // ── Step 6: pipeline (Dereferencer → Extender → Resolver) ──────────
-        // Extract just (id, raw_schema) for dereferencer, keep timestamps
-        // separate
+        // ── Step 6: pipeline (RefExpander → Extender → Resolver) ───────────
+        // Extract just (id, raw_schema) for reference expansion, keep
+        // timestamps separate
         let stale_with_times = stale_for_full_resolution;
-        let stale_for_deref: Vec<(SchemaId, RawSchema)> = stale_with_times
+        let stale_for_expand: Vec<(SchemaId, RawSchema)> = stale_with_times
             .iter()
             .map(|entry| (entry.0, entry.1.clone()))
             .collect();
 
-        let mut resolved = if stale_for_deref.is_empty() {
+        let mut resolved = if stale_for_expand.is_empty() {
             Vec::new()
         } else {
-            let derefed = Dereferencer::new(&bank).deref(stale_for_deref)?;
-            let tree = Extender::build(derefed, &known_parents)?;
+            let expanded =
+                RefExpander::new(&bank).expand_all(stale_for_expand)?;
+            let tree = Extender::build(expanded, &known_parents)?;
             tracing::debug!(
                 root_count = tree.roots().len(),
                 total_count = tree.nodes().len(),

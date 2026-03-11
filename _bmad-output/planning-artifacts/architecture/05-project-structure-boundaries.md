@@ -91,7 +91,7 @@ lithos/
 │       │   ├── property_spec.rs # Property specification types
 │       │   ├── property_spec/  # Property spec submodules
 │       │   ├── bank.rs         # PropertyBank for $ref expansion
-│       │   ├── dereferencer.rs # $ref pointer expansion (Phase 3)
+│       │   ├── expander.rs     # $ref pointer expansion (Phase 3)
 │       │   ├── extender.rs     # Inheritance merging logic
 │       │   ├── resolver.rs     # Reference resolution and graph operations
 │       │   ├── error.rs        # Context-specific errors

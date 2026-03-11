@@ -1,24 +1,24 @@
-//! `Dereferencer` — resolves raw property bank `$ref` pointers into
+//! `RefExpander` — expands raw property bank `$ref` pointers into
 //! validated [`Property`] values.
 //!
 //! # Pipeline position
 //!
 //! ```text
 //! Ingestor → Vec<(SchemaId, RawSchema)>
-//! Dereferencer  ← here
-//! → Vec<(SchemaId, DereferencedSchema)>
+//! RefExpander  ← here
+//! → Vec<(SchemaId, RefExpandedSchema)>
 //! Extender
 //! Resolver
 //! ```
 //!
-//! After `Dereferencer` completes, the [`PropertyBank`] is no longer
+//! After `RefExpander` completes, the [`PropertyBank`] is no longer
 //! referenced anywhere in the pipeline.
 //!
 //! # Design
 //!
 //! - **Input**: stale `Vec<(SchemaId, RawSchema)>` + `&PropertyBank`
-//! - **Output**: `Vec<(SchemaId, DereferencedSchema)>`
-//! - Properties in each `DereferencedSchema` are **sorted by name** so
+//! - **Output**: `Vec<(SchemaId, RefExpandedSchema)>`
+//! - Properties in each `RefExpandedSchema` are **sorted by name** so
 //!   downstream components (`Extender`, `Resolver`) can use two-pointer merges
 //!   without re-sorting.
 
@@ -35,7 +35,7 @@ use super::{
 use crate::schema::aggregate::SchemaId;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  DereferencedSchema
+//  RefExpandedSchema
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// A raw schema with all `$ref` pointers resolved against the property bank.
@@ -48,7 +48,7 @@ use crate::schema::aggregate::SchemaId;
 #[doc(hidden)]
 #[derive(Clone)]
 #[non_exhaustive]
-pub struct DereferencedSchema {
+pub struct RefExpandedSchema {
     /// Schema name string (carried forward from `RawSchema`).
     pub name: Box<str>,
     /// Optional parent schema name (carried forward from `RawSchema.extends`).
@@ -60,24 +60,24 @@ pub struct DereferencedSchema {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Dereferencer
+//  RefExpander
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Resolves raw `$ref` property pointers against the [`PropertyBank`] and
 /// validates inline property definitions.
 ///
 /// Holds a shared reference to the bank so callers can pre-build the bank
-/// once and reuse the dereferencer across multiple schemas.
+/// once and reuse the expander across multiple schemas.
 ///
 /// **Internal API**: This type is public solely for benchmarking purposes.
 /// Do not depend on it in production code - use `Loader` instead.
 #[doc(hidden)]
-pub struct Dereferencer<'bank> {
+pub struct RefExpander<'bank> {
     bank: &'bank PropertyBank,
 }
 
-impl<'bank> Dereferencer<'bank> {
-    /// Create a new `Dereferencer` bound to the given [`PropertyBank`].
+impl<'bank> RefExpander<'bank> {
+    /// Create a new `RefExpander` bound to the given [`PropertyBank`].
     ///
     /// **Internal API**: Public for benchmarking only.
     #[doc(hidden)]
@@ -89,7 +89,7 @@ impl<'bank> Dereferencer<'bank> {
         }
     }
 
-    /// Dereference a batch of stale raw schemas.
+    /// Expand references for a batch of stale raw schemas.
     ///
     /// For each `(SchemaId, RawSchema)` pair, all properties are resolved
     /// against the bank and the results are returned in the same order.
@@ -102,24 +102,24 @@ impl<'bank> Dereferencer<'bank> {
     /// **Internal API**: Public for benchmarking only.
     #[doc(hidden)]
     #[inline]
-    pub fn deref(
+    pub fn expand_all(
         &self,
         schemas: Vec<(SchemaId, RawSchema)>,
-    ) -> Result<Vec<(SchemaId, DereferencedSchema)>, SchemaError> {
+    ) -> Result<Vec<(SchemaId, RefExpandedSchema)>, SchemaError> {
         schemas
             .into_iter()
             .map(|(id, raw)| {
-                let derefed = self.deref_one(raw)?;
-                Ok((id, derefed))
+                let expanded = self.expand_schema(raw)?;
+                Ok((id, expanded))
             })
             .collect()
     }
 
-    /// Dereference a single [`RawSchema`].
-    fn deref_one(
+    /// Expand references for a single [`RawSchema`].
+    fn expand_schema(
         &self,
         raw: RawSchema,
-    ) -> Result<DereferencedSchema, SchemaError> {
+    ) -> Result<RefExpandedSchema, SchemaError> {
         // Collect and sort entries by name for deterministic output.
         let mut entries: Vec<(Box<str>, RawProperty)> =
             raw.properties.into_iter().collect();
@@ -127,10 +127,10 @@ impl<'bank> Dereferencer<'bank> {
 
         let mut properties = Vec::with_capacity(entries.len());
         for (prop_name, entry) in entries {
-            properties.push(self.deref_entry(&prop_name, entry)?);
+            properties.push(self.expand_property(&prop_name, entry)?);
         }
 
-        Ok(DereferencedSchema {
+        Ok(RefExpandedSchema {
             name: raw.name,
             extends: raw.extends,
             excludes: raw.excludes,
@@ -139,7 +139,7 @@ impl<'bank> Dereferencer<'bank> {
     }
 
     /// Resolve a single raw property entry into a validated [`Property`].
-    fn deref_entry(
+    fn expand_property(
         &self,
         name: &str,
         entry: RawProperty,
@@ -379,15 +379,15 @@ mod tests {
         reason = "Test functions use assert! macros which may panic; this is \
                   standard test practice"
     )]
-    mod deref_entry {
+    mod expand_property {
         use super::*;
 
         #[test]
         fn inline_bool_resolves_correctly() -> Result<(), SchemaError> {
             let bank = PropertyBank::new();
-            let deref = Dereferencer::new(&bank);
-            let prop =
-                deref.deref_entry("flag", fixtures::inline_bool_entry())?;
+            let expander = RefExpander::new(&bank);
+            let prop = expander
+                .expand_property("flag", fixtures::inline_bool_entry())?;
             assert_eq!(prop.name().as_str(), "flag");
             assert_eq!(prop.optionality(), Optionality::Required);
             assert_eq!(prop.multiplicity(), Multiplicity::Single);
@@ -398,8 +398,8 @@ mod tests {
         fn ref_resolves_from_bank() -> Result<(), SchemaError> {
             let base = fixtures::bool_property("status")?;
             let bank = fixtures::bank_with(base)?;
-            let deref = Dereferencer::new(&bank);
-            let prop = deref.deref_entry(
+            let expander = RefExpander::new(&bank);
+            let prop = expander.expand_property(
                 "status",
                 fixtures::ref_entry("property_bank#/status"),
             )?;
@@ -412,7 +412,7 @@ mod tests {
         -> Result<(), SchemaError> {
             let base = fixtures::bool_property("status")?;
             let bank = fixtures::bank_with(base)?;
-            let deref = Dereferencer::new(&bank);
+            let expander = RefExpander::new(&bank);
             let entry = RawProperty::Ref(RawPropertyRef {
                 ref_path: "property_bank#/status".into(),
                 required: Some(false),
@@ -422,7 +422,7 @@ mod tests {
                 date: RawDateSpec::default(),
                 file: RawFileSpec::default(),
             });
-            let prop = deref.deref_entry("status", entry)?;
+            let prop = expander.expand_property("status", entry)?;
             assert_eq!(prop.optionality(), Optionality::Optional);
             assert_eq!(prop.multiplicity(), Multiplicity::Many);
             Ok(())
@@ -433,7 +433,7 @@ mod tests {
             let base =
                 fixtures::bool_property("status").expect("valid property");
             let bank = fixtures::bank_with(base).expect("valid bank");
-            let deref = Dereferencer::new(&bank);
+            let expander = RefExpander::new(&bank);
             let entry = RawProperty::Ref(RawPropertyRef {
                 ref_path: "property_bank#/status".into(),
                 required: None,
@@ -447,7 +447,7 @@ mod tests {
                 date: RawDateSpec::default(),
                 file: RawFileSpec::default(),
             });
-            let result = deref.deref_entry("status", entry);
+            let result = expander.expand_property("status", entry);
             assert!(
                 matches!(result, Err(SchemaError::PropertyTypeMismatch { .. })),
                 "Expected PropertyTypeMismatch, got: {result:?}"
@@ -457,9 +457,9 @@ mod tests {
         #[test]
         fn ref_missing_in_bank_returns_error() {
             let bank = PropertyBank::new();
-            let deref = Dereferencer::new(&bank);
+            let expander = RefExpander::new(&bank);
             let entry = fixtures::ref_entry("property_bank#/missing");
-            let result = deref.deref_entry("missing", entry);
+            let result = expander.expand_property("missing", entry);
             assert!(
                 matches!(result, Err(SchemaError::PropertyRefNotFound(_))),
                 "Expected PropertyRefNotFound, got: {result:?}"
@@ -476,14 +476,14 @@ mod tests {
         reason = "Tests access known-fixed indices for clarity; bounds \
                   guaranteed by test setup"
     )]
-    mod deref_batch {
+    mod expand_all {
         use super::*;
 
         #[test]
         fn empty_batch_returns_empty() -> Result<(), SchemaError> {
             let bank = PropertyBank::new();
-            let deref = Dereferencer::new(&bank);
-            let result = deref.deref(vec![])?;
+            let ref_expander = RefExpander::new(&bank);
+            let result = ref_expander.expand_all(vec![])?;
             assert!(result.is_empty());
             Ok(())
         }
@@ -491,7 +491,7 @@ mod tests {
         #[test]
         fn properties_sorted_by_name() -> Result<(), SchemaError> {
             let bank = PropertyBank::new();
-            let deref = Dereferencer::new(&bank);
+            let ref_expander = RefExpander::new(&bank);
             let mut props = HashMap::new();
             props.insert("z".into(), fixtures::inline_bool_entry());
             props.insert("a".into(), fixtures::inline_bool_entry());
@@ -503,17 +503,17 @@ mod tests {
                 properties: props,
             };
             let id = SchemaId::new();
-            let result = deref.deref(vec![(id, raw)])?;
-            let derefed = &result[0].1;
-            assert_eq!(derefed.properties[0].name().as_str(), "a");
-            assert_eq!(derefed.properties[1].name().as_str(), "z");
+            let result = ref_expander.expand_all(vec![(id, raw)])?;
+            let expanded_schemas = &result[0].1;
+            assert_eq!(expanded_schemas.properties[0].name().as_str(), "a");
+            assert_eq!(expanded_schemas.properties[1].name().as_str(), "z");
             Ok(())
         }
 
         #[test]
         fn extends_and_excludes_carried_forward() -> Result<(), SchemaError> {
             let bank = PropertyBank::new();
-            let deref = Dereferencer::new(&bank);
+            let ref_expander = RefExpander::new(&bank);
             let raw = RawSchema {
                 version: crate::schema::raw::SCHEMA_VERSION.into(),
                 name: "child".into(),
@@ -522,11 +522,11 @@ mod tests {
                 properties: HashMap::new(),
             };
             let id = SchemaId::new();
-            let result = deref.deref(vec![(id, raw)])?;
-            let derefed = &result[0].1;
-            assert_eq!(derefed.extends.as_deref(), Some("parent"));
-            assert_eq!(derefed.excludes.len(), 1);
-            assert_eq!(derefed.excludes[0].as_ref(), "old-prop");
+            let result = ref_expander.expand_all(vec![(id, raw)])?;
+            let expanded_schemas = &result[0].1;
+            assert_eq!(expanded_schemas.extends.as_deref(), Some("parent"));
+            assert_eq!(expanded_schemas.excludes.len(), 1);
+            assert_eq!(expanded_schemas.excludes[0].as_ref(), "old-prop");
             Ok(())
         }
     }

@@ -66,7 +66,7 @@ pub struct PropertyBank {
 }
 
 /// Design note: `PropertyBank` stores properties by name for consistent
-/// dereferencing behavior and deterministic iteration order.
+/// ref-expansion behavior and deterministic iteration order.
 impl PropertyBank {
     /// Create a new empty `PropertyBank`.
     ///

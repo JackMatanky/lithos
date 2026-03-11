@@ -531,7 +531,7 @@ git push origin refactor/schema-file-centric
    - Regex safety checks
 
 2. **Move semantic validation to resolution**:
-   - Property ref existence → `Dereferencer`
+   - Property ref existence → `RefExpander`
    - Schema ref existence → `Extender`
    - Circular inheritance → `Extender`
    - Depth limits → `Resolver`

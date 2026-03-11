@@ -13,13 +13,13 @@ pub mod id;
 
 /// PropertyBank domain aggregate for centralized property registration.
 pub mod bank;
-/// Property-bank dereferencer pipeline stage.
+/// Property-bank reference expansion pipeline stage.
 ///
 /// **Benchmark access**: This module is `#[doc(hidden)] pub` to allow
 /// benchmarks to measure individual pipeline stages while hiding from public
 /// documentation.
 #[doc(hidden)]
-pub mod dereferencer;
+pub mod expander;
 
 /// Database command adapter for schema CQRS write operations.
 ///

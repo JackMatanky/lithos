@@ -151,7 +151,7 @@ Implement Phase 4 **only if**:
 | 5.1 Validation methods | ✅ | `RawSchema::validate()` at raw.rs:113, `RawPropertyBank::validate()` at raw.rs:499 |
 | 5.2 RawSchema validation | ✅ | Validates name, parent, excludes, property names (syntax only) |
 | 5.3 RawPropertyBank validation | ✅ | Validates all property names in bank |
-| 5.4 Semantic validation separation | ✅ | Semantic validation remains in dereferencer/extender/resolver |
+| 5.4 Semantic validation separation | ✅ | Semantic validation remains in expander/extender/resolver |
 | 5.5 Ingestor integration | ✅ | `ingestor.rs:124,154,238` - calls validate() after parsing |
 | 5.6 Unit tests | ✅ | 11 tests in raw.rs:1152-1363 (valid/invalid names, parent, excludes, properties) |
 
@@ -166,8 +166,8 @@ Implement Phase 4 **only if**:
    - Uses regex `^[a-z0-9_-]+$` for all names (max 64 chars)
 
 2. **Resolution layer** (semantics):
-   - Parent schema exists (dereferencer)
-   - Property references resolve (dereferencer)
+   - Parent schema exists (expander)
+   - Property references resolve (expander)
    - No circular inheritance (extender)
    - Property types valid (resolver)
 

@@ -100,7 +100,7 @@ This directory contains focused performance benchmarks organized by concern.
 - Schema ingestion (`src/schema/ingestor.rs`)
 - PropertyBank validation (`src/schema/bank.rs`)
 - PropertySpec validation logic (`src/schema/property_spec.rs`)
-- Internal pipeline stages (`src/schema/dereferencer.rs`, `extender.rs`, `resolver.rs`)
+- Internal pipeline stages (`src/schema/expander.rs`, `extender.rs`, `resolver.rs`)
 - Config path resolution (`src/config/paths.rs`)
 - Property domain model (`src/schema/property.rs`, `property_spec.rs`)
 
@@ -113,7 +113,7 @@ This directory contains focused performance benchmarks organized by concern.
 
 **Bottleneck identification**:
 - If file I/O >60% → normal, serde-bound
-- If dereferencing >35% → PropertySpec cloning overhead
+- If ref expansion >35% → PropertySpec cloning overhead
 - If DAG construction >20% → HashMap or algorithm issue
 - If property merging >25% → Arc cloning overhead
 - If PropertyBank validation >10% → PropertySpec construction regressed

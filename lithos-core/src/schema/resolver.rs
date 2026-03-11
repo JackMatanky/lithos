@@ -188,13 +188,13 @@ impl Resolver {
     /// child overrides and excludes.
     ///
     /// Both `parent` and `own` must be sorted by property name (guaranteed by
-    /// [`Dereferencer`]).  The merge is performed with a two-pointer walk:
+    /// [`RefExpander`]).  The merge is performed with a two-pointer walk:
     ///
     /// - Same-named entries: child's version wins (override).
     /// - Parent entries whose name is in `excludes`: dropped.
     /// - Remaining parent + own entries: interleaved in name order.
     ///
-    /// [`Dereferencer`]: super::dereferencer::Dereferencer
+    /// [`RefExpander`]: super::expander::RefExpander
     fn merge_properties(
         parent: &[Property],
         own: &[Property],
@@ -359,8 +359,8 @@ mod tests {
     use super::*;
     use crate::schema::{
         aggregate::SchemaId,
-        dereferencer::DereferencedSchema,
         error::SchemaError,
+        expander::RefExpandedSchema,
         extender::Extender,
         property::{
             Multiplicity, Optionality, Property, PropertyId, PropertyName,
@@ -382,13 +382,13 @@ mod tests {
             ))
         }
 
-        pub fn simple_derefed(
+        pub fn simple_expanded(
             id: SchemaId,
             name: &str,
             extends: Option<&str>,
             props: Vec<Property>,
-        ) -> (SchemaId, DereferencedSchema) {
-            (id, DereferencedSchema {
+        ) -> (SchemaId, RefExpandedSchema) {
+            (id, RefExpandedSchema {
                 name: name.into(),
                 extends: extends.map(Into::into),
                 excludes: Vec::new(),
@@ -396,13 +396,13 @@ mod tests {
             })
         }
 
-        pub fn derefed_with_excludes(
+        pub fn expanded_with_excludes(
             id: SchemaId,
             name: &str,
             extends: Option<&str>,
             excludes: Vec<Box<str>>,
-        ) -> (SchemaId, DereferencedSchema) {
-            (id, DereferencedSchema {
+        ) -> (SchemaId, RefExpandedSchema) {
+            (id, RefExpandedSchema {
                 name: name.into(),
                 extends: extends.map(Into::into),
                 excludes,
@@ -440,11 +440,11 @@ mod tests {
         fn single_root_schema_no_parent() -> Result<(), SchemaError> {
             let id = SchemaId::from_uuid(PARENT_ID);
             let prop = fixtures::bool_property("flag")?;
-            let derefed =
-                vec![fixtures::simple_derefed(id, "root", None, vec![
+            let expanded =
+                vec![fixtures::simple_expanded(id, "root", None, vec![
                     prop.clone(),
                 ])];
-            let tree = Extender::build(derefed, &HashMap::new())?;
+            let tree = Extender::build(expanded, &HashMap::new())?;
             let result = Resolver::resolve(&tree, &HashMap::new())?;
 
             assert_eq!(result.len(), 1);
@@ -462,18 +462,18 @@ mod tests {
             let parent_prop = fixtures::bool_property("from-parent")?;
             let child_prop = fixtures::bool_property("from-child")?;
 
-            let derefed = vec![
-                fixtures::simple_derefed(parent_id, "parent", None, vec![
+            let expanded = vec![
+                fixtures::simple_expanded(parent_id, "parent", None, vec![
                     parent_prop,
                 ]),
-                fixtures::simple_derefed(
+                fixtures::simple_expanded(
                     child_id,
                     "child",
                     Some("parent"),
                     vec![child_prop],
                 ),
             ];
-            let tree = Extender::build(derefed, &HashMap::new())?;
+            let tree = Extender::build(expanded, &HashMap::new())?;
             let result = Resolver::resolve(&tree, &HashMap::new())?;
 
             let child = result
@@ -515,18 +515,18 @@ mod tests {
                 PropertySpec::Bool(BoolSpec::default()),
             );
 
-            let derefed = vec![
-                fixtures::simple_derefed(parent_id, "parent", None, vec![
+            let expanded = vec![
+                fixtures::simple_expanded(parent_id, "parent", None, vec![
                     parent_prop,
                 ]),
-                fixtures::simple_derefed(
+                fixtures::simple_expanded(
                     child_id,
                     "child",
                     Some("parent"),
                     vec![child_prop],
                 ),
             ];
-            let tree = Extender::build(derefed, &HashMap::new())?;
+            let tree = Extender::build(expanded, &HashMap::new())?;
             let result = Resolver::resolve(&tree, &HashMap::new())?;
 
             let child = result
@@ -553,18 +553,18 @@ mod tests {
 
             let parent_prop = fixtures::bool_property("excluded")?;
 
-            let derefed = vec![
-                fixtures::simple_derefed(parent_id, "parent", None, vec![
+            let expanded = vec![
+                fixtures::simple_expanded(parent_id, "parent", None, vec![
                     parent_prop,
                 ]),
-                fixtures::derefed_with_excludes(
+                fixtures::expanded_with_excludes(
                     child_id,
                     "child",
                     Some("parent"),
                     vec!["excluded".into()],
                 ),
             ];
-            let tree = Extender::build(derefed, &HashMap::new())?;
+            let tree = Extender::build(expanded, &HashMap::new())?;
             let result = Resolver::resolve(&tree, &HashMap::new())?;
 
             let child = result
@@ -602,13 +602,13 @@ mod tests {
             let mut known_parents = HashMap::new();
             known_parents.insert(parent_id, parent_stored);
 
-            let derefed = vec![fixtures::simple_derefed(
+            let expanded = vec![fixtures::simple_expanded(
                 child_id,
                 "child",
                 Some("parent"),
                 vec![],
             )];
-            let tree = Extender::build(derefed, &known_parents)?;
+            let tree = Extender::build(expanded, &known_parents)?;
             let result = Resolver::resolve(&tree, &known_parents)?;
 
             let child = result
@@ -654,20 +654,20 @@ mod tests {
             use uuid::Uuid;
 
             use crate::schema::{
-                dereferencer::DereferencedSchema, extender::Extender,
+                expander::RefExpandedSchema, extender::Extender,
             };
 
             // Create a chain of 11 schemas: root → s1 → s2 → ... → s10
             // Depth 11 should exceed MAX_DEPTH=10
             const BASE: u128 = 0x018C_0000_0000_7000_8000_0000_0000_2000;
 
-            let mut derefed = Vec::new();
+            let mut expanded = Vec::new();
             let ids: Vec<_> = (0..11)
                 .map(|i| SchemaId::from_uuid(Uuid::from_u128(BASE + i)))
                 .collect();
 
             // Root (depth 1)
-            derefed.push((ids[0], DereferencedSchema {
+            expanded.push((ids[0], RefExpandedSchema {
                 name: "root".into(),
                 extends: None,
                 excludes: Vec::new(),
@@ -676,7 +676,7 @@ mod tests {
 
             // Chain: s1 extends root, s2 extends s1, ..., s10 extends s9
             for (i, &id) in ids.iter().enumerate().skip(1) {
-                derefed.push((id, DereferencedSchema {
+                expanded.push((id, RefExpandedSchema {
                     name: format!("s{i}").into(),
                     extends: Some(if i == 1 {
                         "root".into()
@@ -689,7 +689,7 @@ mod tests {
             }
 
             // Build tree and resolve
-            let tree = Extender::build(derefed, &HashMap::new())
+            let tree = Extender::build(expanded, &HashMap::new())
                 .expect("Tree building should succeed");
             let result = Resolver::resolve(&tree, &HashMap::new());
 

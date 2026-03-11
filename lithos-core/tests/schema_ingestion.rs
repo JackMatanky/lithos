@@ -4,7 +4,7 @@
 //!
 //! **Pipeline stages**:
 //! 1. **File Ingestion** (`Ingestor`): Read raw JSON/TOML/YAML files
-//! 2. **Raw → Domain** (`PropertyBank::from_raw`, `Dereferencer`): Parse and
+//! 2. **Raw → Domain** (`PropertyBank::from_raw`, `RefExpander`): Parse and
 //!    validate
 //! 3. **Inheritance** (`Extender`, `Resolver`): Build inheritance tree and
 //!    resolve

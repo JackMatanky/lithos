@@ -10,7 +10,7 @@
 //!
 //! Schema loading happens at vault startup and impacts initial LSP response
 //! time. The pipeline has multiple distinct stages (file I/O, parsing,
-//! dereferencing, DAG construction, property merging) with different
+//! ref expansion, DAG construction, property merging) with different
 //! performance characteristics. Measuring each stage in isolation enables
 //! targeted optimization and regression detection.
 //!
@@ -25,7 +25,7 @@
 //! - File I/O + Parsing (TOML/JSON → RawSchema via Ingestor)
 //! - PropertyBank validation (RawPropertyBank → PropertyBank)
 //! - PropertyBank lookup performance (HashMap get for $ref resolution)
-//! - Dereferencing ($ref resolution against PropertyBank)
+//! - Ref expansion ($ref resolution against PropertyBank)
 //! - DAG construction (topological sort, cycle detection via Extender)
 //! - Property merging (inheritance resolution via Resolver)
 //! - Full pipeline end-to-end (file → resolved Schema)
@@ -115,7 +115,7 @@
 //! **PropertyBank Lookup** (~5-10 ns per lookup):
 //! - HashMap get performance for $ref resolution
 //! - Should be O(1) with good hash distribution
-//! - Measures hot path cost during dereferencing
+//! - Measures hot path cost during ref expansion
 //! - Bottleneck: hash function quality, not table size
 //!
 //! **Dereferencing** (~50-150 µs for tiny, ~1-3 ms for large):
@@ -147,7 +147,7 @@
 //!
 //! **Bottleneck Identification**:
 //! - If **file I/O** >60% of total → normal, serde-bound (expected)
-//! - If **dereferencing** >35% of total → PropertySpec cloning overhead,
+//! - If **ref expansion** >35% of total → PropertySpec cloning overhead,
 //!   consider lazy evaluation
 //! - If **DAG construction** >20% of total → HashMap overhead or algorithm
 //!   issue
@@ -217,7 +217,7 @@
 //! - Schema file format changes (new fields, TOML structure changes)
 //! - PropertyBank structure changes (new property types, validation logic
 //!   changes)
-//! - Resolution pipeline changes (dereferencer, extender, resolver module
+//! - Resolution pipeline changes (expander, extender, resolver module
 //!   refactoring)
 //! - Domain model changes (Schema, Property, PropertySpec field additions)
 //! - Performance characteristics change (new hash function, different data
@@ -260,7 +260,7 @@
 //! | `file_io_and_parse`          | TOML/JSON deserialization (Ingestor)              | 200-500 µs    |
 //! | `property_bank_validation`   | PropertySpec construction and validation           | 20-30 µs      |
 //! | `property_bank_lookup`       | HashMap get performance for $ref resolution        | 5-10 ns       |
-//! | `dereferencing`              | $ref resolution against PropertyBank (Dereferencer)| 50-150 µs     |
+//! | `ref_expansion`              | $ref resolution against PropertyBank (RefExpander) | 50-150 µs     |
 //! | `dag_construction`           | Topological sort and cycle detection (Extender)    | 30-80 µs      |
 //! | `property_merging`           | Inheritance resolution (Resolver)                  | 40-100 µs     |
 //! | `full_pipeline`              | End-to-end ingestion (file → resolved Schema)      | 400-900 µs    |
@@ -306,7 +306,7 @@ use lithos_core::{
     schema::{
         bank::{BankVersion, PropertyBank},
         db_command, db_query,
-        dereferencer::Dereferencer,
+        expander::RefExpander,
         extender::Extender,
         id::SchemaId,
         ingestor::Ingestor,
@@ -530,7 +530,7 @@ fn bench_property_bank_validation(c: &mut Criterion) {
 
 /// Benchmark: PropertyBank lookup performance (get by name).
 ///
-/// Measures HashMap lookup cost for $ref resolution during dereferencing.
+/// Measures HashMap lookup cost for $ref resolution during ref expansion.
 /// Expected to be O(1) with good hash distribution (~5-10 ns per lookup).
 ///
 /// **Bottleneck**: Hash function quality, not table size
@@ -559,18 +559,18 @@ fn bench_property_bank_lookup(c: &mut Criterion) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Stage 3: Dereferencing
+//  Stage 3: Ref Expansion
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Benchmark: Dereferencing ($ref resolution against PropertyBank).
+/// Benchmark: Ref expansion ($ref resolution against PropertyBank).
 ///
 /// Measures $ref pointer resolution overhead. Expected to scale linearly with
 /// total number of $ref pointers across all schemas: O(n *
 /// avg_refs_per_schema).
 ///
 /// **Bottleneck**: PropertySpec cloning, not HashMap lookups
-fn bench_dereferencing(c: &mut Criterion) {
-    let mut group = c.benchmark_group("dereferencing");
+fn bench_ref_expansion(c: &mut Criterion) {
+    let mut group = c.benchmark_group("ref_expansion");
 
     for size in VAULT_SIZES {
         group.throughput(Throughput::Elements(size.schema_count as u64));
@@ -602,11 +602,11 @@ fn bench_dereferencing(c: &mut Criterion) {
                     .collect();
 
                 b.iter(|| {
-                    let dereferencer = Dereferencer::new(&bank);
-                    let derefed = dereferencer
-                        .deref(schemas_with_ids.clone())
-                        .expect("Failed to dereference");
-                    black_box(derefed.len())
+                    let ref_expander = RefExpander::new(&bank);
+                    let expanded_schemas = ref_expander
+                        .expand_all(schemas_with_ids.clone())
+                        .expect("Failed to expand refs");
+                    black_box(expanded_schemas.len())
                 });
             },
         );
@@ -635,7 +635,7 @@ fn bench_dag_construction(c: &mut Criterion) {
             BenchmarkId::from_parameter(size.name),
             size,
             |b, size| {
-                // Setup: dereference schemas
+                // Setup: expand refs in schemas
                 let vault = generate_vault(size);
                 let config = bench_config(vault.path());
                 let ingestor = Ingestor::new(
@@ -656,15 +656,17 @@ fn bench_dag_construction(c: &mut Criterion) {
                     .map(|(raw, _, _, _, _)| (SchemaId::new(), raw))
                     .collect();
 
-                let dereferencer = Dereferencer::new(&bank);
-                let derefed = dereferencer
-                    .deref(schemas_with_ids)
-                    .expect("Failed to dereference");
+                let ref_expander = RefExpander::new(&bank);
+                let expanded_schemas = ref_expander
+                    .expand_all(schemas_with_ids)
+                    .expect("Failed to expand refs");
 
                 b.iter(|| {
-                    let tree =
-                        Extender::build(derefed.clone(), &HashMap::new())
-                            .expect("Failed to build DAG");
+                    let tree = Extender::build(
+                        expanded_schemas.clone(),
+                        &HashMap::new(),
+                    )
+                    .expect("Failed to build DAG");
                     black_box(tree.nodes().len())
                 });
             },
@@ -716,11 +718,11 @@ fn bench_property_merging(c: &mut Criterion) {
                     .map(|(raw, _, _, _, _)| (SchemaId::new(), raw))
                     .collect();
 
-                let dereferencer = Dereferencer::new(&bank);
-                let derefed = dereferencer
-                    .deref(schemas_with_ids)
-                    .expect("Failed to dereference");
-                let tree = Extender::build(derefed, &HashMap::new())
+                let ref_expander = RefExpander::new(&bank);
+                let expanded_schemas = ref_expander
+                    .expand_all(schemas_with_ids)
+                    .expect("Failed to expand refs");
+                let tree = Extender::build(expanded_schemas, &HashMap::new())
                     .expect("Failed to build DAG");
 
                 b.iter(|| {
@@ -982,15 +984,16 @@ fn bench_full_pipeline(c: &mut Criterion) {
                             .map(|(raw, _, _, _, _)| (SchemaId::new(), raw))
                             .collect();
 
-                    // Stage 3: Dereferencing
-                    let dereferencer = Dereferencer::new(&bank);
-                    let derefed = dereferencer
-                        .deref(schemas_with_ids)
-                        .expect("Failed to dereference");
+                    // Stage 3: Ref expansion
+                    let ref_expander = RefExpander::new(&bank);
+                    let expanded_schemas = ref_expander
+                        .expand_all(schemas_with_ids)
+                        .expect("Failed to expand refs");
 
                     // Stage 4: DAG Construction
-                    let tree = Extender::build(derefed, &HashMap::new())
-                        .expect("Failed to build DAG");
+                    let tree =
+                        Extender::build(expanded_schemas, &HashMap::new())
+                            .expect("Failed to build DAG");
 
                     // Stage 5: Property Merging
                     let resolved = Resolver::resolve(&tree, &HashMap::new())
@@ -1072,13 +1075,13 @@ fn bench_find_schemas_using_properties(c: &mut Criterion) {
 /// Compares the performance of:
 /// 1. **Incremental**: `resolve_affected_properties()` - updates only changed
 ///    properties
-/// 2. **Full**: Complete pipeline (Dereferencer → Extender → Resolver)
+/// 2. **Full**: Complete pipeline (RefExpander → Extender → Resolver)
 ///
 /// Expected: Incremental should be 5-10x faster for schemas with few affected
 /// properties.
 ///
 /// **Bottleneck**: PropertyBank lookup + property spec updates (incremental) vs
-/// full dereferencing + DAG construction (full)
+/// full ref expansion + DAG construction (full)
 fn bench_incremental_vs_full_resolution(c: &mut Criterion) {
     let mut group = c.benchmark_group("incremental_resolution/comparison");
 
@@ -1120,11 +1123,11 @@ fn bench_incremental_vs_full_resolution(c: &mut Criterion) {
                     .map(|(raw, _, _, _, _)| (SchemaId::new(), raw))
                     .collect();
 
-                let dereferencer = Dereferencer::new(&bank);
-                let derefed = dereferencer
-                    .deref(schemas_with_ids)
-                    .expect("Failed to dereference");
-                let tree = Extender::build(derefed, &HashMap::new())
+                let ref_expander = RefExpander::new(&bank);
+                let expanded_schemas = ref_expander
+                    .expand_all(schemas_with_ids)
+                    .expect("Failed to expand refs");
+                let tree = Extender::build(expanded_schemas, &HashMap::new())
                     .expect("Failed to build DAG");
                 let resolved = Resolver::resolve(&tree, &HashMap::new())
                     .expect("Failed to resolve");
@@ -1189,13 +1192,14 @@ fn bench_incremental_vs_full_resolution(c: &mut Criterion) {
                             .map(|(raw, _, _, _, _)| (SchemaId::new(), raw))
                             .collect();
 
-                    let dereferencer = Dereferencer::new(&bank);
-                    let derefed = dereferencer
-                        .deref(schemas_with_ids)
-                        .expect("Failed to dereference");
+                    let ref_expander = RefExpander::new(&bank);
+                    let expanded_schemas = ref_expander
+                        .expand_all(schemas_with_ids)
+                        .expect("Failed to expand refs");
 
-                    let tree = Extender::build(derefed, &HashMap::new())
-                        .expect("Failed to build DAG");
+                    let tree =
+                        Extender::build(expanded_schemas, &HashMap::new())
+                            .expect("Failed to build DAG");
 
                     let resolved = Resolver::resolve(&tree, &HashMap::new())
                         .expect("Failed to resolve");
@@ -1214,7 +1218,7 @@ criterion_group!(
     bench_file_io_and_parse,
     bench_property_bank_validation,
     bench_property_bank_lookup,
-    bench_dereferencing,
+    bench_ref_expansion,
     bench_dag_construction,
     bench_property_merging,
     bench_staleness_serial,

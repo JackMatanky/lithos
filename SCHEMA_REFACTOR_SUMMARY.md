@@ -89,7 +89,7 @@ lithos-core/src/
     ├── stored.rs              # Storage types (was adapter/stored.rs)
     ├── ports.rs               # Port traits (WITH GATs)
     ├── raw.rs, bank.rs, ...   # Domain types
-    └── dereferencer.rs, extender.rs, resolver.rs  # Pipeline stages
+    └── expander.rs, extender.rs, resolver.rs  # Pipeline stages
 ```
 
 **Lines removed**: 1204 (query.rs + command.rs wrappers)

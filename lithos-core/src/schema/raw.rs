@@ -14,7 +14,7 @@
 //!
 //! ### What Raw Does NOT Validate (Semantics)
 //!
-//! - Property ref existence (validated by [`crate::schema::dereferencer`])
+//! - Property ref existence (validated by [`crate::schema::expander`])
 //! - Schema ref existence (validated by [`crate::schema::extender`])
 //! - Circular inheritance (validated by [`crate::schema::extender`])
 //! - Depth limits (validated by [`crate::schema::resolver`])
