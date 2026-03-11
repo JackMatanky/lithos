@@ -60,13 +60,16 @@ The Repository pattern provides data access abstraction. Use these method names 
 | ----------------- | ---------------------- | ------------------------------------ | -------------------------------- |
 | **`find_*`**      | `Result<Option<T>, E>` | Optional entity lookup               | `find_by_id`, `find_by_name`     |
 | **`get`**         | `Result<Option<T>, E>` | Fallible lookup with bounds checking | `Vec::get`, `HashMap::get`       |
-| **`list`**        | `Result<Vec<T>, E>`    | Enumerate all or filtered set        | `list()`, `list_by_parent`       |
+| **`list`**        | `Result<Vec<T>, E>`    | Enumerate all entities               | `list()`, `list_by_parent`       |
+| **`filter_*`**    | `Result<Vec<T>, E>`    | Filtered subset of entities          | `filter_stale()`, `filter_valid()`|
 | **`find_many_*`** | `Result<HashMap<K,V>>` | Bulk lookup by keys                  | `find_many_by_ids`               |
 | **`with_*`**      | `Result<Option<R>, E>` | Zero-copy closure-based access       | `with_archived`, `with_metadata` |
-| **`is_*`**        | `Result<bool, E>`      | Boolean queries                      | `is_stale`, `is_empty`           |
-| **`has_*`**       | `Result<bool, E>`      | Existence checks                     | `has_parent`, `has_default`      |
+| **`is_*`**        | `Result<bool, E>`      | Boolean query (single)               | `is_stale`, `is_empty`           |
+| **`has_*`**       | `Result<bool, E>`      | Possession check (single)            | `has_parent`, `has_default`      |
+| **`all_*`**       | `Result<bool, E>`      | Boolean query (batch)                | `all_exist`, `all_valid`         |
+| **`any_*`**       | `Result<bool, E>`      | Boolean query (any match)            | `any_stale`, `any_missing`       |
 | **`count_*`**     | `Result<usize, E>`     | Cardinality queries                  | `count()`, `count_by_status`     |
-| **`exists`**      | `Result<bool, E>`      | Existence check                      | `exists(id)`                     |
+| **`exists`**      | `Result<bool, E>`      | Existence check (single)             | `exists(id)`                     |
 
 #### `find_*` vs `get` Distinction
 
