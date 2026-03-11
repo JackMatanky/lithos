@@ -161,6 +161,73 @@ impl RawSchema {
     }
 }
 
+/// Raw property bank loaded from vault files.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::raw::RawPropertyBank;
+///
+/// let bank = RawPropertyBank {
+///     properties: std::collections::HashMap::new(),
+/// };
+/// let _ = bank;
+/// ```
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawPropertyBank {
+    /// Property bank format version (defaults to "1.0" if not specified).
+    #[serde(rename = "$version", default = "default_schema_version")]
+    pub version: Box<str>,
+    /// Map of property name to property definition.
+    pub properties: std::collections::HashMap<Box<str>, RawPropertyBankEntry>,
+}
+
+impl RawPropertyBank {
+    /// Validate the property bank version matches the expected version.
+    ///
+    /// # Errors
+    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
+    /// does not match.
+    #[inline]
+    pub fn validate_version(
+        &self,
+        path: &str,
+    ) -> Result<(), SchemaIngestionError> {
+        if self.version.as_ref() != SCHEMA_VERSION {
+            return Err(SchemaIngestionError::UnsupportedVersion {
+                path: path.into(),
+                found: self.version.clone(),
+                expected: SCHEMA_VERSION.into(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Validate raw property bank syntax and structure.
+    ///
+    /// This performs syntactic validation only:
+    /// - Property names are unique (enforced by `HashMap` structure)
+    /// - Property name syntax (via `PropertyName`)
+    /// - Property specs are valid (enforced by serde deserialization)
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate(&self) -> Result<(), SchemaError> {
+        // Validate property name syntax
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "Validation does not depend on iteration order"
+        )]
+        for prop_name in self.properties.keys() {
+            use super::property::PropertyName;
+            PropertyName::try_new(prop_name.as_ref())?;
+        }
+
+        Ok(())
+    }
+}
+
 /// Raw property for schema properties map.
 ///
 /// Used in `RawSchema.properties` where the name is the map key.
@@ -266,6 +333,32 @@ pub struct RawPropertyRef {
     /// File-type overrides (directory, `file_class`).
     #[serde(flatten)]
     pub file: RawFileSpec,
+}
+
+/// Entry in the raw property bank.
+///
+/// The property name is the map key, not a field here.
+/// `required` is not present because the bank is schema-agnostic.
+///
+/// # Examples
+/// ```ignore
+/// use lithos_core::schema::raw::{RawBoolSpec, RawPropertyBankEntry, RawPropertySpec};
+///
+/// let entry = RawPropertyBankEntry {
+///     multi: false,
+///     spec: RawPropertySpec::Bool(RawBoolSpec),
+/// };
+/// let _ = entry;
+/// ```
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawPropertyBankEntry {
+    /// Whether property accepts multiple values.
+    #[serde(default)]
+    pub multi: bool,
+    /// Type-specific validation constraints.
+    #[serde(flatten)]
+    pub spec: RawPropertySpec,
 }
 
 /// Raw property specification (serde-facing input type).
@@ -452,99 +545,6 @@ pub struct RawStringSpec {
     pub options: Option<RawOptions>,
     /// Optional validation pattern (custom regex or predefined format).
     pub pattern: Option<RawStringPattern>,
-}
-
-/// Raw property bank loaded from vault files.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::raw::RawPropertyBank;
-///
-/// let bank = RawPropertyBank {
-///     properties: std::collections::HashMap::new(),
-/// };
-/// let _ = bank;
-/// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawPropertyBank {
-    /// Property bank format version (defaults to "1.0" if not specified).
-    #[serde(rename = "$version", default = "default_schema_version")]
-    pub version: Box<str>,
-    /// Map of property name to property definition.
-    pub properties: std::collections::HashMap<Box<str>, RawPropertyBankEntry>,
-}
-
-impl RawPropertyBank {
-    /// Validate the property bank version matches the expected version.
-    ///
-    /// # Errors
-    /// Returns `SchemaIngestionError::UnsupportedVersion` if the version
-    /// does not match.
-    #[inline]
-    pub fn validate_version(
-        &self,
-        path: &str,
-    ) -> Result<(), SchemaIngestionError> {
-        if self.version.as_ref() != SCHEMA_VERSION {
-            return Err(SchemaIngestionError::UnsupportedVersion {
-                path: path.into(),
-                found: self.version.clone(),
-                expected: SCHEMA_VERSION.into(),
-            });
-        }
-        Ok(())
-    }
-
-    /// Validate raw property bank syntax and structure.
-    ///
-    /// This performs syntactic validation only:
-    /// - Property names are unique (enforced by `HashMap` structure)
-    /// - Property name syntax (via `PropertyName`)
-    /// - Property specs are valid (enforced by serde deserialization)
-    ///
-    /// # Errors
-    /// Returns `SchemaError` if validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), SchemaError> {
-        // Validate property name syntax
-        #[expect(
-            clippy::iter_over_hash_type,
-            reason = "Validation does not depend on iteration order"
-        )]
-        for prop_name in self.properties.keys() {
-            use super::property::PropertyName;
-            PropertyName::try_new(prop_name.as_ref())?;
-        }
-
-        Ok(())
-    }
-}
-
-/// Entry in the raw property bank.
-///
-/// The property name is the map key, not a field here.
-/// `required` is not present because the bank is schema-agnostic.
-///
-/// # Examples
-/// ```ignore
-/// use lithos_core::schema::raw::{RawBoolSpec, RawPropertyBankEntry, RawPropertySpec};
-///
-/// let entry = RawPropertyBankEntry {
-///     multi: false,
-///     spec: RawPropertySpec::Bool(RawBoolSpec),
-/// };
-/// let _ = entry;
-/// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawPropertyBankEntry {
-    /// Whether property accepts multiple values.
-    #[serde(default)]
-    pub multi: bool,
-    /// Type-specific validation constraints.
-    #[serde(flatten)]
-    pub spec: RawPropertySpec,
 }
 
 /// Raw options definition supporting three formats.
