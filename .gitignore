@@ -92,9 +92,12 @@ go.work
 !example_vault/.lithos/
 testdata/vault-copies/
 
+*digest.txt
+docs/refs/digests/
+
 # Production test data (70+ MB Obsidian vault)
-# Access via: ls docs/refs/obsidian/
-docs/refs/obsidian/
+# Access via: ls docs/refs/vault/
+docs/refs/vault/
 
 # --------------------- Tests & Coverage --------------------- #
 # Reports
@@ -172,8 +175,3 @@ _old/
 _archive/
 artifacts/
 vendor/
-
-
-*digest.txt
-docs/refs/digests/
-docs/refs/vault/
