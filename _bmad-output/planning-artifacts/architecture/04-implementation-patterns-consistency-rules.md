@@ -9,9 +9,37 @@ section: "Implementation Standards"
 
 # Implementation Patterns & Consistency Rules
 
-## Pattern Categories Defined
+## Related Documentation
+
+**MUST READ FIRST:**
+- [Core Architectural Decisions](./03-core-architectural-decisions.md) - Files as source of truth, unified Storage pattern
+- [ADR 002: Storage Pattern](../../../docs/adr/002-storage-pattern.md) - Unified Storage traits architecture
+- [ADR 003: Serialization Strategy](../../../docs/adr/003-serialization-strategy.md) - Raw/Domain/View shapes model
+- [State Machine Pattern Reference](../../../docs/refs/rust/state-machine-pattern.md) - When/how to use type-state patterns
+- [Rust Naming Taxonomy](../../../docs/refs/rust/naming-taxonomy.md) - Method naming conventions
+
+## Overview
+
+**Purpose:** Ensure multiple AI agents write compatible, consistent code that works together seamlessly.
 
 **Critical Conflict Points Identified:** 30+ areas where AI agents could make different choices in async Rust CLI applications with modular boundaries, functional pipelines, and type-driven design.
+
+**Pattern Categories:**
+1. [Naming Patterns](#naming-patterns) - Rust conventions, API contracts, lifetimes
+2. [Type-Driven Design Patterns](#type-driven-design-patterns) - Validation, visibility, newtypes
+3. [Module & Storage Patterns](#module--storage-patterns) - Context isolation, unified Storage traits
+4. [Serialization & Storage Patterns](#serialization--storage-patterns) - Raw/Domain/View shapes, zero-copy
+5. [Error Handling & Diagnostics](#error-handling--diagnostics) - thiserror, miette, tracing
+6. [Async & Concurrency Rules](#async--concurrency-rules) - Sync-first core, async edges
+7. [Communication & Dependency Rules](#communication--dependency-rules) - Functional composition, context isolation
+8. [Project Structure & Module Layout](#project-structure--module-layout) - Workspace organization
+9. [Process & Tooling](#process--tooling) - Testing, mise tasks, clippy limits
+10. [Enforcement Guidelines](#enforcement-guidelines) - Mandatory rules for AI agents
+
+## Pattern Categories Defined
+
+**Rust-Specific Considerations:**
+This document addresses conflict points specific to Rust CLI applications, including ownership patterns, zero-copy database access, async boundaries, and module isolation. Traditional web application concerns (REST APIs, loading states, client-side state management) are not applicable.
 
 ## Naming Patterns
 
@@ -1368,6 +1396,86 @@ async fn vault_indexing_succeeds() {
 
 **Resource References:**
 
-- Rust Official Documentation
-- Clippy Lints Reference
-- Tokio Async Patterns
+- [Rust Official Documentation](https://doc.rust-lang.org/)
+- [Clippy Lints Reference](https://rust-lang.github.io/rust-clippy/)
+- [Tokio Async Patterns](https://tokio.rs/tokio/tutorial)
+- [rkyv Documentation](https://rkyv.org/)
+- [redb Documentation](https://docs.rs/redb/)
+
+---
+
+## Quick Reference Summary
+
+### **Decision Matrix: When to Create Each Type**
+
+| Type Layer | Purpose | When to Create | Location | Derives |
+|:-----------|:--------|:---------------|:---------|:--------|
+| **Raw\*** | Accept external input | Always (for file/API input) | `<context>/raw.rs` | `serde::Deserialize` |
+| **Domain** | Validated business entity | Always | `<context>/aggregate.rs` | `rkyv::Archive` + feature-gated `serde` |
+| **Archived\*** | Zero-copy DB access | Automatic (rkyv-generated) | N/A (generated) | N/A (generated) |
+| **\*View** | Read-optimized projection | Rarely (profiling only) | `<context>/view.rs` | `rkyv::Archive` |
+
+### **Storage Trait Pattern Summary**
+
+```rust
+// Define once per context
+pub trait Storage {
+    fn get(&self, id: &Id) -> Result<Option<T>, Error>;
+    fn save(&self, entity: &T) -> Result<(), Error>;
+    fn list(&self) -> Result<Vec<T>, Error>;
+    fn with_archived<F, R>(&self, id: &Id, f: F) -> Result<Option<R>, Error>
+        where F: FnOnce(&Archived<T>) -> R;
+}
+
+// Implement for each backend
+impl Storage for RedbStorage { /* ... */ }
+impl Storage for InMemoryStorage { /* ... */ }
+impl Storage for FakeStorage { /* ... */ }
+```
+
+### **Context Isolation Rules**
+
+| From Context | Can Import | Cannot Import |
+|:-------------|:-----------|:--------------|
+| Business (note, schema, template) | config, db, fs, bounds | Other business contexts |
+| Cross-cutting (config) | db, fs | Business contexts |
+| Infrastructure (db, fs) | Nothing | All contexts |
+
+### **Pipeline Pattern Summary**
+
+```text
+File → [parse] → Raw* → [validate] → Domain → [persist] → Database
+                  ↑                     ↑                      ↑
+                serde              TryFrom<Raw*>         rkyv::Archive
+```
+
+### **Critical Anti-Patterns**
+
+| ❌ Never Do This | ✅ Do This Instead |
+|:-----------------|:-------------------|
+| `pub fields` on domain types | Private fields + accessor methods |
+| `String` for validated text | Newtype wrapper (e.g., `SchemaName(Box<str>)`) |
+| `unwrap()` / `expect()` in production | `?` operator with `Result<T, E>` |
+| Business contexts importing each other | Use infrastructure or CLI orchestration |
+| `#[async_trait]` in `lithos-core` | Sync-first core, async at edges |
+| Creating `*View` prematurely | Use `Archived<Domain>` first, profile |
+| Methods on `Raw*` types | `TryFrom<Raw*>` for validation boundary |
+| CQRS split (Query/Command traits) | Unified `Storage` trait |
+| Event sourcing for orchestration | Functional composition with `Result<T, E>` |
+
+---
+
+## Pattern Enforcement Checklist
+
+Before committing code, verify:
+
+- [ ] **Naming:** All names follow Rust conventions and naming taxonomy
+- [ ] **Types:** Domain types have private fields, validated constructors
+- [ ] **Modules:** No cross-context imports between business contexts
+- [ ] **Storage:** Using unified `Storage` trait (not CQRS split)
+- [ ] **Serialization:** Raw → Domain → Storage pipeline correct
+- [ ] **Errors:** All errors use `thiserror`, no `unwrap()`/`expect()`
+- [ ] **Async:** Core is sync-first, async only in CLI
+- [ ] **Tests:** Public APIs and critical paths covered
+- [ ] **Docs:** Public APIs have rustdoc with examples
+- [ ] **Clippy:** Passes with complexity limits (no warnings)
