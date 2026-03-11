@@ -50,147 +50,6 @@ This document provides a comprehensive taxonomy of method and function naming co
 
 ---
 
-## Repository Pattern Method Naming
-
-The Repository pattern provides data access abstraction. Use these method names in `Repository` trait definitions:
-
-### Read Operations
-
-| Method            | Return Type            | Semantics                            | Examples                         |
-| ----------------- | ---------------------- | ------------------------------------ | -------------------------------- |
-| **`find_*`**      | `Result<Option<T>, E>` | Optional entity lookup               | `find_by_id`, `find_by_name`     |
-| **`get`**         | `Result<Option<T>, E>` | Fallible lookup with bounds checking | `Vec::get`, `HashMap::get`       |
-| **`list`**        | `Result<Vec<T>, E>`    | Enumerate all entities               | `list()`, `list_by_parent`       |
-| **`filter_*`**    | `Result<Vec<T>, E>`    | Filtered subset of entities          | `filter_stale()`, `filter_valid()`|
-| **`find_many_*`** | `Result<HashMap<K,V>>` | Bulk lookup by keys                  | `find_many_by_ids`               |
-| **`with_*`**      | `Result<Option<R>, E>` | Zero-copy closure-based access       | `with_archived`, `with_metadata` |
-| **`is_*`**        | `Result<bool, E>`      | Boolean query (single)               | `is_stale`, `is_empty`           |
-| **`has_*`**       | `Result<bool, E>`      | Possession check (single)            | `has_parent`, `has_default`      |
-| **`all_*`**       | `Result<bool, E>`      | Boolean query (batch)                | `all_exist`, `all_valid`         |
-| **`any_*`**       | `Result<bool, E>`      | Boolean query (any match)            | `any_stale`, `any_missing`       |
-| **`count_*`**     | `Result<usize, E>`     | Cardinality queries                  | `count()`, `count_by_status`     |
-| **`exists`**      | `Result<bool, E>`      | Existence check (single)             | `exists(id)`                     |
-
-#### `find_*` vs `get` Distinction
-
-**Rule**: Use `find_*` for **entity lookup**, `get` for **collection access with bounds checking**.
-
-```rust
-// ✅ find_* for entity lookup (repository pattern)
-fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error>;
-fn find_by_name(&self, name: &SchemaName) -> Result<Option<Schema>, Self::Error>;
-
-// ✅ get for collection access (HashMap, Vec pattern)
-fn get(&self, key: &K) -> Option<&V>;  // Like HashMap::get
-Vec::get(index) -> Option<&T>           // Like Vec::get
-```
-
-#### Zero-Copy `with_*` Pattern
-
-For performance-critical paths (LSP queries, hot database reads), use closure-scoped access:
-
-```rust
-// ✅ GOOD: Closure-based zero-copy access
-fn with_archived<F, R>(&self, id: SchemaId, f: F) -> Result<Option<R>, Self::Error>
-where
-    F: for<'a> FnOnce(&'a Archived<Schema>) -> R;
-
-// Usage
-storage.with_archived(id, |archived| {
-    archived.name()  // Zero-copy access
-})?;
-
-// ❌ BAD: Returning guards requires self-referential structs
-fn get_archived(&self, id: SchemaId) -> Result<Option<Guard>, Self::Error>;
-```
-
-**Generic Parameter Order**: Use `<F, R>` consistently (closure first, result second).
-
----
-
-### Write Operations
-
-| Method            | Signature Pattern       | Semantics                      | Examples                 |
-| ----------------- | ----------------------- | ------------------------------ | ------------------------ |
-| **`save`**        | `(&T) -> Result<(), E>` | Upsert single entity           | `save(&schema)`          |
-| **`save_many`**   | `(&[T]) -> Result<>`    | Bulk upsert atomically         | `save_many(&schemas)`    |
-| **`insert`**      | `(K, V) -> Option<V>`   | Add to collection, return old  | `HashMap::insert`        |
-| **`update`**      | `(T) -> Result<T, E>`   | Modify existing (may error)    | `update(schema)`         |
-| **`delete`**      | `(ID) -> Result<(), E>` | Remove single entity           | `delete(schema_id)`      |
-| **`delete_many`** | `(&[ID]) -> Result<>`   | Bulk remove atomically         | `delete_many(&ids)`      |
-| **`remove`**      | `(K) -> Option<V>`      | Remove from collection, return | `HashMap::remove`        |
-| **`create`**      | `(params) -> Result<T>` | Create new (ID generated)      | `create(name) -> Schema` |
-
-**save vs insert vs create:**
-
-- `save`: Repository pattern, upsert semantics (create or update)
-- `insert`: Collection pattern, replaces existing (returns old value)
-- `create`: Explicit creation (may error if exists)
-
-```rust
-// ✅ Repository pattern
-pub trait Repository {
-    fn save(&self, entity: &Schema) -> Result<(), Self::Error>;
-    fn delete(&self, id: SchemaId) -> Result<(), Self::Error>;
-}
-
-// ✅ Collection pattern (HashMap, BTreeMap)
-fn insert(&mut self, key: K, value: V) -> Option<V>;
-fn remove(&mut self, key: &K) -> Option<V>;
-```
-
----
-
-## Parse vs Validate Naming
-
-**Critical Distinction**: Parsing returns validated types, validation returns `Result<(), E>`.
-
-### Parse Methods (Preferred)
-
-| Pattern        | Signature                    | Usage                          | Examples                        |
-| -------------- | ---------------------------- | ------------------------------ | ------------------------------- |
-| **`parse`**    | `(input) -> Result<Self, E>` | Parse string to validated type | `SchemaId::parse(s)`            |
-| **`try_new`**  | `(input) -> Result<Self, E>` | Validated constructor          | `SchemaName::try_new(s)`        |
-| **`from_str`** | `(&str) -> Result<Self, E>`  | FromStr trait                  | `IpAddr::from_str("127.0.0.1")` |
-| **`try_from`** | `(T) -> Result<Self, E>`     | TryFrom trait                  | `Schema::try_from(raw_schema)`  |
-
-### Validate Methods (Avoid - Throws Away Info)
-
-```rust
-// ❌ BAD: Validation throws away information
-fn validate_schema_name(s: &str) -> Result<(), SchemaError> {
-    if !is_valid_identifier(s) {
-        return Err(SchemaError::InvalidName);
-    }
-    Ok(())  // Information lost! Need to check again later.
-}
-
-// ✅ GOOD: Parsing preserves information in types
-impl SchemaName {
-    pub fn try_new(s: &str) -> Result<Self, SchemaError> {
-        if !is_valid_identifier(s) {
-            return Err(SchemaError::InvalidName);
-        }
-        Ok(Self(s.into()))  // Type carries proof of validity
-    }
-}
-
-// ✅ GOOD: TryFrom is parsing, not validation
-impl TryFrom<RawSchema> for Schema {
-    type Error = SchemaError;
-    fn try_from(raw: RawSchema) -> Result<Self, SchemaError> {
-        Ok(Schema {
-            name: SchemaName::try_new(&raw.name)?,  // Parse to stronger type
-            properties: parse_properties(raw.properties)?,
-        })
-    }
-}
-```
-
-**Key Principle**: Once you have a parsed type (e.g., `SchemaName`), it's guaranteed valid. No re-checking needed.
-
----
-
 ## Conversion & Constructor Patterns
 
 ### Conversion Prefixes: `as_`, `to_`, `into_`
@@ -476,6 +335,147 @@ pub enum SchemaError {
     CircularDependency(String),
 }
 ```
+
+---
+
+## Repository Pattern Method Naming
+
+The Repository pattern provides data access abstraction. Use these method names in `Repository` trait definitions:
+
+### Read Operations
+
+| Method            | Return Type            | Semantics                            | Examples                           |
+| ----------------- | ---------------------- | ------------------------------------ | ---------------------------------- |
+| **`find_*`**      | `Result<Option<T>, E>` | Optional entity lookup               | `find_by_id`, `find_by_name`       |
+| **`get`**         | `Result<Option<T>, E>` | Fallible lookup with bounds checking | `Vec::get`, `HashMap::get`         |
+| **`list`**        | `Result<Vec<T>, E>`    | Enumerate all entities               | `list()`, `list_by_parent`         |
+| **`filter_*`**    | `Result<Vec<T>, E>`    | Filtered subset of entities          | `filter_stale()`, `filter_valid()` |
+| **`find_many_*`** | `Result<HashMap<K,V>>` | Bulk lookup by keys                  | `find_many_by_ids`                 |
+| **`with_*`**      | `Result<Option<R>, E>` | Zero-copy closure-based access       | `with_archived`, `with_metadata`   |
+| **`is_*`**        | `Result<bool, E>`      | Boolean query (single)               | `is_stale`, `is_empty`             |
+| **`has_*`**       | `Result<bool, E>`      | Possession check (single)            | `has_parent`, `has_default`        |
+| **`all_*`**       | `Result<bool, E>`      | Boolean query (batch)                | `all_exist`, `all_valid`           |
+| **`any_*`**       | `Result<bool, E>`      | Boolean query (any match)            | `any_stale`, `any_missing`         |
+| **`count_*`**     | `Result<usize, E>`     | Cardinality queries                  | `count()`, `count_by_status`       |
+| **`exists`**      | `Result<bool, E>`      | Existence check (single)             | `exists(id)`                       |
+
+#### `find_*` vs `get` Distinction
+
+**Rule**: Use `find_*` for **entity lookup**, `get` for **collection access with bounds checking**.
+
+```rust
+// ✅ find_* for entity lookup (repository pattern)
+fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error>;
+fn find_by_name(&self, name: &SchemaName) -> Result<Option<Schema>, Self::Error>;
+
+// ✅ get for collection access (HashMap, Vec pattern)
+fn get(&self, key: &K) -> Option<&V>;  // Like HashMap::get
+Vec::get(index) -> Option<&T>           // Like Vec::get
+```
+
+#### Zero-Copy `with_*` Pattern
+
+For performance-critical paths (LSP queries, hot database reads), use closure-scoped access:
+
+```rust
+// ✅ GOOD: Closure-based zero-copy access
+fn with_archived<F, R>(&self, id: SchemaId, f: F) -> Result<Option<R>, Self::Error>
+where
+    F: for<'a> FnOnce(&'a Archived<Schema>) -> R;
+
+// Usage
+storage.with_archived(id, |archived| {
+    archived.name()  // Zero-copy access
+})?;
+
+// ❌ BAD: Returning guards requires self-referential structs
+fn get_archived(&self, id: SchemaId) -> Result<Option<Guard>, Self::Error>;
+```
+
+**Generic Parameter Order**: Use `<F, R>` consistently (closure first, result second).
+
+---
+
+### Write Operations
+
+| Method            | Signature Pattern       | Semantics                      | Examples                 |
+| ----------------- | ----------------------- | ------------------------------ | ------------------------ |
+| **`save`**        | `(&T) -> Result<(), E>` | Upsert single entity           | `save(&schema)`          |
+| **`save_many`**   | `(&[T]) -> Result<>`    | Bulk upsert atomically         | `save_many(&schemas)`    |
+| **`insert`**      | `(K, V) -> Option<V>`   | Add to collection, return old  | `HashMap::insert`        |
+| **`update`**      | `(T) -> Result<T, E>`   | Modify existing (may error)    | `update(schema)`         |
+| **`delete`**      | `(ID) -> Result<(), E>` | Remove single entity           | `delete(schema_id)`      |
+| **`delete_many`** | `(&[ID]) -> Result<>`   | Bulk remove atomically         | `delete_many(&ids)`      |
+| **`remove`**      | `(K) -> Option<V>`      | Remove from collection, return | `HashMap::remove`        |
+| **`create`**      | `(params) -> Result<T>` | Create new (ID generated)      | `create(name) -> Schema` |
+
+**save vs insert vs create:**
+
+- `save`: Repository pattern, upsert semantics (create or update)
+- `insert`: Collection pattern, replaces existing (returns old value)
+- `create`: Explicit creation (may error if exists)
+
+```rust
+// ✅ Repository pattern
+pub trait Repository {
+    fn save(&self, entity: &Schema) -> Result<(), Self::Error>;
+    fn delete(&self, id: SchemaId) -> Result<(), Self::Error>;
+}
+
+// ✅ Collection pattern (HashMap, BTreeMap)
+fn insert(&mut self, key: K, value: V) -> Option<V>;
+fn remove(&mut self, key: &K) -> Option<V>;
+```
+
+---
+
+## Parse vs Validate Naming
+
+**Critical Distinction**: Parsing returns validated types, validation returns `Result<(), E>`.
+
+### Parse Methods (Preferred)
+
+| Pattern        | Signature                    | Usage                          | Examples                        |
+| -------------- | ---------------------------- | ------------------------------ | ------------------------------- |
+| **`parse`**    | `(input) -> Result<Self, E>` | Parse string to validated type | `SchemaId::parse(s)`            |
+| **`try_new`**  | `(input) -> Result<Self, E>` | Validated constructor          | `SchemaName::try_new(s)`        |
+| **`from_str`** | `(&str) -> Result<Self, E>`  | FromStr trait                  | `IpAddr::from_str("127.0.0.1")` |
+| **`try_from`** | `(T) -> Result<Self, E>`     | TryFrom trait                  | `Schema::try_from(raw_schema)`  |
+
+### Validate Methods (Avoid - Throws Away Info)
+
+```rust
+// ❌ BAD: Validation throws away information
+fn validate_schema_name(s: &str) -> Result<(), SchemaError> {
+    if !is_valid_identifier(s) {
+        return Err(SchemaError::InvalidName);
+    }
+    Ok(())  // Information lost! Need to check again later.
+}
+
+// ✅ GOOD: Parsing preserves information in types
+impl SchemaName {
+    pub fn try_new(s: &str) -> Result<Self, SchemaError> {
+        if !is_valid_identifier(s) {
+            return Err(SchemaError::InvalidName);
+        }
+        Ok(Self(s.into()))  // Type carries proof of validity
+    }
+}
+
+// ✅ GOOD: TryFrom is parsing, not validation
+impl TryFrom<RawSchema> for Schema {
+    type Error = SchemaError;
+    fn try_from(raw: RawSchema) -> Result<Self, SchemaError> {
+        Ok(Schema {
+            name: SchemaName::try_new(&raw.name)?,  // Parse to stronger type
+            properties: parse_properties(raw.properties)?,
+        })
+    }
+}
+```
+
+**Key Principle**: Once you have a parsed type (e.g., `SchemaName`), it's guaranteed valid. No re-checking needed.
 
 ---
 

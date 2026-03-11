@@ -403,12 +403,15 @@ const CONFIG_VAULT: TableDefinition<&str, &[u8]> = TableDefinition::new("config_
 | `validate_*`     | Check only (returns `Result<()>`) | AVOID - throws away info           | ❌ Validate (use parse)      |
 | `find_*`         | Optional result                   | `find_schema()`, `find_by_name()`  | Query (after parsing)        |
 | `get_*`          | Singleton (panics if not found)   | `get_config()`, `get_by_id()`      | Query (after parsing)        |
-| `list_*`         | Multiple results                  | `list_schemas()`, `list_all()`     | Query (after parsing)        |
+| `list_*`         | Multiple results (all)            | `list_schemas()`, `list_all()`     | Query (after parsing)        |
+| `filter_*`       | Filtered subset                   | `filter_stale()`, `filter_by_tag()`| Query (after parsing)        |
+| `all_*`          | Check all match predicate         | `all_stale()`, `all_valid()`       | Query (after parsing)        |
+| `any_*`          | Check any match predicate         | `any_stale()`, `any_invalid()`     | Query (after parsing)        |
 | `with_*`         | Zero-copy closure                 | `with_archived()`, `with_config()` | Query (after parsing)        |
 | `save`           | Upsert operation                  | `save()`, `save_all()`             | Persistence                  |
 | `create`         | Insert-only                       | `create()`, `create_new()`         | Persistence                  |
 | `delete`         | Remove operation                  | `delete()`, `delete_by_id()`       | Persistence                  |
-| `is_*` / `has_*` | Boolean checks                    | `is_valid()`, `has_parent()`       | Query (after parsing)        |
+| `is_*` / `has_*` | Boolean checks (singular)         | `is_valid()`, `has_parent()`       | Query (after parsing)        |
 | `as_*`           | Free conversion                   | `as_str()`, `as_ref()`             | Accessor                     |
 | `to_*`           | Expensive conversion              | `to_string()`, `to_owned()`        | Conversion                   |
 | `into_*`         | Consuming conversion              | `into_inner()`, `into_bytes()`     | Conversion                   |
