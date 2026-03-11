@@ -1,24 +1,26 @@
 # Rust Method & Function Naming Taxonomy
 
-**Last Updated**: 2026-03-03
+**Last Updated**: 2026-03-11
 **Status**: Canonical Reference
 **Scope**: All Rust code in lithos-core and lithos-cli
 
-This document provides a comprehensive taxonomy of method and function naming conventions for the Lithos project, combining official Rust API Guidelines with CQRS-specific patterns for our port-based architecture.
+This document provides a comprehensive taxonomy of method and function naming conventions for the Lithos project, based on official Rust API Guidelines, standard library patterns, and Repository pattern best practices.
 
 ---
 
 ## Table of Contents
 
 1. [Core Rust Naming Conventions](#core-rust-naming-conventions)
-2. [CQRS Method Naming (Query & Command Ports)](#cqrs-method-naming-query--command-ports)
-3. [Conversion & Constructor Patterns](#conversion--constructor-patterns)
-4. [Getter & Accessor Patterns](#getter--accessor-patterns)
-5. [Iterator Naming](#iterator-naming)
-6. [Boolean Predicates](#boolean-predicates)
-7. [Mutability & Borrowing Indicators](#mutability--borrowing-indicators)
-8. [Quick Reference Tables](#quick-reference-tables)
-9. [Anti-Patterns to Avoid](#anti-patterns-to-avoid)
+2. [Repository Pattern Method Naming](#repository-pattern-method-naming)
+3. [Parse vs Validate Naming](#parse-vs-validate-naming)
+4. [Conversion & Constructor Patterns](#conversion--constructor-patterns)
+5. [Getter & Accessor Patterns](#getter--accessor-patterns)
+6. [Iterator Naming](#iterator-naming)
+7. [Boolean Predicates](#boolean-predicates)
+8. [Mutability & Borrowing Indicators](#mutability--borrowing-indicators)
+9. [Error Handling Patterns](#error-handling-patterns)
+10. [Quick Reference Tables](#quick-reference-tables)
+11. [Anti-Patterns to Avoid](#anti-patterns-to-avoid)
 
 ---
 
@@ -28,60 +30,54 @@ This document provides a comprehensive taxonomy of method and function naming co
 
 | Item              | Convention             | Example                        |
 | ----------------- | ---------------------- | ------------------------------ |
-| Functions/Methods | `snake_case`           | `parse_note`, `validate_value` |
-| Types/Traits      | `UpperCamelCase`       | `PropertyName`, `NoteId`       |
+| Crates/Packages   | `kebab-case`           | `lithos-core`, `serde-json`    |
+| Modules           | `snake_case`           | `note`, `schema`, `loader`     |
+| Functions/Methods | `snake_case`           | `parse_schema`, `try_new`      |
+| Types/Traits      | `UpperCamelCase`       | `SchemaName`, `PropertyId`     |
 | Enum Variants     | `UpperCamelCase`       | `Optionality::Required`        |
 | Local Variables   | `snake_case`           | `file_path`, `property_spec`   |
-| Constants/Statics | `SCREAMING_SNAKE_CASE` | `MAX_SIZE`, `DEFAULT_PORT`     |
-| Type Parameters   | Concise uppercase      | `T`, `K`, `V`                  |
-| Lifetimes         | Short lowercase        | `'a`, `'src`, `'de`            |
+| Constants/Statics | `SCREAMING_SNAKE_CASE` | `MAX_DEPTH`, `DEFAULT_TIMEOUT` |
+| Type Parameters   | Concise uppercase      | `T`, `K`, `V`, `E`             |
+| Lifetimes         | Short lowercase        | `'a`, `'db`, `'de`, `'src`     |
 
 **Acronym Rules**:
 
-- `UpperCamelCase`: Treat as one word → `Uuid` not `UUID`, `Stdin` not `StdIn`
+- `UpperCamelCase`: Treat as one word → `Uuid` not `UUID`, `HttpRequest` not `HTTPRequest`
 - `snake_case`: Lowercase → `is_xid_start` not `is_XID_start`
 - Single letters only at end → `btree_map` not `b_tree_map`
 
 ---
 
-## CQRS Method Naming (Query & Command Ports)
+## Repository Pattern Method Naming
 
-### Query Port Method Prefixes
+The Repository pattern provides data access abstraction. Use these method names in `Repository` trait definitions:
 
-Use these prefixes in `Query` trait definitions for read-only operations:
+### Read Operations
 
-| Prefix          | Return Type                | Semantics                              | Examples                              |
-| --------------- | -------------------------- | -------------------------------------- | ------------------------------------- |
-| **`find_*`**    | `Option<T>`                | Optional single-entity lookup          | `find_by_id`, `find_by_name`          |
-| **`get_*`**     | `Option<T>` or `T`         | Singleton/config/singleton lookup      | `get_global`, `get_property_bank`     |
-| **`list_*`**    | `Vec<T>` or `Iterator`     | Enumeration of a set (implies many)    | `list()`, `list_children`             |
-| **`find_many_*`**| `HashMap<K,V>` (bulk I/O)  | Bulk lookup of a subset by keys        | `find_many_by_ids`                    |
-| **`are_many_*`**| `HashMap<K, bool>`         | Batch boolean queries (plural of `is_`) | `are_many_stale`                      |
-| **`with_*`**    | `Option<R>` (HRTB closure) | Zero-copy closure-based access         | `with_archived`, `with_metadata`      |
-| **`is_*`**      | `bool`                     | Boolean queries (staleness, existence) | `is_bank_stale`, `is_schema_stale`    |
-| **`has_*`**     | `bool`                     | Possession/presence checks             | `has_name`, `has_default`             |
-| **`count_*`**   | `usize`                    | Cardinality queries                    | `count_schemas` (future)              |
-| **`cascade_*`** | Side-effect (graph ops)    | Traversal with mutations               | `cascade_staleness`                   |
+| Method            | Return Type            | Semantics                            | Examples                         |
+| ----------------- | ---------------------- | ------------------------------------ | -------------------------------- |
+| **`find_*`**      | `Result<Option<T>, E>` | Optional entity lookup               | `find_by_id`, `find_by_name`     |
+| **`get`**         | `Result<Option<T>, E>` | Fallible lookup with bounds checking | `Vec::get`, `HashMap::get`       |
+| **`list`**        | `Result<Vec<T>, E>`    | Enumerate all or filtered set        | `list()`, `list_by_parent`       |
+| **`find_many_*`** | `Result<HashMap<K,V>>` | Bulk lookup by keys                  | `find_many_by_ids`               |
+| **`with_*`**      | `Result<Option<R>, E>` | Zero-copy closure-based access       | `with_archived`, `with_metadata` |
+| **`is_*`**        | `Result<bool, E>`      | Boolean queries                      | `is_stale`, `is_empty`           |
+| **`has_*`**       | `Result<bool, E>`      | Existence checks                     | `has_parent`, `has_default`      |
+| **`count_*`**     | `Result<usize, E>`     | Cardinality queries                  | `count()`, `count_by_status`     |
+| **`exists`**      | `Result<bool, E>`      | Existence check                      | `exists(id)`                     |
 
-**Note on `search_*` and `query_*`**: Never use `search_*` or `query_*`. They are not Rust-idiomatic and create taxonomic clutter. Use `find_*` or `list_*` instead.
+#### `find_*` vs `get` Distinction
 
-**Note on `lookup_*`**: Do not use `lookup_*`. Consolidate index mappings into the `find_*` taxonomy (e.g., `find_id_by_name`).
-
-**Note on `list_*` vs `find_many_*`**: Use `list_*` when returning all entities in a set (no input keys) or all children of a parent. Use `find_many_*` when the caller provides a specific list of keys to fetch. Since `list` implies a collection, it never needs a `_many` suffix.
-
-#### `find_*` vs `get_*` Distinction
-
-**Rule**: Use `find_*` for **optional** lookups, `get_*` for **singletons** or **expected-to-exist** cases.
+**Rule**: Use `find_*` for **entity lookup**, `get` for **collection access with bounds checking**.
 
 ```rust
-// ✅ find_* for optional entity lookup
+// ✅ find_* for entity lookup (repository pattern)
 fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error>;
 fn find_by_name(&self, name: &SchemaName) -> Result<Option<Schema>, Self::Error>;
 
-// ✅ get_* for singleton or required lookups
-fn get_global(&self) -> Result<Option<Global>, Self::Error>;           // Singleton
-fn get_property_bank(&self) -> Result<Option<PropertyBank>, Self::Error>; // Singleton
-fn get_vault(&self, id: VaultId) -> Result<Option<Vault>, Self::Error>; // Context-dependent
+// ✅ get for collection access (HashMap, Vec pattern)
+fn get(&self, key: &K) -> Option<&V>;  // Like HashMap::get
+Vec::get(index) -> Option<&T>           // Like Vec::get
 ```
 
 #### Zero-Copy `with_*` Pattern
@@ -94,6 +90,11 @@ fn with_archived<F, R>(&self, id: SchemaId, f: F) -> Result<Option<R>, Self::Err
 where
     F: for<'a> FnOnce(&'a Archived<Schema>) -> R;
 
+// Usage
+storage.with_archived(id, |archived| {
+    archived.name()  // Zero-copy access
+})?;
+
 // ❌ BAD: Returning guards requires self-referential structs
 fn get_archived(&self, id: SchemaId) -> Result<Option<Guard>, Self::Error>;
 ```
@@ -102,112 +103,86 @@ fn get_archived(&self, id: SchemaId) -> Result<Option<Guard>, Self::Error>;
 
 ---
 
-### Command Port Method Verbs
+### Write Operations
 
-Use these verbs in `Command` trait definitions for write operations:
+| Method            | Signature Pattern       | Semantics                      | Examples                 |
+| ----------------- | ----------------------- | ------------------------------ | ------------------------ |
+| **`save`**        | `(&T) -> Result<(), E>` | Upsert single entity           | `save(&schema)`          |
+| **`save_many`**   | `(&[T]) -> Result<>`    | Bulk upsert atomically         | `save_many(&schemas)`    |
+| **`insert`**      | `(K, V) -> Option<V>`   | Add to collection, return old  | `HashMap::insert`        |
+| **`update`**      | `(T) -> Result<T, E>`   | Modify existing (may error)    | `update(schema)`         |
+| **`delete`**      | `(ID) -> Result<(), E>` | Remove single entity           | `delete(schema_id)`      |
+| **`delete_many`** | `(&[ID]) -> Result<>`   | Bulk remove atomically         | `delete_many(&ids)`      |
+| **`remove`**      | `(K) -> Option<V>`      | Remove from collection, return | `HashMap::remove`        |
+| **`create`**      | `(params) -> Result<T>` | Create new (ID generated)      | `create(name) -> Schema` |
 
-| Verb             | Signature Pattern | Semantics                              | Examples                             |
-| ---------------- | ----------------- | -------------------------------------- | ------------------------------------ |
-| **`create`**     | `(params) → T`    | Insert new entity (ID generated)       | `create(&str) → Note`                |
-| **`save`**       | `(&T)`            | Upsert single entity (idempotent)      | `save(&schema)`                      |
-| **`save_many`**  | `(&[T])`          | Bulk upsert items atomically           | `save_many(&schemas)`                |
-| **`update`**     | `(T) → T`         | Modify existing (may error)            | `update(Note) → Note`                |
-| **`delete`**     | `(ID)`            | Remove single entity                   | `delete(SchemaId)`                   |
-| **`delete_many`**| `(&[ID])`         | Bulk remove items atomically           | `delete_many(&ids)`                  |
-| **`record_*`**   | `(&T)`            | Task-oriented write (DDD intent)       | `record_global`, `record_vault`      |
-| **`activate_*`** | `→ State`         | State transition                       | `activate_version(...)`              |
-| **`register_*`** | `(K, V)`          | Add to index/registry                  | `register_schema(name, id)` (future) |
+**save vs insert vs create:**
 
-#### Task-Oriented Verbs (`record_*`, `activate_*`)
-
-**Use task-oriented verbs** when generic CRUD verbs obscure domain intent:
-
-```rust
-// ✅ GOOD: Domain-specific intent (Config context)
-fn record_global(&self, config: &Global) -> Result<(), Self::Error>;
-fn record_vault(&self, id: VaultId, vault: &Vault) -> Result<(), Self::Error>;
-fn activate_version(&self, id: VaultId, target: ActivationTarget) -> Result<Version, Self::Error>;
-
-// ⚠️ LESS CLEAR: Generic CRUD verbs
-fn save_global(&self, config: &Global) -> Result<(), Self::Error>;
-fn update_active_version(&self, id: VaultId, version: Version) -> Result<(), Self::Error>;
-```
-
-**When to use `record_*`**: Configuration management, audit logs, immutable event storage.
-**When to use `activate_*`**: State machines, workflows, lifecycle transitions.
-
----
-
-### Event Naming
-
-Events follow industry-standard CQRS/DDD conventions:
-
-| Pattern          | Example                        | Rules                           |
-| ---------------- | ------------------------------ | ------------------------------- |
-| **Struct name**  | `NoteCreated`, `SchemaUpdated` | PascalCase, **past tense** verb |
-| **Enum variant** | `NoteEvents::NoteCreated(...)` | Wraps individual event structs  |
-| **Method**       | `note.emit_created_event()`    | Returns `Vec<DomainEvent>`      |
+- `save`: Repository pattern, upsert semantics (create or update)
+- `insert`: Collection pattern, replaces existing (returns old value)
+- `create`: Explicit creation (may error if exists)
 
 ```rust
-// ✅ GOOD: Past tense, PascalCase
-pub struct NoteCreated { pub id: Uuid, pub timestamp: Timestamp }
-pub struct SchemaUpdated { pub id: SchemaId, pub version: Version }
-
-pub enum NoteEvents {
-    NoteCreated(NoteCreated),
-    FrontmatterValidated(FrontmatterValidated),
+// ✅ Repository pattern
+pub trait Repository {
+    fn save(&self, entity: &Schema) -> Result<(), Self::Error>;
+    fn delete(&self, id: SchemaId) -> Result<(), Self::Error>;
 }
 
-// ❌ BAD: Present tense (those are commands)
-pub struct CreateNote { ... }  // Wrong - this is a command, not an event
-pub struct UpdateSchema { ... }
+// ✅ Collection pattern (HashMap, BTreeMap)
+fn insert(&mut self, key: K, value: V) -> Option<V>;
+fn remove(&mut self, key: &K) -> Option<V>;
 ```
 
 ---
 
-### Port & Adapter Naming
+## Parse vs Validate Naming
 
-| Pattern                | Example                       | Usage                                                 |
-| ---------------------- | ----------------------------- | ----------------------------------------------------- |
-| **`Query` trait**      | `schema::ports::Query`        | ✅ Current standard (import as `schema_ports::Query`) |
-| **`Command` trait**    | `schema::ports::Command`      | ✅ Current standard                                   |
-| **`CommandState`**     | `config::ports::CommandState` | Internal read-for-write encapsulation                 |
-| **Query Adapter**      | `QueryAdapter<'db>`           | ✅ Context-scoped implementation                      |
-| **Command Adapter**    | `CommandAdapter<'db>`         | ✅ Context-scoped implementation                      |
-| **Type Alias (Query)** | `SchemaQuery<'db>`            | ✅ Storage-agnostic alias hiding generics             |
-| **Type Alias (Cmd)**   | `SchemaCommand<'db>`          | ✅ Storage-agnostic alias hiding generics             |
+**Critical Distinction**: Parsing returns validated types, validation returns `Result<(), E>`.
+
+### Parse Methods (Preferred)
+
+| Pattern        | Signature                    | Usage                          | Examples                        |
+| -------------- | ---------------------------- | ------------------------------ | ------------------------------- |
+| **`parse`**    | `(input) -> Result<Self, E>` | Parse string to validated type | `SchemaId::parse(s)`            |
+| **`try_new`**  | `(input) -> Result<Self, E>` | Validated constructor          | `SchemaName::try_new(s)`        |
+| **`from_str`** | `(&str) -> Result<Self, E>`  | FromStr trait                  | `IpAddr::from_str("127.0.0.1")` |
+| **`try_from`** | `(T) -> Result<Self, E>`     | TryFrom trait                  | `Schema::try_from(raw_schema)`  |
+
+### Validate Methods (Avoid - Throws Away Info)
 
 ```rust
-// ✅ GOOD: Context-scoped port traits
-pub trait Query {
-    type Error;
-    fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Self::Error>;
+// ❌ BAD: Validation throws away information
+fn validate_schema_name(s: &str) -> Result<(), SchemaError> {
+    if !is_valid_identifier(s) {
+        return Err(SchemaError::InvalidName);
+    }
+    Ok(())  // Information lost! Need to check again later.
 }
 
-pub trait Command {
-    type Error;
-    fn save_many(&self, schemas: &[Schema]) -> Result<(), Self::Error>;
+// ✅ GOOD: Parsing preserves information in types
+impl SchemaName {
+    pub fn try_new(s: &str) -> Result<Self, SchemaError> {
+        if !is_valid_identifier(s) {
+            return Err(SchemaError::InvalidName);
+        }
+        Ok(Self(s.into()))  // Type carries proof of validity
+    }
 }
 
-// ✅ GOOD: Adapters without suffix (use module namespacing)
-// In schema/adapter/command.rs:
-pub struct Command<'db> { /* redb transaction */ }
-impl<'db> schema::ports::Command for Command<'db> { ... }
-
-// In schema/adapter/query.rs:
-pub struct Query<'db> { /* redb transaction */ }
-impl<'db> schema::ports::Query for Query<'db> { ... }
-
-// ✅ GOOD: Generic type aliases in domain (no adapter imports)
-// In schema/mod.rs:
-pub type Command<C> = command::Command<C>;
-pub type Query<Q> = query::Query<Q>;
-
-// ✅ GOOD: Type aliases in adapter mod to remove stuttering
-// In schema/adapter/mod.rs:
-pub type Command<'db> = command::Command<'db>;
-pub type Query<'db> = query::Query<'db>;
+// ✅ GOOD: TryFrom is parsing, not validation
+impl TryFrom<RawSchema> for Schema {
+    type Error = SchemaError;
+    fn try_from(raw: RawSchema) -> Result<Self, SchemaError> {
+        Ok(Schema {
+            name: SchemaName::try_new(&raw.name)?,  // Parse to stronger type
+            properties: parse_properties(raw.properties)?,
+        })
+    }
+}
 ```
+
+**Key Principle**: Once you have a parsed type (e.g., `SchemaName`), it's guaranteed valid. No re-checking needed.
 
 ---
 
@@ -215,7 +190,7 @@ pub type Query<'db> = query::Query<'db>;
 
 ### Conversion Prefixes: `as_`, `to_`, `into_`
 
-These prefixes follow **strict cost-based conventions**:
+These prefixes follow **strict cost-based conventions** (Rust API Guidelines C-CONV):
 
 | Prefix      | Cost          | Ownership                     | Example                                 |
 | ----------- | ------------- | ----------------------------- | --------------------------------------- |
@@ -226,12 +201,15 @@ These prefixes follow **strict cost-based conventions**:
 ```rust
 // ✅ GOOD: Free zero-cost view
 pub fn as_bytes(&self) -> &[u8] { ... }
+pub fn as_str(&self) -> &str { &self.0 }
 
 // ✅ GOOD: Expensive allocation
 pub fn to_lowercase(&self) -> String { self.data.to_lowercase() }
+pub fn to_string(&self) -> String { self.data.clone() }
 
 // ✅ GOOD: Consumes self
 pub fn into_bytes(self) -> Vec<u8> { self.data }
+pub fn into_inner(self) -> T { self.0 }
 
 // ❌ BAD: 'as_' but allocates
 pub fn as_lowercase(&self) -> String { self.data.to_lowercase() }
@@ -241,6 +219,7 @@ pub fn into_string(&self) -> String { self.data.clone() }
 ```
 
 **Special Case: `into_inner()`**
+
 Unwrap single-value wrappers:
 
 ```rust
@@ -256,10 +235,11 @@ Mutex::into_inner() -> T
 | Pattern                      | Signature                         | Example                        |
 | ---------------------------- | --------------------------------- | ------------------------------ |
 | **Infallible**               | `fn new(...) -> Self`             | `Property::new(name, spec)`    |
-| **Fallible**                 | `fn try_new(...) -> Result<...>`  | `PropertyName::try_new(s)?`    |
+| **Fallible**                 | `fn try_new(...) -> Result<...>`  | `SchemaName::try_new(s)?`      |
+| **Parsing Constructor**      | `fn parse(...) -> Result<...>`    | `SchemaId::parse(s)?`          |
 | **Conversion Constructor**   | `fn from_*(...) -> Self`          | `from_raw()`, `from_bytes()`   |
 | **With Config/Capacity**     | `fn with_*(...) -> Self`          | `Vec::with_capacity(100)`      |
-| **I/O Resources**            | `fn open(...)`                    | `File::open()`, `Mmap::open()` |
+| **I/O Resources**            | `fn open(...) -> Result<...>`     | `File::open()`, `Mmap::open()` |
 | **Network Resources**        | `fn connect(...)`, `fn bind(...)` | `TcpStream::connect()`         |
 | **Builder Pattern (fluent)** | `fn with_*(...) -> Self`          | `builder.with_name("x")`       |
 
@@ -270,10 +250,17 @@ impl Property {
 }
 
 // ✅ GOOD: Fallible constructor with validation
-impl PropertyName {
+impl SchemaName {
     pub fn try_new(value: String) -> Result<Self, ValueError> {
         validate(&value)?;
-        Ok(Self(value))
+        Ok(Self(value.into_boxed_str()))
+    }
+}
+
+// ✅ GOOD: Parser constructor
+impl SchemaId {
+    pub fn parse(s: &str) -> Result<Self, ParseError> {
+        Uuid::parse_str(s).map(Self)
     }
 }
 
@@ -286,66 +273,75 @@ impl SchemaBuilder {
 }
 ```
 
+**Default vs new():**
+
+- Both `Default` and `new()` should exist when appropriate
+- They should produce equivalent values
+- `new()` is more discoverable; `Default` enables generic code
+
 ---
 
 ## Getter & Accessor Patterns
 
-### Avoid `get_` Prefix on Simple Getters
+### Avoid `get_` Prefix on Simple Getters (C-GETTER)
 
 **Rule**: The `get_` prefix is **not used** for simple field accessors in Rust.
 
 ```rust
 // ✅ GOOD: Direct field name
-pub fn name(&self) -> &PropertyName { &self.name }
-pub fn name_mut(&mut self) -> &mut PropertyName { &mut self.name }
+pub fn name(&self) -> &SchemaName { &self.name }
+pub fn name_mut(&mut self) -> &mut SchemaName { &mut self.name }
+pub fn id(&self) -> SchemaId { self.id }
 
 // ❌ BAD: Unnecessary get_ prefix
-pub fn get_name(&self) -> &PropertyName { &self.name }
-pub fn get_mut_name(&mut self) -> &mut PropertyName { &mut self.name }
+pub fn get_name(&self) -> &SchemaName { &self.name }
+pub fn get_id(&self) -> SchemaId { self.id }
 ```
 
 ### When to Use `get`
 
 Use `get` **only when**:
 
-1. Runtime validation (bounds checking)
-2. Fallible access (`Option` or `Result`)
+1. **Runtime validation** (bounds checking)
+2. **Fallible access** (`Option` or `Result`)
 
 ```rust
 // ✅ GOOD: Runtime bounds checking warrants 'get'
-fn get(&self, index: K) -> Option<&V>;
-fn get_mut(&mut self, index: K) -> Option<&mut V>;
-unsafe fn get_unchecked(&self, index: K) -> &V;
-
-// ✅ GOOD: Fallible index lookup
-HashMap::get(key) -> Option<&V>
-Vec::get(index) -> Option<&T>
+Vec::get(index) -> Option<&T>           // Bounds checking
+HashMap::get(key) -> Option<&V>         // Key lookup
+slice::get(index) -> Option<&T>         // Bounds checking
+slice::get_unchecked(index) -> &T       // Unsafe, no checking
 ```
 
 ---
 
-## Iterator Naming
+## Iterator Naming (C-ITER)
 
 For **homogeneous collections**:
 
 ```rust
-fn iter(&self) -> Iter             // Iter implements Iterator<Item = &U>
-fn iter_mut(&mut self) -> IterMut  // IterMut implements Iterator<Item = &mut U>
-fn into_iter(self) -> IntoIter     // IntoIter implements Iterator<Item = U>
+fn iter(&self) -> Iter             // Iterator<Item = &U>
+fn iter_mut(&mut self) -> IterMut  // Iterator<Item = &mut U>
+fn into_iter(self) -> IntoIter     // Iterator<Item = U>
 ```
 
-**Iterator type names match method names**:
-
-- `iter()` → `Iter` (or `vec::Iter`, `schema::Iter`)
-- `iter_mut()` → `IterMut`
-- `into_iter()` → `IntoIter`
-- `keys()` → `Keys`, `values()` → `Values`
-
-**Non-homogeneous iterators**:
+**Iterator type names match method names (C-ITER-TY)**:
 
 ```rust
-str::bytes() -> Bytes        // Not iter() because yields u8, not &char
-str::chars() -> Chars        // Not iter() because yields char, not &u8
+// ✅ GOOD: Consistent naming
+Vec::iter() -> slice::Iter<T>
+Vec::iter_mut() -> slice::IterMut<T>
+Vec::into_iter() -> vec::IntoIter<T>
+BTreeMap::keys() -> btree_map::Keys<K, V>
+BTreeMap::values() -> btree_map::Values<K, V>
+```
+
+**Non-homogeneous iterators use descriptive names**:
+
+```rust
+str::bytes() -> Bytes       // Not iter() - yields u8, not char
+str::chars() -> Chars       // Not iter() - yields char
+str::lines() -> Lines       // Not iter() - yields &str
 ```
 
 ---
@@ -355,7 +351,7 @@ str::chars() -> Chars        // Not iter() because yields char, not &u8
 | Prefix         | Meaning               | Examples                                           |
 | -------------- | --------------------- | -------------------------------------------------- |
 | **`is_`**      | State/property check  | `is_required_scalar()`, `is_stale()`, `is_empty()` |
-| **`has_`**     | Possession/presence   | `has_name()`, `has_default()`, `has_anchor()`      |
+| **`has_`**     | Possession/presence   | `has_name()`, `has_default()`, `has_parent()`      |
 | **`can_`**     | Capability/permission | `can_read()`, `can_write()`                        |
 | **`should_`**  | Recommendation/policy | `should_promote()`, `should_retry()`               |
 | **`contains`** | Membership            | `contains_key()`, `contains(&item)`                |
@@ -384,6 +380,7 @@ fn contains_key(&self, key: &K) -> bool { self.map.contains_key(key) }
 fn as_mut_slice(&mut self) -> &mut [T] { ... }
 fn iter_mut(&mut self) -> IterMut { ... }
 fn name_mut(&mut self) -> &mut PropertyName { ... }
+fn get_mut(&mut self, key: &K) -> Option<&mut V> { ... }
 
 // ❌ BAD: _mut in the middle
 fn as_slice_mut(&mut self) -> &mut [T] { ... }
@@ -393,7 +390,7 @@ fn mut_iter(&mut self) -> IterMut { ... }
 ### Setter Pattern (Rare in Rust)
 
 ```rust
-// ⚠️ ACCEPTABLE: Explicit mutation
+// ⚠️ ACCEPTABLE: Explicit mutation (rare)
 pub fn set_path(&mut self, path: NotePath) { self.path = path; }
 
 // ✅ PREFER: Builder pattern for construction
@@ -410,34 +407,91 @@ impl Note {
 
 ---
 
+## Error Handling Patterns
+
+### Try Patterns
+
+```rust
+// Fallible construction
+try_new() -> Result<Self, Error>
+try_from() -> Result<Self, Error>     // TryFrom trait
+try_into() -> Result<U, Error>        // TryInto trait
+
+// Fallible operations
+try_reserve(n) -> Result<(), Error>
+try_lock() -> Result<Guard, Error>
+try_recv() -> Result<T, TryRecvError>
+```
+
+### Unwrap Variants
+
+```rust
+// Panicking (avoid in production)
+unwrap() -> T                          // Panic with default message
+expect(msg) -> T                       // Panic with custom message
+
+// Non-panicking (prefer these)
+unwrap_or(default: T) -> T            // Provide fallback
+unwrap_or_default() -> T              // Use T::default()
+unwrap_or_else(f: FnOnce() -> T) -> T // Compute fallback
+ok_or(err: E) -> Result<T, E>         // Option to Result
+ok_or_else(f: FnOnce() -> E) -> Result<T, E>
+
+// Result-specific
+unwrap_err() -> E                      // Panic if Ok
+expect_err(msg) -> E                   // Panic if Ok with message
+```
+
+### Error Type Naming
+
+**Pattern: Verb + Object + Error** (consistent word order)
+
+```rust
+// ✅ GOOD: Consistent verb-object-error order
+ParseBoolError
+ParseIntError
+ParseFloatError
+JoinPathsError
+StripPrefixError
+RecvTimeoutError
+
+// ❌ BAD: Inconsistent order (stdlib legacy)
+AddrParseError  // Should be ParseAddrError
+```
+
+**Error trait implementation:**
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum SchemaError {
+    #[error("schema not found: {0}")]
+    NotFound(SchemaId),
+
+    #[error("circular dependency detected: {0}")]
+    CircularDependency(String),
+}
+```
+
+---
+
 ## Quick Reference Tables
 
-### Query Port Methods
+### Repository Pattern Methods
 
-| Method Pattern           | Return Type         | Example                        |
-| ------------------------ | ------------------- | ------------------------------ |
-| `find_by_id(id)`         | `Option<T>`         | `find_by_id(schema_id)`        |
-| `find_by_name(name)`     | `Option<T>`         | `find_by_name(&name)`          |
-| `get_*`                  | `Option<T>` or `T`  | `get_property_bank()`          |
-| `list()`                 | `Vec<T>`            | `list()`                       |
-| `list_name_id_pairs()`   | `Vec<(K, V)>`       | `list_name_id_pairs()`         |
-| `find_id_by_name(key)`   | `Option<ID>`        | `find_id_by_name(&name)`       |
-| `find_many_by_ids(ids)`  | `HashMap<K, V>`     | `find_many_by_ids(&ids)`       |
-| `are_many_stale(...)`    | `HashMap<ID, bool>` | `are_many_stale(&checks)`      |
-| `with_archived(id, f)`   | `Option<R>`         | `with_archived(id, \|s\| ...)` |
-| `is_stale(...)`          | `bool`              | `is_schema_stale(...)`         |
-
-### Command Port Methods
-
-| Method Pattern           | Signature           | Example                         |
-| ------------------------ | ------------------- | ------------------------------- |
-| `create(...)`            | `(params) → T`      | `create(&str) → Note`           |
-| `save_many(items)`       | `(&[T])`            | `save_many(&schemas)`           |
-| `update(item)`           | `(T) → T`           | `update(note) → Note`           |
-| `delete(id)`             | `(ID)`              | `delete(schema_id)`             |
-| `record_*(item)`         | `(&T)`              | `record_global(&config)`        |
-| `activate_*(...)`        | `→ State`           | `activate_version(...)`         |
-| `save_inheritance_many`  | `(&[Relationship])` | `save_inheritance_many(&rels)`  |
+| Method Pattern          | Return Type             | Example                        |
+| ----------------------- | ----------------------- | ------------------------------ |
+| `find_by_id(id)`        | `Result<Option<T>, E>`  | `find_by_id(schema_id)`        |
+| `find_by_name(name)`    | `Result<Option<T>, E>`  | `find_by_name(&name)`          |
+| `list()`                | `Result<Vec<T>, E>`     | `list()`                       |
+| `list_by_parent(id)`    | `Result<Vec<T>, E>`     | `list_by_parent(parent_id)`    |
+| `find_many_by_ids(ids)` | `Result<HashMap<K,V>>>` | `find_many_by_ids(&ids)`       |
+| `with_archived(id, f)`  | `Result<Option<R>, E>`  | `with_archived(id, \|s\| ...)` |
+| `save(entity)`          | `Result<(), E>`         | `save(&schema)`                |
+| `save_many(entities)`   | `Result<(), E>`         | `save_many(&schemas)`          |
+| `delete(id)`            | `Result<(), E>`         | `delete(schema_id)`            |
+| `delete_many(ids)`      | `Result<(), E>`         | `delete_many(&ids)`            |
+| `is_stale(...)`         | `Result<bool, E>`       | `is_stale(id)`                 |
+| `exists(id)`            | `Result<bool, E>`       | `exists(id)`                   |
 
 ### Conversion Methods
 
@@ -449,9 +503,21 @@ impl Note {
 | `to_string()`      | Expensive | borrowed → owned    | `Path::to_str()`          |
 | `into_bytes()`     | Variable  | owned → owned       | `String::into_bytes()`    |
 | `into_inner()`     | Variable  | wrapper → inner     | `BufReader::into_inner()` |
-| `try_new(value)`   | Fallible  | -                   | `PropertyName::try_new()` |
-| `from_raw(ptr)`    | Unsafe    | -                   | `Box::from_raw()`         |
+| `try_new(value)`   | Fallible  | -                   | `SchemaName::try_new()`   |
+| `parse(s)`         | Fallible  | -                   | `SchemaId::parse()`       |
 | `with_capacity(n)` | Config    | -                   | `Vec::with_capacity()`    |
+
+### Constructor Patterns
+
+| Pattern     | Signature                        | Example                 |
+| ----------- | -------------------------------- | ----------------------- |
+| `new()`     | `fn new() -> Self`               | `Property::new()`       |
+| `try_new()` | `fn try_new() -> Result<Self>`   | `SchemaName::try_new()` |
+| `parse()`   | `fn parse(&str) -> Result<Self>` | `SchemaId::parse()`     |
+| `from_*()`  | `fn from_raw() -> Self`          | `Schema::from_raw()`    |
+| `with_*()`  | `fn with_capacity() -> Self`     | `Vec::with_capacity()`  |
+| `open()`    | `fn open(Path) -> Result<Self>`  | `File::open()`          |
+| `connect()` | `fn connect() -> Result<Self>`   | `TcpStream::connect()`  |
 
 ---
 
@@ -490,16 +556,6 @@ pub fn to_string(&self) -> String { self.data.clone() }
 pub fn into_string(self) -> String { self.data }
 ```
 
-### ❌ Inconsistent Word Order
-
-```rust
-// ❌ BAD: Inconsistent with stdlib
-pub struct AddrParseError;
-
-// ✅ GOOD: Matches verb-object-error pattern
-pub struct ParseAddrError;
-```
-
 ### ❌ `_mut` in Wrong Position
 
 ```rust
@@ -512,26 +568,37 @@ fn as_mut_slice(&mut self) -> &mut [T] { ... }
 fn iter_mut(&mut self) -> IterMut { ... }
 ```
 
-### ❌ File I/O in CQRS Ports
+### ❌ Validation Instead of Parsing
 
 ```rust
-// ❌ BAD: Violates port-based architecture
-pub trait Query {
+// ❌ BAD: Throws away information
+pub fn validate_name(s: &str) -> Result<(), Error> {
+    if !is_valid(s) { return Err(...); }
+    Ok(())  // Information lost!
+}
+
+// ✅ GOOD: Parsing preserves information
+pub fn parse_name(s: &str) -> Result<Name, Error> {
+    if !is_valid(s) { return Err(...); }
+    Ok(Name(s.into()))  // Type carries proof
+}
+```
+
+### ❌ Repository Methods with File I/O
+
+```rust
+// ❌ BAD: Repository shouldn't do file I/O
+pub trait Repository {
     fn load_from_file(&self, path: &Path) -> Result<Schema, Error>;
-    fn scan_directory(&self, dir: &Path) -> Result<Vec<Schema>, Error>;
 }
 
-// ✅ GOOD: File I/O belongs in application services
-pub trait Query {
-    fn find_by_id(&self, id: SchemaId) -> Result<Option<Schema>, Error>;
-}
-
-// Application service coordinates File → Raw → Domain → DB
-impl SchemaService {
+// ✅ GOOD: Separate file ingestion from repository
+pub struct SchemaLoader;
+impl SchemaLoader {
     pub fn load(&self, path: &Path) -> Result<Schema, Error> {
-        let raw = self.file_source.read(path)?;
-        let schema = Schema::try_from(raw)?;
-        self.command.save_many(&[schema])?;
+        let raw = fs::read_to_string(path)?;
+        let schema = Schema::parse(&raw)?;
+        self.repository.save(&schema)?;
         Ok(schema)
     }
 }
@@ -559,14 +626,14 @@ impl SchemaService {
 8. **Methods over functions**: If there's a clear receiver, make it a method
 9. **Predicates return bool**: `is_`, `has_`, `can_`, `should_` → `bool`
 10. **Fallible operations**: Use `try_` prefix or `Result`
+11. **Parse, don't validate**: Return validated types, not `Result<(), E>`
 
-### CQRS-Specific
+### Repository Pattern
 
-11. **Split ports**: Query (read-only) and Command (write) are separate traits
-12. **Query prefixes**: `find_*`, `get_*`, `list_*`, `*_many`, `with_*`, `is_*`, `are_many_*`
-13. **Command verbs**: `create`, `save`, `update`, `delete`, `record_*`, `activate_*`, `*_many`
-14. **Task-oriented verbs**: Use `record_*`, `activate_*` when CRUD obscures intent
-15. **Events are past tense**: `NoteCreated`, not `CreateNote`
+12. **Read operations**: `find_*`, `list`, `with_*`, `is_*`, `has_*`, `count_*`
+13. **Write operations**: `save`, `save_many`, `delete`, `delete_many`
+14. **find vs get**: `find_*` for entity lookup, `get` for collection access
+15. **Zero-copy access**: Use `with_*` closure pattern for performance
 
 ### Mutation & Borrowing
 
@@ -581,11 +648,13 @@ impl SchemaService {
 - **Rust API Guidelines**: https://rust-lang.github.io/api-guidelines/naming.html
 - **RFC 430** (Naming Conventions): https://github.com/rust-lang/rfcs/blob/master/text/0430-finalizing-naming-conventions.md
 - **RFC 199** (Ownership Variants): https://github.com/rust-lang/rfcs/blob/master/text/0199-ownership-variants.md
-- **Lithos ADR 002**: Port-Based CQRS Architecture
-- **Lithos ADR 004**: Minimal Event Foundation
+- **Type-Driven Design Reference**: [type-driven-design.md](./type-driven-design.md)
+- **Lithos ADR 002**: Storage Pattern (Repository)
+- **Lithos ADR 003**: Serialization Strategy
 
 ---
 
 ## Changelog
 
-- **2026-03-03**: Initial taxonomy created from Rust API Guidelines + CQRS research
+- **2026-03-11**: Updated to Repository pattern, removed CQRS, added parse vs validate
+- **2026-03-03**: Initial taxonomy created from Rust API Guidelines

@@ -180,7 +180,7 @@ Query assembly order:
 
 Tasks queries are code blocks:
 
-```text
+````text
 ```tasks
 not done
 due before tomorrow
@@ -188,7 +188,7 @@ group by filename
 sort by due reverse
 limit 100
 ```
-```
+````
 
 Instruction categories:
 
