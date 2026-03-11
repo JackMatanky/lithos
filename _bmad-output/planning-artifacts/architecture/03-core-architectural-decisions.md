@@ -82,11 +82,18 @@ section: "Architecture Decisions"
 - **Pipeline Lifecycle:** Schemas are processed in a clear functional pipeline:
   - **Phase 1 (Discovery):** Discover schema files via filesystem abstraction.
   - **Phase 2 (Parse & Validate):** Tolerant parsing to `RawSchema`, strict validation to `Schema`.
-  - **Phase 3 (Graph & Resolve):** Establish inheritance graphs, validate acyclic lineage, and merge properties in topological order.
-  - **Phase 4 (Project):** Persist fully resolved `Schema` structures to the Redb database for fast, zero-copy querying.
+  - **Phase 3 (Dereference):** Expand `$ref` pointers using `PropertyBank` to replace references with actual property definitions.
+  - **Phase 4 (Graph & Resolve):** Establish inheritance graphs, validate acyclic lineage, and merge properties in topological order.
+  - **Phase 5 (Project):** Persist fully resolved `Schema` structures to the Redb database for fast, zero-copy querying.
 - **Resolution Strategy:** Separation of `RawSchema` (input) and `Schema` (resolved output).
   - **RawSchema:** Contains `extends`, `excludes`, and unresolved `$ref` pointers.
-  - **Schema:** Contains only final, fully resolved `properties` list.
+  - **Schema (after dereference):** Contains expanded property definitions with `$ref`s resolved via `PropertyBank`.
+  - **Schema (final):** Contains only final, fully resolved `properties` list with inheritance merged.
+- **Hybrid Loading Strategy:** Similar to config, the schema system optimizes for the common case:
+  - **Cache Check:** Query storage for cached schemas with hash-based staleness detection.
+  - **Cache Hit:** If source file hash matches cached metadata, use cached schema directly (no file I/O).
+  - **Cache Miss/Stale:** Run full pipeline and update cache with new hash.
+  - **Orchestration:** `SchemaCommandAdapter` handles cache logic and delegates to `SchemaLoader` for linear pipeline execution.
 
 ## Technical Preferences (Step 4 Refinement)
 
