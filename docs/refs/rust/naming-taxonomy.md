@@ -10,17 +10,19 @@ This document provides a comprehensive taxonomy of method and function naming co
 
 ## Table of Contents
 
-1. [Core Rust Naming Conventions](#core-rust-naming-conventions)
-2. [Repository Pattern Method Naming](#repository-pattern-method-naming)
-3. [Parse vs Validate Naming](#parse-vs-validate-naming)
-4. [Conversion & Constructor Patterns](#conversion--constructor-patterns)
-5. [Getter & Accessor Patterns](#getter--accessor-patterns)
-6. [Iterator Naming](#iterator-naming)
-7. [Boolean Predicates](#boolean-predicates)
-8. [Mutability & Borrowing Indicators](#mutability--borrowing-indicators)
-9. [Error Handling Patterns](#error-handling-patterns)
-10. [Quick Reference Tables](#quick-reference-tables)
-11. [Anti-Patterns to Avoid](#anti-patterns-to-avoid)
+**Organized from most general (universal Rust) to least general (project-specific):**
+
+1. [Core Rust Naming Conventions](#core-rust-naming-conventions) — Universal (RFC 430)
+2. [Conversion & Constructor Patterns](#conversion--constructor-patterns) — Universal (API Guidelines)
+3. [Getter & Accessor Patterns](#getter--accessor-patterns) — Universal (API Guidelines)
+4. [Iterator Naming](#iterator-naming) — Universal (API Guidelines)
+5. [Boolean Predicates](#boolean-predicates) — Universal (stdlib patterns)
+6. [Mutability & Borrowing Indicators](#mutability--borrowing-indicators) — Universal (language feature)
+7. [Error Handling Patterns](#error-handling-patterns) — Universal (stdlib patterns)
+8. [Parse vs Validate Naming](#parse-vs-validate-naming) — Common pattern (type-driven design)
+9. [Repository Pattern Method Naming](#repository-pattern-method-naming) — Project-specific (Lithos)
+10. [Quick Reference Tables](#quick-reference-tables) — Summary
+11. [Anti-Patterns to Avoid](#anti-patterns-to-avoid) — Summary
 
 ---
 
