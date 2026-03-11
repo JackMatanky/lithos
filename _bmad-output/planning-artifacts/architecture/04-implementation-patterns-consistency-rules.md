@@ -3,7 +3,7 @@ title: "Implementation Patterns & Consistency Rules"
 description: "Development patterns, naming conventions, and consistency rules for Lithos implementation"
 author: "Jack"
 date: "2026-01-23"
-last_updated: "2026-02-15"
+last_updated: "2026-03-11"
 section: "Implementation Standards"
 ---
 
@@ -12,321 +12,570 @@ section: "Implementation Standards"
 ## Related Documentation
 
 **MUST READ FIRST:**
+
 - [Core Architectural Decisions](./03-core-architectural-decisions.md) - Files as source of truth, unified Storage pattern
 - [ADR 002: Storage Pattern](../../../docs/adr/002-storage-pattern.md) - Unified Storage traits architecture
 - [ADR 003: Serialization Strategy](../../../docs/adr/003-serialization-strategy.md) - Raw/Domain/View shapes model
-- [State Machine Pattern Reference](../../../docs/refs/rust/state-machine-pattern.md) - When/how to use type-state patterns
+- [State Machine Pattern Reference](../../../docs/refs/rust/state-machine-pattern.md) - Multi-phase pipeline patterns
 - [Rust Naming Taxonomy](../../../docs/refs/rust/naming-taxonomy.md) - Method naming conventions
+- [Rust Idioms Reference](../../../docs/refs/rust/idioms.md) - General Rust patterns (ownership, strings, etc.)
+- [Rust Style Guide](../../../docs/refs/rust/style.md) - Code style and documentation
 
 ## Overview
 
-**Purpose:** Ensure multiple AI agents write compatible, consistent code that works together seamlessly.
+**Purpose:** Ensure multiple AI agents write compatible, consistent code for the Lithos file-based CLI tool with key-value database.
 
-**Critical Conflict Points Identified:** 30+ areas where AI agents could make different choices in async Rust CLI applications with modular boundaries, functional pipelines, and type-driven design.
+**Architecture Summary:**
 
-**Pattern Categories:**
-1. [Naming Patterns](#naming-patterns) - Rust conventions, API contracts, lifetimes
-2. [Type-Driven Design Patterns](#type-driven-design-patterns) - Validation, visibility, newtypes
-3. [Module & Storage Patterns](#module--storage-patterns) - Context isolation, unified Storage traits
-4. [Serialization & Storage Patterns](#serialization--storage-patterns) - Raw/Domain/View shapes, zero-copy
-5. [Error Handling & Diagnostics](#error-handling--diagnostics) - thiserror, miette, tracing
-6. [Async & Concurrency Rules](#async--concurrency-rules) - Sync-first core, async edges
-7. [Communication & Dependency Rules](#communication--dependency-rules) - Functional composition, context isolation
-8. [Project Structure & Module Layout](#project-structure--module-layout) - Workspace organization
-9. [Process & Tooling](#process--tooling) - Testing, mise tasks, clippy limits
-10. [Enforcement Guidelines](#enforcement-guidelines) - Mandatory rules for AI agents
+- **Files as Source of Truth:** User-editable vault files are authoritative
+- **Database as Cache:** Redb provides rebuildable, query-optimized projection
+- **Unified Storage Pattern:** Single trait per context (no CQRS split)
+- **File Ingestion Pipeline:** File → Raw → Domain → Storage → Database
+- **Context Isolation:** Business contexts don't cross-import
+- **Zero-Copy Access:** rkyv enables fast reads without deserialization
 
-## Pattern Categories Defined
+---
 
-**Rust-Specific Considerations:**
-This document addresses conflict points specific to Rust CLI applications, including ownership patterns, zero-copy database access, async boundaries, and module isolation. Traditional web application concerns (REST APIs, loading states, client-side state management) are not applicable.
+## Critical Patterns (Project-Specific)
 
-## Naming Patterns
+### 1. File Ingestion to Database Pipeline
 
-**Rust Naming Conventions:**
+**THE CORE PATTERN for this project** - Every context follows this flow:
 
-- **Crate/Package Names:** Cargo _package_ names are `kebab-case` (e.g., `lithos-core`, `lithos-cli`). In Rust code, the crate import path is `snake_case` (e.g., `lithos_core`).
-- **Modules & Files:** `snake_case` (e.g., `vault_indexer.rs`, `frontmatter_service.rs`)
-- **Functions & Variables:** `snake_case` (e.g., `execute_template`, `vault_path`)
-- **Structs & Enums:** `PascalCase` (e.g., `Note`, `DomainError`, `TemplateEngine`)
-- **Traits:** `PascalCase` ending with trait name (e.g., `CacheWriter`, `VaultReader`) or `Port` (e.g., `StoragePort`)
-- **Constants:** `SCREAMING_SNAKE_CASE` (e.g., `MAX_VAULT_SIZE`, `DEFAULT_TIMEOUT`)
-- **Test Functions:** `snake_case` with descriptive names that read like a sentence (e.g., `returns_blob_when_larger_than_b`). Avoid generic `test_*` prefixes; use `mod <unit_under_test>` to group related tests when helpful.
-- **Macros:** `snake_case` (e.g., `my_macro!`)
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│ VAULT FILES (Source of Truth)                                   │
+│ - User edits in Obsidian/Vim                                    │
+│ - Markdown files with YAML frontmatter                          │
+│ - Schema definitions (YAML)                                     │
+│ - Templates (Jinja2)                                            │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │ FsReader (security-validated)
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ PHASE 1: PARSE (File → Raw)                                     │
+│ - Read file contents via FsReader                               │
+│ - Parse with serde (YAML/TOML/JSON)                            │
+│ - Creates Raw* type (unvalidated, Option<T> fields)            │
+│ - Location: <context>/ingestor.rs or loader.rs                 │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │ serde::Deserialize
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ RAW TYPES (Unvalidated Input)                                   │
+│ - RawSchema, RawNote, RawTemplate, RawConfig                    │
+│ - All fields Optional<T> for better error messages             │
+│ - No behavior (zero impl blocks except conversions)            │
+│ - Location: <context>/raw.rs                                   │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │ TryFrom<Raw*> (VALIDATION BOUNDARY)
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ PHASE 2: VALIDATE (Raw → Domain)                                │
+│ - TryFrom<Raw*> for Domain enforces invariants                 │
+│ - Validates syntax (regex, types)                              │
+│ - Resolves semantics (refs exist, no cycles)                   │
+│ - Multi-phase for complex validation (schema has 8 phases)     │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │ Result<Domain, Error>
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ DOMAIN TYPES (Validated Business Entities)                      │
+│ - Schema, Note, Template, Config (or Stored* in current impl)  │
+│ - Private fields, validated constructors                        │
+│ - rkyv derives for zero-copy storage                           │
+│ - Optional serde (feature-gated) for CLI JSON output           │
+│ - Location: <context>/aggregate.rs or storage.rs               │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │ Storage::save()
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ PHASE 3: PERSIST (Domain → Database)                            │
+│ - Storage trait: save(), get(), list(), with_archived()        │
+│ - Implementations: RedbStorage, InMemoryStorage, FakeStorage   │
+│ - rkyv serializes to bytes                                     │
+│ - Location: <context>/storage.rs                               │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │ rkyv::Archive
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ DATABASE (Redb - Zero-Copy Key-Value Store)                     │
+│ - Stores rkyv-serialized bytes                                 │
+│ - Tables: schema_by_id, note_by_id, etc.                       │
+│ - Metadata tables for staleness (file hash, mtime)             │
+│ - Location: db/ infrastructure                                 │
+└─────────────────┬───────────────────────────────────────────────┘
+                  │ with_archived(id, |archived| ...)
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ ARCHIVED* TYPES (Zero-Copy Reads)                               │
+│ - rkyv-generated: ArchivedSchema, ArchivedNote, etc.           │
+│ - Memory-mapped from database (no deserialization)             │
+│ - Fast queries via closure-based access                        │
+│ - Only create *View if domain shape is inefficient             │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-**Naming Discipline (Semantic Consistency):**
+**Implementation Checklist:**
 
-- **Say what it means:** Prefer names that make roles and direction obvious (e.g., `needle`/`haystack`, `source`/`destination`, `before`/`after`).
-- **Consistent word order:** Pick a project-wide pattern and stick to it. If most functions read as `verb_noun`, new APIs should follow `verb_noun` unless there is a strong reason not to.
-- **Be concise (but not cryptic):** Avoid nonstandard abbreviations and "inside jokes"; shorten only when meaning remains obvious.
-- **Use simple, correct words:** Prefer the smallest set of small words that preserve meaning; avoid terms that can be read two ways.
-- **Unify concept names:** One term per concept. If we choose "vault" (not "repo"/"workspace") for the user's note collection, use "vault" consistently in APIs, docs, and modules.
-- **Avoid type-noise in names:** Don't encode types (e.g., `*_str`, `*_vec`) unless it disambiguates two values with the same conceptual meaning.
+For each context (note, schema, template, config):
 
-**Pattern-Match Variable Naming:**
+- [ ] **Raw type** in `<context>/raw.rs` (serde only, Option<T> fields)
+- [ ] **Domain/Stored type** in `<context>/aggregate.rs` or `storage.rs` (rkyv derives)
+- [ ] **TryFrom<Raw>** validation in same file or separate validator
+- [ ] **Storage trait** in `<context>/storage.rs` (get, save, list, with_archived)
+- [ ] **Loader** in `<context>/loader.rs` (orchestrates File → Raw → Domain → Storage)
+- [ ] **FsReader integration** for secure file access
+- [ ] **Hash-based staleness** in metadata tables (optional, for optimization)
 
-- When destructuring, keep field names whenever possible, and avoid renaming to single letters.
-- Use struct field shorthand to preserve the domain vocabulary.
+### 2. Unified Storage Pattern (No CQRS Split)
 
-✅ Prefer:
+**Pattern:** Single trait per context combining reads and writes.
+
+✅ **Correct (Unified Storage):**
 
 ```rust
-if let Some(response) = response { /* ... */ }
-let Self { name, path } = self;
-match state {
-    State::Reading(file) => { /* ... */ }
-    State::Evaluating { workload, .. } => { /* ... */ }
+// Define once per context
+pub trait Storage {
+    type Error: std::error::Error;
+
+    // Reads
+    fn get(&self, id: &Id) -> Result<Option<T>, Self::Error>;
+    fn list(&self) -> Result<Vec<T>, Self::Error>;
+    fn with_archived<F, R>(&self, id: &Id, f: F) -> Result<Option<R>, Self::Error>
+        where F: FnOnce(&Archived<T>) -> R;
+
+    // Writes
+    fn save(&self, entity: &T) -> Result<(), Self::Error>;
+    fn delete(&self, id: &Id) -> Result<(), Self::Error>;
+}
+
+// Implement for each backend
+pub struct RedbStorage<'db> { /* ... */ }
+impl<'db> Storage for RedbStorage<'db> { /* ... */ }
+
+pub struct InMemoryStorage { /* ... */ }
+impl Storage for InMemoryStorage { /* ... */ }
+
+pub struct FakeStorage { /* ... */ }
+impl Storage for FakeStorage { /* ... */ }
+```
+
+❌ **Wrong (CQRS Split):**
+
+```rust
+// DON'T split into Query and Command traits
+pub trait QueryPort { /* ... */ }
+pub trait CommandPort { /* ... */ }
+```
+
+**Benefits:**
+
+- Simpler dependency management
+- Easier testing (single mock)
+- Avoids interface bloat
+- Idiomatic Rust (like std::fs::File)
+
+### 3. Context Isolation (No Cross-Imports)
+
+**Rule:** Business contexts (note, schema, template) MUST NOT import each other.
+
+**Dependency Flow:**
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│ CLI LAYER (lithos-cli)                                  │
+│ - Orchestrates cross-context workflows                  │
+│ - Can import any context                                │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+        ┌──────────────┼──────────────┐
+        │              │              │
+        ▼              ▼              ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ note/        │ │ schema/      │ │ template/    │
+│ (BUSINESS)   │ │ (BUSINESS)   │ │ (BUSINESS)   │
+└──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+       │                │                │
+       └────────────────┼────────────────┘
+                        │
+        ┌───────────────┼───────────────┐
+        │               │               │
+        ▼               ▼               ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ config/      │ │ db/          │ │ fs/          │
+│ (CROSS-CUT)  │ │ (INFRA)      │ │ (INFRA)      │
+└──────────────┘ └──────────────┘ └──────────────┘
+```
+
+✅ **Allowed Imports:**
+
+```rust
+// From any business context (note, schema, template):
+use crate::config::Global;      // Cross-cutting config
+use crate::db::Database;        // Infrastructure
+use crate::fs::FsReader;        // Infrastructure
+use crate::bounds::Bounds;      // Cross-cutting utility
+
+// Within same context:
+use super::raw::RawSchema;
+use super::storage::Storage;
+use super::error::SchemaError;
+```
+
+❌ **Forbidden Imports:**
+
+```rust
+// Business contexts importing each other:
+use crate::note::Note;          // ❌ From schema context
+use crate::schema::Schema;      // ❌ From note context
+use crate::template::Template;  // ❌ From config context
+```
+
+**Enforcement:** Architecture tests verify no forbidden imports exist.
+
+### 4. Serialization Shapes (Raw → Domain → Archived)
+
+**The Three Shapes:**
+
+| Shape             | Purpose                   | Derives                                 | Location               | Persistence             |
+| :---------------- | :------------------------ | :-------------------------------------- | :--------------------- | :---------------------- |
+| **`Raw*`**         | Parse unvalidated input   | `serde::Deserialize`                    | `<context>/raw.rs`     | Never                   |
+| **Domain/Stored** | Validated business entity | `rkyv::Archive` + feature-gated `serde` | `<context>/storage.rs` | Always                  |
+| **`Archived*`**    | Zero-copy DB access       | Auto-generated by rkyv                  | N/A (generated)        | N/A                     |
+| **`*View`**        | Read-optimized projection | `rkyv::Archive`                         | `<context>/view.rs`    | Rarely (only if needed) |
+
+**Rules:**
+
+1. **Raw types have zero behavior** - no impl blocks except parsing helpers
+2. **Validation happens in `TryFrom<Raw*>`** - single validation boundary
+3. **Domain types have private fields** - validated constructors only
+4. **`*View` types are optional** - only create if domain shape is inefficient
+5. **`Archived*` provides free optimization** - use before creating `*View`
+
+**Example Flow:**
+
+```rust
+// 1. Parse file to Raw (unvalidated)
+let raw: RawSchema = serde_yaml::from_str(file_contents)?;
+
+// 2. Validate Raw → Domain (TryFrom boundary)
+let domain: Schema = raw.try_into()?;
+
+// 3. Persist Domain → Database (Storage trait)
+storage.save(&domain)?;
+
+// 4. Read with zero-copy (closure-based)
+storage.with_archived(id, |archived: &ArchivedSchema| {
+    // Use archived.property_name() directly
+    archived.name()
+})?;
+```
+
+### 5. State Machine Pattern for Multi-Phase Pipelines
+
+**When to use:** Linear pipelines with strict phase ordering (e.g., schema loading with 8 phases).
+
+**See:** [State Machine Pattern Reference](../../../docs/refs/rust/state-machine-pattern.md)
+
+**Example: Schema Loader (8 Phases)**
+
+```rust
+// Phase 1: Discover
+let discovered = SchemaLoader::discover(fs_reader)?;
+
+// Phase 2: Parse
+let parsed = discovered.parse()?;
+
+// Phase 3: Validate
+let validated = parsed.validate()?;
+
+// Phase 4: Dereference ($ref expansion)
+let dereferenced = validated.dereference(property_bank)?;
+
+// Phase 5: Graph (build inheritance graph)
+let graphed = dereferenced.graph()?;
+
+// Phase 6: Sort (topological order)
+let sorted = graphed.sort()?;
+
+// Phase 7: Resolve (merge properties)
+let resolved = sorted.resolve()?;
+
+// Phase 8: Project (persist to DB)
+let projected = resolved.project(storage)?;
+```
+
+**Key Points:**
+
+- Each phase consumes previous state (linear progression)
+- Type system prevents invalid state transitions
+- Orchestration layer handles branching logic (cache checks)
+- State machine only for linear pipeline
+
+### 6. Database Table Naming & Organization
+
+**Pattern:** Consistent naming for key-value tables and metadata.
+
+**Tables per Context:**
+
+```rust
+// Schema context tables
+const SCHEMA_BY_ID: TableDefinition<&str, &[u8]> = TableDefinition::new("schema_by_id");
+const SCHEMA_METADATA: TableDefinition<&str, &[u8]> = TableDefinition::new("schema_metadata");
+const RAW_SCHEMA_FILES: TableDefinition<&str, &[u8]> = TableDefinition::new("raw_schema_files");
+
+// Note context tables
+const NOTE_BY_ID: TableDefinition<&str, &[u8]> = TableDefinition::new("note_by_id");
+const NOTE_BY_PATH: MultimapTableDefinition<&str, &str> = MultimapTableDefinition::new("note_by_path");
+const NOTE_METADATA: TableDefinition<&str, &[u8]> = TableDefinition::new("note_metadata");
+
+// Template context tables
+const TEMPLATE_BY_ID: TableDefinition<&str, &[u8]> = TableDefinition::new("template_by_id");
+const TEMPLATE_METADATA: TableDefinition<&str, &[u8]> = TableDefinition::new("template_metadata");
+
+// Config context tables
+const CONFIG_GLOBAL: TableDefinition<&str, &[u8]> = TableDefinition::new("config_global");
+const CONFIG_VAULT: TableDefinition<&str, &[u8]> = TableDefinition::new("config_vault");
+```
+
+**Naming Convention:**
+
+- Primary tables: `<context>_by_<key>` (e.g., `schema_by_id`, `note_by_path`)
+- Metadata tables: `<context>_metadata` (stores file hash, mtime for staleness)
+- Raw file tables: `raw_<context>_files` (versioned history, up to 5 versions)
+- Multimap tables: Use `MultimapTableDefinition` for one-to-many relationships
+
+---
+
+## Naming Conventions
+
+### Method Naming (Critical - Read Taxonomy)
+
+**ALL methods MUST follow:** [Rust Naming Taxonomy](../../../docs/refs/rust/naming-taxonomy.md)
+
+**Quick Reference:**
+
+| Pattern          | Usage                           | Examples                           |
+| :--------------- | :------------------------------ | :--------------------------------- |
+| `find_*`         | Optional result                 | `find_schema()`, `find_by_name()`  |
+| `get_*`          | Singleton (panics if not found) | `get_config()`, `get_by_id()`      |
+| `list_*`         | Multiple results                | `list_schemas()`, `list_all()`     |
+| `with_*`         | Zero-copy closure               | `with_archived()`, `with_config()` |
+| `save`           | Upsert operation                | `save()`, `save_all()`             |
+| `create`         | Insert-only                     | `create()`, `create_new()`         |
+| `delete`         | Remove operation                | `delete()`, `delete_by_id()`       |
+| `is_*` / `has_*` | Boolean checks                  | `is_valid()`, `has_parent()`       |
+| `as_*`           | Free conversion                 | `as_str()`, `as_ref()`             |
+| `to_*`           | Expensive conversion            | `to_string()`, `to_owned()`        |
+| `into_*`         | Consuming conversion            | `into_inner()`, `into_bytes()`     |
+
+**NO `get_` prefix on simple getters:**
+
+```rust
+// ✅ Good
+pub fn name(&self) -> &str { &self.name }
+
+// ❌ Bad
+pub fn get_name(&self) -> &str { &self.name }
+```
+
+### Type Naming
+
+```rust
+// Crates/Packages
+lithos-core     // kebab-case in Cargo.toml
+lithos_core     // snake_case in Rust imports
+
+// Modules & Files
+note.rs, schema.rs, loader.rs  // snake_case
+
+// Structs & Enums
+Note, Schema, SchemaId, NoteError  // PascalCase
+
+// Traits
+Storage, FsReader, Validator  // PascalCase, descriptive
+
+// Constants
+MAX_DEPTH, DEFAULT_TIMEOUT  // SCREAMING_SNAKE_CASE
+
+// Functions & Variables
+load_schema, file_path, raw_input  // snake_case
+
+// Lifetimes (use descriptive names)
+'db, 'tx, 'bytes, 'src  // NOT 'a, 'b
+
+// Type Parameters
+T, E, K, V  // Single letter
+```
+
+---
+
+## Type-Driven Design (Quick Reference)
+
+**Core Principle:** Make illegal states unrepresentable.
+
+**Checklist:**
+
+- [ ] Fields are private (use getters)
+- [ ] Validated constructors (`try_new()`)
+- [ ] Newtypes for domain constraints (`SchemaName`, `NoteId`)
+- [ ] `#[non_exhaustive]` on public enums/structs
+- [ ] Expose collections via iterators (not `&mut Vec`)
+
+**See Full Guide:** [Appendix A: Type-Driven Design Patterns](#appendix-a-type-driven-design-patterns)
+
+---
+
+## Error Handling
+
+```rust
+// Context-specific errors (thiserror)
+#[derive(Debug, thiserror::Error)]
+pub enum SchemaError {
+    #[error("schema not found: {0}")]
+    NotFound(SchemaId),
+
+    #[error("circular dependency detected: {0}")]
+    CircularDependency(String),
+}
+
+// Never unwrap/expect in production
+// ✅ Use ? operator
+let schema = storage.get(id)?;
+
+// ✅ Use ok_or/context
+let name = raw.name.ok_or(SchemaError::MissingName)?;
+
+// CLI errors (miette)
+use miette::{Diagnostic, SourceSpan};
+#[derive(Debug, Diagnostic, thiserror::Error)]
+#[error("invalid schema definition")]
+struct InvalidSchema {
+    #[source_code]
+    src: String,
+    #[label("expected non-empty name")]
+    span: SourceSpan,
 }
 ```
 
-⚠️ Avoid:
+---
+
+## Async Rules
 
 ```rust
-if let Some(r) = response { /* ... */ }
-let Self { name: some_name, path: name } = self;
-match state {
-    State::Reading(data_source) => { /* ... */ }
-    State::Evaluating { workload: to_eval, .. } => { /* ... */ }
+// Core: ALWAYS synchronous
+pub fn load_schema(path: &Path) -> Result<Schema, Error> {
+    // Sync file I/O
 }
-```
 
-**Pattern Matching Discipline:**
-
-- **Match exhaustively to draw attention:** Prefer destructuring structs/enums to make it obvious which fields are considered. This helps the compiler alert us when structures evolve.
-- **Don't pattern-match references:** Prefer explicit dereferencing (`|x| *x`) over `|&x| x`.
-- **Avoid numeric tuple indexing:** Prefer destructuring into named values (`let (x, y) = point`) over `.0`/`.1`.
-- **Avoid pattern-matching in `fn` parameters:** Unpack on the first line inside the function; keep signatures clean.
-
-✅ Prefer:
-
-```rust
-// Exhaustive destructuring (future-proofing)
-let Self { name, path, .. } = self;
-
-// Explicit deref, not matching references
-let values: Vec<_> = refs.iter().map(|x| *x).collect();
-
-// Name tuple elements
-let (x1, y1) = point1;
-let (x2, y2) = point2;
-
-// Keep function signature clean
-fn new(config: ServerConfig) {
-    let ServerConfig { db_path, working_path } = config;
-    // ...
+// CLI: Async edges only
+#[tokio::main]
+async fn main() -> miette::Result<()> {
+    // Bridge to sync core
+    let result = tokio::task::spawn_blocking(|| {
+        load_schema(path)
+    }).await??;
 }
+
+// ❌ NEVER #[async_trait] in lithos-core
+// ❌ NEVER async methods in Storage traits
 ```
 
-⚠️ Avoid:
+---
 
-```rust
-// Implicit access hides evolution of the type
-let (name, path) = (&self.name, &self.path);
+## Enforcement Guidelines
 
-// Reference pattern matching obscures deref
-let values: Vec<_> = refs.iter().map(|&x| x).collect();
+**All AI Agents MUST:**
 
-// Tuple indexing loses semantics
-let gradient = (point2.1 - point1.1) / (point2.0 - point1.0);
+1. **Follow file ingestion pipeline** for every context (File → Raw → Domain → Storage)
+2. **Use unified Storage trait** (not CQRS split)
+3. **Respect context isolation** (no business context cross-imports)
+4. **Implement serialization shapes** correctly (Raw → Domain → Archived)
+5. **Use naming taxonomy** for all methods (find*/get*/list*/with*\*)
+6. **Follow database naming** for tables (`<context>_by_<key>`)
+7. **Never unwrap/expect** in production code
+8. **Keep core synchronous** (async only in CLI)
+9. **Private fields by default** (type-driven design)
+10. **Run `mise run verify`** before committing (fmt + lint + test)
 
-// Pattern matching in parameters adds noise to signatures
-fn new(ServerConfig { db_path, working_path }: ServerConfig) {
-    // ...
-}
-```
+**Pre-Commit Checklist:**
 
-**Generic Type Parameter Naming:**
+- [ ] All patterns followed (file ingestion, storage, serialization)
+- [ ] Context boundaries respected (no forbidden imports)
+- [ ] Naming conventions correct (methods, types, tables)
+- [ ] Tests pass (`mise run test`)
+- [ ] Clippy clean (`mise run lint`)
+- [ ] Formatted (`mise run fmt`)
 
-- Generic type parameters should be single-letter to avoid looking like concrete types (common: `T`, `E`, `K`, `V`).
+---
 
-**Lifetime Parameter Naming:**
-
-- Use lifetimes as "documentation": pick names derived from what is being borrowed (e.g., `'db`, `'tx`, `'bytes`, `'src`).
-- Avoid `'a`/`'b` unless there is a compelling reason; avoid numbers in lifetime names.
-
-✅ Prefer:
-
-```rust
-pub struct ArchivedGuard<'db, T> { /* ... */ }
-pub struct SchemaView<'bytes> { /* ... */ }
-```
-
-⚠️ Avoid:
-
-```rust
-pub struct ArchivedGuard<'a, T> { /* ... */ }
-pub struct SchemaView<'a> { /* ... */ }
-```
-
-**API Contract Naming:**
-
-- **Trait Methods:** `snake_case` with clear action verbs (e.g., `persist_note`, `find_templates`)
-- **Storage Traits:** Descriptive names ending with `Storage` (e.g., `CacheStorage`, `NoteStorage`)
-- **DTO Structs:** Prefer role-based names over type-suffixes (e.g., `VaultFile`, `VaultFileRecord`, `CreateNoteRequest`). If `Dto` is used, reserve it for strict boundary/wire types (CLI/adapters/serde), not domain/core.
-- **View Types:** Use the `*View` suffix for read-optimized database projections (e.g., `SchemaView`, `NoteView`).
-
-**Builder Naming:**
-
-- If a builder for `MyType` is provided, expose `MyType::builder() -> MyTypeBuilder` and `MyTypeBuilder::build() -> Result<MyType, _>`.
-- Builder setters should read naturally and match field names where possible.
-
-## Type-Driven Design Patterns
-
-**Core Principle:** Make illegal states unrepresentable. Use Rust's type system to enforce invariants at compile time rather than runtime checks.
-
-### API Design & Ownership Patterns
-
-**Argument Ownership:**
-
-- **Prefer borrowed arguments:** Take `&str`, `&Path`, `&[T]` instead of `String`, `PathBuf`, `Vec<T>`.
-- **Take ownership only when needed:** If you need to store the data, take `T` or `impl Into<T>`.
-- **Use `impl Trait` for inputs:** `fn process(input: impl Read)` is more flexible than `fn process(input: &mut File)`.
-
-**String Efficiency:**
-
-- **Zero-copy where possible:** Use `&str` for read-only text.
-- **`Box<str>` for immutable owned:** Use `Box<str>` instead of `String` for immutable text fields (saves 8 bytes per string).
-- **`Cow<'a, str>` for mixed:** Use `Cow` when data might be borrowed or owned.
-
-**Construction Conventions:**
-
-- **`new()`:** Infallible constructor.
-- **`try_new()`:** Fallible constructor returning `Result`.
-- **`with_capacity()`:** Pre-allocation for collections.
-- **`from_*()`:** Conversion constructors.
+## Appendix A: Type-Driven Design Patterns
 
 ### Validation Through Construction
 
-**Pattern:** Hide direct field access, require validation at construction.
-
-✅ **Prefer:**
-
 ```rust
-/// A validated schema name (non-empty, no path separators).
+/// A validated schema name (non-empty, lowercase alphanumeric).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SchemaName(String);  // Private field
+pub struct SchemaName(Box<str>);  // Private field
 
 impl SchemaName {
-    /// Creates a new schema name after validation.
-    ///
-    /// # Errors
-    /// Returns error if name is empty or contains path separators.
-    pub fn new(name: impl Into<String>) -> Result<Self, ValidationError> {
+    pub fn try_new(name: impl Into<String>) -> Result<Self, SchemaError> {
         let name = name.into();
 
         if name.is_empty() {
-            return Err(ValidationError::EmptyName);
+            return Err(SchemaError::EmptyName);
         }
 
-        if name.contains('/') || name.contains('\\') {
-            return Err(ValidationError::PathSeparatorInName);
+        if !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_') {
+            return Err(SchemaError::InvalidNameFormat);
         }
 
-        Ok(Self(name))
+        Ok(Self(name.into_boxed_str()))
     }
 
-    /// Returns the name as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
-
-    /// Consumes the SchemaName and returns the inner String.
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-}
-
-// Implement useful traits
-impl AsRef<str> for SchemaName {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for SchemaName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
 }
 ```
 
-❌ **Avoid:**
+### Newtype Pattern
 
 ```rust
-// Public fields allow bypassing validation
-pub struct SchemaName {
-    pub name: String,  // Anyone can set to invalid value!
-}
+/// UUID v7 (time-ordered) note identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NoteId(Uuid);
 
-impl SchemaName {
-    pub fn new(name: String) -> Result<Self, ValidationError> {
-        if name.is_empty() {
-            return Err(ValidationError::EmptyName);
-        }
-        Ok(Self { name })
+impl NoteId {
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+
+    pub fn parse(s: &str) -> Result<Self, uuid::Error> {
+        Ok(Self(Uuid::parse_str(s)?))
     }
 }
 
-// Caller can bypass validation:
-let mut schema_name = SchemaName::new("valid".to_string())?;
-schema_name.name = "".to_string();  // Now invalid! Type system can't prevent this.
-```
+/// Positive, non-zero count.
+#[derive(Debug, Clone, Copy)]
+pub struct Count(NonZeroUsize);
 
-### Visibility Control Strategy
-
-**Default to Private:** Use the most restrictive visibility that works, only widen when necessary.
-
-**Visibility Hierarchy:**
-
-1. **Private (default):** `field: Type` - Only accessible within the defining module
-2. **Crate-Internal:** `pub(crate) field: Type` - Accessible within lithos-core
-3. **Parent Module:** `pub(super) field: Type` - Accessible in parent module only
-4. **Public:** `pub field: Type` - Part of external API (use sparingly)
-
-**Guidelines:**
-
-```rust
-// Domain aggregate
-pub struct Note {
-    // ✅ Public ID (needed for external queries)
-    pub id: Uuid,
-
-    // ✅ Controlled access through newtype
-    pub path: NotePath,  // NotePath validates on construction
-
-    // ❌ DON'T expose mutable collections directly
-    // pub links: Vec<Link>,  // Caller could push invalid links
-
-    // ✅ DO hide implementation details
-    links: Vec<Link>,  // Private - use accessor methods
-
-    // ✅ Expose as iterator, not mutable reference
-    pub fn links(&self) -> impl Iterator<Item = &Link> {
-        self.links.iter()
-    }
-
-    // ✅ Controlled mutation through method
-    pub fn add_link(&mut self, link: Link) -> Result<(), NoteError> {
-        // Can validate before adding
-        if link.target().is_empty() {
-            return Err(NoteError::InvalidLinkTarget);
-        }
-        self.links.push(link);
-        Ok(())
+impl Count {
+    pub fn new(value: usize) -> Result<Self, ValidationError> {
+        NonZeroUsize::new(value)
+            .map(Self)
+            .ok_or(ValidationError::ZeroCount)
     }
 }
 ```
 
-### Accessor Pattern over Direct Access
-
-**Pattern:** Expose data through methods, not public fields.
-
-✅ **Prefer:**
+### Visibility Control
 
 ```rust
 pub struct Config {
-    vault_path: PathBuf,     // Private
-    max_cache_size: usize,   // Private
+    vault_path: PathBuf,        // Private
+    max_cache_size: usize,      // Private
 }
 
 impl Config {
@@ -335,11 +584,7 @@ impl Config {
         &self.vault_path
     }
 
-    pub fn max_cache_size(&self) -> usize {
-        self.max_cache_size
-    }
-
-    // Controlled mutation
+    // Controlled mutation with validation
     pub fn set_max_cache_size(&mut self, size: usize) -> Result<(), ConfigError> {
         if size == 0 {
             return Err(ConfigError::InvalidCacheSize);
@@ -350,1072 +595,60 @@ impl Config {
 }
 ```
 
-❌ **Avoid:**
+### Non-Exhaustive Types
 
 ```rust
-pub struct Config {
-    pub vault_path: PathBuf,     // Can be set to anything
-    pub max_cache_size: usize,   // Can be set to 0
-}
-```
-
-**Benefits:**
-
-- Can add validation to setters later without breaking API
-- Can change internal representation without breaking callers
-- Clear ownership semantics (reference vs owned)
-
-### Newtype Pattern for Domain Constraints
-
-**Pattern:** Wrap primitive types to encode domain constraints.
-
-✅ **Examples:**
-
-```rust
-/// A note ID (UUID v7, time-ordered).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct NoteId(Uuid);
-
-impl NoteId {
-    /// Creates a new time-ordered note ID.
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
-
-    /// Parses a note ID from a string.
-    pub fn parse(s: &str) -> Result<Self, ParseError> {
-        let uuid = Uuid::parse_str(s)?;
-        Ok(Self(uuid))
-    }
-
-    pub fn as_uuid(&self) -> &Uuid {
-        &self.0
-    }
-}
-
-/// A positive, non-zero count.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Count(NonZeroUsize);
-
-impl Count {
-    pub fn new(value: usize) -> Result<Self, ValidationError> {
-        NonZeroUsize::new(value)
-            .map(Self)
-            .ok_or(ValidationError::ZeroCount)
-    }
-
-    pub fn get(&self) -> usize {
-        self.0.get()
-    }
-}
-
-/// A vault-relative path (validated, no traversal).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VaultPath(PathBuf);
-
-impl VaultPath {
-    pub fn new(path: impl AsRef<Path>) -> Result<Self, PathError> {
-        let path = path.as_ref();
-
-        if path.is_absolute() {
-            return Err(PathError::AbsolutePath);
-        }
-
-        if path.components().any(|c| c == Component::ParentDir) {
-            return Err(PathError::PathTraversal);
-        }
-
-        Ok(Self(path.to_path_buf()))
-    }
-
-    pub fn as_path(&self) -> &Path {
-        &self.0
-    }
-}
-```
-
-### Non-Exhaustive Types for Evolution
-
-**Pattern:** Mark types as `#[non_exhaustive]` when they might grow.
-
-✅ **Use for:**
-
-```rust
-// Public enums that might gain variants
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub enum LinkStyle {
     WikiLink,
     Markdown,
     Embed,
-    // Future: Audio, Video, etc.
+    // Can add variants without breaking code
 }
 
-// Public structs with optional fields
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct TemplateContext {
     pub title: String,
-    pub date: DateTime<Utc>,
-    // Can add fields without breaking existing code
-}
-```
-
-**Benefits:**
-
-- Prevents external code from exhaustive matching (forces wildcard)
-- Prevents external code from direct struct construction
-- Allows adding variants/fields in minor versions
-
-### Builder Pattern for Complex Construction
-
-**When to use:** Types with many optional fields or complex validation.
-
-✅ **Pattern:**
-
-```rust
-#[derive(Debug, Clone)]
-pub struct Schema {
-    name: SchemaName,
-    properties: Vec<Property>,
-    extends: Option<SchemaName>,
-    version: u32,
-}
-
-pub struct SchemaBuilder {
-    name: Option<SchemaName>,
-    properties: Vec<Property>,
-    extends: Option<SchemaName>,
-    version: u32,
-}
-
-impl Schema {
-    pub fn builder() -> SchemaBuilder {
-        SchemaBuilder {
-            name: None,
-            properties: Vec::new(),
-            extends: None,
-            version: 1,
-        }
-    }
-}
-
-impl SchemaBuilder {
-    pub fn name(mut self, name: SchemaName) -> Self {
-        self.name = Some(name);
-        self
-    }
-
-    pub fn add_property(mut self, property: Property) -> Self {
-        self.properties.push(property);
-        self
-    }
-
-    pub fn extends(mut self, parent: SchemaName) -> Self {
-        self.extends = Some(parent);
-        self
-    }
-
-    pub fn version(mut self, version: u32) -> Self {
-        self.version = version;
-        self
-    }
-
-    pub fn build(self) -> Result<Schema, BuildError> {
-        let name = self.name.ok_or(BuildError::MissingName)?;
-
-        if self.properties.is_empty() {
-            return Err(BuildError::NoProperties);
-        }
-
-        Ok(Schema {
-            name,
-            properties: self.properties,
-            extends: self.extends,
-            version: self.version,
-        })
-    }
-}
-```
-
-### Summary: Type Safety Checklist
-
-When designing a type, ask:
-
-- [ ] Are all fields private unless truly needed public?
-- [ ] Do I use newtypes for domain constraints (IDs, validated strings)?
-- [ ] Do I provide constructors that enforce invariants?
-- [ ] Do I expose accessors instead of direct field access?
-- [ ] Is the type `#[non_exhaustive]` if it might evolve?
-- [ ] Do I use builder pattern for complex optional construction?
-- [ ] Do validation errors have helpful messages?
-- [ ] Can I make illegal states unrepresentable?
-
-**Anti-Patterns to Avoid:**
-
-❌ Public mutable fields on domain aggregates
-❌ Using `String`/`usize`/`PathBuf` directly without newtype wrappers
-❌ Exposing `Vec<T>` directly (use iterators or controlled mutation)
-❌ Validation in functions instead of type constructors
-❌ `pub struct` with all `pub` fields as default
-
-**Quick Wins:**
-
-✅ Mark all fields private by default
-✅ Wrap validated strings in newtypes (SchemaName, NotePath)
-✅ Use NonZero* types from std for positive numbers
-✅ Expose collections via `&[T]` or iterators, not `&mut Vec<T>`
-✅ Use `#[non_exhaustive]` on public enums
-
-## Module & Storage Patterns
-
-**Core Principle:** Reject CQRS and event sourcing in favor of module boundaries, Iterator-based ingestion pipelines, and simple `Storage` trait abstractions for I/O.
-
-**For complex multi-phase pipelines:** Use state machine patterns to enforce phase ordering and make invalid state transitions unrepresentable. See **[State Machine Pattern Reference](../../../docs/refs/rust/state-machine-pattern.md)** for detailed guidance on when and how to use type-state patterns vs enum state machines.
-
-### Module Isolation over Trait Isolation
-
-**Pattern:** Business contexts (note, schema, template) isolate business logic through Rust modules. Traits are reserved strictly for abstracting I/O, not for separating domain services.
-
-**Why Module Boundaries:**
-- Simpler dependency management.
-- Prevents god-objects through strict ownership and visibility rules.
-- Aligns with idiomatic Rust module structure.
-
-### Unified Storage Trait Pattern
-
-**Pattern:** Define a single, simple `Storage` trait per domain module for all persistence operations.
-
-✅ **Prefer:**
-
-```rust
-pub trait SchemaStorage {
-    type Error: std::error::Error;
-
-    fn get(&self, name: &SchemaName) -> Result<Option<Schema>, Self::Error>;
-    fn save(&self, schema: &Schema) -> Result<(), Self::Error>;
-    fn list(&self) -> Result<Vec<Schema>, Self::Error>;
-}
-```
-
-❌ **Avoid:**
-
-```rust
-// Split CQRS ports that create interface bloat
-pub trait SchemaQueryPort {
-    // ...
-}
-pub trait SchemaCommandPort {
-    // ...
-}
-```
-
-### Functional Composition Pipeline
-
-**Pattern:** Use functional composition and Iterator pipelines for processing data, rather than complex Command/Event routing.
-
-✅ **Prefer:**
-
-```text
-File → parse (Raw) → validate (Domain) → project (Storage)
-```
-
-Data transitions through discrete stages:
-1. `parse()`: File contents to unvalidated `Raw*` struct.
-2. `validate()`: `TryFrom<Raw*>` to validated `Domain` struct.
-3. `project()`: Persist to database via `Storage` trait.
-
-## Serialization & Storage Patterns
-
-**Serialization Patterns:**
-
-- **Feature Flag:** Use `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]`.
-- **Optional:** Serde is optional for domain types, required for DTOs/Config.
-- **Zero-Copy:** Use `rkyv` for performance-critical storage types.
-
-### Serialization Shapes Pattern
-
-**Core Principle:** Separate concerns of parsing, validation, and storage optimization through distinct type layers.
-
-**Architecture Flow:**
-
-```text
-External Input (TOML/YAML/JSON/User Input)
-    ↓ serde::Deserialize
-Raw* Types (unvalidated, optional fields)
-    ↓ TryFrom<Raw*> (VALIDATION BOUNDARY)
-Domain Types (validated invariants, typed enums)
-    ↓ rkyv::Archive (if persisted directly)
-Archived* (zero-copy representation in redb)
-    OR
-    ↓ project/adapt (optional optimization)
-*View (rkyv derives, read-optimized)
-    ↓ serialize (rkyv)
-Database (redb, zero-copy bytes)
-```
-
-```text
-┌─────────────────────────────────────────┐
-│ File System (YAML/JSON)                 │
-│ - User-editable vault files             │
-└─────────────────┬───────────────────────┘
-                  │
-                  ▼ parse (serde)
-┌─────────────────────────────────────────┐
-│ Raw* (serde derives)                    │
-│ - Unvalidated input representation      │
-│ - Location: <context>/raw.rs            │
-│ - Nullable fields for better errors     │
-└─────────────────┬───────────────────────┘
-                  │
-                  ▼ validate & compile
-┌─────────────────────────────────────────┐
-│ Domain (rkyv + serde feature-gated)     │
-│ - Validated, invariant-preserving       │
-│ - Location: <context>/aggregate.rs      │
-│ - Used throughout application           │
-│ - Has rkyv derives for zero-copy DB     │
-└─────────────────┬───────────────────────┘
-                  │
-                  ▼ memory-map (rkyv)
-┌─────────────────────────────────────────┐
-│ Archived* (rkyv generated)              │
-│ - Implicit zero-copy view of Domain     │
-│ - Used for free query optimization      │
-└─────────────────┬───────────────────────┘
-                  OR project/adapt (optional)
-┌─────────────────────────────────────────┐
-│ *View (rkyv derives, optional)          │
-│ - Read-optimized cache representation   │
-│ - Location: <context>/view.rs           │
-│ - Only when queries need projection     │
-└─────────────────┬───────────────────────┘
-                  │
-                  ▼ serialize (rkyv)
-┌─────────────────────────────────────────┐
-│ Database (redb)                         │
-│ - Zero-copy archived access             │
-└─────────────────────────────────────────┘
-```
-
----
-
-#### Shape 1: Raw* Types (Parsing Boundary)
-
-**Purpose:** Accept flexible, unvalidated input from external sources (files, API requests, CLI args).
-
-**Characteristics:**
-
-- **Zero methods** - no `impl` blocks except `Derive`
-- **All fields `Option<T>`** - missing fields are `None`
-- **String enums** - accept any string, validation happens in `TryFrom`
-- **Public fields** - deserialization requires pub access
-- **Not persisted** - never stored in database
-- **Location:** `<context>/raw.rs` or co-located with domain type
-
-**Example:**
-
-```rust
-/// Raw frontmatter configuration (unvalidated).
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawFrontmatter {
-    pub alias_key: Option<String>,        // Could be empty ""
-    pub title_key: Option<String>,        // Could be empty ""
-    pub date_created_key: Option<String>, // Could be empty ""
-    // NO impl blocks, NO methods
-}
-```
-
-**What NOT to do:**
-
-```rust
-impl RawFrontmatter {
-    // ❌ DON'T: No validation methods on Raw types
-    pub fn validate(&self) -> Result<(), ConfigError> { ... }
-
-    // ❌ DON'T: No parsing methods on Raw types
-    pub fn parse(&self) -> Result<Frontmatter, ConfigError> { ... }
-}
-```
-
-**Acceptable deviations (parsing helpers only):**
-
-```rust
-impl RawGlobal {
-    // ✅ OK: Format-specific parsing (not validation)
-    pub fn from_toml_str(s: &str) -> Result<Self, toml::de::Error> {
-        toml::from_str(s)  // Just deserialization, not validation
-    }
+    pub date: SystemTime,
+    // Can add fields without breaking code
 }
 ```
 
 ---
 
-#### Shape 2: Domain Types (Application Core)
+## Appendix B: General Rust Patterns
 
-**Purpose:** Represent valid business entities with guaranteed invariants.
+For general Rust idioms (ownership, strings, conversions, etc.), see:
 
-**Characteristics:**
+- [Rust Idioms Reference](../../../docs/refs/rust/idioms.md)
+- [Rust Style Guide](../../../docs/refs/rust/style.md)
 
-- **Private fields** - enforce invariants via getters
-- **Typed enums** - `LogLevel`, not `String`
-- **Newtypes** - `FrontmatterKey`, `VaultRoot`, not raw `String`/`PathBuf`
-- **Methods allowed** - business logic, queries, commands
-- **Persisted** - stored in database via `rkyv::Archive`
-- **Location:** `<context>/aggregate.rs`, `<context>/<entity>.rs`
-- **Derives:** `rkyv::Archive + Serialize + Deserialize`, optionally `serde` (feature-gated)
+Key points:
 
-**Example:**
-
-```rust
-/// Validated frontmatter configuration.
-#[derive(Debug, Clone, PartialEq,
-         rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-#[non_exhaustive]
-pub struct Frontmatter {
-    alias_key: FrontmatterKey,        // Validated (non-empty)
-    title_key: FrontmatterKey,        // Validated (non-empty)
-    date_created_key: FrontmatterKey, // Validated (non-empty)
-    // Private fields
-}
-
-impl Frontmatter {
-    // ✅ DO: Constructors enforce invariants
-    pub fn new(
-        alias_key: FrontmatterKey,
-        title_key: FrontmatterKey,
-        date_created_key: FrontmatterKey,
-    ) -> Self {
-        Self { alias_key, title_key, date_created_key }
-    }
-
-    // ✅ DO: Getters for private fields
-    pub fn alias_key(&self) -> &FrontmatterKey {
-        &self.alias_key
-    }
-}
-```
+- Prefer `&str`, `&Path`, `&[T]` in function parameters
+- Use `Box<str>` for immutable owned strings (not `String`)
+- Use `?` operator for error propagation
+- Use `TryFrom`/`From` traits for conversions
+- Use `impl Trait` for flexible inputs
+- Keep `mut` scopes tight
+- Use RAII for resource management
 
 ---
 
-#### Validation Boundary: TryFrom
+## Quick Reference Tables
 
-**Purpose:** Explicit, single validation point from unvalidated → validated.
+### Decision Matrix: When to Create Each Type
 
-**Pattern:** Use `TryFrom<Raw*>` trait as the validation boundary.
+| Type Layer        | Purpose                   | When to Create             | Location               | Derives                                 |
+| :---------------- | :------------------------ | :------------------------- | :--------------------- | :-------------------------------------- |
+| **Raw\***         | Accept external input     | Always (for file input)    | `<context>/raw.rs`     | `serde::Deserialize`                    |
+| **Domain/Stored** | Validated business entity | Always                     | `<context>/storage.rs` | `rkyv::Archive` + feature-gated `serde` |
+| **Archived\***    | Zero-copy DB access       | Automatic (rkyv-generated) | N/A (generated)        | N/A (generated)                         |
+| **\*View**        | Read-optimized projection | Rarely (profiling only)    | `<context>/view.rs`    | `rkyv::Archive`                         |
 
-**Why TryFrom (not methods on Raw types):**
-
-- ✅ **Rust convention** - standard validation pattern
-- ✅ **Single point** - all validation in one place
-- ✅ **Explicit** - caller must call `try_into()` or `TryFrom::try_from()`
-- ✅ **Testable** - easy to construct invalid Raw types for tests
-- ✅ **Type-safe** - compiler enforces validation before domain use
-
-**Example:**
-
-```rust
-impl TryFrom<RawFrontmatter> for Frontmatter {
-    type Error = ConfigError;
-
-    fn try_from(raw: RawFrontmatter) -> Result<Self, Self::Error> {
-        // Extract with defaults
-        let alias_key = raw.alias_key.unwrap_or_else(|| "aliases".to_owned());
-        let title_key = raw.title_key.unwrap_or_else(|| "title".to_owned());
-
-        // Validate (empty strings are invalid)
-        let alias_key = FrontmatterKey::try_new(alias_key)?;
-        let title_key = FrontmatterKey::try_new(title_key)?;
-
-        // Construct validated domain type
-        Ok(Frontmatter::new(alias_key, title_key, /* ... */))
-    }
-}
-```
-
-**Usage:**
-
-```rust
-// External input → Raw → Domain
-let raw: RawFrontmatter = toml::from_str(contents)?;  // Parse
-let validated: Frontmatter = raw.try_into()?;          // Validate (explicit)
-```
-
----
-
-#### Shape 3: `Archived*` Types (Implicit Zero-Copy Representation)
-
-**Purpose:** Provide immediate zero-copy database reads automatically generated from Domain (or View) types.
-
-**Characteristics:**
-- **Zero-cost:** Generated automatically by `rkyv`, offering query optimization for free without the boilerplate of mapping to a separate type.
-- **Location:** Memory-mapped directly from Redb; internal accessors only.
-- **Rule:** Use generic `rkyv::Archived<T>` for public zero-copy APIs. Local generated `Archived*` types are only for internal safe accessors.
-
----
-
-#### Shape 4: `*View` Types (Read-Optimized Projections)
-
-**Purpose:** Represent read-optimized projections in the expendable database cache.
-
-**When to Create:**
-Introduce `*View` types when mapping files to database queries:
-
-- ✅ When database needs a flattened or indexing-friendly projection.
-- ✅ When domain shape is inefficient for storage.
-- ✅ When projecting data from multiple files.
-
-**Default Strategy:** Store domain types directly if they are simple, but use `*View` for read-optimized queries.
-
-**Location:** `<context>/view.rs` or `<context>/views/<view_name>.rs`
-**Derives:** `rkyv::Archive + Serialize + Deserialize`
-
-**Example:**
-
-```rust
-// schema/view.rs
-#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-pub struct SchemaView {
-    pub name: Box<str>,  // Flattened from SchemaName newtype
-    pub properties: Vec<PropertyView>,
-}
-
-impl From<Schema> for SchemaView { /* ... */ }
-impl TryFrom<SchemaView> for Schema { /* ... */ }
-```
-
----
-
-#### Conversion Flow Pattern
-
-✅ **Prefer:**
-
-```rust
-// fs/parsers.rs - File → Raw → Domain
-fn parse_schema_yaml(path: &Path) -> Result<Schema, ParseError> {
-    let content = fs::read_to_string(path)?;
-    let raw: RawSchema = serde_yaml::from_str(&content)?;  // Parse
-    Schema::try_from(raw)  // Validate (TryFrom boundary)
-}
-
-// schema/adapters/storage.rs - Domain → Storage
-impl SchemaStorage for RedbSchemaStorage<'_> {
-    fn save(&self, schema: &Schema) -> Result<(), DbError> {
-        // Option 1: Store domain directly if simple
-        self.db.put("schemas", schema.name().as_ref(), schema)
-
-        // Option 2: Convert to *View for read optimization
-        // let view = SchemaView::from(schema);
-        // self.db.put("schemas", schema.name().as_ref(), &view)
-    }
-}
-```
-
----
-
-#### Design Rationale
-
-**Why separate Raw from Domain?**
-
-**Problems with direct deserialization:**
-
-```rust
-// ❌ BAD: Domain type directly deserialized
-#[derive(Deserialize)]
-pub struct Frontmatter {
-    alias_key: String,  // Can be empty! Invalid states representable
-}
-```
-
-**Benefits of Raw/Domain split:**
-
-1. **Invalid states unrepresentable** - domain types enforce invariants
-2. **Clear error messages** - distinguish parse errors from validation errors
-3. **Flexible parsing** - Raw types accept typos, wrong types, partial configs
-4. **Easy testing** - construct invalid Raw types for test fixtures
-5. **Independent evolution** - file format can change without breaking domain
-
-**Why NOT methods on Raw types?**
-
-**Problem with this approach:**
-
-```rust
-impl RawFrontmatter {
-    pub fn parse(&self) -> Result<Frontmatter, ConfigError> {
-        // ❌ BAD: Raw types now have behavior
-    }
-}
-```
-
-**Issues:**
-
-- Breaks single responsibility (Raw types parse AND validate)
-- Violates "dumb data, smart functions" principle
-- Against Rust conventions (`TryFrom` is standard)
-- Harder to mock/test (Raw types become stateful)
-- Validation might be forgotten (not enforced by type system)
-
----
-
-#### Testing Pattern
-
-**Test invalid Raw input:**
-
-```rust
-#[test]
-fn rejects_empty_alias_key() {
-    let raw = RawFrontmatter {
-        alias_key: Some("".to_string()), // Invalid
-        ..Default::default()
-    };
-
-    let result = Frontmatter::try_from(raw);
-    assert!(matches!(result, Err(ConfigError::ValidationFailed { .. })));
-}
-```
-
-**Test valid conversion:**
-
-```rust
-#[test]
-fn converts_valid_raw_config() -> Result<(), ConfigError> {
-    let raw = RawFrontmatter {
-        alias_key: Some("aliases".to_string()),
-        title_key: Some("title".to_string()),
-        ..Default::default()
-    };
-
-    let frontmatter = Frontmatter::try_from(raw)?;
-    assert_eq!(frontmatter.alias_key().as_str(), "aliases");
-    Ok(())
-}
-```
-
----
-
-#### Anti-Patterns to Avoid
-
-❌ **DON'T: Validate in constructors**
-
-```rust
-impl Frontmatter {
-    // ❌ BAD: Makes invalid state constructible
-    pub fn new(alias_key: String) -> Self {
-        Self { alias_key }  // Can be empty!
-    }
-}
-```
-
-❌ **DON'T: Skip Raw layer**
-
-```rust
-// ❌ BAD: Deserializing directly into domain
-#[derive(Deserialize)]
-pub struct Frontmatter {
-    alias_key: String, // Can be empty!
-}
-```
-
-❌ **DON'T: Add methods to Raw types**
-
-```rust
-impl RawFrontmatter {
-    // ❌ BAD: Raw types should have zero methods
-    pub fn is_valid(&self) -> bool { ... }
-}
-```
-
-❌ **DON'T: Persist Raw types**
-
-```rust
-// ❌ BAD: Never store unvalidated data
-db.put("config", "frontmatter", &raw_frontmatter)?;
-```
-
-❌ **DON'T: Create `*View` types prematurely**
-
-```rust
-// ❌ BAD: Creating *View without query performance justification
-pub struct SchemaView { /* ... */ }  // Domain works fine!
-```
-
----
-
-#### Summary Table
-
-| Aspect             | Raw Types                   | Domain Types             | View Types                  |
-| ------------------ | --------------------------- | ------------------------ | --------------------------- |
-| **Purpose**        | Accept flexible input       | Represent valid entities | Optimize storage            |
-| **Validation**     | None (can be invalid)       | Guaranteed invariants    | N/A (mechanical conversion) |
-| **Fields**         | All `Option<T>`             | Typed, private           | Flattened, optimized        |
-| **Methods**        | Zero (pure DTO)             | Business logic allowed   | Only From/TryFrom           |
-| **Persistence**    | Never                       | Via rkyv                 | Yes (if needed)             |
-| **Conversion**     | N/A                         | Via `TryFrom<Raw*>`      | Via `From<Domain>`          |
-| **Testing**        | Easy to make invalid        | Hard to make invalid     | Not tested directly         |
-| **When to create** | Always (for external input) | Always                   | Rarely (profiling only)     |
-
-**Golden Rule:** Raw types are **dumb data**, validation is **explicit** via `TryFrom`, domain types are **smart** with invariants, View types are **rare optimizations**.
-
-## Storage Patterns
-
-Following **ADR 003 Appendix A**, minimize coupling between domain and storage format. When a `*View` representation is introduced, apply these triggers and guidelines; default remains to store domain types directly if they map well, but use `*View` to optimize database querying.
-
-**When to Introduce View Types:**
-
-- ✅ For read-optimized database projections (NoteView, SchemaView)
-- ✅ When database needs a flattened or indexing-friendly format
-- ✅ When projecting data combined from multiple domain boundaries
-- ❌ Not for every type (avoid DTO explosion)
-
-**Pattern:**
-
-```rust
-// Domain type (in context/aggregate.rs)
-pub struct Schema {
-    pub name: SchemaName,  // Validated newtype
-    pub properties: Vec<Property>,
-    // Ergonomic, behavior-rich
-}
-
-// View type (in <context>/view.rs or storage adapter)
-#[derive(Archive, Serialize, Deserialize)]
-#[rkyv(derive(Debug))]
-pub struct SchemaView {
-    pub name: Box<str>,
-    pub version: u32,
-    pub properties: Vec<PropertyView>,
-    // Stable layout for fast queries
-}
-
-// Conversions (in storage adapter)
-impl From<Schema> for SchemaView { /* ... */ }
-impl TryFrom<SchemaView> for Schema { /* ... */ }
-```
-
-**Guidelines:**
-
-1. **One `*View` per persisted aggregate** if beneficial for queries
-2. **Keep conversions mechanical and co-located** in storage layer
-3. **Use projections for new query patterns** (don't widen stored blobs)
-4. **Keep archived compute closure-scoped** (never leak transaction-scoped borrows)
-5. **Treat `*View` types as expendable cache representations** (can be rebuilt from files)
-
-**Location:**
-
-- `schema/view.rs` - SchemaView and conversions
-- `note/view.rs` - NoteView and conversions
-- Or `<context>/adapters/storage.rs` if storing adapter and view type together
-
-### Zero-Copy Idioms (Footguns to Avoid)
-
-- **rkyv format control**: Treat endianness/alignment/pointer-width feature choices as a persisted-format contract.
-- **rkyv validation**: Use `rkyv::access` at trust boundaries (files/network/user input).
-- **redb guards**: `AccessGuard` values borrow the transaction/table; do not return or store them beyond the transaction scope.
-- **redb custom Value**: Implement `redb::Value` via local newtypes/wrappers when you need custom encoding.
-- **moka determinism**: In tests, call `run_pending_tasks()` to ensure cache stats are consistent.
-
-### Archived Types Usage (rkyv)
-
-**Pattern:** Use `rkyv::Archived<T>` in public APIs and Storage traits. Use `Archived*` only in the defining module to add small, safe accessors for private fields on archived representations.
-
-✅ **Prefer:**
-
-```rust
-// Public API / port signature
-type NoteArchived<'a> = &'a rkyv::Archived<Note>;
-
-// Local accessors for private fields (same module as Tag)
-impl ArchivedTag {
-    pub fn full_path(&self) -> &str { /* ... */ }
-}
-```
-
-❌ **Avoid:**
-
-```rust
-// Leaking Archived* in public signatures
-fn with_archived_tag(&self, f: impl FnOnce(&ArchivedTag) -> R) -> R;
-```
-
-**Rationale:** `rkyv::Archived<T>` keeps public APIs stable and generic. `Archived*` accessors are only for local encapsulation when archived fields are private.
-
-## Project Structure & Module Layout
-
-**Workspace Organization:**
-
-- **Crate Separation:** `lithos-core` (Logic + Infra) vs `lithos-cli` (Driver).
-- **Module Organization:** Within crates, contexts use `<context>/mod.rs` pattern.
-  - Each context is a folder with `mod.rs` as entry point
-  - Submodules organized by responsibility (aggregate, command, query, ports, error, events)
-- **Test Placement:** Unit tests in same file (`#[cfg(test)]`), integration tests in `tests/`.
-- **Binary Organization:** CLI crate delegating to `lithos-core`.
-
-**File Structure Standards:**
-
-- **Lithos Core:** `src/lib.rs`, `src/db/`, `src/fs/`, `src/<context>/` (contexts with mod.rs, errors/events/ports co-located).
-- **Lithos CLI:** `src/main.rs`, `src/commands/`.
-- **Common Patterns:** Group related items, keep files focused.
-
-## Error Handling & Diagnostics
-
-**Error Handling Standards:**
-
-- **Core Errors:** `thiserror::Error` for typed, co-located error enums (e.g. `note::Error`).
-- **Context Addition:** `anyhow::Result` only in `main.rs` if prototyping; otherwise `miette`.
-- **CLI Output:** `miette` for user-facing errors with help/labels.
-- **Logging:** `tracing` with structured spans.
-- **Panic Avoidance:** Never use `unwrap()`, `expect()` in library code.
-
-## Async & Concurrency Rules
-
-**Async Patterns:**
-
-- **Sync-First:** Core domain logic and file I/O must be synchronous.
-- **Async at Edge:** `lithos-cli` uses `tokio::main`.
-- **Bridging:** Use `tokio::task::spawn_blocking` for concurrent core operations.
-- **No Async Traits:** Do NOT use `#[async_trait]` in `lithos-core`.
-
-## Documentation Standards
-
-**Documentation Standards:**
-
-- **Item Documentation:** Use `///` for public items.
-- **Module Documentation:** Use `//!` at top of `<context>.rs`.
-- **Examples:** Include code examples for public APIs.
-
-## Communication & Dependency Rules
-
-**State Mutation & Flow:**
-
-- **Direct Functional Calls:** Mutations happen via direct functional calls and pipeline iterators.
-- **Error Propagation:** All fallible operations must return `Result<T, E>`.
-- **No Event Bus:** System state mutations do not use event sourcing or an event bus.
-- **Side Effects:** Handled explicitly through pipeline composition and orchestration.
-
-**Inter-Module Communication:**
-
-- **Context Isolation:** Business contexts (note, schema, template) do not import each other.
-- **Cross-Cutting Context:** Config (user-configurable business rules) is available to all contexts.
-- **Pure Infrastructure:** db, fs, patterns (generic utilities) are available to all contexts.
-- **Orchestration:** Cross-context workflows happen in CLI layer or dedicated app module.
-
-**Dependency Flow Rules:**
-
-✅ **ALLOWED:**
-
-```rust
-// From any business context (note, schema, template):
-use crate::config::Global;      // Config is cross-cutting infrastructure
-use crate::config::Vault;
-use crate::db;                  // Infrastructure
-use crate::fs;
-use crate::patterns;
-
-// Within context:
-use super::aggregate::Note;
-use super::error::NoteError;
-use super::storage::NoteStorage;
-```
-
-❌ **FORBIDDEN:**
-
-```rust
-// Business contexts importing each other:
-use crate::note::Note;          // From schema context
-use crate::schema::Schema;      // From note context
-use crate::template::Template;  // From config context
-```
-
-## Process & Tooling
-
-**Testing Standards:**
-
-- **Unit Tests:** `#[cfg(test)]` in same file.
-- **Integration Tests:** `tests/integration/` (CLI -> Core -> DB).
-- **Architecture Boundaries:** Enforced via module visibility, dependency flow rules, and code review.
-- **Benchmarks:** `lithos-core/benches/` (zero-copy validation).
-
-**Configuration Management:**
-
-- **Hierarchy:** CLI args > Config file > Defaults.
-- **Validation:** Serde validation.
-
-**Build & Development:**
-
-- **Mise:** Task runner (`mise run verify`, `mise run build`).
-- **Hooks:** Pre-commit enforcement.
-
-**Clippy Complexity Limits:**
-
-- **Cyclomatic Complexity:** `clippy::cognitive_complexity` threshold set to 15 (warn) and 25 (deny) to prevent overly complex functions
-- **Function Length:** `clippy::too_many_lines` with limit of 100 lines per function
-- **Arguments:** `clippy::too_many_arguments` with max 7 arguments
-- **Nesting:** `clippy::nested_if_else` and `clippy::too_many_nested_loops` limits enforced
-- **Code Quality:** Deny `clippy::unwrap_used`, `clippy::expect_used`, `clippy::todo`, `clippy::unimplemented`, `clippy::dbg_macro`
-- **Performance:** Enable `clippy::inefficient_to_string`, `clippy::redundant_clone`, `clippy::needless_collect`
-- **Style:** Enforce `clippy::implicit_return`, `clippy::single_match_else`, `clippy::redundant_else`
-
-## Enforcement Guidelines
-
-**All AI Agents MUST:**
-
-- Follow established naming conventions without exception
-- Maintain context boundaries (business contexts must not import each other; only infrastructure/cross-cutting)
-- Use unified storage pattern (generic over Storage traits, not direct database coupling)
-- Use async/await consistently in async-enabled edge layers with proper error handling; keep core sync-first
-- Implement comprehensive error handling with typed errors and context
-- Write tests for all public APIs and critical paths including async operations
-- Document public traits and complex business logic with examples following Rust doc standards
-- Use tracing for all logging with structured spans and consistent levels
-- Keep cyclomatic complexity under 15 and cognitive complexity under 25 per function
-- Never use `unwrap()`, `expect()`, `todo()`, or `unimplemented()` in production code
-- Run clippy on all code with complexity limits enforced before commits via pre-commit hooks
-
-**Pattern Enforcement:**
-
-- **Pre-commit Hooks:** Run clippy, rustfmt, and tests before commits to maintain clean git history and catch issues early
-- **Code Reviews:** Automated checks for naming violations, dependency rules, architectural boundaries, and complexity metrics; manual review for logic and API design
-- **CI Pipeline:** Clippy with complexity limits, rustfmt, and custom lint enforcement with failure on violations; require green CI for merges
-- **Architecture Tests:** Integration tests verifying context boundaries and dependency flow rules
-- **Documentation:** Pattern violations documented in commit messages with remediation steps
-- **Quality Gates:** Minimum test coverage (80%), no clippy warnings, performance regression checks, security audit passing
-
-**Advanced Enforcement:**
-
-- **Dependency Analysis:** Use `cargo deny` to prevent unwanted dependency introductions
-- **Security Auditing:** Regular `cargo audit` runs to catch vulnerabilities
-- **Performance Regression:** Automated benchmark comparisons to prevent performance degradation
-- **Code Coverage:** Minimum coverage thresholds enforced in CI with `tarpaulin`
-- **Style Consistency:** Automated import sorting and formatting checks; use `cargo fmt --check` in CI
-
-## Pattern Examples
-
-**Legacy Example (Non-Compliant, retained for context):**
-
-This example predates current async and unwrap prohibitions. It is retained for historical context only; do not treat it as compliant guidance.
-
-````rust
-/// A note in the vault with its metadata and content.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Note {
-    /// Vault-relative path serving as the unique identifier
-    pub path: String,
-    /// Parsed frontmatter metadata
-    pub frontmatter: Frontmatter,
-}
-
-impl Note {
-    /// Creates a new note with validation.
-    ///
-    /// # Errors
-    /// Returns `DomainError` if validation fails.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_domain::Note;
-    /// let note = Note::new("path.md".to_string(), frontmatter)?;
-    /// ```
-    pub fn new(path: String, frontmatter: Frontmatter) -> Result<Self, DomainError> {
-        if path.is_empty() {
-            return Err(DomainError::InvalidPath);
-        }
-        Ok(Self { path, frontmatter })
-    }
-}
-
-#[async_trait]
-pub trait VaultWriterPort: Send + Sync {
-    /// Persists a note to the vault storage.
-    ///
-    /// # Errors
-    /// Returns `DomainError` if persistence fails.
-    async fn persist_note(&self, note: Note) -> Result<(), DomainError>;
-}
-
-pub struct VaultIndexerService {
-    vault_writer: Arc<dyn VaultWriterPort>,
-    event_bus: Arc<dyn EventBus>,
-}
-
-impl VaultIndexerService {
-    /// Indexes the vault and publishes completion events.
-    ///
-    /// This function maintains low complexity by delegating to helper methods.
-    pub async fn index_vault(&self) -> Result<IndexStats, DomainError> {
-        self.event_bus.publish(DomainEvent::VaultIndexingStarted).await?;
-
-        let stats = self.perform_indexing().await?;
-
-        self.event_bus.publish(DomainEvent::VaultIndexingCompleted { stats: stats.clone() }).await?;
-
-        Ok(stats)
-    }
-
-    async fn perform_indexing(&self) -> Result<IndexStats, DomainError> {
-        Ok(IndexStats::default())
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DomainEvent {
-    /// Fired when vault indexing begins
-    VaultIndexingStarted,
-    /// Fired when vault indexing completes
-    VaultIndexingCompleted { stats: IndexStats },
-    /// Fired when a note is indexed
-    NoteIndexed { note_path: String, indexed_at: DateTime<Utc> },
-    /// Fired when a template is executed
-    TemplateExecuted { template_id: String, success: bool },
-}
-
-#[tokio::test]
-async fn vault_indexing_succeeds() {
-    let mock_writer = Arc::new(MockVaultWriter::new());
-    let mock_bus = Arc::new(MockEventBus::new());
-    let service = VaultIndexerService::new(mock_writer, mock_bus);
-
-    let result = service.index_vault().await;
-    assert!(result.is_ok());
-
-    let stats = result.unwrap();
-    assert_eq!(stats.total_notes, 0);
-}
-````
-
-**Anti-Patterns:**
-
-- Functions exceeding 15 cyclomatic complexity or 100 lines
-- Using `unwrap()` or `expect()` in production code
-- Deeply nested control structures
-- Inconsistent naming or missing documentation
-- Blocking operations in async functions without `spawn_blocking`
-- Tests that don't cover error cases or async behavior
-- Missing doc examples for public APIs
-- Not running clippy or ignoring warnings
-
-**Resource References:**
-
-- [Rust Official Documentation](https://doc.rust-lang.org/)
-- [Clippy Lints Reference](https://rust-lang.github.io/rust-clippy/)
-- [Tokio Async Patterns](https://tokio.rs/tokio/tutorial)
-- [rkyv Documentation](https://rkyv.org/)
-- [redb Documentation](https://docs.rs/redb/)
-
----
-
-## Quick Reference Summary
-
-### **Decision Matrix: When to Create Each Type**
-
-| Type Layer | Purpose | When to Create | Location | Derives |
-|:-----------|:--------|:---------------|:---------|:--------|
-| **Raw\*** | Accept external input | Always (for file/API input) | `<context>/raw.rs` | `serde::Deserialize` |
-| **Domain** | Validated business entity | Always | `<context>/aggregate.rs` | `rkyv::Archive` + feature-gated `serde` |
-| **Archived\*** | Zero-copy DB access | Automatic (rkyv-generated) | N/A (generated) | N/A (generated) |
-| **\*View** | Read-optimized projection | Rarely (profiling only) | `<context>/view.rs` | `rkyv::Archive` |
-
-### **Storage Trait Pattern Summary**
+### Storage Trait Pattern
 
 ```rust
 // Define once per context
@@ -1433,15 +666,15 @@ impl Storage for InMemoryStorage { /* ... */ }
 impl Storage for FakeStorage { /* ... */ }
 ```
 
-### **Context Isolation Rules**
+### Context Isolation Rules
 
-| From Context | Can Import | Cannot Import |
-|:-------------|:-----------|:--------------|
+| From Context                      | Can Import             | Cannot Import           |
+| :-------------------------------- | :--------------------- | :---------------------- |
 | Business (note, schema, template) | config, db, fs, bounds | Other business contexts |
-| Cross-cutting (config) | db, fs | Business contexts |
-| Infrastructure (db, fs) | Nothing | All contexts |
+| Cross-cutting (config)            | db, fs                 | Business contexts       |
+| Infrastructure (db, fs)           | Nothing                | All contexts            |
 
-### **Pipeline Pattern Summary**
+### Pipeline Pattern
 
 ```text
 File → [parse] → Raw* → [validate] → Domain → [persist] → Database
@@ -1449,33 +682,20 @@ File → [parse] → Raw* → [validate] → Domain → [persist] → Database
                 serde              TryFrom<Raw*>         rkyv::Archive
 ```
 
-### **Critical Anti-Patterns**
+### Critical Anti-Patterns
 
-| ❌ Never Do This | ✅ Do This Instead |
-|:-----------------|:-------------------|
-| `pub fields` on domain types | Private fields + accessor methods |
-| `String` for validated text | Newtype wrapper (e.g., `SchemaName(Box<str>)`) |
-| `unwrap()` / `expect()` in production | `?` operator with `Result<T, E>` |
-| Business contexts importing each other | Use infrastructure or CLI orchestration |
-| `#[async_trait]` in `lithos-core` | Sync-first core, async at edges |
-| Creating `*View` prematurely | Use `Archived<Domain>` first, profile |
-| Methods on `Raw*` types | `TryFrom<Raw*>` for validation boundary |
-| CQRS split (Query/Command traits) | Unified `Storage` trait |
-| Event sourcing for orchestration | Functional composition with `Result<T, E>` |
+| ❌ Never Do This                       | ✅ Do This Instead                             |
+| :------------------------------------- | :--------------------------------------------- |
+| `pub fields` on domain types           | Private fields + accessor methods              |
+| `String` for validated text            | Newtype wrapper (e.g., `SchemaName(Box<str>)`) |
+| `unwrap()` / `expect()` in production  | `?` operator with `Result<T, E>`               |
+| Business contexts importing each other | Use infrastructure or CLI orchestration        |
+| `#[async_trait]` in `lithos-core`      | Sync-first core, async at edges                |
+| Creating `*View` prematurely           | Use `Archived<Domain>` first, profile          |
+| Methods on `Raw*` types                | `TryFrom<Raw*>` for validation boundary        |
+| CQRS split (Query/Command traits)      | Unified `Storage` trait                        |
+| Event sourcing for orchestration       | Functional composition with `Result<T, E>`     |
 
 ---
 
-## Pattern Enforcement Checklist
-
-Before committing code, verify:
-
-- [ ] **Naming:** All names follow Rust conventions and naming taxonomy
-- [ ] **Types:** Domain types have private fields, validated constructors
-- [ ] **Modules:** No cross-context imports between business contexts
-- [ ] **Storage:** Using unified `Storage` trait (not CQRS split)
-- [ ] **Serialization:** Raw → Domain → Storage pipeline correct
-- [ ] **Errors:** All errors use `thiserror`, no `unwrap()`/`expect()`
-- [ ] **Async:** Core is sync-first, async only in CLI
-- [ ] **Tests:** Public APIs and critical paths covered
-- [ ] **Docs:** Public APIs have rustdoc with examples
-- [ ] **Clippy:** Passes with complexity limits (no warnings)
+**End of Implementation Patterns & Consistency Rules**
