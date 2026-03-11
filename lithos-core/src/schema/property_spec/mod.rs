@@ -12,15 +12,10 @@
               #[non_exhaustive]"
 )]
 
-#[path = "property_spec/bool.rs"]
 mod bool;
-#[path = "property_spec/date.rs"]
 mod date;
-#[path = "property_spec/file.rs"]
 mod file;
-#[path = "property_spec/number.rs"]
 mod number;
-#[path = "property_spec/string.rs"]
 mod string;
 
 // Re-export public types
