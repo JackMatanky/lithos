@@ -64,33 +64,33 @@ Each phase in our pipeline is **parsing**, not just validation:
 ┌─────────────────────────────────────────────────────────────────┐
 │ PHASE 1: PARSE SYNTAX (File → Raw)                              │
 │ - Read file contents via FsReader                               │
-│ - Parse with serde (YAML/TOML/JSON)                            │
-│ - Creates Raw* type (syntactically valid, semantically unknown)│
-│ - Location: <context>/ingestor.rs or loader.rs                 │
-│                                                                  │
-│ PARSING: Bytes → Structured data (but unvalidated)             │
+│ - Parse with serde (YAML/TOML/JSON)                             │
+│ - Creates Raw* type (syntactically valid, semantically unknown) │
+│ - Location: <context>/ingestor.rs or loader.rs                  │
+│                                                                 │
+│ PARSING: Bytes → Structured data (but unvalidated)              │
 └─────────────────┬───────────────────────────────────────────────┘
                   │ serde::Deserialize
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ RAW TYPES (Syntax Layer - Unvalidated Semantics)                │
 │ - RawSchema, RawNote, RawTemplate, RawConfig                    │
-│ - All fields Optional<T> for better error messages             │
-│ - No behavior (zero impl blocks except TryFrom)                │
-│ - Location: <context>/raw.rs                                   │
-│                                                                  │
+│ - All fields Optional<T> for better error messages              │
+│ - No behavior (zero impl blocks except TryFrom)                 │
+│ - Location: <context>/raw.rs                                    │
+│                                                                 │
 │ Purpose: Separate serde concerns from domain logic              │
 └─────────────────┬───────────────────────────────────────────────┘
                   │ TryFrom<Raw*> (SEMANTIC PARSING BOUNDARY)
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ PHASE 2: PARSE SEMANTICS (Raw → Domain)                         │
-│ - TryFrom<Raw*> for Domain PARSES validated invariants         │
-│ - Syntax validation (regex, identifier format)                 │
-│ - Semantic validation (refs exist, no cycles)                  │
-│ - Multi-phase for complex parsing (schema has 8 phases)        │
-│                                                                  │
-│ PARSING: Unvalidated data → Validated domain types             │
+│ - TryFrom<Raw*> for Domain PARSES validated invariants          │
+│ - Syntax validation (regex, identifier format)                  │
+│ - Semantic validation (refs exist, no cycles)                   │
+│ - Multi-phase for complex parsing (schema has 8 phases)         │
+│                                                                 │
+│ PARSING: Unvalidated data → Validated domain types              │
 │ Information preserved: Validated in type system, not thrown away│
 └─────────────────┬───────────────────────────────────────────────┘
                   │ Result<Domain, Error>
@@ -120,21 +120,21 @@ Each phase in our pipeline is **parsing**, not just validation:
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ DATABASE (Redb - Zero-Copy Key-Value Store)                     │
-│ - Stores rkyv-serialized bytes                                 │
-│ - Tables: schema_by_id, note_by_id, etc.                       │
-│ - Metadata tables for staleness (file hash, mtime)             │
-│ - Location: db/ infrastructure                                 │
+│ - Stores rkyv-serialized bytes                                  │
+│ - Tables: schema_by_id, note_by_id, etc.                        │
+│ - Metadata tables for staleness (file hash, mtime)              │
+│ - Location: db/ infrastructure                                  │
 └─────────────────┬───────────────────────────────────────────────┘
                   │ with_archived(id, |archived| ...)
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ ARCHIVED* TYPES (Zero-Copy Reads)                               │
-│ - rkyv-generated: ArchivedSchema, ArchivedNote, etc.           │
-│ - Memory-mapped from database (no deserialization)             │
-│ - Fast queries via closure-based access                        │
-│ - Only create *View if domain shape is inefficient             │
-│                                                                  │
-│ Still valid: Archive preserves domain type invariants          │
+│ - rkyv-generated: ArchivedSchema, ArchivedNote, etc.            │
+│ - Memory-mapped from database (no deserialization)              │
+│ - Fast queries via closure-based access                         │
+│ - Only create *View if domain shape is inefficient              │
+│                                                                 │
+│ Still valid: Archive preserves domain type invariants           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
