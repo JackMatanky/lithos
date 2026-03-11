@@ -38,13 +38,22 @@ section: "Implementation Standards"
 
 ## Critical Patterns (Project-Specific)
 
-### 1. File Ingestion to Database Pipeline
+### 1. File Ingestion to Database Pipeline ("Parse, Don't Validate")
 
-**THE CORE PATTERN for this project** - Every context follows this flow:
+**THE CORE PATTERN for this project** - Every context follows this flow.
+
+**Critical Principle: "Parse, Don't Validate"**
+
+The distinction between validation and parsing:
+
+- **Validation**: Checks correctness but throws away information (`fn validate(x) -> Result<(), Error>`)
+- **Parsing**: Transforms less-structured input to more-structured output, preserving information in types (`fn parse(x) -> Result<ValidType, Error>`)
+
+Each phase in our pipeline is **parsing**, not just validation:
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
-│ VAULT FILES (Source of Truth)                                   │
+│ VAULT FILES (Source of Truth - Least Structured)                │
 │ - User edits in Obsidian/Vim                                    │
 │ - Markdown files with YAML frontmatter                          │
 │ - Schema definitions (YAML)                                     │
@@ -53,39 +62,48 @@ section: "Implementation Standards"
                   │ FsReader (security-validated)
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 1: PARSE (File → Raw)                                     │
+│ PHASE 1: PARSE SYNTAX (File → Raw)                              │
 │ - Read file contents via FsReader                               │
 │ - Parse with serde (YAML/TOML/JSON)                            │
-│ - Creates Raw* type (unvalidated, Option<T> fields)            │
+│ - Creates Raw* type (syntactically valid, semantically unknown)│
 │ - Location: <context>/ingestor.rs or loader.rs                 │
+│                                                                  │
+│ PARSING: Bytes → Structured data (but unvalidated)             │
 └─────────────────┬───────────────────────────────────────────────┘
                   │ serde::Deserialize
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ RAW TYPES (Unvalidated Input)                                   │
+│ RAW TYPES (Syntax Layer - Unvalidated Semantics)                │
 │ - RawSchema, RawNote, RawTemplate, RawConfig                    │
 │ - All fields Optional<T> for better error messages             │
-│ - No behavior (zero impl blocks except conversions)            │
+│ - No behavior (zero impl blocks except TryFrom)                │
 │ - Location: <context>/raw.rs                                   │
+│                                                                  │
+│ Purpose: Separate serde concerns from domain logic              │
 └─────────────────┬───────────────────────────────────────────────┘
-                  │ TryFrom<Raw*> (VALIDATION BOUNDARY)
+                  │ TryFrom<Raw*> (SEMANTIC PARSING BOUNDARY)
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 2: VALIDATE (Raw → Domain)                                │
-│ - TryFrom<Raw*> for Domain enforces invariants                 │
-│ - Validates syntax (regex, types)                              │
-│ - Resolves semantics (refs exist, no cycles)                   │
-│ - Multi-phase for complex validation (schema has 8 phases)     │
+│ PHASE 2: PARSE SEMANTICS (Raw → Domain)                         │
+│ - TryFrom<Raw*> for Domain PARSES validated invariants         │
+│ - Syntax validation (regex, identifier format)                 │
+│ - Semantic validation (refs exist, no cycles)                  │
+│ - Multi-phase for complex parsing (schema has 8 phases)        │
+│                                                                  │
+│ PARSING: Unvalidated data → Validated domain types             │
+│ Information preserved: Validated in type system, not thrown away│
 └─────────────────┬───────────────────────────────────────────────┘
                   │ Result<Domain, Error>
                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ DOMAIN TYPES (Validated Business Entities)                      │
+│ DOMAIN TYPES (Fully Validated - Most Structured)                │
 │ - Schema, Note, Template, Config (or Stored* in current impl)  │
-│ - Private fields, validated constructors                        │
+│ - Private fields, validated constructors ONLY                   │
 │ - rkyv derives for zero-copy storage                           │
 │ - Optional serde (feature-gated) for CLI JSON output           │
 │ - Location: <context>/aggregate.rs or storage.rs               │
+│                                                                  │
+│ Guarantee: If you have a Domain type, it's valid. No re-checks.│
 └─────────────────┬───────────────────────────────────────────────┘
                   │ Storage::save()
                   ▼
@@ -95,6 +113,8 @@ section: "Implementation Standards"
 │ - Implementations: RedbStorage, InMemoryStorage, FakeStorage   │
 │ - rkyv serializes to bytes                                     │
 │ - Location: <context>/storage.rs                               │
+│                                                                  │
+│ No validation here: Domain types are already valid              │
 └─────────────────┬───────────────────────────────────────────────┘
                   │ rkyv::Archive
                   ▼
@@ -113,20 +133,40 @@ section: "Implementation Standards"
 │ - Memory-mapped from database (no deserialization)             │
 │ - Fast queries via closure-based access                        │
 │ - Only create *View if domain shape is inefficient             │
+│                                                                  │
+│ Still valid: Archive preserves domain type invariants          │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Key Insights:**
+
+1. **Both phases are parsing**: `File → Raw` parses syntax, `Raw → Domain` parses semantics
+2. **Information flows forward**: Each type is more structured than the previous
+3. **Validate once, use everywhere**: Once you have a `Domain` type, assume it's valid
+4. **No shotgun parsing**: Validation happens at clear boundaries, not scattered throughout code
+5. **Type system enforces correctness**: Invalid states are unrepresentable (can't construct invalid domain types)
 
 **Implementation Checklist:**
 
 For each context (note, schema, template, config):
 
-- [ ] **Raw type** in `<context>/raw.rs` (serde only, Option<T> fields)
-- [ ] **Domain/Stored type** in `<context>/aggregate.rs` or `storage.rs` (rkyv derives)
-- [ ] **TryFrom<Raw>** validation in same file or separate validator
+- [ ] **Raw type** in `<context>/raw.rs` (serde only, Option<T> fields, zero behavior)
+- [ ] **Domain/Stored type** in `<context>/aggregate.rs` or `storage.rs` (rkyv derives, private fields)
+- [ ] **TryFrom<Raw> parsing** (NOT just validation - transforms to stronger type)
+- [ ] **Smart constructors** on domain types (`try_new()`, not public fields)
 - [ ] **Storage trait** in `<context>/storage.rs` (get, save, list, with_archived)
 - [ ] **Loader** in `<context>/loader.rs` (orchestrates File → Raw → Domain → Storage)
 - [ ] **FsReader integration** for secure file access
 - [ ] **Hash-based staleness** in metadata tables (optional, for optimization)
+- [ ] **No redundant validation** - if domain type exists, it's valid (no re-checking)
+
+**Parse, Don't Validate Checklist:**
+
+- [ ] `TryFrom<Raw>` returns `Result<Domain, Error>` (parsed type, not `Result<(), Error>`)
+- [ ] Domain types have private fields (can't be constructed invalidly)
+- [ ] Validation errors are structured (not generic strings)
+- [ ] Business logic accepts domain types (not `Raw*` or primitives that need validation)
+- [ ] No validation inside domain methods (validation at construction only)
 
 ### 2. Unified Storage Pattern (No CQRS Split)
 
@@ -240,10 +280,10 @@ use crate::template::Template;  // ❌ From config context
 
 | Shape             | Purpose                   | Derives                                 | Location               | Persistence             |
 | :---------------- | :------------------------ | :-------------------------------------- | :--------------------- | :---------------------- |
-| **`Raw*`**         | Parse unvalidated input   | `serde::Deserialize`                    | `<context>/raw.rs`     | Never                   |
+| **`Raw*`**        | Parse unvalidated input   | `serde::Deserialize`                    | `<context>/raw.rs`     | Never                   |
 | **Domain/Stored** | Validated business entity | `rkyv::Archive` + feature-gated `serde` | `<context>/storage.rs` | Always                  |
-| **`Archived*`**    | Zero-copy DB access       | Auto-generated by rkyv                  | N/A (generated)        | N/A                     |
-| **`*View`**        | Read-optimized projection | `rkyv::Archive`                         | `<context>/view.rs`    | Rarely (only if needed) |
+| **`Archived*`**   | Zero-copy DB access       | Auto-generated by rkyv                  | N/A (generated)        | N/A                     |
+| **`*View`**       | Read-optimized projection | `rkyv::Archive`                         | `<context>/view.rs`    | Rarely (only if needed) |
 
 **Rules:**
 
@@ -356,19 +396,66 @@ const CONFIG_VAULT: TableDefinition<&str, &[u8]> = TableDefinition::new("config_
 
 **Quick Reference:**
 
-| Pattern          | Usage                           | Examples                           |
-| :--------------- | :------------------------------ | :--------------------------------- |
-| `find_*`         | Optional result                 | `find_schema()`, `find_by_name()`  |
-| `get_*`          | Singleton (panics if not found) | `get_config()`, `get_by_id()`      |
-| `list_*`         | Multiple results                | `list_schemas()`, `list_all()`     |
-| `with_*`         | Zero-copy closure               | `with_archived()`, `with_config()` |
-| `save`           | Upsert operation                | `save()`, `save_all()`             |
-| `create`         | Insert-only                     | `create()`, `create_new()`         |
-| `delete`         | Remove operation                | `delete()`, `delete_by_id()`       |
-| `is_*` / `has_*` | Boolean checks                  | `is_valid()`, `has_parent()`       |
-| `as_*`           | Free conversion                 | `as_str()`, `as_ref()`             |
-| `to_*`           | Expensive conversion            | `to_string()`, `to_owned()`        |
-| `into_*`         | Consuming conversion            | `into_inner()`, `into_bytes()`     |
+| Pattern          | Usage                             | Examples                           | Parse vs Validate            |
+| :--------------- | :-------------------------------- | :--------------------------------- | :--------------------------- |
+| `parse_*`        | Convert to validated type         | `parse_name()`, `parse_id()`       | ✅ Parse (returns type)      |
+| `try_new()`      | Validated constructor             | `SchemaId::try_new(s)`             | ✅ Parse (smart constructor) |
+| `validate_*`     | Check only (returns `Result<()>`) | AVOID - throws away info           | ❌ Validate (use parse)      |
+| `find_*`         | Optional result                   | `find_schema()`, `find_by_name()`  | Query (after parsing)        |
+| `get_*`          | Singleton (panics if not found)   | `get_config()`, `get_by_id()`      | Query (after parsing)        |
+| `list_*`         | Multiple results                  | `list_schemas()`, `list_all()`     | Query (after parsing)        |
+| `with_*`         | Zero-copy closure                 | `with_archived()`, `with_config()` | Query (after parsing)        |
+| `save`           | Upsert operation                  | `save()`, `save_all()`             | Persistence                  |
+| `create`         | Insert-only                       | `create()`, `create_new()`         | Persistence                  |
+| `delete`         | Remove operation                  | `delete()`, `delete_by_id()`       | Persistence                  |
+| `is_*` / `has_*` | Boolean checks                    | `is_valid()`, `has_parent()`       | Query (after parsing)        |
+| `as_*`           | Free conversion                   | `as_str()`, `as_ref()`             | Accessor                     |
+| `to_*`           | Expensive conversion              | `to_string()`, `to_owned()`        | Conversion                   |
+| `into_*`         | Consuming conversion              | `into_inner()`, `into_bytes()`     | Conversion                   |
+
+**Parse vs Validate Naming:**
+
+```rust
+// ✅ GOOD: Parse (returns validated type)
+impl SchemaName {
+    pub fn try_new(s: &str) -> Result<Self, SchemaError> {
+        // Validation + construction = parsing
+        if !is_valid_identifier(s) {
+            return Err(SchemaError::InvalidName);
+        }
+        Ok(Self(s.into()))
+    }
+}
+
+// ✅ GOOD: Parse (TryFrom is parsing)
+impl TryFrom<RawSchema> for Schema {
+    type Error = SchemaError;
+    fn try_from(raw: RawSchema) -> Result<Self, SchemaError> {
+        // This IS parsing, not just validation
+        Ok(Schema {
+            name: SchemaName::try_new(&raw.name)?,
+            // ...
+        })
+    }
+}
+
+// ❌ BAD: Validate (throws away information)
+pub fn validate_schema_name(s: &str) -> Result<(), SchemaError> {
+    if !is_valid_identifier(s) {
+        return Err(SchemaError::InvalidName);
+    }
+    Ok(()) // Information lost!
+}
+
+// ❌ BAD: Would need to check again later
+pub fn use_schema_name(s: &str) -> Result<(), Error> {
+    validate_schema_name(s)?;  // Check once
+    // ... later ...
+    if !is_valid_identifier(s) { // Re-check (redundant!)
+        // ...
+    }
+}
+```
 
 **NO `get_` prefix on simple getters:**
 
@@ -378,6 +465,22 @@ pub fn name(&self) -> &str { &self.name }
 
 // ❌ Bad
 pub fn get_name(&self) -> &str { &self.name }
+```
+
+**Constructor Naming:**
+
+```rust
+// ✅ Infallible constructor
+pub fn new() -> Self { Self::default() }
+
+// ✅ Fallible constructor (validates/parses)
+pub fn try_new(value: T) -> Result<Self, Error> { /* ... */ }
+
+// ✅ Parsing constructor
+pub fn parse(s: &str) -> Result<Self, Error> { /* ... */ }
+
+// ❌ Avoid "validate" prefix (use "try_new" or "parse")
+pub fn validate_new(value: T) -> Result<Self, Error> { /* ... */ }
 ```
 
 ### Type Naming
@@ -415,15 +518,27 @@ T, E, K, V  // Single letter
 
 **Core Principle:** Make illegal states unrepresentable.
 
+**Parse, Don't Validate Principle:**
+
+- **Validation** throws away information: `fn validate(x) -> Result<(), Error>`
+- **Parsing** preserves information in types: `fn parse(x) -> Result<ValidType, Error>`
+- Once parsed, downstream code can assume validity (no re-checking)
+
 **Checklist:**
 
 - [ ] Fields are private (use getters)
-- [ ] Validated constructors (`try_new()`)
+- [ ] Smart constructors for validation (`try_new()`, `parse()`)
+- [ ] Use `TryFrom<Raw*>` for parsing boundaries (not `validate()` methods)
 - [ ] Newtypes for domain constraints (`SchemaName`, `NoteId`)
 - [ ] `#[non_exhaustive]` on public enums/structs
 - [ ] Expose collections via iterators (not `&mut Vec`)
+- [ ] Accept validated types as parameters (not primitives needing validation)
+- [ ] No validation in domain methods (validation at construction only)
 
-**See Full Guide:** [Appendix A: Type-Driven Design Patterns](#appendix-a-type-driven-design-patterns)
+**See Full Guides:**
+
+- [Appendix A: Type-Driven Design Patterns](#appendix-a-type-driven-design-patterns)
+- [Type-Driven Design Reference](../../../docs/refs/rust/type-driven-design.md)
 
 ---
 
