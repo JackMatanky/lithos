@@ -11,6 +11,13 @@ section: "Project Structure"
 
 ## Complete Project Directory Structure
 
+> **Note**: This structure represents the **target state** after refactoring to the unified Storage pattern. Files marked with:
+> - `✅ CREATED` - Already implemented with new pattern
+> - `[TODO: create]` - Needs to be created during refactor
+> - `[TODO: assess]` - Evaluate if needed (optional View pattern)
+> - `[TODO: refactor]` - Exists but needs updating to new pattern
+> - `[LEGACY - REMOVE]` - Old CQRS/port/event patterns to be deleted
+
 ```text
 lithos/
 ├── .mise/tasks/                # TASK ORCHESTRATION (mise-first)
@@ -35,75 +42,106 @@ lithos/
 │   ├── tests/                  # Integration tests (Cross-context flows)
 │   └── src/
 │       ├── lib.rs              # Crate root and public prelude
-│       ├── patterns.rs         # Shared domain patterns
+│       ├── patterns.rs         # Shared domain patterns (legacy - migrate to context modules)
+│       ├── bounds.rs           # Generic bounds types for range validation (cross-cutting utility)
 │       ├── application/        # APPLICATION LAYER (Cross-context orchestration)
 │       │   ├── mod.rs          # Application service exports
 │       │   ├── vault.rs        # VaultService (file discovery + note ingestion)
 │       │   └── services/       # Cross-context workflow services (future)
 │       ├── db/                 # PERSISTENCE INFRASTRUCTURE (redb + rkyv)
 │       │   ├── mod.rs          # Database module entry, core Database type
-│       │   ├── batch.rs        # Atomic write batch implementation
-│       │   ├── error.rs        # Storage-specific error types
-│       │   ├── reader.rs       # Zero-copy read helpers
-│       │   └── writer.rs       # Batch write helpers
+│       │   ├── error.rs        # Storage-specific error types (DbError)
+│       │   ├── reader.rs       # Zero-copy read operations with closure-based API
+│       │   ├── writer.rs       # Write/batch operations (BatchWriter)
+│       │   └── retry.rs        # Retry logic for transient errors (RetryConfig)
 │       ├── note/               # NOTE CONTEXT (Knowledge Graph) - BUSINESS
 │       │   ├── mod.rs          # Public API, re-exports
 │       │   ├── aggregate.rs    # Note aggregate root (domain, has rkyv derives)
-│       │   ├── raw.rs          # RawNote (serde only, pre-validation)
+│       │   ├── raw.rs          # RawNote (serde only, pre-validation) [TODO: create]
 │       │   ├── loader.rs       # Parse + validate + persist orchestration pipeline
-│       │   ├── storage.rs      # NoteStorage trait + Redb adapter implementation
-│       │   ├── view.rs         # Optional: NoteView/TaskView projections
+│       │   ├── storage.rs      # note::Storage trait + Redb/InMemory/Fake implementations [TODO: create]
+│       │   ├── view.rs         # Optional: NoteView/TaskView projections (only if needed) [TODO: assess]
 │       │   ├── frontmatter.rs  # Metadata extraction and parsing
 │       │   ├── link.rs         # Wiki-link and embed logic
 │       │   ├── structure.rs    # Markdown structural analysis
+│       │   ├── heading.rs      # Heading extraction and navigation
 │       │   ├── tag.rs          # Tag indexing logic
 │       │   ├── task.rs         # Task/Todo extraction
+│       │   ├── identity.rs     # Note identity (UUID, paths, aliases)
+│       │   ├── paths.rs        # Path resolution and canonicalization
+│       │   ├── position.rs     # Position/offset tracking in markdown
+│       │   ├── value.rs        # Value types for note metadata
 │       │   ├── error.rs        # Context-specific errors
-│       │   └── events.rs       # Domain events
+│       │   ├── reader/         # Note parsing and frontmatter extraction utilities
+│       │   ├── db_command.rs   # [LEGACY - REMOVE] Old CQRS command pattern
+│       │   ├── db_query.rs     # [LEGACY - REMOVE] Old CQRS query pattern
+│       │   ├── ports.rs        # [LEGACY - REMOVE] Old port-based pattern
+│       │   ├── stored.rs       # [LEGACY - REMOVE] Old DTO pattern
+│       │   └── events.rs       # [LEGACY - REMOVE] Old event pattern
 │       ├── schema/             # SCHEMA CONTEXT (Validation) - BUSINESS
 │       │   ├── mod.rs          # Public API, re-exports
-│       │   ├── aggregate.rs    # Schema aggregate root (domain, has rkyv derives)
+│       │   ├── aggregate.rs    # Schema aggregate root (domain, has rkyv derives) [TODO: create]
 │       │   ├── raw.rs          # RawSchema (serde only, pre-validation)
-│       │   ├── loader.rs       # Parse + validate + persist orchestration pipeline
-│       │   ├── storage.rs      # SchemaStorage trait + Redb adapter implementation
-│       │   ├── view.rs         # Optional: SchemaView projection
-│       │   ├── property.rs     # Individual property logic
+│       │   ├── loader.rs       # 8-phase pipeline: Discover→Parse→Validate→Dereference→Graph→Sort→Resolve→Project
+│       │   ├── storage.rs      # schema::Storage trait + Redb/InMemory/Fake implementations ✅ CREATED
+│       │   ├── ingestor.rs     # File parsing logic (File → RawSchema)
+│       │   ├── view.rs         # Optional: SchemaView projection (only if needed) [TODO: assess]
+│       │   ├── id.rs           # Schema identity types
+│       │   ├── property.rs     # Individual property domain logic
 │       │   ├── property_spec.rs # Property specification types
-│       │   ├── resolver.rs     # Reference resolution
-│       │   ├── graph.rs        # Schema inheritance graph
+│       │   ├── property_spec/  # Property spec submodules
+│       │   ├── bank.rs         # PropertyBank for $ref expansion
+│       │   ├── dereferencer.rs # $ref pointer expansion (Phase 3)
+│       │   ├── extender.rs     # Inheritance merging logic
+│       │   ├── resolver.rs     # Reference resolution and graph operations
 │       │   ├── error.rs        # Context-specific errors
-│       │   └── events.rs       # Domain events
+│       │   ├── db_command.rs   # [LEGACY - REMOVE] Old CQRS command pattern
+│       │   ├── db_query.rs     # [LEGACY - REMOVE] Old CQRS query pattern
+│       │   ├── ports.rs        # [LEGACY - REMOVE] Old port-based pattern
+│       │   └── events.rs       # [LEGACY - REMOVE] Old event pattern
 │       ├── template/           # TEMPLATE CONTEXT (Generation) - BUSINESS
 │       │   ├── mod.rs          # Public API, re-exports
 │       │   ├── aggregate.rs    # Template aggregate root (domain, has rkyv derives)
 │       │   ├── raw.rs          # RawTemplate (serde only, pre-validation, optional)
-│       │   ├── loader.rs       # Parse + validate + persist orchestration pipeline
-│       │   ├── storage.rs      # TemplateStorage trait + Redb adapter implementation
-│       │   ├── view.rs         # Optional: TemplateView projection
-│       │   ├── variable.rs     # Variable injection logic
-│       │   ├── composition.rs  # Component/Partial logic
-│       │   ├── syntax.rs       # Syntax highlighting/parsing
-│       │   ├── validation.rs   # Template safety checks
+│       │   ├── loader.rs       # Parse + validate + persist orchestration pipeline [TODO: create]
+│       │   ├── storage.rs      # template::Storage trait + Redb/InMemory/Fake implementations [TODO: create]
+│       │   ├── view.rs         # Optional: TemplateView projection (only if needed) [TODO: assess]
+│       │   ├── block.rs        # Template block structures
+│       │   ├── catalog.rs      # Template catalog and discovery
+│       │   ├── value.rs        # Value types for template variables
+│       │   ├── adapter/        # Template rendering adapters
 │       │   ├── error.rs        # Context-specific errors
-│       │   └── events.rs       # Domain events
+│       │   ├── command.rs      # [LEGACY - REMOVE] Old CQRS command pattern
+│       │   ├── query.rs        # [LEGACY - REMOVE] Old CQRS query pattern
+│       │   ├── ports.rs        # [LEGACY - REMOVE] Old port-based pattern
+│       │   └── events.rs       # [LEGACY - REMOVE] Old event pattern
 │       ├── config/             # CONFIG CONTEXT (System Settings) - CROSS-CUTTING
 │       │   ├── mod.rs          # Public API, re-exports
 │       │   ├── aggregate.rs    # Config aggregate root (domain, has rkyv derives)
 │       │   ├── raw.rs          # RawConfig (serde only, pre-validation)
-│       │   ├── loader.rs       # Config resolution pipeline
-│       │   ├── storage.rs      # ConfigStorage trait + adapter implementation
-│       │   ├── view.rs         # Optional: ConfigView projection
-│       │   ├── types.rs        # Shared config models
+│       │   ├── loader.rs       # Config resolution pipeline with hybrid caching [TODO: refactor]
+│       │   ├── storage.rs      # config::Storage trait + adapter implementation [TODO: create]
+│       │   ├── view.rs         # Optional: ConfigView projection (only if needed) [TODO: assess]
+│       │   ├── frontmatter.rs  # Frontmatter-specific config
 │       │   ├── global.rs       # System-wide settings
 │       │   ├── vault.rs        # Vault-specific settings
+│       │   ├── paths.rs        # Path configuration
+│       │   ├── logging.rs      # Logging configuration
+│       │   ├── task.rs         # Task-specific configuration
+│       │   ├── value.rs        # Value types for config
+│       │   ├── adapter/        # Config source adapters (Figment integration)
 │       │   ├── error.rs        # Context-specific errors
-│       │   └── events.rs       # Domain events
+│       │   ├── command.rs      # [LEGACY - REMOVE] Old CQRS command pattern
+│       │   ├── query.rs        # [LEGACY - REMOVE] Old CQRS query pattern
+│       │   ├── ports.rs        # [LEGACY - REMOVE] Old port-based pattern
+│       │   └── events.rs       # [LEGACY - REMOVE] Old event pattern
 │       └── fs/                 # FILESYSTEM (OS Integration)
-│           ├── mod.rs          # FS module entry
-│           ├── source.rs       # File discovery and reading abstractions (FsReader)
-│           ├── parsers.rs      # Markdown/YAML/TOML parsers
-│           ├── validator.rs    # Path and Syntax validation
-│           └── error.rs        # I/O specific errors
+│           ├── mod.rs          # FS module entry and public type aliases
+│           ├── error.rs        # I/O specific errors (ParseError, PathValidationError)
+│           ├── reader.rs       # Root-scoped file reader (FsReader) with validation
+│           ├── writer.rs       # Root-scoped file writer (FsWriter) with atomic-replace
+│           ├── validator.rs    # Security-critical path validation (PathValidator)
+│           └── types.rs        # File type markers and parsing helpers (module-internal)
 ├── lithos-cli/                 # BINARY CRATE (CLI Driver)
 │   └── src/main.rs             # CLI entry point (Clap + Miette)
 ├── .gitattributes              # LF enforcement
