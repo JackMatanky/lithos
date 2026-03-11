@@ -31,8 +31,9 @@ section: "Completion & Handoff"
 - 8 major architectural decisions (ADRs) made
 - Comprehensive naming, async, and error patterns defined
 - **Single-Crate Architecture** (`lithos-core`) specified for zero-copy performance
-- **Port-Based CQRS** pattern for decoupling without sacrificing performance
-- **Storage DTO Strategy** (ADR 003 Appendix A) for domain/storage separation
+- **Unified Storage Traits** pattern for testability without CQRS complexity
+- **Files as Source of Truth** with database as rebuildable projection/cache
+- **Optional View Pattern** (ADR 003) - introduce `*View` only when domain shape is inefficient
 - 50 functional requirements fully supported
 
 **📚 AI Agent Implementation Guide**
@@ -55,17 +56,17 @@ Initialize the Workspace with `lithos-core` and `lithos-cli`. Implement `db.rs` 
 1. Initialize project (Single-Crate Core + CLI)
 2. Set up development environment per architecture (`mise run dev-setup`)
 3. Implement `db/` infrastructure:
-   - Core `Database` type with zero-copy APIs
-   - First storage port implementation (e.g., `RedbSchemaStore`)
-   - Example `Stored*` type (e.g., `StoredSchema`)
-4. Implement first context with port-based CQRS (recommend: `schema`):
-   - Define `SchemaStore` port trait with GATs
-   - Implement `Query<S>` and `Command<S>` generic over port
-   - Create type aliases (`RedbSchemaQuery<'db>`)
-   - Implement `RedbSchemaStore` adapter
+   - Core `Database` type with zero-copy APIs via closure-based `with_archived()`
+   - First storage trait implementation (e.g., `schema::RedbStorage`)
+   - Optional `*View` type only if domain shape proves inefficient
+4. Implement first context with unified Storage pattern (recommend: `schema`):
+   - Define `schema::Storage` trait with reads (`get`, `list`, `with_archived`) and writes (`save`, `delete`)
+   - Implement `schema::RedbStorage` concrete adapter
+   - Implement `schema::Loader` for File → Raw → Domain → Storage pipeline
+   - Add `schema::InMemoryStorage` for tests
 5. Migrate remaining contexts following schema pattern
-6. Implement CLI commands using type aliases (hide generic complexity)
-7. Add architecture boundary tests
+6. Implement CLI commands using concrete storage implementations
+7. Add architecture boundary tests (contexts don't cross-import)
 
 ## Quality Assurance Checklist
 
