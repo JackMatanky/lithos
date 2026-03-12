@@ -8,9 +8,63 @@
     reason = "Raw config DTOs mirror file schema; field docs pending."
 )]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
 use super::{frontmatter::RawFrontmatter, logging::RawLogging};
+
+// ----------------------------------------------------------- //
+//                   Raw Config Metadata                       //
+// ----------------------------------------------------------- //
+
+/// Metadata for raw config files (timestamps and content hash).
+///
+/// This struct centralizes file metadata used for staleness detection.
+/// Populated during ingestion from filesystem and raw file bytes.
+///
+/// # Fields
+///
+/// - `created_at`: File creation timestamp (birthtime), if supported by
+///   filesystem
+/// - `modified_at`: File modification timestamp (mtime)
+/// - `content_hash`: BLAKE3 hash of raw file bytes (before parsing)
+///
+/// # Usage
+///
+/// ```ignore
+/// use lithos_core::config::raw::RawConfigMetadata;
+/// use std::time::SystemTime;
+///
+/// let metadata = RawConfigMetadata {
+///     created_at: Some(SystemTime::now()),
+///     modified_at: Some(SystemTime::now()),
+///     content_hash: Some([0u8; 32]),
+/// };
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RawConfigMetadata {
+    /// File creation timestamp (birthtime).
+    ///
+    /// None if the filesystem doesn't support birthtime.
+    pub created_at: Option<SystemTime>,
+
+    /// File modification timestamp (mtime).
+    pub modified_at: Option<SystemTime>,
+
+    /// BLAKE3 hash of raw file content (before parsing).
+    ///
+    /// Computed from raw file bytes during ingestion.
+    pub content_hash: Option<[u8; 32]>,
+}
+
+impl Default for RawConfigMetadata {
+    fn default() -> Self {
+        Self {
+            created_at: None,
+            modified_at: None,
+            content_hash: None,
+        }
+    }
+}
 
 // ----------------------------------------------------------- //
 //                  Raw Config Aggregate Root                  //
@@ -60,6 +114,12 @@ pub struct RawGlobalConfig {
 
     /// Task configuration.
     pub task: Option<RawTaskConfig>,
+
+    /// File metadata for staleness detection.
+    ///
+    /// Populated during ingestion. Not serialized to TOML.
+    #[serde(skip)]
+    pub metadata: RawConfigMetadata,
 }
 
 /// Raw config parsed from a vault config file.
@@ -87,6 +147,12 @@ pub struct RawVaultConfig {
 
     /// Task configuration.
     pub task: Option<RawTaskConfig>,
+
+    /// File metadata for staleness detection.
+    ///
+    /// Populated during ingestion. Not serialized to TOML.
+    #[serde(skip)]
+    pub metadata: RawConfigMetadata,
 }
 
 impl From<(RawGlobalConfig, RawVaultConfig)> for RawConfig {
@@ -250,7 +316,6 @@ pub struct RawTaskConfig {
     pub indexing: Option<RawIndexingConfig>,
     /// Configuration for task dependencies.
     pub dependencies: Option<RawTaskDependencies>,
-
     /// Use emoji format for task metadata.
     pub use_emoji: Option<bool>,
 }
@@ -263,16 +328,14 @@ pub struct RawTaskDates {
     pub created: Option<RawDateFieldSpec>,
     /// Configuration for the 'due' date field.
     pub due: Option<RawDateFieldSpec>,
+    /// Configuration for the 'start' date field.
+    pub start: Option<RawDateFieldSpec>,
+    /// Configuration for the 'scheduled' date field.
+    pub scheduled: Option<RawDateFieldSpec>,
     /// Configuration for the 'completed' date field.
     pub completed: Option<RawDateFieldSpec>,
     /// Configuration for the 'reminder' date field.
     pub reminder: Option<RawDateFieldSpec>,
-
-    /// Configuration for the 'start' date field.
-    pub start: Option<RawDateFieldSpec>,
-
-    /// Configuration for the 'scheduled' date field.
-    pub scheduled: Option<RawDateFieldSpec>,
 }
 
 /// Raw status specification.

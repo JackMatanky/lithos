@@ -121,6 +121,33 @@ impl RawGlobalConfigView {
             self.versions.truncate(5);
         }
     }
+
+    /// Check if this view matches the given raw config (not stale).
+    ///
+    /// Returns `true` if the latest version in this view matches the
+    /// raw config's metadata (timestamps AND content hash), indicating no
+    /// staleness.
+    ///
+    /// Returns `false` if:
+    /// - No version history exists (never ingested)
+    /// - Timestamps differ (file was modified)
+    /// - Content hash differs (file content changed)
+    #[must_use]
+    pub fn matches_raw(
+        &self,
+        raw: &crate::config::raw::RawVaultConfig,
+    ) -> bool {
+        self.latest_version().map_or(false, |latest| {
+            let meta = &raw.metadata;
+            // Compare created_at (latest has Option, meta has Option)
+            latest.created_at() == meta.created_at
+                // Compare modified_at (latest has SystemTime, meta has Option)
+                && meta.modified_at.map_or(false, |mt| latest.modified_at() == mt)
+                // Compare content hash
+                && latest.content_hash()
+                    == &meta.content_hash.unwrap_or([0; 32])
+        })
+    }
 }
 
 /// View of vault config file state with version history.
@@ -221,6 +248,33 @@ impl RawVaultConfigView {
         if self.versions.len() > 5 {
             self.versions.truncate(5);
         }
+    }
+
+    /// Check if this view matches the given raw config (not stale).
+    ///
+    /// Returns `true` if the latest version in this view matches the
+    /// raw config's metadata (timestamps AND content hash), indicating no
+    /// staleness.
+    ///
+    /// Returns `false` if:
+    /// - No version history exists (never ingested)
+    /// - Timestamps differ (file was modified)
+    /// - Content hash differs (file content changed)
+    #[must_use]
+    pub fn matches_raw(
+        &self,
+        raw: &crate::config::raw::RawGlobalConfig,
+    ) -> bool {
+        self.latest_version().map_or(false, |latest| {
+            let meta = &raw.metadata;
+            // Compare created_at (latest has Option, meta has Option)
+            latest.created_at() == meta.created_at
+                // Compare modified_at (latest has SystemTime, meta has Option)
+                && meta.modified_at.map_or(false, |mt| latest.modified_at() == mt)
+                // Compare content hash
+                && latest.content_hash()
+                    == &meta.content_hash.unwrap_or([0; 32])
+        })
     }
 }
 

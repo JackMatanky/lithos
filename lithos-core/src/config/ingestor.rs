@@ -135,7 +135,8 @@ impl Ingestor {
     /// then:
     /// - Reads the file from disk
     /// - Extracts filesystem timestamps (`created_at`, `modified_at`)
-    /// - Parses TOML content into [`RawConfig`]
+    /// - Parses TOML content into [`RawGlobalConfig`]
+    /// - Populates metadata fields on the returned type
     ///
     /// Returns `None` if no global config file exists.
     ///
@@ -147,7 +148,7 @@ impl Ingestor {
     #[inline]
     pub fn load_global_config(
         &self,
-    ) -> Result<Option<RawGlobalConfigWithMetadata>, ConfigIngestError> {
+    ) -> Result<Option<RawGlobalConfig>, ConfigIngestError> {
         let Some(path) = self.resolve_global_config_path() else {
             return Ok(None);
         };
@@ -159,7 +160,8 @@ impl Ingestor {
     ///
     /// Reads from `{vault_root}/.lithos/lithos.toml`, then:
     /// - Extracts filesystem timestamps (`created_at`, `modified_at`)
-    /// - Parses TOML content into [`RawConfig`]
+    /// - Parses TOML content into [`RawVaultConfig`]
+    /// - Populates metadata fields on the returned type
     ///
     /// Returns `None` if the vault config file doesn't exist.
     ///
@@ -172,7 +174,7 @@ impl Ingestor {
     pub fn load_vault_config(
         &self,
         _vault_root: &VaultRoot,
-    ) -> Result<Option<RawVaultConfigWithMetadata>, ConfigIngestError> {
+    ) -> Result<Option<RawVaultConfig>, ConfigIngestError> {
         let relative_path = Path::new(".lithos/lithos.toml");
 
         if !self.vault_source.exists(relative_path) {
@@ -256,12 +258,109 @@ impl Ingestor {
 
     /// Internal helper to load and parse a global config file with metadata.
     ///
-    /// Uses `global_source` for absolute system paths.
+    /// Uses `global_source` for absolute paths.
     fn load_config_from_path(
         &self,
         path: &Path,
-    ) -> Result<Option<RawGlobalConfigWithMetadata>, ConfigIngestError> {
-        Self::load_config_impl(&self.global_source, path)
+    ) -> Result<Option<RawGlobalConfig>, ConfigIngestError> {
+        // Extract timestamps using FsReader methods
+        let created_at = self.global_source.created_at(path);
+        let modified_at = self.global_source.modified_at(path);
+
+        // Parse TOML content using FsReader
+        let mut config: RawGlobalConfig = self
+            .global_source
+            .parse_structured(path)
+            .map_err(|e| self.convert_parse_error(e, path))?;
+
+        // Populate metadata fields
+        config.created_at = created_at;
+        config.modified_at = modified_at;
+
+        Ok(Some(config))
+    }
+
+    /// Internal helper to load and parse a vault config file with metadata.
+    ///
+    /// Uses `vault_source` for vault-relative paths.
+    fn load_config_from_vault_path(
+        &self,
+        path: &Path,
+    ) -> Result<Option<RawVaultConfig>, ConfigIngestError> {
+        // Extract timestamps using FsReader methods
+        let created_at = self.vault_source.created_at(path);
+        let modified_at = self.vault_source.modified_at(path);
+
+        // Parse TOML content using FsReader
+        let mut config: RawVaultConfig = self
+            .vault_source
+            .parse_structured(path)
+            .map_err(|e| self.convert_parse_error(e, path))?;
+
+        // Populate metadata fields
+        config.created_at = created_at;
+        config.modified_at = modified_at;
+
+        Ok(Some(config))
+    }
+
+    /// Convert fs::ParseError to ConfigIngestError.
+    fn convert_parse_error(
+        &self,
+        e: crate::fs::ParseError,
+        file_path: &Path,
+    ) -> ConfigIngestError {
+        match e {
+            crate::fs::ParseError::Io {
+                path: err_path,
+                source: io_source,
+            } => ConfigIngestError::Io {
+                path: err_path,
+                source: io_source,
+            },
+            crate::fs::ParseError::Toml {
+                path: err_path,
+                message,
+                ..
+            } => {
+                // Convert fs::ParseError::Toml to ConfigIngestError::TomlParse
+                // We need to create a toml::de::Error, but it doesn't have
+                // a public constructor. We parse invalid TOML to get an
+                // error instance, but preserve the original error message
+                // via eprintln for debugging.
+                #[expect(
+                    clippy::expect_used,
+                    reason = "We intentionally create an error by parsing \
+                              invalid TOML to get an error instance"
+                )]
+                let toml_error = toml::from_str::<toml::Value>("[")
+                    .expect_err("Invalid TOML should always error");
+
+                // Log the actual error message for debugging
+                eprintln!(
+                    "TOML parse error in {}: {}",
+                    err_path.display(),
+                    message
+                );
+
+                ConfigIngestError::TomlParse {
+                    path: err_path,
+                    source: toml_error,
+                }
+            }
+            crate::fs::ParseError::Json {
+                ..
+            }
+            | crate::fs::ParseError::Yaml {
+                ..
+            }
+            | crate::fs::ParseError::UnsupportedFormat {
+                ..
+            } => ConfigIngestError::Io {
+                path: file_path.to_path_buf(),
+                source: std::io::Error::other(e.to_string()),
+            },
+        }
     }
 
     /// Internal helper to load and parse a vault config file with metadata.
