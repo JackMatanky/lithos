@@ -244,7 +244,12 @@ Events:
 ```rust
 pub enum Tag<'a> {
     Paragraph,
-    Heading { level: HeadingLevel, id: Option<CowStr<'a>>, classes: Vec<CowStr<'a>>, attrs: Vec<(CowStr<'a>, Option<CowStr<'a>>)> },
+    Heading {
+        level: HeadingLevel,
+        id: Option<CowStr<'a>>,
+        classes: Vec<CowStr<'a>>,
+        attrs: Vec<(CowStr<'a>, Option<CowStr<'a>>)>
+    },
     BlockQuote(Option<BlockQuoteKind>),
     CodeBlock(CodeBlockKind<'a>),
     HtmlBlock,
@@ -261,8 +266,18 @@ pub enum Tag<'a> {
     Emphasis,
     Strong,
     Strikethrough,
-    Link { link_type: LinkType, dest_url: CowStr<'a>, title: CowStr<'a>, id: CowStr<'a> },
-    Image { link_type: LinkType, dest_url: CowStr<'a>, title: CowStr<'a>, id: CowStr<'a> },
+    Link {
+        link_type: LinkType,
+        dest_url: CowStr<'a>,
+        title: CowStr<'a>,
+        id: CowStr<'a>,
+    },
+    Image {
+        link_type: LinkType,
+        dest_url: CowStr<'a>,
+        title: CowStr<'a>,
+        id: CowStr<'a>,
+    },
     MetadataBlock(MetadataBlockKind),
 }
 ```
@@ -589,8 +604,6 @@ code here
 ```
 ````
 
-````
-
 Produces: `CodeBlock(Fenced("rust"))`
 
 ### [`LinkType`](https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/enum.LinkType.html)
@@ -607,7 +620,7 @@ pub enum LinkType {
     Autolink,            // <url>
     Email,               // <email>
 }
-````
+```
 
 ### [`Alignment`](https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/enum.Alignment.html)
 
@@ -779,11 +792,14 @@ fn extract_links(markdown: &str) -> Vec<String> {
 ### Extract Headings with IDs
 
 ```rust
-use pulldown_cmark::{Parser, Event, Tag, Options};
+use pulldown_cmark::{Event, Options, Parser, Tag};
 
-fn extract_headings(markdown: &str) -> Vec<(String, Option<String>)> {
+fn extract_headings(
+    markdown: &str,
+) -> Vec<(String, Option<String>)> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+
     let parser = Parser::new_ext(markdown, options);
 
     let mut headings = Vec::new();
@@ -792,16 +808,60 @@ fn extract_headings(markdown: &str) -> Vec<(String, Option<String>)> {
     for event in parser {
         match event {
             Event::Start(Tag::Heading { id, .. }) => {
-                current_heading = Some(id.map(|s| s.to_string()));
+                current_heading = Some(
+                    id.map(|s| s.to_string())
+                );
             }
-            Event::Text(text) if current_heading.is_some() => {
-                headings.push((text.to_string(), current_heading.take().flatten()));
+
+            Event::Text(text)
+                if current_heading.is_some() =>
+            {
+                headings.push((
+                    text.to_string(),
+                    current_heading
+                        .take()
+                        .flatten(),
+                ));
             }
+
             _ => {}
         }
     }
 
     headings
+}
+```
+
+### Extract Front Matter
+
+```rust
+use pulldown_cmark::{Parser, Event, Tag, Options, MetadataBlockKind};
+
+fn extract_front_matter(markdown: &str) -> Option<String> {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+    let parser = Parser::new_ext(markdown, options);
+
+    let mut in_metadata = false;
+    let mut metadata = String::new();
+
+    for event in parser {
+        match event {
+            Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) => {
+                in_metadata = true;
+            }
+            Event::Text(text) if in_metadata => {
+                metadata.push_str(&text);
+            }
+            Event::End(TagEnd::MetadataBlock(_)) => {
+                in_metadata = false;
+                return Some(metadata);
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 ```
 
@@ -825,6 +885,54 @@ fn prefix_image_urls(markdown: &str, prefix: &str) -> Vec<Event> {
         }
         _ => event
     }).collect()
+}
+```
+
+### Count Document Statistics
+
+```rust
+use pulldown_cmark::{Event, Parser, Tag, TagEnd, TextMergeStream};
+
+#[derive(Debug, Default)]
+struct DocumentStats {
+    word_count: usize,
+    heading_count: usize,
+    link_count: usize,
+    code_block_count: usize,
+    list_count: usize,
+    paragraph_count: usize,
+}
+
+fn count_stats(markdown: &str) -> DocumentStats {
+    let parser = Parser::new(markdown);
+    let merged = TextMergeStream::new(parser);
+    let mut stats = DocumentStats::default();
+
+    for event in merged {
+        match event {
+            Event::Text(text) => {
+                stats.word_count += text.split_whitespace().count();
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                stats.heading_count += 1;
+            }
+            Event::Start(Tag::Link { .. }) => {
+                stats.link_count += 1;
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                stats.code_block_count += 1;
+            }
+            Event::Start(Tag::List(_)) => {
+                stats.list_count += 1;
+            }
+            Event::Start(Tag::Paragraph) => {
+                stats.paragraph_count += 1;
+            }
+            _ => {}
+        }
+    }
+
+    stats
 }
 ```
 
@@ -870,115 +978,12 @@ fn prefix_image_urls(markdown: &str, prefix: &str) -> Vec<Event> {
 
 **Solution:** Use `TextMergeStream`:
 
-````rust
+```rust
 use pulldown_cmark::{Parser, TextMergeStream};
 
-
-### Extract Front Matter
-
-```rust
-use pulldown_cmark::{Parser, Event, Tag, Options, MetadataBlockKind};
-
-fn extract_front_matter(markdown: &str) -> Option<String> {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
-    let parser = Parser::new_ext(markdown, options);
-
-    let mut in_metadata = false;
-    let mut metadata = String::new();
-
-    for event in parser {
-        match event {
-            Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) => {
-                in_metadata = true;
-            }
-            Event::Text(text) if in_metadata => {
-                metadata.push_str(&text);
-            }
-            Event::End(TagEnd::MetadataBlock(_)) => {
-                in_metadata = false;
-                return Some(metadata);
-            }
-            _ => {}
-        }
-    }
-
-    None
-}
-````
-
-### Count Document Statistics
-
-````rust
-use pulldown_cmark::{Parser, Event, Tag, TagEnd, TextMergeStream};
-
-#[derive(Debug, Default)]
-struct DocumentStats {
-    word_count: usize,
-    heading_count: usize,
-    link_count: usize,
-    code_block_count: usize,
-    list_count: usize,
-    paragraph_count: usize,
-}
-
-fn count_stats(markdown: &str) -> DocumentStats {
-    let parser = Parser::new(markdown);
-    let merged = TextMergeStream::new(parser);
-    let mut stats = DocumentStats::default();
-
-    for event in merged {
-        match event {
-            Event::Text(text) => {
-                stats.word_count += text.split_whitespace().count();
-            }
-            Event::End(TagEnd::Heading(_)) => {
-                stats.heading_count += 1;
-            }
-            Event::Start(Tag::Link { .. }) => {
-                stats.link_count += 1;
-            }
-            Event::End(TagEnd::CodeBlock) => {
-                stats.code_block_count += 1;
-
-
-## HTML Rendering (Optional)
-
-**Note:** This project primarily focuses on parsing. HTML rendering is available but not the primary use case.
-
-### Basic HTML Output
-
-```rust
-use pulldown_cmark::{Parser, html};
-
-let markdown = "# Hello\n\n*world*";
-let parser = Parser::new(markdown);
-
-let mut html_output = String::new();
-html::push_html(&mut html_output, parser);
-// Output: "<h1>Hello</h1>\n<p><em>world</em></p>\n"
-````
-
-**See Official Docs:** https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/html/index.html for complete HTML rendering API. }
-Event::Start(Tag::List(_)) => {
-stats.list_count += 1;
-}
-}
-Event::End(TagEnd::CodeBlock) => {
-in_code = false;
-blocks.push(current_block.clone());
-}
-_ => {}
-}
-}
-
-    blocks
-
-}
-
-```
 let merged = TextMergeStream::new(Parser::new(markdown));
 ```
+
 
 ### 2. Event Lifetime Tied to Source
 
@@ -1044,6 +1049,27 @@ let parser = Parser::new("| col |");
 
 // ✅ GOOD
 let parser = Parser::new_ext("| col |", Options::ENABLE_TABLES);
+```
+
+
+
+## HTML Rendering (Optional)
+
+**Note:** This project primarily focuses on parsing. HTML rendering is available but not the primary use case.
+
+**See Official Docs:** https://docs.rs/pulldown-cmark/0.13.0/pulldown_cmark/html/index.html for complete HTML rendering API.
+
+### Basic HTML Output
+
+```rust
+use pulldown_cmark::{Parser, html};
+
+let markdown = "# Hello\n\n*world*";
+let parser = Parser::new(markdown);
+
+let mut html_output = String::new();
+html::push_html(&mut html_output, parser);
+// Output: "<h1>Hello</h1>\n<p><em>world</em></p>\n"
 ```
 
 ## Integration Examples
