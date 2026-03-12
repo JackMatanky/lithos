@@ -212,7 +212,13 @@ schema/
   - `recorded_at` (persisted, private)
   - `version`, `properties`
 
-### 6.2 Views (Target)
+### 6.2 Raw Timestamps
+
+- `Raw*` view types include `created_at` / `modified_at` from ingestion.
+- Domain conversion does **not** carry these fields unless explicitly needed.
+- Staleness checks read from raw views; domain remains timestamp-free by default.
+
+### 6.3 Views (Target)
 
 - `RawSchemaView` and `RawPropertyBankView` contain `RawFileVersion` history
 - `MetadataView` removed; staleness reads from raw views
@@ -220,7 +226,7 @@ schema/
 - Per-property hashes stored in `RawFileVersion` to support incremental rebuilds
 - `RawSchemaView` should also persist `extends` and `excludes` for incremental diffs
 
-### 6.3 Target Struct Shapes (Draft)
+### 6.4 Target Struct Shapes (Draft)
 
 ```rust
 // schema/aggregate.rs
@@ -273,10 +279,10 @@ pub struct RawPropertyBankView {
 pub struct RawFileVersion {
     compressed_content: Vec<u8>,
     content_hash: [u8; 32],
+    property_hashes: std::collections::BTreeMap<PropertyName, [u8; 32]>,
     created_at: Option<SystemTime>,
     modified_at: Option<SystemTime>,
     recorded_at: SystemTime,
-    property_hashes: std::collections::BTreeMap<PropertyName, [u8; 32]>,
 }
 ```
 
