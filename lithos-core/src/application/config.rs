@@ -205,10 +205,11 @@ impl<'db> ConfigService<'db> {
         // We pass a dummy vault root since global config uses system-wide
         // reader
         let ingestor = Ingestor::new(std::env::temp_dir());
-        if let Some((raw, created_at, modified_at)) =
-            ingestor.load_global_config()?
-        {
+        if let Some(raw) = ingestor.load_global_config()? {
             // File exists - check if stale
+            // Extract metadata
+            let created_at = raw.metadata.created_at;
+            let modified_at = raw.metadata.modified_at;
             // If modified_at is None, use current time (file system doesn't
             // support it)
             let modified = modified_at.unwrap_or_else(SystemTime::now);
@@ -234,10 +235,11 @@ impl<'db> ConfigService<'db> {
         vault_id: VaultId,
     ) -> Result<ConfigWithStaleness, ConfigServiceError> {
         let ingestor = Ingestor::new(vault_root.as_path());
-        if let Some((raw, created_at, modified_at)) =
-            ingestor.load_vault_config(vault_root)?
-        {
+        if let Some(raw) = ingestor.load_vault_config(vault_root)? {
             // File exists - check if stale
+            // Extract metadata
+            let created_at = raw.metadata.created_at;
+            let modified_at = raw.metadata.modified_at;
             // If modified_at is None, use current time (file system doesn't
             // support it)
             let modified = modified_at.unwrap_or_else(SystemTime::now);

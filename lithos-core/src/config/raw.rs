@@ -13,60 +13,6 @@ use std::{collections::HashMap, time::SystemTime};
 use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 
 // ----------------------------------------------------------- //
-//                   Raw Config Metadata                       //
-// ----------------------------------------------------------- //
-
-/// Metadata for raw config files (timestamps and content hash).
-///
-/// This struct centralizes file metadata used for staleness detection.
-/// Populated during ingestion from filesystem and raw file bytes.
-///
-/// # Fields
-///
-/// - `created_at`: File creation timestamp (birthtime), if supported by
-///   filesystem
-/// - `modified_at`: File modification timestamp (mtime)
-/// - `content_hash`: BLAKE3 hash of raw file bytes (before parsing)
-///
-/// # Usage
-///
-/// ```ignore
-/// use lithos_core::config::raw::RawConfigMetadata;
-/// use std::time::SystemTime;
-///
-/// let metadata = RawConfigMetadata {
-///     created_at: Some(SystemTime::now()),
-///     modified_at: Some(SystemTime::now()),
-///     content_hash: Some([0u8; 32]),
-/// };
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RawConfigMetadata {
-    /// File creation timestamp (birthtime).
-    ///
-    /// None if the filesystem doesn't support birthtime.
-    pub created_at: Option<SystemTime>,
-
-    /// File modification timestamp (mtime).
-    pub modified_at: Option<SystemTime>,
-
-    /// BLAKE3 hash of raw file content (before parsing).
-    ///
-    /// Computed from raw file bytes during ingestion.
-    pub content_hash: Option<[u8; 32]>,
-}
-
-impl Default for RawConfigMetadata {
-    fn default() -> Self {
-        Self {
-            created_at: None,
-            modified_at: None,
-            content_hash: None,
-        }
-    }
-}
-
-// ----------------------------------------------------------- //
 //                  Raw Config Aggregate Root                  //
 // ----------------------------------------------------------- //
 
@@ -430,6 +376,60 @@ pub enum RawTrustedVaults {
     List(Vec<String>),
     /// Map format (alias -> path).
     Map(HashMap<String, String>),
+}
+
+// ----------------------------------------------------------- //
+//                   Raw Config Metadata                       //
+// ----------------------------------------------------------- //
+
+/// Metadata for raw config files (timestamps and content hash).
+///
+/// This struct centralizes file metadata used for staleness detection.
+/// Populated during ingestion from filesystem and raw file bytes.
+///
+/// # Fields
+///
+/// - `created_at`: File creation timestamp (birthtime), if supported by
+///   filesystem
+/// - `modified_at`: File modification timestamp (mtime)
+/// - `content_hash`: BLAKE3 hash of raw file bytes (before parsing)
+///
+/// # Usage
+///
+/// ```ignore
+/// use lithos_core::config::raw::RawConfigMetadata;
+/// use std::time::SystemTime;
+///
+/// let metadata = RawConfigMetadata {
+///     created_at: Some(SystemTime::now()),
+///     modified_at: Some(SystemTime::now()),
+///     content_hash: Some([0u8; 32]),
+/// };
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RawConfigMetadata {
+    /// File creation timestamp (birthtime).
+    ///
+    /// None if the filesystem doesn't support birthtime.
+    pub created_at: Option<SystemTime>,
+
+    /// File modification timestamp (mtime).
+    pub modified_at: Option<SystemTime>,
+
+    /// BLAKE3 hash of raw file content (before parsing).
+    ///
+    /// Computed from raw file bytes during ingestion.
+    pub content_hash: Option<[u8; 32]>,
+}
+
+impl Default for RawConfigMetadata {
+    fn default() -> Self {
+        Self {
+            created_at: None,
+            modified_at: None,
+            content_hash: None,
+        }
+    }
 }
 
 // ----------------------------------------------------------- //
