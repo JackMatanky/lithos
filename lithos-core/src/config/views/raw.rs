@@ -132,17 +132,18 @@ impl RawGlobalConfigView {
     /// - No version history exists (never ingested)
     /// - Timestamps differ (file was modified)
     /// - Content hash differs (file content changed)
+    #[inline]
     #[must_use]
     pub fn matches_raw(
         &self,
         raw: &crate::config::raw::RawVaultConfig,
     ) -> bool {
-        self.latest_version().map_or(false, |latest| {
+        self.latest_version().is_some_and(|latest| {
             let meta = &raw.metadata;
             // Compare created_at (latest has Option, meta has Option)
             latest.created_at() == meta.created_at
                 // Compare modified_at (latest has SystemTime, meta has Option)
-                && meta.modified_at.map_or(false, |mt| latest.modified_at() == mt)
+                && meta.modified_at.is_some_and(|mt| latest.modified_at() == mt)
                 // Compare content hash
                 && latest.content_hash()
                     == &meta.content_hash.unwrap_or([0; 32])
@@ -260,17 +261,18 @@ impl RawVaultConfigView {
     /// - No version history exists (never ingested)
     /// - Timestamps differ (file was modified)
     /// - Content hash differs (file content changed)
+    #[inline]
     #[must_use]
     pub fn matches_raw(
         &self,
         raw: &crate::config::raw::RawGlobalConfig,
     ) -> bool {
-        self.latest_version().map_or(false, |latest| {
+        self.latest_version().is_some_and(|latest| {
             let meta = &raw.metadata;
             // Compare created_at (latest has Option, meta has Option)
             latest.created_at() == meta.created_at
                 // Compare modified_at (latest has SystemTime, meta has Option)
-                && meta.modified_at.map_or(false, |mt| latest.modified_at() == mt)
+                && meta.modified_at.is_some_and(|mt| latest.modified_at() == mt)
                 // Compare content hash
                 && latest.content_hash()
                     == &meta.content_hash.unwrap_or([0; 32])

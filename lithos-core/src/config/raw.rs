@@ -406,7 +406,8 @@ pub enum RawTrustedVaults {
 ///     content_hash: Some([0u8; 32]),
 /// };
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub struct RawConfigMetadata {
     /// File creation timestamp (birthtime).
     ///
@@ -420,16 +421,6 @@ pub struct RawConfigMetadata {
     ///
     /// Computed from raw file bytes during ingestion.
     pub content_hash: Option<[u8; 32]>,
-}
-
-impl Default for RawConfigMetadata {
-    fn default() -> Self {
-        Self {
-            created_at: None,
-            modified_at: None,
-            content_hash: None,
-        }
-    }
 }
 
 // ----------------------------------------------------------- //

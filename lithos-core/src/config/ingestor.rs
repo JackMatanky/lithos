@@ -265,7 +265,7 @@ impl Ingestor {
         let raw_bytes = self
             .global_source
             .read_bytes(path)
-            .map_err(|e| self.convert_parse_error(e, path))?;
+            .map_err(|e| Self::convert_parse_error(e, path))?;
 
         // Compute BLAKE3 hash from raw bytes
         let content_hash = blake3::hash(&raw_bytes);
@@ -274,7 +274,7 @@ impl Ingestor {
         let mut config: RawGlobalConfig = self
             .global_source
             .parse_structured(path)
-            .map_err(|e| self.convert_parse_error(e, path))?;
+            .map_err(|e| Self::convert_parse_error(e, path))?;
 
         // Populate metadata
         config.metadata = RawConfigMetadata {
@@ -301,7 +301,7 @@ impl Ingestor {
         let raw_bytes = self
             .vault_source
             .read_bytes(path)
-            .map_err(|e| self.convert_parse_error(e, path))?;
+            .map_err(|e| Self::convert_parse_error(e, path))?;
 
         // Compute BLAKE3 hash from raw bytes
         let content_hash = blake3::hash(&raw_bytes);
@@ -310,7 +310,7 @@ impl Ingestor {
         let mut config: RawVaultConfig = self
             .vault_source
             .parse_structured(path)
-            .map_err(|e| self.convert_parse_error(e, path))?;
+            .map_err(|e| Self::convert_parse_error(e, path))?;
 
         // Populate metadata
         config.metadata = RawConfigMetadata {
@@ -322,9 +322,8 @@ impl Ingestor {
         Ok(Some(config))
     }
 
-    /// Convert fs::ParseError to ConfigIngestError.
+    /// Convert `fs::ParseError` to `ConfigIngestError`.
     fn convert_parse_error(
-        &self,
         e: crate::fs::ParseError,
         file_path: &Path,
     ) -> ConfigIngestError {
@@ -514,12 +513,11 @@ mod tests {
                 .expect("valid vault root");
 
             let ingestor = Ingestor::new(temp.path());
-            let result = ingestor
+            let config = ingestor
                 .load_vault_config(&vault_root)
                 .expect("should parse config")
                 .expect("config should exist");
 
-            let (config, _created, _modified) = result;
             assert!(config.logging.is_some(), "Should parse logging section");
         }
 
@@ -537,14 +535,13 @@ mod tests {
                 .expect("valid vault root");
 
             let ingestor = Ingestor::new(temp.path());
-            let result = ingestor
+            let config = ingestor
                 .load_vault_config(&vault_root)
                 .expect("should parse config")
                 .expect("config should exist");
 
-            let (_config, _created, modified) = result;
             assert!(
-                modified.is_some(),
+                config.metadata.modified_at.is_some(),
                 "Modified timestamp should be extracted"
             );
         }

@@ -329,13 +329,6 @@ impl Reader {
     ///
     /// Returns [`ParseError::Io`] if the file cannot be read.
     #[inline]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Internal API for future byte-level processing"
-        )
-    )]
     pub(crate) fn read_bytes(
         &self,
         path: &Path,
