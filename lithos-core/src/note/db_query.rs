@@ -449,6 +449,8 @@ mod tests {
                             emoji: None,
                             format: String::from("%Y-%m-%d"),
                         }),
+                        start: None,
+                        scheduled: None,
                     }),
                     fields: Some(std::collections::HashMap::from([
                         (String::from("priority"), RawFieldSpec::Float {

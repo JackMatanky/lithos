@@ -25,6 +25,8 @@ use tempfile::tempdir;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const VAULT_CONFIG_TOML: &str = r##"
+vault_path = "/vault"
+
 [logging]
 log_level = "debug"
 
@@ -40,10 +42,17 @@ date_created_key = "created_at"
 enabled = false
 task_tags = ["#work"]
 
-[task.status]
-todo = ' '
-done = 'x'
-blocked = '!'
+[task.status.todo]
+symbol = ' '
+status_type = "Todo"
+
+[task.status.done]
+symbol = 'x'
+status_type = "Done"
+
+[task.status.blocked]
+symbol = '!'
+status_type = "OnHold"
 
 [task.dates.due]
 keyword = "due"
@@ -268,8 +277,8 @@ fn config_ingestion_rejects_unknown_indexed_field() -> TestResult {
 
     let vault_root = write_vault_config(
         &dir,
-        "[task]\nenabled = true\n\n[task.indexing]\nindexed_fields = \
-         [\"priority\"]\n",
+        "vault_path = \"/vault\"\n[task]\nenabled = \
+         true\n\n[task.indexing]\nindexed_fields = [\"priority\"]\n",
     )?;
 
     let result = service.load(&vault_root);
@@ -299,7 +308,8 @@ fn config_ingestion_rejects_invalid_field_name() -> TestResult {
 
     let vault_root = write_vault_config(
         &dir,
-        "[task.fields.\"bad name\"]\ntype = \"string\"\n",
+        "vault_path = \"/vault\"\n[task.fields.\"bad name\"]\ntype = \
+         \"string\"\n",
     )?;
 
     let result = service.load(&vault_root);

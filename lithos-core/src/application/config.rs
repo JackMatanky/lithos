@@ -39,11 +39,11 @@
 use std::time::SystemTime;
 
 use crate::config::{
-    adapter::ingest::Ingestor,
     aggregate::Config,
     command::Command,
     error::ConfigCommandError,
     global::Global,
+    ingestor::Ingestor,
     query::Query,
     raw::RawConfig,
     vault::{Vault, VaultId, VaultRoot},
@@ -213,7 +213,7 @@ impl<'db> ConfigService<'db> {
             // support it)
             let modified = modified_at.unwrap_or_else(SystemTime::now);
             let is_stale = self.query.is_global_stale(created_at, modified)?;
-            Ok((raw, created_at, modified, is_stale))
+            Ok((raw.into(), created_at, modified, is_stale))
         } else {
             // No file - use defaults
             // Only mark as stale if we haven't saved defaults yet
@@ -243,7 +243,7 @@ impl<'db> ConfigService<'db> {
             let modified = modified_at.unwrap_or_else(SystemTime::now);
             let is_stale =
                 self.query.is_vault_stale(vault_id, created_at, modified)?;
-            Ok((raw, created_at, modified, is_stale))
+            Ok((raw.into(), created_at, modified, is_stale))
         } else {
             // No file - use defaults
             // Only mark as stale if we haven't saved defaults yet

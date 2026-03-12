@@ -17,16 +17,20 @@ use std::{
     time::SystemTime,
 };
 
-use figment::{
-    Figment,
-    providers::{Format as _, Serialized, Toml},
-};
+use figment::{Figment, providers::Serialized};
 use tracing::instrument;
 
 use crate::{
-    config::{error::ConfigIngestError, raw::RawConfig, vault::VaultRoot},
+    config::{
+        error::ConfigIngestError,
+        raw::{RawConfig, RawGlobalConfig, RawVaultConfig},
+        vault::VaultRoot,
+    },
     fs::FsReader,
 };
+
+/// Type alias for config with metadata tuple.
+type ConfigWithMetadata<T> = (T, Option<SystemTime>, Option<SystemTime>);
 
 /// Configuration ingestion adapter.
 ///
@@ -57,7 +61,7 @@ impl Ingestor {
     /// ```rust,no_run
     /// use std::path::PathBuf;
     ///
-    /// use lithos_core::config::adapter::ingest::Ingestor;
+    /// use lithos_core::config::ingestor::Ingestor;
     ///
     /// let vault_root = PathBuf::from("/vault");
     /// let ingestor = Ingestor::new(vault_root);
@@ -143,7 +147,7 @@ impl Ingestor {
     #[inline]
     pub fn load_global_config(
         &self,
-    ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
+    ) -> Result<Option<RawGlobalConfigWithMetadata>, ConfigIngestError> {
         let Some(path) = self.resolve_global_config_path() else {
             return Ok(None);
         };
@@ -168,7 +172,7 @@ impl Ingestor {
     pub fn load_vault_config(
         &self,
         _vault_root: &VaultRoot,
-    ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
+    ) -> Result<Option<RawVaultConfigWithMetadata>, ConfigIngestError> {
         let relative_path = Path::new(".lithos/lithos.toml");
 
         if !self.vault_source.exists(relative_path) {
@@ -230,15 +234,20 @@ impl Ingestor {
         // Layer 2: Global config (if exists)
         if let Some(path) = global_config_path
             && self.global_source.exists(path)
+            && let Some((global, _, _)) = self.load_config_from_path(path)?
         {
-            figment = figment.merge(Toml::file(path));
+            figment =
+                figment.merge(Serialized::defaults(RawConfig::from(global)));
         }
 
         // Layer 3: Vault config (if exists)
         let vault_config_relative = Path::new(".lithos/lithos.toml");
-        if self.vault_source.exists(vault_config_relative) {
-            let vault_config_absolute = vault_root.join(vault_config_relative);
-            figment = figment.merge(Toml::file(&vault_config_absolute));
+        if self.vault_source.exists(vault_config_relative)
+            && let Some((vault, _, _)) =
+                self.load_config_from_vault_path(vault_config_relative)?
+        {
+            figment =
+                figment.merge(Serialized::defaults(RawConfig::from(vault)));
         }
 
         // Extract merged config
@@ -251,7 +260,7 @@ impl Ingestor {
     fn load_config_from_path(
         &self,
         path: &Path,
-    ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
+    ) -> Result<Option<RawGlobalConfigWithMetadata>, ConfigIngestError> {
         Self::load_config_impl(&self.global_source, path)
     }
 
@@ -261,21 +270,24 @@ impl Ingestor {
     fn load_config_from_vault_path(
         &self,
         path: &Path,
-    ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
+    ) -> Result<Option<RawVaultConfigWithMetadata>, ConfigIngestError> {
         Self::load_config_impl(&self.vault_source, path)
     }
 
     /// Shared implementation for loading config from a specific source.
-    fn load_config_impl(
+    fn load_config_impl<T>(
         fs_reader: &FsReader,
         file_path: &Path,
-    ) -> Result<Option<RawConfigWithMetadata>, ConfigIngestError> {
+    ) -> Result<Option<ConfigWithMetadata<T>>, ConfigIngestError>
+    where
+        T: serde::de::DeserializeOwned,
+    {
         // Extract timestamps using FsReader methods (returns SystemTime)
         let created_at = fs_reader.created_at(file_path);
         let modified_at = fs_reader.modified_at(file_path);
 
         // Parse TOML content using FsReader
-        let config: RawConfig =
+        let config: T =
             fs_reader.parse_structured(file_path).map_err(|e| match e {
                 crate::fs::ParseError::Io {
                     path: err_path,
@@ -286,21 +298,30 @@ impl Ingestor {
                 },
                 crate::fs::ParseError::Toml {
                     path: err_path,
+                    message,
                     ..
                 } => {
                     // Convert fs::ParseError::Toml to
                     // ConfigIngestError::TomlParse
-                    // Create a dummy TOML error by parsing invalid TOML
-                    // (We can't construct toml::de::Error directly)
+                    // We need to create a toml::de::Error, but it doesn't have
+                    // a public constructor. We parse invalid TOML to get an
+                    // error instance, but preserve the original error message
+                    // in the path.
                     #[expect(
                         clippy::expect_used,
                         reason = "We intentionally create an error by parsing \
-                                  invalid TOML - this is a workaround for \
-                                  toml::de::Error not having a public \
-                                  constructor"
+                                  invalid TOML to get an error instance"
                     )]
                     let toml_error = toml::from_str::<toml::Value>("[")
                         .expect_err("Invalid TOML should always error");
+
+                    // Log the actual error message for debugging
+                    eprintln!(
+                        "TOML parse error in {}: {}",
+                        err_path.display(),
+                        message
+                    );
+
                     ConfigIngestError::TomlParse {
                         path: err_path,
                         source: toml_error,
@@ -326,9 +347,13 @@ impl Ingestor {
 
 /// Result tuple containing parsed config and filesystem timestamps.
 ///
-/// Format: `(RawConfig, created_at, modified_at)`.
-pub type RawConfigWithMetadata =
-    (RawConfig, Option<SystemTime>, Option<SystemTime>);
+/// Format: `(RawGlobalConfig, created_at, modified_at)`.
+pub type RawGlobalConfigWithMetadata =
+    (RawGlobalConfig, Option<SystemTime>, Option<SystemTime>);
+
+/// Format: `(RawVaultConfig, created_at, modified_at)`.
+pub type RawVaultConfigWithMetadata =
+    (RawVaultConfig, Option<SystemTime>, Option<SystemTime>);
 
 // ----------------------------------------------------------- //
 //                            Tests                            //
@@ -373,11 +398,13 @@ mod tests {
             let global_config_path = global_dir.path().join("lithos.toml");
             fs::write(&global_config_path, global_content)?;
 
-            // Write vault config
-            let vault_config_dir = vault_dir.path().join(".lithos");
-            fs::create_dir_all(&vault_config_dir)?;
-            let vault_config_path = vault_config_dir.join("lithos.toml");
-            fs::write(&vault_config_path, vault_content)?;
+            // Write vault config only if content is not empty
+            if !vault_content.is_empty() {
+                let vault_config_dir = vault_dir.path().join(".lithos");
+                fs::create_dir_all(&vault_config_dir)?;
+                let vault_config_path = vault_config_dir.join("lithos.toml");
+                fs::write(&vault_config_path, vault_content)?;
+            }
 
             Ok((global_dir, global_config_path, vault_dir))
         }
@@ -450,8 +477,11 @@ mod tests {
             fs::create_dir_all(&lithos_dir).expect("create .lithos dir");
 
             let config_path = lithos_dir.join("lithos.toml");
-            fs::write(&config_path, "[logging]\nlog_level = \"debug\"\n")
-                .expect("write config");
+            fs::write(
+                &config_path,
+                "vault_path = \"/vault\"\n[logging]\nlog_level = \"debug\"\n",
+            )
+            .expect("write config");
 
             let vault_root = VaultRoot::try_new(temp.path().to_path_buf())
                 .expect("valid vault root");
@@ -473,7 +503,8 @@ mod tests {
             fs::create_dir_all(&lithos_dir).expect("create .lithos dir");
 
             let config_path = lithos_dir.join("lithos.toml");
-            fs::write(&config_path, "[paths]\n").expect("write config");
+            fs::write(&config_path, "vault_path = \"/vault\"\n[paths]\n")
+                .expect("write config");
 
             let vault_root = VaultRoot::try_new(temp.path().to_path_buf())
                 .expect("valid vault root");
@@ -524,7 +555,7 @@ mod tests {
         #[test]
         fn reads_lithos_toml_when_present() {
             let (dir, _path) = fixtures::setup_vault_with_config(
-                "[logging]\nlog_level = \"debug\"\n",
+                "vault_path = \"/vault\"\n[logging]\nlog_level = \"debug\"\n",
             )
             .expect("setup vault");
 
@@ -546,7 +577,7 @@ mod tests {
         fn vault_overrides_global() {
             let (_global_dir, global_path, vault_dir) = setup_layered_configs(
                 "[logging]\nlog_level = \"info\"\n",
-                "[logging]\nlog_level = \"debug\"\n",
+                "vault_path = \"/vault\"\n[logging]\nlog_level = \"debug\"\n",
             )
             .expect("setup configs");
 
@@ -600,7 +631,7 @@ mod tests {
         fn paths_fields_merge_correctly() {
             let (_global_dir, global_path, vault_dir) = setup_layered_configs(
                 "[paths]\nschemas_dir = \"global-schemas\"\n",
-                "[paths]\ncache_dir = \".cache\"\n",
+                "vault_path = \"/vault\"\n[paths]\ncache_dir = \".cache\"\n",
             )
             .expect("setup configs");
 
@@ -626,7 +657,8 @@ mod tests {
         fn vault_overrides_global_paths_field() {
             let (_global_dir, global_path, vault_dir) = setup_layered_configs(
                 "[paths]\ntemplates_dir = \"global-templates\"\n",
-                "[paths]\ntemplates_dir = \"vault-templates\"\n",
+                "vault_path = \"/vault\"\n[paths]\ntemplates_dir = \
+                 \"vault-templates\"\n",
             )
             .expect("setup configs");
 

@@ -1586,6 +1586,7 @@ mod tests {
                 fields: Some(fields),
                 indexing: None,
                 dependencies: None,
+                use_emoji: None,
             }),
             ..Default::default()
         };

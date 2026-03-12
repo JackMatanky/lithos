@@ -25,7 +25,7 @@
 //! # use lithos_core::config::{
 //! #     aggregate::{Config, Version},
 //! #     vault::{VaultId, VaultRoot},
-//! #     adapter::ingest::Ingestor
+//! #     ingestor::Ingestor
 //! # };
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let vault_root = Path::new("/path/to/vault");
@@ -98,6 +98,8 @@ pub mod command;
 pub mod ports;
 /// Configuration query implementations (CQRS read operations).
 pub mod query;
+/// Unified repository for configuration persistence.
+pub mod storage;
 
 // ----------------------------------------------------------- //
 //                  Supporting Domain Modules                  //
@@ -109,6 +111,8 @@ pub mod error;
 pub mod events;
 /// Frontmatter configuration types.
 pub mod frontmatter;
+/// Configuration file ingestion (Figment-based parsing).
+pub mod ingestor;
 /// Logging configuration types.
 pub mod logging;
 /// Raw (serde) configuration input types.
@@ -117,6 +121,8 @@ pub mod raw;
 pub mod task;
 /// Field specification and value validation types.
 pub mod value;
+/// View types for config staleness tracking.
+pub mod views;
 
 // ----------------------------------------------------------- //
 //               Concrete Implementation Aliases               //
@@ -165,6 +171,18 @@ pub(crate) mod db_table {
     /// - `"{vault_id}:{version}"` → Vault config metadata
     pub(crate) const CONFIG_METADATA: TableDefinition<&str, &[u8]> =
         TableDefinition::new("config_metadata");
+
+    /// Raw global config view with version history.
+    ///
+    /// Keys: `"global"` → `RawGlobalConfigView`.
+    pub(crate) const RAW_GLOBAL_CONFIG_VIEW: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("raw_global_config_view");
+
+    /// Raw vault config views with version history.
+    ///
+    /// Keys: `vault_id.to_string()` → `RawVaultConfigView`.
+    pub(crate) const RAW_VAULT_CONFIG_VIEW: TableDefinition<&str, &[u8]> =
+        TableDefinition::new("raw_vault_config_view");
 }
 
 /// Generic command type alias to remove path stuttering: `config::Command` vs

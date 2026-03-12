@@ -9,6 +9,11 @@
     dead_code,
     reason = "Internal validation helpers and clippy compatibility"
 )]
+#![expect(
+    clippy::exhaustive_enums,
+    reason = "rkyv::Archive derive generates exhaustive archived enums \
+              despite #[non_exhaustive]"
+)]
 
 use std::collections::HashMap;
 
@@ -16,7 +21,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{
     error::ConfigError,
-    raw::RawTaskConfig,
+    raw::{RawStatusSpec, RawTaskConfig},
     value::{DateSpec, FieldSpec},
 };
 
@@ -51,6 +56,11 @@ use super::{
 )]
 #[rkyv(compare(PartialEq), derive(Debug))]
 #[non_exhaustive]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Config flags are inherently boolean - state machine would add \
+              complexity"
+)]
 pub struct Task {
     /// Whether task processing is enabled.
     enabled: bool,
@@ -58,6 +68,8 @@ pub struct Task {
     tags: Vec<TaskTag>,
     /// Status mappings for checkboxes.
     status: CheckboxStatus,
+    /// Whether emoji format is used for task metadata.
+    use_emoji: bool,
     /// Optional due date field configuration.
     due: Option<DateSpec>,
     /// Optional created date field configuration.
@@ -66,6 +78,10 @@ pub struct Task {
     reminder: Option<DateSpec>,
     /// Optional completed date field configuration.
     completed: Option<DateSpec>,
+    /// Optional start date field configuration.
+    start: Option<DateSpec>,
+    /// Optional scheduled date field configuration.
+    scheduled: Option<DateSpec>,
     /// Custom task field specifications.
     fields: HashMap<Box<str>, FieldSpec>,
     /// List of field names to be indexed.
@@ -107,20 +123,31 @@ impl Task {
             CheckboxStatus::try_from_raw(mapping)?
         } else {
             let mut mapping = HashMap::new();
-            mapping.insert("todo".to_owned(), ' ');
-            mapping.insert("done".to_owned(), 'x');
+            mapping.insert("todo".to_owned(), RawStatusSpec {
+                symbol: ' ',
+                status_type: StatusType::Todo,
+                next_symbol: None,
+            });
+            mapping.insert("done".to_owned(), RawStatusSpec {
+                symbol: 'x',
+                status_type: StatusType::Done,
+                next_symbol: None,
+            });
             CheckboxStatus::try_from_raw(mapping)?
         };
 
-        let (due, completed, created, reminder) = match raw.dates {
-            Some(dates) => (
-                dates.due.map(DateSpec::try_from_raw).transpose()?,
-                dates.completed.map(DateSpec::try_from_raw).transpose()?,
-                dates.created.map(DateSpec::try_from_raw).transpose()?,
-                dates.reminder.map(DateSpec::try_from_raw).transpose()?,
-            ),
-            None => (None, None, None, None),
-        };
+        let (due, completed, created, reminder, start, scheduled) =
+            match raw.dates {
+                Some(dates) => (
+                    dates.due.map(DateSpec::try_from_raw).transpose()?,
+                    dates.completed.map(DateSpec::try_from_raw).transpose()?,
+                    dates.created.map(DateSpec::try_from_raw).transpose()?,
+                    dates.reminder.map(DateSpec::try_from_raw).transpose()?,
+                    dates.start.map(DateSpec::try_from_raw).transpose()?,
+                    dates.scheduled.map(DateSpec::try_from_raw).transpose()?,
+                ),
+                None => (None, None, None, None, None, None),
+            };
 
         let mut fields = HashMap::new();
         if let Some(raw_fields) = raw.fields {
@@ -153,10 +180,13 @@ impl Task {
             enabled,
             tags,
             status,
+            use_emoji: raw.use_emoji.unwrap_or(true),
             due,
             created,
             reminder,
             completed,
+            start,
+            scheduled,
             fields,
             indexed,
             dependencies_enabled: raw
@@ -189,6 +219,13 @@ impl Task {
 
     #[inline]
     #[must_use]
+    /// Return whether emoji metadata is enabled.
+    pub fn use_emoji(&self) -> bool {
+        self.use_emoji
+    }
+
+    #[inline]
+    #[must_use]
     /// Return the due date field spec, if configured.
     pub fn due(&self) -> Option<&DateSpec> {
         self.due.as_ref()
@@ -213,6 +250,20 @@ impl Task {
     /// Return the completed date field spec, if configured.
     pub fn completed(&self) -> Option<&DateSpec> {
         self.completed.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the start date field spec, if configured.
+    pub fn start(&self) -> Option<&DateSpec> {
+        self.start.as_ref()
+    }
+
+    #[inline]
+    #[must_use]
+    /// Return the scheduled date field spec, if configured.
+    pub fn scheduled(&self) -> Option<&DateSpec> {
+        self.scheduled.as_ref()
     }
 
     #[inline]
@@ -248,14 +299,93 @@ impl Task {
 //                    Building Block Types                     //
 // ----------------------------------------------------------- //
 
-/// Bi-directional mapping between status names and checkbox symbols.
+/// Task status type (aligned with Tasks plugin).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
+)]
+#[rkyv(compare(PartialEq), derive(Debug))]
+#[non_exhaustive]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub enum StatusType {
+    /// Task is pending and not yet started.
+    Todo,
+    /// Task is actively being worked on.
+    InProgress,
+    /// Task is temporarily paused or blocked.
+    OnHold,
+    /// Task has been completed.
+    Done,
+    /// Task was cancelled and will not be completed.
+    Cancelled,
+    /// Item is not actually a task (e.g., a note or heading).
+    NonTask,
+}
+
+/// Fully specified status mapping entry.
 #[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
 #[rkyv(compare(PartialEq), derive(Debug))]
+pub struct StatusSpec {
+    name: StatusName,
+    symbol: StatusSymbol,
+    status_type: StatusType,
+    next_symbol: StatusSymbol,
+}
+
+impl StatusSpec {
+    /// Creates a new status specification.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        name: StatusName,
+        symbol: StatusSymbol,
+        status_type: StatusType,
+        next_symbol: StatusSymbol,
+    ) -> Self {
+        Self {
+            name,
+            symbol,
+            status_type,
+            next_symbol,
+        }
+    }
+
+    /// Returns the status name.
+    #[inline]
+    #[must_use]
+    pub fn name(&self) -> &StatusName {
+        &self.name
+    }
+
+    /// Returns the checkbox symbol.
+    #[inline]
+    #[must_use]
+    pub fn symbol(&self) -> StatusSymbol {
+        self.symbol
+    }
+
+    /// Returns the status type.
+    #[inline]
+    #[must_use]
+    pub fn status_type(&self) -> StatusType {
+        self.status_type
+    }
+
+    /// Returns the next symbol in the cycle.
+    #[inline]
+    #[must_use]
+    pub fn next_symbol(&self) -> StatusSymbol {
+        self.next_symbol
+    }
+}
+
+/// Bi-directional mapping between status names and checkbox symbols.
+#[derive(Debug, Clone, PartialEq, Archive, Serialize, Deserialize)]
+#[rkyv(derive(Debug))]
 pub struct CheckboxStatus {
-    /// Forward mapping (name -> symbol).
-    by_name: HashMap<StatusName, StatusSymbol>,
-    /// Reverse mapping (symbol -> name).
-    by_symbol: HashMap<StatusSymbol, StatusName>,
+    /// Forward mapping (name -> status spec).
+    by_name: HashMap<StatusName, StatusSpec>,
+    /// Reverse mapping (symbol -> status spec).
+    by_symbol: HashMap<StatusSymbol, StatusSpec>,
 }
 
 impl CheckboxStatus {
@@ -265,16 +395,27 @@ impl CheckboxStatus {
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if mappings are invalid.
     pub fn try_from_raw(
-        raw: HashMap<String, char>,
+        raw: HashMap<String, RawStatusSpec>,
     ) -> Result<Self, ConfigError> {
         let mut by_name = HashMap::new();
         let mut by_symbol = HashMap::new();
 
         let mut entries: Vec<_> = raw.into_iter().collect();
         entries.sort_by(|left, right| left.0.cmp(&right.0));
-        for (name, symbol) in entries {
+        for (name, spec) in entries {
             let status_name = StatusName::try_new(name.clone())?;
-            let status_symbol = StatusSymbol::try_new(symbol)?;
+            let status_symbol = StatusSymbol::try_new(spec.symbol)?;
+            let next_symbol = if let Some(next) = spec.next_symbol {
+                StatusSymbol::try_new(next)?
+            } else {
+                status_symbol
+            };
+            let status_spec = StatusSpec::new(
+                status_name.clone(),
+                status_symbol,
+                spec.status_type,
+                next_symbol,
+            );
 
             if by_name.contains_key(&status_name) {
                 return Err(ConfigError::ValidationFailed {
@@ -289,8 +430,8 @@ impl CheckboxStatus {
                 });
             }
 
-            by_name.insert(status_name.clone(), status_symbol);
-            by_symbol.insert(status_symbol, status_name);
+            by_name.insert(status_name, status_spec.clone());
+            by_symbol.insert(status_symbol, status_spec);
         }
 
         if by_name.is_empty() {
@@ -310,14 +451,14 @@ impl CheckboxStatus {
     #[must_use]
     /// Look up the symbol for a status name.
     pub fn symbol_for_name(&self, name: &StatusName) -> Option<StatusSymbol> {
-        self.by_name.get(name).copied()
+        self.by_name.get(name).map(StatusSpec::symbol)
     }
 
     #[inline]
     #[must_use]
     /// Look up the status name for a symbol.
     pub fn name_for_symbol(&self, symbol: StatusSymbol) -> Option<&StatusName> {
-        self.by_symbol.get(&symbol)
+        self.by_symbol.get(&symbol).map(StatusSpec::name)
     }
 
     #[inline]
@@ -325,15 +466,15 @@ impl CheckboxStatus {
     /// Returns an iterator over the status name and symbol pairs.
     pub fn iter(
         &self,
-    ) -> std::collections::hash_map::Iter<'_, StatusName, StatusSymbol> {
+    ) -> std::collections::hash_map::Iter<'_, StatusName, StatusSpec> {
         self.by_name.iter()
     }
 }
 
 impl<'status> IntoIterator for &'status CheckboxStatus {
     type IntoIter =
-        std::collections::hash_map::Iter<'status, StatusName, StatusSymbol>;
-    type Item = (&'status StatusName, &'status StatusSymbol);
+        std::collections::hash_map::Iter<'status, StatusName, StatusSpec>;
+    type Item = (&'status StatusName, &'status StatusSpec);
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -395,7 +536,6 @@ impl From<StatusName> for String {
         name.0.into_string()
     }
 }
-
 /// Validated status symbol (e.g., `x`).
 ///
 /// # Invariants
@@ -578,6 +718,7 @@ mod tests {
                 fields: Some(fields),
                 indexing: None,
                 dependencies: None,
+                use_emoji: None,
             }
         }
     }
@@ -625,8 +766,16 @@ mod tests {
     #[test]
     fn status_mapping_rejects_duplicates() {
         let mut mapping = HashMap::new();
-        mapping.insert("todo".to_owned(), ' ');
-        mapping.insert("other".to_owned(), ' '); // Duplicate symbol
+        mapping.insert("todo".to_owned(), RawStatusSpec {
+            symbol: ' ',
+            status_type: StatusType::Todo,
+            next_symbol: None,
+        });
+        mapping.insert("other".to_owned(), RawStatusSpec {
+            symbol: ' ',
+            status_type: StatusType::Todo,
+            next_symbol: None,
+        });
 
         let result = CheckboxStatus::try_from_raw(mapping);
         assert!(
@@ -703,6 +852,7 @@ mod tests {
                 indexed_fields: Some(vec!["unknown".to_owned()]),
             }),
             dependencies: None,
+            use_emoji: None,
         };
 
         let result = Task::try_from_raw(raw);

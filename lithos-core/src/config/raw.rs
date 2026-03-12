@@ -18,9 +18,7 @@ use super::{frontmatter::RawFrontmatter, logging::RawLogging};
 
 /// Unified raw configuration for Figment merge.
 ///
-/// This struct serves as the primary Data Transfer Object (DTO) for
-/// deserializing configuration from files. All fields are optional to
-/// support deep merging across multiple layers (defaults, global, vault).
+/// This struct is the merge target for per-file raw configs.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawConfig {
@@ -40,6 +38,97 @@ pub struct RawConfig {
 
     /// Task configuration.
     pub task: Option<RawTaskConfig>,
+}
+
+/// Raw config parsed from the global config file.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawGlobalConfig {
+    /// Logging configuration.
+    pub logging: Option<RawLogging>,
+
+    /// Path configuration (global-only, no cache dir).
+    #[serde(default)]
+    pub paths: RawGlobalPaths,
+
+    /// Trusted vaults (global-only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trusted_vaults: Option<RawTrustedVaults>,
+
+    /// Frontmatter configuration.
+    pub frontmatter: Option<RawFrontmatter>,
+
+    /// Task configuration.
+    pub task: Option<RawTaskConfig>,
+}
+
+/// Raw config parsed from a vault config file.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawVaultConfig {
+    /// Vault path (required for vault configs).
+    pub vault_path: String,
+
+    /// Vault name override.
+    pub name: Option<String>,
+
+    /// Version override.
+    pub version: Option<String>,
+
+    /// Logging configuration.
+    pub logging: Option<RawLogging>,
+
+    /// Path configuration (vault-only, includes cache dir).
+    #[serde(default)]
+    pub paths: RawVaultPaths,
+
+    /// Frontmatter configuration.
+    pub frontmatter: Option<RawFrontmatter>,
+
+    /// Task configuration.
+    pub task: Option<RawTaskConfig>,
+}
+
+impl From<(RawGlobalConfig, RawVaultConfig)> for RawConfig {
+    #[inline]
+    fn from((global, vault): (RawGlobalConfig, RawVaultConfig)) -> Self {
+        Self {
+            logging: vault.logging.or(global.logging),
+            paths: RawPathsConfig::merge(
+                global.paths.into(),
+                vault.paths.into(),
+            ),
+            trusted_vaults: global.trusted_vaults,
+            frontmatter: vault.frontmatter.or(global.frontmatter),
+            task: vault.task.or(global.task),
+        }
+    }
+}
+
+impl From<RawGlobalConfig> for RawConfig {
+    #[inline]
+    fn from(global: RawGlobalConfig) -> Self {
+        Self {
+            logging: global.logging,
+            paths: global.paths.into(),
+            trusted_vaults: global.trusted_vaults,
+            frontmatter: global.frontmatter,
+            task: global.task,
+        }
+    }
+}
+
+impl From<RawVaultConfig> for RawConfig {
+    #[inline]
+    fn from(vault: RawVaultConfig) -> Self {
+        Self {
+            logging: vault.logging,
+            paths: vault.paths.into(),
+            trusted_vaults: None,
+            frontmatter: vault.frontmatter,
+            task: vault.task,
+        }
+    }
 }
 
 /// Raw path configuration input.
@@ -63,6 +152,86 @@ pub struct RawPathsConfig {
     pub property_bank_file: Option<String>,
 }
 
+impl RawPathsConfig {
+    #[inline]
+    #[must_use]
+    pub fn merge(
+        global: RawPathsConfig,
+        vault: RawPathsConfig,
+    ) -> RawPathsConfig {
+        RawPathsConfig {
+            cache_dir: vault.cache_dir.or(global.cache_dir),
+            templates_dir: vault.templates_dir.or(global.templates_dir),
+            schemas_dir: vault.schemas_dir.or(global.schemas_dir),
+            property_bank_file: vault
+                .property_bank_file
+                .or(global.property_bank_file),
+        }
+    }
+}
+
+/// Global-only path configuration input (no cache dir).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawGlobalPaths {
+    /// Templates directory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub templates_dir: Option<String>,
+
+    /// Schema directory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schemas_dir: Option<String>,
+
+    /// Property bank filename.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub property_bank_file: Option<String>,
+}
+
+/// Vault-only path configuration input (includes cache dir).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawVaultPaths {
+    /// Cache directory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+
+    /// Templates directory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub templates_dir: Option<String>,
+
+    /// Schema directory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schemas_dir: Option<String>,
+
+    /// Property bank filename.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub property_bank_file: Option<String>,
+}
+
+impl From<RawGlobalPaths> for RawPathsConfig {
+    #[inline]
+    fn from(paths: RawGlobalPaths) -> Self {
+        Self {
+            cache_dir: None,
+            templates_dir: paths.templates_dir,
+            schemas_dir: paths.schemas_dir,
+            property_bank_file: paths.property_bank_file,
+        }
+    }
+}
+
+impl From<RawVaultPaths> for RawPathsConfig {
+    #[inline]
+    fn from(paths: RawVaultPaths) -> Self {
+        Self {
+            cache_dir: paths.cache_dir,
+            templates_dir: paths.templates_dir,
+            schemas_dir: paths.schemas_dir,
+            property_bank_file: paths.property_bank_file,
+        }
+    }
+}
+
 /// Raw task configuration input.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
@@ -71,8 +240,8 @@ pub struct RawTaskConfig {
     pub enabled: Option<bool>,
     /// List of hashtags that identify a line as a task.
     pub task_tags: Option<Vec<String>>,
-    /// Map of checkbox symbols to status names.
-    pub status: Option<HashMap<String, char>>,
+    /// Map of status name -> status spec.
+    pub status: Option<HashMap<String, RawStatusSpec>>,
     /// Configuration for date fields in tasks.
     pub dates: Option<RawTaskDates>,
     /// Configuration for custom metadata fields in tasks.
@@ -81,6 +250,9 @@ pub struct RawTaskConfig {
     pub indexing: Option<RawIndexingConfig>,
     /// Configuration for task dependencies.
     pub dependencies: Option<RawTaskDependencies>,
+
+    /// Use emoji format for task metadata.
+    pub use_emoji: Option<bool>,
 }
 
 /// Configuration for date fields in tasks.
@@ -95,6 +267,24 @@ pub struct RawTaskDates {
     pub completed: Option<RawDateFieldSpec>,
     /// Configuration for the 'reminder' date field.
     pub reminder: Option<RawDateFieldSpec>,
+
+    /// Configuration for the 'start' date field.
+    pub start: Option<RawDateFieldSpec>,
+
+    /// Configuration for the 'scheduled' date field.
+    pub scheduled: Option<RawDateFieldSpec>,
+}
+
+/// Raw status specification.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawStatusSpec {
+    /// Checkbox symbol.
+    pub symbol: char,
+    /// Status type.
+    pub status_type: super::task::StatusType,
+    /// Optional next symbol.
+    pub next_symbol: Option<char>,
 }
 
 /// Raw date field specification.

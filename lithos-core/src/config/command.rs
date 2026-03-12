@@ -176,7 +176,7 @@ where
         vault_id: VaultId,
         vault_root: &VaultRoot,
     ) -> Result<Version, ConfigCommandError> {
-        use crate::config::adapter::ingest::Ingestor;
+        use crate::config::ingestor::Ingestor;
 
         // Build merged config with placeholder version
         let ingestor = Ingestor::new(vault_root.as_path());
