@@ -8,7 +8,14 @@
     reason = "Schema* types are namespaced intentionally for clarity"
 )]
 
+/// Schema aggregate and identifier types.
+pub mod aggregate;
+
 /// Schema identifier value objects (SchemaId, SchemaName).
+///
+/// **Deprecated**: Use `schema::aggregate` instead. This module exists for
+/// backwards compatibility during migration.
+#[deprecated(since = "0.1.0", note = "Use schema::aggregate instead")]
 pub mod id;
 
 /// PropertyBank domain aggregate for centralized property registration.
@@ -123,15 +130,3 @@ pub(crate) mod db_table {
 // Note: Generic wrapper boilerplate removed in Phase 6 Part B.
 // Applications now use concrete types (db_command::Command, db_query::Query)
 // directly.
-
-/// Compatibility re-exports for code using the old `aggregate` module path.
-///
-/// The Schema aggregate has been removed in Phase 7. Types previously in
-/// `schema::aggregate` are now in `schema::id`.
-///
-/// Note: This uses `pub use` for backward compatibility during the migration
-/// period. This module will be removed in a future phase.
-#[expect(clippy::pub_use, reason = "Temporary migration compatibility layer")]
-pub mod aggregate {
-    pub use super::id::{SchemaId, SchemaName};
-}
